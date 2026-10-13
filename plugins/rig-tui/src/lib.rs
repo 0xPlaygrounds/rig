@@ -153,7 +153,7 @@ impl Plugin for TuiPlugin {
                     TuiSystems::Render.run_if(render::frame_due),
                 )
                     .chain()
-                    .after(StatusSystems),
+                    .after(StatusSystems::Edit),
             )
             .configure_sets(
                 Update,

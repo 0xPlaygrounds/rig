@@ -32,7 +32,7 @@ const RULES: &[&str] = &[
 ];
 
 /// After the subagents at work; goes before the other agents at work.
-const STATUS: StatusItem = StatusItem::at(Side::Left, 65, 9);
+const STATUS: StatusItem = StatusItem::new("todo-tracker", Side::Left, 65, 9);
 
 /// The panel's width.
 const PANEL_WIDTH: u16 = 32;
@@ -68,7 +68,7 @@ impl Plugin for TodoPlugin {
             .add_observer(reset_nudge)
             .add_systems(Startup, spawn_panel)
             .add_systems(Update, redraw)
-            .add_systems(PostUpdate, show_status.in_set(StatusSystems))
+            .add_systems(PostUpdate, show_status.in_set(StatusSystems::Show))
             .add_systems(PostUpdate, place_panel.in_set(TuiSystems::Prepare))
             .add_systems(PostUpdate, draw_panel.in_set(TuiSystems::Draw))
             .add_key_binding(

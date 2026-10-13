@@ -576,12 +576,12 @@ mod status {
     use super::{CheckStatus, Verify};
 
     /// After the agents at work; gone early when the line is narrow.
-    const CHECK: StatusItem = StatusItem::at(Side::Left, 75, 9);
+    const CHECK: StatusItem = StatusItem::new("ho-background-verify", Side::Left, 75, 9);
 
     pub(super) fn add(app: &mut App) {
         app.init_resource::<AppStatus>().add_systems(
             PostUpdate,
-            show.in_set(StatusSystems)
+            show.in_set(StatusSystems::Show)
                 .run_if(resource_changed::<Verify>),
         );
     }

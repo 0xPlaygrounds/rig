@@ -42,7 +42,7 @@ pub const EDITED: &str = "(arguments edited by the user)";
 const ORIGIN: &str = "fh-step-mode";
 
 /// The status line's `STEP`, before the agent's status; never dropped.
-const STEP_ITEM: StatusItem = StatusItem::at(Side::Left, 45, u8::MAX);
+const STEP_ITEM: StatusItem = StatusItem::new("fh-step-mode", Side::Left, 45, u8::MAX);
 
 /// Whether every agent steps, those spawned later included (`/step all`).
 #[derive(Resource, Default, Debug)]
@@ -95,7 +95,7 @@ impl Plugin for StepModePlugin {
                 ),
             )
             .add_systems(Update, edited.before(AgentLoop))
-            .add_systems(PostUpdate, show_step.in_set(StatusSystems));
+            .add_systems(PostUpdate, show_step.in_set(StatusSystems::Show));
     }
 }
 

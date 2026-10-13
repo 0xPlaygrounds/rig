@@ -8,17 +8,20 @@ use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use super::{Spending, TurnSpending};
 
 pub(super) fn add(app: &mut App) {
-    app.add_systems(PostUpdate, (show_meter, show_turn).in_set(StatusSystems));
+    app.add_systems(
+        PostUpdate,
+        (show_meter, show_turn).in_set(StatusSystems::Show),
+    );
 }
 
 /// Where what the running turn spent is in the status line.
-const TURN: StatusItem = StatusItem::at(Side::Left, 80, 11);
+const TURN: StatusItem = StatusItem::new("turn", Side::Left, 80, 11);
 /// Where the meter's items are: the cached input goes first when the
 /// line is too narrow, then the cost, the tokens and the context.
-const TOKENS: StatusItem = StatusItem::at(Side::Right, 10, 4);
-const CACHE: StatusItem = StatusItem::at(Side::Right, 20, 1);
-const COST: StatusItem = StatusItem::at(Side::Right, 30, 3);
-const CONTEXT: StatusItem = StatusItem::at(Side::Right, 40, 5);
+const TOKENS: StatusItem = StatusItem::new("tokens", Side::Right, 10, 4);
+const CACHE: StatusItem = StatusItem::new("cache", Side::Right, 20, 1);
+const COST: StatusItem = StatusItem::new("cost", Side::Right, 30, 3);
+const CONTEXT: StatusItem = StatusItem::new("context", Side::Right, 40, 5);
 
 /// Each agent's meter, once a model call of it finished: its uncached
 /// input and output tokens, cache reads, cost, then the context against

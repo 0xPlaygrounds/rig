@@ -1078,12 +1078,12 @@ mod status {
     use super::CodeIndex;
 
     /// After the other app-wide items; among the first to go.
-    const INDEX: StatusItem = StatusItem::at(Side::Left, 95, 6);
+    const INDEX: StatusItem = StatusItem::new("code-search-index", Side::Left, 95, 6);
 
     pub(super) fn add(app: &mut App) {
         app.init_resource::<AppStatus>().add_systems(
             PostUpdate,
-            show.in_set(StatusSystems)
+            show.in_set(StatusSystems::Show)
                 .run_if(resource_changed::<CodeIndex>),
         );
     }

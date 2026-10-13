@@ -14,11 +14,11 @@
 
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
-use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone, TuiSystems};
+use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
-/// The context's place in the status line, the default meter's: it stays
-/// longer than the cache and the cost when the line is too narrow.
-pub const GAUGE: StatusItem = StatusItem::at(Side::Right, 40, 5);
+/// The default meter's context item, which the gauge replaces by name: it
+/// stays longer than the cache and the cost when the line is too narrow.
+pub const GAUGE: StatusItem = StatusItem::new("context", Side::Right, 40, 5);
 
 /// Shows each agent's context gauge and warns once when it is nearly
 /// full. Needs the terminal view's plugin (`rig_tui::TuiPlugin`), which
@@ -33,9 +33,8 @@ impl Plugin for ContextGaugePlugin {
                 PostUpdate,
                 (
                     warn_once,
-                    // After every status writer, rig-telemetry's meter
-                    // among them, and before the view lays the line out.
-                    show.after(StatusSystems).before(TuiSystems::Prepare),
+                    // After rig-telemetry shows its meter.
+                    show.in_set(StatusSystems::Edit),
                 ),
             );
     }

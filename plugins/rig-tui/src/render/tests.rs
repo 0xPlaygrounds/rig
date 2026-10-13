@@ -1,8 +1,8 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use super::{Piece, fit, light};
-use crate::Highlight;
+use super::{Piece, fit, light, status_pieces};
+use crate::{Highlight, Side, StatusItem, StatusItems, Tone};
 
 /// The `keep` of the default plugins' items: the model and the status
 /// always stay.
@@ -79,6 +79,17 @@ fn a_piece_that_shrinks_is_cut_before_it_goes() {
     let mut left = vec![Piece::new(ALWAYS, Span::from("model")), goal()];
     fit(&mut left, &mut Vec::new(), 14);
     assert_eq!(text(&left, "  "), "model");
+}
+
+#[test]
+fn two_items_at_one_place_both_show_by_name() {
+    let mut items = StatusItems::default();
+    let at = |name| StatusItem::new(name, Side::Left, 45, 9);
+    items.show(at("plan").says("plan", Tone::Cyan));
+    items.show(at("mode").says("auto", Tone::Yellow));
+    let (left, right) = status_pieces(true, [None, Some(&items), None]);
+    assert_eq!(text(&left, "  "), "auto  plan");
+    assert!(right.is_empty());
 }
 
 #[test]

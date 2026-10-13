@@ -1213,10 +1213,10 @@ fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
 }
 
 /// The status line's pieces, left and right: the app's items, the shown
-/// agent's and its turn's, by `order`, with `no agent` where an agent's
-/// model would be when none is shown.
+/// agent's and its turn's, by `order`, then name, with `no agent` where an
+/// agent's model would be when none is shown.
 fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, Vec<Piece>) {
-    let no_agent = StatusItem::at(Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
+    let no_agent = StatusItem::new("agent", Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
     let mut items: Vec<&StatusItem> = items
         .into_iter()
         .flatten()
@@ -1225,7 +1225,7 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
     if !shown {
         items.push(&no_agent);
     }
-    items.sort_by_key(|item| item.order);
+    items.sort_by_key(|item| (item.order, item.name));
     let piece = |item: &StatusItem| {
         let style = match item.tone {
             Tone::Plain => Style::new(),

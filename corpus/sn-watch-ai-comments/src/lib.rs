@@ -40,7 +40,7 @@ const AROUND: usize = 10;
 const MAX_BYTES: u64 = 1 << 20;
 
 /// After the reload build's item; goes early when the line is narrow.
-const ITEM: StatusItem = StatusItem::at(Side::Left, 95, 9);
+const ITEM: StatusItem = StatusItem::new("sn-watch-ai-comments", Side::Left, 95, 9);
 
 /// The plugin's name, as it decides calls and sends messages.
 const NAME: &str = "watch-ai-comments";
@@ -92,7 +92,7 @@ impl Plugin for WatchAiCommentsPlugin {
             )
             .add_systems(
                 PostUpdate,
-                show.in_set(StatusSystems)
+                show.in_set(StatusSystems::Show)
                     .run_if(resource_changed::<Watching>),
             )
             .add_observer(note_writes)

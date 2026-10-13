@@ -160,7 +160,7 @@ impl Plugin for RemoteWorkspacePlugin {
             PostUpdate,
             show_status
                 .run_if(resource_changed::<RemoteTarget>)
-                .in_set(rig_tui::StatusSystems),
+                .in_set(rig_tui::StatusSystems::Show),
         );
     }
 }
@@ -325,7 +325,7 @@ fn remote_command(
 fn show_status(target: Res<RemoteTarget>, mut status: ResMut<rig_tui::AppStatus>) {
     use rig_tui::{Side, StatusItem, Tone};
     /// After the session's name; kept long.
-    const REMOTE: StatusItem = StatusItem::at(Side::Left, 15, 17);
+    const REMOTE: StatusItem = StatusItem::new("fh-remote-workspace", Side::Left, 15, 17);
     let text = Target::parse(&target.target)
         .map(|remote| format!("⇄ {remote}"))
         .unwrap_or_default();

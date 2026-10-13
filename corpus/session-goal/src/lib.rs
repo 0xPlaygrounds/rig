@@ -29,7 +29,7 @@ const LABEL_CHARS: usize = 40;
 /// Where the goal is in the status line: right after the session's name,
 /// cut down to 12 columns when the line is narrow, and gone before the
 /// model's reasoning setting.
-const GOAL_ITEM: StatusItem = StatusItem::at(Side::Left, 15, 6).shrinks_to(12);
+const GOAL_ITEM: StatusItem = StatusItem::new("session-goal", Side::Left, 15, 6).shrinks_to(12);
 
 /// `/goal`, and the goal's prompt section, `/resume` label and status item.
 #[derive(Default)]

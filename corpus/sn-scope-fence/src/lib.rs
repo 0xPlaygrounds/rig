@@ -267,12 +267,12 @@ mod status {
     use super::ScopeFence;
 
     /// After the other agents at work; gone before the turn's spending.
-    pub const ITEM: StatusItem = StatusItem::at(Side::Left, 75, 10);
+    pub const ITEM: StatusItem = StatusItem::new("sn-scope-fence", Side::Left, 75, 10);
 
     pub(super) fn add(app: &mut App) {
         app.init_resource::<AppStatus>().add_systems(
             PostUpdate,
-            show.in_set(StatusSystems)
+            show.in_set(StatusSystems::Show)
                 .run_if(resource_changed::<ScopeFence>),
         );
     }

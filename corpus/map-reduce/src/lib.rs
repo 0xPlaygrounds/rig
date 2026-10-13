@@ -119,7 +119,10 @@ impl Plugin for MapReducePlugin {
             )
             .add_systems(Update, retire_orphans.before(AgentLoop));
         #[cfg(feature = "tui")]
-        app.add_systems(PostUpdate, show_progress.in_set(rig_tui::StatusSystems));
+        app.add_systems(
+            PostUpdate,
+            show_progress.in_set(rig_tui::StatusSystems::Show),
+        );
     }
 }
 
@@ -595,7 +598,7 @@ fn show_progress(
 ) {
     use rig_tui::{Side, StatusItem, Tone};
     /// After the agent's subagents at work; gone just before them.
-    const PROGRESS: StatusItem = StatusItem::at(Side::Left, 65, 14);
+    const PROGRESS: StatusItem = StatusItem::new("map-reduce", Side::Left, 65, 14);
     for (job, &CallOf(turn)) in &jobs {
         if let Ok(mut items) = turns.get_mut(turn) {
             let text = match job.finished {

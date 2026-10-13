@@ -21,7 +21,7 @@ mod tests;
 /// The share of the budget past which it is nearly spent.
 const WARN_AT: f64 = 0.8;
 /// Where the budget is in the status line: after the meter's cost.
-const ITEM: StatusItem = StatusItem::at(Side::Right, 35, 6);
+const ITEM: StatusItem = StatusItem::new("cost-budget", Side::Right, 35, 6);
 
 /// Keeps the session within a dollar budget, and adds `/budget`.
 #[derive(Default)]
@@ -51,7 +51,7 @@ impl Plugin for CostBudgetPlugin {
             PostUpdate,
             (
                 warn.run_if(resource_changed::<SessionSpending>),
-                show.in_set(StatusSystems).run_if(
+                show.in_set(StatusSystems::Show).run_if(
                     resource_changed::<SessionSpending>.or_eager(resource_changed::<Budget>),
                 ),
             ),

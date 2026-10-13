@@ -62,7 +62,10 @@ impl Plugin for CheckAfterTurnPlugin {
             .add_observer(cancel_on_user)
             .add_observer(cancel_on_interrupt);
         #[cfg(feature = "tui")]
-        app.add_systems(PostUpdate, status::show.in_set(rig_tui::StatusSystems));
+        app.add_systems(
+            PostUpdate,
+            status::show.in_set(rig_tui::StatusSystems::Show),
+        );
     }
 }
 
@@ -429,7 +432,7 @@ mod status {
     use super::CheckState;
 
     /// After the agent's status; gone before the reasoning setting.
-    const CHECKING: StatusItem = StatusItem::at(Side::Left, 56, 10);
+    const CHECKING: StatusItem = StatusItem::new("check-after-turn", Side::Left, 56, 10);
 
     pub(super) fn show(mut agents: Query<(&CheckState, &mut StatusItems), Changed<CheckState>>) {
         for (state, mut items) in &mut agents {

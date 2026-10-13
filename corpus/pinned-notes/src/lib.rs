@@ -78,7 +78,7 @@ impl Plugin for PinnedNotesPlugin {
                 ),
             );
         #[cfg(feature = "tui")]
-        app.add_systems(PostUpdate, tui::show.in_set(rig_tui::StatusSystems));
+        app.add_systems(PostUpdate, tui::show.in_set(rig_tui::StatusSystems::Show));
     }
 
     /// Offers `inherit_pins` on `task`, once rig-subagents added it; a
@@ -383,7 +383,7 @@ mod tui {
     use super::Pins;
 
     /// After the agent's subagents at work; gone before them.
-    const PINNED: StatusItem = StatusItem::at(Side::Left, 65, 9);
+    const PINNED: StatusItem = StatusItem::new("pinned-notes", Side::Left, 65, 9);
 
     /// "📌 n" while the agent has pinned notes.
     pub(super) fn show(mut agents: Query<(&Pins, &mut StatusItems), Changed<Pins>>) {

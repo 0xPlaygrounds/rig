@@ -37,7 +37,7 @@ use editor::{Buffer, Editor, Effect, Key, Mode};
 pub const DOUBLE_ESC: Duration = Duration::from_millis(500);
 
 /// The mode's place in the status line: after the agent's status.
-const MODE_ITEM: StatusItem = StatusItem::at(Side::Left, 55, 9);
+const MODE_ITEM: StatusItem = StatusItem::new("sn-vim-input", Side::Left, 55, 9);
 
 /// The file under `RIG_HOME` that keeps `/vim on|off` across sessions.
 const SAVED: &str = "vim.json";
@@ -167,7 +167,7 @@ impl Plugin for VimPlugin {
             PostUpdate,
             show_mode
                 .run_if(resource_changed::<Vim>)
-                .in_set(StatusSystems),
+                .in_set(StatusSystems::Show),
         );
         let keys = (' '..='~')
             .map(|character| {

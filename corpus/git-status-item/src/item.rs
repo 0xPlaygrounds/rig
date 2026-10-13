@@ -39,7 +39,7 @@ impl Default for GitStatusSettings {
 impl GitStatusSettings {
     /// The item's place, saying nothing.
     pub fn place(&self) -> StatusItem {
-        StatusItem::at(self.side, self.order, self.keep)
+        StatusItem::new("git-status-item", self.side, self.order, self.keep)
     }
 }
 
@@ -111,7 +111,8 @@ pub(crate) fn add(app: &mut App) {
         .add_systems(Update, start.run_if(resource_changed::<Looks>))
         .add_systems(
             PostUpdate,
-            show.in_set(StatusSystems).run_if(resource_changed::<Shown>),
+            show.in_set(StatusSystems::Show)
+                .run_if(resource_changed::<Shown>),
         )
         .add_observer(after)
         .add_observer(looked);

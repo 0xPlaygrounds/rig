@@ -12,12 +12,12 @@ use rig_tui::{ArgCompletion, Side, StatusItem, StatusItems, StatusSystems, Tone,
 use super::{ModelItem, ModelLabel};
 
 /// Where the model is: always shown.
-const MODEL: StatusItem = StatusItem::at(Side::Left, 30, u8::MAX);
+const MODEL: StatusItem = StatusItem::new("model", Side::Left, 30, u8::MAX);
 /// Where the reasoning setting is.
-const REASONING: StatusItem = StatusItem::at(Side::Left, 40, 12);
+const REASONING: StatusItem = StatusItem::new("reasoning", Side::Left, 40, 12);
 
 pub(super) fn add(app: &mut App) {
-    app.add_systems(PostUpdate, show.in_set(StatusSystems))
+    app.add_systems(PostUpdate, show.in_set(StatusSystems::Show))
         .add_systems(Update, complete_models);
 }
 

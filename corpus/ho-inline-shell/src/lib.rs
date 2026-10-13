@@ -29,7 +29,7 @@ mod tests;
 pub const OUTPUT_LIMIT: usize = 4 * 1024;
 
 /// The status item: after the agent's status.
-const EXPANDING: StatusItem = StatusItem::at(Side::Left, 52, 10);
+const EXPANDING: StatusItem = StatusItem::new("ho-inline-shell", Side::Left, 52, 10);
 
 /// The `[inline_shell]` table: `enabled = false` turns expansion off;
 /// `timeout_secs` is how long each command may run.
@@ -80,7 +80,7 @@ impl Plugin for InlineShellPlugin {
                     .in_set(InlineShellSystems)
                     .run_if(|settings: Res<InlineShell>| settings.enabled),
             )
-            .add_systems(PostUpdate, show_expanding.in_set(StatusSystems))
+            .add_systems(PostUpdate, show_expanding.in_set(StatusSystems::Show))
             .add_observer(finished);
     }
 }

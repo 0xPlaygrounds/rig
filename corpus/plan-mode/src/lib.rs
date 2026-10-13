@@ -19,7 +19,7 @@ use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 mod tests;
 
 /// The status item: after the reasoning setting, before the status.
-const PLAN_ITEM: StatusItem = StatusItem::at(Side::Left, 45, 17);
+const PLAN_ITEM: StatusItem = StatusItem::new("plan-mode", Side::Left, 45, 17);
 
 /// What every request of a planning agent adds to its system prompt.
 pub const PLAN_ONLY: &str = "Plan mode: you may read and search, but change nothing. \
@@ -86,7 +86,7 @@ impl Plugin for PlanModePlugin {
             )
             .add_observer(capture)
             .add_observer(decide)
-            .add_systems(PostUpdate, show.in_set(StatusSystems));
+            .add_systems(PostUpdate, show.in_set(StatusSystems::Show));
     }
 }
 

@@ -55,7 +55,7 @@ const READ_ONLY: &[&str] = &[
 ];
 
 /// After the permission mode; kept long, it says nothing is applied.
-const DRY_RUN_ITEM: StatusItem = StatusItem::at(Side::Left, 46, 17);
+const DRY_RUN_ITEM: StatusItem = StatusItem::new("ho-dry-run", Side::Left, 46, 17);
 
 /// On an agent in dry run. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
@@ -186,7 +186,7 @@ impl Plugin for DryRunPlugin {
             )
             .add_observer(keep_previewed)
             .add_observer(inherit)
-            .add_systems(PostUpdate, show_dry_run.in_set(StatusSystems));
+            .add_systems(PostUpdate, show_dry_run.in_set(StatusSystems::Show));
     }
 }
 

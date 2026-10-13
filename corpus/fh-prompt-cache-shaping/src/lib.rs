@@ -36,7 +36,7 @@ use rig_harness::rig_core::effect;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 /// After the cached input of `rig-telemetry`, before the cost.
-const RATE: StatusItem = StatusItem::at(Side::Right, 25, 2);
+const RATE: StatusItem = StatusItem::new("fh-prompt-cache-shaping", Side::Right, 25, 2);
 /// The breaks `/cache why` keeps per agent.
 const KEPT_BREAKS: usize = 10;
 
@@ -61,7 +61,7 @@ impl Plugin for CacheShapingPlugin {
                     .before(PrepareSystems::Fit),
             )
             .add_systems(AgentPass, shape.in_set(CacheShapingSystems))
-            .add_systems(PostUpdate, show.in_set(StatusSystems))
+            .add_systems(PostUpdate, show.in_set(StatusSystems::Show))
             .add_observer(record_usage)
             .add_command(
                 "cache",

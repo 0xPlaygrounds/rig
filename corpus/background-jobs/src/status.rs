@@ -6,12 +6,12 @@ use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 use crate::LiveJob;
 
 /// After the other agents at work.
-const JOBS: StatusItem = StatusItem::at(Side::Left, 75, 9);
+const JOBS: StatusItem = StatusItem::new("background-jobs", Side::Left, 75, 9);
 
 pub(crate) fn add(app: &mut App) {
     app.init_resource::<AppStatus>().add_systems(
         PostUpdate,
-        show_jobs.in_set(StatusSystems).run_if(jobs_changed),
+        show_jobs.in_set(StatusSystems::Show).run_if(jobs_changed),
     );
 }
 

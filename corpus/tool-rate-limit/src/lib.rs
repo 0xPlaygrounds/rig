@@ -141,7 +141,10 @@ impl Plugin for ToolRateLimitPlugin {
             .add_observer(free)
             .add_command("limits", "Show each tool limit and its use", show_limits);
         #[cfg(feature = "tui")]
-        app.add_systems(PostUpdate, status::show.in_set(rig_tui::StatusSystems));
+        app.add_systems(
+            PostUpdate,
+            status::show.in_set(rig_tui::StatusSystems::Show),
+        );
     }
 }
 
@@ -349,7 +352,7 @@ mod status {
     use super::*;
 
     /// After the other agents at work; gone before them.
-    const WAITING: StatusItem = StatusItem::at(Side::Left, 75, 12);
+    const WAITING: StatusItem = StatusItem::new("tool-rate-limit", Side::Left, 75, 12);
 
     /// "fetch: waiting 12 s" on each turn with a call waiting for the
     /// minute; "fetch: waiting for a running call" for one waiting on
