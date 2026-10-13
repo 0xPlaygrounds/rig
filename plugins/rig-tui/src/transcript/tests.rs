@@ -26,14 +26,13 @@ use rig_harness::prelude::{App, Last, Update};
 use serde_json::json;
 
 use super::{
-    Below, CallFacts, ChildCalls, EntryRenderers, Look, Part, Renderers, Scroll, StreamingCalls,
-    Transcript,
+    Below, CallFacts, ChildCalls, Look, Part, Renderers, Scroll, StreamingCalls, Transcript,
 };
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
-    AppToolRenderersExt, CallState, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow,
-    LineSpan, PastEffects, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem,
+    AppToolRenderersExt, CallState, ContentKind, DrawnRow, DrawnTranscript, Expanded, Highlight,
+    ItemRow, LineSpan, PastEffects, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem,
     TranscriptLayout, TranscriptView,
 };
 
@@ -106,11 +105,9 @@ fn drawn(
     (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
     renderers: &Renderers<'_>,
 ) -> String {
-    let entries = EntryRenderers::default();
     let (expanded, facts) = (HashSet::new(), CallFacts::default());
     let look = Look {
         renderers,
-        entries: &entries,
         calls,
         outputs,
         inside: HashMap::new(),
@@ -202,7 +199,10 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
         let output = call.output.unwrap_or("no output").lines();
         output.map(|line| Line::from(format!("> {line}"))).collect()
     });
-    let renderers: Renderers<'_> = HashMap::from([("shell", &look)]);
+    let renderers = Renderers {
+        tools: HashMap::from([("shell", &look)]),
+        ..Renderers::default()
+    };
     let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
     let mut transcript = Transcript::default();
     let mut outputs = BTreeMap::new();
@@ -295,6 +295,58 @@ fn an_image_the_assistant_made_is_drawn() {
     say(&mut app, agent, Message::Assistant(reply));
     let lines = on_screen(&mut app, agent, 20);
     assert!(line_of(&lines, "[image]").is_some(), "{lines:#?}");
+}
+
+#[test]
+fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
+    use rig_core::message::UserContent;
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    // An image look that reserves a row under its label, as a plugin
+    // placing images does.
+    app.add_content_renderer(ContentKind::Image, |view| {
+        let by = if view.assistant { "model" } else { "user" };
+        vec![
+            Line::from(format!("img {} by {by}", view.index)),
+            Line::default(),
+        ]
+    })
+    .add_tool_renderer("shell", |call| vec![call.header("shell", "")])
+    .add_call_decorator("names", |call| {
+        vec![Line::from(format!("  ~ {}", call.name()))]
+    });
+    let image = UserContent::Image(Image::default());
+    let asked = Message::User {
+        content: vec![UserContent::text("look"), image],
+    };
+    say(&mut app, agent, asked);
+    let reply = AssistantMessage::new(vec![AssistantContent::Image(Image::default())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let (Ok(shell), Ok(read)) = (ToolName::new("shell"), ToolName::new("read")) else {
+        return;
+    };
+    let calls = [("c1", shell), ("c2", read)]
+        .map(|(id, name)| ToolCall::from_wire(id, ToolFunction::new(name, json!({}))));
+    let reply = calls.clone().map(AssistantContent::ToolCall);
+    say(
+        &mut app,
+        agent,
+        Message::Assistant(AssistantMessage::new(reply.to_vec())),
+    );
+    let lines = on_screen(&mut app, agent, 100);
+    for text in ["img 1 by user", "img 0 by model", "~ shell", "~ read"] {
+        assert!(line_of(&lines, text).is_some(), "{text}: {lines:#?}");
+    }
+    // The user's image is an item with its rows, the reserved one too.
+    let Some(asked) = message_id(&app, agent, 0) else {
+        return;
+    };
+    let drawn = app.world().resource::<DrawnTranscript>();
+    let rows = drawn.rows_of(&TranscriptItem::Content(asked, 1));
+    let texts: Vec<&str> = (rows.unwrap_or_default().map(|row| drawn.rows().get(row)))
+        .map(|row| row.map_or("", |row| row.text.as_str()))
+        .collect();
+    assert_eq!(texts, ["img 1 by user", ""]);
 }
 
 #[test]

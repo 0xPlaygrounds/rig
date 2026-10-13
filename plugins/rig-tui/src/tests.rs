@@ -113,11 +113,10 @@ pub(crate) fn drawn_rows(
                 return Vec::new();
             };
             shown.streaming = streaming.clone();
-            let (renderers, entry_renderers) = layout.looks();
+            let renderers = layout.looks.by_kind();
             let sources = Sources {
                 view: &transcript_view,
                 renderers: &renderers,
-                entry_renderers: &entry_renderers,
                 facts: layout.facts(),
                 whole: false,
                 note_cut: drawn.is_some(),

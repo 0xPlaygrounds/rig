@@ -23,13 +23,15 @@ use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
-use super::renderers::{CallState, EntryRenderer, ToolCallView, ToolRenderer, UNNAMED_HOLD};
+use super::renderers::{
+    CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks, Renderers, ToolCallView,
+    ToolRenderer, UNNAMED_HOLD,
+};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{
-    Below, CallFacts, CallTree, ChildCalls, EntryRenderers, Inside, Look, Marks, Part, Renderers,
-    ShownNote, StreamingCalls, Transcript, call_lines, entry_lines, live_call, notice_lines,
-    plain_lines,
+    Below, CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, ShownNote, StreamingCalls,
+    Transcript, live_call, notice_lines, plain_lines,
 };
 use super::view::{
     Continuation, DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot,
@@ -90,7 +92,10 @@ pub(crate) fn needs_redraw(
             Changed<Calls>,
             Changed<StatusItems>,
             Changed<TuiPanel>,
+            Changed<ToolRenderer>,
             Changed<EntryRenderer>,
+            Changed<ContentRenderer>,
+            Changed<CallDecorator>,
         )>,
     >,
     partials: Query<(), Changed<Partial>>,
@@ -114,7 +119,7 @@ pub(crate) fn needs_redraw(
         RemovedComponents<StatusItems>,
         RemovedComponents<Holds>,
         RemovedComponents<ToolProgress>,
-        RemovedComponents<EntryRenderer>,
+        RemovedLooks,
     ),
     mut paced: Local<Paced>,
 ) -> bool {
@@ -124,8 +129,8 @@ pub(crate) fn needs_redraw(
         + removed.1.read().count()
         + removed.2.read().count()
         + removed.3.read().count()
-        + removed.4.read().count()
-        > 0;
+        > 0
+        || removed.4.any();
     let changed = requested
         || removed
         || view.is_changed()
@@ -147,6 +152,26 @@ pub(crate) fn needs_redraw(
         return true;
     }
     false
+}
+
+/// The looks taken out since the last frame.
+#[derive(SystemParam)]
+pub(crate) struct RemovedLooks<'w, 's> {
+    tools: RemovedComponents<'w, 's, ToolRenderer>,
+    entries: RemovedComponents<'w, 's, EntryRenderer>,
+    contents: RemovedComponents<'w, 's, ContentRenderer>,
+    decorators: RemovedComponents<'w, 's, CallDecorator>,
+}
+
+impl RemovedLooks<'_, '_> {
+    /// Whether any was, each reader drained.
+    fn any(&mut self) -> bool {
+        self.tools.read().count()
+            + self.entries.read().count()
+            + self.contents.read().count()
+            + self.decorators.read().count()
+            > 0
+    }
 }
 
 /// The frame [`layout`] laid out for [`render`]; `due` while one is to be
@@ -349,10 +374,8 @@ type LiveEffect = (
 pub(crate) struct Sources<'a> {
     /// The transcript as plugins steer it: what is expanded, the notices.
     pub(crate) view: &'a TranscriptView,
-    /// The tool renderers by tool name.
+    /// The looks plugins added.
     pub(crate) renderers: &'a Renderers<'a>,
-    /// The entry renderers by plugin name.
-    pub(crate) entry_renderers: &'a EntryRenderers<'a>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
     /// Whether every item is drawn whole, as if expanded.
@@ -400,8 +423,7 @@ pub struct TranscriptLayout<'w, 's> {
         (&'static Effect, &'static Incoming, &'static ForAgent),
         (With<Started>, Without<Outcome>),
     >,
-    pub(crate) renderers: Query<'w, 's, Ref<'static, ToolRenderer>>,
-    pub(crate) entry_renderers: Query<'w, 's, Ref<'static, EntryRenderer>>,
+    pub(crate) looks: Looks<'w, 's>,
     calls: CallStates<'w, 's>,
     live: Query<'w, 's, LiveEffect, Without<Settled>>,
     names: Query<'w, 's, &'static Name>,
@@ -436,11 +458,10 @@ impl TranscriptLayout<'_, '_> {
         expanded: Expanded,
     ) -> Option<DrawnTranscript> {
         let shown = self.agent(agent, true)?;
-        let (renderers, entry_renderers) = self.looks();
+        let renderers = self.looks.by_kind();
         let sources = Sources {
             view,
             renderers: &renderers,
-            entry_renderers: &entry_renderers,
             facts: &self.facts,
             whole: expanded == Expanded::All,
             note_cut: true,
@@ -519,20 +540,6 @@ impl TranscriptLayout<'_, '_> {
         live
     }
 
-    /// The tool renderers by tool name and the entry renderers by plugin
-    /// name.
-    pub(crate) fn looks(&self) -> (Renderers<'_>, EntryRenderers<'_>) {
-        let tools = self.renderers.iter().map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.tool.as_str(), &renderer.render)
-        });
-        let plugins = self.entry_renderers.iter().map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.plugin.as_str(), &renderer.render)
-        });
-        (tools.collect(), plugins.collect())
-    }
-
     /// What settled calls published and how long they ran.
     pub(crate) fn facts(&self) -> &CallFacts {
         &self.facts
@@ -570,7 +577,6 @@ pub(crate) fn lay_out_transcript(
     let mut notes_after: Vec<Vec<&ShownNote<'_>>> = vec![Vec::new(); count + 1];
     let mut look = Look {
         renderers: sources.renderers,
-        entries: sources.entry_renderers,
         calls: &shown.calls,
         outputs: &shown.outputs,
         inside: HashMap::new(),
@@ -616,7 +622,7 @@ pub(crate) fn lay_out_transcript(
         for note in notes {
             let item = note.item();
             let (drawn, cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                entry_lines(&note.view(expanded), sources.entry_renderers)
+                sources.renderers.entry(&note.view(expanded))
             });
             let mut lines = vec![Line::default()];
             lines.extend(drawn);
@@ -638,7 +644,7 @@ pub(crate) fn lay_out_transcript(
             }
             for call in &shown.streaming {
                 let view = ToolCallView::new(call, None, CallState::Streaming);
-                extra.extend(call_lines(&view, sources.renderers));
+                extra.extend(sources.renderers.call(&view));
             }
             inbox_lines(&shown.inbox, &mut extra);
             parts.push(Part::rows(&extra, &marks, Vec::new(), wrap_width));
@@ -902,10 +908,7 @@ pub(crate) fn render(
     (from, changed): (TranscriptLayout, Query<(), Changed<Conversation>>),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     status: (Query<&StatusItems>, Option<Res<AppStatus>>),
-    mut removed_renderers: (
-        RemovedComponents<ToolRenderer>,
-        RemovedComponents<EntryRenderer>,
-    ),
+    mut removed_looks: RemovedLooks,
 ) -> Result {
     let frame_layout = std::mem::take(&mut *frame_layout);
     let Some(input_rows) = frame_layout.input_rows else {
@@ -925,16 +928,10 @@ pub(crate) fn render(
         (matches!(panel.placement, Placement::Over { .. }), *entity)
     });
     // A renderer changed: what it drew is drawn again.
-    if removed_renderers.0.read().count() + removed_renderers.1.read().count() > 0
-        || from.renderers.iter().any(|renderer| renderer.is_changed())
-        || from
-            .entry_renderers
-            .iter()
-            .any(|renderer| renderer.is_changed())
-    {
+    if removed_looks.any() || from.looks.changed() {
         transcript.clear();
     }
-    let (by_tool, by_plugin) = from.looks();
+    let renderers = from.looks.by_kind();
     let edit = view
         .choosing
         .as_ref()
@@ -960,8 +957,7 @@ pub(crate) fn render(
             let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
             let sources = Sources {
                 view: transcript_view,
-                renderers: &by_tool,
-                entry_renderers: &by_plugin,
+                renderers: &renderers,
                 facts: from.facts(),
                 whole: false,
                 note_cut: drawn.is_some(),

@@ -11,8 +11,14 @@
 //! [`AppToolRenderersExt::add_entry_renderer`] (`entry:<plugin>`): it draws
 //! the [`Note`](rig_harness::note::Note)s that plugin wrote, and the
 //! entries of the conversation it wrote, such as a compaction's summary. One without draws as
-//! [`EntryView::default_lines`]. A change to a renderer draws the
-//! transcript again.
+//! [`EntryView::default_lines`]. And for a kind of content block in a
+//! message, an image, audio, a video or a document, with
+//! [`AppToolRenderersExt::add_content_renderer`] (`content:<kind>`): one
+//! without draws as [`ContentView::default_lines`]. A plugin that adds
+//! rows under every call, whatever draws it, adds a decorator
+//! ([`AppToolRenderersExt::add_call_decorator`], `decorator:<name>`):
+//! decorators add up, each drawing after the call's look. A change to a
+//! renderer or a decorator draws the transcript again.
 //!
 //! A renderer also sees the calls its call started, such as a subagent's
 //! model and tool calls, through the spawn and the brief between them
@@ -35,16 +41,20 @@
 //! }
 //! ```
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use bevy_log::warn;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
-use rig_core::message::{ToolCall, ToolResult};
+use rig_core::completion::AssistantContent;
+use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
 use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
+use rig_ecs::prelude::MessageId;
 use rig_tools::shorten;
 
 use super::diff;
@@ -314,6 +324,106 @@ impl EntryView<'_> {
     }
 }
 
+/// A kind of content block a [`ContentRenderer`] draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ContentKind {
+    /// An image, the user's or one the model made.
+    Image,
+    /// Audio.
+    Audio,
+    /// A video.
+    Video,
+    /// A document, such as a PDF.
+    Document,
+}
+
+impl ContentKind {
+    /// Its name: `image`, `audio`, `video` or `document`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Audio => "audio",
+            Self::Video => "video",
+            Self::Document => "document",
+        }
+    }
+}
+
+/// A content block of a message that is not text, a tool call or a
+/// result.
+#[derive(Clone, Copy, Debug)]
+pub enum ContentBlock<'a> {
+    /// An image, the user's or one the model made.
+    Image(&'a Image),
+    /// Audio.
+    Audio(&'a Audio),
+    /// A video.
+    Video(&'a Video),
+    /// A document.
+    Document(&'a Document),
+}
+
+impl<'a> ContentBlock<'a> {
+    /// A user's block, if it is one.
+    pub(crate) fn of_user(content: &'a UserContent) -> Option<Self> {
+        match content {
+            UserContent::Image(image) => Some(Self::Image(image)),
+            UserContent::Audio(audio) => Some(Self::Audio(audio)),
+            UserContent::Video(video) => Some(Self::Video(video)),
+            UserContent::Document(document) => Some(Self::Document(document)),
+            UserContent::Text(_) | UserContent::ToolResult(_) => None,
+        }
+    }
+
+    /// A reply's block, if it is one.
+    pub(crate) fn of_assistant(content: &'a AssistantContent) -> Option<Self> {
+        match content {
+            AssistantContent::Image(image) => Some(Self::Image(image)),
+            _ => None,
+        }
+    }
+
+    /// Its kind.
+    pub fn kind(self) -> ContentKind {
+        match self {
+            Self::Image(_) => ContentKind::Image,
+            Self::Audio(_) => ContentKind::Audio,
+            Self::Video(_) => ContentKind::Video,
+            Self::Document(_) => ContentKind::Document,
+        }
+    }
+}
+
+/// A content block of a message, as a content renderer sees it: an
+/// image, audio, a video or a document, the user's or the model's. Its
+/// rows are the transcript item [`TranscriptItem::Content`], which a
+/// plugin finds in the [`DrawnTranscript`], such as to draw an image over
+/// the rows its renderer left blank.
+///
+/// [`TranscriptItem::Content`]: crate::TranscriptItem::Content
+/// [`DrawnTranscript`]: crate::DrawnTranscript
+pub struct ContentView<'a> {
+    /// The message it is in, if the message has an id.
+    pub message: Option<MessageId>,
+    /// Its place among the message's blocks.
+    pub index: usize,
+    /// The block.
+    pub block: ContentBlock<'a>,
+    /// Whether the message was written by the model.
+    pub assistant: bool,
+    /// Whether it is drawn whole: the user expanded it.
+    pub expanded: bool,
+}
+
+impl ContentView<'_> {
+    /// The look of a kind with no renderer: its name in brackets, such as
+    /// `[image]`.
+    pub fn default_lines(&self) -> Vec<Line<'static>> {
+        let name = self.block.kind().name();
+        vec![Line::from(format!("  [{name}]")).dim()]
+    }
+}
+
 /// A tool result's text, joined.
 pub(crate) fn result_text(result: &ToolResult) -> String {
     result
@@ -398,7 +508,30 @@ pub struct EntryRenderer {
     pub render: Arc<RenderEntry>,
 }
 
-/// Registers tool and entry renderers on an [`App`].
+/// Draws a content block as transcript lines, not yet wrapped.
+pub type RenderContent = dyn Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync;
+
+/// The look of the content blocks of a kind, on an entity of its own.
+#[derive(Component, Clone)]
+pub struct ContentRenderer {
+    /// The kind it draws.
+    pub kind: ContentKind,
+    /// Draws one block.
+    pub render: Arc<RenderContent>,
+}
+
+/// Lines drawn under every tool call, after its look, on an entity of
+/// its own.
+#[derive(Component, Clone)]
+pub struct CallDecorator {
+    /// What it is called, such as the plugin's name.
+    pub name: String,
+    /// Draws its lines under a call; none leaves the call as it is.
+    pub render: Arc<RenderToolCall>,
+}
+
+/// Registers tool, entry and content renderers and call decorators on an
+/// [`App`].
 pub trait AppToolRenderersExt {
     /// Draw the calls of `tool` with `render`, unless the tool has a
     /// renderer already: that one stays, with a warning. To restyle
@@ -417,6 +550,24 @@ pub trait AppToolRenderersExt {
         &mut self,
         plugin: &str,
         render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self;
+
+    /// Draw the content blocks of `kind` with `render`, unless the kind
+    /// has a renderer already: that one stays, with a warning, and
+    /// `Disabled` on it frees the kind, as for tools.
+    fn add_content_renderer(
+        &mut self,
+        kind: ContentKind,
+        render: impl Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self;
+
+    /// Draw `render`'s lines under every tool call, after the call's own
+    /// look, whichever draws it. Decorators add up, in the order of their
+    /// entities; `Disabled` on one (`decorator:<name>`) leaves it out.
+    fn add_call_decorator(
+        &mut self,
+        name: &str,
+        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 }
 
@@ -467,6 +618,132 @@ impl AppToolRenderersExt for App {
             },
         ));
         self
+    }
+
+    fn add_content_renderer(
+        &mut self,
+        kind: ContentKind,
+        render: impl Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self {
+        let world = self.world_mut();
+        let mut renderers = world.query::<&ContentRenderer>();
+        let name = kind.name();
+        if renderers.iter(world).any(|renderer| renderer.kind == kind) {
+            warn!("renderer not added: `{name}` has one; insert `Disabled` on it to replace it");
+            return self;
+        }
+        let render = Arc::new(render);
+        world.spawn((
+            Name::new(format!("content:{name}")),
+            ContentRenderer { kind, render },
+        ));
+        self
+    }
+
+    fn add_call_decorator(
+        &mut self,
+        name: &str,
+        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self {
+        self.world_mut().spawn((
+            Name::new(format!("decorator:{name}")),
+            CallDecorator {
+                name: name.to_owned(),
+                render: Arc::new(render),
+            },
+        ));
+        self
+    }
+}
+
+/// The looks plugins added, as a frame draws with them.
+#[derive(SystemParam)]
+pub(crate) struct Looks<'w, 's> {
+    tools: Query<'w, 's, Ref<'static, ToolRenderer>>,
+    entries: Query<'w, 's, Ref<'static, EntryRenderer>>,
+    contents: Query<'w, 's, Ref<'static, ContentRenderer>>,
+    decorators: Query<'w, 's, (Entity, Ref<'static, CallDecorator>)>,
+}
+
+impl Looks<'_, '_> {
+    /// Each look by what it draws.
+    pub(crate) fn by_kind(&self) -> Renderers<'_> {
+        let tools = self.tools.iter().map(|renderer| {
+            let renderer = renderer.into_inner();
+            (renderer.tool.as_str(), &renderer.render)
+        });
+        let entries = self.entries.iter().map(|renderer| {
+            let renderer = renderer.into_inner();
+            (renderer.plugin.as_str(), &renderer.render)
+        });
+        let contents = self.contents.iter().map(|renderer| {
+            let renderer = renderer.into_inner();
+            (renderer.kind, &renderer.render)
+        });
+        let mut decorators: Vec<(Entity, &Arc<RenderToolCall>)> = (self.decorators.iter())
+            .map(|(entity, decorator)| (entity, &decorator.into_inner().render))
+            .collect();
+        decorators.sort_by_key(|(entity, _)| *entity);
+        Renderers {
+            tools: tools.collect(),
+            entries: entries.collect(),
+            contents: contents.collect(),
+            decorators: decorators.into_iter().map(|(_, render)| render).collect(),
+        }
+    }
+
+    /// Whether a look changed or was added since the last frame.
+    pub(crate) fn changed(&self) -> bool {
+        self.tools.iter().any(|look| look.is_changed())
+            || self.entries.iter().any(|look| look.is_changed())
+            || self.contents.iter().any(|look| look.is_changed())
+            || self.decorators.iter().any(|(_, look)| look.is_changed())
+    }
+}
+
+/// The looks plugins added, by what each draws.
+#[derive(Default)]
+pub(crate) struct Renderers<'a> {
+    /// The tool renderers by tool name.
+    pub(crate) tools: HashMap<&'a str, &'a Arc<RenderToolCall>>,
+    /// The entry renderers by plugin name.
+    pub(crate) entries: HashMap<&'a str, &'a Arc<RenderEntry>>,
+    /// The content renderers by kind.
+    pub(crate) contents: HashMap<ContentKind, &'a Arc<RenderContent>>,
+    /// The call decorators, in order.
+    pub(crate) decorators: Vec<&'a Arc<RenderToolCall>>,
+}
+
+impl Renderers<'_> {
+    /// A tool call's lines, by its tool's renderer or the default look,
+    /// then every decorator's.
+    pub(crate) fn call(&self, view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+        let mut lines = match self.tools.get(view.name()) {
+            Some(render) => render(view),
+            None => view.default_lines(),
+        };
+        for decorate in &self.decorators {
+            lines.extend(decorate(view));
+        }
+        lines
+    }
+
+    /// A note's or a delivered text's lines, by its plugin's renderer or
+    /// the default look.
+    pub(crate) fn entry(&self, view: &EntryView<'_>) -> Vec<Line<'static>> {
+        match self.entries.get(view.plugin) {
+            Some(render) => render(view),
+            None => view.default_lines(),
+        }
+    }
+
+    /// A content block's lines, by its kind's renderer or the default
+    /// look.
+    pub(crate) fn content(&self, view: &ContentView<'_>) -> Vec<Line<'static>> {
+        match self.contents.get(&view.block.kind()) {
+            Some(render) => render(view),
+            None => view.default_lines(),
+        }
     }
 }
 

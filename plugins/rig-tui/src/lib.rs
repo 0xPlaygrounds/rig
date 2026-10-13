@@ -94,8 +94,9 @@ pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScr
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout};
 pub use renderers::{
-    AppToolRenderersExt, CallState, ChildCall, EntryRenderer, EntryView, RESULT_LINES, RenderEntry,
-    RenderToolCall, ToolCallView, ToolRenderer, excerpt,
+    AppToolRenderersExt, CallDecorator, CallState, ChildCall, ContentBlock, ContentKind,
+    ContentRenderer, ContentView, EntryRenderer, EntryView, RESULT_LINES, RenderContent,
+    RenderEntry, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};

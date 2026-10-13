@@ -86,6 +86,10 @@ pub enum TranscriptItem {
     Note(AsideId),
     /// A notice, by its index in [`TranscriptView::notices`].
     Notice(usize),
+    /// A content block of a message, an image, audio, a video or a
+    /// document, by the message's id and the block's place in it
+    /// ([`ContentView`](crate::ContentView)).
+    Content(MessageId, usize),
 }
 
 /// The terminal view's transcript, as plugins read and steer it. A change
