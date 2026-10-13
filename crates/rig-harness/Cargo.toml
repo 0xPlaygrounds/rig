@@ -13,6 +13,10 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Bevy's span around every system run, which `SystemTimings` times.
+trace = ["bevy_ecs/trace"]
+
 [dependencies]
 # `MinimalPlugins`, the base of `HeadlessPlugins`, and its clock.
 bevy = { workspace = true }

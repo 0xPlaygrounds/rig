@@ -47,6 +47,7 @@ use super::cli::Cli;
 use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
 use crate::services::RigHome;
+use crate::timings::{SystemTimings, TimeSystems};
 
 /// The session's directory. Its files are kept through the session's
 /// store ([`SessionStores`]): a plugin keeps its own files of the session
@@ -248,7 +249,8 @@ fn session_paths(world: &mut World) -> SessionPaths {
 pub struct FirstStart;
 
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
-/// them already, the default [`SessionStores`] and [`Scratch`], opens the
+/// them already, the default [`SessionStores`] and [`Scratch`], the
+/// [`SystemTimings`] (which stay empty without the log), opens the
 /// [`SessionStore`] once every plugin is built, routes panics to the log,
 /// tells a first start ([`FirstStart`]), and forks and deletes sessions,
 /// finishing at startup the deletes a crash cut short.
@@ -273,6 +275,7 @@ impl Plugin for SessionPlugin {
             );
         }
         app.init_resource::<SessionStores>()
+            .init_resource::<SystemTimings>()
             .init_resource::<Forks>()
             .add_message::<SessionForked>()
             .add_message::<SessionDeleted>()
@@ -810,11 +813,14 @@ pub struct Logged {
 pub struct LogEvents(pub Receiver<Logged>);
 
 /// The `LogPlugin` layer passing warnings and errors on to [`LogEvents`],
-/// which exists before any plugin `plugins.toml` lists is added.
+/// which exists before any plugin `plugins.toml` lists is added, and
+/// timing systems into [`SystemTimings`].
 pub fn log_events(app: &mut App) -> Option<BoxedLayer> {
     let (sender, receiver) = crossbeam_channel::bounded(256);
-    app.insert_resource(LogEvents(receiver));
-    Some(Box::new(PassOn(sender)))
+    let timings = SystemTimings::default();
+    app.insert_resource(LogEvents(receiver))
+        .insert_resource(timings.clone());
+    Some(Box::new(PassOn(sender).and_then(TimeSystems(timings))))
 }
 
 struct PassOn(Sender<Logged>);

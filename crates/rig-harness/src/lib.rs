@@ -74,6 +74,7 @@ pub mod secrets;
 pub mod services;
 pub mod settings;
 pub mod successor;
+pub mod timings;
 pub mod watch;
 pub mod workspace;
 
@@ -153,6 +154,7 @@ pub mod prelude {
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};
+    pub use crate::timings::SystemTimings;
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
