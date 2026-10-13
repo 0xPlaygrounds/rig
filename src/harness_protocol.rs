@@ -626,7 +626,10 @@ impl Invocation {
     /// `--print`, the first other word is a command, and every word after
     /// it is the command's.
     pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
-        read_args(args, |flag, _| plugin_flag(flag))
+        match read_args(args, |flag, _| plugin_flag(flag))? {
+            (invocation, None) => Ok(invocation),
+            (_, Some(_)) => Err("`--resume` is the launcher's".to_owned()),
+        }
     }
 
     /// The agent's own arguments, from the process's.
@@ -666,18 +669,19 @@ impl Invocation {
 }
 
 /// Reads a command line left to right, as [`Invocation::parse`] and
-/// [`Described::invocation`] both do; they differ in how a plugin option
-/// is read: `option` reads one, `--…`, given the words after it, from
-/// which it may take its value.
+/// [`Described`] do, into the invocation and the session `-r` names; they
+/// differ in how a plugin option is read: `option` reads one, `--…`,
+/// given the words after it, from which it may take its value.
 fn read_args<'a, S: AsRef<str>>(
     args: &'a [S],
     mut option: impl FnMut(
         &'a str,
         &mut dyn Iterator<Item = &'a str>,
     ) -> Result<(String, Option<String>), String>,
-) -> Result<Invocation, String> {
+) -> Result<(Invocation, Option<String>), String> {
     let mut print = false;
     let mut model = None;
+    let mut resume = None;
     let mut flags = Vec::new();
     let mut words: Vec<&str> = Vec::new();
     let mut args = args.iter().map(AsRef::as_ref);
@@ -691,6 +695,13 @@ fn read_args<'a, S: AsRef<str>>(
             "--" => words.extend(args.by_ref()),
             flag if flag.starts_with("--model=") => {
                 model = flag.strip_prefix("--model=").map(str::to_owned);
+            }
+            "-r" | "--resume" => {
+                let session = args.next().ok_or("--resume needs a session id or name")?;
+                resume = Some(session.to_owned());
+            }
+            flag if flag.starts_with("--resume=") => {
+                resume = flag.strip_prefix("--resume=").map(str::to_owned);
             }
             flag if flag.starts_with("--") => flags.push(option(flag, &mut args)?),
             flag if flag.starts_with('-') && flag.len() > 1 => {
@@ -710,13 +721,14 @@ fn read_args<'a, S: AsRef<str>>(
     } else {
         (None, words.next())
     };
-    Ok(Invocation {
+    let invocation = Invocation {
         print,
         model,
         flags,
         command,
         arguments: words.collect(),
-    })
+    };
+    Ok((invocation, resume))
 }
 
 /// A plugin's option, `--name` or `--name=value`: the name is lowercase
@@ -897,8 +909,8 @@ impl Described {
     }
 
     /// Reads the user's command line, without the launcher's own first
-    /// word and `--resume`, against this agent, into the canonical
-    /// [`Invocation`]. `-p` and `-m` are the launcher's; a plugin option
+    /// word, against this agent, into the canonical [`Invocation`]. `-p`,
+    /// `-m` and `-r` ([`Self::resume`]) are the launcher's; a plugin option
     /// takes a value as `--name=VALUE`, or as the next word when it takes
     /// one (`--name VALUE`); without `-p`, the first other word is a
     /// command, and every later word is its argument. An option or command
@@ -918,7 +930,8 @@ impl Described {
                 (None, Some(_)) => Err(format!("--{name} takes no value")),
                 (None, None) => Ok((name, None)),
             }
-        })?;
+        })?
+        .0;
         if let Some(command) = &invocation.command {
             if RESERVED_COMMANDS.contains(&command.as_str()) {
                 return Err(format!("`{command}` is the launcher's; put it first"));
@@ -931,6 +944,32 @@ impl Described {
             }
         }
         Ok(invocation)
+    }
+
+    /// The session `-r <id|name>` (or `--resume`) names on the command
+    /// line `args`, read as [`Self::invocation`] reads it: wherever an
+    /// option goes, so not after `--` or among a command's words. This
+    /// build's options that take a value take the next word as theirs; an
+    /// option it does not know takes none. `None` without `-r`, or when
+    /// the command line cannot be read.
+    pub fn resume<S: AsRef<str>>(&self, args: &[S]) -> Option<String> {
+        let read = read_args(args, |flag, rest| {
+            let (name, value) = plugin_flag(flag)?;
+            let spaced = value.is_none()
+                && self
+                    .flags
+                    .iter()
+                    .any(|known| known.name == name && known.value.is_some());
+            Ok((
+                name,
+                if spaced {
+                    rest.next().map(str::to_owned)
+                } else {
+                    value
+                },
+            ))
+        });
+        read.ok().and_then(|(_, resume)| resume)
     }
 
     /// What `rig help` lists of the build: the plugins' commands, their

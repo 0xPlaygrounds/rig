@@ -55,14 +55,21 @@ pub enum Start {
 
 /// Builds the agent, reads the command line `args` against it, runs it
 /// until it exits with anything but the reload code, and returns its exit
-/// code: 2 for a command line the build does not take.
-pub fn run(home: &Home, start: Start, args: &[String]) -> Result<ExitCode> {
+/// code: 2 for a command line the build does not take, or a `--resume`
+/// that names no saved session.
+pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
     let terminal = std::io::stdin().is_terminal();
     // Before the build, only whether `-p` is there: the type-ahead guard.
     let print = args.iter().any(|arg| arg == "-p" || arg == "--print");
-    let resumed = matches!(start, Start::Resume(_));
-    let (run, claimed, notice, build_failure, report) = {
+    // Before the build, `-r` as the last build reads it; the new build may
+    // read it otherwise (below).
+    let asked = last_report(home).unwrap_or_default().resume(args);
+    let start = match start_of(home, asked.as_deref()) {
+        Ok(start) => start,
+        Err(why) => return Ok(refused(&why)),
+    };
+    let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
@@ -74,20 +81,42 @@ pub fn run(home: &Home, start: Start, args: &[String]) -> Result<ExitCode> {
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
         });
-        let notice: Vec<String> = claim_notice.into_iter().chain(built).collect();
         let report = report(home, &claimed.id);
         (
             run,
             claimed,
-            (!notice.is_empty()).then(|| notice.join("\n")),
+            claim_notice,
+            built,
             failure.map(|failure| failure.details()),
             report,
         )
     };
+    let resume = report.resume(args);
+    if resume != asked {
+        // Only the build says which of its options take a value, and so
+        // whether a word after one was `-r`.
+        let start = match start_of(home, resume.as_deref()) {
+            Ok(start) => start,
+            Err(why) => {
+                claimed.discard_if_unsaved(home);
+                return Ok(refused(&why));
+            }
+        };
+        let _lock = home::lock(home)?;
+        let (next, notice) = claim(home, start, here.as_deref())?;
+        absent(fs::rename(
+            home.staged_for(&claimed.id),
+            home.staged_for(&next.id),
+        ))?;
+        claimed.discard_if_unsaved(home);
+        (claimed, claim_notice) = (next, notice);
+    }
+    let notice: Vec<String> = claim_notice.into_iter().chain(build_notice).collect();
+    let notice = (!notice.is_empty()).then(|| notice.join("\n"));
     let invocation = report
         .invocation(args)
         .and_then(|invocation| match &invocation.command {
-            Some(command) if resumed || invocation.print.is_some() => Err(format!(
+            Some(command) if resume.is_some() || invocation.print.is_some() => Err(format!(
                 "the command `{command}` takes neither --resume nor --print"
             )),
             _ => Ok(invocation),
@@ -115,6 +144,20 @@ pub fn run(home: &Home, start: Start, args: &[String]) -> Result<ExitCode> {
         notice,
         build_failure,
     )
+}
+
+/// The session `--resume` names, by id or name ([`Home::find`]), or a new
+/// one without it.
+fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, String> {
+    resume.map_or(Ok(Start::New), |session| {
+        home.find(session).map(Start::Resume)
+    })
+}
+
+/// Says why the command line is refused, and returns its exit code.
+fn refused(why: &str) -> ExitCode {
+    eprintln!("rig: {why}\nRun `rig help` for usage.");
+    ExitCode::from(2)
 }
 
 /// What the plugins of the build the launcher of `session` starts next add

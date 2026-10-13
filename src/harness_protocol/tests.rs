@@ -308,3 +308,29 @@ fn a_saved_session_is_found_by_its_id_or_its_own_name() {
     assert!(unnamed.0.is_ok() && unnamed.1.is_ok() && unnamed.2.is_none());
     assert_eq!(left, Ok(unsaved.clone()));
 }
+
+/// `-r` goes wherever an option goes, so `rig -m a/b -r fix-login -p hi`
+/// resumes `fix-login`; never among a command's words or after `--`.
+#[test]
+fn resume_goes_wherever_an_option_goes() {
+    let report = described();
+    let args = ["-m", "a/b", "-r", "fix-login", "-p", "hi"];
+    let read = report.invocation(&args);
+    assert_eq!(
+        read.map(|invocation| invocation.print),
+        Ok(Some("hi".to_owned()))
+    );
+    assert_eq!(report.resume(&args).as_deref(), Some("fix-login"));
+    assert_eq!(report.resume(&["--resume=x"]).as_deref(), Some("x"));
+    // Only a build that says `--remote` takes a value reads `-r` after it.
+    let spaced = ["--remote", "h:/p", "-r", "x"];
+    assert_eq!(report.resume(&spaced).as_deref(), Some("x"));
+    assert_eq!(Described::default().resume(&spaced), None);
+    for args in [&["stats", "-r", "x"][..], &["-p", "--", "-r", "x"]] {
+        assert_eq!(report.resume(args), None, "{args:?}");
+    }
+    assert!(
+        Invocation::parse(&["-r", "x"]).is_err(),
+        "the agent never gets it"
+    );
+}
