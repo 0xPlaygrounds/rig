@@ -174,10 +174,23 @@ fn watch(
     ));
 }
 
-/// Arms the watch of the project once watching is on; it keeps a headless
+/// Arms the watch of the project once watching is on, on this machine,
+/// whose files the plugin reads on the main thread; it keeps a headless
 /// run going while it is armed.
-fn arm(mut watching: ResMut<Watching>, root: Res<ProjectRoot>, mut commands: Commands) {
+fn arm(
+    mut watching: ResMut<Watching>,
+    workspace: Res<ProjectWorkspace>,
+    root: Res<ProjectRoot>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
     if !watching.on || watching.watch.is_some() {
+        return;
+    }
+    if let Some(host) = workspace.0.host() {
+        watching.on = false;
+        let why = format!("/watch watches this machine's files; the project is on {host}.");
+        notices.write(Notice::error(None, why));
         return;
     }
     let name = Name::new("watching for AI comments");
