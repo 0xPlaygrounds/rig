@@ -17,12 +17,14 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, AuthorKind, Commands, Component,
-    Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs, MessagePart, MessageWriter,
-    Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Res,
-    Resource, Running, SystemSet, Tool, ToolOptions, Wake, WorkDir, blocking,
+    Added, Admitted, AgentPass, App, AppPerCallExt, AppSettingsExt, Attachment, AuthorKind,
+    Commands, Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs,
+    MessagePart, MessageWriter, Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot,
+    ProjectWorkspace, Query, Res, Resource, Running, SystemSet, Tool, ToolOptions, Wake, WorkDir,
+    blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
+use rig_harness::rig_core::serde::Deserialize;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, attachments};
 use rig_tools::{Cut, Delete, Edit, List, Move, Read, Search, Shell, Write};
@@ -176,8 +178,27 @@ impl Plugin for ListTool {
 /// [`Scratch`](rig_harness::prelude::Scratch) then. What it prints
 /// becomes the call's [`ToolProgress`](rig_harness::prelude::ToolProgress)
 /// as it comes, and its answer if it is stopped ([`CallOutput`](rig_harness::prelude::CallOutput)).
+/// The longest timeout a call may ask for is `[shell] max_timeout` in
+/// `settings.toml` ([`ShellSettings`]).
 #[derive(Default)]
 pub struct ShellTool;
+
+/// `[shell]` in `settings.toml`, read by [`ShellTool`].
+#[derive(Resource, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(crate = "rig_harness::rig_core::serde", default, deny_unknown_fields)]
+pub struct ShellSettings {
+    /// The most seconds a call may ask for in `timeout_secs`; a longer
+    /// timeout is cut to it. Ten minutes unless set.
+    pub max_timeout: u64,
+}
+
+impl Default for ShellSettings {
+    fn default() -> Self {
+        Self {
+            max_timeout: Shell::default().max_timeout,
+        }
+    }
+}
 
 impl Plugin for ShellTool {
     fn build(&self, app: &mut App) {
@@ -185,8 +206,16 @@ impl Plugin for ShellTool {
             .world_mut()
             .get_resource_or_init::<ShellOutput>()
             .clone();
+        let max_timeout = app
+            .add_setting::<ShellSettings>("shell")
+            .world()
+            .resource::<ShellSettings>()
+            .max_timeout;
         let shell = SharedShell {
-            shell: Shell::default(),
+            shell: Shell {
+                max_timeout,
+                ..Shell::default()
+            },
             processes: app.world_mut().get_resource_or_init::<Processes>().clone(),
             output,
             dir: None,

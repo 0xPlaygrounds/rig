@@ -260,3 +260,20 @@ fn without_a_cut_the_shell_returns_every_line() {
     let whole = run(&shell, &count);
     assert_eq!(numbers(&whole), lines, "{whole:.200}");
 }
+
+#[test]
+fn the_longest_shell_timeout_is_the_users_setting() {
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml("[shell]\nmax_timeout = 5"))
+        .add_plugins((AgentPlugin, ShellTool));
+    app.finish();
+    let mut tools = app.world_mut().query::<&ToolDef>();
+    let described: Vec<String> = tools
+        .iter(app.world())
+        .map(|tool| tool.0.description.clone())
+        .collect();
+    assert!(
+        described.iter().any(|it| it.contains("at most 5)")),
+        "{described:?}"
+    );
+}
