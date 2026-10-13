@@ -15,17 +15,26 @@
 //! [`PrepareSystems::Fit`], after every plugin's edits, so the request is
 //! measured as it will be sent; the Review system is in
 //! [`ReviewSystems::Act`].
+//!
+//! A plugin reviews a summary before it replaces anything: once the call
+//! is answered, its [`Summarizing::summary`] holds the model's text in
+//! [`ReviewSystems::Act`], where a reviewer may hold the call
+//! ([`HoldOf`]) until someone decided, replace the text, or take it out to
+//! cancel the compaction. Every compaction keeps what it replaced
+//! (rig-memory's [`Compacted`](rig_memory::Compacted)), and [`Uncompact`]
+//! puts the newest one's messages back with their ids.
 
 use bevy_ecs::query::QueryData;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Usage, tokens_label};
+use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::successor::follow_successor;
 use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
     Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryPlan, SummaryState, TrackArgument,
-    apply_summary,
+    apply_summary, undo_summary,
 };
 /// Who writes a compaction's summary, and how many of a conversation's
 /// first entries are summaries already: rig-memory's, which this plugin
@@ -54,10 +63,12 @@ impl Plugin for CompactionPlugin {
             },
         )
         .add_observer(on_compact)
+        .add_observer(on_uncompact)
         .add_systems(
             AgentPass,
             (
                 compact_near_the_window.in_set(PrepareSystems::Fit),
+                read_summary.in_set(ReviewSystems::Edit),
                 recover_from_overflow.in_set(ReviewSystems::Act),
             ),
         )
@@ -114,6 +125,18 @@ pub struct Compact {
     pub focus: String,
 }
 
+/// Put back the messages the agent's newest compaction replaced, with
+/// their ids, in place of its summary, as the session's log holds them
+/// ([`undo_summary`]); the summary state goes back to the compaction's
+/// before it. Refused while a turn runs or in a session that is not
+/// saved.
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
+pub struct Uncompact {
+    /// The agent.
+    pub entity: Entity,
+}
+
 /// The agent's summary so far and the files it tracks, which the next
 /// compaction builds on. Saved with the session. A compaction inserts it
 /// after it spliced the summary into the conversation, so an
@@ -149,7 +172,20 @@ pub struct Summarizing {
     pub upto: Option<MessageId>,
     /// The state the summary goes into.
     pub state: SummaryState,
+    /// The summary, read from the model's reply in
+    /// [`ReviewSystems::Edit`] once the call is answered: `None` before,
+    /// and when the reply has none. A reviewer in [`ReviewSystems::Act`]
+    /// reads it, replaces it, or sets it to `None` to cancel the
+    /// compaction: nothing is replaced and the call it held is sent as
+    /// it was.
+    pub summary: Option<String>,
 }
+
+/// On a summary call whose [`Summarizing::summary`] was read from its
+/// reply, so a reviewer's edit stays.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct SummaryRead;
 
 /// An agent as compacting it reads it: its messages, its summary so far,
 /// and its model.
@@ -191,6 +227,7 @@ pub fn plan(
         reason,
         upto,
         state,
+        summary: None,
     };
     Ok(Some((summarizing, request)))
 }
@@ -470,11 +507,32 @@ fn provided_by_compaction(
     }
 }
 
+/// Reads each answered summary call's summary from its reply, once. A
+/// summary call is never a turn's own call, which other reviewers edit.
+fn read_summary(
+    mut calls: Query<
+        (Entity, &mut Summarizing, &Outcome),
+        (
+            Unreviewed,
+            ModelCalls,
+            Without<TurnCall>,
+            Without<SummaryRead>,
+        ),
+    >,
+    mut commands: Commands,
+) {
+    for (call, mut summarizing, outcome) in &mut calls {
+        let response = outcome.completion();
+        summarizing.summary = response.and_then(|reply| Summarizer::summary_text(reply).ok());
+        commands.entity(call).try_insert(SummaryRead);
+    }
+}
+
 /// Takes a settled summary: it replaces the summarized messages in the
 /// conversation as an entry of its own, a splice its log records. A failed
-/// summary, or one whose kept message is gone, replaces nothing.
-/// Either way the call it held is sent again, built anew, or the turn ends
-/// when the user asked for the compaction.
+/// summary, one a reviewer cancelled, or one whose kept message is gone,
+/// replaces nothing. Either way the call it held is sent again, built
+/// anew, or the turn ends when the user asked for the compaction.
 fn take_summary(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Summarizing, &Outcome, Option<&HoldOf>)>,
@@ -496,13 +554,20 @@ fn take_summary(
         None => Some(conversation.messages().len()),
         Some(kept) => conversation.index_of(kept),
     };
+    // Why nothing is replaced; `None` when a reviewer cancelled.
+    let failed = |why: &str| Some(why.to_owned());
     let summary = match (&outcome.0, outcome.completion(), end) {
-        (Err(report), ..) => Err(report.to_string()),
-        (Ok(_), None, _) => Err("the model did not answer with a completion".to_owned()),
-        (Ok(_), Some(_), None) => Err("the messages it kept were taken out".to_owned()),
-        (Ok(_), Some(response), Some(end)) => Summarizer::summary_text(response)
-            .map(|summary| (summary, end))
-            .map_err(|why| why.to_string()),
+        (Err(report), ..) => Err(Some(report.to_string())),
+        (Ok(_), None, _) => Err(failed("the model did not answer with a completion")),
+        (Ok(_), Some(_), None) => Err(failed("the messages it kept were taken out")),
+        (Ok(_), Some(response), Some(end)) => match &summarizing.summary {
+            Some(summary) => Ok((summary.clone(), end)),
+            // The reply had one, so a reviewer took it out.
+            None => match Summarizer::summary_text(response) {
+                Ok(_) => Err(None),
+                Err(why) => Err(Some(why.to_string())),
+            },
+        },
     };
     let summary = summary.and_then(|(summary, end)| {
         let messages = conversation.messages();
@@ -516,7 +581,7 @@ fn take_summary(
         };
         match apply_summary(&mut conversation, summarizing.upto, &state) {
             Some(_) => Ok((state, older, kept)),
-            None => Err("the summary was empty".to_owned()),
+            None => Err(failed("the summary was empty")),
         }
     });
     match summary {
@@ -527,7 +592,10 @@ fn take_summary(
             let text = compacted_text((older, older_tokens), (kept, kept_tokens), left);
             notices.write(Notice::info(agent, text));
         }
-        Err(why) => {
+        Err(None) => {
+            notices.write(Notice::info(agent, "Compaction cancelled."));
+        }
+        Err(Some(why)) => {
             notices.write(Notice::error(agent, format!("Compaction failed: {why}.")));
         }
     }
@@ -548,6 +616,49 @@ fn take_summary(
         None => {
             let compacted = TurnOutcome::Stopped(Some("compacted".to_owned()));
             commands.entity(turn).try_insert(compacted);
+        }
+    }
+}
+
+/// Undoes the agent's newest compaction on [`Uncompact`].
+fn on_uncompact(
+    uncompact: On<Uncompact>,
+    mut agents: Query<(&AgentId, &mut Conversation, &mut LastUsage, Has<ActiveTurn>)>,
+    store: Option<Res<SessionStore>>,
+    policy: Res<Compaction>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = uncompact.entity;
+    let Ok((id, mut conversation, mut last, busy)) = agents.get_mut(agent) else {
+        return;
+    };
+    if busy {
+        notices.write(Notice::turn_running(agent));
+        return;
+    }
+    let Some(store) = store else {
+        let why = "Cannot undo the compaction: the session is not saved.";
+        notices.write(Notice::error(agent, why));
+        return;
+    };
+    match undo_summary(&mut conversation, &*store.0, &id.0, summary_author()) {
+        Ok(undone) => {
+            let left = policy.0.estimate(conversation.messages());
+            *last = LastUsage(Some(Usage::new().total_tokens(left)));
+            commands.entity(agent).insert(Summarized(undone.state));
+            let count = undone.restored.len();
+            let text = format!(
+                "Put back the {count} {} the newest compaction summarized; the model now gets \
+                 about {} tokens of conversation.",
+                if count == 1 { "entry" } else { "entries" },
+                tokens_label(left)
+            );
+            notices.write(Notice::info(agent, text));
+        }
+        Err(why) => {
+            let text = format!("Cannot undo the compaction: {why}.");
+            notices.write(Notice::error(agent, text));
         }
     }
 }
