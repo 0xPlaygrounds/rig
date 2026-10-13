@@ -1000,10 +1000,11 @@ fn picked(
     let Ok(run) = runs.get(*run_entity) else {
         return;
     };
-    let chosen = match picked.chosen {
-        Some(Chosen::Item(index)) => items.get(index).copied(),
-        _ => None,
-    };
+    let chosen = picked
+        .chosen
+        .as_ref()
+        .and_then(|chosen| chosen.items.first());
+    let chosen = chosen.and_then(|index| items.get(*index).copied());
     let commit = chosen.and_then(|k| {
         let candidate = run.candidates.iter().find(|candidate| candidate.k == k)?;
         Some((k, candidate.result.as_ref()?.as_ref().ok()?.commit.clone()))

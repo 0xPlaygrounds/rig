@@ -54,8 +54,8 @@ fn questions_are_answered_from_answer_or_refused() {
         &mut app,
         [approval(), Ask::new("Name?").free_text(), several],
     );
-    let allowed = Some(Answer::Choice("allow".to_owned()));
-    let both = Some(Answer::Choices(vec!["yes".to_owned(), "allow".to_owned()]));
+    let allowed = Some(Answer::choice("allow"));
+    let both = Some(Answer::choices(["yes", "allow"]));
     assert_eq!(answers, [Some(allowed), Some(None), Some(both)]);
 
     let mut app = print_run(None);

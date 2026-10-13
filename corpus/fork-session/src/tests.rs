@@ -118,7 +118,7 @@ fn branch_before_two(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &
     };
     app.world_mut().trigger(Picked {
         entity: picker,
-        chosen: Some(Chosen::Item(two)),
+        chosen: Some(Chosen::item(two)),
     });
     true
 }
@@ -259,7 +259,7 @@ fn a_branch_with_its_files_switches_once_they_are_back() {
     assert!(answer_open(
         app.world_mut(),
         question,
-        &Answer::Choice("yes".to_owned())
+        &Answer::choice("yes")
     ));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Exits>().0.is_empty()

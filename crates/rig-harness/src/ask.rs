@@ -17,8 +17,9 @@
 //! line the user sends the agent is its answer, not a message to the
 //! model, unless the question is [`inline`](Ask::inline).
 //!
-//! A question may take several of its choices ([`Ask::multiple`]),
-//! answered with [`Answer::Choices`], propose an answer for the user to edit
+//! An [`Answer`] holds the choices taken and the text typed, so a question
+//! that takes text may be answered with a choice and a note on it. A
+//! question may take several of its choices ([`Ask::multiple`]), propose an answer for the user to edit
 //! ([`Ask::initial`]), take an answer of several lines
 //! ([`Ask::multiline`]), and be shown beside the work rather than in front
 //! of it ([`Ask::inline`]): the user keeps typing to the agent and answers
@@ -73,7 +74,8 @@ pub struct Ask {
     pub body: String,
     /// The answers to choose from, in order; the first is the default.
     pub choices: Vec<Choice>,
-    /// Whether a line of text answers it too.
+    /// Whether a line of text answers it too, alone or as a note on a
+    /// choice.
     pub free_text: bool,
     /// The text a typed answer starts from, for the user to edit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -86,8 +88,8 @@ pub struct Ask {
     /// agent is then a message, not its answer.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub inline: bool,
-    /// Whether the user may take several of its choices
-    /// ([`Answer::Choices`]).
+    /// Whether the user may take several of its choices, which the
+    /// [`Answer`] then holds.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub multiple: bool,
 }
@@ -95,7 +97,7 @@ pub struct Ask {
 /// One answer an [`Ask`] offers.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Choice {
-    /// What [`Answer::Choice`] names, such as `yes`.
+    /// What an [`Answer`] names it by, such as `yes`.
     pub id: String,
     /// What the user reads, such as "Yes, run it".
     pub label: String,
@@ -172,20 +174,46 @@ impl Ask {
     }
 }
 
-/// How an [`Ask`] was answered.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Answer {
-    /// One of its choices, by id.
-    Choice(String),
-    /// The choices taken, by id in the question's order, of a question that
-    /// takes several ([`Ask::multiple`]).
-    Choices(Vec<String>),
-    /// The text the user gave.
-    Text(String),
+/// How an [`Ask`] was answered: the choices taken and the text typed,
+/// either or both, such as a choice with a note on it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Answer {
+    /// The choices taken, by id in the question's order: one, or any
+    /// number for a question that takes several ([`Ask::multiple`]); none
+    /// for an answer only typed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
+    /// The text the user typed, alone or as a note on the choices, for a
+    /// question that takes text ([`Ask::free_text`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 impl Answer {
+    /// The answer that takes the choice `id`.
+    pub fn choice(id: impl Into<String>) -> Self {
+        Self::choices([id])
+    }
+
+    /// The answer that takes the choices `ids`, in the question's order.
+    pub fn choices(ids: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self {
+            choices: ids.into_iter().map(Into::into).collect(),
+            text: None,
+        }
+    }
+
+    /// The answer the user typed as `text`.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::default().with_text(text)
+    }
+
+    /// The same answer, with `text` typed as its note.
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = Some(text.into());
+        self
+    }
+
     /// The outcome that answers an `Ask` so.
     pub fn outcome(&self) -> Outcome {
         Outcome::custom(serde_json::to_value(self).unwrap_or_default())
@@ -200,9 +228,9 @@ impl Answer {
         }
     }
 
-    /// Whether this is the choice `id`.
+    /// Whether it takes the choice `id`.
     pub fn is(&self, id: &str) -> bool {
-        matches!(self, Self::Choice(choice) if choice == id)
+        self.choices.iter().any(|choice| choice == id)
     }
 }
 
@@ -292,7 +320,7 @@ fn answer_with_text(
         let Some(Ok((.., mut decision))) = open.map(|ask| asks.get_mut(ask)) else {
             continue;
         };
-        let answer = Answer::Text(incoming.text().to_owned()).outcome();
+        let answer = Answer::text(incoming.text()).outcome();
         decision.decide(Decider::Person, answer);
         taken.decide(Decider::plugin("rig-harness"), Outcome::custom("answer"));
     }

@@ -130,8 +130,8 @@ fn answer(
         let answer = match ask.multiple {
             true => Some(taken)
                 .filter(|taken| !taken.is_empty())
-                .map(Answer::Choices),
-            false => answers.0.iter().find(offered).cloned().map(Answer::Choice),
+                .map(Answer::choices),
+            false => answers.0.iter().find(offered).cloned().map(Answer::choice),
         };
         let outcome = match answer {
             Some(answer) => answer.outcome(),

@@ -146,7 +146,7 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
         .0
         .insert("three".into(), script(vec![reply("did three")]));
     app.world_mut().resource_mut::<Started>().0.clear();
-    *app.world_mut().resource_mut::<Answers>() = Answers::new([Answer::Choice("yes".into())]);
+    *app.world_mut().resource_mut::<Answers>() = Answers::new([Answer::choice("yes")]);
     app.world_mut().trigger(RunCommand::new(owner, line));
     run_until(&mut app, &wakes, |world| {
         finished(world, 2) && main.request_count() >= 2

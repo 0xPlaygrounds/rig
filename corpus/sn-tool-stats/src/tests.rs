@@ -240,7 +240,7 @@ fn calls_are_counted_per_session_per_agent_and_per_project() {
 
     app.world_mut()
         .trigger(RunCommand::new(agent, "toolstats reset"));
-    let yes = Answer::Choice("yes".to_owned());
+    let yes = Answer::choice("yes");
     run_until(&mut app, &wakes, |world| {
         world
             .try_query_filtered::<&Ask, Without<Outcome>>()

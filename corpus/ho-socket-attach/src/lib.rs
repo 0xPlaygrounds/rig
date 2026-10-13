@@ -382,8 +382,8 @@ fn choose(
         .and_then(|index| usize::try_from(index).ok())
         .filter(|&index| index < count);
     let chosen = match (index, choice) {
-        (Some(index), _) => Some(Chosen::Item(index)),
-        (None, Value::String(text)) if free_text => Some(Chosen::Text(text.clone())),
+        (Some(index), _) => Some(Chosen::item(index)),
+        (None, Value::String(text)) if free_text => Some(Chosen::text(text.clone())),
         (None, Value::Null) => None,
         _ => return Err(format!("no such choice in picker {id}")),
     };

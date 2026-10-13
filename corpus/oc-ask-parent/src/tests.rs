@@ -230,7 +230,7 @@ fn each_answer_goes_to_the_subagent_that_asked_and_the_user_answers_when_asked_t
     let mut session = Session::new(&MemoryStore::default(), &models, 600);
     session
         .app
-        .insert_resource(Answers::new([Answer::Text("drop it".to_owned())]));
+        .insert_resource(Answers::new([Answer::text("drop it")]));
     session.ask("Check both.", |world| open(world) == 2);
 
     // Answered in reverse order; the first question goes to the user.

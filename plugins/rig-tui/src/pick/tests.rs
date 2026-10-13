@@ -69,11 +69,7 @@ fn pickers_wait_their_turn_and_say_what_was_picked() {
     assert_eq!(shown(&mut app), None);
     assert_eq!(
         app.world().resource::<Reported>().0,
-        [
-            Some(Chosen::Item(1)),
-            Some(Chosen::Text("feature".to_owned())),
-            None
-        ]
+        [Some(Chosen::item(1)), Some(Chosen::text("feature")), None]
     );
     assert_eq!(app.world().resource::<TuiInput>().text(), "");
 }
@@ -107,7 +103,7 @@ fn tab_ticks_several_items_and_enter_picks_them_in_list_order() {
     press(&mut app, "enter");
     assert_eq!(
         app.world().resource::<Reported>().0,
-        [Some(Chosen::Items(vec![0, 2]))]
+        [Some(Chosen::items([0, 2]))]
     );
     assert_eq!(app.world().resource::<Ran>().0, ["a", "c"]);
 
@@ -120,7 +116,7 @@ fn tab_ticks_several_items_and_enter_picks_them_in_list_order() {
     app.update();
     press(&mut app, "down enter");
     let answers = &app.world().resource::<Answered>().0;
-    let test = Answer::Choices(vec!["test".to_owned()]);
+    let test = Answer::choice("test");
     assert_eq!(answers, &[("Which checks?".to_owned(), Some(test))]);
 }
 
@@ -141,7 +137,7 @@ fn a_plugin_replaces_and_closes_its_own_picker() {
     press(&mut app, "down enter");
     assert_eq!(
         app.world().resource::<Reported>().0,
-        [Some(Chosen::Item(1))]
+        [Some(Chosen::item(1))]
     );
     // Despawned by its plugin, a picker closes without a report.
     let picker = app
@@ -199,8 +195,8 @@ fn the_view_answers_the_questions_of_every_agent() {
     assert_eq!(
         app.world().resource::<Answered>().0,
         [
-            answered("Run it?", Some(Answer::Choice("no".to_owned()))),
-            answered("Why not?", Some(Answer::Text("too slow".to_owned()))),
+            answered("Run it?", Some(Answer::choice("no"))),
+            answered("Why not?", Some(Answer::text("too slow"))),
             answered("Really?", None),
         ]
     );
@@ -213,7 +209,7 @@ fn the_view_answers_the_questions_of_every_agent() {
     assert_eq!(shown(&mut app).as_deref(), Some("Again?"));
     app.world_mut()
         .entity_mut(elsewhere)
-        .insert(Answer::Choice("yes".to_owned()).outcome());
+        .insert(Answer::choice("yes").outcome());
     app.update();
     assert_eq!(shown(&mut app), None);
 }
@@ -267,7 +263,7 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
     assert_eq!(
         app.world().resource::<Answered>().0,
         [
-            answered("PR title", Some(Answer::Text("Fix the lexer".to_owned()))),
+            answered("PR title", Some(Answer::text("Fix the lexer"))),
             answered("PR body", None),
         ]
     );
@@ -298,7 +294,7 @@ fn a_question_beside_the_work_leaves_the_keys_to_the_input() {
     let answered = |answer: &str| {
         (
             "Save rule “tabs”?".to_owned(),
-            Some(Answer::Choice(answer.to_owned())),
+            Some(Answer::choice(answer.to_owned())),
         )
     };
     assert_eq!(app.world().resource::<Answered>().0, [answered("save")]);
@@ -314,7 +310,7 @@ fn a_question_beside_the_work_leaves_the_keys_to_the_input() {
     press(&mut app, "enter");
     assert_eq!(crate::tests::typed(&app), "go on");
     let last = app.world().resource::<Answered>().0.last().cloned();
-    let text = Some(Answer::Text("only in Go".to_owned()));
+    let text = Some(Answer::text("only in Go"));
     assert_eq!(last, Some(("Save rule “tabs”?".to_owned(), text)));
 }
 

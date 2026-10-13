@@ -141,8 +141,7 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
     if let Some(connection) = connect(&model) {
         app.world_mut().entity_mut(agent).insert(connection);
     }
-    *app.world_mut().resource_mut::<Answers>() =
-        Answers::new([Answer::Choice("accept".to_owned())]);
+    *app.world_mut().resource_mut::<Answers>() = Answers::new([Answer::choice("accept")]);
 
     ask(&mut app, &wakes, agent, "first shared");
     ask(&mut app, &wakes, agent, "second shared");
@@ -187,10 +186,8 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
         .and_then(|b| b.files.first().cloned());
     let written = written.map(|record| record.path).unwrap_or_default();
     let mut answers = app.world_mut().resource_mut::<Answers>();
-    answers
-        .script
-        .push_back(Answer::Choice("accept".to_owned()));
-    answers.script.push_back(Answer::Choices(vec![written]));
+    answers.script.push_back(Answer::choice("accept"));
+    answers.script.push_back(Answer::choices(vec![written]));
     run(&mut app, &wakes, agent, "merge B --with-files");
     merged(&mut app, &wakes, agent, 2);
     let summarizer = last_request(&model);
@@ -210,9 +207,7 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
     ask(&mut app, &wakes, agent, "try C");
     let refused = errors(&app).len();
     let mut answers = app.world_mut().resource_mut::<Answers>();
-    answers
-        .script
-        .push_back(Answer::Choice("cancel".to_owned()));
+    answers.script.push_back(Answer::choice("cancel"));
     run(&mut app, &wakes, agent, "merge C into B");
     run_until(&mut app, &wakes, |world| {
         world.resource::<Answers>().asked.len() >= 4

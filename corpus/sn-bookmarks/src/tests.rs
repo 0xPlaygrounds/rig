@@ -105,7 +105,7 @@ fn open_bookmark(
     let chosen = items.iter().position(|item| item.label == label)?;
     app.world_mut().trigger(Picked {
         entity: picker,
-        chosen: Some(Chosen::Item(chosen)),
+        chosen: Some(Chosen::item(chosen)),
     });
     app.world_mut().despawn(picker);
     app.update();

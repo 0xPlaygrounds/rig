@@ -171,7 +171,11 @@ fn branch(
               snapshots: Snapshots<'_, '_>,
               mut commands: Commands,
               mut notices: MessageWriter<Notice>| {
-            let Some(Chosen::Item(index)) = picked.chosen else {
+            let Some(&index) = picked
+                .chosen
+                .as_ref()
+                .and_then(|chosen| chosen.items.first())
+            else {
                 return;
             };
             let (Some(&(message, _)), Ok(id)) = (typed.get(index), ids.get(agent)) else {

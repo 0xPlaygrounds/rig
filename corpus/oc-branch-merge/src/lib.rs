@@ -701,13 +701,15 @@ fn answered(
             ));
             return;
         }
-        (Step::Edit, Some(Answer::Text(text))) if !text.trim().is_empty() => text.clone(),
+        (
+            Step::Edit,
+            Some(Answer {
+                text: Some(text), ..
+            }),
+        ) if !text.trim().is_empty() => text.clone(),
         (Step::Files, answer) => {
-            let chosen = match answer {
-                Some(Answer::Choices(ids)) => ids.clone(),
-                Some(Answer::Choice(id)) => vec![id.clone()],
-                _ => Vec::new(),
-            };
+            let chosen = answer.as_ref().map(|answer| answer.choices.clone());
+            let chosen = chosen.unwrap_or_default();
             apply_files(agent, pending, &chosen, &agents, &workspace, &mut notices);
             return;
         }

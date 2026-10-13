@@ -263,7 +263,7 @@ fn project_hooks_run_only_once_trusted() {
     );
     assert!(skipped.warned("are not trusted and were skipped"));
 
-    let yes = Answers::new([Answer::Choice("yes".to_owned())]);
+    let yes = Answers::new([Answer::choice("yes")]);
     let asked = run(&home, &dir, false, Some(yes), echo());
     assert_eq!(asked.asked, [TRUST_QUESTION]);
     assert!(

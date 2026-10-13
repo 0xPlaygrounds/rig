@@ -238,6 +238,6 @@ fn a_plugins_question_and_picker_are_answered_over_http() {
     assert_eq!(statuses, ["HTTP/1.1 400 Bad Request", accepted, accepted]);
     assert_eq!(closed, 2, "the stream says both closed");
     let answers = app.world().resource::<Answers>();
-    assert_eq!(answers.asked, [Some(Answer::Choice("yes".to_owned()))]);
-    assert_eq!(answers.picked, [Some(Chosen::Item(1))]);
+    assert_eq!(answers.asked, [Some(Answer::choice("yes"))]);
+    assert_eq!(answers.picked, [Some(Chosen::item(1))]);
 }

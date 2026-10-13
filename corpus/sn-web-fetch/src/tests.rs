@@ -228,7 +228,7 @@ fn asks_once_per_domain() {
         reply("done"),
     ]);
     let (mut app, wakes) = app_with("sn-web-fetch-asks", "", &model);
-    app.insert_resource(Answers::new([Answer::Choice(DENY.to_owned())]))
+    app.insert_resource(Answers::new([Answer::choice(DENY)]))
         .add_plugins(AnswerAsks);
     run(&mut app, &wakes);
 

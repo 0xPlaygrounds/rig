@@ -440,9 +440,14 @@ fn record_answer(
         return;
     };
     let answer = match Answer::of(outcome) {
-        Some(Answer::Choice(id)) => id,
-        Some(Answer::Choices(ids)) => ids.join(", "),
-        Some(Answer::Text(text)) => redact::text(&text).into_owned(),
+        Some(Answer { choices, text }) => {
+            let choices = choices.join(", ");
+            match text.as_deref().map(redact::text) {
+                Some(text) if !choices.is_empty() => format!("{choices}: {text}"),
+                Some(text) => text.into_owned(),
+                None => choices,
+            }
+        }
         None => "no answer".to_owned(),
     };
     let question = format!("question \"{}\" answered: {answer}", ask.title);

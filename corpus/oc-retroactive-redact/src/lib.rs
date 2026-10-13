@@ -502,7 +502,11 @@ fn pick(agent: Entity, here: &Here, commands: &mut Commands, notices: &mut Messa
               here: Here,
               mut commands: Commands,
               mut notices: MessageWriter<Notice>| {
-            let Some(Chosen::Item(index)) = picked.chosen else {
+            let Some(&index) = picked
+                .chosen
+                .as_ref()
+                .and_then(|chosen| chosen.items.first())
+            else {
                 return;
             };
             if let Some(secret) = values.get(index) {

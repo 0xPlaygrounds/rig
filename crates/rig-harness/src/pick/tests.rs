@@ -54,14 +54,14 @@ fn a_pick_runs_the_items_command_for_the_agent_shown_and_closes_the_picker() {
         .item("large", "note large");
     let picker = world.spawn(size).id();
     let closed = world.spawn(Picker::new("Other").item("x", "note x")).id();
-    world.trigger(Pick::person(picker, Some(Chosen::Item(1))));
+    world.trigger(Pick::person(picker, Some(Chosen::item(1))));
     world.trigger(Pick::person(closed, None));
     app.update();
     let world = app.world();
     assert!(world.get_entity(picker).is_err() && world.get_entity(closed).is_err());
     let seen = world.resource::<Seen>();
     assert_eq!(seen.ran, [(agent, "large".to_owned())]);
-    assert_eq!(seen.picked, [Some(Chosen::Item(1)), None]);
+    assert_eq!(seen.picked, [Some(Chosen::item(1)), None]);
 }
 
 #[test]
@@ -75,47 +75,49 @@ fn a_pick_of_several_items_runs_their_commands_in_list_order() {
         .item("b.log", "note b.log")
         .item("c.tmp", "note c.tmp");
     let picker = world.spawn(files).id();
-    world.trigger(Pick::person(picker, Some(Chosen::Items(vec![2, 0]))));
+    world.trigger(Pick::person(picker, Some(Chosen::items([2, 0]))));
     app.update();
     let seen = app.world().resource::<Seen>();
     let ran = [(agent, "a.tmp".to_owned()), (agent, "c.tmp".to_owned())];
     assert_eq!(seen.ran, ran);
-    assert_eq!(seen.picked, [Some(Chosen::Items(vec![2, 0]))]);
+    assert_eq!(seen.picked, [Some(Chosen::items([2, 0]))]);
 }
 
 #[test]
-fn a_pick_answers_a_question() {
+fn a_pick_answers_a_question_with_its_choices_and_a_note() {
     let (mut app, agent) = app();
     let world = app.world_mut();
     let text = world
         .spawn((Ask::yes_no("Why?").free_text(), ForAgent(agent)))
         .id();
+    let noted = world
+        .spawn((Ask::yes_no("Deploy?").free_text(), ForAgent(agent)))
+        .id();
     let choice = world.spawn((Ask::yes_no("Run?"), ForAgent(agent))).id();
+    let both = world.spawn((Ask::yes_no("Both?"), ForAgent(agent))).id();
     let closed = world.spawn((Ask::yes_no("Again?"), ForAgent(agent))).id();
     let several = Ask::yes_no("Which?").choice("maybe", "Maybe").multiple();
     let several = world.spawn((several, ForAgent(agent))).id();
-    world.trigger(Pick::person(text, Some(Chosen::Text("because".to_owned()))));
-    world.trigger(Pick::person(choice, Some(Chosen::Item(1))));
+    world.trigger(Pick::person(text, Some(Chosen::text("because"))));
+    let note = Chosen::item(1).with_text("not on a Friday");
+    world.trigger(Pick::person(noted, Some(note)));
+    world.trigger(Pick::person(choice, Some(Chosen::item(1))));
+    // A question that takes one choice is not answered with two.
+    world.trigger(Pick::person(both, Some(Chosen::items([0, 1]))));
     world.trigger(Pick::person(closed, None));
-    world.trigger(Pick::person(several, Some(Chosen::Items(vec![2, 0]))));
+    world.trigger(Pick::person(several, Some(Chosen::items([2, 0]))));
     app.update();
     let world = app.world();
     let answer = |ask: Entity| world.get::<Outcome>(ask).map(Answer::of);
     assert_eq!(
+        [text, noted, choice, both, closed, several].map(answer),
         [
-            answer(text),
-            answer(choice),
-            answer(closed),
-            answer(several)
-        ],
-        [
-            Some(Some(Answer::Text("because".to_owned()))),
-            Some(Some(Answer::Choice("no".to_owned()))),
+            Some(Some(Answer::text("because"))),
+            Some(Some(Answer::choice("no").with_text("not on a Friday"))),
+            Some(Some(Answer::choice("no"))),
+            None,
             Some(None),
-            Some(Some(Answer::Choices(vec![
-                "yes".to_owned(),
-                "maybe".to_owned()
-            ]))),
+            Some(Some(Answer::choices(["yes", "maybe"]))),
         ]
     );
 }

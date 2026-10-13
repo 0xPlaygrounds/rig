@@ -124,10 +124,7 @@ fn a_redacted_secret_is_gone_from_the_session_its_fork_and_the_next_request() {
         reply(&format!("Your key is {SECRET}.")),
         reply("Noted."),
     ]);
-    let answers = vec![
-        Answer::Choice("redact".to_owned()),
-        Answer::Choice("yes".to_owned()),
-    ];
+    let answers = vec![Answer::choice("redact"), Answer::choice("yes")];
     let started = start(&home, &id, &model, answers);
     assert!(started.is_some(), "an agent");
     let Some((mut app, wakes, agent)) = started else {
@@ -296,7 +293,7 @@ fn redact_alone_proposes_the_env_files_key() {
     // Picking it shows the preview.
     app.world_mut().trigger(Picked {
         entity: picker,
-        chosen: Some(Chosen::Item(key)),
+        chosen: Some(Chosen::item(key)),
     });
     run_until(&mut app, &wakes, |world| {
         world

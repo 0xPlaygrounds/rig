@@ -87,7 +87,7 @@ fn a_command_denied_with_a_reason_does_not_run_and_its_sibling_does() {
     let model = model(&dir);
     // The user answers the question with a line of text: a denial with
     // that reason.
-    let answers = Answers::new([Answer::Text("we need it".to_owned())]);
+    let answers = Answers::new([Answer::text("we need it")]);
     let (mut app, wakes, agent) = start(&MemoryStore::default(), &model, Some(answers));
     app.world_mut().trigger(Deliver::new(
         agent,

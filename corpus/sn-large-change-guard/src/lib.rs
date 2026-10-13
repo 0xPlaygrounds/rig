@@ -435,7 +435,9 @@ fn answered(
             commands.entity(ask).remove::<HoldOf>();
             return;
         }
-        Some(Answer::Text(reason)) if !reason.trim().is_empty() => Some(format!(
+        Some(Answer {
+            text: Some(reason), ..
+        }) if !reason.trim().is_empty() => Some(format!(
             "The user denied this large change: {}. Their reason: {}",
             guard.line,
             reason.trim()

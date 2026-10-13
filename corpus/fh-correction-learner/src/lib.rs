@@ -467,7 +467,9 @@ fn answered(
             });
             return;
         }
-        Some(Answer::Text(text)) => text.split_whitespace().collect::<Vec<_>>().join(" "),
+        Some(Answer {
+            text: Some(text), ..
+        }) => text.split_whitespace().collect::<Vec<_>>().join(" "),
         _ => return,
     };
     if rule.is_empty() || rule.chars().count() > RULE_CHARS {

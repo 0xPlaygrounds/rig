@@ -114,8 +114,8 @@ fn a_large_change_waits_for_the_user_and_small_ones_do_not() {
         reply("Rewrote it again."),
     ]);
     let answers = Answers::new([
-        Answer::Choice("deny_reason".to_owned()),
-        Answer::Text("keep the helpers".to_owned()),
+        Answer::choice("deny_reason"),
+        Answer::text("keep the helpers"),
     ]);
     let store = MemoryStore::default();
     let (mut app, wakes, agent) = start(&store, &dir, &model, Some(answers));
@@ -142,7 +142,7 @@ fn a_large_change_waits_for_the_user_and_small_ones_do_not() {
 
     // Reply 2: the same write, allowed for the session.
     let third = titles.get(2).cloned().unwrap_or_default();
-    let allow_file = Answer::Choice("allow_file".to_owned());
+    let allow_file = Answer::choice("allow_file");
     assert!(answer_open(app.world_mut(), &third, &allow_file));
     run_until(&mut app, &wakes, |world| ended(world) == 1);
     assert_eq!(text(&big_rs), rewrite());

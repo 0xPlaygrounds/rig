@@ -361,7 +361,12 @@ fn answered(
         };
         let tool = request.call.function.name.as_str().to_owned();
         let choice = match (kind, Answer::of(outcome)) {
-            (HoldKind::Editing, Some(Answer::Text(text))) => {
+            (
+                HoldKind::Editing,
+                Some(Answer {
+                    text: Some(text), ..
+                }),
+            ) => {
                 let schema = tools.iter().find(|def| def.0.name.as_str() == tool);
                 match fitting(&text, schema.map(|def| &def.0.parameters)) {
                     Ok(arguments) => {
@@ -385,8 +390,10 @@ fn answered(
             }
             // Closed: the step's question comes back.
             (HoldKind::Editing, _) => continue,
-            (_, Some(Answer::Choice(choice))) => choice,
-            (_, Some(Answer::Text(_) | Answer::Choices(_))) => continue,
+            (_, Some(answer)) => match answer.choices.into_iter().next() {
+                Some(choice) => choice,
+                None => continue,
+            },
             // Closed: the user stops the turn, as an interrupt does.
             (_, None) => {
                 edits.commands.trigger(Interrupt::new(agent));
@@ -435,7 +442,7 @@ fn edited(
         std::fs::remove_file(&editing.path).ok();
         match (exit.success(), text) {
             (true, Ok(text)) => {
-                commands.trigger(Pick::person(editing.ask, Some(Chosen::Text(text))));
+                commands.trigger(Pick::person(editing.ask, Some(Chosen::text(text))));
             }
             _ => {
                 let agent = holds.get(editing.ask).ok().map(|hold| hold.agent);

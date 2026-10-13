@@ -82,7 +82,7 @@ fn refusal(app: &App, effect: Entity) -> Option<String> {
 }
 
 #[test]
-fn two_plugins_reasons_make_one_question_and_allowing_it_starts_the_effect() {
+fn two_plugins_reasons_make_one_question_and_allowing_it_with_a_note_starts_the_effect() {
     let (mut app, effect) = start(true);
     let open = asks(&mut app);
     assert_eq!(open.len(), 1, "one question: {open:?}");
@@ -96,7 +96,8 @@ fn two_plugins_reasons_make_one_question_and_allowing_it_starts_the_effect() {
         ask.body
     );
     assert!(!app.world().entity(effect).contains::<Started>(), "held");
-    let allow = Answer::Choice(ALLOW.to_owned()).outcome();
+    // A note on the choice still allows it.
+    let allow = Answer::choice(ALLOW).with_text("just this once").outcome();
     app.world_mut().entity_mut(*question).insert(allow);
     app.update();
     let world = app.world();
@@ -113,7 +114,7 @@ fn a_typed_line_denies_with_its_reason_and_with_nobody_to_ask_it_is_refused_at_o
     let Some((question, _)) = open.first() else {
         return;
     };
-    let typed = Answer::Text("not on a Friday".to_owned()).outcome();
+    let typed = Answer::text("not on a Friday").outcome();
     app.world_mut().entity_mut(*question).insert(typed);
     app.update();
     assert_eq!(

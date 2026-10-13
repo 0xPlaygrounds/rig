@@ -291,12 +291,11 @@ pub(crate) fn choice_key(
         KeyCode::Enter => {
             return match rows.get(choosing.selected)? {
                 Row::Item(_) if shown.multiple && !choosing.ticked.is_empty() => {
-                    Some(Some(Chosen::Items(choosing.ticked.clone())))
+                    Some(Some(Chosen::items(choosing.ticked.clone())))
                 }
-                Row::Item(index) if shown.multiple => Some(Some(Chosen::Items(vec![*index]))),
-                Row::Item(index) => Some(Some(Chosen::Item(*index))),
+                Row::Item(index) => Some(Some(Chosen::item(*index))),
                 Row::Typed if choosing.filter.trim().is_empty() => None,
-                Row::Typed => Some(Some(Chosen::Text(choosing.filter.trim().to_owned()))),
+                Row::Typed => Some(Some(Chosen::text(choosing.filter.trim().to_owned()))),
             };
         }
         _ => {}

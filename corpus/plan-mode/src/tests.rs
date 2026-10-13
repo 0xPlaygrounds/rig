@@ -111,7 +111,7 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     assert_eq!(plan, "Plan: 1. create x.txt");
 
     // The user picks Execute.
-    let execute = Answer::Choice("execute".to_owned());
+    let execute = Answer::choice("execute");
     assert!(answer_open(app.world_mut(), "The plan", &execute));
     run_until(&mut app, &wakes, |world| {
         model.request_count() == 4 && !world.entity(agent).contains::<ActiveTurn>()

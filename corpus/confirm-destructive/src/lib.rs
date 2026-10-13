@@ -171,10 +171,9 @@ fn answered(
             }
             commands.entity(call).insert(Approved);
         } else if let Ok(mut decision) = calls.get_mut(call) {
-            let why = match answer {
-                Some(Answer::Text(reason)) if !reason.trim().is_empty() => {
-                    format!("{DENIED}: {}", reason.trim())
-                }
+            let reason = answer.and_then(|answer| answer.text);
+            let why = match reason.as_deref().map(str::trim) {
+                Some(reason) if !reason.is_empty() => format!("{DENIED}: {reason}"),
                 _ => format!("{DENIED}."),
             };
             decision.decide(

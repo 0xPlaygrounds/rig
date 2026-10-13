@@ -266,7 +266,7 @@ skip { next }
 
     // Deleting only the result asks; "delete both" takes the call too.
     app.world_mut()
-        .insert_resource(Answers::new([Answer::Choice(DELETE_BOTH.to_owned())]));
+        .insert_resource(Answers::new([Answer::choice(DELETE_BOTH)]));
     let drop_result = script(
         &home,
         "drop-result.sh",

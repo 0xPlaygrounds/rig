@@ -280,7 +280,11 @@ fn open(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Some(Chosen::Item(chosen)) = &picked.chosen else {
+    let Some(chosen) = picked
+        .chosen
+        .as_ref()
+        .and_then(|chosen| chosen.items.first())
+    else {
         return;
     };
     let label = choices

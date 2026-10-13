@@ -6,9 +6,10 @@
 //! item's command, for the picker's agent or else the agent the user is
 //! looking at ([`Shown`]), triggers [`Picked`] on
 //! it, and despawns it. A picker may take several items
-//! ([`Picker::multiple`]), answered with [`Chosen::Items`]: the harness
-//! runs each one's command in list order. A front answers an open [`Ask`]
-//! the same way: a `Pick` on it decides the answer.
+//! ([`Picker::multiple`]): the harness runs each one's command in list
+//! order. A [`Chosen`] holds the items picked and the text typed, either
+//! or both. A front answers an open [`Ask`] the same way: a `Pick` on it
+//! decides the answer, a question's choices with the note typed on them.
 //!
 //! ```no_run
 //! use rig_harness::pick::{Chosen, Picked, Picker};
@@ -18,11 +19,14 @@
 //! fn pick_branch(mut commands: Commands) {
 //!     let picker = Picker::new("Branch").item("main", "").item("dev", "").free_text();
 //!     commands.spawn(picker).observe(|picked: On<Picked>, mut notices: MessageWriter<Notice>| {
-//!         let branch = match &picked.chosen {
-//!             Some(Chosen::Item(0)) => "main".to_owned(),
-//!             Some(Chosen::Item(_)) => "dev".to_owned(),
-//!             Some(Chosen::Text(name)) => name.clone(),
-//!             _ => return,
+//!         let Some(chosen) = &picked.chosen else {
+//!             return;
+//!         };
+//!         let branch = match (chosen.items.first(), &chosen.text) {
+//!             (Some(0), _) => "main".to_owned(),
+//!             (Some(_), _) => "dev".to_owned(),
+//!             (None, Some(name)) => name.clone(),
+//!             (None, None) => return,
 //!         };
 //!         notices.write(Notice::info(None, format!("checking out {branch}")));
 //!     });
@@ -73,9 +77,9 @@ pub struct Picker {
     /// The position of the choice selected at first.
     pub selected: usize,
     /// Whether what the user types may be the answer itself
-    /// ([`Chosen::Text`]), besides filtering the items.
+    /// ([`Chosen`]'s `text`), besides filtering the items.
     pub free_text: bool,
-    /// Whether the user may tick several items ([`Chosen::Items`]).
+    /// Whether the user may tick several items.
     pub multiple: bool,
 }
 
@@ -133,28 +137,48 @@ impl Picker {
     }
 }
 
-/// What the user chose.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq)]
-#[reflect(Clone, Debug, PartialEq)]
-pub enum Chosen {
-    /// The item at this position of the [`Picker`]'s items, or the choice
-    /// at this position of the [`Ask`]'s choices.
-    Item(usize),
-    /// The items, or choices, at these positions, of a picker or question
-    /// that takes several; a front that cannot tick items answers one.
-    Items(Vec<usize>),
-    /// What the user typed, where free text is taken.
-    Text(String),
+/// What the user chose: the items or choices picked and the text typed,
+/// either or both, such as a question's choice with a note on it.
+#[derive(Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Clone, Debug, Default, PartialEq)]
+pub struct Chosen {
+    /// The positions of the [`Picker`]'s items, or the [`Ask`]'s choices,
+    /// picked: one, or any number for one that takes several; none for an
+    /// answer only typed.
+    pub items: Vec<usize>,
+    /// What the user typed, where free text is taken: alone, or a note on
+    /// the items.
+    pub text: Option<String>,
 }
 
 impl Chosen {
-    /// The positions chosen, in list order, each once; none for text.
+    /// The item, or choice, at `index`.
+    pub fn item(index: usize) -> Self {
+        Self::items([index])
+    }
+
+    /// The items, or choices, at `indices`.
+    pub fn items(indices: impl IntoIterator<Item = usize>) -> Self {
+        Self {
+            items: indices.into_iter().collect(),
+            text: None,
+        }
+    }
+
+    /// What the user typed, `text`.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::default().with_text(text)
+    }
+
+    /// The same choice, with `text` typed as its note.
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = Some(text.into());
+        self
+    }
+
+    /// The positions chosen, in list order, each once.
     fn positions(&self) -> Vec<usize> {
-        let mut positions = match self {
-            Self::Item(index) => vec![*index],
-            Self::Items(indices) => indices.clone(),
-            Self::Text(_) => Vec::new(),
-        };
+        let mut positions = self.items.clone();
         positions.sort_unstable();
         positions.dedup();
         positions
@@ -244,20 +268,21 @@ fn pick(
         return;
     };
     let answer = match chosen {
-        Some(Chosen::Text(text)) => Some(Answer::Text(text).outcome()),
         Some(chosen) => {
             let ids = chosen
                 .positions()
                 .into_iter()
                 .map(|index| ask.choices.get(index));
             let ids: Option<Vec<String>> = ids.map(|c| c.map(|c| c.id.clone())).collect();
-            match (ids, ask.multiple) {
-                (Some(ids), true) => Some(Answer::Choices(ids).outcome()),
-                (Some(mut ids), false) if ids.len() == 1 => {
-                    ids.pop().map(|id| Answer::Choice(id).outcome())
-                }
-                _ => None,
-            }
+            let typed = chosen.text.is_some();
+            ids.filter(|ids| ask.multiple || ids.len() == 1 || (ids.is_empty() && typed))
+                .map(|choices| {
+                    let answer = Answer {
+                        choices,
+                        text: chosen.text,
+                    };
+                    answer.outcome()
+                })
         }
         None => Some(Outcome::refused("The user closed the question.")),
     };

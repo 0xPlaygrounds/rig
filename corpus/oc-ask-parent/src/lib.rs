@@ -379,10 +379,7 @@ fn escalated(
     mut commands: Commands,
 ) {
     for (ask, outcome, escalated) in &asks {
-        let reply = match Answer::of(outcome) {
-            Some(Answer::Text(text)) => Some(text),
-            _ => None,
-        };
+        let reply = Answer::of(outcome).and_then(|answer| answer.text);
         let asked = questions.get(escalated.question).ok();
         let (to_child, to_parent) = match (reply, asked) {
             (_, None) => (

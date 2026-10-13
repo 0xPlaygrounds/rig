@@ -610,7 +610,7 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
         .map(|choosing| choosing.entity);
     match (action, editing) {
         (Do::Send, Some(ask)) if view.completion.as_ref().is_none_or(|c| c.is_exact()) => {
-            let answer = Chosen::Text(input.take());
+            let answer = Chosen::text(input.take());
             return close(ask, Some(answer), target, context, commands);
         }
         (Do::Stop, Some(ask)) if view.completion.is_none() => {
@@ -771,7 +771,7 @@ fn answer_inline(number: usize, target: &mut Target, context: &Context, commands
     };
     if index < shown.items.len() {
         target.view.inline.remove(0);
-        commands.trigger(Pick::person(ask, Some(Chosen::Item(index))));
+        commands.trigger(Pick::person(ask, Some(Chosen::item(index))));
     } else if index == shown.items.len() && shown.free_text && target.view.choosing.is_none() {
         target.view.inline.remove(0);
         target.view.queue.insert(0, ask);

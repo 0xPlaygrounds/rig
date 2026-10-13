@@ -68,22 +68,14 @@ fn a_question_is_answered_later_and_the_clocks_move_on() {
     app.add_plugins((bevy_time::TimePlugin, rig_harness::clock::ClockPlugin));
     let world = app.world_mut();
     let ask = world.spawn(Ask::new("Run it?")).id();
-    assert!(!answer_open(
-        world,
-        "Delete it?",
-        &Answer::Choice("yes".to_owned())
-    ));
-    assert!(answer_open(
-        world,
-        "Run it?",
-        &Answer::Choice("yes".to_owned())
-    ));
+    assert!(!answer_open(world, "Delete it?", &Answer::choice("yes")));
+    assert!(answer_open(world, "Run it?", &Answer::choice("yes")));
     // Decided; the agent loop applies it as the question's outcome.
     let answer = world
         .get::<Decision>(ask)
         .and_then(Decision::get)
         .and_then(Answer::of);
-    assert_eq!(answer, Some(Answer::Choice("yes".to_owned())));
+    assert_eq!(answer, Some(Answer::choice("yes")));
 
     let hour = Duration::from_secs(3_600);
     let alarm = world.spawn(WakeAt(SystemTime::now() + hour)).id();

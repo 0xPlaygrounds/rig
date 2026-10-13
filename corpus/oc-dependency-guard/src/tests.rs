@@ -79,10 +79,7 @@ fn new_dependencies_wait_for_the_user_unless_the_policy_decides() {
     processes.set(Launcher::default().with_env("PATH", path));
     // The user denies the first question and allows the second for the
     // session.
-    let answers = Answers::new([
-        Answer::Choice(DENY.to_owned()),
-        Answer::Choice(SESSION.to_owned()),
-    ]);
+    let answers = Answers::new([Answer::choice(DENY), Answer::choice(SESSION)]);
     app.insert_resource(ProjectRoot(dir.clone()))
         .insert_resource(RigHome(scratch_home("dependency-guard-home")))
         .insert_resource(processes)

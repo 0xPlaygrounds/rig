@@ -1071,7 +1071,7 @@ fn answered_files(
     for (ask, outcome, pending) in &asks {
         commands.entity(ask).remove::<FilesAsk>();
         let choice = match Answer::of(outcome) {
-            Some(Answer::Choices(chosen)) if pending.each => FileChoice::Only(chosen),
+            Some(Answer { choices, .. }) if pending.each => FileChoice::Only(choices),
             Some(answer) if answer.is("apply") => FileChoice::Apply,
             Some(answer) if answer.is("keep") => FileChoice::Keep,
             Some(answer) if answer.is("each") => {

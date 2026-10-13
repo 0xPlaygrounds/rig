@@ -113,6 +113,6 @@ fn a_question_is_a_dialog_its_buttons_answer() {
     app.world_mut().trigger(Choose { item: 0 });
     app.update();
     let answer = app.world().get::<Outcome>(ask).and_then(Answer::of);
-    assert_eq!(answer, Some(Answer::Choice("yes".to_owned())));
+    assert_eq!(answer, Some(Answer::choice("yes")));
     assert!(app.world().resource::<GuiDialogs>().open.is_empty());
 }

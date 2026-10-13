@@ -34,7 +34,7 @@ fn a_question_and_a_plugins_work_outside_the_turn_show() {
     let asking = Some(Status::Asking("Keep the changes?".to_owned()));
     assert_eq!(status(&mut app, agent), asking);
 
-    let yes = Answer::Choice("yes".to_owned()).outcome();
+    let yes = Answer::choice("yes").outcome();
     app.world_mut().entity_mut(ask).insert(yes);
     assert_eq!(status(&mut app, agent), reviewing);
     app.world_mut()

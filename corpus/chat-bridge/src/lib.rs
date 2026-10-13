@@ -275,7 +275,7 @@ fn receive(
             && let Some(index) = choice(question, &message.text)
         {
             answered.push(ask);
-            let chosen = Some(Chosen::Item(index));
+            let chosen = Some(Chosen::item(index));
             commands.trigger(Pick::person(ask, chosen));
             continue;
         }

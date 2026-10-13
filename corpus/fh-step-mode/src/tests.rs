@@ -138,11 +138,7 @@ fn calls_are_stepped_one_at_a_time_skipped_and_edited() {
     assert!(asking(app.world(), first));
     // Nothing runs beside the call being stepped.
     assert!(app.world().resource::<Ran>().0.is_empty());
-    assert!(answer_open(
-        app.world_mut(),
-        first,
-        &Answer::Choice("run".into())
-    ));
+    assert!(answer_open(app.world_mut(), first, &Answer::choice("run")));
 
     let second = "Step 2 of 3: shell";
     run_until(&mut app, &wakes, |world| asking(world, second));
@@ -150,20 +146,16 @@ fn calls_are_stepped_one_at_a_time_skipped_and_edited() {
     assert!(answer_open(
         app.world_mut(),
         second,
-        &Answer::Choice("skip".into())
+        &Answer::choice("skip")
     ));
 
     let third = "Step 3 of 3: write";
     run_until(&mut app, &wakes, |world| asking(world, third));
-    assert!(answer_open(
-        app.world_mut(),
-        third,
-        &Answer::Choice("edit".into())
-    ));
+    assert!(answer_open(app.world_mut(), third, &Answer::choice("edit")));
     let edit = "Edit the arguments of `write`";
     run_until(&mut app, &wakes, |world| asking(world, edit));
     let answer = |app: &mut App, text: &str| {
-        let text = Answer::Text(text.into());
+        let text = Answer::text(text);
         assert!(answer_open(app.world_mut(), edit, &text));
     };
 
@@ -250,19 +242,11 @@ fn read_only_calls_of_a_reply_do_not_run_side_by_side() {
     run_until(&mut app, &wakes, |world| asking(world, first));
     assert!(asking(app.world(), first));
     assert!(!started(app.world(), "r2"));
-    assert!(answer_open(
-        app.world_mut(),
-        first,
-        &Answer::Choice("run".into())
-    ));
+    assert!(answer_open(app.world_mut(), first, &Answer::choice("run")));
     let second = "Step 2 of 2: read";
     run_until(&mut app, &wakes, |world| asking(world, second));
     assert!(started(app.world(), "r1") && !started(app.world(), "r2"));
-    assert!(answer_open(
-        app.world_mut(),
-        second,
-        &Answer::Choice("run".into())
-    ));
+    assert!(answer_open(app.world_mut(), second, &Answer::choice("run")));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });

@@ -149,7 +149,7 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
     assert_eq!(input(&app), "abcabc");
     press(&mut app, "enter");
     let picked = app.world().resource::<Picked>().0.clone();
-    assert_eq!(picked, vec![Some(Chosen::Item(1))]);
+    assert_eq!(picked, vec![Some(Chosen::item(1))]);
     assert_eq!(input(&app), "abcabc");
     assert_eq!(status(&app), "-- NORMAL --");
     app.world_mut().despawn(picker);

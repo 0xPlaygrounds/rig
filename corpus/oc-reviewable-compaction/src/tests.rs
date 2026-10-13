@@ -83,10 +83,10 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         reply("Answer after compaction."),
     ]);
     let answers = vec![
-        Answer::Choice("regenerate".into()),
-        Answer::Choice("edit".into()),
-        Answer::Text("SUMMARY v2 and file x.rs".into()),
-        Answer::Choice("accept".into()),
+        Answer::choice("regenerate"),
+        Answer::choice("edit"),
+        Answer::text("SUMMARY v2 and file x.rs"),
+        Answer::choice("accept"),
     ];
     let (mut app, wakes, agent) = start(&store, &model, answers);
     for turn in 1..=12 {
@@ -132,7 +132,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         reply("Answer after uncompact."),
         reply("SUMMARY v3"),
     ]);
-    let (mut app, wakes, agent) = start(&store, &model, vec![Answer::Choice("cancel".into())]);
+    let (mut app, wakes, agent) = start(&store, &model, vec![Answer::choice("cancel")]);
     ask(&mut app, &wakes, agent, "Q14: after reload");
     let (all, first) = shape(model.requests().first());
     assert!(first.contains("SUMMARY v2 and file x.rs"), "{first}");
@@ -159,7 +159,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         .next();
     assert!(picker.is_some(), "the compactions to choose from");
     if let Some(picker) = picker {
-        world.trigger(Pick::person(picker, Some(Chosen::Item(0))));
+        world.trigger(Pick::person(picker, Some(Chosen::item(0))));
     }
     app.update();
     ask(&mut app, &wakes, agent, "Q15: after uncompact");

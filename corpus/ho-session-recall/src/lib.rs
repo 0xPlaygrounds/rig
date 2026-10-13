@@ -831,8 +831,11 @@ fn found(
     let excerpts: Vec<String> = hits.into_iter().map(|hit| hit.excerpt).collect();
     commands.spawn(picker).observe(
         move |picked: On<Picked>, mut commands: Commands, mut notices: MessageWriter<Notice>| {
-            if let Some(Chosen::Item(index)) = picked.chosen
-                && let Some(excerpt) = excerpts.get(index)
+            if let Some(index) = picked
+                .chosen
+                .as_ref()
+                .and_then(|chosen| chosen.items.first())
+                && let Some(excerpt) = excerpts.get(*index)
             {
                 commands
                     .entity(agent)

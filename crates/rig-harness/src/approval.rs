@@ -3,9 +3,10 @@
 //! to approve an effect adds its reason ([`NeedsApproval::add`]) in
 //! Prepare or Gate, and the harness asks after every gate
 //! ([`ApprovalSystems`]): one [`Ask`] that holds the effect and lists every
-//! reason, answered [`ALLOW`] or [`DENY`], or with a line of text, which
-//! denies it with that reason. An allowed effect is [`Approved`] and goes
-//! on; a denied one is refused with the user's reason. With nobody to
+//! reason, answered [`ALLOW`] or [`DENY`], each with a note or not, or with
+//! a line of text alone, which denies it with that reason. An allowed
+//! effect is [`Approved`] and goes on, its note kept in the question's
+//! record; a denied one is refused with the user's note. With nobody to
 //! answer ([`Answerers`]) it is refused at once, with the reasons.
 //!
 //! A plugin that gathers approvals, such as one asking about a reply's
@@ -194,10 +195,9 @@ fn answered(
                 commands.entity(effect).insert(Approved);
             }
             answer => {
-                let why = match answer {
-                    Some(Answer::Text(reason)) if !reason.trim().is_empty() => {
-                        format!("The user denied this: {}", reason.trim())
-                    }
+                let reason = answer.and_then(|answer| answer.text);
+                let why = match reason.as_deref().map(str::trim) {
+                    Some(reason) if !reason.is_empty() => format!("The user denied this: {reason}"),
                     _ => "The user denied this.".to_owned(),
                 };
                 if let Ok(mut decision) = effects.get_mut(effect) {

@@ -413,7 +413,11 @@ fn open(
     view: Option<ResMut<TranscriptView>>,
     mut commands: Commands,
 ) {
-    let Some(Chosen::Item(chosen)) = &picked.chosen else {
+    let Some(chosen) = picked
+        .chosen
+        .as_ref()
+        .and_then(|chosen| chosen.items.first())
+    else {
         return;
     };
     let Some(&(agent, marker)) = opens

@@ -394,17 +394,17 @@ fn reviewed(
     };
     let agent = review.agent;
     match Answer::of(outcome) {
-        Some(Answer::Choice(choice)) if choice == "accept" => {
+        Some(answer) if answer.is("accept") => {
             accept(&mut commands, turn, review, &mut agents, &mut notices);
         }
-        Some(Answer::Choice(choice)) if choice == "edit" => {
+        Some(answer) if answer.is("edit") => {
             let ask = Ask::new("Edit the summary")
                 .initial(review.summary.clone())
                 .multiline();
             commands.spawn((ask, ForAgent(agent), Editing(turn), HoldOf(turn)));
         }
         #[cfg(feature = "tui")]
-        Some(Answer::Choice(choice)) if choice == "editor" => {
+        Some(answer) if answer.is("editor") => {
             editor::open(
                 &mut commands,
                 turn,
@@ -413,7 +413,7 @@ fn reviewed(
                 &mut notices,
             );
         }
-        Some(Answer::Choice(choice)) if choice == "regenerate" => {
+        Some(answer) if answer.is("regenerate") => {
             draft(&mut commands, turn, agent, review.request.clone());
         }
         _ => {
@@ -442,7 +442,7 @@ fn edited(
     let Ok(mut review) = turns.get_mut(turn) else {
         return;
     };
-    if let Some(Answer::Text(text)) = Answer::of(outcome)
+    if let Some(text) = Answer::of(outcome).and_then(|answer| answer.text)
         && !text.trim().is_empty()
     {
         review.summary = text.trim().to_owned();
