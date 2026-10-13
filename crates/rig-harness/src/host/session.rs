@@ -297,8 +297,8 @@ impl Plugin for SessionPlugin {
                 finish_deletes.run_if(not(resource_exists::<Describing>)),
             )
             .add_systems(First, timings::next_frame)
-            // A fork copies what the session logged up to this frame.
-            .add_systems(Last, fork_sessions.after(WriteJournal))
+            .configure_sets(Last, ForkSessions.after(WriteJournal))
+            .add_systems(Last, fork_sessions.in_set(ForkSessions))
             .add_systems(
                 Last,
                 discard_sessionless
@@ -523,6 +523,13 @@ pub struct SessionDeleteFailed {
     /// Why it is still there.
     pub why: String,
 }
+
+/// The system in `Last` that copies the sessions [`ForkSession`] asked
+/// for, after [`WriteJournal`]: a fork copies what the session logged up
+/// to its frame, and a plugin that writes the session's store in that
+/// frame says `.before(ForkSessions)` for the fork to have it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ForkSessions;
 
 /// The forks asked for this frame.
 #[derive(Resource, Default)]

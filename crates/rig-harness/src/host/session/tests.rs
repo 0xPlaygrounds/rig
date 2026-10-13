@@ -9,14 +9,14 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
-use rig_ecs::AgentPlugin;
 use rig_ecs::agent::{AgentId, Conversation, Notice};
 use rig_ecs::journal::{JournalPlugin, SessionStore};
+use rig_ecs::{AgentPlugin, WriteJournal};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::{DirStore, load, save};
+use rig_memory::{DirStore, Files, load, save};
 
 use super::{
-    DeleteSession, FirstStart, ForkSession, ForkedFrom, Scratch, SessionDeleteFailed,
+    DeleteSession, FirstStart, ForkSession, ForkSessions, ForkedFrom, Scratch, SessionDeleteFailed,
     SessionDeleted, SessionForked, SessionPaths, SessionPlugin, SessionStores, first_typed,
     log_layer, typed,
 };
@@ -99,7 +99,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
         .insert_resource(SessionPaths(session.clone()))
         .insert_resource(SessionStore::new(store))
         .add_plugins(SessionPlugin)
-        .add_systems(Last, watch.after(super::fork_sessions));
+        .add_systems(Last, watch.after(ForkSessions));
     app.world_mut().trigger(ForkSession::default());
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
@@ -184,7 +184,7 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
             .insert_resource(SessionPaths(here_dir.clone()))
             .insert_resource(stores.clone())
             .add_plugins(SessionPlugin)
-            .add_systems(Last, watch.after(super::fork_sessions));
+            .add_systems(Last, watch.after(ForkSessions));
         drop(std::panic::take_hook());
         app
     };
@@ -328,7 +328,7 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
         .insert_resource(SessionPaths(session.clone()))
         .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
         .add_plugins(SessionPlugin)
-        .add_systems(Last, watch.after(super::fork_sessions));
+        .add_systems(Last, watch.after(ForkSessions));
     if let Some(store) = dir_store(&session) {
         app.insert_resource(SessionStore::new(store));
     }
@@ -427,7 +427,7 @@ fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
             .add_plugins(SessionPlugin)
-            .add_systems(Last, watch.after(super::fork_sessions));
+            .add_systems(Last, watch.after(ForkSessions));
         app.finish();
         app.update();
         app
@@ -464,7 +464,7 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
             .insert_resource(SessionPaths(session.clone()))
             .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
             .add_plugins(SessionPlugin)
-            .add_systems(Last, watch.after(super::fork_sessions));
+            .add_systems(Last, watch.after(ForkSessions));
         if let Some(store) = dir_store(&session) {
             app.insert_resource(SessionStore::new(store));
         }
@@ -612,4 +612,56 @@ fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
     assert_eq!(typed(&conversation, 2), None);
     assert_eq!(typed(&conversation, 4).as_deref(), Some("and test"));
     assert_eq!(first_typed(&conversation).as_deref(), Some("fix it"));
+}
+
+/// The frame a plugin's system last wrote the session's store in.
+#[derive(Resource, Default)]
+struct Frame(u32);
+
+/// Writes the frame's number into a plugin file of the session's store.
+fn note_frame(mut frame: ResMut<Frame>, store: Res<SessionStore>) {
+    frame.0 += 1;
+    let text = frame.0.to_string();
+    store
+        .0
+        .write_file("plugins/notes/frame", text.as_bytes())
+        .ok();
+}
+
+#[test]
+fn a_fork_has_what_a_plugin_wrote_before_it_in_its_frame() {
+    let home = scratch_home("rig-session-fork-order");
+    let id: SessionId = "1700000000-3"
+        .parse()
+        .unwrap_or_else(|_| SessionId::generate());
+    let session = home.session(&id);
+    fs::create_dir_all(session.path()).ok();
+    let Some(store) = dir_store(&session) else {
+        return;
+    };
+    let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+    assert!(save(&store, "agent-1", &mut said).is_ok());
+    let mut app = App::new();
+    app.init_resource::<Seen>()
+        .init_resource::<Frame>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session))
+        .insert_resource(SessionStore::new(store))
+        .add_plugins(SessionPlugin)
+        .add_systems(
+            Last,
+            (
+                note_frame.after(WriteJournal).before(ForkSessions),
+                watch.after(ForkSessions),
+            ),
+        );
+    app.update();
+    app.world_mut().trigger(ForkSession::default());
+    app.update();
+    let forked = app.world().resource::<Seen>().forked.first().cloned();
+    let copy = forked.and_then(|forked| dir_store(&home.session(&forked.to)));
+    let noted = copy.and_then(|copy| copy.read_file("plugins/notes/frame").ok());
+    assert_eq!(noted.as_deref(), Some(&b"2"[..]), "the fork's frame");
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
 }

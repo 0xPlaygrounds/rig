@@ -142,8 +142,8 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        DeleteSession, FirstStart, ForkSession, ForkedFrom, LogEvents, Logged, Scratch,
-        SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
+        DeleteSession, FirstStart, ForkSession, ForkSessions, ForkedFrom, LogEvents, Logged,
+        Scratch, SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
         first_typed, typed,
     };
     pub use crate::note::Note;
