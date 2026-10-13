@@ -154,7 +154,7 @@ fn scan(
     earlier: Option<&BTreeMap<PathBuf, Seen>>,
 ) -> io::Result<BTreeMap<PathBuf, Seen>> {
     let mut seen = BTreeMap::new();
-    for path in workspace.files(root, None)? {
+    for path in workspace.files(root, None, false)? {
         let Ok(Stat::File { size, modified, .. }) = workspace.stat(&path) else {
             continue;
         };

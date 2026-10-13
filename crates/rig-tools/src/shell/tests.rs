@@ -180,8 +180,13 @@ fn the_command_starts_through_the_workspace_in_the_calls_directory() {
         fn canonical(&self, path: &Path) -> PathBuf {
             Local.canonical(path)
         }
-        fn files(&self, root: &Path, glob: Option<&str>) -> std::io::Result<Vec<PathBuf>> {
-            Local.files(root, glob)
+        fn files(
+            &self,
+            root: &Path,
+            glob: Option<&str>,
+            all: bool,
+        ) -> std::io::Result<Vec<PathBuf>> {
+            Local.files(root, glob, all)
         }
         fn spawn(
             &self,

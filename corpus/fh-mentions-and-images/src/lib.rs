@@ -253,7 +253,7 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
 /// what `.gitignore` leaves out), one per line, within `max_bytes`.
 fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<String, String> {
     let files = workspace
-        .files(path, None)
+        .files(path, None, false)
         .map_err(|failure| failure.to_string())?;
     let mut list = String::new();
     for (at, file) in files.iter().enumerate() {

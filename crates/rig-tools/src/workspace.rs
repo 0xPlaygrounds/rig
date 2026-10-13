@@ -72,10 +72,11 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// The regular files under `root` (or `root` itself when it is a file),
     /// in walk order, as `root` joined with their path below it: without the
     /// files `.gitignore` leaves out, hidden ones (named with a leading `.`)
-    /// and `target` directories, and only those matching `glob`, such as
-    /// `*.rs`, when it is given. A malformed glob is an
+    /// and `target` directories (with `all`, every regular file, none of
+    /// those left out), and only those matching `glob`, such as `*.rs`,
+    /// when it is given. A malformed glob is an
     /// [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
-    fn files(&self, root: &Path, glob: Option<&str>) -> io::Result<Vec<PathBuf>>;
+    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>>;
 
     /// Starts `program` with `args` in `dir` (`None`: the launcher's own
     /// directory) under `launcher`'s policy: its wrapper and variables.
@@ -95,14 +96,12 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// Dropping the [`Watch`] stops it. To miss nothing, list the files
     /// once after the watch has started.
     ///
-    /// By default it looks at what [`files`](Self::files) lists every
-    /// second, on a thread of its own, comparing each file's size and
-    /// change time (its hash when [`stat`](Self::stat) cannot tell the
-    /// time); `all` adds nothing then, as `files` lists what it lists.
-    /// [`Local`] hears of changes from the system instead.
+    /// By default it looks at what [`files`](Self::files) lists (with
+    /// `all`) every second, on a thread of its own, comparing each file's
+    /// size and change time (its hash when [`stat`](Self::stat) cannot tell
+    /// the time). [`Local`] hears of changes from the system instead.
     fn watch(self: Arc<Self>, root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
-        let _ = all;
-        crate::watch::poll(self, root, recursive)
+        crate::watch::poll(self, root, recursive, all)
     }
 }
 
@@ -299,11 +298,14 @@ impl Workspace for Local {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>> {
         let mut walk = WalkBuilder::new(root);
-        walk.hidden(false).filter_entry(|entry| {
-            entry.depth() == 0 || (entry.file_name() != "target" && !is_hidden(entry.path()))
-        });
+        match all {
+            true => walk.standard_filters(false),
+            false => walk.hidden(false).filter_entry(|entry| {
+                entry.depth() == 0 || (entry.file_name() != "target" && !is_hidden(entry.path()))
+            }),
+        };
         if let Some(glob) = glob {
             let overrides = OverrideBuilder::new(root)
                 .add(glob)

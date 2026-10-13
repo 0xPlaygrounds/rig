@@ -160,7 +160,7 @@ fn list(
 ) -> Result<(String, FilesListed, Option<OutputCut>), ToolExecutionError> {
     let shown = root.to_string_lossy();
     let files = workspace
-        .files(root, args.glob.as_deref())
+        .files(root, args.glob.as_deref(), false)
         .map_err(|error| match error.kind() {
             ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
             _ => io_error(&shown, error),

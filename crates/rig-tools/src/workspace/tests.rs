@@ -84,7 +84,7 @@ impl Workspace for Memory {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, _: bool) -> io::Result<Vec<PathBuf>> {
         let suffix = glob.map(|glob| glob.trim_start_matches('*'));
         Ok(self
             .files()

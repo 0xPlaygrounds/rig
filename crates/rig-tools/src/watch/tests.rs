@@ -90,7 +90,7 @@ fn a_watch_of_an_ignored_directory_reports_what_files_lists_there() {
     let batches = batches(watch);
     std::fs::write(&made, "x").ok();
     let seen = seen(&batches, Duration::from_secs(2));
-    let listed = Local.files(&root, None).unwrap_or_default();
+    let listed = Local.files(&root, None, false).unwrap_or_default();
     std::fs::remove_dir_all(&top).ok();
     assert_eq!((listed, seen), (vec![made.clone()], vec![made]));
 }

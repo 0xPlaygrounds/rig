@@ -185,7 +185,7 @@ fn looks(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<Item = 
 /// The files `watch` covers now, in path order.
 fn there(workspace: &dyn Workspace, watch: &FileWatch) -> Vec<PathBuf> {
     let root = watch.path.as_path();
-    let mut files = workspace.files(root, None).unwrap_or_default();
+    let mut files = workspace.files(root, None, false).unwrap_or_default();
     files.retain(|path| watch.recursive || path == root || path.parent() == Some(root));
     files.sort();
     files

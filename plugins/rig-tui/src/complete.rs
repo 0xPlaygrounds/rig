@@ -221,7 +221,7 @@ impl FileIndex {
 /// them, relative to it, directories ending in `/`, skipping what
 /// `.gitignore` and hidden names leave out.
 fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
-    let files = match workspace.files(root, None) {
+    let files = match workspace.files(root, None, false) {
         Ok(files) => files,
         Err(failure) => {
             warn!("could not list the project's files: {failure}");

@@ -205,9 +205,9 @@ impl Workspace for Overlay {
 
     /// The files under it, as listed there, without those removed here,
     /// then the files created here that are not hidden or in a `target`
-    /// directory (ignore files are not read for them).
-    fn files(&self, root: &Path, glob: Option<&str>) -> io::Result<Vec<PathBuf>> {
-        let listed = self.inner.files(root, glob)?;
+    /// directory unless `all` (ignore files are not read for them).
+    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>> {
+        let listed = self.inner.files(root, glob, all)?;
         let matcher = glob
             .map(|glob| OverrideBuilder::new(root).add(glob)?.build())
             .transpose()
@@ -221,9 +221,10 @@ impl Workspace for Overlay {
         };
         let created = kept.iter().filter_map(|(path, bytes)| {
             let below = path.strip_prefix(root).ok()?;
-            let visible = !below
-                .iter()
-                .any(|part| part == "target" || is_hidden(Path::new(part)));
+            let visible = all
+                || !below
+                    .iter()
+                    .any(|part| part == "target" || is_hidden(Path::new(part)));
             let matches = matcher
                 .as_ref()
                 .is_none_or(|matcher| matcher.matched(path, false).is_whitelist());

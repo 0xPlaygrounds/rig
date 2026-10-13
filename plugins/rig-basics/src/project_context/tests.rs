@@ -259,7 +259,7 @@ impl Workspace for Remote {
         path.to_path_buf()
     }
 
-    fn files(&self, _: &Path, _: Option<&str>) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, _: &Path, _: Option<&str>, _: bool) -> io::Result<Vec<PathBuf>> {
         Ok(Vec::new())
     }
 

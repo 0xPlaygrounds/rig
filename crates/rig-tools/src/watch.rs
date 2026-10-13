@@ -77,16 +77,17 @@ pub(crate) fn poll<W: Workspace + ?Sized>(
     workspace: Arc<W>,
     root: &Path,
     recursive: bool,
+    all: bool,
 ) -> io::Result<Watch> {
     let (sender, batches) = unbounded();
     let root = root.to_path_buf();
-    let mut before = look(&*workspace, &root, recursive);
+    let mut before = look(&*workspace, &root, recursive, all);
     thread::Builder::new()
         .name("rig-watch".to_owned())
         .spawn(move || {
             while !sender.is_closed() {
                 thread::sleep(EVERY);
-                let now = look(&*workspace, &root, recursive);
+                let now = look(&*workspace, &root, recursive, all);
                 let changed = differences(&before, &now);
                 before = now;
                 if !changed.is_empty() && sender.unbounded_send(changed).is_err() {
@@ -97,13 +98,15 @@ pub(crate) fn poll<W: Workspace + ?Sized>(
     Ok(Watch::new(batches, ()))
 }
 
-/// The files under `root` that `workspace` lists, each with its [`Mark`].
+/// The files under `root` that `workspace` lists (every one with `all`),
+/// each with its [`Mark`].
 fn look<W: Workspace + ?Sized>(
     workspace: &W,
     root: &Path,
     recursive: bool,
+    all: bool,
 ) -> BTreeMap<PathBuf, Mark> {
-    let files = workspace.files(root, None).unwrap_or_default();
+    let files = workspace.files(root, None, all).unwrap_or_default();
     files
         .into_iter()
         .filter(|path| recursive || path == root || path.parent() == Some(root))
@@ -141,7 +144,7 @@ fn differences(before: &BTreeMap<PathBuf, Mark>, after: &BTreeMap<PathBuf, Mark>
 /// yet is looked at every second instead.
 pub(crate) fn notified(root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
     let Ok(meta) = fs::metadata(root) else {
-        return poll(Arc::new(crate::workspace::Local), root, recursive);
+        return poll(Arc::new(crate::workspace::Local), root, recursive, all);
     };
     let (events, raw) = std::sync::mpsc::channel::<PathBuf>();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
