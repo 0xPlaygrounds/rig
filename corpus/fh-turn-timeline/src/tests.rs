@@ -1,6 +1,5 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::effect::EffectKind;
 use rig_core::effect::Outcome as Answered;
@@ -9,6 +8,7 @@ use rig_core::serve::{Decision as Pass, Intercept, Verdict};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::effects::Handler;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     answer_open, app_on, calls, connect, reply, run_until, scratch_home,
 };

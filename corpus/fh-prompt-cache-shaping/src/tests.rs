@@ -1,8 +1,8 @@
-use rig_cassette::journal::MemoryStore;
 use rig_core::completion::{CompletionRequest, Usage};
 use rig_core::providers::anthropic::{AnthropicConfig, Messages};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::wire::{Body, Mode, Wire};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Collected, Ended, app_on, collect, connect, log_ended, run_until};
 use rig_tui::TuiPlugin;
 use serde_json::Value;

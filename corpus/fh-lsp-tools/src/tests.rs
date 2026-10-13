@@ -1,9 +1,9 @@
 use std::io::{BufRead, BufReader, Write};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness::services::ServicesPlugin;
+use rig_harness_test_support::MemoryStore;
 use serde_json::{Value, json};
 
 use super::*;
