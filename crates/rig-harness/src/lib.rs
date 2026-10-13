@@ -102,6 +102,10 @@ pub use rig::harness_protocol;
 pub use rig_core;
 /// The agent runtime this app is built on.
 pub use rig_ecs;
+/// The store this app keeps its sessions in, for reading, saving and
+/// forking a session without restoring it (`rig_harness::rig_memory::DirStore`,
+/// `load`, `save`) and for compaction's pure functions.
+pub use rig_memory;
 /// The tool library this app is built on, for the process runner
 /// [`Processes`](services::Processes) hands out
 /// (`rig_harness::rig_tools::process::Spawn`) and the file tools' rules
