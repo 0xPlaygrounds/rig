@@ -227,3 +227,43 @@ fn a_plugin_takes_slash_on_an_empty_input_and_leaves_it_typed_elsewhere() {
         (1, "a/b".to_owned())
     );
 }
+
+/// The times the transcript's `/` was pressed.
+#[derive(Resource, Default)]
+struct Searched(usize);
+
+#[test]
+fn the_transcript_has_the_keys_while_an_item_is_selected_until_typing() {
+    use crate::tests::{press, typed, view_app};
+    use crate::{AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, KeyScope, TranscriptItem};
+    use crossterm::event::KeyCode;
+    use rig_core::message::CallId;
+
+    let (mut app, _) = view_app();
+    let slash = KeyBinding::new(KeyPress::key(KeyCode::Char('/')), "Search the transcript");
+    let searched = |_: On<KeyPressed>, mut searched: ResMut<Searched>| searched.0 += 1;
+    app.init_resource::<Searched>()
+        .add_key_binding(slash.in_scope(KeyScope::Transcript), searched);
+    let selected = |app: &App| app.world().resource::<TranscriptView>().selected.clone();
+    let select = |app: &mut App| {
+        let item = TranscriptItem::Call(CallId::from_wire("c1"));
+        app.world_mut().resource_mut::<TranscriptView>().selected = Some(item);
+    };
+    select(&mut app);
+    press(&mut app, "/");
+    assert_eq!(
+        (app.world().resource::<Searched>().0, typed(&app)),
+        (1, String::new())
+    );
+    // Typing ends the reading: then `/` is typed, a slash command.
+    press(&mut app, "x /");
+    assert_eq!(
+        (app.world().resource::<Searched>().0, typed(&app)),
+        (1, "x/".to_owned())
+    );
+    assert_eq!(selected(&app), None);
+    // Esc on the transcript gives the keys back, and nothing else.
+    select(&mut app);
+    press(&mut app, "esc");
+    assert_eq!((selected(&app), typed(&app)), (None, "x/".to_owned()));
+}

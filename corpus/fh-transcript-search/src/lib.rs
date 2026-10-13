@@ -418,7 +418,7 @@ fn slash_opens(
         key.code == KeyCode::Char('/') && key.kind != KeyEventKind::Release && plain
     };
     let reading = opener.view.selected.is_some() || opener.view.top().is_some();
-    let free = state.scope() == KeyScope::Input
+    let free = matches!(state.scope(), KeyScope::Input | KeyScope::Transcript)
         && state.completion().is_none()
         && state.picking().is_none()
         && state.answering().is_none();

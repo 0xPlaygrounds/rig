@@ -130,7 +130,9 @@ pub struct TuiInputState {
 
 impl TuiInputState {
     /// Where the keys go that no picker, question or global binding takes:
-    /// the input, or the panel with the [`KeyFocus`].
+    /// the input, the transcript while the person reads it
+    /// ([`KeyScope::Transcript`], whose keys the input's back), or the panel
+    /// with the [`KeyFocus`].
     pub fn scope(&self) -> KeyScope {
         self.scope
     }
@@ -232,8 +234,10 @@ pub(crate) fn clear_events(mut events: ResMut<TerminalEvents>) {
 }
 
 /// Runs [`TuiKeys`] for each item of the frame's [`TerminalEvents`], in
-/// order, with that item alone in them; what a run leaves goes next. Past
-/// [`KEYS_PER_FRAME`] the rest waits for the next frame, which it wakes.
+/// order, with that item alone in them; what a run leaves goes next. A run
+/// that changed the input's text ends the reading of the transcript: the
+/// selection goes. Past [`KEYS_PER_FRAME`] the rest waits for the next
+/// frame, which it wakes.
 pub(crate) fn run_keys(world: &mut World) {
     if world
         .get_resource::<TerminalEvents>()
@@ -255,7 +259,17 @@ pub(crate) fn run_keys(world: &mut World) {
         }
         done += 1;
         world.resource_mut::<TerminalEvents>().0.push(item);
+        let text = world
+            .get_resource::<TuiInput>()
+            .map(|input| input.text().to_owned());
         world.run_schedule(TuiKeys);
+        let typed = world.get_resource::<TuiInput>().map(TuiInput::text) != text.as_deref();
+        if let Some(mut transcript) = world.get_resource_mut::<TranscriptView>()
+            && typed
+            && transcript.selected.is_some()
+        {
+            transcript.selected = None;
+        }
         let left = std::mem::take(&mut world.resource_mut::<TerminalEvents>().0);
         for item in left.into_iter().rev() {
             queue.push_front(item);
@@ -266,13 +280,14 @@ pub(crate) fn run_keys(world: &mut World) {
 /// Notes the [`TuiInputState`] for the next key's filters, and after the
 /// frame's keys.
 pub(crate) fn note_state(
-    view: Res<TuiView>,
+    (view, transcript): (Res<TuiView>, Res<TranscriptView>),
     focus: Res<KeyFocus>,
     panels: Query<(), With<TuiPanel>>,
     mut state: ResMut<TuiInputState>,
 ) {
     let scope = match focus.0 {
         Some(panel) if panels.contains(panel) => KeyScope::Panel(panel),
+        _ if transcript.selected.is_some() => KeyScope::Transcript,
         _ => KeyScope::Input,
     };
     let choosing = view.choosing.as_ref();
@@ -302,15 +317,21 @@ pub(crate) struct Keymap<'w, 's> {
 
 impl Keymap<'_, '_> {
     /// Where the keys go besides the global bindings: the focused panel
-    /// while it is one, else the input.
-    fn scope(&mut self) -> KeyScope {
+    /// while it is one, else the transcript while the person is `reading`
+    /// it, else the input.
+    fn scope(&mut self, reading: bool) -> KeyScope {
+        let unfocused = if reading {
+            KeyScope::Transcript
+        } else {
+            KeyScope::Input
+        };
         match self.focus.0 {
             Some(panel) if self.panels.contains(panel) => KeyScope::Panel(panel),
             Some(_) => {
                 self.focus.0 = None;
-                KeyScope::Input
+                unfocused
             }
-            None => KeyScope::Input,
+            None => unfocused,
         }
     }
 }
@@ -390,7 +411,8 @@ pub(crate) fn read_input(
         };
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Release => {
-                released(key, shown.0, &mut keymap, &mut commands);
+                let reading = transcript.selected.is_some();
+                released(key, (shown.0, reading), &mut keymap, &mut commands);
             }
             Event::Key(key) => {
                 // A question answered in the input leaves the keys to it.
@@ -427,7 +449,10 @@ pub(crate) fn read_input(
                         .push_str(text.lines().next().unwrap_or_default());
                     choosing.selected = 0;
                 }
-                None if matches!(keymap.scope(), KeyScope::Panel(_)) => {}
+                None if matches!(
+                    keymap.scope(transcript.selected.is_some()),
+                    KeyScope::Panel(_)
+                ) => {}
                 // A dropped image file becomes `@path`, which attaches it.
                 None => match clipboard::dropped_image(&text) {
                     Some(path) => clipboard::type_path(&mut input, &path),
@@ -460,9 +485,13 @@ fn pressed(
     context: &Context,
     commands: &mut Commands,
 ) {
-    let Target { view, input, .. } = target;
+    let Target {
+        view,
+        input,
+        transcript,
+    } = target;
     let press = KeyPress::of(&key);
-    let scope = keymap.scope();
+    let scope = keymap.scope(transcript.selected.is_some());
     let bindings: Vec<(Entity, &KeyBinding)> = keymap
         .bindings
         .iter()
@@ -506,14 +535,20 @@ fn pressed(
     }
 }
 
-/// Tells a binding that asked for releases that its key was let go.
-fn released(key: KeyEvent, agent: Option<Entity>, keymap: &mut Keymap, commands: &mut Commands) {
+/// Tells a binding that asked for releases that its key was let go, the
+/// person `reading` the transcript or not.
+fn released(
+    key: KeyEvent,
+    (agent, reading): (Option<Entity>, bool),
+    keymap: &mut Keymap,
+    commands: &mut Commands,
+) {
     let press = KeyPress::of(&key);
-    let scope = keymap.scope();
+    let scope = keymap.scope(reading);
     let released = keymap.bindings.iter().find(|(_, binding, _)| {
         binding.releases
             && binding.keys.presses() == [press]
-            && (binding.scope == KeyScope::Global || binding.scope == scope)
+            && scope.applying().any(|applying| applying == binding.scope)
     });
     if let Some((entity, ..)) = released {
         commands.trigger(KeyPressed {
@@ -622,6 +657,11 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
         }
         Do::SelectUp | Do::SelectDown => {
             select(action == Do::SelectUp, view, transcript.reborrow());
+        }
+        Do::Deselect => {
+            if transcript.selected.is_some() {
+                transcript.selected = None;
+            }
         }
         Do::Expand => {
             let newest_call = || {

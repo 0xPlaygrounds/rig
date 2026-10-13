@@ -10,7 +10,10 @@
 //! started by, with a warning. A global binding does not conflict with
 //! the input's own: it shadows the input's binding of the same keys, such
 //! as the view's `ctrl+e` (the end of the line) for an editor key, while
-//! no panel has the keys. Bevy's `Disabled` on a binding frees its keys;
+//! no panel has the keys. While the person reads the transcript (an item
+//! of it selected), its bindings ([`KeyScope::Transcript`]) shadow the
+//! input's too, such as a plugin's `/` for a search, and typing ends the
+//! reading. Bevy's `Disabled` on a binding frees its keys;
 //! do it in `Plugin::finish`, once every plugin's `build` ran. A plugin
 //! that wants keys before every binding, or only in some states, such as a
 //! modal editor or `/` on an empty input, takes them from the
@@ -287,22 +290,41 @@ pub enum KeyScope {
     #[default]
     Global,
     /// In the input, while no panel has the [`KeyFocus`]: the view's own
-    /// editing keys. A global binding of the same keys shadows one.
+    /// editing keys. A global or transcript binding of the same keys
+    /// shadows one.
     Input,
+    /// On the transcript, while the person reads it: an item of it is
+    /// selected ([`TranscriptView::selected`](crate::TranscriptView::selected))
+    /// and no panel has the [`KeyFocus`]. Its bindings are found after the
+    /// global ones and before the input's, whose keys work otherwise, so
+    /// moving the selection, expanding and scrolling go on reading. The
+    /// reading ends when the input's text changes or is sent, and on Esc,
+    /// which the view binds here to give the keys back to the input.
+    Transcript,
     /// In this panel, while it has the [`KeyFocus`].
     Panel(Entity),
 }
 
 impl KeyScope {
     /// Whether a key can be bound in both scopes at once: not the same
-    /// keys in one scope, nor globally and in a panel. Globally and in the
-    /// input it can: the global binding shadows the input's.
+    /// keys in one scope, nor globally and in a panel or the transcript.
+    /// In the input and globally or on the transcript it can: the other
+    /// binding shadows the input's.
     fn overlaps(self, other: Self) -> bool {
         match (self, other) {
-            (Self::Global, Self::Input) | (Self::Input, Self::Global) => false,
+            (Self::Global | Self::Transcript, Self::Input)
+            | (Self::Input, Self::Global | Self::Transcript) => false,
             (Self::Global, _) | (_, Self::Global) => true,
             _ => self == other,
         }
+    }
+
+    /// The scopes whose bindings apply while the keys go to this one, in
+    /// the order they are found: the global ones, then this one's, then,
+    /// while reading the transcript, the input's.
+    pub(crate) fn applying(self) -> impl Iterator<Item = Self> {
+        let reading = (self == Self::Transcript).then_some(Self::Input);
+        [Self::Global, self].into_iter().chain(reading)
     }
 }
 
@@ -512,6 +534,9 @@ pub enum InputAction {
     SelectUp,
     /// Selects the item below the one selected; past the newest, none.
     SelectDown,
+    /// Selects none, which gives the keys back to the input: Esc while
+    /// the person reads the transcript ([`KeyScope::Transcript`]).
+    Deselect,
     /// Expands or collapses the item selected, or with none, the newest
     /// tool call.
     Expand,
@@ -612,7 +637,8 @@ fn built_in() -> Vec<(Keys, &'static str, InputAction)> {
     ]
 }
 
-/// Spawns the view's own key bindings, in the input's scope; the keys that
+/// Spawns the view's own key bindings, in the input's scope, and Esc on
+/// the transcript, which gives the keys back to the input; the keys that
 /// answer a question shown beside the work, Alt+1 to Alt+9 and Alt+0,
 /// stay disabled until one shows. A plugin's global binding of the same
 /// keys wins over them.
@@ -623,6 +649,10 @@ pub(crate) fn add_built_in(app: &mut App) {
         if let Some(mut bound) = bind(app.world_mut(), binding) {
             bound.insert(action);
         }
+    }
+    let back = KeyBinding::new(KeyPress::key(KeyCode::Esc), "Back to the input");
+    if let Some(mut bound) = bind(app.world_mut(), back.in_scope(KeyScope::Transcript)) {
+        bound.insert(InputAction::Deselect);
     }
     let inline = (1..=9u8).map(|number| (number, "Answer the question beside the work"));
     let inline = inline.chain([(0, "Dismiss the question beside the work")]);
@@ -671,11 +701,11 @@ pub(crate) enum Found {
     Nothing,
 }
 
-/// The binding that `typed` matches globally, else in `focus` (the input
-/// or a panel), so a global binding shadows the input's; the oldest entity
-/// of two bound around the conflict check. A single key that is no
-/// character, pressed with modifiers that nothing binds, is that key
-/// alone.
+/// The binding that `typed` matches in the scopes that apply while the
+/// keys go to `focus` ([`KeyScope::applying`]), so a global binding
+/// shadows the input's; the oldest entity of two bound around the conflict
+/// check. A single key that is no character, pressed with modifiers that
+/// nothing binds, is that key alone.
 pub(crate) fn find(
     bindings: &[(Entity, &KeyBinding)],
     typed: &[KeyPress],
@@ -692,7 +722,7 @@ pub(crate) fn find(
             .map(|(entity, _)| *entity)
             .min()
     };
-    for scope in [KeyScope::Global, focus] {
+    for scope in focus.applying() {
         if let Some(entity) = exact(typed, scope) {
             return Found::Binding(entity);
         }
@@ -704,7 +734,7 @@ pub(crate) fn find(
         [press] => press.bare(),
         _ => None,
     };
-    bare.and_then(|bare| exact(&[bare], KeyScope::Global).or_else(|| exact(&[bare], focus)))
+    bare.and_then(|bare| focus.applying().find_map(|scope| exact(&[bare], scope)))
         .map_or(Found::Nothing, Found::Binding)
 }
 
