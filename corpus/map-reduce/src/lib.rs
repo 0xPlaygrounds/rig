@@ -397,7 +397,6 @@ fn on_spawned(
     settled: On<Add<Settled>>,
     requests: Query<(&MapRequest, &Outcome, Option<&SpawnedAgent>)>,
     mut jobs: Query<(&mut MapJob, &mut Decision), ToolCalls>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     let Ok((MapRequest { job, path }, outcome, spawned)) = requests.get(settled.entity) else {
@@ -407,7 +406,7 @@ fn on_spawned(
     let Some((mut map, mut decision)) = jobs.get_mut(job).ok().filter(|(map, _)| !map.finished)
     else {
         if let Some(&SpawnedAgent(agent)) = spawned {
-            commit.retire(agent);
+            commands.trigger(Retire { entity: agent });
         }
         return;
     };
@@ -483,7 +482,6 @@ fn on_job_end(
     settled: On<Add<Settled>>,
     mut jobs: Query<(&mut MapJob, Option<&Workers>, Option<&Children>)>,
     open: Query<(), (With<MapRequest>, Without<Settled>)>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     let Ok((mut job, workers, children)) = jobs.get_mut(settled.entity) else {
@@ -491,7 +489,7 @@ fn on_job_end(
     };
     job.finished = true;
     for worker in workers.into_iter().flat_map(Workers::iter) {
-        commit.retire(worker);
+        commands.trigger(Retire { entity: worker });
     }
     let children = children.into_iter().flat_map(|children| children.iter());
     for request in children.filter(|&request| open.contains(request)) {
@@ -582,10 +580,10 @@ fn same_file(named: &Path, allowed: &Path) -> bool {
 /// so its restored turn never goes on.
 fn retire_orphans(
     restored: Query<Entity, (Added<WasMapWorker>, Without<WorkerOf>)>,
-    mut commit: Commit,
+    mut commands: Commands,
 ) {
     for worker in &restored {
-        commit.retire(worker);
+        commands.trigger(Retire { entity: worker });
     }
 }
 
