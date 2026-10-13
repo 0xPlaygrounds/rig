@@ -16,8 +16,9 @@ use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{DirStore, load, save};
 
 use super::{
-    DeleteSession, FirstStart, ForkSession, ForkedFrom, Scratch, SessionDeleted, SessionForked,
-    SessionPaths, SessionPlugin, SessionStores, first_typed, log_layer, typed,
+    DeleteSession, FirstStart, ForkSession, ForkedFrom, Scratch, SessionDeleteFailed,
+    SessionDeleted, SessionForked, SessionPaths, SessionPlugin, SessionStores, first_typed,
+    log_layer, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::launcher::LauncherRun;
@@ -29,16 +30,24 @@ use crate::services::RigHome;
 struct Seen {
     forked: Vec<SessionForked>,
     deleted: Vec<SessionId>,
+    failed: Vec<(SessionId, String)>,
     notices: Vec<String>,
 }
 
 fn watch(
     mut forked: MessageReader<SessionForked>,
-    mut deleted: MessageReader<SessionDeleted>,
+    (mut deleted, mut failed): (
+        MessageReader<SessionDeleted>,
+        MessageReader<SessionDeleteFailed>,
+    ),
     mut notices: MessageReader<Notice>,
     mut seen: ResMut<Seen>,
 ) {
     seen.forked.extend(forked.read().cloned());
+    let failed = failed
+        .read()
+        .map(|failed| (failed.id.clone(), failed.why.clone()));
+    seen.failed.extend(failed);
     seen.deleted
         .extend(deleted.read().map(|deleted| deleted.0.clone()));
     seen.notices
@@ -83,9 +92,9 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     let Some(store) = store else { return };
     let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
     assert!(save(&store, "agent-1", &mut said).is_ok());
+    // The session plugin needs no agent plugin for its notices.
     let mut app = App::new();
-    app.add_message::<Notice>()
-        .init_resource::<Seen>()
+    app.init_resource::<Seen>()
         .insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(session.clone()))
         .insert_resource(SessionStore::new(store))
@@ -126,9 +135,14 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     app.world_mut().trigger(DeleteSession(to.clone()));
     app.update();
     let seen = app.world().resource::<Seen>();
-    assert_eq!(seen.deleted, [to]);
+    assert_eq!(seen.deleted, std::slice::from_ref(&to));
     assert!(!copy.path().exists());
     assert_eq!(seen.notices.len(), 2, "{:?}", seen.notices);
+    let failed = [
+        (to, "another rig runs it".to_owned()),
+        (id, "it is this session".to_owned()),
+    ];
+    assert_eq!(seen.failed, failed);
     fs::remove_dir_all(&root).ok();
 }
 

@@ -4,8 +4,8 @@
 //! [`Scratch`] with the text log, panics routed to that log instead of
 //! the terminal, and the log's warnings and errors as [`Logged`] data. A
 //! plugin copies the session into a new one with [`ForkSession`] and
-//! removes another with [`DeleteSession`]; [`SessionForked`] and
-//! [`SessionDeleted`] tell every plugin, such as one keeping files of its
+//! removes another with [`DeleteSession`]; [`SessionForked`],
+//! [`SessionDeleted`] and [`SessionDeleteFailed`] tell every plugin, such as one keeping files of its
 //! own per session. Deleting is crash safe: a session marked deleting is
 //! hidden from listings, and the next start finishes it. A forked session
 //! names the session it came from ([`ForkedFrom`]). The first app a
@@ -282,6 +282,8 @@ impl Plugin for SessionPlugin {
             .init_resource::<Forks>()
             .add_message::<SessionForked>()
             .add_message::<SessionDeleted>()
+            .add_message::<SessionDeleteFailed>()
+            .add_message::<Notice>()
             .add_observer(|fork: On<ForkSession>, mut forks: ResMut<Forks>| {
                 forks.0.push(fork.event().clone());
             })
@@ -497,7 +499,8 @@ impl ForkedFrom {
 /// which hides it from listings, then everything its store holds is
 /// destroyed, wherever [`SessionStores`] keeps it, then its directory is
 /// removed. A delete a crash cut short is finished at the next start.
-/// [`SessionDeleted`] follows, or an error notice says why not.
+/// [`SessionDeleted`] follows, or [`SessionDeleteFailed`] and an error
+/// notice say why not.
 #[derive(Event, Clone, Debug)]
 pub struct DeleteSession(pub SessionId);
 
@@ -505,6 +508,17 @@ pub struct DeleteSession(pub SessionId);
 /// a crash cut its delete short.
 #[derive(Message, Clone, Debug)]
 pub struct SessionDeleted(pub SessionId);
+
+/// A session [`DeleteSession`], or the next start finishing a delete a
+/// crash cut short, could not remove, and why, such as `another rig runs
+/// it`.
+#[derive(Message, Clone, Debug)]
+pub struct SessionDeleteFailed {
+    /// The session.
+    pub id: SessionId,
+    /// Why it is still there.
+    pub why: String,
+}
 
 /// The forks asked for this frame.
 #[derive(Resource, Default)]
@@ -628,6 +642,7 @@ fn delete_session(
     (paths, stores): (Res<SessionPaths>, Res<SessionStores>),
     home: Option<Res<RigHome>>,
     mut deleted: MessageWriter<SessionDeleted>,
+    mut failed: MessageWriter<SessionDeleteFailed>,
     mut notices: MessageWriter<Notice>,
 ) {
     let home = home.map_or_else(Home::from_env, |home| home.0.clone());
@@ -655,6 +670,8 @@ fn delete_session(
                 None,
                 format!("Could not delete session {}: {why}.", delete.0),
             ));
+            let id = delete.0.clone();
+            failed.write(SessionDeleteFailed { id, why });
         }
     }
 }
@@ -677,6 +694,7 @@ fn finish_deletes(
     home: Option<Res<RigHome>>,
     (paths, stores): (Res<SessionPaths>, Res<SessionStores>),
     mut deleted: MessageWriter<SessionDeleted>,
+    mut failed: MessageWriter<SessionDeleteFailed>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Some(home) = home else {
@@ -695,7 +713,7 @@ fn finish_deletes(
                 deleted.write(SessionDeleted(id));
             }
             (Ok(()), None) => {}
-            (Err(failure), _) => {
+            (Err(failure), id) => {
                 notices.write(Notice::warn(
                     None,
                     format!(
@@ -703,6 +721,10 @@ fn finish_deletes(
                         session.path().display()
                     ),
                 ));
+                if let Some(id) = id {
+                    let why = failure.to_string();
+                    failed.write(SessionDeleteFailed { id, why });
+                }
             }
         }
     }
