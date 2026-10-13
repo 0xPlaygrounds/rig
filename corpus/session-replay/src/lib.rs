@@ -102,9 +102,7 @@ impl ReplaySource {
             live_tools: invoked.flag(LIVE_TOOLS),
             original_timing: invoked.flag(SPEED),
         };
-        let store = stores
-            .open(&SessionDir::at(dir))
-            .map_err(io::Error::other)?;
+        let store = stores.open(&SessionDir::at(dir))?;
         Self::from_store(&*store, flags)
     }
 }

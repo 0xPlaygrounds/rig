@@ -162,7 +162,7 @@ fn sessions(home: &Home, current: &Path) -> Vec<SessionDir> {
 
 /// The store `dir` keeps as it is, as the harness's default store does.
 fn plain(dir: &SessionDir) -> io::Result<DirStore> {
-    DirStore::open(dir.path()).map_err(io::Error::other)
+    Ok(DirStore::open(dir.path())?)
 }
 
 /// `dir` with `suffix` after its name.

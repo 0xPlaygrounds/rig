@@ -412,8 +412,7 @@ fn hand_to_forks(
             .map_err(std::io::Error::other)
             .and_then(|json| {
                 stores
-                    .open(&home.session(&fork.to))
-                    .map_err(std::io::Error::other)?
+                    .open(&home.session(&fork.to))?
                     .write_file(HANDED, &json)
             });
         if let Err(failure) = written {

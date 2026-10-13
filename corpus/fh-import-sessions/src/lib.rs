@@ -456,7 +456,7 @@ fn import_file(
     let created = marker.conversations.is_empty();
     let written = stores
         .open(&dir)
-        .map_err(io::Error::other)
+        .map_err(io::Error::from)
         .and_then(|store| write(&*store, &dir, marker, &parsed));
     let added = match written {
         Ok(added) => added,
@@ -505,7 +505,7 @@ fn write(
     mut marker: Marker,
     parsed: &Parsed,
 ) -> io::Result<usize> {
-    let mut session = Session::read(store).map_err(io::Error::other)?;
+    let mut session = Session::read(store)?;
     let source = marker.source;
     let mut conversations = vec![(parsed.id.clone(), &parsed.main)];
     for (chain, steps) in &parsed.sidechains {
@@ -554,7 +554,7 @@ fn write(
         }
         main = main.or(Some(agent));
     }
-    session.save(store).map_err(io::Error::other)?;
+    session.save(store)?;
     store.write_file(MARKER, &serde_json::to_vec_pretty(&marker)?)?;
     if let Some(cwd) = &parsed.cwd {
         fs::write(dir.directory(), cwd.to_string_lossy().as_bytes())?;
