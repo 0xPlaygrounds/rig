@@ -141,6 +141,53 @@ fn clearing_keeps_the_newest_outputs_and_the_last_message() {
     assert_eq!(policy.clear(&mut messages), Cleared::default());
 }
 
+/// Clearing skips error results, which are short and still needed, and
+/// in a message with several parts replaces only the results it clears;
+/// an empty history clears nothing.
+#[test]
+fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
+    let big = "x".repeat(4_000);
+    let output = |id: &str, is_error: bool| {
+        UserContent::ToolResult(ToolResult {
+            is_error,
+            call: CallId::from_wire(id),
+            name: ToolName::new("read").expect("tool name"),
+            content: vec![ToolResultContent::text(big.as_str())],
+        })
+    };
+    let mut messages = vec![
+        call("1", "read", "a.rs"),
+        Message::User {
+            content: vec![
+                UserContent::text("see"),
+                output("1", false),
+                output("2", false),
+            ],
+        },
+        Message::User {
+            content: vec![output("3", true)],
+        },
+        Message::assistant("done"),
+    ];
+    let policy = ClearToolOutputs::new(1_500);
+    assert_eq!(policy.clear(&mut messages).results, 1);
+    let cleared = |message: &Message| -> Vec<bool> {
+        let Message::User { content } = message else {
+            return Vec::new();
+        };
+        content
+            .iter()
+            .map(|item| matches!(item, UserContent::ToolResult(result) if is_cleared(&result.content)))
+            .collect()
+    };
+    let parts: Vec<Vec<bool>> = messages.iter().map(cleared).collect();
+    assert_eq!(
+        parts,
+        [vec![], vec![false, true, false], vec![false], vec![]]
+    );
+    assert_eq!(policy.clear(&mut []), Cleared::default());
+}
+
 #[test]
 fn a_cut_rule_chooses_the_first_kept_message() {
     // Keep from the newest question on, whatever the budget says.
