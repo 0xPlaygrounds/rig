@@ -220,7 +220,8 @@ fn a_sealed_session_resumes_with_its_key_only() {
     let after: Vec<_> = logs.iter().map(fs::read).collect();
     assert_eq!(format!("{before:?}"), format!("{after:?}"));
 
-    // One byte flipped: the log fails to load as tampered, and stays.
+    // One byte flipped: the log fails to load as tampered, so the run is
+    // refused, and the log stays.
     let log = logs.first().cloned().unwrap_or_default();
     let mut bytes = fs::read(&log).unwrap_or_default();
     let middle = bytes.len() / 2;
@@ -229,7 +230,14 @@ fn a_sealed_session_resumes_with_its_key_only() {
     }
     fs::write(&log, &bytes).ok();
     let (app, _) = start(&home, &session, &model, key);
-    assert!(notices(&app).contains(TAMPERED), "{}", notices(&app));
+    assert!(refused(&app));
+    let stores = app.world().resource::<SessionStores>();
+    let read = stores.open(&dir).and_then(|store| Session::read(&*store));
+    let why = read.err().map(|failure| failure.to_string());
+    assert!(
+        why.as_deref().is_some_and(|why| why.contains(TAMPERED)),
+        "{why:?}"
+    );
     drop(app);
     assert_eq!(fs::read(&log).unwrap_or_default(), bytes);
 }
@@ -270,9 +278,8 @@ fn a_plain_session_is_refused_until_migrate_seals_it() {
     let why = refusal(&app, &home, &session);
     assert!(why.contains("rig crypt migrate"), "{why}");
     assert!(refused(&app));
-    // Its plain files, the text log among them, stay in its directory.
-    assert_ne!(app.world().get_resource::<Scratch>(), Some(&Scratch(None)));
     drop(app);
+    // Its plain files, the text log among them, stay in its directory.
     let after: Vec<_> = files(dir.path()).iter().map(fs::read).collect();
     assert_eq!(format!("{before:?}"), format!("{after:?}"));
 

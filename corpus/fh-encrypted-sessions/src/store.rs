@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use argon2::{Algorithm, Argon2, Params, Version};
-use rig_harness::prelude::{JournalStore, Resource};
+use rig_harness::prelude::{Files, Resource, Store};
 use ring::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
 use ring::hmac;
 use ring::rand::{SecureRandom, SystemRandom};
@@ -223,7 +223,7 @@ impl Framed<'_> {
 /// names, and each blob with its name under a name that does not tell its
 /// content hash.
 pub struct CryptStore {
-    inner: Arc<dyn JournalStore>,
+    inner: Arc<dyn Store>,
     crypt: Crypt,
     /// The frames of each framed file, once counted.
     counts: Mutex<HashMap<(bool, String), usize>>,
@@ -231,7 +231,7 @@ pub struct CryptStore {
 
 impl CryptStore {
     /// The session `inner` keeps, sealed with `crypt`.
-    pub fn new(inner: Arc<dyn JournalStore>, crypt: Crypt) -> Self {
+    pub fn new(inner: Arc<dyn Store>, crypt: Crypt) -> Self {
         Self {
             inner,
             crypt,
@@ -302,32 +302,38 @@ impl CryptStore {
     }
 }
 
-impl JournalStore for CryptStore {
-    fn agents(&self) -> io::Result<Vec<String>> {
-        self.inner.agents()
+impl Store for CryptStore {
+    fn logs(&self) -> io::Result<Vec<String>> {
+        self.inner.logs()
     }
 
-    fn read(&self, agent: &str) -> io::Result<Vec<u8>> {
-        self.open(Framed::Log(agent), &self.inner.read(agent)?)
+    fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.open(Framed::Log(name), &self.inner.read_log(name)?)
     }
 
-    fn truncate(&self, agent: &str, len: u64) -> io::Result<()> {
-        let mut plain = self.read(agent)?;
+    fn truncate_log(&self, name: &str, len: u64) -> io::Result<()> {
+        let mut plain = self.read_log(name)?;
         plain.truncate(usize::try_from(len).map_err(io::Error::other)?);
-        let sealed = self.whole(Framed::Log(agent), &plain)?;
-        self.inner.truncate(agent, 0)?;
-        self.inner.append(agent, &sealed)
+        let sealed = self.whole(Framed::Log(name), &plain)?;
+        self.inner.truncate_log(name, 0)?;
+        self.inner.append_log(name, &sealed)
     }
 
-    fn append(&self, agent: &str, bytes: &[u8]) -> io::Result<()> {
+    fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         if bytes.is_empty() {
             return Ok(());
         }
-        let file = Framed::Log(agent);
-        let index = self.count(file, || self.inner.read(agent))?;
-        self.inner.append(agent, &self.frame(file, index, bytes)?)?;
+        let file = Framed::Log(name);
+        let index = self.count(file, || self.inner.read_log(name))?;
+        self.inner
+            .append_log(name, &self.frame(file, index, bytes)?)?;
         self.counts().insert(file.key(), index + 1);
         Ok(())
+    }
+
+    fn remove_log(&self, name: &str) -> io::Result<()> {
+        self.counts().remove(&Framed::Log(name).key());
+        self.inner.remove_log(name)
     }
 
     fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
@@ -355,11 +361,13 @@ impl JournalStore for CryptStore {
             .collect()
     }
 
-    fn remove(&self, agent: &str) -> io::Result<()> {
-        self.counts().remove(&Framed::Log(agent).key());
-        self.inner.remove(agent)
+    fn destroy(&self) -> io::Result<()> {
+        self.counts().clear();
+        self.inner.destroy()
     }
+}
 
+impl Files for CryptStore {
     fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         let sealed = self.whole(Framed::File(name), bytes)?;
         self.inner.write_file(name, &sealed)
@@ -410,9 +418,9 @@ impl Sealing {
     /// # Errors
     ///
     /// When a log cannot be read.
-    pub fn of(store: &dyn JournalStore) -> io::Result<Self> {
-        for agent in store.agents()? {
-            let log = store.read(&agent)?;
+    pub fn of(store: &dyn Store) -> io::Result<Self> {
+        for name in store.logs()? {
+            let log = store.read_log(&name)?;
             if !log.is_empty() {
                 let sealed = log.starts_with(MAGIC);
                 return Ok(if sealed { Self::Sealed } else { Self::Plain });

@@ -27,9 +27,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use rig_cassette::journal::JsonlDirStore;
 use rig_harness::harness_protocol::{Home, SessionDir, secret_variable};
 use rig_harness::prelude::*;
+use rig_harness::rig_memory::{DirStore, LoadError};
 use serde::Deserialize;
 
 mod reseal;
@@ -164,18 +164,17 @@ impl Vault {
     }
 
     /// The store of the session in `dir`.
-    fn open(&self, dir: &SessionDir) -> io::Result<Arc<dyn JournalStore>> {
+    fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, LoadError> {
         let config = self.0.config.clone().map_err(io::Error::other)?;
-        let plain = Arc::new(JsonlDirStore::new(dir.path()).with_plain(&SessionDir::PLAIN_FILES));
+        let plain = Arc::new(DirStore::open(dir.path())?);
         let sealed = match Sealing::of(&*plain)? {
             Sealing::Sealed => true,
             Sealing::Empty => self.0.encrypted,
             Sealing::Plain => {
                 let project = dir.working_directory();
                 if project.map_or(self.0.encrypted, |project| config.applies_to(&project)) {
-                    return Err(io::Error::other(
-                        "this session is plain; encrypt it with `rig crypt migrate` first",
-                    ));
+                    let why = "this session is plain; encrypt it with `rig crypt migrate` first";
+                    return Err(io::Error::other(why).into());
                 }
                 false
             }
@@ -215,7 +214,7 @@ impl Plugin for EncryptedSessionsPlugin {
         let config = CryptConfig::read(&home);
         let sealing = world
             .get_resource::<SessionPaths>()
-            .and_then(|paths| Sealing::of(&JsonlDirStore::new(paths.path())).ok());
+            .and_then(|paths| Sealing::of(&DirStore::open(paths.path()).ok()?).ok());
         let encrypted = sealing == Some(Sealing::Sealed)
             || config
                 .as_ref()
