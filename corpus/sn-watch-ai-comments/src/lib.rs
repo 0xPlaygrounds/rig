@@ -12,10 +12,11 @@
 //! [`FilesChanged`] is a checkpoint: what changed while it ran, the user's
 //! saves included, not who changed it. So it is not taken as rig's; the
 //! clean-up at the turn's end, and the queued file read again before its
-//! turn starts, keep the agent's own `shell` writes from triggering. A
-//! question's turn is question only: its calls that may change anything are
-//! refused. When a turn answers, its file's trigger comments and the context
-//! comments it was given are taken out of the files. The status line says
+//! turn starts, keep the agent's own `shell` writes in a watch turn from
+//! triggering. A question's turn is question only: its calls that may change
+//! anything are refused. When a change's turn ends, or a question's turn
+//! answers, its file's trigger comments and the context comments it was
+//! given are taken out of the files. The status line says
 //! `watching` and how many files wait. The watch keeps a headless run going
 //! ([`KeepRunning`]), so `rig --watch --print` runs until interrupted and
 //! rig-print prints each answer.
@@ -451,8 +452,9 @@ fn note_writes(
     }
 }
 
-/// Once a job's turn answered, takes its file's triggers and its context
-/// comments out of the files.
+/// Once a job's turn ended, however it ended, takes its file's triggers and
+/// its context comments out of the files, so they never fire twice; a
+/// question's only once it is answered.
 fn clean_up(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &JobTurn)>,
@@ -460,9 +462,12 @@ fn clean_up(
     workspace: Res<ProjectWorkspace>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((TurnOutcome::Answered(_), JobTurn(job))) = turns.get(settled.entity) else {
+    let Ok((outcome, JobTurn(job))) = turns.get(settled.entity) else {
         return;
     };
+    if job.question && !matches!(outcome, TurnOutcome::Answered(_)) {
+        return;
+    }
     let workspace = &*workspace.0;
     let files: BTreeSet<&PathBuf> = std::iter::once(&job.file)
         .chain(job.context.iter().map(|(path, _)| path))
