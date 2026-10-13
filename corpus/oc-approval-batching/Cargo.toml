@@ -13,10 +13,16 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The dialog is a panel of the terminal view.
+rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# `approve.toml`; already in Cargo.lock.
+toml = "1"
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The real `read` and `shell` tools whose calls the plugin holds.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
