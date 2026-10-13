@@ -5,7 +5,7 @@ use std::fs::{self, File, TryLockError};
 use std::io::ErrorKind;
 use std::path::Path;
 
-use rig::harness_protocol::{Home, RunDir, SessionId};
+use rig::harness_protocol::{Home, RunDir, SessionDir, SessionId};
 
 use super::Result;
 
@@ -55,9 +55,10 @@ pub fn hold_run(home: &Home) -> Result<Run> {
     Ok(Run { dir, _lock: lock })
 }
 
-/// Removes the staged and trial builds of launchers that are gone, such as
-/// one killed with its terminal, and their run directories but the logs
-/// of failed runs. Call it holding [`lock`].
+/// Removes what launchers that are gone, such as one killed with its
+/// terminal, left: their staged and trial builds, their run directories
+/// but the logs of failed runs, and the directories of their sessions that
+/// saved nothing. Call it holding [`lock`].
 pub fn sweep(home: &Home) -> Result<()> {
     if let Ok(entries) = fs::read_dir(home.bin()) {
         for entry in entries {
@@ -78,6 +79,18 @@ pub fn sweep(home: &Home) -> Result<()> {
             let run = home.run(launcher);
             if gone(&run.lock()) && !run.log().exists() {
                 fs::remove_dir_all(run.path())?;
+            }
+        }
+    }
+    if let Ok(entries) = fs::read_dir(home.sessions()) {
+        for entry in entries {
+            let session = SessionDir::at(entry?.path());
+            // Only a launcher's own session: a fork or an import being
+            // written has no launcher lock, and a session being deleted
+            // is finished by an agent, which can reach its store.
+            let lock = session.launcher_lock();
+            if lock.exists() && gone(&lock) && !session.is_saved() && !session.is_deleting() {
+                fs::remove_dir_all(session.path())?;
             }
         }
     }
@@ -120,3 +133,6 @@ fn lock_file(path: &Path, create: bool) -> std::io::Result<File> {
         .truncate(false)
         .open(path)
 }
+
+#[cfg(test)]
+mod tests;
