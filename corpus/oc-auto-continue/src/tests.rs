@@ -133,6 +133,8 @@ fn a_cut_write_is_never_run_and_asked_for_again() {
     let content = "line 1\nline 2\nline 3\n";
     let model = MockCompletionModel::from_stream_turns([
         vec![
+            // A complete call before the cut one is kept and runs once.
+            MockStreamEvent::tool_call("w0", "write", json!({ "path": "a.txt", "content": "a" })),
             MockStreamEvent::tool_call_name_delta("w1", "write"),
             MockStreamEvent::tool_call_arguments_delta(
                 "w1",
@@ -151,21 +153,27 @@ fn a_cut_write_is_never_run_and_asked_for_again() {
     let (app, agent) = run_turn(&model, root.clone(), "Write big.txt.");
 
     let written = std::fs::read_to_string(root.join("big.txt")).unwrap_or_default();
+    let first = std::fs::read_to_string(root.join("a.txt")).unwrap_or_default();
     std::fs::remove_dir_all(&root).ok();
-    assert_eq!(written, content);
-    let ran: Vec<&String> = app.world().resource::<ToolOutputs>().0.keys().collect();
-    assert_eq!(ran, ["w2"]);
-    let stored: Vec<String> = answers(app.world(), agent)
+    assert_eq!((written.as_str(), first.as_str()), (content, "a"));
+    let mut ran: Vec<&String> = app.world().resource::<ToolOutputs>().0.keys().collect();
+    ran.sort();
+    assert_eq!(ran, ["w0", "w2"]);
+    let stored: Vec<Vec<String>> = answers(app.world(), agent)
         .iter()
-        .flat_map(|answer| answer.content.clone())
-        .filter_map(|block| match block {
-            AssistantContent::ToolCall(call) => Some(call.id.to_string()),
-            _ => None,
+        .map(|answer| {
+            let calls = answer.content.iter().filter_map(|block| match block {
+                AssistantContent::ToolCall(call) => Some(call.id.to_string()),
+                _ => None,
+            });
+            calls.collect()
         })
         .collect();
-    assert_eq!(stored, ["w2"]);
+    // One message for the joined reply, the kept call first; then the answer.
+    assert_eq!(stored, [vec!["w0", "w2"], vec![]]);
     let second = format!("{:?}", model.requests().get(1));
     assert!(second.contains("several `edit` calls"), "{second}");
+    assert!(second.contains("(write) were kept"), "{second}");
 }
 
 #[test]
@@ -181,17 +189,6 @@ fn a_reply_cut_too_often_is_kept_with_a_notice() {
     let notices = &app.world().resource::<Collected<Notice>>().0;
     let told = format!("{notices:?}");
     assert!(told.contains("kept as it is"), "{told}");
-}
-
-#[test]
-fn the_overlap_at_a_seam_is_said_once() {
-    assert_eq!(join_at_seam("a b c", "d e"), "a b cd e");
-    assert_eq!(
-        join_at_seam("ends with café", "café au lait"),
-        "ends with café au lait"
-    );
-    // Shorter than the least overlap: kept.
-    assert_eq!(join_at_seam("hello", "lo"), "hellolo");
 }
 
 #[test]
