@@ -38,7 +38,8 @@ use crate::workspace::ProjectWorkspace;
 /// Where one call of a tool registered with
 /// [`add_tool_per_call`](AppPerCallExt::add_tool_per_call) works.
 pub struct Place {
-    /// The app's workspace ([`ProjectWorkspace`]).
+    /// The app's workspace ([`ProjectWorkspace`]), or an overlay of it for
+    /// a call that is previewed ([`Preview`](crate::preview::Preview)).
     pub workspace: Arc<dyn Workspace>,
     /// The calling agent's [`WorkDir`], else the [`ProjectRoot`]: relative
     /// paths resolve and commands start here.
@@ -61,7 +62,9 @@ pub trait AppPerCallExt {
     /// [`PrepareSystems::Compose`], so a plugin that wraps or replaces a
     /// call's [`CallHandler`] in [`PrepareSystems::Edit`] gets that one. With
     /// `live`, each call gets a [`CallOutput`] and its place the [`Live`]
-    /// that fills it.
+    /// that fills it. A call of the tool can be previewed
+    /// ([`Preview`](crate::preview::Preview)), as `make` builds it on an
+    /// overlay of the workspace.
     fn add_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
@@ -107,9 +110,15 @@ struct Made {
 
 /// The tools registered per call.
 #[derive(Resource, Default)]
-struct PerCall(Vec<Made>);
+pub(crate) struct PerCall(Vec<Made>);
 
 impl PerCall {
+    /// The handler of a call of `tool` built for `place`, when `tool` is
+    /// registered per call.
+    pub(crate) fn build(&self, tool: &str, place: Place) -> Option<Handler> {
+        self.made(tool).map(|made| (made.make)(place))
+    }
+
     fn made(&self, tool: &str) -> Option<&Made> {
         self.0.iter().find(|made| made.name == tool)
     }
@@ -117,7 +126,11 @@ impl PerCall {
 
 /// The base of a call of `agent`'s, and whether it confines the call: its
 /// [`WorkDir`], else the [`ProjectRoot`].
-fn base(agent: Option<Entity>, dirs: &Query<&WorkDir>, root: &ProjectRoot) -> (PathBuf, bool) {
+pub(crate) fn base(
+    agent: Option<Entity>,
+    dirs: &Query<&WorkDir>,
+    root: &ProjectRoot,
+) -> (PathBuf, bool) {
     match agent.and_then(|agent| dirs.get(agent).ok()) {
         Some(dir) => (dir.0.clone(), true),
         None => (root.0.clone(), false),

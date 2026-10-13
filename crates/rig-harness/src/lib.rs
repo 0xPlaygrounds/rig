@@ -66,6 +66,7 @@ mod load;
 pub mod note;
 pub mod per_call;
 pub mod pick;
+pub mod preview;
 pub mod primary;
 pub mod progress;
 pub mod secrets;
@@ -143,6 +144,7 @@ pub mod prelude {
     pub use crate::note::Note;
     pub use crate::per_call::{AppPerCallExt, Place};
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
+    pub use crate::preview::{Preview, Previewed};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
@@ -163,8 +165,9 @@ pub mod prelude {
 /// session logs, the launcher protocol with the plugins' options and
 /// fronts ([`host`]), slash commands ([`commands`]), why the app exits,
 /// wall-clock wakes ([`clock`]),
-/// file watches ([`watch`]), questions for the user ([`ask`]) and pickers
-/// with the agent the user looks at ([`pick`]).
+/// file watches ([`watch`]), questions for the user ([`ask`]), pickers
+/// with the agent the user looks at ([`pick`]) and previews of what a tool
+/// call would leave on disk ([`preview`]).
 /// Everything else is a plugin `plugins.toml` lists, which can leave it
 /// out.
 pub struct RigHarnessPlugins;
@@ -184,6 +187,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
+            .add(preview::PreviewPlugin)
     }
 }
 
