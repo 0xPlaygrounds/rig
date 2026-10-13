@@ -224,9 +224,10 @@ Ask it why the build failed and it can read the log, fix the cause, and
 reload.
 
 The session is written as it happens. Each agent, subagents included, has an
-append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
-usage and compactions; images are stored once in `blobs/`, and `meta.json`
-caches what `/resume` lists. A tool call that may change something starts
+append-only log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings,
+usage and compactions; images are stored once in `blobs/`, and `files/meta.json`
+caches what `/resume` lists. A session saved by an older rig, in another
+format, is refused when resumed, and nothing of it is changed. A tool call that may change something starts
 only once the reply that asked for it is on disk. After a crash, a closed
 terminal or a `/quit` mid-turn, resuming the session reads the logs back and settles what
 was left half done: read-only tool calls run again, other unfinished tool
@@ -318,7 +319,7 @@ Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
-the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl`,
+the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, `files/` (`meta.json`, the effect log `effects.jsonl`, plugins' files),
 `spill/` (the whole output of a `shell` call that was cut, which the model reads
 by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a

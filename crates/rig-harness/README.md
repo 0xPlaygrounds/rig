@@ -16,8 +16,9 @@ changed plugins and restarts in the same session. The
   relaunched, and the few services every plugin shares. `HeadlessPlugins`
   is Bevy's `MinimalPlugins` with the log, a clean exit on signals and a
   loop that sleeps until there is work or a wall-clock `WakeAt`;
-  `RigHarnessPlugins` adds the session (its store, opened by the
-  replaceable `SessionStores`, the plain `Scratch` files, forking and
+  `RigHarnessPlugins` adds the session (its rig-memory store, opened by
+  the replaceable `SessionStores`, which refuses a session an older rig
+  saved without changing it, the plain `Scratch` files, forking and
   deleting sessions), the kernel, the launcher protocol with how the agent
   was started (`Invoked`: its arguments, the plugins' own options and
   command, and whether stdin is a terminal), the secrets plugins ask the

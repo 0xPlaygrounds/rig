@@ -15,6 +15,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ## Features
 - Portable contracts for agent runtimes, including completions, messages, conversations, and tools
+- One conversation type, `conversation::Conversation`: each message an entry with a `MessageId` that survives edits and, when the user or the model did not write it, an `Author`; asides that never reach a model; why the last user message is unanswered (`Halt`); and every edit kept as a `Change` that a log replays into the same value. `conversation::pairing` keeps each tool call paired with its result. Windows, compaction and saving conversations are the `rig-memory` crate's.
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - Built-in providers selectable as data: `Catalog::connect("anthropic/claude-opus-5-5")` builds a model from a `vendor/model` reference with the key from the environment, in the protocol family the model catalog names, and the model encodes and prices with that catalog's facts. `providers::registry` references name a model or carry a whole typed configuration, and both round-trip through serde without a credential. Model references discard embedded credentials and reject empty identifiers; a configuration's `id()` returns a catalog selection only when its dialect name is registered. Providers outside this catalog can use a `Model` and `ModelAdapter` directly.

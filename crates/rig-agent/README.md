@@ -193,8 +193,8 @@ answer. Streaming deltas are provisional, and `ModelTurnRetried` tells consumers
 to discard a rejected turn.
 
 Keep hook-private state in the hook, keyed by run ID when shared across runs.
-Use `Scratchpad` for transient cross-hook state and run entries for state that
-must serialize or follow forks. Full snapshots read through `last_entry` avoid
+Use `Scratchpad` for transient cross-hook state and run entries (rig-core
+`conversation::Aside`s) for state that must serialize or follow forks. Full snapshots read through `last_entry` avoid
 custom replay folds; event-shaped state can instead fold `entries`. Entries
 appended during settlement do not enter the finished run. Context-bound handles
 use delegation rather than `Deref` so hooks cannot clone an owned dispatch

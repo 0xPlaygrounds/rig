@@ -170,7 +170,7 @@ pub fn scripted_models<'a>(
 pub struct Collected<M>(pub Vec<M>);
 
 /// Keeps every message `M` the app writes, such as [`Notice`] or
-/// [`Recorded`], in [`Collected<M>`], read in `Last`.
+/// [`EffectRecorded`], in [`Collected<M>`], read in `Last`.
 pub fn collect<M: Message + Clone>(app: &mut App) -> &mut App {
     let keep = |mut read: MessageReader<M>, mut kept: ResMut<Collected<M>>| {
         kept.0.extend(read.read().cloned());

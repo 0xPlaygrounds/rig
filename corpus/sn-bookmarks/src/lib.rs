@@ -5,7 +5,7 @@
 //! `/bookmark rm <label>` takes one away, and `/bookmarks` lists them in a
 //! picker, where choosing one scrolls the terminal view to the message and
 //! selects it. The bookmarks are a saved resource ([`Bookmarks`]), so they
-//! come back on resume; each is drawn as a transcript entry after its
+//! come back on resume; each is drawn as a transcript note after its
 //! message, which no model sees. A fork gets every bookmark of its parent
 //! that points at a message made before the fork point. A bookmark whose
 //! message a condensing took out opens the saved history around it, read

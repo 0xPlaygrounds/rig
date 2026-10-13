@@ -385,7 +385,7 @@ fn answered(
 }
 
 /// Closes the side conversation: the side agent is retired and the panel
-/// goes; its transcript entry stays.
+/// goes; its note in the transcript stays.
 fn close(chat: &mut SideChat, commands: &mut Commands) {
     if let Some(side) = chat.agent.take() {
         commands.trigger(Retire { entity: side });
