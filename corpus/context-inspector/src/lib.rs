@@ -488,7 +488,11 @@ fn report(
             changes.extend(prompt_changes(built, sent));
         }
         changes.extend(tool_changes(&built.request.tools, tools));
-        changes.extend(message_changes(split(&built.request).1, messages));
+        let built_messages = match &built.history {
+            Some(history) => history.messages(),
+            None => split(&built.request).1,
+        };
+        changes.extend(message_changes(built_messages, messages));
     }
     lines.push(match (&last.built, changes.is_empty()) {
         (None, _) => "Changes by plugins: unknown (the kernel did not build it).".to_owned(),

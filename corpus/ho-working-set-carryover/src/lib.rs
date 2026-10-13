@@ -228,12 +228,16 @@ fn carry_over(
         let entry = Entry::new(block.clone()).by(Author::plugin("working-set"));
         conversation.splice(at + 1..at + 1, [entry], Author::plugin("working-set"));
         for (mut call, _) in calls.iter_mut().filter(|(_, to)| to.0 == agent) {
-            let history = &mut call.request.chat_history;
+            let Some(history) = &mut call.history else {
+                continue;
+            };
             let found = history
+                .messages()
                 .iter()
                 .position(|message| Some(message) == summarized.as_ref());
             if let Some(found) = found {
-                history.insert(found + 1, block.clone());
+                let entry = Entry::new(block.clone()).by(Author::plugin("working-set"));
+                history.splice(found + 1..found + 1, [entry], Author::plugin("working-set"));
             }
         }
         set.read.clear();

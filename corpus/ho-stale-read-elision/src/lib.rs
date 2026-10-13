@@ -248,8 +248,30 @@ fn elide(
         let before = conversation.messages().get(..first);
         let eligible = answered(before.unwrap_or_default());
         let dir = dir.map(|WorkDir(dir)| dir.as_path());
-        let elided = elide_stale(&mut call.request.chat_history, &eligible, dir);
+        let Some(history) = &mut call.history else {
+            continue;
+        };
+        let mut messages = history.messages().to_vec();
+        let elided = elide_stale(&mut messages, &eligible, dir);
+        replace_changed(history, messages, Author::plugin("stale-read-elision"));
         commands.entity(agent).try_insert(elided);
+    }
+}
+
+/// Puts each of `messages` that differs from `history`'s message at its
+/// index in its place, as an edit by `by` that keeps the entry's id.
+fn replace_changed(
+    history: &mut rig_harness::rig_core::conversation::Conversation,
+    messages: Vec<Message>,
+    by: Author,
+) {
+    for (at, message) in messages.into_iter().enumerate() {
+        if let Some(mut entry) = history.entry(at)
+            && entry.message != message
+        {
+            entry.message = message;
+            history.splice(at..=at, [entry], by.clone());
+        }
     }
 }
 

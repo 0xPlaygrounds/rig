@@ -1866,8 +1866,10 @@ fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
     let mut app = app();
     let ask = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<BuildFrom>)>| {
         for mut call in &mut calls {
-            let question = Message::user("And in one word?");
-            call.request.chat_history.push(question);
+            let question = Entry::new(Message::user("And in one word?"));
+            if let Some(history) = &mut call.history {
+                history.push(question.by(Author::plugin("side")));
+            }
         }
     };
     app.init_resource::<SideAnswers>()

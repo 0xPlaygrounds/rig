@@ -337,8 +337,10 @@ fn inject(
             .and_then(|&CallOf(turn)| turns.get(turn).ok())
             .map(|touched| touched.0.as_slice())
             .unwrap_or_default();
-        let messages = &mut call.request.chat_history;
-        let said = latest_user_text(messages)
+        let Some(history) = &mut call.history else {
+            continue;
+        };
+        let said = latest_user_text(history.messages())
             .map(|text| words(&text))
             .unwrap_or_default();
         let chosen: Vec<&Example> = library
@@ -351,14 +353,18 @@ fn inject(
             let names = chosen.iter().map(|example| example.name.clone()).collect();
             sent.set_if_neq(SentExamples(names));
         }
-        let after_prompt = messages
+        let after_prompt = history
+            .messages()
             .iter()
             .take_while(|message| matches!(message, Message::System { .. }))
             .count();
+        let by = Author::plugin("few-shot-examples");
         let examples = chosen
             .iter()
-            .flat_map(|example| example.messages.iter().cloned());
-        messages.splice(after_prompt..after_prompt, examples);
+            .flat_map(|example| example.messages.iter().cloned())
+            .map(|message| Entry::new(message).by(by.clone()))
+            .collect::<Vec<_>>();
+        history.splice(after_prompt..after_prompt, examples, by);
     }
 }
 

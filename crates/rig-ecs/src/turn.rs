@@ -118,8 +118,9 @@ impl Backoff {
 /// none) and sends it streamed, recording on the call where it went
 /// ([`SentTo`]). A [`TurnCall`] or [`BuildFrom`] has its
 /// request built by the kernel when it is admitted, with its system prompt
-/// in parts beside it ([`ModelRequest::prompt`]); a plugin's own call,
-/// such as a summary, brings its own with [`ModelRequest::new`].
+/// in parts ([`ModelRequest::prompt`]) and its conversation
+/// ([`ModelRequest::history`]) beside it; a plugin's own call, such as a
+/// summary, brings its own with [`ModelRequest::new`].
 #[derive(Component, Reflect, Clone)]
 #[reflect(opaque, Component, Clone)]
 #[require(Effect, Adapters)]
@@ -134,6 +135,18 @@ pub struct ModelRequest {
     /// the tools the request then carries (its `tool_rules` section); `None`
     /// for a request a plugin brought whole, and from Start on.
     pub prompt: Option<completion::SystemPrompt>,
+    /// The messages of a request the kernel built, until Start puts them
+    /// in the request (after the system prompt), in place of what
+    /// `request.chat_history` holds: a view of its agent's conversation
+    /// (rig-core's `Conversation::view`), whose edits are never saved and
+    /// never reach the agent. A Prepare system edits it as a conversation,
+    /// so each edit names its author and the entries it kept keep their
+    /// ids: `history.splice(0..0, examples, Author::plugin("few-shot"))`.
+    /// Its [`unsaved`](rig_core::conversation::Conversation::unsaved)
+    /// changes are who changed the request, and how, until Start; an id
+    /// of an entry a plugin added belongs to this request alone. `None`
+    /// for a request a plugin brought whole, and from Start on.
+    pub history: Option<rig_core::conversation::Conversation>,
 }
 
 impl ModelRequest {
@@ -143,6 +156,7 @@ impl ModelRequest {
             request,
             connection: None,
             prompt: None,
+            history: None,
         }
     }
 
@@ -655,26 +669,26 @@ pub(crate) fn build_requests(
             let into = (turn, &mut commands);
             deliver(agent, spec, waiting, conversation, &mut notices, into);
         }
-        let messages = builder.conversation.messages().to_vec();
-        if call.turn_call && messages.is_empty() {
+        if call.turn_call && builder.conversation.messages().is_empty() {
             let why = ErrorReport::new(ErrorKind::Internal, "The conversation is empty.");
             commands
                 .entity(call.entity)
                 .try_insert_if_new(Outcome(Err(why)));
             continue;
         }
-        let model = build((agent, &builder), spec, &parts, messages);
+        let history = builder.conversation.view();
+        let model = build((agent, &builder), spec, &parts, history);
         commands.entity(call.entity).try_insert(model);
     }
 }
 
-/// The request `agent`, as `builder` reads it, sends with `messages` to the
+/// The request `agent`, as `builder` reads it, sends with `history` to the
 /// model `spec`, if it has one.
 fn build(
     (agent, builder): (Entity, &BuilderItem),
     spec: Option<&rig_core::catalog::ModelSpec>,
     parts: &Parts,
-    messages: Vec<Message>,
+    history: rig_core::conversation::Conversation,
 ) -> ModelRequest {
     // Offered by access alone: Start takes them away from a final model
     // that calls none.
@@ -714,13 +728,14 @@ fn build(
         },
         |spec| spec.default_options(effort),
     );
-    let request = CompletionRequest::from(messages)
+    let request = CompletionRequest::from(Vec::new())
         .tools(offered.iter().map(|(def, _)| def.0.clone()).collect())
         .options(options.cache_key(&builder.id.0));
     ModelRequest {
         request,
         connection: builder.connection.cloned(),
         prompt: Some(prompt),
+        history: Some(history),
     }
 }
 
@@ -735,8 +750,9 @@ pub struct ModelStarts<'w, 's> {
 
 impl ModelStarts<'_, '_> {
     /// The connection `model`, a call for `agent`, goes to, its `adapters`
-    /// applied, and its request as Start sends it: tools taken off a model
-    /// that calls none, options it does not take left out, and the
+    /// applied, and its request as Start sends it: its
+    /// [`history`](ModelRequest::history)'s messages, tools taken off a
+    /// model that calls none, options it does not take left out, and the
     /// [`prompt`](ModelRequest::prompt) in front with the rules of the
     /// tools it carries; and the options it leaves out, as [`Fitted`] will
     /// say. Refused without a model.
@@ -775,7 +791,7 @@ impl ModelStarts<'_, '_> {
 
     /// Makes `model`'s request the one [`Self::sent`] says, on the
     /// connection it returns with the options fitting left out; its prompt
-    /// stays in parts unless `send`.
+    /// and history stay beside it unless `send`.
     pub(crate) fn start(
         &self,
         model: &mut ModelRequest,
@@ -792,6 +808,9 @@ impl ModelStarts<'_, '_> {
         }
         let spec = &connection.spec;
         let request = &mut model.request;
+        if send && let Some(history) = model.history.take() {
+            request.chat_history = history.messages().to_vec();
+        }
         if !spec.tools {
             request.tools.clear();
         }

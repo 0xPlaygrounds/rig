@@ -766,13 +766,18 @@ impl TurnContext {
             return;
         };
         let typed = |item: &UserContent| matches!(item, UserContent::Text(typed) if typed.text.ends_with(&self.key));
-        let mut messages = request.request.chat_history.iter_mut().rev();
-        let found = messages.find_map(|message| match message {
-            message::Message::User { content } if content.iter().any(typed) => Some(content),
-            _ => None,
+        let Some(history) = &mut request.history else {
+            return;
+        };
+        let found = history.messages().iter().rposition(|message| {
+            matches!(message, message::Message::User { content } if content.iter().any(typed))
         });
-        if let Some(content) = found {
+        let entry = found.and_then(|at| Some((at, history.entry(at)?)));
+        if let Some((at, mut entry)) = entry
+            && let message::Message::User { content } = &mut entry.message
+        {
             content.push(UserContent::text(text.clone()));
+            history.splice(at..=at, [entry], Author::plugin("code-search-index"));
         }
     }
 }

@@ -281,10 +281,11 @@ fn fence(
         if quarantine.untrusted.is_empty() {
             continue;
         }
-        for message in &mut call.request.chat_history {
+        let fence = |message: &mut Message| {
             let Message::User { content } = message else {
-                continue;
+                return false;
             };
+            let mut fenced_any = false;
             for item in content {
                 let UserContent::ToolResult(result) = item else {
                     continue;
@@ -296,8 +297,25 @@ fn fence(
                 for part in &mut result.content {
                     if let ToolResultContent::Text(text) = part {
                         text.text = fenced(&text.text, &nonce.0, mark, &rules);
+                        fenced_any = true;
                     }
                 }
+            }
+            fenced_any
+        };
+        // A request the kernel built is edited as its conversation, by
+        // this plugin; one a plugin brought, as its messages.
+        let Some(history) = &mut call.history else {
+            call.request.chat_history.iter_mut().for_each(|message| {
+                fence(message);
+            });
+            continue;
+        };
+        for at in 0..history.messages().len() {
+            if let Some(mut entry) = history.entry(at)
+                && fence(&mut entry.message)
+            {
+                history.splice(at..=at, [entry], Author::plugin("untrusted-quarantine"));
             }
         }
     }

@@ -362,14 +362,23 @@ fn compact_near_the_window(
         let (policy, spec) = (&policy.0, &*connection.spec);
         let sent = policy.estimate(&sent.chat_history);
         let used = last.context().unwrap_or(0).max(sent);
-        let messages = &mut model.request.chat_history;
         if !policy.over_threshold(used, spec) {
             continue;
         }
         let cleared = compacting.clear_old_outputs(policy);
         let left = used.saturating_sub(cleared.tokens as u64);
         if cleared.results > 0 {
-            policy.clearing.clear(messages);
+            // The request's copy too, as cleared by compaction.
+            match &mut model.history {
+                Some(history) => {
+                    policy
+                        .clearing
+                        .clear_conversation(history, summary_author());
+                }
+                None => {
+                    policy.clearing.clear(&mut model.request.chat_history);
+                }
+            }
             *last = LastUsage(Some(Usage::new().total_tokens(left)));
             let nears = "The conversation nears the model's context window";
             notices.write(cleared_notice(agent, nears, &cleared, ""));

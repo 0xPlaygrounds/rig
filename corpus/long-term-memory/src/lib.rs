@@ -423,25 +423,31 @@ fn recall(
                 recalled
             }
         };
-        let request = &mut call.request;
-        let Some((at, recalled)) = request
-            .chat_history
+        let Some(history) = &mut call.history else {
+            continue;
+        };
+        let Some((at, recalled)) = history
+            .messages()
             .iter()
             .rposition(|message| message == asked)
             .zip(recalled)
         else {
             continue;
         };
-        if let Some(message::Message::User { content }) = request.chat_history.get_mut(at) {
+        if let Some(mut entry) = history.entry(at)
+            && let message::Message::User { content } = &mut entry.message
+        {
             content.push(UserContent::text(recalled));
+            history.splice(at..=at, [entry], Author::plugin("long-term-memory"));
             // What comes before the message is the stable prefix to cache.
-            let turns = request
-                .chat_history
+            let turns = history
+                .messages()
                 .iter()
                 .take(at)
                 .filter(|message| !matches!(message, message::Message::System { .. }))
                 .count();
             let point = CachePoint::Messages(turns);
+            let request = &mut call.request;
             if !request.cache_points.contains(&point) {
                 request.cache_points.push(point);
             }

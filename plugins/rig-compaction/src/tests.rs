@@ -135,8 +135,15 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     // A second Prepare system on every turn's request, beside the plugin's.
     let inject = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
         for mut call in &mut calls {
-            if let Some(Message::User { content }) = call.request.chat_history.last_mut() {
+            let Some(history) = &mut call.history else {
+                continue;
+            };
+            let last = history.messages().len().saturating_sub(1);
+            if let Some(mut entry) = history.entry(last)
+                && let Message::User { content } = &mut entry.message
+            {
                 content.push(UserContent::text(INJECTED));
+                history.splice(last.., [entry], Author::plugin("inject"));
             }
         }
     };

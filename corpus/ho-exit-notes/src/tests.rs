@@ -118,6 +118,15 @@ fn quitting_writes_the_summary_and_the_changed_files() {
     });
     assert!(!summarized, "{conversation:#?}");
     assert_eq!(conversation.len(), 4, "{conversation:#?}");
+    // The summary call asked for the note last.
+    let requests = model.requests();
+    let asked = requests
+        .last()
+        .and_then(|request| request.chat_history.last());
+    assert!(
+        asked.is_some_and(|asked| format!("{asked:?}").contains("The session ends here")),
+        "{asked:?}"
+    );
     std::fs::remove_dir_all(root).ok();
 }
 

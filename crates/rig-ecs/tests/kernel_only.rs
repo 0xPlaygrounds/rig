@@ -563,3 +563,79 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
         .collect();
     assert_eq!(sent, ["hello", "/echo typed"]);
 }
+
+/// What Gate read of each turn request's history: who changed it, and
+/// whether it was a splice at the start.
+#[derive(Resource, Default)]
+struct Attributed(Vec<(Option<Author>, bool)>);
+
+/// A Prepare edit of a request is attributed to its plugin, goes to the
+/// model after the system prompt, and never reaches the conversation or
+/// its log.
+#[test]
+fn a_prepare_edit_of_a_request_is_attributed_and_never_saved() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = kernel(&store);
+    let note = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            if let Some(history) = &mut call.history {
+                let entry = Entry::new(Message::user("Be brief.")).by(Author::plugin("x"));
+                history.splice(0..0, [entry], Author::plugin("x"));
+            }
+        }
+    };
+    let read = |calls: Query<&ModelRequest, (Undecided, ModelCalls)>,
+                mut seen: ResMut<Attributed>| {
+        for call in &calls {
+            let changes = call.history.iter().flat_map(|history| history.unsaved());
+            seen.0.extend(changes.map(|change| {
+                let at_start = matches!(change.change, Change::Splice { from: 0, to: 0, .. });
+                (change.by.clone(), at_start)
+            }));
+        }
+    };
+    app.init_resource::<Attributed>().add_systems(
+        AgentPass,
+        (note.in_set(PrepareSystems::Edit), read.in_set(Stage::Gate)),
+    );
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("5"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let Some(agent) = connected(&mut app, &model) else {
+        return;
+    };
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(SystemPrompt("You add.".into()));
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, a_turn_ended);
+    let seen = &app.world().resource::<Attributed>().0;
+    assert_eq!(seen, &[(Some(Author::plugin("x")), true)]);
+    let sent = model.requests();
+    let sent = sent.first().map(|request| request.chat_history.as_slice());
+    // The model's wire joins the two user messages.
+    let asked = [
+        Message::system("You add."),
+        Message::User {
+            content: vec![
+                UserContent::text("Be brief."),
+                UserContent::text("What is 2 + 3?"),
+            ],
+        },
+    ];
+    assert_eq!(sent, Some(asked.as_slice()));
+    // Neither the conversation nor its log has the plugin's entry.
+    let by_x = |conversation: &rig_core::conversation::Conversation| {
+        let mut entries = conversation.entries();
+        entries.any(|entry| entry.author == Some(&Author::plugin("x")))
+    };
+    let kept = app.world().get::<Conversation>(agent);
+    assert!(kept.is_some_and(|kept| kept.messages().len() == 2 && !by_x(kept)));
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let saved = Session::read(&store).map(|session| session.agents);
+    assert!(saved.is_ok_and(
+        |agents| !agents.is_empty() && agents.iter().all(|agent| !by_x(&agent.conversation))
+    ),);
+}
