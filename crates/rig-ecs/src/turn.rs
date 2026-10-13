@@ -64,6 +64,7 @@ use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
 use super::journal::{Committed, SessionLog, save_conversation};
 use super::model::{Connection, Effort};
 use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
+use super::restore::{commit_results, mark_settled};
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
     SupersededBy, Waiting, cancel, failed_in, release,
@@ -456,7 +457,7 @@ pub(crate) fn on_interrupt(
         .map(|(reply, calls)| reply_calls(reply, calls, &replies));
     let stopped = ToolResult::failed(ToolExecutionError::other(why.clone()));
     if let Some(results) = reply_results(reply.unwrap_or_default(), Some(&stopped)) {
-        conversation.push(results);
+        commit_results(&mut conversation, results);
     }
     conversation.halt(Halt::Stopped);
     let conversation = conversation.bypass_change_detection();
@@ -558,7 +559,7 @@ fn log_answered_results(
         if let Ok(mut conversation) = agents.get_mut(agent)
             && let Some(results) = results
         {
-            conversation.push(results);
+            commit_results(&mut conversation, results);
         }
     }
 }
@@ -1125,7 +1126,7 @@ pub(crate) fn commit_turn_calls(
                     }
                     (Next::Run(calls), Some(why)) => {
                         let results = close_pending_with(&calls, &format!("not run: {why}"));
-                        answered.conversation.push(results);
+                        commit_results(&mut answered.conversation, results);
                     }
                     (Next::Call, Some(_)) => {}
                 }
@@ -1215,7 +1216,7 @@ fn commit_reply(
         // Every call in the history gets a result, though none ran.
         if !tool_calls.is_empty() {
             let results = close_pending_with(&tool_calls, &format!("not run: {failure}"));
-            answered.conversation.push(results);
+            commit_results(&mut answered.conversation, results);
         }
         let ending = Ending {
             notice: format!("The turn failed: {failure}."),
@@ -1381,7 +1382,8 @@ pub(crate) fn wait_in_order(
 /// Once every call of a turn's running reply settled, appends their
 /// results in call order and spawns the turn's next [`TurnCall`], unless
 /// the turn is failed or stopped, in [`Stage::Commit`], after the kernel
-/// settled that pass's effects.
+/// settled that pass's effects. Until then, the mark of each call that
+/// settled says its result, for a restart.
 pub(crate) fn commit_replies(
     mut turns: Query<(Entity, &TurnOf, &mut Turn, &Calls, Option<&TurnOutcome>)>,
     replies: Query<ReplyCall>,
@@ -1393,16 +1395,22 @@ pub(crate) fn commit_replies(
             continue;
         };
         let calls = reply_calls(reply, calls, &replies);
-        if calls.iter().any(|call| !call.settled) {
-            continue;
-        }
         let Ok(mut conversation) = agents.get_mut(agent) else {
             continue;
         };
+        if calls.iter().any(|call| !call.settled) {
+            for call in calls.iter().filter(|call| call.settled) {
+                if let Some(outcome) = call.outcome {
+                    let result = outcome.tool_result();
+                    mark_settled(&mut conversation, &call.request.call.id, &result);
+                }
+            }
+            continue;
+        }
         state.reply = None;
         let unanswered = ToolResult::failed(ToolExecutionError::other("the call had no result"));
         if let Some(results) = reply_results(calls, Some(&unanswered)) {
-            conversation.push(results);
+            commit_results(&mut conversation, results);
         }
         if ending.and_then(TurnOutcome::stops).is_none() {
             spawn_turn_call(&mut commands, turn, agent);

@@ -65,7 +65,7 @@ pub mod prelude {
     pub use crate::journal::{Committed, JournalPlugin, ReflectSaved, Retire, SessionRestored};
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
-    pub use crate::restore::Restored;
+    pub use crate::restore::{Interrupted, Restored};
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,
         ForAgent, GateSystems, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,

@@ -23,11 +23,15 @@ use crate::journal::{
     Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
 };
 use crate::model::{Connection, Effort, ModelChoice};
-use crate::restore::{INTERRUPTED, Restored};
-use crate::stage::{AgentPass, HoldOf, Settled, Stage, Undecided, Unreviewed};
+use crate::restore::{INTERRUPTED, Interrupted, Restored};
+use crate::stage::{
+    AgentPass, Decision, HoldOf, Outcome, PrepareSystems, Settled, Stage, Started, Undecided,
+    Unreviewed,
+};
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
 use rig_core::catalog::Catalog;
+use rig_core::effect::Decider;
 use rig_core::error::retry::Verdict;
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
@@ -534,7 +538,7 @@ fn said(app: &mut App) -> String {
 }
 
 #[test]
-fn a_restart_gates_its_reruns_again_and_answers_a_held_change_as_interrupted() {
+fn a_restart_gates_every_call_again_and_asks_about_a_held_change_again() {
     let store = held_at_exit();
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("done"),
@@ -543,13 +547,16 @@ fn a_restart_gates_its_reruns_again_and_answers_a_held_change_as_interrupted() {
     let mut app = tools_app(&store, &model, |_| {});
     let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended));
-    // The held change was never gated again: it was answered as
-    // interrupted. The read-only call was gated again, as restored work.
+    // The held change never started, so it is restored work every gate
+    // sees again, as is the read-only call.
     let gated = app.world().resource::<Gated>().0.clone();
-    assert_eq!(gated, [("look".to_owned(), true)]);
+    assert_eq!(
+        gated,
+        [("touch".to_owned(), true), ("look".to_owned(), true)]
+    );
     let said = said(&mut app);
     assert!(
-        said.contains(INTERRUPTED) && said.contains("seen"),
+        !said.contains(INTERRUPTED) && said.contains("touched") && said.contains("seen"),
         "{said}"
     );
     assert_eq!(model.request_count(), 1);
@@ -558,6 +565,179 @@ fn a_restart_gates_its_reruns_again_and_answers_a_held_change_as_interrupted() {
         [TurnOutcome::Answered(_)]
     );
     assert!(answered, "{:?}", app.world().resource::<Ended>().0);
+}
+
+/// May change anything, and never answers.
+struct Wait;
+
+impl PortableTool for Wait {
+    const NAME: &'static str = "wait";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Waits.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+        std::future::pending::<()>().await;
+        Ok(String::new())
+    }
+}
+
+/// A session whose agent's model asked to `touch`, then `wait`, that
+/// crashed while `wait` ran, `touch` settled.
+fn crashed_mid_reply() -> MemoryStore {
+    let store = MemoryStore::default();
+    let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([vec![
+        call("t1", "touch"),
+        call("w1", "wait"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Wait);
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    let waiting = |world: &World| {
+        let started = world
+            .iter_entities()
+            .filter(|entity| entity.contains::<Started>());
+        started
+            .filter_map(|entity| entity.get::<ToolRequest>())
+            .any(|request| request.call.function.name.as_str() == "wait")
+    };
+    assert!(run_until(&mut app, waiting));
+    // A crash: nothing more is written.
+    drop(app);
+    store
+}
+
+/// Who decided each tool call that settled, by tool.
+#[derive(Resource, Default)]
+struct Decided(Vec<(String, Option<Decider>)>);
+
+/// [`tools_app`] after a crash mid-reply, with `Wait`, noting who decided
+/// each call, with what `configure` adds, run until its turn ended; the
+/// conversation as JSON.
+fn restart_after_crash(configure: impl FnOnce(&mut App)) -> (App, String, MemoryStore) {
+    let store = crashed_mid_reply();
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Wait).init_resource::<Decided>().add_observer(
+            |settled: On<Add<Settled>>,
+             calls: Query<(&ToolRequest, &Decision)>,
+             mut decided: ResMut<Decided>| {
+                if let Ok((request, decision)) = calls.get(settled.entity) {
+                    let name = request.call.function.name.as_str().to_owned();
+                    decided.0.push((name, decision.by().cloned()));
+                }
+            },
+        );
+        configure(app);
+    });
+    let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended));
+    let said = said(&mut app);
+    // Every mark goes with the results.
+    let agent = first_agent(&mut app);
+    let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
+    let marks = conversation.map(|conversation| conversation.asides().count());
+    assert_eq!(marks, Some(0), "{said}");
+    (app, said, store)
+}
+
+#[test]
+fn a_restart_answers_what_a_crash_interrupted_after_every_gate() {
+    let (mut app, said, store) = restart_after_crash(|_| {});
+    // `touch` settled before the crash: its result stands, and it did not
+    // run again; `wait` was running: it is answered as interrupted. No gate
+    // saw either.
+    assert!(
+        said.contains("touched") && said.contains(INTERRUPTED),
+        "{said}"
+    );
+    assert!(app.world().resource::<Gated>().0.is_empty());
+    let rig = Some(Decider::plugin("rig-ecs"));
+    let decided = &app.world().resource::<Decided>().0;
+    assert_eq!(
+        decided,
+        &[("touch".to_owned(), rig.clone()), ("wait".to_owned(), rig)]
+    );
+    // The saved session has no mark left either.
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let saved = rig_memory::Session::read(&store).map(|session| session.agents);
+    let marks = saved.map(|agents| {
+        agents
+            .iter()
+            .map(|it| it.conversation.asides().count())
+            .sum()
+    });
+    assert_eq!(marks.ok(), Some(0usize));
+}
+
+/// Answers a restored `wait` that a crash interrupted.
+fn answer_waits(mut calls: Query<(&ToolRequest, &Interrupted, &mut Decision), Without<Outcome>>) {
+    for (request, interrupted, mut decision) in &mut calls {
+        if request.call.function.name.as_str() == "wait"
+            && matches!(interrupted, Interrupted::Started)
+        {
+            let answer = rig_core::tool::ToolResult::skipped("not waited for again");
+            decision.decide(Decider::plugin("crash-resume"), answer);
+        }
+    }
+}
+
+#[test]
+fn a_plugin_answers_a_call_a_crash_interrupted_first() {
+    let (_, said, _) = restart_after_crash(|app| {
+        app.add_systems(AgentPass, answer_waits.in_set(Stage::Gate));
+    });
+    assert!(
+        said.contains("not waited for again") && !said.contains(INTERRUPTED),
+        "{said}"
+    );
+}
+
+/// Lets a restored `touch` run again.
+fn rerun_touches(calls: Query<(Entity, &ToolRequest), With<Interrupted>>, mut commands: Commands) {
+    for (call, request) in &calls {
+        if request.call.function.name.as_str() == "touch" {
+            commands.entity(call).remove::<Interrupted>();
+        }
+    }
+}
+
+#[test]
+fn a_call_a_plugin_lets_run_again_is_gated_first() {
+    let (app, said, _) = restart_after_crash(|app| {
+        app.add_systems(AgentPass, rerun_touches.in_set(PrepareSystems::Edit));
+    });
+    let gated = &app.world().resource::<Gated>().0;
+    assert_eq!(gated, &[("touch".to_owned(), true)]);
+    let decided = &app.world().resource::<Decided>().0;
+    let touch = decided.iter().find(|(tool, _)| tool == "touch");
+    assert_eq!(
+        touch,
+        Some(&("touch".to_owned(), None)),
+        "it ran: {decided:?}"
+    );
+    assert!(
+        said.contains("touched") && said.contains(INTERRUPTED),
+        "{said}"
+    );
 }
 
 #[test]

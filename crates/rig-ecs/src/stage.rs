@@ -77,6 +77,7 @@ use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
 use super::journal::{Drain, SessionLog, millis};
+use super::restore::{Interrupted, answer_interrupted, mark_started};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
     refuse_calls,
@@ -497,7 +498,8 @@ pub struct EffectRecorded(pub EffectRecord);
 pub struct Waiting;
 
 /// Effects about to start: admitted, not waiting, not started, unanswered,
-/// unheld and not superseded. A gate's filter.
+/// unheld, not superseded and not a restored call the kernel answers
+/// ([`Interrupted`]). A gate's filter.
 pub type Undecided = (
     With<Admitted>,
     Without<Waiting>,
@@ -506,6 +508,7 @@ pub type Undecided = (
     Without<Holds>,
     Without<Settled>,
     Without<SupersededBy>,
+    Without<Interrupted>,
 );
 
 /// Answered effects nothing holds, not settled yet. A reviewer's filter;
@@ -673,6 +676,10 @@ pub(crate) fn build(app: &mut App) {
                 refuse_calls
                     .after(GateSystems::FromRecord)
                     .before(Stage::Gate)
+                    .run_if(moved_since_quiet),
+                answer_interrupted
+                    .after(GateSystems::After)
+                    .before(Enter(Stage::Start))
                     .run_if(moved_since_quiet),
                 apply_decisions.in_set(Enter(Stage::Start)),
                 (accept, carry_on_accepted, start)
@@ -981,6 +988,16 @@ fn answer_unprepared(
     notices.write_batch(closed(&mut passes, failure, what));
 }
 
+/// The agents' conversations as Start marks calls on them, and saves them.
+type Saving<'w, 's> = ParamSet<
+    'w,
+    's,
+    (
+        Drain<'static, 'static>,
+        Query<'static, 'static, &'static mut Conversation>,
+    ),
+>;
+
 /// Starts every admitted, unheld, unanswered, undecided effect, unless a
 /// Gate system failed this pass: an effect request with a handler is
 /// dispatched on the kernel's recorded path, a model call and a tool call
@@ -993,7 +1010,7 @@ fn start(
     (tools, models): (ToolStarts, ModelStarts),
     effects: Res<Effects>,
     wake: Res<Wake>,
-    (log, mut drain): (Res<SessionLog>, Drain),
+    (log, mut saving): (Res<SessionLog>, Saving),
     mut passes: ResMut<Passes>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -1006,16 +1023,26 @@ fn start(
         return;
     }
     let at = SystemTime::now();
-    // Before a call that may change something, the reply that asked for
-    // it is on disk.
-    let changes = ready.iter().any(|item| {
-        item.tool.is_some()
-            && !item
-                .footprint
-                .is_some_and(|footprint| footprint.0.reads_only())
-    });
-    if changes {
-        if let Some(agent) = drain.save() {
+    let stopping = |item: &StartItemReadOnlyItem| {
+        let ending = item.of.and_then(|of| turns.get(of.0).ok());
+        ending.and_then(TurnOutcome::stops).is_some()
+    };
+    // Before a call that may change something starts, the reply that asked
+    // for it and the call's mark are on disk.
+    let changing: Vec<_> = ready
+        .iter()
+        .filter(|item| !item.message && !item.decision.is_decided() && !stopping(item))
+        .filter(|item| !item.footprint.is_some_and(|it| it.0.reads_only()))
+        .filter_map(|item| Some((item.agent?.0, item.tool?.call.id.clone())))
+        .collect();
+    if !changing.is_empty() {
+        let mut conversations = saving.p1();
+        for (agent, call) in &changing {
+            if let Ok(mut conversation) = conversations.get_mut(*agent) {
+                mark_started(&mut conversation, call);
+            }
+        }
+        if let Some(agent) = saving.p0().save() {
             saved_some(&mut passes, agent);
         }
         log.flush();
