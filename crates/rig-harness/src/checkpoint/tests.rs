@@ -123,3 +123,38 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
     assert_eq!(changed.get("s3"), Some(&created("d.txt")), "{changed:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// When the app starts, the content earlier runs' scans kept in the
+/// session scratch goes; kept content that cannot be removed only warns,
+/// and the app runs on.
+#[test]
+fn kept_content_goes_when_the_app_starts() {
+    let started = |name: &str, blobs_is_a_file: bool| {
+        let dir = scratch(name);
+        let blobs = dir.join("checkpoints").join("project").join("blobs");
+        match blobs_is_a_file {
+            true => {
+                std::fs::create_dir_all(blobs.parent().unwrap_or(&dir)).ok();
+                std::fs::write(&blobs, "not a directory").ok();
+            }
+            false => {
+                std::fs::create_dir_all(&blobs).ok();
+                std::fs::write(blobs.join("0123"), "kept").ok();
+            }
+        }
+        let (mut app, _wakes) = app_on(&MemoryStore::default());
+        app.insert_resource(ProjectRoot(dir.clone()))
+            .insert_resource(crate::host::session::Scratch(Some(dir.clone())))
+            .add_plugins(CheckpointPlugin);
+        app.finish();
+        app.update();
+        let left = blobs.exists();
+        std::fs::remove_dir_all(&dir).ok();
+        left
+    };
+    assert!(
+        !started("checkpoint-forget", false),
+        "the kept content goes"
+    );
+    assert!(started("checkpoint-forget-fails", true), "the file stays");
+}
