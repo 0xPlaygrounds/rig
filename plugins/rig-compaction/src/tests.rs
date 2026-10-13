@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::completion::Message;
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
@@ -11,7 +10,7 @@ use rig_harness::commands::RunCommand;
 
 use super::*;
 use rig_harness_test_support::{
-    Ended, app_on, commit_message, connect, log_ended, reply, run_until,
+    Ended, MemoryStore, app_on, commit_message, connect, log_ended, reply, run_until,
 };
 use rig_telemetry::{Spending, UsagePlugin};
 
@@ -97,7 +96,7 @@ fn answer(app: &App) -> Option<String> {
     }
 }
 
-/// Every message of `agent`'s conversation with its origins and id.
+/// Every message of `agent`'s conversation with its author and id.
 fn entries(world: &World, agent: Entity) -> Vec<Entry> {
     let Some(conversation) = world.get::<Conversation>(agent) else {
         return Vec::new();
@@ -108,10 +107,7 @@ fn entries(world: &World, agent: Entity) -> Vec<Entry> {
 
 /// Whether `entry` holds a compaction's summary.
 fn holds_summary(entry: &Entry) -> bool {
-    entry
-        .origins
-        .iter()
-        .any(|(_, origin)| *origin == summary_origin())
+    entry.author == Some(summary_author())
 }
 
 /// The single agent `app` restored.

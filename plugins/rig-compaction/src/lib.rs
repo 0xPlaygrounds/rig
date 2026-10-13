@@ -2,9 +2,9 @@
 //! older tool outputs are cleared, and when that is not enough the older
 //! messages are summarized by the model into rig-memory's checkpoint, which
 //! takes their place in the conversation. Both are splices of the
-//! conversation ([`Commit::splice`]), so they are logged, restored and
-//! announced as [`Committed::Splice`]; the summary's content item has the
-//! origin [`summary_origin`]. The same happens after the model refused a
+//! conversation by [`summary_author`], so they are logged, restored and
+//! announced as [`Committed`]; the summary is an entry of its own by that
+//! author. The same happens after the model refused a
 //! request as too long, and `/compact <focus>` does it now. It is stage systems over the turn's model calls
 //! ([`TurnCall`]): a Prepare system measures each request against the
 //! window, and a Review system takes over a call whose [`RetryVerdict`]
@@ -18,14 +18,19 @@
 
 use bevy_ecs::query::QueryData;
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
+use rig_core::completion::{CompletionRequest, Usage, tokens_label};
 use rig_ecs::prelude::*;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::successor::follow_successor;
 use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
-    Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryState, TrackArgument,
+    Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryPlan, SummaryState, TrackArgument,
+    apply_summary,
 };
+/// Who writes a compaction's summary, and how many of a conversation's
+/// first entries are summaries already: rig-memory's, which this plugin
+/// compacts by.
+pub use rig_memory::{summarized_prefix, summary_author};
 use serde::{Deserialize, Serialize};
 
 /// Compacts agents' conversations near their model's window, after an
@@ -69,8 +74,9 @@ impl Plugin for CompactionPlugin {
 /// reads or changes files tracks its argument the same way, by adding a
 /// [`TrackArgument`] to `tracked` (from `finish` or a startup system). A
 /// plugin chooses where a compaction cuts with the policy's `cut` (a
-/// [`Cut`](rig_memory::Cut)), given the messages [`unsummarized`] returns,
-/// and how many summaries a turn may ask for with `per_turn`.
+/// [`Cut`](rig_memory::Cut)), given the conversation's messages and how
+/// many of the first are summaries ([`summarized_prefix`]), and how many
+/// summaries a turn may ask for with `per_turn`.
 #[derive(Resource, Clone, Debug)]
 pub struct Compaction(pub CompactionPolicy);
 
@@ -137,26 +143,12 @@ pub struct Compactions {
 pub struct Summarizing {
     /// Why.
     pub reason: CompactReason,
-    /// Where the summarized messages end.
-    pub until: Until,
+    /// The first message the compaction keeps, by id, as messages may move
+    /// while the summary is written; `None` summarizes every message. A
+    /// summary that arrives after it was taken out replaces nothing.
+    pub upto: Option<MessageId>,
     /// The state the summary goes into.
     pub state: SummaryState,
-}
-
-/// Where a compaction's summarized messages end, by message id, as
-/// messages may move while the summary is written.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Until {
-    /// Every message.
-    All,
-    /// The messages before this one, which the compaction keeps. A summary
-    /// that arrives after it was taken out replaces nothing.
-    Before(MessageId),
-}
-
-/// The origin of a compaction's summary in the conversation.
-pub fn summary_origin() -> Origin {
-    Origin::plugin("compaction")
 }
 
 /// An agent as compacting it reads it: its messages, its summary so far,
@@ -169,32 +161,6 @@ struct Compacting {
     connection: Option<&'static Connection>,
 }
 
-/// What a summary does not cover yet: the messages of `conversation`
-/// without the summary content it holds (by [`summary_origin`]), which the
-/// next summary builds on from [`Summarized`] instead of reading it again,
-/// and how many of the first messages held nothing else. These are the
-/// messages and the `from` the policy's cut is given; an index into them
-/// is an index into the conversation.
-pub fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
-    let summary = summary_origin();
-    let mut from = 0;
-    let mut messages = conversation.messages().to_vec();
-    for (at, message) in messages.iter_mut().enumerate() {
-        let Message::User { content } = message else {
-            continue;
-        };
-        let mut item = 0;
-        content.retain(|_| {
-            item += 1;
-            conversation.origin(at, item - 1) != Some(&summary)
-        });
-        if content.is_empty() && from == at {
-            from += 1;
-        }
-    }
-    (messages, from)
-}
-
 /// Plans one summary call of `conversation` with `policy`, for `reason`,
 /// written by the model `spec`, building on `summarized`: the
 /// [`Summarizing`] to spawn it with and its request. `None` when no message
@@ -204,24 +170,26 @@ pub fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
 /// fallback, replaces a summary call's [`Summarizing`] and
 /// [`ModelRequest`] with what this returns.
 pub fn plan(
-    conversation: &Conversation,
+    conversation: &rig_core::conversation::Conversation,
     summarized: Option<&Summarized>,
     policy: &CompactionPolicy,
     reason: CompactReason,
     spec: &ModelSpec,
 ) -> Result<Option<(Summarizing, CompletionRequest)>, String> {
-    let (messages, from) = unsummarized(conversation);
-    let Some(upto) = policy.cut(&messages, from, &reason, Some(spec)) else {
-        return Ok(None);
-    };
-    let until = conversation.id(upto).map_or(Until::All, Until::Before);
     let none = SummaryState::default();
     let state = summarized.map_or(&none, |summarized| &summarized.0);
-    let planned = policy.plan(state, &messages, from, upto, spec, &reason);
-    let (state, request) = planned.map_err(|why| why.to_string())?;
+    let planned = policy.plan_summary(conversation, state, &reason, spec);
+    let Some(SummaryPlan {
+        upto,
+        state,
+        request,
+    }) = planned.map_err(|why| why.to_string())?
+    else {
+        return Ok(None);
+    };
     let summarizing = Summarizing {
         reason,
-        until,
+        upto,
         state,
     };
     Ok(Some((summarizing, request)))
@@ -273,31 +241,11 @@ enum Start {
 }
 
 impl CompactingItem<'_, '_> {
-    /// Clears the older tool outputs of `agent`'s conversation, by a splice
-    /// of the messages that changed, which keeps their ids.
-    fn clear_old_outputs(
-        &mut self,
-        agent: Entity,
-        policy: &CompactionPolicy,
-        commit: &mut Commit,
-    ) -> Cleared {
-        let mut messages = self.conversation.messages().to_vec();
-        let cleared = policy.clearing.clear(&mut messages);
-        let was = self.conversation.messages();
-        let changed =
-            |(at, message): (usize, &Message)| (was.get(at) != Some(message)).then_some(at);
-        let changed: Vec<usize> = messages.iter().enumerate().filter_map(changed).collect();
-        let (Some(&first), Some(&last)) = (changed.first(), changed.last()) else {
-            return cleared;
-        };
-        let entries = (first..=last).filter_map(|at| {
-            let mut entry = self.conversation.entry(at)?;
-            entry.message = messages.get(at)?.clone();
-            Some(entry)
-        });
-        let entries: Vec<Entry> = entries.collect();
-        commit.splice(agent, &mut self.conversation, first..=last, entries);
-        cleared
+    /// Clears the older tool outputs of the agent's conversation, by a
+    /// splice of the messages that changed, which keeps their ids.
+    fn clear_old_outputs(&mut self, policy: &CompactionPolicy) -> Cleared {
+        let clearing = &policy.clearing;
+        clearing.clear_conversation(&mut self.conversation, summary_author())
     }
 
     /// Starts the summary call of a compaction of `agent` for `reason` on
@@ -395,7 +343,6 @@ fn compact_near_the_window(
     mut turns: Query<&mut Compactions>,
     starts: ModelStarts,
     policy: Res<Compaction>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -419,7 +366,7 @@ fn compact_near_the_window(
         if !policy.over_threshold(used, spec) {
             continue;
         }
-        let cleared = compacting.clear_old_outputs(agent, policy, &mut commit);
+        let cleared = compacting.clear_old_outputs(policy);
         let left = used.saturating_sub(cleared.tokens as u64);
         if cleared.results > 0 {
             policy.clearing.clear(messages);
@@ -450,7 +397,6 @@ fn recover_from_overflow(
     mut agents: Query<Compacting>,
     mut turns: Query<&mut Compactions>,
     policy: Res<Compaction>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -468,7 +414,7 @@ fn recover_from_overflow(
         let outgrew = "The conversation outgrew the model's context window";
         if !compactions.cleared {
             compactions.cleared = true;
-            let cleared = compacting.clear_old_outputs(agent, policy, &mut commit);
+            let cleared = compacting.clear_old_outputs(policy);
             if cleared.results > 0 {
                 let then = " and sending it again";
                 notices.write(cleared_notice(agent, outgrew, &cleared, then));
@@ -515,9 +461,8 @@ fn provided_by_compaction(
 }
 
 /// Takes a settled summary: it replaces the summarized messages in the
-/// conversation, a splice its log records, merged into the first kept
-/// message when that is the user's, so user and model keep taking turns.
-/// A failed summary, or one whose kept message is gone, replaces nothing.
+/// conversation as an entry of its own, a splice its log records. A failed
+/// summary, or one whose kept message is gone, replaces nothing.
 /// Either way the call it held is sent again, built anew, or the turn ends
 /// when the user asked for the compaction.
 fn take_summary(
@@ -526,7 +471,6 @@ fn take_summary(
     held: Query<&Effect>,
     mut agents: Query<(&mut Conversation, &mut LastUsage)>,
     policy: Res<Compaction>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -538,9 +482,9 @@ fn take_summary(
     let Ok((mut conversation, mut last)) = agents.get_mut(agent) else {
         return;
     };
-    let end = match summarizing.until {
-        Until::All => Some(conversation.messages().len()),
-        Until::Before(kept) => conversation.index_of(kept),
+    let end = match summarizing.upto {
+        None => Some(conversation.messages().len()),
+        Some(kept) => conversation.index_of(kept),
     };
     let summary = match (&outcome.0, outcome.completion(), end) {
         (Err(report), ..) => Err(report.to_string()),
@@ -550,20 +494,23 @@ fn take_summary(
             .map(|summary| (summary, end))
             .map_err(|why| why.to_string()),
     };
+    let summary = summary.and_then(|(summary, end)| {
+        let messages = conversation.messages();
+        let older = messages.get(..end).unwrap_or_default();
+        let older = (older.len(), policy.0.estimate(older));
+        let kept = messages.get(end..).unwrap_or_default();
+        let kept = (kept.len(), policy.0.estimate(kept));
+        let state = SummaryState {
+            summary,
+            ..summarizing.state.clone()
+        };
+        match apply_summary(&mut conversation, summarizing.upto, &state) {
+            Some(_) => Ok((state, older, kept)),
+            None => Err("the summary was empty".to_owned()),
+        }
+    });
     match summary {
-        Ok((summary, end)) => {
-            let messages = conversation.messages();
-            let older = messages.get(..end).unwrap_or_default();
-            let (older, older_tokens) = (older.len(), policy.0.estimate(older));
-            let kept = messages.get(end..).unwrap_or_default();
-            let (kept, kept_tokens) = (kept.len(), policy.0.estimate(kept));
-            let state = SummaryState {
-                summary,
-                ..summarizing.state.clone()
-            };
-            let text = Message::user(state.message().unwrap_or_default());
-            let summary = Entry::from(text, summary_origin());
-            commit.splice(agent, &mut conversation, ..end, [summary]);
+        Ok((state, (older, older_tokens), (kept, kept_tokens))) => {
             let left = policy.0.estimate(conversation.messages());
             *last = LastUsage(Some(Usage::new().total_tokens(left)));
             commands.entity(agent).insert(Summarized(state));
