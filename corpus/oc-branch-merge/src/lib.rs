@@ -203,6 +203,7 @@ fn entries(conversation: &Conversation) -> Vec<Entry> {
             message: entry.message.clone(),
             author: entry.author.cloned(),
             id: None,
+            made: None,
         })
         .collect()
 }

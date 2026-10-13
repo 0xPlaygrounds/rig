@@ -33,7 +33,7 @@ use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Conversation, EntryRef, MessageId};
+use rig_core::conversation::{Conversation, MessageId};
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{self, AgentId, Notice};
@@ -569,17 +569,12 @@ fn fork_sessions(
 }
 
 /// What the user typed in message `at` of `conversation`: the text items
-/// of a message of the user's own ([`EntryRef::is_users_own`]), never of
+/// of a message of the user's own ([`EntryRef::is_users_own`](rig_core::conversation::EntryRef::is_users_own)), never of
 /// one an agent or a plugin delivered, such as a note, nor a file
 /// attached, each trimmed, joined by a blank line; `None` when it has
 /// none.
 pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
-    let entry = EntryRef {
-        index: at,
-        id: conversation.id(at)?,
-        message: conversation.messages().get(at)?,
-        author: conversation.author(at),
-    };
+    let entry = conversation.entries().nth(at)?;
     let Message::User { content } = entry.message else {
         return None;
     };

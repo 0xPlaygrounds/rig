@@ -33,7 +33,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::{Bound, RangeBounds};
 
 use serde::{Deserialize, Serialize, Serializer};
@@ -59,9 +59,10 @@ use pairing::PairingError;
 /// a fold ([`apply`](Self::apply)) uses, and keeps it in the outbox
 /// ([`unsaved`](Self::unsaved)).
 ///
-/// Two conversations are equal when their entries, saved asides and halt
-/// are: the outbox, the revision and unsaved asides are not compared, so a
-/// value folded from a log equals the live one.
+/// Two conversations are equal when their entries (messages, ids and
+/// authors), saved asides and halt are: the outbox, the revision, unsaved
+/// asides and when entries were made are not compared, so a value folded
+/// from a log equals the live one and two values built alike are equal.
 ///
 /// Its serde form is its state: entries, saved asides, halt and the next
 /// ids, without the outbox, the revision or the lineage. A value read back
@@ -91,14 +92,23 @@ pub struct Conversation {
     lineage: Lineage,
     #[serde(skip)]
     unsaved: Vec<Recorded>,
+    /// The time edits are made at, set by [`dated`](Self::dated); now when
+    /// `None`.
+    #[serde(skip)]
+    clock: Option<u64>,
 }
 
-/// An entry's id and author, beside its message.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// An entry's id, author and when it was made, beside its message. Its
+/// serde form carries `made`, so a reset and a value read back keep it;
+/// equality leaves it out.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct Meta {
     id: MessageId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     author: Option<Author>,
+    /// Milliseconds since the Unix epoch: when the entry was first made.
+    #[serde(default)]
+    made: u64,
 }
 
 /// A conversation as saved, checked before it becomes one.
@@ -155,6 +165,7 @@ impl TryFrom<State> for Conversation {
             revision: 0,
             lineage: Lineage::DETACHED,
             unsaved: Vec::new(),
+            clock: None,
         })
     }
 }
@@ -175,8 +186,10 @@ impl PartialEq for Conversation {
                 .cloned()
                 .collect::<Vec<_>>()
         };
+        let same = |a: &Meta, b: &Meta| a.id == b.id && a.author == b.author;
         self.messages == other.messages
-            && self.meta == other.meta
+            && self.meta.len() == other.meta.len()
+            && self.meta.iter().zip(&other.meta).all(|(a, b)| same(a, b))
             && self.halted == other.halted
             && saved(self) == saved(other)
     }
@@ -190,6 +203,20 @@ impl PartialEq for Conversation {
 )]
 #[serde(transparent)]
 pub struct MessageId(u64);
+
+/// A message's identity beyond its conversation: when it was made and its
+/// id. Equal for a message and its copy in a fork (a fork copies ids and
+/// made-times), different for one made since, unless both were made in
+/// the same millisecond with the same id.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
+pub struct MessageKey {
+    /// When it was first made, in milliseconds since the Unix epoch.
+    pub made: u64,
+    /// Its id in its conversation.
+    pub id: MessageId,
+}
 
 /// A message as it goes into a conversation: the message, who wrote it,
 /// and, for a message taken out with [`Conversation::entry`], its id,
@@ -206,6 +233,11 @@ pub struct Entry {
     /// Its id in the conversation, if it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<MessageId>,
+    /// When it was first made, in milliseconds since the Unix epoch: set by
+    /// [`Conversation::entry`], kept by an entry put back as it was. A
+    /// recorded change carries it only for such an entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub made: Option<u64>,
 }
 
 impl Entry {
@@ -215,6 +247,7 @@ impl Entry {
             message,
             author: None,
             id: None,
+            made: None,
         }
     }
 
@@ -245,9 +278,19 @@ pub struct EntryRef<'c> {
     pub message: &'c Message,
     /// Who wrote it, when it is not the user's own or the model's.
     pub author: Option<&'c Author>,
+    /// When it was first made, in milliseconds since the Unix epoch.
+    pub made: u64,
 }
 
 impl EntryRef<'_> {
+    /// Its identity beyond its conversation.
+    pub fn key(&self) -> MessageKey {
+        MessageKey {
+            made: self.made,
+            id: self.id,
+        }
+    }
+
     /// Whether it is a user message the user typed: text or attachments,
     /// not only tool results, with no author or [`AuthorKind::User`] with
     /// no title.
@@ -391,6 +434,13 @@ fn mismatch(why: String) -> ApplyError {
     ApplyError::Mismatch(why)
 }
 
+/// Milliseconds since the Unix epoch, also on the web.
+fn now_ms() -> u64 {
+    let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH);
+    now.map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or_default()
+}
+
 /// The first characters of the agent id `id`, enough to tell agents apart.
 pub fn short_id(id: &str) -> &str {
     id.get(..8).unwrap_or(id)
@@ -431,22 +481,41 @@ impl Conversation {
             id: meta.id,
             message,
             author: meta.author.as_ref(),
+            made: meta.made,
         })
     }
 
-    /// Entry `at`, with its author and id, to splice back changed.
+    /// Entry `at`, with its author, id and when it was made, to splice
+    /// back changed.
     pub fn entry(&self, at: usize) -> Option<Entry> {
         let meta = self.meta.get(at)?;
         Some(Entry {
             message: self.messages.get(at)?.clone(),
             author: meta.author.clone(),
             id: Some(meta.id),
+            made: Some(meta.made),
         })
     }
 
     /// The id of entry `at`.
     pub fn id(&self, at: usize) -> Option<MessageId> {
         self.meta.get(at).map(|meta| meta.id)
+    }
+
+    /// The identity of entry `at` beyond this conversation.
+    pub fn key(&self, at: usize) -> Option<MessageKey> {
+        let meta = self.meta.get(at)?;
+        Some(MessageKey {
+            made: meta.made,
+            id: meta.id,
+        })
+    }
+
+    /// Where the entry with identity `key` is now; `None` when it is not
+    /// here, also when an entry with its id was made at another time.
+    pub fn index_of_key(&self, key: MessageKey) -> Option<usize> {
+        let at = self.index_of(key.id)?;
+        (self.meta.get(at)?.made == key.made).then_some(at)
     }
 
     /// Who wrote entry `at`; `None` for the user's own text, the model's
@@ -586,6 +655,7 @@ impl Conversation {
             let id = MessageId(next);
             next = next.saturating_add(1);
             entry.id = Some(id);
+            entry.made = None;
             (entry, id)
         };
         let stop = stop.map(|entry| fill(entry).0);
@@ -635,6 +705,7 @@ impl Conversation {
         let mut kept = HashSet::new();
         let mut next = self.next_id;
         for entry in &mut with {
+            entry.made = None;
             let keeps = entry
                 .id
                 .filter(|id| in_range.contains(id) && kept.insert(*id));
@@ -709,6 +780,7 @@ impl Conversation {
                     message,
                     author: self.author(at).cloned(),
                     id: Some(id),
+                    made: None,
                 }),
                 None => self.entry(at),
             })
@@ -801,7 +873,8 @@ impl Conversation {
     /// sent by a process that mirrors this conversation. It is not put in
     /// the outbox. Fails, changing nothing, when it does not fit.
     pub fn apply(&mut self, change: &Recorded) -> Result<(), ApplyError> {
-        self.change(&change.change)?;
+        let at = change.at.unwrap_or_else(|| self.now());
+        self.change(&change.change, at)?;
         self.revision = self.revision.saturating_add(1);
         Ok(())
     }
@@ -809,7 +882,7 @@ impl Conversation {
     /// Makes the edits of `edit` as made at `at`, in milliseconds since the
     /// Unix epoch, such as messages imported at the times their source
     /// logged them: their records carry that time, which a writer keeps,
-    /// instead of the time they are saved. An edit dated inside, by a
+    /// and the entries they make were made then. An edit dated inside, by a
     /// nested call, keeps its own time.
     ///
     /// ```
@@ -824,12 +897,16 @@ impl Conversation {
     /// assert_eq!(at, Some(1_790_848_800_000));
     /// ```
     pub fn dated<R>(&mut self, at: u64, edit: impl FnOnce(&mut Self) -> R) -> R {
-        let from = self.unsaved.len();
+        let outer = self.clock.replace(at);
         let made = edit(self);
-        for recorded in self.unsaved.iter_mut().skip(from) {
-            recorded.at.get_or_insert(at);
-        }
+        self.clock = outer;
         made
+    }
+
+    /// The time an edit is made at: the [`dated`](Self::dated) clock, else
+    /// now.
+    fn now(&self) -> u64 {
+        self.clock.unwrap_or_else(now_ms)
     }
 
     /// The changes made that nobody has saved yet, oldest first.
@@ -889,36 +966,49 @@ impl Conversation {
             revision: self.revision,
             lineage: self.lineage,
             unsaved: Vec::new(),
+            clock: None,
         }
     }
 
-    /// Applies `change`, built live so it fits, and records it.
+    /// Applies `change`, built live so it fits, as made now, and records it.
     fn record(&mut self, change: Change, by: Option<Author>) {
-        match self.change(&change) {
-            Ok(()) => self.log(change, by),
+        let at = self.now();
+        match self.change(&change, at) {
+            Ok(()) => self.log_at(change, by, at),
             Err(error) => tracing::error!(%error, "a conversation edit did not fit; dropped"),
         }
     }
 
-    /// Records `change`, already applied.
+    /// Records `change`, already applied, as made now.
     fn log(&mut self, change: Change, by: Option<Author>) {
+        let at = self.now();
+        self.log_at(change, by, at);
+    }
+
+    fn log_at(&mut self, change: Change, by: Option<Author>, at: u64) {
         self.revision = self.revision.saturating_add(1);
         self.unsaved.push(Recorded {
             change,
             by,
-            at: None,
+            at: Some(at),
         });
     }
 
-    /// Applies `change`, taking its ids verbatim, after checking it fits.
-    fn change(&mut self, change: &Change) -> Result<(), ApplyError> {
+    /// Applies `change`, made at `at`, taking its ids verbatim, after
+    /// checking it fits. An entry that keeps its id keeps when it was made;
+    /// any other was made when its record says, else at `at`.
+    fn change(&mut self, change: &Change, at: u64) -> Result<(), ApplyError> {
+        let meta = |entry: &Entry, made: u64| Meta {
+            id: entry.id.unwrap_or_default(),
+            author: entry.author.clone(),
+            made,
+        };
         match change {
             Change::Push { entries } => {
                 let next = self.new_ids(entries, &HashSet::new())?;
                 for entry in entries {
                     self.messages.push(entry.message.clone());
-                    let (id, author) = (entry.id.unwrap_or_default(), entry.author.clone());
-                    self.meta.push(Meta { id, author });
+                    self.meta.push(meta(entry, entry.made.unwrap_or(at)));
                 }
                 self.next_id = next;
             }
@@ -938,16 +1028,19 @@ impl Conversation {
                 if !replaced.iter().map(|meta| &meta.id).eq(removed) {
                     return Err(mismatch(format!("splice of {from}..{to} names other ids")));
                 }
+                let kept: HashMap<MessageId, u64> =
+                    replaced.iter().map(|meta| (meta.id, meta.made)).collect();
                 let next = self.new_ids(with, &removed.iter().copied().collect())?;
+                let metas: Vec<Meta> = with
+                    .iter()
+                    .map(|entry| {
+                        let made = entry.id.and_then(|id| kept.get(&id).copied());
+                        meta(entry, made.or(entry.made).unwrap_or(at))
+                    })
+                    .collect();
                 self.messages
                     .splice(from..to, with.iter().map(|entry| entry.message.clone()));
-                self.meta.splice(
-                    from..to,
-                    with.iter().map(|entry| Meta {
-                        id: entry.id.unwrap_or_default(),
-                        author: entry.author.clone(),
-                    }),
-                );
+                self.meta.splice(from..to, metas);
                 self.next_id = next;
             }
             Change::Halt { halt } => self.halted = *halt,

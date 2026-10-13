@@ -293,3 +293,55 @@ fn edit_each_rewrites_in_place_as_one_change() {
     );
     assert!(conversation.unsaved().is_empty());
 }
+
+/// Each entry keeps when it was made: an entry spliced back changed keeps
+/// its time, a fold of the outbox and a reset (through its serde form)
+/// give the same times, and equality leaves them out.
+#[test]
+fn made_times_fold_as_live_survive_edits_and_resets_and_stay_out_of_equality() {
+    let keys = |conversation: &Conversation| -> Vec<MessageKey> {
+        conversation.entries().map(|entry| entry.key()).collect()
+    };
+    let mut live = Conversation::new();
+    live.dated(1_000, |conversation| {
+        conversation.extend([Message::user("a"), Message::assistant("b")]);
+    });
+    let first = live.key(0).expect("a key");
+    assert_eq!(first.made, 1_000);
+    let mut edited = live.entry(0).expect("entry 0");
+    edited.message = Message::user("a, edited");
+    let fresh = Entry::new(Message::user("new"));
+    live.dated(2_000, |conversation| {
+        conversation.splice(0..1, [edited, fresh], Author::plugin("edit"))
+    });
+    assert_eq!(live.key(0), Some(first), "an edited entry keeps its time");
+    assert_eq!(live.key(1).map(|key| key.made), Some(2_000));
+    assert_eq!(live.index_of_key(first), Some(0));
+    let other_time = MessageKey {
+        made: 3,
+        id: first.id,
+    };
+    assert_eq!(live.index_of_key(other_time), None);
+    assert_eq!(keys(&fold(live.unsaved())), keys(&live));
+
+    let reset = Recorded {
+        change: Change::Reset {
+            state: Box::new(live.view()),
+        },
+        by: None,
+        at: Some(9_000),
+    };
+    let reset: Recorded =
+        serde_json::from_str(&serde_json::to_string(&reset).expect("serializes")).expect("reads");
+    let mut replaced = Conversation::from_messages([Message::user("x")]);
+    replaced.apply(&reset).expect("a reset fits anything");
+    assert_eq!(keys(&replaced), keys(&live));
+
+    let mut later = Conversation::new();
+    later.dated(5_000, |conversation| {
+        conversation.extend([Message::user("a"), Message::assistant("b")]);
+    });
+    let now = Conversation::from_messages([Message::user("a"), Message::assistant("b")]);
+    assert_eq!(later, now);
+    assert_ne!(keys(&later), keys(&now));
+}
