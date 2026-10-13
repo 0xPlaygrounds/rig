@@ -25,18 +25,19 @@ use rig_core::tool::ToolResultContext;
 use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
-    CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
-    result_style, result_text,
+    CallState, ChildCall, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView,
+    excerpt, result_style, result_text,
 };
 use super::view::{
     Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, ShownNotice, TranscriptItem,
 };
 use super::wrap::wrap;
+use rig_core::effect::EffectId;
 use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind};
-use rig_ecs::stage::{Published, Settled, Started};
+use rig_ecs::stage::{Effect, ForAgent, Outcome, Published, Settled, Started};
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::StreamDelta;
+use rig_ecs::turn::{ModelRequest, SentTo, StreamDelta};
 use rig_harness::note::Note;
 use rig_tools::attach::attached_file;
 
@@ -49,32 +50,178 @@ pub(crate) type EntryRenderers<'a> = HashMap<&'a str, &'a Arc<RenderEntry>>;
 /// An item's rows (or lines) within a part.
 pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
 
-/// What this run knows of the tool calls that settled in it: what each
-/// published and how long it ran, by call id.
+/// What this run knows of the calls that settled in it: what each tool
+/// call published and how long it ran, by call id; and which tool and
+/// model calls each effect started, for [`ToolCallView::children`].
 #[derive(Resource, Default)]
-pub(crate) struct CallFacts(HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>);
+pub(crate) struct CallFacts {
+    facts: HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>,
+    calls: CallTree,
+}
 
 impl CallFacts {
     /// What `call` published and how long it ran, as far as known.
     fn of(&self, call: &CallId) -> (Option<&ToolResultContext>, Option<Duration>) {
-        self.0
+        self.facts
             .get(call)
             .map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
     }
+
+    /// The settled calls, by the effects that started them.
+    pub(crate) fn calls(&self) -> &CallTree {
+        &self.calls
+    }
 }
 
-/// Notes what a tool call published and how long it ran, as it settles.
+/// Tool and model calls by the effect that started them (its `parent`),
+/// each with its own effect id; and each tool call's agent and call id, by
+/// its effect.
+#[derive(Default)]
+pub(crate) struct CallTree {
+    children: HashMap<EffectId, Vec<(EffectId, ChildCall)>>,
+    tool_calls: HashMap<EffectId, (Entity, CallId)>,
+}
+
+impl CallTree {
+    /// Notes `child`, with effect id `id`, as a call `parent` started.
+    pub(crate) fn add(&mut self, parent: Option<EffectId>, id: EffectId, child: ChildCall) {
+        if let Some(parent) = parent {
+            self.children.entry(parent).or_default().push((id, child));
+        }
+    }
+
+    /// Notes that effect `id` is `agent`'s tool call `call`.
+    pub(crate) fn tool_call(&mut self, id: EffectId, agent: Entity, call: CallId) {
+        self.tool_calls.insert(id, (agent, call));
+    }
+
+    /// The calls under each tool call of `agent` that started any, as
+    /// these calls (settled) and `live` ones (not settled) say: each call
+    /// after the one that started it, in the order they were made.
+    pub(crate) fn of_agent(&self, live: &Self, agent: Entity) -> BTreeMap<CallId, Vec<ChildCall>> {
+        let parents = self.children.keys().chain(live.children.keys());
+        let tool_call = |id| self.tool_calls.get(id).or_else(|| live.tool_calls.get(id));
+        let calls = parents.filter_map(|parent| Some((parent, tool_call(parent)?)));
+        let calls = calls.filter(|(_, (of, _))| *of == agent);
+        let mut found = BTreeMap::new();
+        for (&parent, (_, call)) in calls {
+            if found.contains_key(call) {
+                continue;
+            }
+            let mut children = Vec::new();
+            let mut seen = HashSet::from([parent]);
+            self.below(live, parent, 0, &mut seen, &mut children);
+            found.insert(call.clone(), children);
+        }
+        found
+    }
+
+    /// Adds the calls under `parent`, `depth` below the tool call, to
+    /// `out`, each followed by those under it; `seen` guards against an
+    /// effect named as its own ancestor.
+    fn below(
+        &self,
+        live: &Self,
+        parent: EffectId,
+        depth: usize,
+        seen: &mut HashSet<EffectId>,
+        out: &mut Vec<ChildCall>,
+    ) {
+        let settled = self.children.get(&parent).into_iter().flatten();
+        let running = live.children.get(&parent).into_iter().flatten();
+        let mut children: Vec<&(EffectId, ChildCall)> = settled.chain(running).collect();
+        children.sort_by_key(|(id, _)| *id);
+        for (id, child) in children {
+            if !seen.insert(*id) {
+                continue;
+            }
+            out.push(ChildCall {
+                depth,
+                ..child.clone()
+            });
+            self.below(live, *id, depth + 1, seen, out);
+        }
+    }
+}
+
+/// A tool or model call as one of [`ToolCallView::children`], standing as
+/// `state`, `depth` 0; `None` for any other effect.
+pub(crate) fn child_call(
+    (request, model, sent): (Option<&ToolRequest>, Option<&ModelRequest>, Option<&SentTo>),
+    (agent, outcome): (Option<&Name>, Option<&Outcome>),
+    state: CallState,
+) -> Option<ChildCall> {
+    let (failed, line) = match (outcome, request) {
+        (None, _) => (false, None),
+        (Some(outcome), Some(_)) => {
+            let result = outcome.tool_result();
+            let failed = result.is_error() || result.is_refused();
+            (failed, Some(result.output().render()))
+        }
+        (Some(Outcome(Err(report))), None) => (true, Some(report.message.clone())),
+        (Some(outcome), None) => (false, outcome.completion().map(|reply| reply.text())),
+    };
+    let line = line.and_then(|line| line.lines().next().map(str::to_owned));
+    let connection = sent.map(|SentTo(connection)| connection);
+    let connection = connection.or(model.and_then(|model| model.connection.as_ref()));
+    let name = match (request, model) {
+        (Some(request), _) => request.call.function.name.to_string(),
+        (None, Some(_)) => connection.map_or("model".to_owned(), |c| c.spec.reference()),
+        (None, None) => return None,
+    };
+    Some(ChildCall {
+        depth: 0,
+        call: request.map(|request| request.call.clone()),
+        name,
+        agent: agent.map(|name| name.as_str().to_owned()),
+        state,
+        failed,
+        line,
+    })
+}
+
+/// A settled effect, as [`note_call_facts`] reads it.
+type SettledCall<'a> = (
+    &'a Effect,
+    (
+        Option<&'a ToolRequest>,
+        Option<&'a ModelRequest>,
+        Option<&'a SentTo>,
+    ),
+    (Option<&'a Outcome>, Option<&'a ForAgent>),
+    (Option<&'a Published>, Option<&'a Started>),
+);
+
+/// Notes what a tool call published and how long it ran, as it settles,
+/// and every tool and model call under the effect that started it.
 pub(crate) fn note_call_facts(
     settled: On<Add<Settled>>,
-    calls: Query<(&ToolRequest, Option<&Published>, Option<&Started>)>,
+    calls: Query<SettledCall>,
+    names: Query<&Name>,
     mut facts: ResMut<CallFacts>,
 ) {
-    let Ok((request, published, started)) = calls.get(settled.entity) else {
+    let Ok((effect, requests, (outcome, agent), (published, started))) = calls.get(settled.entity)
+    else {
         return;
     };
+    let agent = agent.map(|ForAgent(agent)| *agent);
+    let name = agent.and_then(|agent| names.get(agent).ok());
+    if let Some(child) = child_call(requests, (name, outcome), CallState::Done) {
+        facts.calls.add(effect.parent, effect.id(), child);
+    }
+    let (Some(request), ..) = requests else {
+        return;
+    };
+    if let Some(agent) = agent {
+        facts
+            .calls
+            .tool_call(effect.id(), agent, request.call.id.clone());
+    }
     let took = started.and_then(|started| SystemTime::now().duration_since(started.at).ok());
     let published = published.map(|Published(context)| context.clone());
-    facts.0.insert(request.call.id.clone(), (published, took));
+    facts
+        .facts
+        .insert(request.call.id.clone(), (published, took));
 }
 
 /// The tool calls a model call is streaming, by the model call, in the
@@ -167,6 +314,8 @@ pub(crate) struct Look<'a> {
     pub(crate) note_cut: bool,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
+    /// The calls under each tool call that started any.
+    pub(crate) children: &'a BTreeMap<CallId, Vec<ChildCall>>,
 }
 
 /// What is drawn inside a message, before one of its items.
@@ -288,6 +437,7 @@ impl Look<'_> {
                     self.is_expanded(&TranscriptItem::Call(call.id.clone()))
                         .hash(hasher);
                     self.facts.of(&call.id).1.hash(hasher);
+                    hash_children(self.children.get(&call.id), hasher);
                 }
             }
         }
@@ -317,10 +467,23 @@ impl Look<'_> {
             .iter()
             .map(|item| unordered(&|h| item.hash(h)));
         expanded.fold(0u64, u64::wrapping_add).hash(&mut hasher);
-        let facts = self.facts.0.iter();
+        let facts = self.facts.facts.iter();
         let facts = facts.map(|(call, (_, took))| unordered(&|h| (call, took).hash(h)));
         facts.fold(0u64, u64::wrapping_add).hash(&mut hasher);
+        for (call, children) in self.children {
+            call.hash(&mut hasher);
+            hash_children(Some(children), &mut hasher);
+        }
         hasher.finish()
+    }
+}
+
+/// Hashes what a call's renderer draws of `children`.
+fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) {
+    for child in children.into_iter().flatten() {
+        (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
+        (child.failed, &child.line).hash(hasher);
+        child.call.as_ref().map(|call| &call.id).hash(hasher);
     }
 }
 
@@ -1027,6 +1190,7 @@ fn message_lines(
                                 facts,
                                 took,
                                 output: look.outputs.get(&call.id).map(String::as_str),
+                                children: look.children.get(&call.id).map_or(&[], Vec::as_slice),
                             };
                             call_lines(&view, look.renderers)
                         });

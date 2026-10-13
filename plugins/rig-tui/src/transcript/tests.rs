@@ -13,9 +13,11 @@ use rig_core::message::{
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
 use rig_ecs::prelude::{Aside, AsideId, Author, Entry, Halt, MessageId};
-use rig_ecs::stage::{HoldOf, Started, SupersededBy};
+use rig_ecs::stage::{
+    Effect, EffectRecorded, ForAgent, HoldOf, Outcome, Settled, Started, SupersededBy,
+};
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::StreamDelta;
+use rig_ecs::turn::{ModelRequest, StreamDelta};
 use rig_harness::note::Note;
 use rig_harness::prelude::App;
 use rig_harness::prelude::ToolProgress;
@@ -113,6 +115,7 @@ fn drawn(
         whole: false,
         note_cut: false,
         facts: &facts,
+        children: &BTreeMap::new(),
     };
     // The conversation is the same each time.
     transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
@@ -733,6 +736,7 @@ fn layout_app() -> (App, Entity) {
         .init_resource::<StreamingCalls>()
         .init_resource::<TranscriptView>()
         .init_resource::<rig_ecs::effects::Effects>()
+        .add_message::<EffectRecorded>()
         .add_observer(super::note_call_facts);
     let agent = app
         .world_mut()
@@ -772,4 +776,70 @@ fn a_race_draws_the_reply_of_its_member_still_running() {
         .collect();
     assert!(rows.contains(&"the winner's"), "{rows:?}");
     assert!(!rows.iter().any(|row| row.contains("loser")), "{rows:?}");
+}
+
+#[test]
+fn a_renderer_sees_the_calls_its_call_started_and_theirs() {
+    let (mut app, agent) = layout_app();
+    app.add_tool_renderer("consult", |view| {
+        let children = view.children.iter().map(|child| {
+            let agent = child.agent.as_deref().unwrap_or("-");
+            let line = child.line.as_deref().unwrap_or("-");
+            let (depth, name, state) = (child.depth, &child.name, &child.state);
+            Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
+        });
+        children.collect()
+    });
+    let (Ok(consult), Ok(read)) = (ToolName::new("consult"), ToolName::new("read")) else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(consult, json!({})));
+    say(
+        &mut app,
+        agent,
+        Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+            call.clone(),
+        )])),
+    );
+    let world = app.world_mut();
+    let helper = world.spawn(Name::new("helper")).id();
+    // The consult call runs; its helper's model call runs under it.
+    let consulting = world.spawn((ToolRequest { call }, Effect::default(), ForAgent(agent)));
+    let consulting = consulting.get::<Effect>().map(Effect::id);
+    let started = Started {
+        at: SystemTime::now(),
+    };
+    let model = rig_core::completion::CompletionRequest::new(Message::user("look"));
+    let asking = world.spawn((
+        ModelRequest::new(model),
+        Effect::child_of(consulting),
+        ForAgent(helper),
+        started,
+    ));
+    let asking = asking.get::<Effect>().map(Effect::id);
+    // A read that model call asked for settled already.
+    let read = ToolCall::from_wire("c1", ToolFunction::new(read, json!({ "path": "a.rs" })));
+    let answer = rig_core::tool::ToolResult::success("fn main() {}\n".to_owned().into());
+    let reading = world.spawn((
+        ToolRequest { call: read },
+        Effect::child_of(asking),
+        ForAgent(helper),
+        Outcome::from(answer),
+    ));
+    let reading = reading.id();
+    world.entity_mut(reading).insert(Settled);
+    world.flush();
+    let rows = laid_out(&mut app, agent, Expanded::AsShown);
+    let rows: Vec<&str> = rows
+        .iter()
+        .flat_map(DrawnTranscript::rows)
+        .map(|row| row.text.as_str())
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            "0 model helper Running(None) -",
+            "1 read helper Done fn main() {}"
+        ]
+    );
 }

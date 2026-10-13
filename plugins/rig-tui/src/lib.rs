@@ -92,7 +92,7 @@ pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScr
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout};
 pub use renderers::{
-    AppToolRenderersExt, CallState, EntryRenderer, EntryView, RESULT_LINES, RenderEntry,
+    AppToolRenderersExt, CallState, ChildCall, EntryRenderer, EntryView, RESULT_LINES, RenderEntry,
     RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};

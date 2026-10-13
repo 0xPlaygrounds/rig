@@ -13,6 +13,27 @@
 //! entries of the conversation it wrote, such as a compaction's summary. One without draws as
 //! [`EntryView::default_lines`]. A change to a renderer draws the
 //! transcript again.
+//!
+//! A renderer also sees the calls its call started, such as a subagent's
+//! model and tool calls ([`ToolCallView::children`]), and draws them
+//! nested where it likes:
+//!
+//! ```no_run
+//! use rig_harness::prelude::*;
+//! use rig_tui::AppToolRenderersExt;
+//! use rig_tui::ratatui::text::Line;
+//!
+//! fn build(app: &mut App) {
+//!     app.add_tool_renderer("consult", |view| {
+//!         let mut lines = view.default_lines();
+//!         for child in view.children {
+//!             let indent = "  ".repeat(child.depth + 2);
+//!             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
+//!         }
+//!         lines
+//!     });
+//! }
+//! ```
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -63,6 +84,34 @@ pub struct ToolCallView<'a> {
     ///
     /// [`CallOutput`]: rig_harness::prelude::CallOutput
     pub output: Option<&'a str>,
+    /// The tool and model calls the call started, and those they started,
+    /// in order, each after the one that started it: such as a subagent's
+    /// calls under the call that briefed it. Those of this run only; not
+    /// kept with the session.
+    pub children: &'a [ChildCall],
+}
+
+/// A tool or model call that a tool call started, or one of those
+/// started, as a renderer sees it ([`ToolCallView::children`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChildCall {
+    /// How far below the call it is: 0 for one the call started itself.
+    pub depth: usize,
+    /// The tool call, or `None` for a model call.
+    pub call: Option<ToolCall>,
+    /// The tool's name, or the model's catalog reference (`vendor/model`),
+    /// or `model` before it is known.
+    pub name: String,
+    /// The name of the agent it is for, such as a subagent's.
+    pub agent: Option<String>,
+    /// Where it stands; a model call is [`CallState::Streaming`] while its
+    /// reply streams in.
+    pub state: CallState,
+    /// Whether it failed: a tool's error result, or a model call's error.
+    pub failed: bool,
+    /// The first line of its answer, once it has one: a tool's result, a
+    /// model's reply, or why it failed.
+    pub line: Option<String>,
 }
 
 /// Where a tool call stands. A call of an earlier turn, or one whose
@@ -100,6 +149,7 @@ impl<'a> ToolCallView<'a> {
             facts: None,
             took: None,
             output: None,
+            children: &[],
         }
     }
 
