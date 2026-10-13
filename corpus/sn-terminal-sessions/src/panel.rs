@@ -26,7 +26,7 @@ pub(crate) fn add(app: &mut App) {
     app.add_message::<RequestRedraw>()
         .init_resource::<TerminalEvents>()
         .add_systems(Startup, spawn)
-        .add_systems(PreUpdate, type_keys.in_set(InputSystems::Filter))
+        .add_systems(rig_tui::TuiKeys, type_keys.in_set(InputSystems::Filter))
         .add_systems(
             PostUpdate,
             (place.in_set(TuiSystems::Prepare), draw.in_set(TuiSystems::Draw)),

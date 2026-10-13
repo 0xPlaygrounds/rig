@@ -1,7 +1,8 @@
 //! The terminal view. It reads agent components, keeps its own view state
 //! in a resource, and sends the same requests any other view would. It
 //! never owns the app's loop: a thread reads the terminal and wakes the
-//! loop, `PreUpdate` handles what it read, and drawing is a system in
+//! loop, `PreUpdate` handles what it read, a key at a time ([`TuiKeys`]),
+//! and drawing is a system in
 //! `PostUpdate` that runs when something drawn changed.
 //!
 //! The input is a multiline editor with the prompt history
@@ -38,9 +39,9 @@
 //! [`InputAction`], which a plugin may also put among the keys), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
 //! candidates for a command's argument ([`ArgCompletion`]), the frame's
-//! keys before any binding sees them ([`TerminalEvents`], filtered in
-//! [`InputSystems::Filter`], with [`TuiInputState`] saying what the input
-//! does with them), the terminal's focus ([`TerminalFocus`]), its own escape
+//! keys before any binding sees them ([`TerminalEvents`], filtered one at
+//! a time in [`InputSystems::Filter`] of [`TuiKeys`], with
+//! [`TuiInputState`] saying what the input does with them), the terminal's focus ([`TerminalFocus`]), its own escape
 //! codes ([`TerminalWrite`], [`CopyToClipboard`], which also goes to this
 //! machine's clipboard), a program run with the terminal
 //! ([`RunInTerminal`]), and a choice for the user, a
@@ -74,6 +75,7 @@ mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
@@ -83,7 +85,7 @@ pub use complete::{ArgCompletion, Candidate, Completion, CompletionKind};
 pub use crossterm;
 pub use editor::TuiInput;
 pub use history::{HistorySystems, PromptHistory, Sent};
-pub use input::{InputSystems, KeyInput, TerminalEvents, TuiInputState};
+pub use input::{InputSystems, KeyInput, TerminalEvents, TuiInputState, TuiKeys};
 pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
     run_command,
@@ -135,12 +137,18 @@ impl Plugin for TuiPlugin {
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()
             .add_message::<PastEffects>()
+            // One thread, as a key's work is small; a plugin built before
+            // this one may have added to it already.
+            .edit_schedule(TuiKeys, |keys| {
+                keys.set_executor(SingleThreadedExecutor::new());
+            })
             .configure_sets(
-                PreUpdate,
+                TuiKeys,
                 (InputSystems::Filter, InputSystems::Dispatch).chain(),
             )
+            .add_systems(PreUpdate, input::run_keys)
             .add_systems(
-                PreUpdate,
+                TuiKeys,
                 input::clear_events
                     .in_set(InputSystems::Dispatch)
                     .run_if(not(resource_exists::<view::TuiView>))
@@ -205,10 +213,16 @@ pub fn add_view(app: &mut App) {
                     input::receive_events.run_if(resource_exists::<input::TerminalInput>),
                     complete::receive_paths,
                     clipboard::receive_images,
-                    input::note_state,
                 )
                     .chain()
-                    .before(InputSystems::Filter),
+                    .before(input::run_keys),
+                input::note_state.after(input::run_keys),
+            ),
+        )
+        .add_systems(
+            TuiKeys,
+            (
+                input::note_state.before(InputSystems::Filter),
                 input::read_input.in_set(InputSystems::Dispatch),
             ),
         )

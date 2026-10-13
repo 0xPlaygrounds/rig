@@ -191,7 +191,10 @@ impl Plugin for SideQuestionPlugin {
             .add_observer(seed_side_agent)
             .add_observer(side_purpose)
             .add_observer(answered)
-            .add_systems(PreUpdate, type_follow_up.in_set(InputSystems::Filter))
+            .add_systems(
+                rig_tui::TuiKeys,
+                type_follow_up.in_set(InputSystems::Filter),
+            )
             .add_systems(
                 Update,
                 discard_restored.run_if(resource_added::<SessionRestored>),

@@ -363,7 +363,7 @@ impl Plugin for TranscriptSearchPlugin {
         );
         // `/` opens the bar before the frame's other keys type into it.
         let filters = (slash_opens, type_in_bar).chain();
-        app.add_systems(PreUpdate, filters.in_set(InputSystems::Filter))
+        app.add_systems(rig_tui::TuiKeys, filters.in_set(InputSystems::Filter))
             .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
     }
 }

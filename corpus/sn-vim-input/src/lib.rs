@@ -13,9 +13,10 @@
 //! mode shows in the status line, and `/vim on|off` toggles it, kept in
 //! [`PluginData::user`] for every session.
 //!
-//! A filter sees the input as it was before the frame's keys. Once a key
-//! it lets through may have changed the input, the rest of the frame waits
-//! for the next one, from the first key the editor might take.
+//! A filter sees each key with the input the keys before it left. Once a
+//! key it lets through may have changed the input, the keys after it that
+//! an earlier filter made of one go back to the view, which does them
+//! next.
 
 pub mod editor;
 
@@ -121,7 +122,7 @@ impl Plugin for VimPlugin {
         .add_observer(paste_clipboard)
         .add_systems(Startup, load)
         .add_systems(
-            PreUpdate,
+            rig_tui::TuiKeys,
             (
                 edit.in_set(InputSystems::Filter),
                 hold.after(InputSystems::Dispatch),
@@ -278,14 +279,13 @@ fn might_take(key: &KeyEvent, mode: Mode) -> bool {
     mode != Mode::Insert || key.code == KeyCode::Esc
 }
 
-/// Puts the rest of a frame back for the next one, after the keys before
-/// it changed the input.
-fn hold(mut vim: ResMut<Vim>, mut events: ResMut<TerminalEvents>, wake: Res<Wake>) {
+/// Puts the keys after one that changed the input back, which the view
+/// does next, each with the input it left.
+fn hold(mut vim: ResMut<Vim>, mut events: ResMut<TerminalEvents>) {
     if vim.held.is_empty() {
         return;
     }
     events.0.append(&mut vim.held);
-    wake.wake();
 }
 
 /// Pastes what a clipboard read brought back.

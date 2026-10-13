@@ -206,7 +206,7 @@ impl Plugin for HistoryPlugin {
                     .after(HistorySystems::Record)
                     .before(HistorySystems::Save),
             )
-            .add_systems(PreUpdate, type_search.in_set(InputSystems::Filter))
+            .add_systems(rig_tui::TuiKeys, type_search.in_set(InputSystems::Filter))
             .add_systems(
                 PostUpdate,
                 (

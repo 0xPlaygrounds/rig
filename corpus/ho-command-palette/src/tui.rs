@@ -61,8 +61,11 @@ pub(super) fn add(app: &mut App) {
         toggle,
     );
     app.add_observer(activate)
-        .configure_sets(PreUpdate, PaletteSystems.in_set(InputSystems::Filter))
-        .add_systems(PreUpdate, type_in_palette.in_set(PaletteSystems))
+        .configure_sets(
+            rig_tui::TuiKeys,
+            PaletteSystems.in_set(InputSystems::Filter),
+        )
+        .add_systems(rig_tui::TuiKeys, type_in_palette.in_set(PaletteSystems))
         .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
 }
 

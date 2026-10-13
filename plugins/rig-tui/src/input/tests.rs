@@ -121,8 +121,9 @@ fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
     assert_eq!(typed(&app), "cargo test");
 }
 
-/// Keys a modal filter turned into actions, as vim's normal mode would.
-fn normal_mode(mut events: ResMut<crate::TerminalEvents>) {
+/// Keys a modal filter turned into actions, one at a time, as vim's
+/// normal mode would: `d` waits for its motion.
+fn normal_mode(mut events: ResMut<crate::TerminalEvents>, mut deleting: Local<bool>) {
     use crate::{InputAction, KeyInput, KeyPress};
     use crossterm::event::{Event, KeyCode};
     let key = |item: &KeyInput| match item {
@@ -130,13 +131,12 @@ fn normal_mode(mut events: ResMut<crate::TerminalEvents>) {
         _ => None,
     };
     let mut out = Vec::new();
-    let mut items = std::mem::take(&mut events.0).into_iter().peekable();
-    while let Some(item) = items.next() {
-        match key(&item) {
-            Some(KeyCode::Esc) => {}
-            Some(KeyCode::Char('0')) => out.push(KeyInput::Action(InputAction::LineStart)),
-            Some(KeyCode::Char('d')) if items.peek().and_then(key) == Some(KeyCode::Char('w')) => {
-                items.next();
+    for item in std::mem::take(&mut events.0) {
+        match (key(&item), std::mem::take(&mut *deleting)) {
+            (Some(KeyCode::Esc), _) => {}
+            (Some(KeyCode::Char('0')), _) => out.push(KeyInput::Action(InputAction::LineStart)),
+            (Some(KeyCode::Char('d')), _) => *deleting = true,
+            (Some(KeyCode::Char('w')), true) => {
                 out.push(KeyInput::Action(InputAction::DeleteWordAfter));
             }
             _ => out.push(item),
@@ -147,12 +147,12 @@ fn normal_mode(mut events: ResMut<crate::TerminalEvents>) {
 
 #[test]
 fn a_filter_turns_the_frames_keys_into_actions_in_their_order() {
-    use crate::InputSystems;
     use crate::tests::{press, type_text, typed, view_app};
+    use crate::{InputSystems, TuiKeys};
 
     let (mut app, _) = view_app();
     type_text(&mut app, "hello world");
-    app.add_systems(PreUpdate, normal_mode.in_set(InputSystems::Filter));
+    app.add_systems(TuiKeys, normal_mode.in_set(InputSystems::Filter));
     // One frame: Esc is dropped, `0` goes to the start, `dw` deletes the
     // word; nothing is typed, and an Esc that reached the view would have
     // interrupted the agent instead.
@@ -161,6 +161,29 @@ fn a_filter_turns_the_frames_keys_into_actions_in_their_order() {
     // Keys it leaves alone are the view's as before.
     press(&mut app, "x");
     assert_eq!(typed(&app), "x world");
+}
+
+/// The input as each key a filter saw found it.
+#[derive(Resource, Default)]
+struct Seen(Vec<String>);
+
+/// Notes the input as the key being done finds it.
+fn note_input(events: Res<crate::TerminalEvents>, input: Res<TuiInput>, mut seen: ResMut<Seen>) {
+    if !events.0.is_empty() {
+        seen.0.push(input.text().to_owned());
+    }
+}
+
+#[test]
+fn a_filter_sees_each_key_with_the_input_the_keys_before_it_left() {
+    use crate::tests::{press, view_app};
+    use crate::{InputSystems, TuiKeys};
+
+    let (mut app, _) = view_app();
+    app.init_resource::<Seen>()
+        .add_systems(TuiKeys, note_input.in_set(InputSystems::Filter));
+    press(&mut app, "a b");
+    assert_eq!(app.world().resource::<Seen>().0, ["", "a"]);
 }
 
 /// The searches `/` opened.
@@ -184,12 +207,12 @@ fn slash_searches(
 
 #[test]
 fn a_plugin_takes_slash_on_an_empty_input_and_leaves_it_typed_elsewhere() {
-    use crate::InputSystems;
     use crate::tests::{press, typed, view_app};
+    use crate::{InputSystems, TuiKeys};
 
     let (mut app, _) = view_app();
     app.init_resource::<Searches>()
-        .add_systems(PreUpdate, slash_searches.in_set(InputSystems::Filter));
+        .add_systems(TuiKeys, slash_searches.in_set(InputSystems::Filter));
     press(&mut app, "/");
     assert_eq!(
         (app.world().resource::<Searches>().0, typed(&app)),

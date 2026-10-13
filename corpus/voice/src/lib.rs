@@ -213,7 +213,7 @@ impl Plugin for VoicePlugin {
                 "Voice input and spoken answers: /voice on|off, /voice speak on|off",
                 voice,
             )
-            .add_systems(PreUpdate, hush_on_keys.in_set(InputSystems::Filter))
+            .add_systems(rig_tui::TuiKeys, hush_on_keys.in_set(InputSystems::Filter))
             .add_observer(on_talk)
             .add_observer(on_heard)
             .add_observer(on_send)

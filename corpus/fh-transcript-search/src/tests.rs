@@ -190,10 +190,11 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     let spans = view.highlights.iter().flat_map(|lit| &lit.spans);
     let spans: Vec<Option<&TranscriptItem>> = spans.map(|span| span.item.as_ref()).collect();
     assert_eq!(spans, [Some(&call)]);
+    // Each key searches as it is typed; the last scroll is to the match.
     let scrolls = &app.world().resource::<Scrolls>().0;
     let at = row.map(|row| (Some(call.clone()), ItemRow::Top(row)));
-    assert_eq!(scrolls.first(), at.as_ref());
-    assert_eq!(scrolls.len(), 1);
+    assert_eq!(scrolls.last(), at.as_ref());
+    let scrolled = scrolls.len();
     let drawn = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
     assert!(!drawn.is_cut(&call));
     assert_eq!(drawn.lit_in(&call), 1);
@@ -204,7 +205,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(counter(&mut app), None);
     let view = app.world().resource::<TranscriptView>();
     assert!(view.highlights.is_empty() && view.expanded.contains(&call));
-    assert_eq!(app.world().resource::<Scrolls>().0.len(), 1);
+    assert_eq!(app.world().resource::<Scrolls>().0.len(), scrolled);
     assert_eq!(
         (input(&app), app.world().resource::<Interrupts>().0),
         ("", 0)

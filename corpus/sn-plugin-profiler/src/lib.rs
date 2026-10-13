@@ -325,7 +325,10 @@ impl Plugin for PluginProfilerPlugin {
             .add_observer(effect_answered)
             .add_observer(effect_gone);
         #[cfg(feature = "tui")]
-        app.add_systems(PreUpdate, keys_seen.in_set(rig_tui::InputSystems::Filter));
+        app.add_systems(
+            rig_tui::TuiKeys,
+            keys_seen.in_set(rig_tui::InputSystems::Filter),
+        );
     }
 }
 

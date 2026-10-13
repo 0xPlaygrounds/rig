@@ -1,15 +1,19 @@
 //! Terminal input, read on a thread of its own that wakes the loop for
 //! each event, as in Bevy's `examples/async_tasks/external_source_external_thread.rs`.
-//! Each event joins the frame's [`TerminalEvents`], which plugins read and
-//! change in [`InputSystems::Filter`] and the view does in
-//! [`InputSystems::Dispatch`]: the shown picker or question takes the
-//! keys, else a [`KeyBinding`](crate::KeyBinding) (the view's own editing
-//! keys are bindings too), else a character is typed into the input.
+//! Each event joins the frame's [`TerminalEvents`], which the view takes
+//! one item at a time, in order, running the [`TuiKeys`] schedule for
+//! each: plugins read and change the item in [`InputSystems::Filter`],
+//! with the input and the [`TuiInputState`] as the keys before it left
+//! them, and the view does it in [`InputSystems::Dispatch`]: the shown
+//! picker or question takes the key, else a
+//! [`KeyBinding`](crate::KeyBinding) (the view's own editing keys are
+//! bindings too), else a character is typed into the input. What a key
+//! sets off, such as a panel a binding opens, takes the next key.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
 //! use rig_tui::crossterm::event::{Event, KeyCode};
-//! use rig_tui::{InputSystems, KeyInput, TerminalEvents, TuiInput, TuiInputState};
+//! use rig_tui::{InputSystems, KeyInput, TerminalEvents, TuiInput, TuiInputState, TuiKeys};
 //!
 //! /// `/` on an empty input opens a search instead of a slash command.
 //! fn slash_searches(mut events: ResMut<TerminalEvents>, input: Res<TuiInput>, state: Res<TuiInputState>) {
@@ -23,16 +27,18 @@
 //! }
 //!
 //! fn build(app: &mut App) {
-//!     app.add_systems(PreUpdate, slash_searches.in_set(InputSystems::Filter));
+//!     app.add_systems(TuiKeys, slash_searches.in_set(InputSystems::Filter));
 //! }
 //! ```
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::SystemParam;
 use bevy_log::error;
 use crossbeam_channel::Receiver;
@@ -62,13 +68,21 @@ const PAGE: usize = 10;
 /// the view is gone.
 const POLL: Duration = Duration::from_millis(100);
 
+/// The items of [`TerminalEvents`] a frame does at most: the rest, such as
+/// those of a macro that never ends, wait for the next frame, so the view
+/// keeps drawing.
+const KEYS_PER_FRAME: usize = 1024;
+
 /// What the terminal reported, and the actions plugins put in, in the
-/// order the view does them. Filters in [`InputSystems::Filter`] read it,
-/// change it, drop items or add some, such as to take a key before any
-/// binding sees it or only while the input is empty;
-/// [`InputSystems::Dispatch`] does what is left and empties it. A plugin
-/// may also push to it at any time, such as the keys of a macro: what is
-/// pushed after `Dispatch` is done in the next frame.
+/// order the view does them. The view takes them one at a time: in
+/// [`TuiKeys`], it holds the one item being done, which filters in
+/// [`InputSystems::Filter`] read, change, drop or replace with several,
+/// such as to take a key before any binding sees it or only while the
+/// input is empty; [`InputSystems::Dispatch`] does what is left and
+/// empties it. What a run leaves in it, such as an action an observer of
+/// the key pushed, is done next, before the frame's other keys. A plugin
+/// may also push to it at any other time, such as the keys of a macro:
+/// they are done in the next frame.
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct TerminalEvents(pub Vec<KeyInput>);
 
@@ -82,21 +96,30 @@ pub enum KeyInput {
     Action(InputAction),
 }
 
-/// Where the terminal view handles the frame's [`TerminalEvents`], in
-/// `PreUpdate`, in this order.
+/// The schedule the view runs once for each item of the frame's
+/// [`TerminalEvents`], in order, in `PreUpdate`, with that one item in
+/// them: filters see one key (and what earlier filters made of it) with
+/// the input and the [`TuiInputState`] as the keys before it left them.
+/// Its sets, in this order, are [`InputSystems`]; the commands of a run
+/// are applied before the next, so a panel a key opens takes the next.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TuiKeys;
+
+/// Where the terminal view handles each item of the [`TerminalEvents`],
+/// in [`TuiKeys`], in this order.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InputSystems {
-    /// Plugins read and change the frame's [`TerminalEvents`], with the
-    /// [`TuiInputState`] and the input as they were before its keys.
+    /// Plugins read and change the item in the [`TerminalEvents`], with
+    /// the [`TuiInputState`] and the input as the keys before it left them.
     Filter,
-    /// The view does the [`TerminalEvents`] left.
+    /// The view does what is left in the [`TerminalEvents`].
     Dispatch,
 }
 
-/// What the view does with the keys, as it was before the frame's
-/// [`TerminalEvents`]: for a filter that acts only in some states, such as
-/// not while a completion is open. The view writes it; it is read-only to
-/// plugins.
+/// What the view does with the keys, as the keys before the one being done
+/// left it, in [`TuiKeys`], and as the frame's keys left it, after them:
+/// for a filter that acts only in some states, such as not while a
+/// completion is open. The view writes it; it is read-only to plugins.
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct TuiInputState {
     scope: KeyScope,
@@ -200,15 +223,48 @@ pub(crate) fn receive_events(input: Res<TerminalInput>, mut events: ResMut<Termi
     }
 }
 
-/// Drops the frame's [`TerminalEvents`] in a run without the view, which
-/// nothing does.
+/// Drops the [`TerminalEvents`] in a run without the view, which nothing
+/// does.
 pub(crate) fn clear_events(mut events: ResMut<TerminalEvents>) {
     if !events.0.is_empty() {
         events.0.clear();
     }
 }
 
-/// Notes the [`TuiInputState`] for the frame's filters.
+/// Runs [`TuiKeys`] for each item of the frame's [`TerminalEvents`], in
+/// order, with that item alone in them; what a run leaves goes next. Past
+/// [`KEYS_PER_FRAME`] the rest waits for the next frame, which it wakes.
+pub(crate) fn run_keys(world: &mut World) {
+    if world
+        .get_resource::<TerminalEvents>()
+        .is_none_or(|events| events.0.is_empty())
+    {
+        return;
+    }
+    let mut events = world.resource_mut::<TerminalEvents>();
+    let mut queue: VecDeque<KeyInput> = std::mem::take(&mut events.0).into();
+    let mut done = 0;
+    while let Some(item) = queue.pop_front() {
+        if done == KEYS_PER_FRAME {
+            queue.push_front(item);
+            world.resource_mut::<TerminalEvents>().0 = queue.into();
+            if let Some(wake) = world.get_resource::<Wake>() {
+                wake.wake();
+            }
+            return;
+        }
+        done += 1;
+        world.resource_mut::<TerminalEvents>().0.push(item);
+        world.run_schedule(TuiKeys);
+        let left = std::mem::take(&mut world.resource_mut::<TerminalEvents>().0);
+        for item in left.into_iter().rev() {
+            queue.push_front(item);
+        }
+    }
+}
+
+/// Notes the [`TuiInputState`] for the next key's filters, and after the
+/// frame's keys.
 pub(crate) fn note_state(
     view: Res<TuiView>,
     focus: Res<KeyFocus>,
@@ -282,7 +338,7 @@ pub(crate) struct Target<'a> {
     transcript: Mut<'a, TranscriptView>,
 }
 
-/// Does the frame's [`TerminalEvents`], in order.
+/// Does the [`TerminalEvents`] left of the key being done, in order.
 pub(crate) fn read_input(
     mut events: ResMut<TerminalEvents>,
     (mut view, mut transcript, shown): (ResMut<TuiView>, ResMut<TranscriptView>, Res<Shown>),
