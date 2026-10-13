@@ -663,6 +663,60 @@ impl Conversation {
         spliced
     }
 
+    /// Rewrites entries in place, as made by `by`: `edit` sees each entry,
+    /// oldest first, and returns the message to put in its place, or
+    /// `None` to leave it. The entries it rewrote keep their ids and
+    /// authors, and the whole edit is one change: a [`splice`](Self::splice)
+    /// of the entries from the first rewritten to the last. Nothing is
+    /// recorded when it rewrote none. The ids of the entries it rewrote.
+    ///
+    /// ```
+    /// use rig_core::completion::Message;
+    /// use rig_core::conversation::{Author, Conversation};
+    ///
+    /// let mut conversation = Conversation::from_messages([
+    ///     Message::user("one"),
+    ///     Message::user("two"),
+    /// ]);
+    /// let before = conversation.id(1);
+    /// let changed = conversation.edit_each(Author::plugin("shout"), |entry| {
+    ///     (entry.index == 1).then(|| Message::user("TWO"))
+    /// });
+    /// assert_eq!(changed, before.into_iter().collect::<Vec<_>>());
+    /// assert_eq!(conversation.messages().get(1), Some(&Message::user("TWO")));
+    /// assert_eq!(conversation.id(1), before);
+    /// ```
+    pub fn edit_each(
+        &mut self,
+        by: Author,
+        mut edit: impl FnMut(EntryRef<'_>) -> Option<Message>,
+    ) -> Vec<MessageId> {
+        let rewritten: Vec<(usize, MessageId, Message)> = self
+            .entries()
+            .filter_map(|entry| {
+                let (at, id) = (entry.index, entry.id);
+                edit(entry).map(|message| (at, id, message))
+            })
+            .collect();
+        let (Some(&(first, ..)), Some(&(last, ..))) = (rewritten.first(), rewritten.last()) else {
+            return Vec::new();
+        };
+        let ids = rewritten.iter().map(|(_, id, _)| *id).collect();
+        let mut rewritten = rewritten.into_iter().peekable();
+        let entries: Vec<Entry> = (first..=last)
+            .filter_map(|at| match rewritten.next_if(|(next, ..)| *next == at) {
+                Some((_, id, message)) => Some(Entry {
+                    message,
+                    author: self.author(at).cloned(),
+                    id: Some(id),
+                }),
+                None => self.entry(at),
+            })
+            .collect();
+        self.splice(first..=last, entries, by);
+        ids
+    }
+
     /// Leaves the user's last message unanswered, for `halt`. Whether it
     /// was halted now: not when the model owes no answer.
     pub fn halt(&mut self, halt: Halt) -> bool {

@@ -256,3 +256,40 @@ fn a_turn_after_a_stop_is_asked_by_the_users_message() {
         Some(asked)
     );
 }
+
+/// An edit of many entries in place is one recorded change by its author:
+/// the rewritten entries keep their ids and authors, the fold matches, and
+/// an edit that rewrites nothing records nothing.
+#[test]
+fn edit_each_rewrites_in_place_as_one_change() {
+    let mut conversation = Conversation::from_messages(["a", "b", "c", "d"].map(Message::user));
+    conversation.push(Entry::new(Message::user("e")).by(Author::plugin("notes")));
+    let before = ids(&conversation);
+    let shout = |entry: EntryRef<'_>| {
+        [1, 4]
+            .contains(&entry.index)
+            .then(|| Message::user(format!("{}!", entry.index)))
+    };
+    let changed = conversation.edit_each(Author::plugin("shout"), shout);
+    assert_eq!(
+        changed,
+        [before.get(1), before.get(4)]
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(ids(&conversation), before);
+    assert_eq!(conversation.messages().get(4), Some(&Message::user("4!")));
+    assert_eq!(conversation.messages().get(2), Some(&Message::user("c")));
+    assert_eq!(conversation.author(4), Some(&Author::plugin("notes")));
+    let unsaved = conversation.take_unsaved();
+    assert_eq!(unsaved.len(), 3, "the push, the extend and one edit");
+    assert_eq!(fold(&unsaved).messages(), conversation.messages());
+    assert!(
+        conversation
+            .edit_each(Author::plugin("none"), |_| None)
+            .is_empty()
+    );
+    assert!(conversation.unsaved().is_empty());
+}
