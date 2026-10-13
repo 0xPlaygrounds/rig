@@ -1,5 +1,5 @@
 //! Following an effect to its successor. Any plugin may take an effect
-//! over by spawning a successor that `Supersedes` it, such as a watchdog
+//! over by spawning a successor it is `SupersededBy`, such as a watchdog
 //! sending a stalled call again ([`resend`]): the old effect then settles
 //! as superseded, with no outcome applied. The plugin that owns the effect,
 //! and waits for its outcome by a marker of its own, follows it with
@@ -28,7 +28,7 @@
 
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::CallOf;
-use rig_ecs::stage::{Effect, EffectRequest, ForAgent, HoldOf, Settled, SupersededBy, Supersedes};
+use rig_ecs::stage::{Effect, EffectRequest, ForAgent, HoldOf, Settled, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
 
@@ -111,7 +111,8 @@ pub fn resend(effect: Entity) -> impl Command {
             .get::<ProvidedBy>()
             .map(|&ProvidedBy(by)| ProvidedBy(by));
         let name = old.get::<Name>().cloned();
-        let mut successor = world.spawn((again, Supersedes(effect)));
+        let mut successor = world.spawn(again);
+        successor.add_related::<SupersededBy>(&[effect]);
         if turn_call {
             successor.insert(TurnCall);
         }

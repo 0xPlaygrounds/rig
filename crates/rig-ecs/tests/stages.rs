@@ -995,7 +995,8 @@ fn every_way_an_effect_ends_is_recorded() {
         decision.decide(Decider::plugin("test"), answer);
     }
     // Replaced while held: it never starts.
-    let successor = world.spawn((open("successor"), Supersedes(replaced))).id();
+    let successor = world.spawn(open("successor")).id();
+    world.entity_mut(replaced).insert(SupersededBy(successor));
     // Despawned before it settles.
     world.despawn(dropped);
     app.update();
@@ -1676,14 +1677,15 @@ fn fall_back(
             let (Verdict::GaveUp(_), Some(to)) = (&verdict.0, to.clone()) else {
                 continue;
             };
-            commands.spawn((
-                request.clone().on(to),
-                TurnCall,
-                Supersedes(call),
-                CallOf(of.0),
-                ForAgent(agent.0),
-                Effect::child_of(effect.parent),
-            ));
+            commands
+                .spawn((
+                    request.clone().on(to),
+                    TurnCall,
+                    CallOf(of.0),
+                    ForAgent(agent.0),
+                    Effect::child_of(effect.parent),
+                ))
+                .add_related::<SupersededBy>(&[call]);
         }
     }
 }
@@ -2426,14 +2428,15 @@ fn an_interrupt_keeps_no_text_of_a_superseded_call() {
     let (Some((loser, request, parent, turn)), Some(connection)) = (loser, connection) else {
         return;
     };
-    world.spawn((
-        request.on(connection),
-        TurnCall,
-        Supersedes(loser),
-        CallOf(turn),
-        ForAgent(agent),
-        Effect::child_of(parent),
-    ));
+    world
+        .spawn((
+            request.on(connection),
+            TurnCall,
+            CallOf(turn),
+            ForAgent(agent),
+            Effect::child_of(parent),
+        ))
+        .add_related::<SupersededBy>(&[loser]);
     world.flush();
     world.trigger(Interrupt::new(agent));
     world.flush();
@@ -2444,6 +2447,82 @@ fn an_interrupt_keeps_no_text_of_a_superseded_call() {
             .filter_map(|message| message.final_answer())
             .any(|text| text.contains("The answer is")),
         "{said:?}"
+    );
+}
+
+/// Two calls of a turn streaming halfway and a third: once both name the
+/// third their successor, only its reply is the turn's, and both are
+/// recorded as superseded.
+#[test]
+fn a_race_of_any_size_commits_only_its_winner() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    let halfway = Handler(ErasedHandler::new(Halfway));
+    let Some(mut first) = app.world_mut().get_mut::<Connection>(agent) else {
+        return;
+    };
+    first.handler = halfway;
+    let streaming = |world: &mut World| {
+        let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+        partials
+            .iter(world)
+            .filter(|partial| !partial.text.is_empty())
+            .count()
+    };
+    assert!(run_until(&mut app, |world| streaming(world) == 1));
+    let world = app.world_mut();
+    let racing = world.get::<Connection>(agent).cloned();
+    let mut first = world.query_filtered::<(Entity, &ModelRequest, &Effect, &CallOf), (With<TurnCall>, Without<Settled>)>();
+    let first = first
+        .iter(world)
+        .next()
+        .map(|(call, request, effect, of)| (call, request.clone(), effect.parent, of.0));
+    let winning = MockCompletionModel::from_stream_turns([answer("ok")]);
+    let (Some((first, request, parent, turn)), Some(racing), Some(winning)) =
+        (first, racing, connection(&winning))
+    else {
+        return;
+    };
+    let racer = |request: ModelRequest| {
+        (
+            request,
+            TurnCall,
+            CallOf(turn),
+            ForAgent(agent),
+            Effect::child_of(parent),
+        )
+    };
+    let second = world.spawn(racer(request.clone().on(racing))).id();
+    assert!(run_until(&mut app, |world| streaming(world) == 2));
+    let world = app.world_mut();
+    let winner = world.spawn(racer(request.on(winning))).id();
+    world.entity_mut(first).insert(SupersededBy(winner));
+    world.entity_mut(second).insert(SupersededBy(winner));
+    assert_eq!(world.get::<Supersedes>(winner).map(|of| of.len()), Some(2));
+    assert!(run_until(&mut app, |world| !world
+        .resource::<Ended>()
+        .0
+        .is_empty()));
+    let answer = match ended(&app).as_slice() {
+        [TurnOutcome::Answered(message)] => message.final_answer(),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
+    assert_eq!(conversation(&app, agent).len(), 2);
+    let mut models: Vec<_> = model_records(&app)
+        .iter()
+        .map(|record| record.disposition)
+        .collect();
+    models.sort_by_key(|disposition| format!("{disposition:?}"));
+    assert_eq!(
+        models,
+        [
+            Disposition::Ran,
+            Disposition::Superseded,
+            Disposition::Superseded
+        ]
     );
 }
 

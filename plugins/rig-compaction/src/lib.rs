@@ -418,13 +418,14 @@ fn recover_from_overflow(
             if cleared.results > 0 {
                 let then = " and sending it again";
                 notices.write(cleared_notice(agent, outgrew, &cleared, then));
-                commands.spawn((
-                    TurnCall,
-                    Supersedes(call),
-                    CallOf(turn),
-                    ForAgent(agent),
-                    Effect::child_of(effect.parent),
-                ));
+                commands
+                    .spawn((
+                        TurnCall,
+                        CallOf(turn),
+                        ForAgent(agent),
+                        Effect::child_of(effect.parent),
+                    ))
+                    .add_related::<SupersededBy>(&[call]);
                 continue;
             }
         }
@@ -525,13 +526,14 @@ fn take_summary(
         // The call it held is built again, from the compacted conversation.
         Some(&HoldOf(call)) => {
             let parent = held.get(call).ok().and_then(|effect| effect.parent);
-            commands.spawn((
-                TurnCall,
-                Supersedes(call),
-                CallOf(turn),
-                ForAgent(agent),
-                Effect::child_of(parent),
-            ));
+            commands
+                .spawn((
+                    TurnCall,
+                    CallOf(turn),
+                    ForAgent(agent),
+                    Effect::child_of(parent),
+                ))
+                .add_related::<SupersededBy>(&[call]);
         }
         // The user's own compaction turn ends with it.
         None => {

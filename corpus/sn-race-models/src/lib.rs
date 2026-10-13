@@ -10,7 +10,7 @@
 //! plugin sends a sibling turn call of the same turn to the other one, both
 //! built by the kernel from the agent and each fitted to its own model.
 //! The first to stream content (text, reasoning or a tool call) wins: it
-//! [`Supersedes`] the other, which the kernel cancels and never puts in
+//! supersedes the other ([`SupersededBy`]), which the kernel cancels and never puts in
 //! the conversation. A member that fails before it streamed drops out the
 //! same way; if both fail, the last failure lists every member's error. A
 //! winner that fails mid-stream is superseded by a turn call to the other
@@ -418,7 +418,7 @@ fn claim(
             call != delta.effect && racers.get(call).is_ok_and(|(other, ..)| !other.solo)
         });
         if let (Some(loser), false) = (loser, superseding) {
-            commands.entity(delta.effect).insert(Supersedes(loser));
+            commands.entity(loser).insert(SupersededBy(delta.effect));
         }
         if let (Some(streamed), Some(started), Some(member)) =
             (streamed, started, racing.members.get(racer.member))
@@ -560,17 +560,18 @@ fn drop_out(
                 continue;
             };
             notices.write(Notice::info(agent, format!("restarting on {reference}")));
-            commands.spawn((
-                TurnCall,
-                Supersedes(call),
-                CallOf(of.0),
-                ForAgent(agent),
-                Effect::child_of(effect.parent),
-                Racer {
-                    member: next.unwrap_or_default(),
-                    solo: true,
-                },
-            ));
+            commands
+                .spawn((
+                    TurnCall,
+                    CallOf(of.0),
+                    ForAgent(agent),
+                    Effect::child_of(effect.parent),
+                    Racer {
+                        member: next.unwrap_or_default(),
+                        solo: true,
+                    },
+                ))
+                .add_related::<SupersededBy>(&[call]);
             continue;
         }
         racing.failures.push((racer.member, report.message.clone()));
@@ -584,7 +585,7 @@ fn drop_out(
                     .find(|&other| free(other) && keepers.contains(other))
             });
         if let Some(successor) = successor {
-            commands.entity(successor).insert(Supersedes(call));
+            commands.entity(call).insert(SupersededBy(successor));
         }
     }
 }

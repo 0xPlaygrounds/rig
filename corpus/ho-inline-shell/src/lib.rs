@@ -344,13 +344,14 @@ fn finished(
     }
     let text = compose(&pieces, &blocks);
     let expanded = Incoming::new(text, incoming.mode).with_author(incoming.author.clone());
-    commands.spawn((
-        expanded,
-        Expanded,
-        ForAgent(job.agent),
-        Supersedes(message),
-        Effect::child_of(effect.parent),
-    ));
+    commands
+        .spawn((
+            expanded,
+            Expanded,
+            ForAgent(job.agent),
+            Effect::child_of(effect.parent),
+        ))
+        .add_related::<SupersededBy>(&[message]);
     for (hold, _) in mine {
         commands.entity(hold).despawn();
     }

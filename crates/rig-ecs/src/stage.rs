@@ -444,21 +444,21 @@ pub struct HoldOf(pub Entity);
 #[relationship_target(relationship = HoldOf, linked_spawn)]
 pub struct Holds(Vec<Entity>);
 
-/// This effect replaces the one it names, such as a retry on another
-/// model: the old one never starts, its task is cancelled if it runs, and
-/// its outcome is never applied. It settles at the next Commit, recorded
-/// as superseded.
-#[derive(Component, Reflect, Debug)]
-#[reflect(Component)]
-#[relationship(relationship_target = SupersededBy)]
-pub struct Supersedes(pub Entity);
-
-/// The effect that replaces this one.
+/// This effect is replaced by the one it names, such as a call retried on
+/// another model, or each losing member of a race: it never starts, its
+/// task is cancelled if it runs, and its outcome is never applied. It
+/// settles at the next Commit, recorded as superseded. Any number of
+/// effects may name one successor:
+///
+/// ```ignore
+/// commands.spawn(retry).add_related::<SupersededBy>(&[call]);   // a retry
+/// commands.entity(loser).insert(SupersededBy(winner));          // a race, once per loser
+/// ```
 #[derive(Component, Reflect, Debug)]
 #[component(on_add = moved::<SupersededBy>)]
 #[reflect(Component)]
-#[relationship_target(relationship = Supersedes)]
-pub struct SupersededBy(Entity);
+#[relationship(relationship_target = Supersedes)]
+pub struct SupersededBy(pub Entity);
 
 impl SupersededBy {
     /// The successor.
@@ -466,6 +466,12 @@ impl SupersededBy {
         self.0
     }
 }
+
+/// The effects this one replaces ([`SupersededBy`]).
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+#[relationship_target(relationship = SupersededBy)]
+pub struct Supersedes(Vec<Entity>);
 
 /// The effect was committed. It stays until the next frame's loop starts,
 /// for `Added<Settled>` readers, then it is despawned.

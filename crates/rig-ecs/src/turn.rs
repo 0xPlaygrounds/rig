@@ -65,7 +65,7 @@ use super::model::{Connection, Effort};
 use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
-    SupersededBy, Supersedes, Waiting, cancel, failed_in, release,
+    SupersededBy, Waiting, cancel, failed_in, release,
 };
 use super::tools::{Footprint, ToolDef, ToolRequest};
 
@@ -87,7 +87,7 @@ pub struct Recovery {
 /// The wait before a failed [`TurnCall`] is sent again, on the hold the
 /// kernel puts on it ([`HoldOf`]). Once the wait passed on Bevy's clock, a
 /// delayed command despawns the hold and spawns a new call that
-/// [`Supersedes`] the failed one, unless the hold is gone by then, as
+/// supersedes the failed one ([`SupersededBy`]), unless the hold is gone by then, as
 /// interrupting the turn makes it.
 #[derive(Component, Reflect, Clone, Debug)]
 #[reflect(Component, from_reflect = false)]
@@ -976,13 +976,14 @@ pub(crate) fn back_off(
                     return;
                 }
                 world.despawn(hold);
-                world.spawn((
-                    TurnCall,
-                    Supersedes(call),
-                    CallOf(turn),
-                    ForAgent(agent),
-                    Effect::child_of(parent),
-                ));
+                world
+                    .spawn((
+                        TurnCall,
+                        CallOf(turn),
+                        ForAgent(agent),
+                        Effect::child_of(parent),
+                    ))
+                    .add_related::<SupersededBy>(&[call]);
             });
     }
 }
