@@ -12,6 +12,8 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# `/redact --regex`.
+regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -20,3 +22,5 @@ serde_json = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The session's effect log, so the test sees it scrubbed too.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
