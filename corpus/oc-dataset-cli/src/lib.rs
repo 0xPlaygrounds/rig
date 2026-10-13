@@ -4,10 +4,10 @@
 //! rig-memory, and the session's effect log for the system prompt and the
 //! tools its requests sent. Each main agent's conversation becomes one
 //! JSON line in OpenAI chat format, and each subagent's a line of its own
-//! that names the parent ([`dataset`]). How each turn ended comes from the
-//! halts its log recorded: `--exclude-errors` drops the turns that failed
-//! or were stopped. It exits with status 2 when no session matched or an
-//! option is wrong.
+//! that names the parent ([`dataset`]). How each turn ended comes from its
+//! saved turn record: `--exclude-errors` drops the turns that failed, were
+//! stopped or were cut short. It exits with status 2 when no session
+//! matched or an option is wrong.
 
 pub mod dataset;
 
@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 use rig_harness::prelude::*;
 
-pub use dataset::{Export, Skipped};
+pub use dataset::{Dropped, Export, Skipped};
 
 /// The command's name: `rig dataset`.
 pub const COMMAND: &str = "dataset";
@@ -34,7 +34,7 @@ pub const HELP: &str = "rig dataset export: the saved sessions as chat-format JS
   --until DATE       only sessions started on DATE or earlier
   --model ID         only sessions whose main agent was answered by model ID
   --min-turns N      only sessions whose main agent has N turns or more left
-  --exclude-errors   drop the turns that failed or were stopped
+  --exclude-errors   drop the turns that failed, were stopped or cut short
   --redact           replace secret-looking strings with <REDACTED>
   --keep-reasoning   keep the models' reasoning (dropped by default)
   --split F          write train.jsonl and valid.jsonl, F of the sessions in train
@@ -91,7 +91,7 @@ pub struct Options {
     pub model: Option<String>,
     /// Only sessions whose main agent keeps this many turns.
     pub min_turns: usize,
-    /// Drop the turns that failed or were stopped.
+    /// Drop the turns that failed, were stopped or were cut short.
     pub exclude_errors: bool,
     /// Replace secret-looking strings.
     pub redact: bool,

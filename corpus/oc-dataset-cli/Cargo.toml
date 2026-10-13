@@ -9,9 +9,8 @@ description = "Plugin corpus (one-conversation fresh held-out): OC-24: 24. `rig 
 workspace = true
 
 [dependencies]
-# Named by the Bevy derives.
+# Named by the SystemParam derive.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 # The session's effect log: the system prompt and tools each request sent.
 rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-harness = { path = "../../crates/rig-harness" }
