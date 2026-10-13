@@ -47,7 +47,7 @@ fn command(app: &mut App, agent: Entity, line: &str) -> String {
         .resource_mut::<Collected<Notice>>()
         .0
         .clear();
-    let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_origin(Origin::user());
+    let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_author(Author::user());
     app.world_mut().trigger(typed);
     app.update();
     let notices = &app.world().resource::<Collected<Notice>>().0;
@@ -91,7 +91,7 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
     };
     world.entity_mut(agent).insert(connection);
 
-    let said = Deliver::new(agent, "commit this", DeliveryMode::Queue).with_origin(Origin::user());
+    let said = Deliver::new(agent, "commit this", DeliveryMode::Queue).with_author(Author::user());
     app.world_mut().trigger(said);
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()

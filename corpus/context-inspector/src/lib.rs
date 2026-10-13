@@ -23,7 +23,7 @@
 
 use std::fmt::Write as _;
 
-use rig_compaction::summary_origin;
+use rig_compaction::summary_author;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{
     self, CompletionRequest, Section, ToolDefinition, tokens_label,
@@ -228,26 +228,20 @@ fn keep_sent(
     commands.entity(agent).try_insert(last);
 }
 
-/// The texts of the compaction summaries in `conversation`, each
-/// spliced in place of the messages it replaced.
+/// The texts of the compaction summaries in `conversation`, each its own
+/// entry in place of the messages it replaced.
 fn summaries(conversation: &Conversation) -> Vec<String> {
-    let summary = summary_origin();
-    let messages = conversation.messages().iter().enumerate();
-    let items = messages.filter_map(|(at, message)| match message {
-        Message::User { content } => Some(
-            content
-                .iter()
-                .enumerate()
-                .map(move |(item, part)| (at, item, part)),
-        ),
-        _ => None,
-    });
-    items
+    let summary = summary_author();
+    conversation
+        .entries()
+        .filter(|entry| entry.author == Some(&summary))
+        .filter_map(|entry| match entry.message {
+            Message::User { content } => Some(content),
+            _ => None,
+        })
         .flatten()
-        .filter_map(|(at, item, part)| match part {
-            UserContent::Text(text) if conversation.origin(at, item) == Some(&summary) => {
-                Some(text.text.clone())
-            }
+        .filter_map(|part| match part {
+            UserContent::Text(text) => Some(text.text.clone()),
             _ => None,
         })
         .collect()
