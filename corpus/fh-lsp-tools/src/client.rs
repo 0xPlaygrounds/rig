@@ -176,9 +176,11 @@ impl Server {
         Ok(server)
     }
 
-    /// Whether its output is still open.
+    /// Whether its output is still open and its process has not exited:
+    /// a process that died is dead before its output is read to the end.
     pub(crate) fn alive(&self) -> bool {
-        lock(&self.shared.state).alive
+        let open = lock(&self.shared.state).alive;
+        open && matches!(lock(&self.child).try_wait(), Ok(None))
     }
 
     /// Its process id.
