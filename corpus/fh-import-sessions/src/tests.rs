@@ -147,12 +147,13 @@ fn imports_resumes_and_reimports() {
         agents.iter().filter(|agent| agent.parent.is_some()).count(),
         1
     );
-    let first_stamp = agents
+    let first_made = agents
         .iter()
         .find(|agent| agent.parent.is_none())
-        .and_then(|agent| agent.stamps.first());
+        .and_then(|agent| agent.conversation.entries().next())
+        .map(|entry| entry.made);
     // 2026-10-01T10:00:00Z
-    assert_eq!(first_stamp.map(|stamp| stamp.t), Some(1_790_848_800_000));
+    assert_eq!(first_made, Some(1_790_848_800_000));
     assert!(answered, "the call is followed by its result");
     let result_text = messages.iter().flat_map(|message| match message {
         Message::User { content } => content.clone(),

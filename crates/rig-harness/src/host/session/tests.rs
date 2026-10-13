@@ -211,18 +211,9 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
     fs::remove_dir_all(home.root()).ok();
 }
 
-/// A session an older rig saved is refused before the harness writes
-/// anything: resuming a copy of one leaves every byte of its directory as
-/// it was, its text log included, and what the refused run logged goes to
-/// the launcher's run directory.
-#[test]
-fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
-    let home = scratch_home("rig-session-older");
-    let Ok(id) = "1700000000-23".parse::<SessionId>() else {
-        return;
-    };
-    let session = home.session(&id);
-    fs::create_dir_all(session.path()).ok();
+/// The layout and logs rig wrote before `rig-session/1`: `<agent>.jsonl`
+/// at the top of the session directory, and its blobs.
+fn write_old_layout(session: &SessionDir) {
     let mut log = None;
     for line in include_str!("../../../../rig-memory/src/dir/baseline-session.txt").lines() {
         if let Some(name) = line.strip_prefix("=== ") {
@@ -237,46 +228,86 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
             fs::write(path, bytes).ok();
         }
     }
-    fs::write(session.log(), "what the agent did\n").ok();
-    for marker in [session.started(), session.path().join("saved")] {
-        fs::write(marker, b"").ok();
-    }
-    fs::write(
-        session.directory(),
-        home.root().to_string_lossy().as_bytes(),
-    )
-    .ok();
-    let before = snapshot(session.path());
-    assert!(session.is_saved() && before.len() > 4, "{before:?}");
-    let run = home.run(1);
-    fs::create_dir_all(run.path()).ok();
+}
 
-    let mut app = App::new();
-    app.insert_resource(RigHome(home.clone()))
-        .insert_resource(SessionPaths(session.clone()))
-        .insert_resource(LauncherRun(run.clone()));
-    let layer = log_layer(&mut app);
-    let file = app.world().resource::<super::TextLog>().file.clone();
-    std::io::Write::write_all(&mut super::LogWriter(file), b"this run\n").ok();
-    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
-        .add_plugins(SessionPlugin);
-    drop(std::panic::take_hook());
-    app.finish();
-    app.update();
-    app.update();
-    let stored = app.world().contains_resource::<SessionStore>();
-    let data = app.world().contains_resource::<PluginData>();
-    drop((app, layer));
-    assert!(!stored, "the refused session has no store");
-    assert!(
-        data,
-        "a refused run has plugin data, its session's in memory"
-    );
-    assert_eq!(snapshot(session.path()), before);
-    let refusal = fs::read_to_string(run.refusal()).unwrap_or_default();
-    assert!(refusal.contains("older version of rig"), "{refusal}");
-    let logged = fs::read_to_string(run.log()).unwrap_or_default();
-    assert!(logged.starts_with("this run\n"), "{logged}");
+/// A session saved in format `rig-session/1`, in this rig's layout.
+fn write_format_1(session: &SessionDir) {
+    let mut file = None;
+    for line in include_str!("../../../../rig-memory/src/dir/session-1.txt").lines() {
+        if let Some(path) = line.strip_prefix("=== ") {
+            let path = session.path().join(path);
+            path.parent().map(fs::create_dir_all);
+            fs::write(&path, b"").ok();
+            file = Some(path);
+        } else if let Some(path) = &file {
+            let mut bytes = fs::read(path).unwrap_or_default();
+            bytes.extend_from_slice(format!("{line}\n").as_bytes());
+            fs::write(path, bytes).ok();
+        }
+    }
+}
+
+/// A session an older rig saved is refused before the harness writes
+/// anything: resuming a copy of one, in the layout before `rig-session/1`
+/// or in that format, leaves every byte of its directory as it was, its
+/// text log included, and what the refused run logged goes to the
+/// launcher's run directory.
+#[test]
+fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
+    let older: [(&str, fn(&SessionDir)); 2] = [
+        ("1700000000-23", write_old_layout),
+        ("1700000000-24", write_format_1),
+    ];
+    let home = scratch_home("rig-session-older");
+    for (id, write) in older {
+        let Ok(id) = id.parse::<SessionId>() else {
+            return;
+        };
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        write(&session);
+        fs::write(session.log(), "what the agent did\n").ok();
+        for marker in [session.started(), session.path().join("saved")] {
+            fs::write(marker, b"").ok();
+        }
+        fs::write(
+            session.directory(),
+            home.root().to_string_lossy().as_bytes(),
+        )
+        .ok();
+        let before = snapshot(session.path());
+        assert!(session.is_saved() && before.len() > 4, "{before:?}");
+        let run = home.run(1);
+        fs::create_dir_all(run.path()).ok();
+
+        let mut app = App::new();
+        app.insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .insert_resource(LauncherRun(run.clone()));
+        let layer = log_layer(&mut app);
+        let file = app.world().resource::<super::TextLog>().file.clone();
+        std::io::Write::write_all(&mut super::LogWriter(file), b"this run\n").ok();
+        app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+            .add_plugins(SessionPlugin);
+        drop(std::panic::take_hook());
+        app.finish();
+        app.update();
+        app.update();
+        let stored = app.world().contains_resource::<SessionStore>();
+        let data = app.world().contains_resource::<PluginData>();
+        drop((app, layer));
+        assert!(!stored, "the refused session has no store");
+        assert!(
+            data,
+            "a refused run has plugin data, its session's in memory"
+        );
+        assert_eq!(snapshot(session.path()), before);
+        let refusal = fs::read_to_string(run.refusal()).unwrap_or_default();
+        assert!(refusal.contains("older version of rig"), "{refusal}");
+        let logged = fs::read_to_string(run.log()).unwrap_or_default();
+        assert!(logged.starts_with("this run\n"), "{logged}");
+        fs::remove_dir_all(run.path()).ok();
+    }
     fs::remove_dir_all(home.root()).ok();
 }
 

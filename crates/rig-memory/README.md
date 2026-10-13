@@ -10,7 +10,7 @@ agent framework, over rig-core's one `Conversation` type:
   from one summary to the next, `apply_summary`, and `ClearToolOutputs`,
   which frees context without a model call. rig-harness's compaction plugin
   is built on it.
-- saving and resuming: the session format `rig-session/1` (one JSON-lines
+- saving and resuming: the session format `rig-session/2` (one JSON-lines
   log per agent, images kept as blobs), a `Store` trait with `MemoryStore`
   and, with feature `fs`, `DirStore`, and its `Files` half for named files
   on their own (`DirFiles` over a plain directory, where rig-harness keeps

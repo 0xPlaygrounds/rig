@@ -17,7 +17,7 @@ use serde_json::Value;
 use crate::blobs::{entries_mut, load_images};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, write_meta};
 use crate::writer::Book;
-use crate::{FORMAT, LoadError, Repair, Stamp, Store};
+use crate::{FORMAT, LoadError, Repair, Rewrote, Stamp, Store};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -47,9 +47,8 @@ pub struct SavedAgent {
     /// Whether it is gone for good: a restore skips it, and the agents it
     /// spawned.
     pub retired: bool,
-    /// The record that first made each message of the conversation, by its
-    /// index: a message a splice edited keeps its first record.
-    pub stamps: Vec<Stamp>,
+    /// Who rewrote its log in place, and when, oldest first.
+    pub rewrites: Vec<Rewrote>,
 }
 
 /// A log [`Session::read_lenient`] could not read.
@@ -321,20 +320,14 @@ pub(crate) fn session_of(folded: Vec<Folded>, repairs: Vec<Repair>) -> Session {
             session.state = log.state;
             continue;
         }
-        let conversation = log.conversation;
-        let stamps = conversation.entries().map(|entry| {
-            let stamp = log.made.get(&entry.id);
-            stamp.copied().unwrap_or_default()
-        });
-        let stamps = stamps.collect();
         session.agents.push(SavedAgent {
             id: log.name,
             parent: log.header.parent,
             started_ms: log.started_ms,
-            conversation,
+            conversation: log.conversation,
             state: log.state,
             retired: log.retired,
-            stamps,
+            rewrites: log.header.rewrites,
         });
     }
     session

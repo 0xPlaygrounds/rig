@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rig_core::completion::Message;
 use rig_core::conversation::Conversation;
 
 use super::DirStore;
-use crate::{Files, LoadError, Session, Store, save};
+use crate::{Files, LoadError, Session, Store, Writer, as_of, history, load, save};
 
 /// A fresh directory for test `name`.
 fn scratch(name: &str) -> PathBuf {
@@ -60,6 +61,76 @@ fn a_session_saved_by_an_older_rig_is_refused_unchanged() {
     let message = LoadError::OldLayout.to_string();
     assert!(message.contains("older version of rig"), "{message}");
     assert_eq!(snapshot(&dir), before);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Writes the session `fixture` describes into `dir`: each `=== <path>`
+/// starts a file, each line after it is a line of that file.
+fn write_fixture(dir: &Path, fixture: &str) {
+    let mut file = None;
+    for line in fixture.lines() {
+        if let Some(path) = line.strip_prefix("=== ") {
+            let path = dir.join(path);
+            fs::create_dir_all(path.parent().expect("a folder")).expect("a folder");
+            fs::write(&path, b"").expect("a file");
+            file = Some(path);
+        } else if let Some(path) = &file {
+            let mut bytes = fs::read(path).expect("read");
+            bytes.extend_from_slice(format!("{line}\n").as_bytes());
+            fs::write(path, bytes).expect("written");
+        }
+    }
+}
+
+/// A session saved in format `rig-session/1` is refused by every reader
+/// and writer before anything is written, with a message that says so;
+/// with only its format changed, the same logs read.
+#[test]
+fn a_session_saved_in_format_1_is_refused_before_anything_is_written() {
+    let dir = scratch("format-1");
+    write_fixture(&dir, include_str!("session-1.txt"));
+    fs::write(dir.join("agent.log"), "what the agent did").expect("the text log");
+    let before = snapshot(&dir);
+    let store = Arc::new(DirStore::open(&dir).expect("the layout is this rig's"));
+    let agent = "cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32";
+    let old = |refused: LoadError| {
+        let message = refused.to_string();
+        let format = matches!(&refused, LoadError::Format { found: Some(found), .. } if found == "rig-session/1");
+        assert!(format, "{refused:?}");
+        assert!(
+            message.contains("older version of rig") && message.contains("rig-session/2"),
+            "{message}"
+        );
+    };
+    old(Session::read(&*store).expect_err("refused"));
+    old(Writer::open(store.clone())
+        .map(|_| ())
+        .expect_err("refused"));
+    old(load(&*store, agent).expect_err("refused"));
+    old(history(&*store, agent).map(|_| ()).expect_err("refused"));
+    old(as_of(&*store, agent, 4).map(|_| ()).expect_err("refused"));
+    let mut conversation = Conversation::from_messages([Message::user("more")]);
+    old(save(&*store, agent, &mut conversation).expect_err("refused"));
+    let mut session = Session::default();
+    old(session.save(&*store).expect_err("refused"));
+    drop(store);
+    assert_eq!(snapshot(&dir), before);
+    let _ = fs::remove_dir_all(&dir);
+
+    let dir = scratch("format-1-as-2");
+    write_fixture(
+        &dir,
+        &include_str!("session-1.txt").replace("rig-session/1", "rig-session/2"),
+    );
+    let store = DirStore::open(&dir).expect("opened");
+    let session = Session::read(&store).expect("read");
+    let main = session.agent(agent).expect("the agent");
+    assert_eq!(main.conversation.messages().len(), 2);
+    assert_eq!(main.conversation.asides().count(), 1);
+    assert_eq!(
+        main.conversation.entries().map(|entry| entry.made).max(),
+        Some(1_791_779_409_182)
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
