@@ -590,13 +590,13 @@ impl PortableTool for Wait {
     }
 }
 
-/// A session whose agent's model asked to `touch`, then `wait`, that
-/// crashed while `wait` ran, `touch` settled.
-fn crashed_mid_reply() -> MemoryStore {
+/// A session whose agent's model asked to `first` (`touch` or `look`),
+/// then `wait`, that crashed while `wait` ran, `first` settled.
+fn crashed_mid_reply(first: &str) -> MemoryStore {
     let store = MemoryStore::default();
     let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
     let model = MockCompletionModel::from_stream_turns([vec![
-        call("t1", "touch"),
+        call("t1", first),
         call("w1", "wait"),
         MockStreamEvent::final_response_with_default_usage(),
     ]]);
@@ -629,7 +629,14 @@ struct Decided(Vec<(String, Option<Decider>)>);
 /// each call, with what `configure` adds, run until its turn ended; the
 /// conversation as JSON.
 fn restart_after_crash(configure: impl FnOnce(&mut App)) -> (App, String, MemoryStore) {
-    let store = crashed_mid_reply();
+    restart_after(crashed_mid_reply("touch"), configure)
+}
+
+/// As [`restart_after_crash`], from `store`.
+fn restart_after(
+    store: MemoryStore,
+    configure: impl FnOnce(&mut App),
+) -> (App, String, MemoryStore) {
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("done"),
         MockStreamEvent::final_response_with_default_usage(),
@@ -813,7 +820,7 @@ fn ask(
 
 #[test]
 fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
-    let store = crashed_mid_reply();
+    let store = crashed_mid_reply("touch");
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("done"),
         MockStreamEvent::final_response_with_default_usage(),
@@ -845,5 +852,23 @@ fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
     assert!(
         said.contains("touched") && said.contains(INTERRUPTED),
         "{said}"
+    );
+}
+
+#[test]
+fn a_read_that_finished_before_a_crash_keeps_its_result() {
+    let (app, said, _) = restart_after(crashed_mid_reply("look"), |_| {});
+    // `look` reads only, and settled while `wait` ran: answered with its
+    // result, so no gate saw it and it did not run again.
+    assert!(
+        said.contains("seen") && said.contains(INTERRUPTED),
+        "{said}"
+    );
+    assert!(app.world().resource::<Gated>().0.is_empty());
+    let rig = Some(Decider::plugin("rig-ecs"));
+    let decided = &app.world().resource::<Decided>().0;
+    assert_eq!(
+        decided,
+        &[("look".to_owned(), rig.clone()), ("wait".to_owned(), rig)]
     );
 }

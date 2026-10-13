@@ -9,9 +9,9 @@
 //! marked [`Restored`]: every call left without a result, as one reply,
 //! and gated like any, as nothing held or approved before the restart is
 //! kept. A call that may change something is marked on its agent's
-//! conversation (an aside of kind `rig.call`) before it starts, and the
-//! mark replaced by its result when it settles while its reply still runs;
-//! the mark goes when the reply's results are in. A restored call with a
+//! conversation (an aside of kind `rig.call`) before it starts, and any
+//! call that settles while its reply still runs is marked with its result;
+//! the marks go when the reply's results are in. A restored call with a
 //! mark is [`Interrupted`]: no gate that holds or asks sees it, a plugin
 //! answers it in Gate, holds it to answer later, or lets it run again by
 //! removing `Interrupted` in Prepare, and the kernel answers it after
@@ -75,8 +75,9 @@ use super::turn::TurnCall;
 /// the session stopped.
 const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
 
-/// The kind of the aside that marks a call that may change something,
-/// from its start until its reply's results are in.
+/// The kind of the aside that marks a call that may change something from
+/// its start, and any call once it settled, until its reply's results are
+/// in.
 const CALL_MARK: &str = "rig.call";
 
 /// A `rig.call` aside's value.
@@ -124,26 +125,34 @@ pub(crate) fn mark_started(conversation: &mut rig_core::conversation::Conversati
     }
 }
 
-/// Replaces the mark of the call `call`, if it is marked started, with its
-/// `result`.
+/// Marks the call `call` settled with `result` on `conversation`: in place
+/// of its started mark, else after its last entry; a call marked settled
+/// already is left as it is.
 pub(crate) fn mark_settled(
     conversation: &mut rig_core::conversation::Conversation,
     call: &CallId,
     result: &ToolResult,
 ) {
-    let started = marks(conversation).into_iter().find_map(|(id, mark)| {
-        matches!(&mark, CallMark::Started { call: marked } if marked == call).then_some(id)
-    });
-    let Some((id, aside)) = started.and_then(|id| Some((id, conversation.aside(id)?.clone())))
-    else {
-        return;
-    };
+    let had = marks(conversation)
+        .into_iter()
+        .find(|(_, mark)| mark.call() == call);
     let mark = CallMark::Settled {
         call: call.clone(),
         result: result.clone(),
     };
     let value = serde_json::to_value(mark).unwrap_or_default();
-    conversation.replace_aside(id, Aside { value, ..aside });
+    match had {
+        Some((_, CallMark::Settled { .. })) => {}
+        Some((id, CallMark::Started { .. })) => {
+            if let Some(aside) = conversation.aside(id).cloned() {
+                conversation.replace_aside(id, Aside { value, ..aside });
+            }
+        }
+        None => {
+            let after = conversation.entries().next_back().map(|entry| entry.id);
+            conversation.add_aside(Aside::new(CALL_MARK, Author::rig(), value).after(after));
+        }
+    }
 }
 
 /// Pushes `results`, a message of tool results, to `conversation`, and
@@ -170,7 +179,7 @@ pub(crate) fn commit_results(
     }
 }
 
-/// On a restored call that may have changed something before the session
+/// On a restored call that had started, or had finished, when the session
 /// stopped: what its mark said. The kernel answers it after every gate,
 /// [`Started`](Self::Started) with an error saying a restart interrupted
 /// it and [`Settled`](Self::Settled) with its result, unless a plugin
