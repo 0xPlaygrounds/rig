@@ -64,7 +64,12 @@ fn hidden_files_are_listed_when_asked_for_or_named() {
     }
     let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
     std::fs::write(dir.join(".gitignore"), ".env\n").ok();
-    for file in [".github/workflows/ci.yml", ".git/HEAD", ".env", "src/lib.rs"] {
+    for file in [
+        ".github/workflows/ci.yml",
+        ".git/HEAD",
+        ".env",
+        "src/lib.rs",
+    ] {
         std::fs::write(dir.join(file), "x").ok();
     }
     let list = List {
