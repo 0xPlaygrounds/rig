@@ -1,21 +1,23 @@
 //! SN-22: race two models, keep the faster.
 //!
-//! `RIG_HOME/race.toml` names virtual models, each raced over two catalog
-//! models: `race-fast = ["provider-a/model-x", "provider-b/model-y"]`. Each
+//! `RIG_HOME/race.toml` names virtual models, each raced over two or more
+//! catalog models: `race-fast = ["provider-a/model-x", "provider-b/model-y"]`. Each
 //! is a catalog model of the vendor `race` (`race/race-fast`), so `/model`
 //! lists it and an agent, a subagent or a restored session picks it like
 //! any model; `/model race-fast` picks it too.
 //!
 //! A turn's model call to a race model goes to its first member, and the
-//! plugin sends a sibling turn call of the same turn to the other one, both
+//! plugin sends a sibling turn call of the same turn to each other one, all
 //! built by the kernel from the agent and each fitted to its own model.
 //! The first to stream content (text, reasoning or a tool call) wins: it
-//! supersedes the other ([`SupersededBy`]), which the kernel cancels and never puts in
-//! the conversation. A member that fails before it streamed drops out the
-//! same way; if both fail, the last failure lists every member's error. A
-//! winner that fails mid-stream is superseded by a turn call to the other
-//! member alone ("restarting on …"), so the stored reply is that member's
-//! whole reply. What a cancelled member was sent is counted in the
+//! supersedes the others ([`SupersededBy`]), which the kernel cancels and
+//! never puts in the conversation. A member that fails before it streamed
+//! drops out the same way; if all fail, the last failure lists every
+//! member's error. A winner that fails mid-stream is superseded by a turn
+//! call to the next member alone ("restarting on …"), so the stored reply
+//! is that member's whole reply. The context window is the answering
+//! member's, as rig-telemetry reads it from where the call was sent. What a
+//! cancelled member was sent is counted in the
 //! spending at its model's price, its input tokens estimated, and `/race`
 //! shows each race model's wins, median time to first content and
 //! cancelled spend.
@@ -46,7 +48,7 @@ pub const VENDOR: &str = "race";
 const SAMPLES: usize = 1000;
 
 /// The race models of `race.toml` (or inserted before the plugin), by
-/// name, each with its two members' catalog references.
+/// name, each with its members' catalog references.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct RaceModels {
     /// Each race model's members, by its name.
@@ -68,8 +70,8 @@ impl RaceModels {
         }
     }
 
-    /// The race models `text`, in the file's shape, names: each with
-    /// exactly two `vendor/model` members.
+    /// The race models `text` names: each with two or more `vendor/model`
+    /// members.
     pub fn parse(text: &str) -> Self {
         let file: BTreeMap<String, Vec<String>> = match toml::from_str(text) {
             Ok(file) => file,
@@ -83,11 +85,11 @@ impl RaceModels {
         let mut races = Self::default();
         for (name, members) in file {
             let named = members.iter().all(|member| member.contains('/'));
-            if members.len() == 2 && named && !name.contains('/') {
+            if members.len() >= 2 && named && !name.contains('/') {
                 races.models.insert(name, members);
             } else {
                 races.problems.push(format!(
-                    "{FILE}: `{name}` skipped: it needs two members, each `vendor/model`."
+                    "{FILE}: `{name}` skipped: it needs two or more members, each `vendor/model`."
                 ));
             }
         }
@@ -99,13 +101,13 @@ impl RaceModels {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RaceSystems {
     /// In `PrepareSystems::Edit`: each call to a race model routed to a
-    /// member, a turn's sent to both.
+    /// member, a turn's sent to all.
     Route,
     /// In `ReviewSystems::Edit`: the failure of a race every member failed
     /// lists each member's error.
     ListErrors,
     /// In `ReviewSystems::Act`: a member that failed drops out, or, if it
-    /// had won, the other member is asked alone.
+    /// had won, the next member is asked alone.
     DropOut,
 }
 
@@ -121,7 +123,7 @@ pub struct RaceStats(pub BTreeMap<String, RaceTally>);
 pub struct RaceTally {
     /// Each member's, by catalog reference.
     pub members: BTreeMap<String, MemberTally>,
-    /// Requests cancelled because the other member answered first.
+    /// Requests cancelled because another member answered first.
     pub cancelled: u64,
     /// The input tokens they were sent, estimated.
     pub cancelled_tokens: u64,
@@ -221,7 +223,7 @@ impl Plugin for RaceModelsPlugin {
     }
 
     /// Files each race model in the catalog, once every plugin added its
-    /// models, so its window and tools are its members'.
+    /// models, offering tools when every member takes them.
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
         let races = world.resource::<RaceModels>().models.clone();
@@ -238,12 +240,6 @@ impl Plugin for RaceModelsPlugin {
             let mut spec = ModelSpec::new(vendor, name)
                 .with_display_name(format!("{name} (race of {})", members.join(", ")))
                 .with_tools(specs.iter().all(|spec| spec.tools));
-            let windows = specs.iter().map(|spec| spec.context_window);
-            if let Some(Some(window)) = windows.clone().min()
-                && windows.len() == members.len()
-            {
-                spec = spec.with_context_window(window);
-            }
             if let Some(first) = specs.first() {
                 spec = spec.with_reasoning(first.reasoning.clone());
             }
@@ -299,8 +295,8 @@ type Routed<'a> = (
 
 /// Routes each call admitted for a race model to a member: a racer to its
 /// own, a new turn call to the first member while a sibling call of the
-/// same turn goes to the second, and any other call, such as a summary, to
-/// the first. Each gets its member's own cache setting; Start fits the
+/// same turn goes to each other member, and any other call, such as a
+/// summary, to the first. Each gets its member's own cache setting; Start fits the
 /// rest of the request to it.
 fn route(
     mut calls: Query<Routed, (Added<Admitted>, ModelCalls)>,
@@ -335,16 +331,18 @@ fn route(
                     member: 0,
                     solo: false,
                 });
-                commands.spawn((
-                    TurnCall,
-                    CallOf(turn),
-                    ForAgent(agent),
-                    Effect::child_of(effect.parent),
-                    Racer {
-                        member: 1,
-                        solo: false,
-                    },
-                ));
+                for member in 1..members.len() {
+                    commands.spawn((
+                        TurnCall,
+                        CallOf(turn),
+                        ForAgent(agent),
+                        Effect::child_of(effect.parent),
+                        Racer {
+                            member,
+                            solo: false,
+                        },
+                    ));
+                }
                 0
             }
             _ => 0,
@@ -381,18 +379,12 @@ fn claim_at_once(_: On<Add<Streamed>>, mut commands: Commands) {
 }
 
 /// The first racer of a race to stream content wins: it supersedes the
-/// other one, which the kernel then cancels and never commits, and its
-/// time to first content is kept.
+/// others, which the kernel then cancels and never commits, and its time
+/// to first content is kept.
 fn claim(
     mut deltas: MessageReader<StreamDelta>,
     racers: Query<
-        (
-            &Racer,
-            &CallOf,
-            Option<&Streamed>,
-            Option<&Started>,
-            Has<Supersedes>,
-        ),
+        (&Racer, &CallOf, Option<&Streamed>, Option<&Started>),
         (With<TurnCall>, Without<Settled>, Without<SupersededBy>),
     >,
     mut turns: Query<(&mut Racing, &Calls)>,
@@ -403,8 +395,7 @@ fn claim(
         if !is_content(&delta.event) {
             continue;
         }
-        let Ok((racer, &CallOf(turn), streamed, started, superseding)) = racers.get(delta.effect)
-        else {
+        let Ok((racer, &CallOf(turn), streamed, started)) = racers.get(delta.effect) else {
             continue;
         };
         let Ok((mut racing, calls)) = turns.get_mut(turn) else {
@@ -414,10 +405,10 @@ fn claim(
             continue;
         }
         racing.winner = Some(racer.member);
-        let loser = calls.iter().find(|&call| {
+        let losers = calls.iter().filter(|&call| {
             call != delta.effect && racers.get(call).is_ok_and(|(other, ..)| !other.solo)
         });
-        if let (Some(loser), false) = (loser, superseding) {
+        for loser in losers {
             commands.entity(loser).insert(SupersededBy(delta.effect));
         }
         if let (Some(streamed), Some(started), Some(member)) =
@@ -520,11 +511,11 @@ fn list_errors(
     }
 }
 
-/// A racer that failed drops out. Before any member streamed, the member
+/// A racer that failed drops out. Before any member streamed, a member
 /// still running, else the one that lists every error, supersedes it, so
 /// it never reaches the conversation and shows no error. A winner that
-/// failed mid-stream is superseded by a call to the other member alone,
-/// which takes its partial reply off the screen.
+/// failed mid-stream is superseded by a call to the next member that did
+/// not fail, alone, which takes its partial reply off the screen.
 fn drop_out(
     failed: Query<
         (Entity, &Racer, &CallOf, &Outcome, &Effect, &ForAgent),
@@ -537,7 +528,6 @@ fn drop_out(
     >,
     alive: Query<&Racer, (Without<Outcome>, Without<SupersededBy>, Without<Settled>)>,
     keepers: Query<(), With<ListsErrors>>,
-    superseding: Query<(), With<Supersedes>>,
     mut turns: Query<(&mut Racing, &Calls)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -555,8 +545,13 @@ fn drop_out(
         commands.entity(call).insert(DroppedOut);
         if racing.winner == Some(racer.member) {
             let dropped = |member: usize| racing.failures.iter().any(|(it, _)| *it == member);
-            let next = (0..racing.members.len()).find(|&it| it != racer.member && !dropped(it));
-            let Some(reference) = next.and_then(|next| racing.members.get(next)) else {
+            let count = racing.members.len();
+            let next = (1..count)
+                .map(|step| (racer.member + step) % count)
+                .find(|&it| !dropped(it));
+            let Some((next, reference)) =
+                next.and_then(|next| Some((next, racing.members.get(next)?)))
+            else {
                 continue;
             };
             notices.write(Notice::info(agent, format!("restarting on {reference}")));
@@ -567,7 +562,7 @@ fn drop_out(
                     ForAgent(agent),
                     Effect::child_of(effect.parent),
                     Racer {
-                        member: next.unwrap_or_default(),
+                        member: next,
                         solo: true,
                     },
                 ))
@@ -575,14 +570,13 @@ fn drop_out(
             continue;
         }
         racing.failures.push((racer.member, report.message.clone()));
-        let free = |other: Entity| other != call && !superseding.contains(other);
         let successor = calls
             .iter()
-            .find(|&other| free(other) && alive.get(other).is_ok_and(|other| !other.solo))
+            .find(|&other| other != call && alive.get(other).is_ok_and(|other| !other.solo))
             .or_else(|| {
                 calls
                     .iter()
-                    .find(|&other| free(other) && keepers.contains(other))
+                    .find(|&other| other != call && keepers.contains(other))
             });
         if let Some(successor) = successor {
             commands.entity(call).insert(SupersededBy(successor));
@@ -591,7 +585,7 @@ fn drop_out(
 }
 
 /// Counts each racer that settled: a reply in the conversation is a win
-/// for its member; a racer cancelled because the other answered first is
+/// for its member; a racer cancelled because another answered first is
 /// counted as spending what it was sent, its input tokens estimated and
 /// priced at its model's list price.
 fn tally(
