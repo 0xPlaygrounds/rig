@@ -4,7 +4,7 @@ use rig::harness_protocol::Home;
 use serde::Deserialize;
 
 use super::{AppSettingsExt, Settings};
-use crate::services::RigHome;
+use crate::services::{ProjectRoot, RigHome};
 
 #[derive(Resource, Deserialize, Default, Debug, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -98,4 +98,41 @@ fn a_bad_file_names_itself() {
         problem.starts_with(&format!("{} [limits]: ", think.display())),
         "{problem}"
     );
+}
+
+#[derive(Resource, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct Counts {
+    n: u32,
+    m: u32,
+}
+
+#[derive(Resource, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct Others {
+    n: u32,
+}
+
+/// A project overrides, key by key, only the tables a plugin declared it
+/// may: another table of its file is not read.
+#[test]
+fn a_project_overrides_only_the_tables_declared_for_it() {
+    let root = std::env::temp_dir().join(format!("rig-settings-project-{}", std::process::id()));
+    std::fs::create_dir_all(root.join(".rig")).ok();
+    std::fs::write(
+        root.join(".rig/settings.toml"),
+        "[a]\nn = 2\n\n[b]\nn = 2\n",
+    )
+    .ok();
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml("[a]\nn = 1\nm = 5\n\n[b]\nn = 1\n"))
+        .insert_resource(ProjectRoot(root.clone()))
+        .add_project_setting::<Counts>("a")
+        .add_setting::<Others>("b");
+    assert_eq!(app.world().resource::<Counts>(), &Counts { n: 1, m: 5 });
+    app.update();
+    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(app.world().resource::<Counts>(), &Counts { n: 2, m: 5 });
+    assert_eq!(app.world().resource::<Others>(), &Others { n: 1 });
+    assert!(app.world().resource::<Settings>().problems().is_empty());
 }
