@@ -5,10 +5,9 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::prelude::*;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{Ended, MemoryStore, app_on, connect, log_ended, reply, run_until};
 use rig_tools::process::{Launcher, Process, Spawn};
 use rig_tools::workspace::{Contents, Stat, Workspace};
 
