@@ -23,7 +23,7 @@ use bevy_log::warn;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::message::{ToolCall, ToolResult};
-use rig_core::tool::ToolResultContext;
+use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
 use rig_tools::shorten;
 
 use super::diff;
@@ -145,8 +145,9 @@ impl<'a> ToolCallView<'a> {
     }
 
     /// Up to `limit` lines of the result under a `⎿`, red for an error,
-    /// and how many more there are. A unified diff is coloured. Before the
-    /// result, a running call's progress line.
+    /// and how many more there are. A unified diff is coloured. The line
+    /// that says the tool cut its output ([`OutputCut`]) is shown whole,
+    /// on its side. Before the result, a running call's progress line.
     pub fn result_lines(&self, limit: usize) -> Vec<Line<'static>> {
         let Some(text) = self.result_text() else {
             return self.progress_lines();
@@ -156,30 +157,49 @@ impl<'a> ToolCallView<'a> {
         {
             return lines;
         }
-        excerpt(&text, limit, result_style(self.failed()))
+        let (output, marker) = self.cut_marker(&text);
+        let more = format!("… {} more lines", output.len().saturating_sub(limit));
+        let more = (output.len() > limit).then_some(more.as_str());
+        let shown = output.iter().copied().take(limit).chain(more);
+        result_rows(shown, marker, result_style(self.failed()))
     }
 
     /// The last `limit` lines of the result, where a command's errors and
-    /// summary are, after a count of the earlier ones; a cut marker before
-    /// them names the file with all of it. Before the result, a running
+    /// summary are, after a count of the earlier ones; the line that says
+    /// the tool cut its output ([`OutputCut`]), naming the file with all
+    /// of it, is shown whole, on its side. Before the result, a running
     /// call's progress line.
     pub fn tail_lines(&self, limit: usize) -> Vec<Line<'static>> {
         let Some(text) = self.result_text() else {
             return self.progress_lines();
         };
-        let mut output = text.lines().peekable();
-        let marker = output.next_if(|first| is_cut_marker(first));
-        let output: Vec<&str> = output.collect();
+        let (output, marker) = self.cut_marker(&text);
         let skipped = output.len().saturating_sub(limit);
         let earlier = format!("… {skipped} earlier lines");
         let earlier = (skipped > 0).then_some(earlier.as_str());
-        let shown = marker.into_iter().chain(earlier);
-        let shown = shown.chain(output.into_iter().skip(skipped));
-        let style = result_style(self.failed());
-        shown
-            .enumerate()
-            .map(|(index, line)| result_line(index == 0, line, style))
-            .collect()
+        let shown = earlier.into_iter().chain(output.into_iter().skip(skipped));
+        result_rows(shown, marker, result_style(self.failed()))
+    }
+
+    /// The lines of `text`, the result, without the line that says the
+    /// tool cut its output, and that line with the end it is on, when the
+    /// call published [`OutputCut`] (a call of an earlier run has no facts,
+    /// so its marker is a line like any other).
+    fn cut_marker<'t>(&self, text: &'t str) -> (Vec<&'t str>, Option<(&'t str, KeptEnd)>) {
+        let mut lines: Vec<&str> = text.lines().collect();
+        let cut = self
+            .facts
+            .and_then(|facts| facts.get::<OutputCut>().ok().flatten());
+        let marker = cut.and_then(|cut| {
+            let line = match cut.kept {
+                // The output's end is kept: the marker is its first line.
+                KeptEnd::End if lines.is_empty() => None,
+                KeptEnd::End => Some(lines.remove(0)),
+                KeptEnd::Start => lines.pop(),
+            };
+            Some((line?, cut.kept))
+        });
+        (lines, marker)
     }
 
     /// A running call's progress line (its first line) under a `⎿`,
@@ -189,7 +209,7 @@ impl<'a> ToolCallView<'a> {
             return Vec::new();
         };
         let line = progress.lines().next().unwrap_or_default();
-        vec![result_line(true, line, Style::new().yellow())]
+        result_rows(std::iter::once(line), None, Style::new().yellow())
     }
 
     /// The look of a tool with no renderer: the name and arguments, then
@@ -262,38 +282,43 @@ pub(crate) fn result_style(failed: bool) -> Style {
     }
 }
 
-/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, a
-/// count of the rest, and the cut marker that ends a cut result.
+/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, and
+/// a count of the rest.
 pub fn excerpt(text: &str, limit: usize, style: Style) -> Vec<Line<'static>> {
-    let mut all: Vec<&str> = text.lines().collect();
-    let marker = all.pop_if(|last| is_cut_marker(last));
+    let all: Vec<&str> = text.lines().collect();
     let more = format!("… {} more lines", all.len().saturating_sub(limit));
     let more = (all.len() > limit).then_some(more.as_str());
-    let shown = all.into_iter().take(limit).chain(more).chain(marker);
-    shown
-        .enumerate()
-        .map(|(index, line)| result_line(index == 0, line, style))
-        .collect()
+    result_rows(all.into_iter().take(limit).chain(more), None, style)
 }
 
-/// Whether `line` is a tool's cut marker, which says what was cut and
-/// which file has all of it, such as `[Cut at 16384 of 113000 bytes; all
-/// of it is in …]`.
-fn is_cut_marker(line: &str) -> bool {
-    line.starts_with('[') && line.ends_with(']') && line.to_lowercase().contains("cut")
-}
-
-/// A line of a result in `style`, under a `⎿` when `first`; a long one is
-/// shortened, but a cut marker is shown whole.
-fn result_line(first: bool, line: &str, style: Style) -> Line<'static> {
-    let prefix = if first { "  ⎿ " } else { "    " };
-    let line = line.replace('\t', "    ");
-    let line = if is_cut_marker(&line) {
-        line
-    } else {
-        shorten(&line, LINE_CHARS)
+/// `lines` of a result in `style`, the first under a `⎿`, each shortened,
+/// with `marker` whole before them when the output's end was kept and
+/// after them when its start was.
+fn result_rows<'t>(
+    lines: impl Iterator<Item = &'t str>,
+    marker: Option<(&'t str, KeptEnd)>,
+    style: Style,
+) -> Vec<Line<'static>> {
+    let (before, after) = match marker {
+        Some((marker, KeptEnd::End)) => (Some(marker), None),
+        Some((marker, KeptEnd::Start)) => (None, Some(marker)),
+        None => (None, None),
     };
-    Line::styled(format!("{prefix}{line}"), style)
+    let lines = lines.map(|line| (line, false));
+    let rows = before.map(|marker| (marker, true)).into_iter().chain(lines);
+    let rows = rows.chain(after.map(|marker| (marker, true)));
+    rows.enumerate()
+        .map(|(index, (line, whole))| {
+            let prefix = if index == 0 { "  ⎿ " } else { "    " };
+            let line = line.replace('\t', "    ");
+            let line = if whole {
+                line
+            } else {
+                shorten(&line, LINE_CHARS)
+            };
+            Line::styled(format!("{prefix}{line}"), style)
+        })
+        .collect()
 }
 
 /// Draws a tool call as transcript lines, not yet wrapped.
