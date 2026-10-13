@@ -6100,6 +6100,7 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-sessions",
  "rig-telemetry",
  "serde",
  "serde_json",
