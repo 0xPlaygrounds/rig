@@ -94,3 +94,29 @@ fn a_watch_of_an_ignored_directory_reports_what_files_lists_there() {
     std::fs::remove_dir_all(&top).ok();
     assert_eq!((listed, seen), (vec![made.clone()], vec![made]));
 }
+
+/// The thread that gathers a watch's events into batches ends once the
+/// watch is gone, at its next batch, though the watcher still sends.
+#[test]
+fn the_batching_thread_ends_with_its_watch() {
+    let root = std::env::temp_dir();
+    let file = root.join("rig-tools-watch-gone.txt");
+    let (raw_sender, raw) = std::sync::mpsc::channel();
+    let (sender, watch) = futures::channel::mpsc::unbounded();
+    drop(watch);
+    raw_sender.send(file.clone()).ok();
+    let filter = super::Filter {
+        root: root.clone(),
+        file: Some(file),
+        recursive: false,
+        all: true,
+        ignores: super::Ignores::new(&root),
+    };
+    let (done, ended) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        super::send_batches(&raw, &sender, filter);
+        done.send(()).ok();
+    });
+    assert!(ended.recv_timeout(Duration::from_secs(10)).is_ok());
+    drop(raw_sender);
+}
