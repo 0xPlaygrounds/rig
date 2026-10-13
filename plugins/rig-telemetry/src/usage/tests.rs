@@ -123,6 +123,22 @@ fn the_context_is_against_the_window_of_the_model_a_call_went_to() {
     world.flush();
     let shown = notices(world).join("\n");
     assert!(shown.contains("Context: 500/2.0k (25%) tokens."), "{shown}");
+
+    // After `/model`, the next request goes to the new model: its window
+    // stands until it replies.
+    let Some(other) = connect(&model) else {
+        return;
+    };
+    let other = Connection {
+        spec: Arc::new((*other.spec).clone().with_context_window(10_000)),
+        handler: other.handler,
+    };
+    world.entity_mut(agent).insert(other);
+    world.flush();
+    world.trigger(RunCommand::new(agent, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(shown.contains("Context: 500/10k (5%) tokens."), "{shown}");
 }
 
 /// A call that settled without a reply, such as a race's loser, counts what

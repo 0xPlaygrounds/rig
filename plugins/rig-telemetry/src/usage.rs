@@ -45,7 +45,8 @@ impl Plugin for UsagePlugin {
                 "Show the tokens, cost and context this agent, its subagents and the session used",
                 usage,
             )
-            .add_observer(record_spending);
+            .add_observer(record_spending)
+            .add_observer(forget_window);
         super::resume::add(app);
         #[cfg(feature = "tui")]
         status::add(app);
@@ -132,7 +133,8 @@ pub struct CallUsage(pub Usage);
 
 /// The context window of the model the agent's last turn reply that
 /// reported its tokens came from, as its call's [`SentTo`] says; until one
-/// did, the window of the agent's [`Connection`] stands.
+/// did since the agent's model last changed, the window of the agent's
+/// [`Connection`] stands.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Window(pub(crate) Option<u32>);
 
@@ -144,6 +146,12 @@ impl Window {
             None => connection.and_then(|connection| connection.spec.context_window),
         }
     }
+}
+
+/// Forgets the window of the last reply's model when the agent's model
+/// changes, such as on `/model`: the next request goes to the new one.
+fn forget_window(changed: On<Insert<Connection>>, mut commands: Commands) {
+    commands.entity(changed.entity).try_remove::<Window>();
 }
 
 /// A model call as [`record_spending`] reads it.
