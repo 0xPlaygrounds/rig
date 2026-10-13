@@ -5,7 +5,7 @@
 //! self-contained HTML page or JSON; `rig --export=<session>` (with
 //! `--export-format`, `--export-to` and `--export-thinking`) does the same
 //! from the command line and exits. Either reads the *saved* session with
-//! the kernel's `read_session`, which neither restores nor writes it, so a
+//! rig-memory's `Session::read`, which neither restores nor writes it, so a
 //! session that is not running exports the same way as this one; each
 //! model call's usage and cost comes from the session's effect log.
 
@@ -17,8 +17,7 @@ use std::path::{Path, PathBuf};
 use bevy_ecs::system::SystemParam;
 use bevy_reflect::TypeRegistry;
 use bevy_reflect::serde::TypedReflectDeserializer;
-use rig_cassette::effect_log::jsonl;
-use rig_cassette::journal::EFFECT_LOG;
+use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_core::completion::{Usage, UsageTotals};
 use rig_core::effect::{Disposition, EffectId, EffectKind, EffectRecord, Outcome as Answered};
 use rig_ecs::journal::SessionStore;
@@ -255,14 +254,15 @@ fn export_and_exit(invoked: Option<Res<Invoked>>, sessions: Sessions, mut comman
 
 /// The session in `store`, with the model calls its effect log holds.
 fn load(
-    store: &dyn JournalStore,
+    store: &dyn Store,
     dir: Option<&SessionDir>,
     name: String,
     registry: &TypeRegistry,
 ) -> Result<Export, String> {
-    let saved = read_session(store).map_err(|failure| format!("reading the session: {failure}"))?;
+    let saved =
+        Session::read(store).map_err(|failure| format!("reading the session: {failure}"))?;
     let records = store
-        .read_file(EFFECT_LOG)
+        .read_file(SESSION_EFFECT_LOG)
         .ok()
         .and_then(|log| jsonl::read_from(log.as_slice()).ok())
         .map(|log| log.records)
@@ -273,7 +273,7 @@ fn load(
         .into_iter()
         .filter(|agent| !agent.conversation.messages().is_empty())
         .map(|saved| ExportedAgent {
-            model: saved_value::<ModelChoice>(&saved.saved, registry).map(|choice| choice.0),
+            model: saved_value::<ModelChoice>(&saved.state, registry).map(|choice| choice.0),
             calls: records
                 .iter()
                 .filter(|record| record.scope.as_deref() == Some(saved.id.as_str()))
@@ -316,7 +316,7 @@ fn model_call(record: &EffectRecord) -> Option<ModelCall> {
     })
 }
 
-/// The saved value of `T` among an agent's `saved` components.
+/// The saved value of `T` among an agent's saved components.
 fn saved_value<T: Reflect + TypePath + FromReflect>(
     saved: &BTreeMap<String, Value>,
     registry: &TypeRegistry,
