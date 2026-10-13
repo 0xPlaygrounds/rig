@@ -562,7 +562,7 @@ fn apply(
     let tables = tables(&files);
     for (call, effect, mut request, adapters, agent) in &mut calls {
         let agent = agent.map(|agent| agent.0);
-        let Ok((connection, _)) = starts.sent(&request, adapters, agent) else {
+        let Ok((connection, ..)) = starts.sent(&request, adapters, agent) else {
             continue;
         };
         let reference = connection.spec.reference();
@@ -575,7 +575,7 @@ fn apply(
             table.lock().insert(effect.id(), headers);
             commands.entity(call).insert(Headed);
         }
-        let Ok((_, sent)) = starts.sent(&request, adapters, agent) else {
+        let Ok((_, sent, _)) = starts.sent(&request, adapters, agent) else {
             continue;
         };
         let dropped = [

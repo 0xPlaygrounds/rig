@@ -41,10 +41,11 @@ use futures::StreamExt;
 use rig_core::completion::message::turn_failure;
 use rig_core::completion::{
     self, CompletionRequest, CompletionResponse, GenerationOptions, Message, Section,
+    UnsupportedOption,
 };
 use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{Author, Halt};
-use rig_core::effect::{self, EffectId};
+use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, UserContent};
@@ -165,6 +166,14 @@ impl ModelRequest {
 /// of the call rather than guess.
 #[derive(Component, Clone)]
 pub struct SentTo(pub Connection);
+
+/// On a model call the kernel started, beside [`SentTo`]: the options its
+/// request asked for that the model it went to does not take, left out
+/// when it was fitted to the model's spec or named by a dry run of its
+/// handler (rig-core's `Serve::check`). [`ModelStarts::sent`] gives the
+/// same list before Start, such as to warn about an option in Prepare.
+#[derive(Component, Clone, Debug, Default)]
+pub struct Fitted(pub Vec<UnsupportedOption>);
 
 /// The adapters of a model call, applied to its final [`Connection`] at
 /// Start: those placed [`outermost`](Adapter::outermost) last, each group
@@ -729,16 +738,25 @@ impl ModelStarts<'_, '_> {
     /// applied, and its request as Start sends it: tools taken off a model
     /// that calls none, options it does not take left out, and the
     /// [`prompt`](ModelRequest::prompt) in front with the rules of the
-    /// tools it carries. Refused without a model.
+    /// tools it carries; and the options it leaves out, as [`Fitted`] will
+    /// say. Refused without a model.
     pub fn sent(
         &self,
         model: &ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-    ) -> Result<(Connection, CompletionRequest), ErrorReport> {
+    ) -> Result<(Connection, CompletionRequest, Vec<UnsupportedOption>), ErrorReport> {
         let mut model = model.clone();
-        let connection = self.start(&mut model, adapters, agent, true)?;
-        Ok((connection, model.request))
+        let (connection, mut dropped) = self.start(&mut model, adapters, agent, true)?;
+        let kind = EffectKind::Completion {
+            request: model.request,
+            stream: true,
+        };
+        dropped.extend(connection.handler.0.check(&kind));
+        let EffectKind::Completion { request, .. } = kind else {
+            return Err(ErrorReport::new(ErrorKind::Internal, "not a model call"));
+        };
+        Ok((connection, request, dropped))
     }
 
     /// The system prompt Start sends in front of `model`, a call for
@@ -756,14 +774,15 @@ impl ModelStarts<'_, '_> {
     }
 
     /// Makes `model`'s request the one [`Self::sent`] says, on the
-    /// connection it returns; its prompt stays in parts unless `send`.
+    /// connection it returns with the options fitting left out; its prompt
+    /// stays in parts unless `send`.
     pub(crate) fn start(
         &self,
         model: &mut ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
         send: bool,
-    ) -> Result<Connection, ErrorReport> {
+    ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
         let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
             return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
@@ -776,7 +795,7 @@ impl ModelStarts<'_, '_> {
         if !spec.tools {
             request.tools.clear();
         }
-        spec.fit(request);
+        let dropped = spec.fit(request);
         let mut sections = model.prompt.iter_mut().flat_map(|it| &mut it.sections);
         if let Some(section) = sections.find(|it| it.tag == TOOL_RULES) {
             let carried = request.tools.iter().filter_map(|tool| {
@@ -789,7 +808,7 @@ impl ModelStarts<'_, '_> {
             let text = Message::system(prompt.text());
             request.chat_history.insert(0, text);
         }
-        Ok(connection)
+        Ok((connection, dropped))
     }
 }
 

@@ -3062,6 +3062,83 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     );
 }
 
+/// A model's handler whose wire does not take `seed`.
+struct NoSeed(ErasedHandler);
+
+impl Serve for NoSeed {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.0.descriptor()
+    }
+
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        self.0.serve(kind, dispatch).await
+    }
+
+    fn check(&self, _: &EffectKind) -> Vec<rig_core::completion::UnsupportedOption> {
+        vec![rig_core::completion::UnsupportedOption::new(
+            "seed", "test", "model", "no seed",
+        )]
+    }
+}
+
+/// What `ModelStarts::sent` said in Prepare, and `Fitted` after Start.
+#[derive(Resource, Default)]
+struct LeftOut(Vec<Vec<String>>);
+
+fn options(dropped: &[rig_core::completion::UnsupportedOption]) -> Vec<String> {
+    dropped.iter().map(|it| it.option.to_string()).collect()
+}
+
+#[test]
+fn a_call_knows_the_options_its_model_left_out() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("ok")]);
+    let ask_top_p =
+        |mut calls: Query<(&mut ModelRequest, &Adapters, &ForAgent), Added<Admitted>>,
+         starts: ModelStarts,
+         mut left: ResMut<LeftOut>| {
+            for (mut call, adapters, agent) in &mut calls {
+                call.request.options.top_p = Some(0.9);
+                if let Ok((.., dropped)) = starts.sent(&call, Some(adapters), Some(agent.0)) {
+                    left.0.push(options(&dropped));
+                }
+            }
+        };
+    app.init_resource::<Ended>()
+        .init_resource::<LeftOut>()
+        .add_observer(log_ended)
+        .add_observer(
+            |fitted: On<Add<Fitted>>, calls: Query<&Fitted>, mut left: ResMut<LeftOut>| {
+                left.0
+                    .extend(calls.get(fitted.entity).map(|it| options(&it.0)));
+            },
+        )
+        .add_systems(AgentPass, ask_top_p.in_set(PrepareSystems::Edit));
+    let agent = agent_on(&mut app, &model);
+    let spec = Catalog::builtin().resolve("anthropic/claude-fable-5");
+    let Ok(spec) = spec.map(|spec| spec.shared()) else {
+        return;
+    };
+    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+    let handler = Handler(ErasedHandler::new(NoSeed(ErasedHandler::new(handler))));
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(Connection { spec, handler });
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // Fitting to the spec left `top_p` out; the handler's dry run names
+    // `seed`. Prepare and Start agree.
+    let left = &app.world().resource::<LeftOut>().0;
+    assert_eq!(left, &[vec!["top_p", "seed"], vec!["top_p", "seed"]]);
+    let sent = model.requests();
+    assert_eq!(
+        sent.first().map(|request| request.options.top_p),
+        Some(None)
+    );
+}
+
 /// What an adapter's stream rewrite says of a reply.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct Rewritten(bool);

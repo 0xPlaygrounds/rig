@@ -76,8 +76,8 @@ pub mod prelude {
         ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapter, Adapters, Backoff, BuildFrom, ModelRequest, ModelStarts, Recovery, RetryVerdict,
-        SentTo, StreamDelta, Streamed, TurnCall,
+        Adapter, Adapters, Backoff, BuildFrom, Fitted, ModelRequest, ModelStarts, Recovery,
+        RetryVerdict, SentTo, StreamDelta, Streamed, TurnCall,
     };
     pub use rig_core::conversation::{
         Aside, AsideId, Author, AuthorKind, Change, Entry, EntryRef, Halt, MessageId, Recorded,

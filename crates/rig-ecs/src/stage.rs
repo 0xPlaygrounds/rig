@@ -82,9 +82,10 @@ use super::tools::{
     refuse_calls,
 };
 use super::turn::{
-    Adapters, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off, build_requests,
-    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
-    keeps_settled, model_pool, stop_calls, stream_partials, stream_reply, wait_in_order,
+    Adapters, Fitted, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
+    build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
+    judge_failures, keeps_settled, model_pool, stop_calls, stream_partials, stream_reply,
+    wait_in_order,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -1044,17 +1045,19 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let connection = match models.start(&mut model, item.adapters, agent, true) {
-                Ok(connection) => connection,
-                Err(report) => {
-                    started.try_insert_if_new(Outcome(Err(report)));
-                    continue;
-                }
-            };
+            let (connection, mut dropped) =
+                match models.start(&mut model, item.adapters, agent, true) {
+                    Ok(started) => started,
+                    Err(report) => {
+                        started.try_insert_if_new(Outcome(Err(report)));
+                        continue;
+                    }
+                };
             let kind = EffectKind::Completion {
                 request: model.request.clone(),
                 stream: true,
             };
+            dropped.extend(connection.handler.0.check(&kind));
             let reference = connection.spec.reference();
             let span =
                 info_span!("model_call", agent = scope, effect = %effect.id, model = reference);
@@ -1064,7 +1067,13 @@ fn start(
             let handler = connection.handler.0.clone();
             let work = effects.run(effect.id, origin, handler, kind, consume);
             let running = Running::finishing(model_pool(), &wake, work.instrument(span), answer);
-            started.try_insert((Started { at }, running, feed, SentTo(connection)));
+            started.try_insert((
+                Started { at },
+                running,
+                feed,
+                SentTo(connection),
+                Fitted(dropped),
+            ));
             continue;
         }
         let (handler, kind) = match (item.request, item.tool) {
