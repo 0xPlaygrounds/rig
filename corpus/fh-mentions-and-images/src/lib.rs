@@ -47,7 +47,6 @@ use rig_tools::workspace::{Local, Stat, Workspace};
 use rig_tools::{blocking, numbered};
 use rig_tui::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyPress, KeyPressed, KeyScope, TuiInput,
-    read_clipboard_image,
 };
 use serde::Deserialize;
 
@@ -370,7 +369,9 @@ fn paste_image(
         .map(|processes| processes.launcher())
         .unwrap_or_default();
     let read = blocking(move || {
-        let saved = read_clipboard_image(&launcher, &images);
+        let saved = rig_tools::clipboard::read_image(&launcher, &images)
+            .map_err(|failure| format!("No image pasted: {failure}."))
+            .and_then(|saved| saved.ok_or_else(|| "No image in the clipboard.".to_owned()));
         Ok(saved.and_then(|path| read_image(&Local, &path)))
     });
     let pool = IoTaskPool::get_or_init(TaskPool::default);

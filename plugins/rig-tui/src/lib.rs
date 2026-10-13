@@ -41,9 +41,9 @@
 //! keys before any binding sees them ([`TerminalEvents`], filtered in
 //! [`InputSystems::Filter`], with [`TuiInputState`] saying what the input
 //! does with them), the terminal's focus ([`TerminalFocus`]), its own escape
-//! codes ([`TerminalWrite`], [`CopyToClipboard`]), a program run with the
-//! terminal ([`RunInTerminal`]), the clipboard's image
-//! ([`read_clipboard_image`]), and a choice for the user, a
+//! codes ([`TerminalWrite`], [`CopyToClipboard`], which also goes to this
+//! machine's clipboard), a program run with the terminal
+//! ([`RunInTerminal`]), and a choice for the user, a
 //! [`Picker`](rig_harness::pick::Picker). The view shows every plugin's
 //! pickers and answers every agent's questions ([`Ask`](rig_harness::ask::Ask)),
 //! one at a time: in front of the transcript, in the input for one with
@@ -79,7 +79,6 @@ use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 
-pub use clipboard::read_clipboard_image;
 pub use complete::{ArgCompletion, Candidate, Completion, CompletionKind};
 pub use crossterm;
 pub use editor::TuiInput;
@@ -255,7 +254,7 @@ pub fn add_view(app: &mut App) {
         // write to the terminal before the view lets it go.
         .add_systems(
             Last,
-            terminal::write_to_terminal
+            (terminal::write_to_terminal, clipboard::copy_to_system)
                 .after(bevy_app::OnAppExitSystems)
                 .run_if(resource_exists::<terminal::Tui>),
         )

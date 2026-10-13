@@ -1,25 +1,29 @@
-//! Images into the input: Ctrl+V saves the clipboard's image in the
+//! The view's clipboard: Ctrl+V saves the clipboard's image in the
 //! session's [`Scratch::images`](rig_harness::prelude::Scratch::images)
-//! directory and types `@path` for it, or says there is none, and a pasted path to an image file (a file
-//! dropped on the terminal) becomes `@path` too. The message attaches what
-//! `@path` names (see [`attach`](rig_tools::attach)). The clipboard is
-//! read by `wl-paste`, `xclip` or `pngpaste`, started as the app's
+//! directory and types `@path` for it, or says there is none, and a pasted
+//! path to an image file (a file dropped on the terminal) becomes `@path`
+//! too. The message attaches what `@path` names (see
+//! [`attach`](rig_tools::attach)). A [`CopyToClipboard`] goes to the
+//! terminal (OSC 52) and to this machine's clipboard as well, for a
+//! terminal that ignores OSC 52. The clipboard is read and written through
+//! [`rig_tools::clipboard`], with programs started as the app's
 //! [`Processes`](rig_harness::prelude::Processes) start every program, on a
-//! thread of its own, which wakes the loop when it is done. A plugin reads
-//! the clipboard's image the same way with [`read_clipboard_image`].
+//! thread of its own; a plugin uses that module the same way.
 
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::prelude::*;
+use bevy_log::warn;
 use crossbeam_channel::{Receiver, Sender};
 
 use super::editor::TuiInput;
-use rig_core::message::ImageMediaType;
+use super::terminal::CopyToClipboard;
 use rig_ecs::agent::Notice;
 use rig_ecs::calls::Wake;
+use rig_harness::prelude::Processes;
 use rig_harness::primary::Shown;
+use rig_tools::clipboard;
 use rig_tools::process::Launcher;
 
 /// Clipboard reads in flight; each sends the saved image's path, or why
@@ -45,15 +49,53 @@ impl Clipboard {
         let spawned = std::thread::Builder::new()
             .name("rig-harness-clipboard".to_owned())
             .spawn(move || {
-                sender
-                    .send(read_clipboard_image(&launcher, &directory))
-                    .ok();
+                sender.send(read_image(&launcher, &directory)).ok();
                 wake.wake();
             });
         if let Err(failure) = spawned {
             self.sender
                 .send(Err(format!("could not read the clipboard: {failure}")))
                 .ok();
+        }
+    }
+}
+
+/// Saves the clipboard's image in `directory`, or says why there is none.
+fn read_image(launcher: &Launcher, directory: &Path) -> Result<PathBuf, String> {
+    match clipboard::read_image(launcher, directory) {
+        Ok(Some(path)) => Ok(path),
+        Ok(None) => Err("No image in the clipboard.".to_owned()),
+        Err(failure) if failure.kind() == ErrorKind::NotFound => {
+            Err("No image in the clipboard.".to_owned())
+        }
+        Err(failure) if failure.kind() == ErrorKind::Unsupported => Err(
+            "No clipboard to read an image from: Ctrl+V needs wl-paste, xclip or pngpaste."
+                .to_owned(),
+        ),
+        Err(failure) => Err(format!("Could not paste the clipboard's image: {failure}.")),
+    }
+}
+
+/// Puts each text copied to the clipboard in this machine's clipboard too,
+/// on a thread, as the terminal may ignore the escape code that copies it.
+pub(crate) fn copy_to_system(
+    mut copies: MessageReader<CopyToClipboard>,
+    processes: Option<Res<Processes>>,
+) {
+    for CopyToClipboard(text) in copies.read() {
+        let launcher = processes.as_deref().map(Processes::launcher);
+        let launcher = launcher.unwrap_or_default();
+        let text = text.clone();
+        let spawned = std::thread::Builder::new()
+            .name("rig-harness-copy".to_owned())
+            .spawn(move || match clipboard::write_text(&launcher, &text) {
+                Err(failure) if failure.kind() != ErrorKind::Unsupported => {
+                    warn!("could not copy to the clipboard: {failure}");
+                }
+                _ => {}
+            });
+        if let Err(failure) = spawned {
+            warn!("could not copy to the clipboard: {failure}");
         }
     }
 }
@@ -106,70 +148,4 @@ pub(crate) fn dropped_image(text: &str) -> Option<PathBuf> {
     }
     let path = Path::new(text);
     (rig_tools::attach::is_image_path(path) && path.is_file()).then(|| path.to_path_buf())
-}
-
-/// The commands that print the clipboard's image, in the order tried.
-fn readers() -> Vec<(&'static str, Vec<&'static str>)> {
-    let mut readers = Vec::new();
-    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
-        readers.push(("wl-paste", vec!["--no-newline", "--type", "image/png"]));
-    }
-    if std::env::var_os("DISPLAY").is_some() {
-        readers.push((
-            "xclip",
-            vec!["-selection", "clipboard", "-target", "image/png", "-out"],
-        ));
-    }
-    if cfg!(target_os = "macos") {
-        readers.push(("pngpaste", vec!["-"]));
-    }
-    readers
-}
-
-/// Saves the clipboard's image as a file in `directory`, named by the
-/// time, and returns its path; or says why there is none. It reads the
-/// clipboard with `wl-paste`, `xclip` or `pngpaste`, started as `launcher`
-/// says, such as `Processes::launcher()`, which keeps the session's secrets
-/// from them. Blocking: run it off the main thread, such as in
-/// `Running::spawn`.
-pub fn read_clipboard_image(launcher: &Launcher, directory: &Path) -> Result<PathBuf, String> {
-    let readers = readers();
-    if readers.is_empty() {
-        return Err(
-            "No clipboard to read an image from: Ctrl+V needs wl-paste, xclip or \
-                    pngpaste."
-                .to_owned(),
-        );
-    }
-    let image = readers.iter().find_map(|(program, args)| {
-        let output = launcher
-            .command(program)
-            .args(args)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
-        let extension = ImageMediaType::sniff(&output.stdout)?.extension();
-        output
-            .status
-            .success()
-            .then_some((output.stdout, extension))
-    });
-    let Some((bytes, extension)) = image else {
-        let names: Vec<&str> = readers.iter().map(|(program, _)| *program).collect();
-        return Err(format!(
-            "No image in the clipboard (read with {}).",
-            names.join(", ")
-        ));
-    };
-    std::fs::create_dir_all(directory)
-        .map_err(|failure| format!("Could not save the pasted image: {failure}."))?;
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis())
-        .unwrap_or_default();
-    let path = directory.join(format!("pasted-{stamp}.{extension}"));
-    std::fs::write(&path, bytes)
-        .map_err(|failure| format!("Could not save the pasted image: {failure}."))?;
-    Ok(path)
 }
