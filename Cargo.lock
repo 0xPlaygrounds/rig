@@ -6238,6 +6238,7 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "bevy_tasks",
  "glob",
  "http 1.4.2",
  "rig-core",
