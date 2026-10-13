@@ -133,6 +133,29 @@ exit 2";
     assert_eq!(left, Some((ExitCode::from(2), false, log)));
 }
 
+/// A refused run of a saved session, such as a `/resume` of one an older
+/// rig saved, logged into the launcher's run directory: the launcher
+/// names that log, not the session's, which earlier runs wrote.
+#[cfg(unix)]
+#[test]
+fn a_refused_run_of_a_saved_session_names_the_log_of_the_run() {
+    let root = std::env::temp_dir().join(format!("rig-refused-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let named = home::hold_run(&home).and_then(|run| {
+        let (id, session) = home.new_session()?;
+        session.mark_saved()?;
+        fs::write(session.log(), "earlier runs\n")?;
+        let (claimed, _) = claim(&home, Start::Resume(id), None)?;
+        fs::write(run.dir().refusal(), "rig: refused.\n")?;
+        let named = claimed.leave(&home, run.dir(), false);
+        let kept = fs::read_to_string(session.log())?;
+        Ok((named == run.dir().log(), kept))
+    });
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(named.ok(), Some((true, "earlier runs\n".to_owned())));
+}
+
 /// A build that describes itself as adding the command `name`.
 #[cfg(unix)]
 fn describing(name: &str) -> String {

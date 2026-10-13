@@ -27,6 +27,7 @@ use rig::harness_protocol::{Home, Invocation, RunDir, env};
 
 use super::cli;
 use super::exit::{Exit, ExitReason, reason_from_exit};
+use super::session::leave_session;
 use crate::describe::{Describing, describing};
 use crate::secrets::Secrets;
 use crate::settings::Settings;
@@ -126,12 +127,15 @@ struct Refused;
 
 /// Refuses this run, once the app is built: says `why` on stderr now,
 /// before any front takes the terminal, and in the launcher's
-/// [`RunDir::refusal`], and exits with code 2 at the end of the first
-/// frame. Only the first refusal is said.
+/// [`RunDir::refusal`], keeps the run out of its session's directory
+/// (`leave_session`), so the launcher names the run's own log, and exits
+/// with code 2 at the end of the first frame. Only the first refusal is
+/// said.
 pub(crate) fn refuse(app: &mut App, why: String) {
     if app.world().contains_resource::<Refused>() {
         return;
     }
+    leave_session(app.world_mut());
     let stop = if why.ends_with('.') { "" } else { "." };
     let said = format!("rig: {why}{stop}\n");
     eprint!("{said}");

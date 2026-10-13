@@ -368,11 +368,16 @@ impl Claimed {
     /// Ends this launcher's runs of the session for good: discards it when
     /// unsaved ([`Self::discard_if_unsaved`]), first moving the text log of
     /// a run that failed into `run`, which keeps it, and returns where the
-    /// text log is. A sessionless run that failed moved it there itself.
+    /// text log is. A sessionless run that failed, and a refused run, moved
+    /// it there themselves.
     fn leave(&self, home: &Home, run: &RunDir, succeeded: bool) -> PathBuf {
         let session = home.session(&self.id);
         if session.is_saved() {
-            return session.log();
+            return if run.refusal().exists() {
+                run.log()
+            } else {
+                session.log()
+            };
         }
         if !succeeded {
             fs::rename(session.log(), run.log()).ok();

@@ -310,7 +310,6 @@ impl Plugin for SessionPlugin {
                 move_text_log(app.world_mut(), wanted);
             }
             Err(failure) => {
-                leave_session(app.world_mut());
                 refuse(
                     app,
                     format!(
@@ -345,7 +344,7 @@ fn open_store(world: &mut World) -> Result<(), LoadError> {
 /// goes to the launcher's run directory, where the launcher points, or
 /// nowhere; it keeps no scratch files; and the session is not marked
 /// started.
-fn leave_session(world: &mut World) {
+pub(crate) fn leave_session(world: &mut World) {
     let elsewhere = world.get_resource::<LauncherRun>().map(|run| run.0.log());
     move_text_log(world, elsewhere);
     world.insert_resource(Scratch(None));

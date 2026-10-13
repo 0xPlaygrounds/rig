@@ -6,6 +6,7 @@ use rig_ecs::agent::Notice;
 
 use super::{Invoked, LauncherPlugin, LauncherRun, refuse};
 use crate::host::exit::{Exit, ExitPlugin, ExitReason};
+use crate::host::session::Scratch;
 
 /// An app started with `args` on a terminal or not, through `finish` and
 /// `cleanup`.
@@ -69,7 +70,8 @@ fn an_exit_on_purpose_in_the_first_frame_counts_as_started() {
 }
 
 /// The launcher says a refusal again once it has the terminal back, as a
-/// restarted full-screen view kept the screen it was said on.
+/// restarted full-screen view kept the screen it was said on. The refused
+/// run keeps no files in its session.
 #[test]
 fn a_refusal_is_told_to_the_launcher() {
     let home = Home::at(std::env::temp_dir().join(format!("rig-refusal-{}", std::process::id())));
@@ -82,4 +84,5 @@ fn a_refusal_is_told_to_the_launcher() {
     let said = std::fs::read_to_string(run.refusal()).ok();
     std::fs::remove_dir_all(home.root()).ok();
     assert_eq!(said.as_deref(), Some("rig: this session is plain.\n"));
+    assert_eq!(app.world().get_resource::<Scratch>(), Some(&Scratch(None)));
 }
