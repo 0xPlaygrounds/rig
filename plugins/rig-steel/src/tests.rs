@@ -1,11 +1,10 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::effect::{Disposition, EffectKind, EffectRecord};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::prelude::*;
-use rig_harness_test_support::{app_on, calls, connect, run_until, start_call};
+use rig_harness_test_support::{MemoryStore, app_on, calls, connect, run_until, start_call};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
@@ -16,9 +15,9 @@ use super::*;
 #[derive(Resource, Default)]
 struct Kept(Vec<EffectRecord>);
 
-fn keep(mut recorded: MessageReader<Recorded>, mut kept: ResMut<Kept>) {
+fn keep(mut recorded: MessageReader<EffectRecorded>, mut kept: ResMut<Kept>) {
     kept.0
-        .extend(recorded.read().map(|Recorded(record)| record.clone()));
+        .extend(recorded.read().map(|EffectRecorded(record)| record.clone()));
 }
 
 /// The arguments of the test's tools, which take none.
