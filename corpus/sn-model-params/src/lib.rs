@@ -27,7 +27,11 @@
 //! the HTTP request, as given; `system_suffix` is the system prompt's last
 //! section. A value that does not fit (`temperature = "hot"`) is reported
 //! with its file and line as the file loads, and its table is ignored. The
-//! files are read again when they change, at the next request.
+//! files are read again for each batch of requests, the project's through
+//! the project's workspace (off the main thread, the requests held, when
+//! it is elsewhere), so an edit takes effect at the next request. A
+//! parameter the model does not take, by its catalog entry or its wire
+//! (`seed` on Anthropic), is left out with one warning naming the model.
 //!
 //! `/params` shows what the shown agent's model gets and where each value
 //! comes from; `/params set <name> <value>` and `/params unset <name>`
@@ -35,12 +39,13 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use bevy_ecs::system::SystemParam;
+use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::OnUnsupported;
-use rig_harness::rig_core::completion::Section;
+use rig_harness::rig_core::completion::{CompletionRequest, Section, SystemPrompt};
 use rig_harness::rig_core::effect::EffectId;
 use rig_harness::rig_core::http_client::{
     self, Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response,
@@ -98,12 +103,14 @@ impl Plugin for ModelParamsPlugin {
             .init_resource::<Files>()
             .init_resource::<Warned>()
             .init_resource::<ProjectRoot>()
+            .init_resource::<ProjectWorkspace>()
             .insert_resource(ParamOverrides::default())
             .register_type::<ParamOverrides>()
             .configure_sets(AgentPass, ModelParamsSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, apply.in_set(ModelParamsSystems))
             .add_systems(Startup, load)
             .add_observer(forget_headers)
+            .add_observer(read_off_thread)
             .add_command(
                 "params",
                 "The model's request parameters: /params, /params set <name> <value>, /params unset <name>",
@@ -139,16 +146,43 @@ struct Headed;
 #[derive(Resource, Default)]
 struct Warned(HashSet<(String, String)>);
 
-/// The files as last read: the user's, then the project's.
+/// The files as last read.
 #[derive(Resource, Default)]
-struct Files(Vec<File>);
+struct Files {
+    user: File,
+    project: File,
+}
+
+impl Files {
+    /// The user's file, then the project's, over it.
+    fn both(&self) -> [&File; 2] {
+        [&self.user, &self.project]
+    }
+}
 
 /// One `models.toml` as last read.
+#[derive(Default)]
 struct File {
     path: PathBuf,
     /// Its text as read; `None` when missing.
     text: Option<String>,
     tables: Vec<Table>,
+}
+
+impl File {
+    /// The file as read from `path` now, parsed again when its text
+    /// changed, reporting what in it does not fit.
+    fn update(&mut self, path: PathBuf, text: Option<String>, notices: &mut MessageWriter<Notice>) {
+        if self.path == path && self.text == text {
+            return;
+        }
+        let (tables, problems) = text.as_deref().map_or_else(Default::default, parse);
+        for problem in problems {
+            let text = format!("{}:{problem}", path.display());
+            notices.write(Notice::warn(None, text));
+        }
+        *self = Self { path, text, tables };
+    }
 }
 
 /// One table of a file: its key and its values, flattened
@@ -186,58 +220,74 @@ impl std::fmt::Display for Source {
 /// came from (several for an `extra_body` key merged from several).
 pub type Effective = BTreeMap<String, (Value, Vec<Source>)>;
 
-/// Reads the files at startup, so a broken one is reported at once.
-fn load(
-    mut files: ResMut<Files>,
-    home: Option<Res<RigHome>>,
-    root: Res<ProjectRoot>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let home = home.map(|home| home.0.root().to_path_buf());
-    refresh(&mut files, home.as_deref(), &root.0, &mut notices);
+/// Where the files are, and what they held when last read.
+#[derive(SystemParam)]
+struct Sources<'w> {
+    files: ResMut<'w, Files>,
+    home: Option<Res<'w, RigHome>>,
+    root: Res<'w, ProjectRoot>,
+    workspace: Res<'w, ProjectWorkspace>,
 }
 
-/// The files' paths: the user's, when there is a `RIG_HOME`, then the
-/// project's.
-fn paths(home: Option<&Path>, root: &Path) -> Vec<PathBuf> {
-    let user = home.map(|home| home.join(FILE));
-    user.into_iter()
-        .chain([root.join(".rig").join(FILE)])
-        .collect()
-}
-
-/// Reads each file again, and parses one whose text changed since it was
-/// read, reporting what in it does not fit. The files are small: reading
-/// them for each request is how an edit takes effect at the next one.
-fn refresh(
-    files: &mut Files,
-    home: Option<&Path>,
-    root: &Path,
-    notices: &mut MessageWriter<Notice>,
-) {
-    let paths = paths(home, root);
-    files.0.retain(|file| paths.contains(&file.path));
-    for path in paths {
-        let text = std::fs::read_to_string(&path).ok();
-        let known = files.0.iter_mut().find(|file| file.path == path);
-        if known.as_ref().is_some_and(|file| file.text == text) {
-            continue;
-        }
-        let (tables, problems) = text.as_deref().map_or_else(Default::default, parse);
-        for problem in problems {
-            let text = format!("{}:{problem}", path.display());
-            notices.write(Notice::warn(None, text));
-        }
-        let file = File {
-            path: path.clone(),
-            text,
-            tables,
-        };
-        match known {
-            Some(known) => *known = file,
-            None => files.0.push(file),
-        }
+impl Sources<'_> {
+    /// The project's file.
+    fn project(&self) -> PathBuf {
+        self.root.0.join(".rig").join(FILE)
     }
+
+    /// Reads the user's file, on this machine, and the project's when the
+    /// project is here too; `false` when the project's has to be read off
+    /// the main thread ([`Self::read_off_thread`]). The files are small:
+    /// reading them for each batch of requests is how an edit takes effect
+    /// at the next one.
+    fn read(&mut self, notices: &mut MessageWriter<Notice>) -> bool {
+        let user = self.home.as_ref().map(|home| home.0.root().join(FILE));
+        let text = user
+            .as_ref()
+            .and_then(|path| std::fs::read_to_string(path).ok());
+        self.files
+            .user
+            .update(user.unwrap_or_default(), text, notices);
+        if self.workspace.0.host().is_some() {
+            return false;
+        }
+        let path = self.project();
+        let text = self.workspace.0.read_text(&path).ok();
+        self.files.project.update(path, text, notices);
+        true
+    }
+
+    /// Reads the project's file where the project is, ending as a
+    /// [`ProjectText`].
+    fn read_off_thread(&self, wake: &Wake) -> Running {
+        let (workspace, path) = (self.workspace.0.clone(), self.project());
+        let pool = IoTaskPool::get_or_init(TaskPool::default);
+        Running::spawn_into::<ProjectText, _>(pool, wake, async move {
+            let read = path.clone();
+            let text = blocking(move || workspace.read_text(&read)).await.ok();
+            (path, text)
+        })
+    }
+}
+
+/// Reading the project's file off the main thread; the model calls that
+/// wait for it are its children's [`HoldOf`]s.
+#[derive(Component)]
+struct Reading;
+
+/// The project's file as read off the main thread: its path and text.
+#[derive(Component)]
+struct ProjectText(PathBuf, Option<String>);
+
+impl From<(PathBuf, Option<String>)> for ProjectText {
+    fn from((path, text): (PathBuf, Option<String>)) -> Self {
+        Self(path, text)
+    }
+}
+
+/// Reads the files at startup, so a broken one is reported at once.
+fn load(mut sources: Sources, mut notices: MessageWriter<Notice>) {
+    sources.read(&mut notices);
 }
 
 /// The tables of a file's `text`, and each problem as `line: what`. A
@@ -364,27 +414,22 @@ fn specificity(key: &str, reference: &str, id: &str) -> Option<usize> {
 /// The parameters the model `reference` (`vendor/id`) gets, with their
 /// sources: the files' matching tables, least specific first, then the
 /// session's overrides.
-pub fn effective(
-    files: &[(PathBuf, Vec<(String, BTreeMap<String, Value>)>)],
-    overrides: &ParamOverrides,
-    reference: &str,
-) -> Effective {
+fn effective(files: &Files, overrides: &ParamOverrides, reference: &str) -> Effective {
     let id = reference.split_once('/').map_or(reference, |(_, id)| id);
     let mut layers: Vec<(Source, BTreeMap<String, Value>)> = Vec::new();
-    for (path, tables) in files {
-        let mut matching: Vec<_> = tables
+    for file in files.both() {
+        let mut matching: Vec<_> = file
+            .tables
             .iter()
-            .filter_map(|(key, values)| {
-                specificity(key, reference, id).map(|rank| (rank, key, values))
-            })
+            .filter_map(|table| specificity(&table.key, reference, id).map(|rank| (rank, table)))
             .collect();
-        matching.sort_by_key(|(rank, _, _)| *rank);
-        for (_, key, values) in matching {
+        matching.sort_by_key(|(rank, _)| *rank);
+        for (_, table) in matching {
             let source = Source::File {
-                path: path.clone(),
-                key: key.clone(),
+                path: file.path.clone(),
+                key: table.key.clone(),
             };
-            layers.push((source, values.clone()));
+            layers.push((source, table.values.clone()));
         }
     }
     if let Some(session) = overrides.0.get(reference) {
@@ -427,39 +472,19 @@ fn merge(base: &mut Value, over: Value) {
     }
 }
 
-/// The files' tables as [`effective`] takes them.
-fn tables(files: &Files) -> Vec<(PathBuf, Vec<(String, BTreeMap<String, Value>)>)> {
-    files
-        .0
-        .iter()
-        .map(|file| {
-            let tables = file
-                .tables
-                .iter()
-                .map(|table| (table.key.clone(), table.values.clone()));
-            (file.path.clone(), tables.collect())
-        })
-        .collect()
-}
-
 /// Puts `params` on `call`, its headers aside, which it returns.
 fn put(call: &mut ModelRequest, params: &Effective) -> Vec<(String, String)> {
     let request = &mut call.request;
     let mut headers = Vec::new();
-    let mut wire_checked = false;
     for (name, (value, _)) in params {
         match name.as_str() {
             "temperature" => request.temperature = value.as_f64(),
             "top_p" => request.options.top_p = value.as_f64(),
             "max_output_tokens" => request.max_tokens = value.as_u64(),
-            "seed" => {
-                request.options.seed = value.as_u64();
-                wire_checked = true;
-            }
+            "seed" => request.options.seed = value.as_u64(),
             "stop" => {
                 let stop = value.as_array().into_iter().flatten();
                 request.options.stop = stop.filter_map(|s| s.as_str().map(str::to_owned)).collect();
-                wire_checked = true;
             }
             "system_suffix" => suffix(call_prompt(&mut call.prompt, request), value),
             _ => {
@@ -485,24 +510,39 @@ fn put(call: &mut ModelRequest, params: &Effective) -> Vec<(String, String)> {
             }
         }
     }
-    // An option only the wire knows it refuses, such as `seed`, is dropped
-    // by it rather than failing the request.
-    if wire_checked && request.options.on_unsupported.is_none() {
-        request.options.on_unsupported = Some(OnUnsupported::Ignore);
-    }
     headers
+}
+
+/// Takes the parameter `option` off `request`, as its model does not take
+/// it, when `params` set it: its name.
+fn leave_out(
+    request: &mut CompletionRequest,
+    option: &str,
+    params: &Effective,
+) -> Option<&'static str> {
+    let name = KNOWN
+        .into_iter()
+        .find(|name| *name == option && params.contains_key(*name))?;
+    match name {
+        "temperature" => request.temperature = None,
+        "top_p" => request.options.top_p = None,
+        "seed" => request.options.seed = None,
+        "stop" => request.options.stop.clear(),
+        _ => return None,
+    }
+    Some(name)
 }
 
 /// Where a request's system prompt is: in parts, or its leading system
 /// message.
 enum Prompt<'a> {
-    Parts(&'a mut rig_harness::rig_core::completion::SystemPrompt),
-    Message(&'a mut rig_harness::rig_core::completion::CompletionRequest),
+    Parts(&'a mut SystemPrompt),
+    Message(&'a mut CompletionRequest),
 }
 
 fn call_prompt<'a>(
-    parts: &'a mut Option<rig_harness::rig_core::completion::SystemPrompt>,
-    request: &'a mut rig_harness::rig_core::completion::CompletionRequest,
+    parts: &'a mut Option<SystemPrompt>,
+    request: &'a mut CompletionRequest,
 ) -> Prompt<'a> {
     match parts {
         Some(parts) => Prompt::Parts(parts),
@@ -532,65 +572,122 @@ fn suffix(prompt: Prompt<'_>, value: &Value) {
     }
 }
 
-/// Each model call admitted this pass gets the parameters of the model it
-/// goes to; one that model's catalog entry refuses is warned of once.
-#[allow(clippy::too_many_arguments)]
-fn apply(
-    mut calls: Query<
+/// Puts each model call's parameters on it.
+#[derive(SystemParam)]
+struct Fit<'w, 's> {
+    calls: Query<
+        'w,
+        's,
         (
-            Entity,
-            &Effect,
-            &mut ModelRequest,
-            Option<&Adapters>,
-            Option<&ForAgent>,
+            &'static Effect,
+            &'static mut ModelRequest,
+            Option<&'static Adapters>,
+            Option<&'static ForAgent>,
         ),
-        (Added<Admitted>, ModelCalls),
     >,
-    starts: ModelStarts,
-    (mut files, home, root): (ResMut<Files>, Option<Res<RigHome>>, Res<ProjectRoot>),
-    overrides: Res<ParamOverrides>,
-    table: Res<HeaderTable>,
-    mut warned: ResMut<Warned>,
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
-) {
-    if calls.is_empty() {
-        return;
-    }
-    let home = home.map(|home| home.0.root().to_path_buf());
-    refresh(&mut files, home.as_deref(), &root.0, &mut notices);
-    let tables = tables(&files);
-    for (call, effect, mut request, adapters, agent) in &mut calls {
+    starts: ModelStarts<'w, 's>,
+    overrides: Res<'w, ParamOverrides>,
+    table: Res<'w, HeaderTable>,
+    warned: ResMut<'w, Warned>,
+    notices: MessageWriter<'w, Notice>,
+    commands: Commands<'w, 's>,
+}
+
+impl Fit<'_, '_> {
+    /// Puts on `call` the parameters, by `files`, of the model it goes to,
+    /// and leaves out each one that model does not take, warning of it
+    /// once.
+    fn fit(&mut self, call: Entity, files: &Files) {
+        let Ok((effect, mut model, adapters, agent)) = self.calls.get_mut(call) else {
+            return;
+        };
         let agent = agent.map(|agent| agent.0);
-        let Ok((connection, ..)) = starts.sent(&request, adapters, agent) else {
-            continue;
+        let Ok((connection, ..)) = self.starts.sent(&model, adapters, agent) else {
+            return;
         };
         let reference = connection.spec.reference();
-        let params = effective(&tables, &overrides, &reference);
+        let params = effective(files, &self.overrides, &reference);
         if params.is_empty() {
-            continue;
+            return;
         }
-        let headers = put(&mut request, &params);
+        let headers = put(&mut model, &params);
         if !headers.is_empty() {
-            table.lock().insert(effect.id(), headers);
-            commands.entity(call).insert(Headed);
+            self.table.lock().insert(effect.id(), headers);
+            self.commands.entity(call).insert(Headed);
         }
-        let Ok((_, sent, _)) = starts.sent(&request, adapters, agent) else {
-            continue;
+        let Ok((_, _, dropped)) = self.starts.sent(&model, adapters, agent) else {
+            return;
         };
-        let dropped = [
-            ("temperature", sent.temperature.is_none()),
-            ("top_p", sent.options.top_p.is_none()),
-        ];
-        for (name, gone) in dropped {
-            let mut once = || warned.0.insert((reference.clone(), name.to_owned()));
-            if gone && params.contains_key(name) && once() {
-                let text =
-                    format!("{reference} does not take {name}: it is left out of its requests.");
-                notices.write(Notice::warn(agent, text));
+        for option in dropped {
+            let Some(name) = leave_out(&mut model.request, &option.option, &params) else {
+                continue;
+            };
+            if self.warned.0.insert((reference.clone(), name.to_owned())) {
+                let why = &option.reason;
+                let text = format!(
+                    "{reference} does not take {name} ({why}): it is left out of its requests."
+                );
+                self.notices.write(Notice::warn(agent, text));
             }
         }
     }
+}
+
+/// Each model call admitted this pass gets the parameters of the model it
+/// goes to, from the files as they are now: at once, or once the project's
+/// is read off the main thread, the calls held until then.
+fn apply(
+    admitted: Query<Entity, (Added<Admitted>, ModelCalls)>,
+    reading: Query<Entity, With<Reading>>,
+    mut sources: Sources,
+    wake: Res<Wake>,
+    mut fit: Fit,
+) {
+    if admitted.is_empty() {
+        return;
+    }
+    if sources.read(&mut fit.notices) {
+        for call in &admitted {
+            fit.fit(call, &sources.files);
+        }
+        return;
+    }
+    let reading = reading.iter().next().unwrap_or_else(|| {
+        let read = sources.read_off_thread(&wake);
+        fit.commands
+            .spawn((Name::new("read: models.toml"), Reading, read))
+            .id()
+    });
+    for call in &admitted {
+        let hold = (Name::new("hold: models.toml"), HoldOf(call));
+        fit.commands.entity(reading).with_child(hold);
+    }
+}
+
+/// The project's file, read off the main thread: the calls that waited
+/// for it get their parameters and go on.
+fn read_off_thread(
+    done: On<Insert<ProjectText>>,
+    reads: Query<(&ProjectText, Option<&Children>)>,
+    holds: Query<&HoldOf>,
+    mut sources: Sources,
+    mut fit: Fit,
+) {
+    let Ok((ProjectText(path, text), held)) = reads.get(done.entity) else {
+        return;
+    };
+    sources
+        .files
+        .project
+        .update(path.clone(), text.clone(), &mut fit.notices);
+    let held = held
+        .into_iter()
+        .flatten()
+        .filter_map(|hold| holds.get(*hold).ok());
+    for &HoldOf(call) in held {
+        fit.fit(call, &sources.files);
+    }
+    fit.commands.entity(done.entity).despawn();
 }
 
 /// A call's headers go with its entity.
@@ -604,7 +701,7 @@ fn forget_headers(gone: On<Remove<Headed>>, effects: Query<&Effect>, table: Res<
 fn params(
     In(args): In<CommandArgs>,
     agents: Query<&Connection>,
-    (mut files, home, root): (ResMut<Files>, Option<Res<RigHome>>, Res<ProjectRoot>),
+    mut sources: Sources,
     mut overrides: ResMut<ParamOverrides>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -620,9 +717,10 @@ fn params(
     let mut words = args.args.splitn(3, char::is_whitespace);
     match (words.next().unwrap_or_default(), words.next(), words.next()) {
         ("", None, None) => {
-            let home = home.map(|home| home.0.root().to_path_buf());
-            refresh(&mut files, home.as_deref(), &root.0, &mut notices);
-            let params = effective(&tables(&files), &overrides, &reference);
+            // In a workspace elsewhere, the project's file as the last
+            // request read it.
+            sources.read(&mut notices);
+            let params = effective(&sources.files, &overrides, &reference);
             let text = show(&reference, &params, connection.spec.max_output_tokens);
             notices.write(Notice::info(agent, text));
         }

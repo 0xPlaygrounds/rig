@@ -15,10 +15,11 @@ use serde_json::json;
 
 use super::*;
 
-/// The user's `models.toml`; line 12 holds a temperature that does not fit.
+/// The user's `models.toml`; line 13 holds a temperature that does not fit.
 const MODELS: &str = r#"["scripted-*"]
 temperature = 0.2
 max_output_tokens = 4000
+top_p = 0.9
 
 ["scripted-strong"]
 temperature = 0.7
@@ -94,15 +95,24 @@ fn last_notice(app: &App) -> String {
         .unwrap_or_default()
 }
 
-/// The file's glob and exact tables apply by model, `/model` switches
-/// them at the next request, `/params set` overrides one and is back after
-/// a restart, a `task` subagent's requests get the same, and a table that
-/// does not fit is reported by line and left out.
+/// The project's file sets `top_p` over the user's.
+const PROJECT: &str = r#"["scripted-*"]
+top_p = 0.5
+"#;
+
+/// The file's glob and exact tables apply by model, the project's file
+/// over the user's, `/model` switches them at the next request, `/params
+/// set` overrides one and is back after a restart, a `task` subagent's
+/// requests get the same, and a table that does not fit is reported by
+/// line and left out.
 #[test]
 fn each_request_gets_its_models_parameters() {
     let home = scratch_home("sn-model-params");
     std::fs::create_dir_all(home.root()).ok();
     std::fs::write(home.root().join(FILE), MODELS).ok();
+    let project = home.root().join("project/.rig");
+    std::fs::create_dir_all(&project).ok();
+    std::fs::write(project.join(FILE), PROJECT).ok();
     let store = MemoryStore::default();
     let fast = MockCompletionModel::from_stream_turns([reply("Fast.")]);
     let strong = MockCompletionModel::from_stream_turns([reply("Strong."), reply("Cold.")]);
@@ -115,7 +125,7 @@ fn each_request_gets_its_models_parameters() {
     let problem = problem
         .map(|notice| notice.text.as_str())
         .unwrap_or_default();
-    assert!(problem.contains("models.toml:12:"), "{problem}");
+    assert!(problem.contains("models.toml:13:"), "{problem}");
     assert!(problem.contains("temperature"), "{problem}");
 
     run(&mut app, agent, "model scripted/scripted-fast");
@@ -124,6 +134,11 @@ fn each_request_gets_its_models_parameters() {
     let first = sent.first();
     assert_eq!(first.and_then(|it| it.temperature), Some(0.2));
     assert_eq!(first.and_then(|it| it.max_tokens), Some(4000));
+    assert_eq!(
+        first.and_then(|it| it.options.top_p),
+        Some(0.5),
+        "the project's"
+    );
     assert_eq!(first.and_then(effort), None, "the glob sets no body field");
 
     run(&mut app, agent, "model scripted/scripted-strong");
@@ -204,6 +219,9 @@ fn each_request_gets_its_models_parameters() {
     }
 }
 
+/// An Anthropic model, whose wire has no `seed`.
+const ANTHROPIC: &str = "anthropic/claude-sonnet-4-5";
+
 /// What the test's HTTP client saw: each request's headers and body.
 #[derive(Clone, Default)]
 struct Seen(Arc<Mutex<Vec<(HeaderMap, Value)>>>);
@@ -262,7 +280,8 @@ impl HttpClientExt for Refusing {
 }
 
 /// Through a real provider's wire, a model's headers reach the HTTP
-/// request and its `extra_body` is deep-merged into the body.
+/// request and its `extra_body` is deep-merged into the body; a `seed`
+/// Anthropic's wire does not take is left out, warned of once.
 #[test]
 fn headers_and_extra_body_reach_the_wire() {
     let home = scratch_home("sn-model-params-wire");
@@ -270,6 +289,9 @@ fn headers_and_extra_body_reach_the_wire() {
     let file = r#"["deepseek/*"]
 headers = { "x-beta" = "1" }
 extra_body = { thinking = { type = "enabled" } }
+
+["anthropic/*"]
+seed = 7
 "#;
     std::fs::write(home.root().join(FILE), file).ok();
     let seen = Seen::default();
@@ -278,15 +300,13 @@ extra_body = { thinking = { type = "enabled" } }
     models
         .0
         .wrap_http(move |_| DynHttpClient::new(Refusing(kept.clone())));
-    let vendor = models
-        .0
-        .catalog()
-        .resolve("deepseek/deepseek-flash")
-        .map(|found| found.spec.provider);
-    if let Ok(vendor) = vendor {
-        models
-            .0
-            .provide(vendor, ConnectOptions::new().api_key("sk-test"));
+    for model in ["deepseek/deepseek-flash", ANTHROPIC] {
+        let vendor = models.0.catalog().resolve(model);
+        if let Ok(found) = vendor.map(|found| found.spec.provider) {
+            models
+                .0
+                .provide(found, ConnectOptions::new().api_key("sk-test"));
+        }
     }
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(RigHome(home.clone()))
@@ -295,13 +315,45 @@ extra_body = { thinking = { type = "enabled" } }
         .add_plugins((AgentPlugin, JournalPlugin, ModelsPlugin, ModelParamsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
+    collect::<Notice>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     run(&mut app, agent, "model deepseek/deepseek-flash");
     turn(&mut app, &wakes, agent, 1);
+    run(&mut app, agent, &format!("model {ANTHROPIC}"));
+    turn(&mut app, &wakes, agent, 2);
+    turn(&mut app, &wakes, agent, 3);
 
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let warned = notices
+        .iter()
+        .filter(|notice| notice.text.contains("does not take seed"));
+    let warned: Vec<_> = warned.map(|notice| notice.text.as_str()).collect();
+    assert_eq!(warned.len(), 1, "{warned:?}");
+    assert!(
+        warned.iter().all(|text| text.contains(ANTHROPIC)),
+        "{warned:?}"
+    );
     let seen = seen.0.lock().unwrap_or_else(PoisonError::into_inner);
+    let to_anthropic: Vec<_> = seen
+        .iter()
+        .filter(|(_, body)| {
+            body.get("model")
+                .and_then(Value::as_str)
+                .is_some_and(|m| m.starts_with("claude"))
+        })
+        .collect();
+    assert!(
+        to_anthropic.len() >= 2,
+        "both turns reached the wire: {}",
+        seen.len()
+    );
+    assert!(
+        to_anthropic
+            .iter()
+            .all(|(_, body)| body.get("seed").is_none())
+    );
     let first = seen.first();
     let beta = first.and_then(|(headers, _)| headers.get("x-beta")?.to_str().ok());
     assert_eq!(beta, Some("1"), "{} requests", seen.len());
