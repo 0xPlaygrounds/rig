@@ -219,6 +219,8 @@ struct Git {
     dir: PathBuf,
     /// The repository's object directory, read as an alternate.
     objects: PathBuf,
+    /// The snapshotted root as the caller gave it, which names changes.
+    root: PathBuf,
     /// The snapshotted root, below `top` (empty for all of it).
     below: PathBuf,
     /// The private directory: `index` and `objects` in it.
@@ -252,14 +254,15 @@ impl Git {
         let mut lines = text.lines();
         let (top, dir, objects) = (lines.next()?, lines.next()?, lines.next()?);
         let top = PathBuf::from(top);
-        let root = std::fs::canonicalize(root).ok()?;
-        let below = root.strip_prefix(&top).ok()?.to_path_buf();
+        let canonical = std::fs::canonicalize(root).ok()?;
+        let below = canonical.strip_prefix(&top).ok()?.to_path_buf();
         let name = content_hash(top.as_os_str().as_encoded_bytes()).0;
         let keep = keep
             .join("checkpoints")
             .join(name.get(..16).unwrap_or(&name));
         Some(Self {
-            objects: root.join(objects),
+            objects: canonical.join(objects),
+            root: root.to_path_buf(),
             top,
             dir: PathBuf::from(dir),
             below,
@@ -325,12 +328,30 @@ impl Git {
         self.run(&["cat-file", "blob", id].map(OsStr::new))
     }
 
-    /// The bytes `path` held in `tree`.
+    /// The bytes `path`, under the root as given or the work tree's top,
+    /// held in `tree`.
     fn content(&self, tree: &str, path: &Path) -> io::Result<Vec<u8>> {
-        let below = path.strip_prefix(&self.top).map_err(|_| {
-            io::Error::new(ErrorKind::InvalidInput, "the path is outside the work tree")
-        })?;
+        let below = match path.strip_prefix(&self.root) {
+            Ok(rest) => self.below.join(rest),
+            Err(_) => path
+                .strip_prefix(&self.top)
+                .map_err(|_| {
+                    io::Error::new(ErrorKind::InvalidInput, "the path is outside the work tree")
+                })?
+                .to_path_buf(),
+        };
         self.blob(&format!("{tree}:{}", below.to_string_lossy()))
+    }
+
+    /// The file git names `path` (below `top`), spelled under the root as
+    /// given.
+    fn shown(&self, path: &str) -> String {
+        match Path::new(path).strip_prefix(&self.below) {
+            Ok(rest) => self.root.join(rest),
+            Err(_) => self.top.join(path),
+        }
+        .to_string_lossy()
+        .into_owned()
     }
 
     /// What changed from the tree `before` to the tree `after`.
@@ -362,8 +383,7 @@ impl Git {
             let missing = |id: &str| id.bytes().all(|byte| byte == b'0');
             let was = (!missing(old)).then(|| self.blob(old)).transpose()?;
             let now = (!missing(new)).then(|| self.blob(new)).transpose()?;
-            let shown = self.top.join(path).to_string_lossy().into_owned();
-            changes.push(change(&shown, was.as_deref(), now.as_deref()));
+            changes.push(change(&self.shown(path), was.as_deref(), now.as_deref()));
         }
         Ok(changes)
     }

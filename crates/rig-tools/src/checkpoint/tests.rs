@@ -38,6 +38,30 @@ fn tree(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     files
 }
 
+/// Whether `git args` succeeded in `repo`, with no user configuration.
+fn git_in(repo: &Path, args: &[&str]) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+            // No background `git maintenance` after the commit: its
+            // `objects/maintenance.lock` would come and go while the
+            // test compares `.git`.
+            "-c",
+            "maintenance.auto=false",
+        ])
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
 /// In a git work tree, a write between two snapshots is one modified file
 /// with its content before and after and its diff, the earlier snapshot
 /// still has the old bytes, and nothing in the repository's `.git` changed.
@@ -45,28 +69,7 @@ fn tree(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
     let repo = scratch("checkpoint-git");
     let keep = scratch("checkpoint-keep");
-    let git = |args: &[&str]| {
-        Command::new("git")
-            .arg("-C")
-            .arg(&repo)
-            .args([
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@t",
-                "-c",
-                "commit.gpgsign=false",
-                // No background `git maintenance` after the commit: its
-                // `objects/maintenance.lock` would come and go while the
-                // test compares `.git`.
-                "-c",
-                "maintenance.auto=false",
-            ])
-            .args(args)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .output()
-            .is_ok_and(|output| output.status.success())
-    };
+    let git = |args: &[&str]| git_in(&repo, args);
     assert!(git(&["init", "-q"]));
     std::fs::write(repo.join("a.txt"), "one\n").ok();
     assert!(git(&["add", "a.txt"]) && git(&["commit", "-qm", "first"]));
@@ -178,4 +181,39 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
         .and_then(|(last, first)| last.changes_since(&first).ok());
     assert_eq!(since.map(|changes| changes.len()), Some(2));
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// A root reached through a symbolic link into a git work tree names its
+/// changes as the root was given, as a scan and the Footprint do, and
+/// reads a file's content back by that spelling.
+#[cfg(unix)]
+#[test]
+fn a_git_snapshot_names_files_under_the_root_as_given() {
+    let repo = scratch("checkpoint-link-repo");
+    let keep = scratch("checkpoint-link-keep");
+    let link = scratch("checkpoint-link").join("project");
+    std::fs::create_dir_all(repo.join("src")).ok();
+    std::fs::write(repo.join("src/a.txt"), "one\n").ok();
+    assert!(git_in(&repo, &["init", "-q"]));
+    assert!(std::os::unix::fs::symlink(repo.join("src"), &link).is_ok());
+
+    let first = snapshot(&Local, &link, Some(&keep), None);
+    assert!(first.is_ok(), "{first:?}");
+    let Ok(first) = first else { return };
+    std::fs::write(link.join("a.txt"), "two\n").ok();
+    let second = snapshot(&Local, &link, Some(&keep), Some(&first));
+    let changes = second.and_then(|second| second.changes_since(&first));
+    let paths: Vec<_> = changes
+        .unwrap_or_default()
+        .into_iter()
+        .map(|change| change.path)
+        .collect();
+    assert_eq!(paths, [link.join("a.txt").to_string_lossy().into_owned()]);
+    assert_eq!(
+        first.content(&link.join("a.txt")).and_then(Result::ok),
+        Some(b"one\n".to_vec())
+    );
+    std::fs::remove_dir_all(repo).ok();
+    std::fs::remove_dir_all(keep).ok();
+    link.parent().map(std::fs::remove_dir_all);
 }
