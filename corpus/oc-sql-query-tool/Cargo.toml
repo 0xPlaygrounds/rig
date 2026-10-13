@@ -13,8 +13,14 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# SQLite, bundled as rig-sqlite already builds it; already in Cargo.lock.
+# `hooks` for the progress handler that times out and cancels a query.
+rusqlite = { workspace = true, features = ["bundled", "hooks"] }
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# `<project>/.rig/db.toml`; the version rig-harness reads settings.toml with.
+toml = "1"
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
