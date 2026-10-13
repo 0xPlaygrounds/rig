@@ -354,7 +354,6 @@ fn pipe(
     runs: Query<&PipelineRun>,
     working: Query<(), With<ActiveTurn>>,
     (home, root): (Res<RigHome>, Res<ProjectRoot>),
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -380,7 +379,7 @@ fn pipe(
                         reason,
                     });
                 }
-                (Some(agent), _) => commit.retire(agent),
+                (Some(agent), _) => commands.trigger(Retire { entity: agent }),
                 (None, Some(request)) => commands.entity(request).try_despawn(),
                 (None, None) => {}
             }
@@ -521,7 +520,7 @@ fn go_on(commands: &mut Commands, host: Entity, run: &mut PipelineRun, next: Nex
         Next::Stage => spawn_stage(commands, host, run),
         Next::Ended { passed } => {
             let report = Deliver::new(host, run.report(passed), DeliveryMode::Queue);
-            commands.trigger(report.with_origin(Origin::plugin("pipe")));
+            commands.trigger(report.with_author(Author::plugin("pipe")));
             commands.entity(host).remove::<PipelineRun>();
         }
     }
