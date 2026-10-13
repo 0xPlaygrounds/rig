@@ -17,7 +17,7 @@
 //! ([`SessionImported`]). Importing the same source session again appends
 //! what is new to the session made the first time.
 //!
-//! A session is written with [`write_session`] into a new session's store
+//! A session is written with [`Session::save`] into a new session's store
 //! ([`Home::new_session`], [`SessionStores`]), with the source it came from
 //! in the plugin's own file there.
 
@@ -28,7 +28,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use rig_cassette::journal::{Conversation, Stamp};
+use rig_core::conversation::Conversation;
 use rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_core::message::{Message, Origin as MadeBy};
 use rig_harness::harness_protocol::{SessionDir, SessionId};
@@ -417,7 +417,7 @@ struct Imported {
 }
 
 /// The marker of the session in `store`, if an import made it.
-fn marker_of(store: &dyn JournalStore) -> Option<Marker> {
+fn marker_of(store: &dyn Store) -> Option<Marker> {
     serde_json::from_slice(&store.read_file(MARKER).ok()?).ok()
 }
 
@@ -456,6 +456,7 @@ fn import_file(
     let created = marker.conversations.is_empty();
     let written = stores
         .open(&dir)
+        .map_err(io::Error::other)
         .and_then(|store| write(&*store, &dir, marker, &parsed));
     let added = match written {
         Ok(added) => added,
@@ -499,12 +500,12 @@ fn imported_session(
 /// agent; then its marker, its directory and its `/resume` listing. The
 /// messages added.
 fn write(
-    store: &dyn JournalStore,
+    store: &dyn Store,
     dir: &SessionDir,
     mut marker: Marker,
     parsed: &Parsed,
 ) -> io::Result<usize> {
-    let mut session = read_session(store)?;
+    let mut session = Session::read(store).map_err(io::Error::other)?;
     let source = marker.source;
     let mut conversations = vec![(parsed.id.clone(), &parsed.main)];
     for (chain, steps) in &parsed.sidechains {
@@ -535,7 +536,6 @@ fn write(
         if let Some(saved) = session.agents.get_mut(at) {
             let mut importing = Importing {
                 conversation: &mut saved.conversation,
-                stamps: &mut saved.stamps,
                 source,
                 notes: Vec::new(),
                 added: 0,
@@ -554,7 +554,7 @@ fn write(
         }
         main = main.or(Some(agent));
     }
-    write_session(store, &session)?;
+    session.save(store).map_err(io::Error::other)?;
     store.write_file(MARKER, &serde_json::to_vec_pretty(&marker)?)?;
     if let Some(cwd) = &parsed.cwd {
         fs::write(dir.directory(), cwd.to_string_lossy().as_bytes())?;
@@ -577,7 +577,6 @@ fn write(
 /// message stamped with the source's time.
 struct Importing<'a> {
     conversation: &'a mut Conversation,
-    stamps: &'a mut Vec<Stamp>,
     source: Source,
     /// Notes held back while a call waits for its result.
     notes: Vec<(String, String)>,
@@ -645,12 +644,17 @@ impl Importing<'_> {
         }
     }
 
-    /// Adds `message`, logged at `at_ms`.
-    fn add(&mut self, message: Message, origin: Option<Origin>, at_ms: u64) {
-        self.conversation.append(message, origin);
-        let stamp = Stamp { n: 0, t: at_ms };
-        self.stamps
-            .resize(self.conversation.messages().len(), stamp);
+    /// Adds `message`, by `author` (the user's own without one), logged
+    /// at `at_ms`.
+    fn add(&mut self, message: Message, author: Option<Author>, at_ms: u64) {
+        let entry = Entry::new(message);
+        self.conversation.push(match author {
+            Some(author) => entry.by(author),
+            None => entry,
+        });
+        // The time the source logged it: no route yet to give the change
+        // its time (`Recorded::at`), so saving stamps it with now.
+        let _ = at_ms;
         self.added += 1;
     }
 
@@ -667,8 +671,8 @@ impl Importing<'_> {
         let label = self.source.label();
         for (kind, raw) in std::mem::take(&mut self.notes) {
             let text = format!("[imported {label} entry `{kind}`] {raw}");
-            let origin = Origin::plugin("import").titled(kind);
-            self.add(Message::user(text), Some(origin), at_ms);
+            let author = Author::plugin("import").titled(kind);
+            self.add(Message::user(text), Some(author), at_ms);
         }
     }
 

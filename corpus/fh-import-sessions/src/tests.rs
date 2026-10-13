@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 
 use rig_core::message::{Message, ToolResultContent};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::prelude::read_session;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, first_agent, log_ended, reply, run_until, scratch_home,
     scripted_models,
@@ -50,7 +49,7 @@ fn import_with(app: &mut App, tool: &str, path: &Path) -> Vec<SessionImported> {
 fn conversation_of(home: &Home, session: &SessionId) -> Vec<Message> {
     let store = SessionStores::default().open(&home.session(session));
     let saved = store
-        .and_then(|store| read_session(&*store))
+        .and_then(|store| Session::read(&*store))
         .unwrap_or_default();
     let main = saved
         .agents
@@ -141,7 +140,7 @@ fn imports_resumes_and_reimports() {
     // source's time.
     let store = SessionStores::default().open(&home.session(&first.session));
     let agents = store
-        .and_then(|store| read_session(&*store))
+        .and_then(|store| Session::read(&*store))
         .unwrap_or_default()
         .agents;
     assert_eq!(
