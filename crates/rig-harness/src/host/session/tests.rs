@@ -109,8 +109,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
         before: None,
         text: None,
     };
-    let parent_of =
-        |session: &SessionDir| dir_store(session).and_then(|store| ForkedFrom::of(&store));
+    let parent_of = |session: &SessionDir| dir_store(session).as_ref().and_then(ForkedFrom::of);
     assert_eq!(parent_of(&copy), Some(parent));
     assert_eq!(parent_of(&session), None);
     assert!(copy.is_saved());

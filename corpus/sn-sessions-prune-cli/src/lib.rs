@@ -315,8 +315,8 @@ fn found(home: &Home, stores: &SessionStores, current: Option<&Path>) -> Vec<Fou
                 return None;
             }
             let store = stores.open(&dir).ok();
-            let meta = store.as_deref().and_then(|store| Meta::of(store));
-            let parent = store.as_deref().and_then(|store| ForkedFrom::of(store));
+            let meta = store.as_deref().and_then(Meta::of);
+            let parent = store.as_deref().and_then(ForkedFrom::of);
             let updated = match &meta {
                 Some(meta) => meta.updated,
                 None => millis(fs::metadata(dir.path()).ok()?.modified().ok()?),

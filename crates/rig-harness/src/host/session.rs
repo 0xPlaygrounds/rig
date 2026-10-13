@@ -440,7 +440,9 @@ const PARENT: &str = "parent.json";
 
 impl ForkedFrom {
     /// The session the session in `store` was forked from, if it was.
-    pub fn of(store: &dyn Files) -> Option<Self> {
+    /// Generic, so it is passed as it is where a store is any `Files`,
+    /// such as `stores.as_deref().and_then(ForkedFrom::of)`.
+    pub fn of(store: &(impl Files + ?Sized)) -> Option<Self> {
         let parent: Parent = serde_json::from_slice(&store.read_file(PARENT).ok()?).ok()?;
         Some(Self {
             session: parent.session.parse().ok()?,

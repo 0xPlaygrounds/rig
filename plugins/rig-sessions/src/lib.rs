@@ -166,7 +166,9 @@ pub struct Meta {
 
 impl Meta {
     /// The listing of the session kept in `store`, if it has one.
-    pub fn of(store: &dyn Files) -> Option<Self> {
+    /// Generic, so it is passed as it is where a store is any `Files`,
+    /// such as `store.as_deref().and_then(Meta::of)`.
+    pub fn of(store: &(impl Files + ?Sized)) -> Option<Self> {
         serde_json::from_slice(&store.read_file(META).ok()?).ok()
     }
 }
@@ -176,7 +178,7 @@ impl Meta {
 /// # Errors
 ///
 /// When the store cannot write it.
-pub fn write_meta(store: &dyn Files, meta: &Meta) -> io::Result<()> {
+pub fn write_meta(store: &(impl Files + ?Sized), meta: &Meta) -> io::Result<()> {
     store.write_file(META, &serde_json::to_vec_pretty(meta)?)
 }
 
@@ -238,7 +240,7 @@ pub fn list(home: &Home, stores: &SessionStores, current: &Path) -> Vec<SessionE
             if dir.path() == current || !dir.is_saved() {
                 return None;
             }
-            let meta = stores.open(&dir).ok().and_then(|store| Meta::of(&*store));
+            let meta = stores.open(&dir).ok().as_deref().and_then(Meta::of);
             let saved = match &meta {
                 Some(meta) => UNIX_EPOCH + Duration::from_millis(meta.updated),
                 None => fs::metadata(dir.path()).ok()?.modified().ok()?,
