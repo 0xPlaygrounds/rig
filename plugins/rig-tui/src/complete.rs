@@ -4,13 +4,13 @@
 //! project. Paths come from a walk of the
 //! [`ProjectRoot`] in the app's [`ProjectWorkspace`] that honours
 //! `.gitignore`, done on a thread of its own, whatever the workspace, and
-//! kept for a while. An item matches when it contains the query,
-//! ignoring case; the earlier the match, the higher it ranks.
+//! kept until a [`FileWatch`] of the root says something there changed.
+//! An item matches when it contains the query, ignoring case; the earlier
+//! the match, the higher it ranks.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -22,15 +22,12 @@ use super::view::TuiView;
 use rig_ecs::calls::Wake;
 use rig_harness::commands::SlashCommand;
 use rig_harness::services::ProjectRoot;
+use rig_harness::watch::{FileChanges, FileWatch};
 use rig_harness::workspace::ProjectWorkspace;
 use rig_tools::workspace::{Local, Workspace};
 
 /// Items a completion lists.
 const SHOWN: usize = 50;
-/// Paths the walk collects at most.
-const MOST_PATHS: usize = 50_000;
-/// How long a walk's paths are used before the next `@` walks again.
-const FRESH: Duration = Duration::from_secs(30);
 
 /// Candidates for an argument of a slash command, such as `/model`'s
 /// models, on an entity of the plugin's: the word typed at the argument's
@@ -172,14 +169,26 @@ impl CompletionKind {
 pub(crate) struct FileIndex {
     paths: Arc<Vec<String>>,
     walking: Option<Receiver<Vec<String>>>,
-    walked: Option<Instant>,
+    /// Whether the paths are the project's as its watch last saw it.
+    fresh: bool,
+    /// The watch of the project's root, from the first `@` on.
+    watch: Option<Entity>,
 }
 
 impl FileIndex {
-    /// Starts a walk of `root` in `workspace` unless one runs or the last
-    /// one is fresh.
-    fn refresh(&mut self, wake: &Wake, (workspace, root): (Arc<dyn Workspace>, PathBuf)) {
-        if self.walking.is_some() || self.walked.is_some_and(|walked| walked.elapsed() < FRESH) {
+    /// Watches `root`, then starts a walk of it in `workspace` unless one
+    /// runs or nothing changed since the last.
+    fn refresh(
+        &mut self,
+        wake: &Wake,
+        (workspace, root): (Arc<dyn Workspace>, PathBuf),
+        commands: &mut Commands,
+    ) {
+        if self.watch.is_none() {
+            let watch = (Name::new("rig-tui: @ paths"), FileWatch::tree(&root));
+            self.watch = Some(commands.spawn(watch).id());
+        }
+        if self.walking.is_some() || self.fresh {
             return;
         }
         let (sender, receiver) = crossbeam_channel::bounded(1);
@@ -191,7 +200,8 @@ impl FileIndex {
                 wake.wake();
             });
         match started {
-            Ok(_) => self.walking = Some(receiver),
+            // A change seen from here on makes the walk stale.
+            Ok(_) => (self.walking, self.fresh) = (Some(receiver), true),
             Err(failure) => warn!("could not list the project's files: {failure}"),
         }
     }
@@ -203,7 +213,6 @@ impl FileIndex {
         };
         self.paths = Arc::new(paths);
         self.walking = None;
-        self.walked = Some(Instant::now());
         true
     }
 }
@@ -234,9 +243,6 @@ fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
             }
         }
         paths.push(text(relative));
-        if paths.len() >= MOST_PATHS {
-            break;
-        }
     }
     paths
 }
@@ -300,6 +306,7 @@ pub(crate) fn update(
     index: &mut FileIndex,
     sources: &Sources,
     wake: &Wake,
+    commands: &mut Commands,
 ) {
     let found = token(input.text(), input.cursor());
     let Some((kind, start, query, command)) = found else {
@@ -313,7 +320,7 @@ pub(crate) fn update(
     }
     view.dismissed = None;
     if kind == CompletionKind::Path {
-        index.refresh(wake, sources.project());
+        index.refresh(wake, sources.project(), commands);
     }
     let complete = index.walking.is_none();
     if let Some(open) = &view.completion
@@ -395,18 +402,32 @@ fn path_items(paths: &[String], query: &str) -> Vec<Candidate> {
         .collect()
 }
 
-/// Takes a finished walk and updates an open `@` completion with it.
+/// Walks the project again once its watch saw a change while an `@` path
+/// is typed, and takes a finished walk to update the completion with it.
 pub(crate) fn receive_paths(
     mut index: ResMut<FileIndex>,
+    mut changes: MessageReader<FileChanges>,
     mut view: ResMut<TuiView>,
     input: Res<TuiInput>,
     sources: Sources,
-    wake: Res<Wake>,
+    (wake, mut commands): (Res<Wake>, Commands),
 ) {
-    if index.walking.is_none() || !index.receive() {
-        return;
+    let watch = index.watch;
+    let changed = changes.read().any(|change| Some(change.watch) == watch);
+    if changed {
+        index.fresh = false;
     }
-    update(&mut view, &input, &mut index, &sources, &wake);
+    let received = index.walking.is_some() && index.receive();
+    if changed || received {
+        update(
+            &mut view,
+            &input,
+            &mut index,
+            &sources,
+            &wake,
+            &mut commands,
+        );
+    }
 }
 
 /// Brings the completion up to date with the input once it changed, by a
@@ -416,10 +437,17 @@ pub(crate) fn follow_input(
     mut view: ResMut<TuiView>,
     input: Res<TuiInput>,
     sources: Sources,
-    wake: Res<Wake>,
+    (wake, mut commands): (Res<Wake>, Commands),
 ) {
     if input.is_changed() {
-        update(&mut view, &input, &mut index, &sources, &wake);
+        update(
+            &mut view,
+            &input,
+            &mut index,
+            &sources,
+            &wake,
+            &mut commands,
+        );
     }
 }
 

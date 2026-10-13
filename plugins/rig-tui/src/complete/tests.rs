@@ -54,3 +54,42 @@ fn at_completes_the_paths_of_the_project_root() {
     assert_eq!(items(&app), ["src/only_in_root.rs"]);
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn a_file_made_while_at_is_typed_is_listed_without_waiting() {
+    use super::FileIndex;
+    use std::time::{Duration, Instant};
+
+    let root = scratch("complete-watch");
+    std::fs::create_dir_all(root.join("src")).ok();
+    std::fs::write(root.join("src").join("a.rs"), "").ok();
+    let (mut app, _) = view_app();
+    app.add_plugins(rig_harness::watch::WatchPlugin)
+        .insert_resource(ProjectRoot(root.clone()));
+    let items = |app: &App| {
+        let completion = app.world().resource::<TuiView>().completion.as_ref();
+        let items = completion.into_iter().flat_map(|open| &open.items);
+        items.map(|item| item.text.clone()).collect::<Vec<_>>()
+    };
+    let run_until = |app: &mut App, done: &dyn Fn(&App) -> bool| {
+        let started = Instant::now();
+        while !done(app) && started.elapsed() < Duration::from_secs(10) {
+            app.update();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    type_text(&mut app, "@b_new");
+    let walked = |app: &App| {
+        let index = app.world().resource::<FileIndex>();
+        index.paths.iter().any(|path| path == "src/a.rs")
+    };
+    run_until(&mut app, &walked);
+    // The watch's first look, and the walk it asks for, settle.
+    let settle = Instant::now();
+    run_until(&mut app, &|_| settle.elapsed() > Duration::from_millis(300));
+    assert!(items(&app).is_empty());
+    std::fs::write(root.join("src").join("b_new.rs"), "").ok();
+    run_until(&mut app, &|app| !items(app).is_empty());
+    assert_eq!(items(&app), ["src/b_new.rs"]);
+    std::fs::remove_dir_all(&root).ok();
+}

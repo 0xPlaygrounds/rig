@@ -191,6 +191,7 @@ pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
     app.add_message::<history::Sent>()
+        .add_message::<rig_harness::watch::FileChanges>()
         .init_resource::<RigHome>()
         .init_resource::<Shown>()
         .init_resource::<view::TuiView>()
