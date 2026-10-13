@@ -223,12 +223,12 @@ fn typed_keys_edit_the_input_and_enter_sends_it() {
 fn a_commands_argument_completes_to_a_contributed_candidate() {
     let (mut app, _) = view_app();
     app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
-    let models = ArgCompletion::new("/model")
+    let models = CompletionSource::arg("/model")
         .candidate("openai/gpt-5", "")
         .candidate("acme/fast", "no key");
     app.world_mut().spawn(models);
     app.world_mut()
-        .spawn(ArgCompletion::new("other").candidate("acme/other", ""));
+        .spawn(CompletionSource::arg("other").candidate("acme/other", ""));
     type_text(&mut app, "/model acme/");
     press(&mut app, "tab");
     assert_eq!(typed(&app), "/model acme/fast ");

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
 use rig_harness::rig_core::providers::registry::ProviderId;
-use rig_tui::{ArgCompletion, Side, StatusItem, StatusItems, StatusSystems, Tone, TuiInput};
+use rig_tui::{CompletionSource, Side, StatusItem, StatusItems, StatusSystems, Tone, TuiInput};
 
 use super::{ModelItem, ModelLabel};
 
@@ -145,7 +145,7 @@ fn complete_models(
     *current = true;
     let mut contributed: Vec<&ModelItem> = items.iter().collect();
     contributed.sort_by(|a, b| a.name.cmp(&b.name));
-    let mut completion = ArgCompletion::new("model");
+    let mut completion = CompletionSource::arg("model");
     for item in contributed {
         completion = completion.candidate(item.name.clone(), item.label.clone());
     }

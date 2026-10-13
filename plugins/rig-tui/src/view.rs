@@ -51,7 +51,7 @@ pub struct Focus {
 /// The terminal view's state. Never saved and never read by the core.
 #[derive(Resource, Default)]
 pub(crate) struct TuiView {
-    /// The open `/` or `@` completion list.
+    /// The open completion list.
     pub(crate) completion: Option<Completion>,
     /// Where the token starts whose completion was closed with Esc.
     pub(crate) dismissed: Option<usize>,

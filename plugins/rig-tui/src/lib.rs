@@ -6,7 +6,7 @@
 //! `PostUpdate` that runs when something drawn changed.
 //!
 //! The input is a multiline editor with the prompt history
-//! ([`PromptHistory`]) and `/` and `@` completion. Answers are drawn as markdown and
+//! ([`PromptHistory`]) and completion (`/`, `@` and plugins' markers). Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`], also while their arguments
 //! stream, and its transcript notes
@@ -38,7 +38,7 @@
 //! ([`keys`]: the view's own keys are bindings as well, each doing an
 //! [`InputAction`], which a plugin may also put among the keys), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
-//! candidates for a command's argument ([`ArgCompletion`]), the frame's
+//! candidates completion lists ([`CompletionSource`]), the frame's
 //! keys before any binding sees them ([`TerminalEvents`], filtered one at
 //! a time in [`InputSystems::Filter`] of [`TuiKeys`], with
 //! [`TuiInputState`] saying what the input does with them), the terminal's focus ([`TerminalFocus`]), its own escape
@@ -81,7 +81,7 @@ use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 
-pub use complete::{ArgCompletion, Candidate, Completion, CompletionKind};
+pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
 pub use crossterm;
 pub use editor::TuiInput;
 pub use history::{HistorySystems, PromptHistory, Sent};

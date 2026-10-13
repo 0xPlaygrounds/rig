@@ -1,7 +1,7 @@
 //! Completion in the input: `/` at the start completes a command name,
-//! a word after a command one of the candidates plugins contribute for
-//! its argument ([`ArgCompletion`]), and `@` completes a path of the
-//! project. Paths come from a walk of the
+//! `@` a path of the project, and a word after a command, or after a
+//! marker such as `#`, one of the candidates plugins add for it
+//! ([`CompletionSource`]). Paths come from a walk of the
 //! [`ProjectRoot`] in the app's [`ProjectWorkspace`] that honours
 //! `.gitignore`, done on a thread of its own, whatever the workspace, and
 //! kept until a [`FileWatch`] of the root says something there changed.
@@ -29,45 +29,79 @@ use rig_tools::workspace::{Listing, Local, Workspace};
 /// Items a completion lists.
 const SHOWN: usize = 50;
 
-/// Candidates for an argument of a slash command, such as `/model`'s
-/// models, on an entity of the plugin's: the word typed at the argument's
-/// position, the first after the command unless [`ArgCompletion::at`] says
-/// otherwise, completes to the ones it matches. Several for one command
-/// add up; keep one current by inserting it again.
+/// Candidates a plugin adds to completion, on an entity of its own: for
+/// a word starting with a marker anywhere in the input, such as `#` for
+/// issues ([`CompletionSource::marker`]), or for an argument of a slash
+/// command, such as `/model`'s models ([`CompletionSource::arg`]). The
+/// word typed completes to the candidates it matches. Several for one
+/// trigger add up; keep one current by inserting it again, such as when
+/// a lookup of what is typed ([`TuiInputState::typed`]) finished: an open
+/// list follows.
 ///
 /// ```
 /// use rig_harness::prelude::*;
-/// use rig_tui::ArgCompletion;
+/// use rig_tui::CompletionSource;
 ///
-/// fn offer_branches(mut commands: Commands) {
-///     let branches = ArgCompletion::new("checkout").candidate("main", "").candidate("dev", "2 ahead");
-///     commands.spawn(branches);
+/// fn offer(mut commands: Commands) {
+///     let branches = CompletionSource::arg("checkout").candidate("main", "").candidate("dev", "2 ahead");
+///     let issues = CompletionSource::marker('#').candidate("142", "Crash on empty input");
+///     commands.spawn_batch([branches, issues]);
 /// }
 /// ```
-#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
-pub struct ArgCompletion {
-    /// The command, with or without its `/`.
-    pub command: String,
+///
+/// [`TuiInputState::typed`]: crate::TuiInputState::typed
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct CompletionSource {
+    /// What it completes.
+    pub trigger: CompletionTrigger,
     /// The candidates, in the order they are listed when they match alike.
     pub candidates: Vec<Candidate>,
-    /// The argument they complete, from 0 for the first word after the
-    /// command.
-    pub position: usize,
 }
 
-impl ArgCompletion {
-    /// No candidates yet for `command`'s argument.
-    pub fn new(command: impl Into<String>) -> Self {
-        Self {
+/// What a [`CompletionSource`] completes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CompletionTrigger {
+    /// A word starting with this marker anywhere in the input, such as
+    /// `#`. `/` and `@` are the view's own (commands and paths): a source
+    /// with either completes nothing.
+    Marker(char),
+    /// The argument at `position` (from 0) of the slash command `command`
+    /// (with or without its `/`).
+    Arg {
+        /// The command.
+        command: String,
+        /// The argument, from 0 for the first word after the command.
+        position: usize,
+    },
+}
+
+impl CompletionSource {
+    /// No candidates yet for a word starting with `marker`.
+    pub fn marker(marker: char) -> Self {
+        Self::new(CompletionTrigger::Marker(marker))
+    }
+
+    /// No candidates yet for `command`'s first argument.
+    pub fn arg(command: impl Into<String>) -> Self {
+        Self::new(CompletionTrigger::Arg {
             command: command.into(),
-            candidates: Vec::new(),
             position: 0,
+        })
+    }
+
+    fn new(trigger: CompletionTrigger) -> Self {
+        Self {
+            trigger,
+            candidates: Vec::new(),
         }
     }
 
-    /// The same, completing the argument at `position` (from 0) instead.
-    pub fn at(mut self, position: usize) -> Self {
-        self.position = position;
+    /// The same, completing the argument at `position` (from 0) instead;
+    /// a marker's source is left as it is.
+    pub fn at(mut self, at: usize) -> Self {
+        if let CompletionTrigger::Arg { position, .. } = &mut self.trigger {
+            *position = at;
+        }
         self
     }
 
@@ -81,12 +115,33 @@ impl ArgCompletion {
         self
     }
 
-    /// Whether it completes argument `position` of `command` (without its
+    /// Whether it completes the token `kind` of `command` (without its
     /// `/`).
-    fn is_for(&self, command: &str, position: usize) -> bool {
-        self.command.trim_start_matches('/') == command && self.position == position
+    fn is_for(&self, kind: CompletionKind, command: &str) -> bool {
+        match (&self.trigger, kind) {
+            (CompletionTrigger::Marker(marker), CompletionKind::Marker(typed)) => *marker == typed,
+            (
+                CompletionTrigger::Arg {
+                    command: own,
+                    position,
+                },
+                CompletionKind::Arg(typed),
+            ) => own.trim_start_matches('/') == command && *position == typed,
+            _ => false,
+        }
+    }
+
+    /// The marker it adds to those [`token`] knows, if any.
+    fn marker_char(&self) -> Option<char> {
+        match self.trigger {
+            CompletionTrigger::Marker(marker) if !VIEW_MARKERS.contains(&marker) => Some(marker),
+            _ => None,
+        }
     }
 }
+
+/// The markers the view completes itself: commands and paths.
+const VIEW_MARKERS: [char; 2] = ['/', '@'];
 
 /// What a [`Completion`] completes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -98,12 +153,14 @@ pub enum CompletionKind {
     Arg(usize),
     /// A path after `@`.
     Path,
+    /// A word after a [`CompletionSource`]'s marker.
+    Marker(char),
 }
 
 /// One candidate of a completion.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Candidate {
-    /// What is shown and inserted, without the `/` or `@`.
+    /// What is shown and inserted, without the marker (`/`, `@`, `#`).
     pub text: String,
     /// A description shown after it.
     pub detail: String,
@@ -115,10 +172,10 @@ pub struct Candidate {
 pub struct Completion {
     /// What it completes.
     pub kind: CompletionKind,
-    /// The byte offset in the input of the token it completes: its `/` or
-    /// `@`, or an argument's first character.
+    /// The byte offset in the input of the token it completes: its
+    /// marker, or an argument's first character.
     pub start: usize,
-    /// The text typed after the `/` or `@`, or the argument typed.
+    /// The text typed after the marker, or the argument typed.
     pub query: String,
     /// What it lists, best first.
     pub items: Vec<Candidate>,
@@ -134,7 +191,8 @@ impl Completion {
     pub(crate) fn chosen(&self) -> Option<String> {
         let item = self.items.get(self.selected)?;
         let space = if item.text.ends_with('/') { "" } else { " " };
-        Some(format!("{}{}{space}", self.kind.marker(), item.text))
+        let marker = self.kind.marker().map(String::from).unwrap_or_default();
+        Some(format!("{marker}{}{space}", item.text))
     }
 
     /// Whether the token already is the selected item exactly, so Enter
@@ -154,12 +212,13 @@ impl Completion {
 }
 
 impl CompletionKind {
-    /// What the token starts with.
-    pub(crate) fn marker(self) -> &'static str {
+    /// What the token starts with; an argument starts with no marker.
+    pub fn marker(self) -> Option<char> {
         match self {
-            Self::Command => "/",
-            Self::Arg(_) => "",
-            Self::Path => "@",
+            Self::Command => Some('/'),
+            Self::Arg(_) => None,
+            Self::Path => Some('@'),
+            Self::Marker(marker) => Some(marker),
         }
     }
 }
@@ -247,9 +306,14 @@ fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
     paths
 }
 
-/// The `/command`, argument or `@path` token that ends at the cursor, if
-/// any; an argument's with the command's name and its position.
-fn token(text: &str, cursor: usize) -> Option<(CompletionKind, usize, &str, &str)> {
+/// The `/command`, argument, `@path` or marked token that ends at the
+/// cursor, if any, given the markers sources add; an argument's with the
+/// command's name and its position.
+fn token<'a>(
+    text: &'a str,
+    cursor: usize,
+    markers: &[char],
+) -> Option<(CompletionKind, usize, &'a str, &'a str)> {
     let before = text.get(..cursor)?;
     let start = before
         .char_indices()
@@ -264,6 +328,10 @@ fn token(text: &str, cursor: usize) -> Option<(CompletionKind, usize, &str, &str
     if let Some(query) = word.strip_prefix('@') {
         return Some((CompletionKind::Path, start, query, ""));
     }
+    if let Some(marker) = word.chars().next().filter(|first| markers.contains(first)) {
+        let query = word.get(marker.len_utf8()..)?;
+        return Some((CompletionKind::Marker(marker), start, query, ""));
+    }
     let command = text.strip_prefix('/')?.split_whitespace().next()?;
     let position = before
         .get(..start)?
@@ -274,11 +342,11 @@ fn token(text: &str, cursor: usize) -> Option<(CompletionKind, usize, &str, &str
 }
 
 /// What completion lists: the slash commands, and the candidates plugins
-/// contribute for their arguments.
+/// add ([`CompletionSource`]).
 #[derive(SystemParam)]
 pub(crate) struct Sources<'w, 's> {
     commands: Query<'w, 's, (&'static Name, &'static SlashCommand)>,
-    arguments: Query<'w, 's, &'static ArgCompletion>,
+    added: Query<'w, 's, &'static CompletionSource>,
     workspace: Option<Res<'w, ProjectWorkspace>>,
     root: Option<Res<'w, ProjectRoot>>,
 }
@@ -298,17 +366,39 @@ impl Sources<'_, '_> {
     }
 }
 
-/// Opens, updates or closes the completion after the input or the paths
-/// changed. A list closed with Esc stays closed until the token moves.
+/// The markers `sources` add.
+fn markers(sources: &Query<&CompletionSource>) -> Vec<char> {
+    let mut markers: Vec<char> = sources
+        .iter()
+        .filter_map(CompletionSource::marker_char)
+        .collect();
+    markers.sort_unstable();
+    markers.dedup();
+    markers
+}
+
+/// The token at the cursor of `input` that completion completes, and what
+/// is typed of it after its marker.
+pub(crate) fn typed(
+    input: &TuiInput,
+    sources: &Query<&CompletionSource>,
+) -> Option<(CompletionKind, String)> {
+    let (kind, _, query, _) = token(input.text(), input.cursor(), &markers(sources))?;
+    Some((kind, query.to_owned()))
+}
+
+/// Opens, updates or closes the completion after the input, the paths or
+/// the sources changed (`renewed`: an open list is listed again). A list
+/// closed with Esc stays closed until the token moves.
 pub(crate) fn update(
     view: &mut TuiView,
     input: &TuiInput,
     index: &mut FileIndex,
-    sources: &Sources,
+    (sources, renewed): (&Sources, bool),
     wake: &Wake,
     commands: &mut Commands,
 ) {
-    let found = token(input.text(), input.cursor());
+    let found = token(input.text(), input.cursor(), &markers(&sources.added));
     let Some((kind, start, query, command)) = found else {
         view.completion = None;
         view.dismissed = None;
@@ -328,6 +418,7 @@ pub(crate) fn update(
         && open.start == start
         && open.query == query
         && (kind != CompletionKind::Path || open.complete == complete)
+        && !renewed
     {
         return;
     }
@@ -350,12 +441,12 @@ pub(crate) fn update(
                 })
                 .collect()
         }
-        CompletionKind::Arg(position) => {
+        CompletionKind::Arg(_) | CompletionKind::Marker(_) => {
             let candidates = sources
-                .arguments
+                .added
                 .iter()
-                .filter(|completion| completion.is_for(command, position))
-                .flat_map(|completion| &completion.candidates);
+                .filter(|source| source.is_for(kind, command))
+                .flat_map(|source| &source.candidates);
             let mut ranked: Vec<(usize, &Candidate)> = candidates
                 .filter_map(|item| Some((match_at(query, &item.text)?, item)))
                 .collect();
@@ -365,12 +456,18 @@ pub(crate) fn update(
         CompletionKind::Path => path_items(&index.paths, query),
     };
     let query = query.to_owned();
+    // A list listed again keeps the item selected, where it still is.
+    let selected = (view.completion.as_ref())
+        .filter(|open| open.kind == kind && open.start == start)
+        .and_then(|open| open.items.get(open.selected))
+        .and_then(|was| items.iter().position(|item| item == was))
+        .unwrap_or(0);
     view.completion = (!items.is_empty()).then_some(Completion {
         kind,
         start,
         query,
         items,
-        selected: 0,
+        selected,
         complete,
     });
 }
@@ -423,7 +520,7 @@ pub(crate) fn receive_paths(
             &mut view,
             &input,
             &mut index,
-            &sources,
+            (&sources, false),
             &wake,
             &mut commands,
         );
@@ -431,20 +528,25 @@ pub(crate) fn receive_paths(
 }
 
 /// Brings the completion up to date with the input once it changed, by a
-/// key or a plugin.
+/// key or a plugin, and lists it again once a plugin's sources changed.
 pub(crate) fn follow_input(
     mut index: ResMut<FileIndex>,
     mut view: ResMut<TuiView>,
     input: Res<TuiInput>,
     sources: Sources,
+    (changed, mut removed): (
+        Query<(), Changed<CompletionSource>>,
+        RemovedComponents<CompletionSource>,
+    ),
     (wake, mut commands): (Res<Wake>, Commands),
 ) {
-    if input.is_changed() {
+    let renewed = !changed.is_empty() || removed.read().count() > 0;
+    if input.is_changed() || renewed {
         update(
             &mut view,
             &input,
             &mut index,
-            &sources,
+            (&sources, renewed),
             &wake,
             &mut commands,
         );

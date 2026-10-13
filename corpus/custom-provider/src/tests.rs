@@ -6,7 +6,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
 use rig_models::ModelsPlugin;
 use rig_telemetry::{Spending, UsagePlugin};
-use rig_tui::ArgCompletion;
+use rig_tui::CompletionSource;
 
 use super::*;
 
@@ -142,7 +142,7 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     app.update();
     let world = app.world_mut();
     let offered: Vec<(String, String)> = world
-        .query::<&ArgCompletion>()
+        .query::<&CompletionSource>()
         .iter(world)
         .flat_map(|completion| &completion.candidates)
         .filter(|item| item.text.starts_with("corp/") || item.text.starts_with("keyless/"))

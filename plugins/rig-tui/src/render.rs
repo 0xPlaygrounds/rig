@@ -1129,7 +1129,11 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
     }
     let area = Rect::new(input.x, input.y - height, input.width, height);
     frame.render_widget(Clear, area);
-    let marker = completion.kind.marker();
+    let marker = completion
+        .kind
+        .marker()
+        .map(String::from)
+        .unwrap_or_default();
     let items: Vec<Line<'static>> = completion
         .items
         .iter()
