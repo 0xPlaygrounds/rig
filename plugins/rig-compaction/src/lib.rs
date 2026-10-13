@@ -30,7 +30,7 @@ use rig_memory::{
 /// Who writes a compaction's summary, and how many of a conversation's
 /// first entries are summaries already: rig-memory's, which this plugin
 /// compacts by.
-pub use rig_memory::{summarized_prefix, summary_author};
+pub use rig_memory::{summarized_prefix, summary_author, summary_in};
 use serde::{Deserialize, Serialize};
 
 /// Compacts agents' conversations near their model's window, after an

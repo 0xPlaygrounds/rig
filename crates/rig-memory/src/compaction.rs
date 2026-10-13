@@ -31,7 +31,7 @@ use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message,
     UnsupportedOption,
 };
-use rig_core::conversation::{Author, Conversation, Entry, MessageId, Spliced};
+use rig_core::conversation::{Author, Change, Conversation, Entry, MessageId, Spliced};
 use rig_core::message::{ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
@@ -385,6 +385,24 @@ impl CompactionPolicy {
 /// Who writes a compaction's summary: the author of its entry.
 pub fn summary_author() -> Author {
     Author::plugin("compaction")
+}
+
+/// The summary a compaction put in, when `change` is one: the id of the
+/// entry by [`summary_author`] in a splice that took messages out.
+/// Clearing old tool outputs, by the same author, keeps every message and
+/// is none.
+pub fn summary_in(change: &Change) -> Option<MessageId> {
+    let Change::Splice { removed, with, .. } = change else {
+        return None;
+    };
+    let kept = |id: &MessageId| with.iter().any(|entry| entry.id == Some(*id));
+    if removed.iter().all(kept) {
+        return None;
+    }
+    let summary = summary_author();
+    with.iter()
+        .find(|entry| entry.author.as_ref() == Some(&summary))
+        .and_then(|entry| entry.id)
 }
 
 /// How many of the first entries of `conversation` are summaries (by

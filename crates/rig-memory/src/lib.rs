@@ -55,7 +55,7 @@ pub use blobs::{load_images, store_images};
 pub use compaction::{
     ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, Cut, Summarizer, SummaryError,
     SummaryLimits, SummaryPlan, SummaryPrompts, SummaryState, TrackArgument, TrackedSet,
-    apply_summary, summarized_prefix, summary_author,
+    apply_summary, summarized_prefix, summary_author, summary_in,
 };
 #[cfg(feature = "fs")]
 pub use dir::DirStore;

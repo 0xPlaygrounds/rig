@@ -178,6 +178,14 @@ fn a_summary_takes_the_place_of_what_it_summarized_by_id() {
     assert_eq!(cleared.results, 1);
     let kept: Vec<MessageId> = conversation.entries().map(|entry| entry.id).collect();
     assert_eq!(kept, ids, "clearing keeps every id");
+    let last = |conversation: &mut Conversation| {
+        let change = conversation
+            .take_unsaved()
+            .pop()
+            .map(|recorded| recorded.change);
+        change.and_then(|change| summary_in(&change))
+    };
+    assert_eq!(last(&mut conversation), None, "clearing is no compaction");
 
     // A summary planned up to the newest reply survives an edit before it.
     let state = SummaryState {
@@ -191,6 +199,7 @@ fn a_summary_takes_the_place_of_what_it_summarized_by_id() {
     assert_eq!(conversation.messages().len(), 2);
     assert_eq!(summarized_prefix(&conversation), 1);
     assert_eq!(conversation.author(0), Some(&summary_author()));
+    assert_eq!(last(&mut conversation), conversation.id(0));
     // Once the kept message is gone, a summary replaces nothing.
     conversation.splice(1.., [], Author::plugin("other"));
     assert_eq!(apply_summary(&mut conversation, upto, &state), None);
