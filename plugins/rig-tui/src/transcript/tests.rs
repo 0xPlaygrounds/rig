@@ -13,13 +13,13 @@ use rig_core::message::{
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_ecs::agent::Conversation;
 use rig_ecs::agent::Partial;
-use rig_ecs::prelude::{Entry, MessageId, Origin};
+use rig_ecs::prelude::{Aside, AsideId, Author, Entry, Halt, MessageId};
 use rig_ecs::stage::{HoldOf, Started};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::StreamDelta;
+use rig_harness::note::Note;
 use rig_harness::prelude::App;
 use rig_harness::prelude::ToolProgress;
-use rig_harness::transcript::{EntryOf, TranscriptEntry};
 use serde_json::json;
 
 use super::{
@@ -126,11 +126,9 @@ fn drawn(
 /// A conversation of one reply that calls `call`.
 fn calling(call: &ToolCall) -> Option<Conversation> {
     let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
-    let conversation = serde_json::from_value::<Conversation>(json!({
-        "messages": [Message::Assistant(reply)],
-        "origins": [],
-    }));
-    conversation.ok()
+    let conversation =
+        rig_core::conversation::Conversation::from_messages([Message::Assistant(reply)]);
+    Some(Conversation(conversation))
 }
 
 #[test]
@@ -223,16 +221,18 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
     assert_eq!(shown, "> cc a.c\n> cc b.c\n> ld app");
 }
 
-/// Adds `message` to `agent`'s conversation, as a commit does.
+/// Adds `message` to `agent`'s conversation.
 fn say(app: &mut App, agent: Entity, message: Message) {
-    let commit = move |mut commit: rig_ecs::journal::Commit,
-                       mut conversations: Query<&mut Conversation>| {
-        if let Ok(mut conversation) = conversations.get_mut(agent) {
-            commit.message(agent, &mut conversation, message.clone());
-        }
-    };
-    assert!(app.world_mut().run_system_once(commit).is_ok());
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(message);
+    }
     app.update();
+}
+
+/// Adds `aside` to `agent`'s conversation; its id.
+fn add_aside(app: &mut App, agent: Entity, aside: Aside) -> Option<AsideId> {
+    let mut conversation = app.world_mut().get_mut::<Conversation>(agent)?;
+    Some(conversation.add_aside(aside))
 }
 
 /// The id of message `index` of `agent`'s conversation.
@@ -247,7 +247,7 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 }
 
 #[test]
-fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
+fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
     let (mut app, agent) = view_app();
     app.add_entry_renderer("btw", |entry| {
         let text = if entry.expanded {
@@ -261,18 +261,18 @@ fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
     say(&mut app, agent, Message::assistant("first answer"));
     say(&mut app, agent, Message::user("second question"));
     let after = message_id(&app, agent, 1);
-    let entry = TranscriptEntry::new("btw", after, "Why tabs?", "The style says so.");
-    let entry = app.world_mut().spawn((entry, EntryOf(agent))).id();
+    let note = Note::new("Why tabs?", "The style says so.").aside(Author::plugin("btw"), after);
+    let note = add_aside(&mut app, agent, note);
     app.update();
     let lines = on_screen(&mut app, agent, 100);
     let order = ["first answer", "btw: Why tabs?", "second question"];
     let order = order.map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
-    // Alt+Up selects the newest item, the last message; again, the entry.
+    // Alt+Up selects the newest item, the last message; again, the note.
     press(&mut app, "alt+up alt+up");
     let selected = app.world().resource::<TranscriptView>().selected.clone();
-    assert_eq!(selected, Some(TranscriptItem::Entry(entry)));
+    assert_eq!(selected, note.map(TranscriptItem::Note));
     // Ctrl+O expands it: drawn whole.
     press(&mut app, "ctrl+o");
     let lines = on_screen(&mut app, agent, 100);
@@ -283,31 +283,52 @@ fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
 }
 
 #[test]
-fn an_entry_whose_message_was_summarized_is_drawn_right_after_the_summary() {
+fn a_note_whose_message_was_summarized_is_drawn_right_after_the_summary() {
     let (mut app, agent) = view_app();
     say(&mut app, agent, Message::user("old question"));
     say(&mut app, agent, Message::assistant("old answer"));
     say(&mut app, agent, Message::user("kept prompt"));
     say(&mut app, agent, Message::assistant("kept answer"));
     let after = message_id(&app, agent, 1);
-    let entry = TranscriptEntry::new("btw", after, "marked", "");
-    app.world_mut().spawn((entry, EntryOf(agent)));
-    // A compaction: the summary takes the first two messages' place, and
-    // the kept prompt joins it.
-    let compact = move |mut commit: rig_ecs::journal::Commit,
-                        mut conversations: Query<&mut Conversation>| {
-        if let Ok(mut conversation) = conversations.get_mut(agent) {
-            let summary = Entry::from(Message::user("the summary"), Origin::plugin("compaction"));
-            commit.splice(agent, &mut conversation, ..2, [summary]);
-        }
-    };
-    assert!(app.world_mut().run_system_once(compact).is_ok());
+    let note = Note::new("marked", "").aside(Author::plugin("btw"), after);
+    add_aside(&mut app, agent, note);
+    // A compaction: the summary takes the first two messages' place.
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        let compaction = Author::plugin("compaction");
+        let summary = Entry::new(Message::user("the summary")).by(compaction.clone());
+        conversation.splice(..2, [summary], compaction);
+    }
     app.update();
     let lines = on_screen(&mut app, agent, 100);
     let order = ["the summary", "marked", "kept prompt", "kept answer"];
     let order = order.map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
+}
+
+#[test]
+fn the_note_rig_adds_after_a_stop_is_drawn_as_a_stop() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("first question"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.halt(Halt::Stopped);
+    }
+    say(&mut app, agent, Message::user("second question"));
+    let lines = on_screen(&mut app, agent, 100);
+    let order = [
+        "first question",
+        "[stopped before it was answered]",
+        "second question",
+    ];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.contains("not the user's words")),
+        "{lines:#?}"
+    );
 }
 
 #[test]

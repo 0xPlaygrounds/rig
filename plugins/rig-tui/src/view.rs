@@ -26,10 +26,9 @@ use super::transcript::Scroll;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
 use rig_ecs::journal::SessionStore;
-use rig_ecs::prelude::MessageId;
+use rig_ecs::prelude::{Aside, AsideId, MessageId};
 use rig_harness::prelude::ExitReason;
 use rig_harness::primary::Shown;
-use rig_harness::transcript::TranscriptEntry;
 
 /// Notices kept for display, and read back by the next build.
 const KEPT_NOTICES: usize = 200;
@@ -85,8 +84,8 @@ pub enum TranscriptItem {
     Message(MessageId),
     /// A tool call, by its call id.
     Call(CallId),
-    /// A plugin's [`TranscriptEntry`](rig_harness::transcript::TranscriptEntry).
-    Entry(Entity),
+    /// A plugin's [`Note`](rig_harness::note::Note), by its aside's id.
+    Note(AsideId),
     /// A notice, by its index in [`TranscriptView::notices`].
     Notice(usize),
 }
@@ -352,7 +351,7 @@ impl DrawnTranscript {
 
     /// Each item's rows, top to bottom by first row. An item's rows hold
     /// those of the items drawn inside it: a message's, its calls and the
-    /// notices and entries written inside it. Rows of no item, such as the
+    /// notices and notes written inside it. Rows of no item, such as the
     /// reply streaming in, are in none.
     pub fn items(&self) -> &[(TranscriptItem, Range<usize>)] {
         &self.items
@@ -385,7 +384,7 @@ impl DrawnTranscript {
     /// Whether `item` is drawn cut: collapsed, it draws less than it does
     /// expanded, such as a shell call's last lines of output. Expanding it
     /// draws it whole. A message is cut when its own text is, not when
-    /// only a call or an entry in it is.
+    /// only a call or a note in it is.
     pub fn is_cut(&self, item: &TranscriptItem) -> bool {
         self.cut.contains(item)
     }
@@ -459,7 +458,7 @@ struct Anchor {
     items: usize,
 }
 
-/// Where a notice or an entry is drawn in an agent's transcript, by the
+/// Where a notice or a note is drawn in an agent's transcript, by the
 /// index of a message in its [`Conversation`]. Slots order as they are
 /// drawn: the top, then each message with the slots inside it by item,
 /// then the slot after it. Those in the same slot are drawn in the order
@@ -475,12 +474,12 @@ pub enum TranscriptSlot {
 }
 
 impl TranscriptSlot {
-    /// Where the entry `entry` is drawn in `conversation`: after its
-    /// message while that is there, else after the first item of the
-    /// message that stands for it now, such as the summary of a compaction
-    /// that took it out, which a kept prompt may have joined.
-    pub fn of_entry(entry: &TranscriptEntry, conversation: &Conversation) -> Self {
-        let Some(after) = entry.after else {
+    /// Where `aside` is drawn in `conversation`: after the entry it
+    /// follows while that is there, else after the first item of the entry
+    /// that stands for it now, such as the summary of a compaction that
+    /// took it out.
+    pub fn of_aside(aside: &Aside, conversation: &Conversation) -> Self {
+        let Some(after) = aside.after else {
             return Self::Top;
         };
         if let Some(index) = conversation.index_of(after) {

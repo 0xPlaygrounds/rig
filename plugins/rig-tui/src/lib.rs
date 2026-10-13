@@ -8,8 +8,8 @@
 //! ([`PromptHistory`]) and `/` and `@` completion. Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`], also while their arguments
-//! stream, and its transcript entries
-//! ([`TranscriptEntry`](rig_harness::transcript::TranscriptEntry)) and
+//! stream, and its transcript notes
+//! ([`Note`](rig_harness::note::Note)) and
 //! delivered texts with [`AppToolRenderersExt::add_entry_renderer`]. The
 //! [`TranscriptView`] says, and lets a plugin set, what is expanded and
 //! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;

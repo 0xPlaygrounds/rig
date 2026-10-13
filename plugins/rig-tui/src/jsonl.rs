@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy_log::warn;
-use rig_harness::prelude::JournalStore;
+use rig_harness::prelude::Files;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -20,7 +20,7 @@ pub(crate) enum Kept {
     /// A plain file, its directory made as needed.
     Plain(PathBuf),
     /// A file of the session's store, by name.
-    Stored(Arc<dyn JournalStore>, &'static str),
+    Stored(Arc<dyn Files>, &'static str),
 }
 
 impl Kept {

@@ -33,17 +33,17 @@ use super::view::{
 };
 use super::wrap::wrap;
 use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
-use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
+use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, STOPPED};
 use rig_ecs::stage::{Published, Settled, Started};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::StreamDelta;
-use rig_harness::transcript::TranscriptEntry;
+use rig_harness::note::Note;
 use rig_tools::attach::attached_file;
 
 /// The tool renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
 
-/// The entry renderers by origin.
+/// The entry renderers by plugin name.
 pub(crate) type EntryRenderers<'a> = HashMap<&'a str, &'a Arc<RenderEntry>>;
 
 /// An item's rows (or lines) within a part.
@@ -149,13 +149,13 @@ pub(crate) fn follow_streams(
 pub(crate) struct Look<'a> {
     /// The tool renderers by tool name.
     pub(crate) renderers: &'a Renderers<'a>,
-    /// The entry renderers by origin.
+    /// The entry renderers by plugin name.
     pub(crate) entries: &'a EntryRenderers<'a>,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
     /// The output so far of each of its running calls that reports it.
     pub(crate) outputs: &'a BTreeMap<CallId, String>,
-    /// The notices and entries drawn inside a message, by its index, each
+    /// The notices and notes drawn inside a message, by its index, each
     /// with the content item it goes before.
     pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
     /// The items drawn whole.
@@ -174,9 +174,44 @@ pub(crate) struct Look<'a> {
 pub(crate) enum Inside<'a> {
     /// A notice written there, and its index in the notices shown.
     Notice(usize, &'a ShownNotice),
-    /// An entry whose message was taken out, after the start of what
-    /// stands for it.
-    Entry(Entity, &'a TranscriptEntry),
+    /// A note whose entry was taken out, after the start of what stands
+    /// for it.
+    Note(&'a ShownNote<'a>),
+}
+
+/// A plugin's note in the conversation of the agent shown.
+pub(crate) struct ShownNote<'a> {
+    /// Its aside's id.
+    pub(crate) id: AsideId,
+    /// The aside that holds it.
+    pub(crate) aside: &'a Aside,
+    /// What it shows.
+    pub(crate) note: Note,
+}
+
+impl ShownNote<'_> {
+    /// The note's item.
+    pub(crate) fn item(&self) -> TranscriptItem {
+        TranscriptItem::Note(self.id)
+    }
+
+    /// The note as its plugin's renderer sees it.
+    pub(crate) fn view(&self, expanded: bool) -> EntryView<'_> {
+        EntryView {
+            plugin: plugin_name(&self.aside.author),
+            title: &self.note.title,
+            text: &self.note.text,
+            expanded,
+        }
+    }
+}
+
+/// The name of the plugin `author` is, or empty for any other author.
+fn plugin_name(author: &Author) -> &str {
+    match &author.kind {
+        AuthorKind::Plugin(name) => name,
+        _ => "",
+    }
 }
 
 impl Look<'_> {
@@ -197,12 +232,12 @@ impl Look<'_> {
         (lines, cut)
     }
 
-    /// The notices and entries inside message `index`.
+    /// The notices and notes inside message `index`.
     fn inside(&self, index: usize) -> &[(usize, Inside<'_>)] {
         self.inside.get(&index).map_or(&[], Vec::as_slice)
     }
 
-    /// Hashes the notices and entries inside message `index`.
+    /// Hashes the notices and notes inside message `index`.
     fn hash_inside(&self, index: usize, hasher: &mut DefaultHasher) {
         for (item, inside) in self.inside(index) {
             item.hash(hasher);
@@ -212,11 +247,11 @@ impl Look<'_> {
                     level_code(notice.level).hash(hasher);
                     notice.text.hash(hasher);
                 }
-                Inside::Entry(entity, entry) => {
-                    entity.hash(hasher);
-                    (&entry.origin, &entry.title, &entry.text).hash(hasher);
-                    self.is_expanded(&TranscriptItem::Entry(*entity))
-                        .hash(hasher);
+                Inside::Note(note) => {
+                    note.id.hash(hasher);
+                    plugin_name(&note.aside.author).hash(hasher);
+                    (&note.note.title, &note.note.text).hash(hasher);
+                    self.is_expanded(&note.item()).hash(hasher);
                 }
             }
         }
@@ -328,7 +363,7 @@ pub(crate) struct Transcript {
 }
 
 /// A part of the transcript, in order: a message's cached rows, or rows
-/// made for this frame (notices, an entry, the reply streaming in), with
+/// made for this frame (notices, a note, the reply streaming in), with
 /// where the items among them are and those drawn cut.
 pub(crate) enum Part {
     Message(usize),
@@ -874,8 +909,8 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
 }
 
 /// Draws `message`, the `at`-th of `conversation`, with the notices and
-/// entries inside it before their items, and says which lines are the
-/// message and which each of its calls and entries. A tool call's result, which comes
+/// notes inside it before their items, and says which lines are the
+/// message and which each of its calls and notes. A tool call's result, which comes
 /// in the `next` message, is drawn with the call, so the results of a
 /// reply's calls are not drawn after all of its calls.
 fn message_lines(
@@ -891,6 +926,7 @@ fn message_lines(
     // Whether the message's own text is drawn cut.
     let mut message_cut = false;
     let id = conversation.id(at);
+    let author = conversation.author(at);
     let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
     let inside = look.inside(at);
     let inside_before = |item: usize,
@@ -900,16 +936,10 @@ fn message_lines(
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
             match inside {
                 Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
-                Inside::Entry(entity, entry) => {
-                    let item = TranscriptItem::Entry(*entity);
+                Inside::Note(note) => {
+                    let item = note.item();
                     let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                        let view = EntryView {
-                            origin: &entry.origin,
-                            title: &entry.title,
-                            text: &entry.text,
-                            expanded,
-                        };
-                        entry_lines(&view, look.entries)
+                        entry_lines(&note.view(expanded), look.entries)
                     });
                     let start = lines.len();
                     lines.push(Line::default());
@@ -933,15 +963,20 @@ fn message_lines(
                             lines.push(Line::from(format!("  [{label}, {count} lines]")).dim());
                             continue;
                         }
-                        if text.text == STOPPED {
+                        let by_rig = author.is_some_and(|author| author.kind == AuthorKind::Rig);
+                        if by_rig && text.text == STOPPED {
                             lines.push(Line::from("  [stopped before it was answered]").dim());
                             continue;
                         }
                         lines.push(Line::default());
-                        match conversation.origin(at, item_at) {
-                            Some(origin) => {
+                        // The user's own text has no author, or the user with no title.
+                        let other = |author: &&Author| {
+                            author.kind != AuthorKind::User || author.title.is_some()
+                        };
+                        match author.filter(other) {
+                            Some(author) => {
                                 let (drawn, is_cut) = look.drawn(expanded, |expanded| {
-                                    delivered_lines(origin, &text.text, expanded, look)
+                                    delivered_lines(author, &text.text, expanded, look)
                                 });
                                 lines.extend(drawn);
                                 message_cut |= is_cut;
@@ -1022,12 +1057,13 @@ pub(crate) fn call_lines(view: &ToolCallView<'_>, renderers: &Renderers<'_>) -> 
     }
 }
 
-/// An entry's lines, by its origin's renderer or the default look.
+/// A note's or a delivered text's lines, by its plugin's renderer or the
+/// default look.
 pub(crate) fn entry_lines(
     view: &EntryView<'_>,
     renderers: &EntryRenderers<'_>,
 ) -> Vec<Line<'static>> {
-    match renderers.get(view.origin) {
+    match renderers.get(view.plugin) {
         Some(render) => render(view),
         None => view.default_lines(),
     }
@@ -1049,22 +1085,18 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
 /// drawn by the renderer of the plugin that sent it, if it has one, else
 /// as where it came from and its start.
 fn delivered_lines(
-    origin: &Origin,
+    author: &Author,
     text: &str,
     expanded: bool,
     look: &Look<'_>,
 ) -> Vec<Line<'static>> {
-    let body = origin
+    let body = author
         .header()
         .and_then(|header| text.strip_prefix(&header))
         .map_or(text, |body| body.trim_start_matches('\n'));
-    let label = origin.label();
-    let name = match &origin.kind {
-        OriginKind::Plugin(name) => name.as_str(),
-        _ => "",
-    };
+    let label = author.label();
     let view = EntryView {
-        origin: name,
+        plugin: plugin_name(author),
         title: &label,
         text: body,
         expanded,

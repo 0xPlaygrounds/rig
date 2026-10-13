@@ -20,19 +20,25 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 }
 
 #[test]
-fn a_notice_stays_before_a_prompt_that_joins_the_message_it_followed() {
+fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {
+    use rig_core::completion::Message;
+    use rig_core::message::UserContent;
     let (mut app, agent) = view_app();
-    let note = |app: &mut App, text: &str| {
-        let note = Deliver::new(agent, text, DeliveryMode::Note);
-        app.world_mut().trigger(note);
-        app.update();
-    };
-    note(&mut app, "first");
+    let note = Deliver::new(agent, "first", DeliveryMode::Note);
+    app.world_mut().trigger(note);
+    app.update();
     app.world_mut()
         .write_message(Notice::info(agent, "Interrupted."));
     app.update();
-    // Left unanswered, the first note takes in the second.
-    note(&mut app, "second");
+    // A plugin's edit adds a second text to the message, which keeps its id.
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent)
+        && let Some(mut entry) = conversation.entry(0)
+        && let Message::User { content } = &mut entry.message
+    {
+        content.push(UserContent::text("second"));
+        conversation.splice(..1, [entry], Author::plugin("test"));
+    }
+    app.update();
     let messages = app
         .world()
         .get::<Conversation>(agent)
@@ -98,15 +104,11 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     assert!(app.world().resource::<TuiInput>().is_empty());
 }
 
-/// Adds `message` to `agent`'s conversation, as a commit does.
+/// Adds `message` to `agent`'s conversation.
 fn say(app: &mut App, agent: Entity, message: rig_core::completion::Message) {
-    let commit = move |mut commit: rig_ecs::journal::Commit,
-                       mut conversations: Query<&mut Conversation>| {
-        if let Ok(mut conversation) = conversations.get_mut(agent) {
-            commit.message(agent, &mut conversation, message.clone());
-        }
-    };
-    assert!(app.world_mut().run_system_once(commit).is_ok());
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(message);
+    }
     app.update();
 }
 

@@ -23,14 +23,12 @@ use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
-use super::renderers::{
-    CallState, EntryRenderer, EntryView, ToolCallView, ToolRenderer, UNNAMED_HOLD,
-};
+use super::renderers::{CallState, EntryRenderer, ToolCallView, ToolRenderer, UNNAMED_HOLD};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{
-    Below, CallFacts, EntryRenderers, Inside, Look, Marks, Part, Renderers, StreamingCalls,
-    Transcript, call_lines, entry_lines, notice_lines, plain_lines,
+    Below, CallFacts, EntryRenderers, Inside, Look, Marks, Part, Renderers, ShownNote,
+    StreamingCalls, Transcript, call_lines, entry_lines, notice_lines, plain_lines,
 };
 use super::view::{
     Continuation, DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot,
@@ -42,9 +40,9 @@ use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Started};
 use rig_ecs::tools::ToolRequest;
+use rig_harness::note::Note;
 use rig_harness::prelude::{CallOutput, ToolProgress};
 use rig_harness::primary::Shown;
-use rig_harness::transcript::{TranscriptEntries, TranscriptEntry};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -90,8 +88,6 @@ pub(crate) fn needs_redraw(
             Changed<Calls>,
             Changed<StatusItems>,
             Changed<TuiPanel>,
-            Changed<TranscriptEntry>,
-            Changed<TranscriptEntries>,
             Changed<EntryRenderer>,
         )>,
     >,
@@ -116,7 +112,6 @@ pub(crate) fn needs_redraw(
         RemovedComponents<StatusItems>,
         RemovedComponents<Holds>,
         RemovedComponents<ToolProgress>,
-        RemovedComponents<TranscriptEntry>,
         RemovedComponents<EntryRenderer>,
     ),
     mut paced: Local<Paced>,
@@ -128,7 +123,6 @@ pub(crate) fn needs_redraw(
         + removed.2.read().count()
         + removed.3.read().count()
         + removed.4.read().count()
-        + removed.5.read().count()
         > 0;
     let changed = requested
         || removed
@@ -329,8 +323,8 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) partial: Option<&'a Partial>,
     /// The tool calls it streams.
     pub(crate) streaming: Vec<ToolCall>,
-    /// Its entries, in order.
-    pub(crate) entries: Vec<(Entity, &'a TranscriptEntry)>,
+    /// The notes in its conversation, in the order put.
+    pub(crate) notes: Vec<ShownNote<'a>>,
 }
 
 /// What the transcript is drawn from besides the agent.
@@ -339,7 +333,7 @@ pub(crate) struct Sources<'a> {
     pub(crate) view: &'a TranscriptView,
     /// The tool renderers by tool name.
     pub(crate) renderers: &'a Renderers<'a>,
-    /// The entry renderers by origin.
+    /// The entry renderers by plugin name.
     pub(crate) entry_renderers: &'a EntryRenderers<'a>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
@@ -377,8 +371,6 @@ pub(crate) struct Sources<'a> {
 #[derive(SystemParam)]
 pub struct TranscriptLayout<'w, 's> {
     agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
-    lists: Query<'w, 's, &'static TranscriptEntries>,
-    entries: Query<'w, 's, &'static TranscriptEntry>,
     pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
     turns: Query<'w, 's, &'static Calls>,
     partials: Query<'w, 's, &'static Partial>,
@@ -448,8 +440,6 @@ impl TranscriptLayout<'_, '_> {
         });
         let streaming = partial.map(|(call, _)| self.streaming.of(call));
         let streaming = streaming.unwrap_or_default().iter();
-        let entries = self.lists.get(entity).into_iter();
-        let entries = entries.flat_map(TranscriptEntries::iter);
         let mut inbox: Vec<(&Effect, &Incoming)> = self
             .accepted
             .iter()
@@ -467,23 +457,28 @@ impl TranscriptLayout<'_, '_> {
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial: partial.map(|(_, partial)| partial),
             streaming: streaming.map(|(_, call)| call.clone()).collect(),
-            entries: entries
-                .filter_map(|entry| Some((entry, self.entries.get(entry).ok()?)))
+            notes: conversation
+                .asides()
+                .filter_map(|(id, aside)| {
+                    let note = Note::of(aside)?;
+                    Some(ShownNote { id, aside, note })
+                })
                 .collect(),
         })
     }
 
-    /// The tool renderers by tool name and the entry renderers by origin.
+    /// The tool renderers by tool name and the entry renderers by plugin
+    /// name.
     pub(crate) fn looks(&self) -> (Renderers<'_>, EntryRenderers<'_>) {
         let tools = self.renderers.iter().map(|renderer| {
             let renderer = renderer.into_inner();
             (renderer.tool.as_str(), &renderer.render)
         });
-        let origins = self.entry_renderers.iter().map(|renderer| {
+        let plugins = self.entry_renderers.iter().map(|renderer| {
             let renderer = renderer.into_inner();
-            (renderer.origin.as_str(), &renderer.render)
+            (renderer.plugin.as_str(), &renderer.render)
         });
-        (tools.collect(), origins.collect())
+        (tools.collect(), plugins.collect())
     }
 
     /// What settled calls published and how long they ran.
@@ -494,7 +489,7 @@ impl TranscriptLayout<'_, '_> {
 
 /// Brings `transcript` up to date with the agent shown and returns its
 /// parts at `width`: each message, with the notices written inside it,
-/// after the entries and notices written before it; then those after the
+/// after the notes and notices written before it; then those after the
 /// last message, the reply streaming in with the tool calls it streams,
 /// and the messages the agent accepted and has not sent yet. Without an
 /// agent, the notices about every agent.
@@ -517,10 +512,10 @@ pub(crate) fn lay_out_transcript(
         return parts;
     };
     let (conversation, count) = (shown.conversation, shown.conversation.messages().len());
-    // Entries and notices before the first message, after each message,
+    // Notes and notices before the first message, after each message,
     // and notices inside one.
     let mut after: Vec<Vec<(usize, &ShownNotice)>> = vec![Vec::new(); count + 1];
-    let mut entries_after: Vec<Vec<(Entity, &TranscriptEntry)>> = vec![Vec::new(); count + 1];
+    let mut notes_after: Vec<Vec<&ShownNote<'_>>> = vec![Vec::new(); count + 1];
     let mut look = Look {
         renderers: sources.renderers,
         entries: sources.entry_renderers,
@@ -547,34 +542,28 @@ pub(crate) fn lay_out_transcript(
             after.push((at, notice));
         }
     }
-    for &(entity, entry) in &shown.entries {
-        let before = match TranscriptSlot::of_entry(entry, conversation) {
+    for note in &shown.notes {
+        let before = match TranscriptSlot::of_aside(note.aside, conversation) {
             TranscriptSlot::Top => 0,
             TranscriptSlot::After(index) => index + 1,
             TranscriptSlot::Inside(index, item) => {
                 let inside = look.inside.entry(index).or_default();
-                inside.push((item, Inside::Entry(entity, entry)));
+                inside.push((item, Inside::Note(note)));
                 continue;
             }
         };
-        if let Some(at) = entries_after.get_mut(before) {
-            at.push((entity, entry));
+        if let Some(at) = notes_after.get_mut(before) {
+            at.push(note);
         }
     }
     transcript.update(shown.entity, conversation, shown.changed, &look, width);
-    let mut after = after.into_iter().zip(entries_after);
+    let mut after = after.into_iter().zip(notes_after);
     for index in 0..=count {
-        let (notices, entries) = after.next().unwrap_or_default();
-        for (entity, entry) in entries {
-            let item = TranscriptItem::Entry(entity);
+        let (notices, notes) = after.next().unwrap_or_default();
+        for note in notes {
+            let item = note.item();
             let (drawn, cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                let entry = EntryView {
-                    origin: &entry.origin,
-                    title: &entry.title,
-                    text: &entry.text,
-                    expanded,
-                };
-                entry_lines(&entry, sources.entry_renderers)
+                entry_lines(&note.view(expanded), sources.entry_renderers)
             });
             let mut lines = vec![Line::default()];
             lines.extend(drawn);
@@ -892,7 +881,7 @@ pub(crate) fn render(
     {
         transcript.clear();
     }
-    let (by_tool, by_origin) = from.looks();
+    let (by_tool, by_plugin) = from.looks();
     let edit = view
         .choosing
         .as_ref()
@@ -919,7 +908,7 @@ pub(crate) fn render(
             let sources = Sources {
                 view: transcript_view,
                 renderers: &by_tool,
-                entry_renderers: &by_origin,
+                entry_renderers: &by_plugin,
                 facts: from.facts(),
                 whole: false,
                 note_cut: drawn.is_some(),

@@ -7,11 +7,10 @@
 //! model still streams its arguments too ([`CallState::Streaming`]), from
 //! what has come of them.
 //!
-//! The same goes for an origin's look with
-//! [`AppToolRenderersExt::add_entry_renderer`] (`entry:<origin>`): it draws
-//! a plugin's [`TranscriptEntry`](rig_harness::transcript::TranscriptEntry)
-//! of that origin, and text the conversation holds from a plugin of that
-//! name, such as a compaction's summary. One without draws as
+//! The same goes for a plugin's look with
+//! [`AppToolRenderersExt::add_entry_renderer`] (`entry:<plugin>`): it draws
+//! the [`Note`](rig_harness::note::Note)s that plugin wrote, and the
+//! entries of the conversation it wrote, such as a compaction's summary. One without draws as
 //! [`EntryView::default_lines`]. A change to a renderer draws the
 //! transcript again.
 
@@ -210,15 +209,15 @@ impl<'a> ToolCallView<'a> {
     }
 }
 
-/// An entry or a delivered text, as an entry renderer sees it: a plugin's
-/// [`TranscriptEntry`](rig_harness::transcript::TranscriptEntry), or a
-/// content item the conversation holds from a plugin, such as a compaction
-/// summary.
+/// A note or a delivered text, as an entry renderer sees it: a plugin's
+/// [`Note`](rig_harness::note::Note), or a text of an entry of the
+/// conversation another author wrote, such as a compaction summary.
 pub struct EntryView<'a> {
-    /// The origin whose look draws it: the entry's, or the plugin's name.
-    pub origin: &'a str,
-    /// What a collapsed one shows in a line: the entry's title, or the
-    /// origin's label.
+    /// The plugin whose look draws it: the name of the plugin that wrote
+    /// it, or empty when no plugin did (an agent, rig).
+    pub plugin: &'a str,
+    /// What a collapsed one shows in a line: the note's title, or the
+    /// author's label.
     pub title: &'a str,
     /// What it holds; a delivered text without the header the model reads.
     pub text: &'a str,
@@ -227,7 +226,7 @@ pub struct EntryView<'a> {
 }
 
 impl EntryView<'_> {
-    /// The look of an origin with no renderer: `⤶` and the title, then
+    /// The look of a plugin with no renderer: `⤶` and the title, then
     /// the first lines of the text, or all of it when expanded.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         let mut lines = vec![Line::styled(
@@ -309,16 +308,17 @@ pub struct ToolRenderer {
     pub render: Arc<RenderToolCall>,
 }
 
-/// Draws an entry or a delivered text as transcript lines, not yet wrapped.
+/// Draws a note or a delivered text as transcript lines, not yet wrapped.
 pub type RenderEntry = dyn Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync;
 
-/// The look of the entries and delivered texts of `origin`, on an entity
-/// of its own.
+/// The look of the notes and delivered texts of the plugin `plugin`, on an
+/// entity of its own.
 #[derive(Component, Clone)]
 pub struct EntryRenderer {
-    /// The origin, such as `btw` or `compaction`.
-    pub origin: String,
-    /// Draws one of its entries.
+    /// The plugin's name, as its [`Author::plugin`](rig_core::conversation::Author::plugin)
+    /// says, such as `btw` or `compaction`.
+    pub plugin: String,
+    /// Draws one of its notes or texts.
     pub render: Arc<RenderEntry>,
 }
 
@@ -334,12 +334,12 @@ pub trait AppToolRenderersExt {
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 
-    /// Draw the entries and delivered texts of `origin` with `render`,
-    /// unless the origin has a renderer already: that one stays, with a
-    /// warning, and `Disabled` on it frees the origin, as for tools.
+    /// Draw the notes and delivered texts of the plugin `plugin` with
+    /// `render`, unless the plugin has a renderer already: that one stays,
+    /// with a warning, and `Disabled` on it frees the plugin, as for tools.
     fn add_entry_renderer(
         &mut self,
-        origin: &str,
+        plugin: &str,
         render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 }
@@ -369,24 +369,24 @@ impl AppToolRenderersExt for App {
 
     fn add_entry_renderer(
         &mut self,
-        origin: &str,
+        plugin: &str,
         render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self {
         let world = self.world_mut();
         let mut renderers = world.query::<&EntryRenderer>();
         if renderers
             .iter(world)
-            .any(|renderer| renderer.origin == origin)
+            .any(|renderer| renderer.plugin == plugin)
         {
             warn!(
-                "renderer not added: origin `{origin}` has one; insert `Disabled` on it to replace it"
+                "renderer not added: plugin `{plugin}` has one; insert `Disabled` on it to replace it"
             );
             return self;
         }
         world.spawn((
-            Name::new(format!("entry:{origin}")),
+            Name::new(format!("entry:{plugin}")),
             EntryRenderer {
-                origin: origin.to_owned(),
+                plugin: plugin.to_owned(),
                 render: Arc::new(render),
             },
         ));
