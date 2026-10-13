@@ -12,15 +12,11 @@
 //! and tallies good, bad and unrated replies per model.
 
 use std::collections::BTreeMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
-use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::conversation::Conversation as Saved;
+use rig_harness::rig_core::conversation::{Conversation as Saved, MessageKey};
 use rig_harness::rig_core::message::{AssistantContent, Message};
-use rig_harness::rig_ecs::journal::{SessionRestored, SessionStore};
 use rig_harness::rig_memory::now_ms;
 use rig_tui::crossterm::event::{KeyCode, KeyModifiers};
 use rig_tui::ratatui::style::{Style, Stylize};
@@ -33,9 +29,6 @@ use serde::{Deserialize, Serialize};
 
 /// The plugin name the ratings' asides are written by.
 pub const AUTHOR: &str = "message-ratings";
-
-/// How many sessions deep `/ratings --all` follows a fork to its root.
-const FORK_DEPTH: usize = 32;
 
 /// Good or bad.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,23 +96,18 @@ pub struct MessageRatingsPlugin;
 
 impl Plugin for MessageRatingsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<SessionForked>()
-            .add_command(
-                "good",
-                "Rate the last reply good: /good [reason]",
-                rate_good,
-            )
-            .add_command("bad", "Rate the last reply bad: /bad [reason]", rate_bad)
-            .add_command(
-                "ratings",
-                "This session's ratings; --all: the project's, by model",
-                list,
-            )
-            .add_entry_renderer(AUTHOR, marker)
-            .add_systems(
-                Update,
-                carry_into_fork.run_if(resource_added::<SessionRestored>),
-            );
+        app.add_command(
+            "good",
+            "Rate the last reply good: /good [reason]",
+            rate_good,
+        )
+        .add_command("bad", "Rate the last reply bad: /bad [reason]", rate_bad)
+        .add_command(
+            "ratings",
+            "This session's ratings; --all: the project's, by model",
+            list,
+        )
+        .add_entry_renderer(AUTHOR, marker);
     }
 
     fn finish(&self, app: &mut App) {
@@ -351,7 +339,6 @@ fn when(at_ms: u64) -> String {
 #[derive(bevy_ecs::system::SystemParam)]
 struct Project<'w> {
     paths: Option<Res<'w, SessionPaths>>,
-    store: Option<Res<'w, SessionStore>>,
     stores: Option<Res<'w, SessionStores>>,
     home: Option<Res<'w, RigHome>>,
 }
@@ -439,10 +426,9 @@ fn open(
     });
 }
 
-/// A reply's identity across sessions: the session a chain of forks
-/// began at, the agent, the message's id and its content, so a fork's copy
-/// of a reply is the same reply and a reply made after it is not.
-type ReplyKey = (String, String, MessageId, u64);
+/// A reply across sessions: its agent and its [`MessageKey`], which a
+/// fork's copy of the reply shares and a reply made after it does not.
+type ReplyKey = (String, MessageKey);
 
 /// What `/ratings --all` gathers: each reply once, with its model and its
 /// newest rating.
@@ -452,9 +438,9 @@ struct Gathered {
 }
 
 impl Gathered {
-    /// Adds the replies of `agent`'s `conversation` in session `session`,
-    /// whose forks began at `root`, listed as `label`.
-    fn add(&mut self, (root, label): (&str, &str), agent: &str, conversation: &Saved) {
+    /// Adds the replies of `agent`'s `conversation` in the session listed
+    /// as `label`.
+    fn add(&mut self, label: &str, agent: &str, conversation: &Saved) {
         let ratings: BTreeMap<MessageId, Rating> = conversation
             .asides()
             .filter_map(|(_, aside)| Some((aside.after?, Rating::of(aside)?)))
@@ -463,11 +449,7 @@ impl Gathered {
             .entries()
             .filter(|entry| is_reply(entry.message))
         {
-            let mut hasher = DefaultHasher::new();
-            serde_json::to_string(entry.message)
-                .unwrap_or_default()
-                .hash(&mut hasher);
-            let key = (root.to_owned(), agent.to_owned(), entry.id, hasher.finish());
+            let key = (agent.to_owned(), entry.key());
             let model = model_of(entry.message).unwrap_or_else(|| "unknown model".to_owned());
             let rated = ratings.get(&entry.id).map(|rating| {
                 let rated = Rated {
@@ -525,48 +507,17 @@ impl Gathered {
     }
 }
 
-/// The session a chain of forks that `id` ends began at.
-fn root_of(id: &SessionId, home: &Home, stores: &SessionStores) -> String {
-    let mut root = id.clone();
-    for _ in 0..FORK_DEPTH {
-        let parent = stores.open(&home.session(&root)).ok();
-        let parent = parent.as_deref().and_then(ForkedFrom::read);
-        match parent.and_then(|parent| parent.session.parse().ok()) {
-            Some(parent) => root = parent,
-            None => break,
-        }
-    }
-    root.to_string()
-}
-
 /// Every saved session of the project, this one as it stands now, its
 /// replies tallied and its ratings listed.
 fn across_project(agents: &Query<(Entity, &AgentId, &Conversation)>, project: &Project) -> Picker {
     let (home, stores) = project.home_and_stores();
-    let current = project
-        .paths
-        .as_ref()
-        .map(|paths| (paths.path().to_path_buf(), paths.id()));
     let mut gathered = Gathered::default();
-    let here = current.as_ref().and_then(|(_, id)| id.clone());
-    let this_root = match (&here, &project.store) {
-        (Some(id), Some(store)) => {
-            let parent = ForkedFrom::read(&*store.0);
-            match parent.and_then(|parent| parent.session.parse().ok()) {
-                Some(parent) => root_of(&parent, &home, &stores),
-                None => id.to_string(),
-            }
-        }
-        _ => "this session".to_owned(),
-    };
     for (_, id, conversation) in agents {
-        gathered.add((&this_root, "this session"), &id.0, conversation);
+        gathered.add("this session", &id.0, conversation);
     }
-    let directory = project
-        .paths
-        .as_ref()
-        .and_then(|paths| paths.working_directory());
-    let path = current.map_or_else(PathBuf::new, |(path, _)| path);
+    let paths = project.paths.as_deref();
+    let directory = paths.and_then(|paths| paths.working_directory());
+    let path = paths.map_or_else(PathBuf::new, |paths| paths.path().to_path_buf());
     for session in rig_sessions::list(&home, &stores, &path) {
         if session.directory != directory {
             continue;
@@ -578,69 +529,12 @@ fn across_project(agents: &Query<(Entity, &AgentId, &Conversation)>, project: &P
         else {
             continue;
         };
-        let root = root_of(&session.id, &home, &stores);
         let label = session.label();
         for agent in &saved.agents {
-            gathered.add((&root, &label), &agent.id, &agent.conversation);
+            gathered.add(&label, &agent.id, &agent.conversation);
         }
     }
     gathered.picker()
-}
-
-/// In a fork's first start, the parent's newest rating of each reply the
-/// fork copied: the copy stops at a point in time, so a reply rated or
-/// rated again after it would lose its rating otherwise.
-fn carry_into_fork(
-    started: Option<Res<AppStart>>,
-    project: Project,
-    mut agents: Query<(&AgentId, &mut Conversation)>,
-) {
-    let first = started.is_some_and(|started| started.0 == StartReason::New);
-    let (true, Some(store)) = (first, &project.store) else {
-        return;
-    };
-    let parent = ForkedFrom::read(&*store.0);
-    let Some(parent) = parent.and_then(|parent| parent.session.parse::<SessionId>().ok()) else {
-        return;
-    };
-    let (home, stores) = project.home_and_stores();
-    let parent_store = stores.open(&home.session(&parent));
-    let Some((saved, _)) = parent_store
-        .ok()
-        .and_then(|store| Session::read_lenient(&*store).ok())
-    else {
-        return;
-    };
-    for (id, mut conversation) in &mut agents {
-        let Some(then) = saved.agents.iter().find(|agent| agent.id == id.0) else {
-            continue;
-        };
-        let then = &then.conversation;
-        let carried: Vec<(MessageId, Rating)> = then
-            .asides()
-            .filter_map(|(_, aside)| Some((aside.after?, Rating::of(aside)?)))
-            .filter(|(reply, rating)| {
-                let message = |c: &Saved| {
-                    c.index_of(*reply)
-                        .and_then(|at| c.messages().get(at).cloned())
-                };
-                let copied = message(&conversation).is_some_and(|here| Some(here) == message(then));
-                let ours = ratings_of(&conversation, *reply);
-                copied && ours.is_none_or(|ours| ours.at_ms < rating.at_ms)
-            })
-            .collect();
-        for (reply, rating) in carried {
-            put(&mut conversation, reply, &rating);
-        }
-    }
-}
-
-/// The rating of `reply` in `conversation`, if it has one.
-fn ratings_of(conversation: &Saved, reply: MessageId) -> Option<Rating> {
-    let mut asides = conversation
-        .asides()
-        .filter(|(_, aside)| aside.after == Some(reply));
-    asides.find_map(|(_, aside)| Rating::of(aside))
 }
 
 #[cfg(test)]
