@@ -264,7 +264,7 @@ fn settled(
             let file = who.shown(owner, path);
             let note = format!("agent {name} changed {file}{counts} while you were working on it");
             let note = Deliver::new(owner, note, DeliveryMode::Note);
-            commands.trigger(note.with_origin(Origin::plugin("file-lease")));
+            commands.trigger(note.with_author(Author::plugin("file-lease")));
         }
         if !owners.iter().any(|&(owner, _)| owner == agent) {
             owners.push((agent, turn));

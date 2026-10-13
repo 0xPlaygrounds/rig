@@ -1,9 +1,8 @@
 use rig_basics::BasicCommandsPlugin;
-use rig_cassette::journal::MemoryStore;
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
-    Collected, Ended, app_on, collect, connect, log_ended, reply, run_until,
+    Collected, Ended, MemoryStore, app_on, collect, connect, log_ended, reply, run_until,
 };
 
 use super::*;
@@ -81,7 +80,7 @@ fn typed_commands_are_expanded_in_parallel_with_a_timeout() {
 
     // A plugin's message reaches the model as it was sent.
     let from_plugin = Deliver::new(agent, "!{printf 3}", DeliveryMode::Steer)
-        .with_origin(Origin::plugin("tester"));
+        .with_author(Author::plugin("tester"));
     app.world_mut().trigger(from_plugin);
     run_until(&mut app, &wakes, |_| model.requests().len() == 2);
     let sent = last_user_text(&model).unwrap_or_default();

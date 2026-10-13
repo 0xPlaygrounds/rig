@@ -2,7 +2,7 @@
 //! drafts (spec `H21-history-and-drafts.md`).
 //!
 //! **History.** Every message the user sends, in any front (`Incoming`
-//! from `Origin::user()`), is appended to
+//! from `Author::user()`), is appended to
 //! `RIG_HOME/history/<project-hash>.jsonl` as `{text, time, session}`. At
 //! most [`MAX_ENTRIES`] are kept per project, the oldest trimmed. Not
 //! recorded: a repeat of the previous entry, a message starting with a
@@ -286,7 +286,7 @@ fn record(
         return;
     };
     // A titled message is a plugin's on the user's behalf, not typed.
-    if message.origin.kind != OriginKind::User || message.origin.title.is_some() {
+    if message.author.kind != AuthorKind::User || message.author.title.is_some() {
         return;
     }
     // The view recorded what it sent as it is; [`offer`] puts this

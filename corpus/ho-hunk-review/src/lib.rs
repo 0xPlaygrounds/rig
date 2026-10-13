@@ -574,7 +574,7 @@ fn finish(
     if !reverted.is_empty() {
         let text = format!("The user reverted: {}", reverted.join("; "));
         let message = Deliver::new(agent, text, DeliveryMode::Queue);
-        commands.trigger(message.with_origin(Origin::plugin("hunk-review")));
+        commands.trigger(message.with_author(Author::plugin("hunk-review")));
     }
     *review = HunkReview::default();
 }

@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
-    Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
+    Ended, MemoryStore, app_on, calls, connect, first_agent, log_ended, reply, run_until,
+    scratch_home,
 };
 
 use super::*;

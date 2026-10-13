@@ -1,12 +1,12 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 
 use super::*;
 use rig_harness_test_support::{
-    ToolOutputs, app_on, calls, log_tool_outputs, reply, run_until, scripted_models, start_call,
+    MemoryStore, ToolOutputs, app_on, calls, log_tool_outputs, reply, run_until, scripted_models,
+    start_call,
 };
 
 /// The kernel and the board on `store`, with the scripted models.

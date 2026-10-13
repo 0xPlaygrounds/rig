@@ -400,7 +400,7 @@ fn delivered(
         let event = json!({
             "type": "delivery",
             "agent": events.name(agent),
-            "origin": message.origin,
+            "author": message.author,
             "text": message.text,
         });
         events.send(&event);

@@ -3,12 +3,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::SystemTime;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_core::tool::{FileChange, FilesChanged, ToolContext};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
-    Ended, ToolOutputs, app_on, calls, log_ended, log_tool_outputs, reply, run_until,
+    Ended, MemoryStore, ToolOutputs, app_on, calls, log_ended, log_tool_outputs, reply, run_until,
     scripted_models,
 };
 use serde::Deserialize;

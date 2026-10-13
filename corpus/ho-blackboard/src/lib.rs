@@ -409,7 +409,8 @@ fn on_read(
 /// Sends `text` to `agent` with its next request; it wakes no idle agent.
 fn send_note(commands: &mut Commands, agent: Entity, text: &str) {
     let note = Deliver::new(agent, text, DeliveryMode::Note);
-    commands.trigger(note.with_origin(Origin::plugin("board")));
+    commands
+        .trigger(note.with_author(rig_harness::rig_core::conversation::Author::plugin("board")));
 }
 
 /// A despawned agent's claims go.

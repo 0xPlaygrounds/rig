@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
 use rig_basics::BasicCommandsPlugin;
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness_test_support::{
-    Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until,
+    Ended, MemoryStore, app_on, calls, connect, first_agent, log_ended, reply, run_until,
 };
 
 use super::*;
@@ -67,13 +66,13 @@ fn session(root: &Path, model: &MockCompletionModel, say: &[&str]) -> Vec<Messag
     };
     world.entity_mut(agent).insert(connection);
     for (turn, text) in say.iter().enumerate() {
-        let said = Deliver::new(agent, *text, DeliveryMode::Queue).with_origin(Origin::user());
+        let said = Deliver::new(agent, *text, DeliveryMode::Queue);
         app.world_mut().trigger(said);
         run_until(&mut app, &wakes, |world| {
             world.resource::<Ended>().0.len() > turn
         });
     }
-    let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue).with_origin(Origin::user());
+    let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue);
     app.world_mut().trigger(quit);
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Messages<AppExit>>().is_empty()

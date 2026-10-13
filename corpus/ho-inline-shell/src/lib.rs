@@ -177,7 +177,7 @@ fn expand(
     mut commands: Commands,
 ) {
     for (message, mut incoming, &ForAgent(agent)) in &mut messages {
-        let typed = incoming.origin.kind == OriginKind::User;
+        let typed = incoming.author.kind == AuthorKind::User;
         if !typed || incoming.literal || incoming.command().is_some() {
             continue;
         }
@@ -343,7 +343,7 @@ fn finished(
         return;
     }
     let text = compose(&pieces, &blocks);
-    let expanded = Incoming::new(text, incoming.mode).with_origin(incoming.origin.clone());
+    let expanded = Incoming::new(text, incoming.mode).with_author(incoming.author.clone());
     commands.spawn((
         expanded,
         Expanded,

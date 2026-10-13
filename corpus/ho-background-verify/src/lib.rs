@@ -371,7 +371,7 @@ fn checked(
         match agents.get(agent) {
             Ok(true) => {
                 let message = Incoming::new(note.text.clone(), DeliveryMode::Note)
-                    .with_origin(Origin::plugin(VERIFY));
+                    .with_author(Author::plugin(VERIFY));
                 commands.spawn((message, ForAgent(agent), note.clone()));
             }
             Ok(false) => idle.push(agent),
@@ -487,7 +487,7 @@ fn attach_notes(
 ) {
     for (entity, mut typed, &ForAgent(agent)) in &mut typed {
         let note = typed.mode != DeliveryMode::Note && typed.command().is_none();
-        if typed.origin.kind != OriginKind::User || !note {
+        if typed.author.kind != AuthorKind::User || !note {
             continue;
         }
         let Some(note) = verify.waiting.remove(&agent) else {
