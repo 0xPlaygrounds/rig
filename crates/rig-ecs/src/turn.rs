@@ -763,7 +763,8 @@ impl ModelStarts<'_, '_> {
     /// The connection `model`, a call for `agent`, goes to, its `adapters`
     /// applied, and its request as Start sends it: its
     /// [`history`](ModelRequest::history)'s messages, tools taken off a
-    /// model that calls none, options it does not take left out, and the
+    /// model that calls none, options left unset taking that model's
+    /// defaults (its caching), options it does not take left out, and the
     /// [`prompt`](ModelRequest::prompt) in front with the rules of the
     /// tools it carries; and the options it leaves out, as [`Fitted`] will
     /// say. Refused without a model.
@@ -824,6 +825,12 @@ impl ModelStarts<'_, '_> {
         }
         if !spec.tools {
             request.tools.clear();
+        }
+        // An option the request leaves unset is the final model's default,
+        // whoever built the request for whichever model; `cache` is the
+        // only default a model has, and a new one is filled the same way.
+        if request.options.cache.is_none() {
+            request.options.cache = spec.default_options(request.options.reasoning).cache;
         }
         let dropped = spec.fit(request);
         let mut sections = model.prompt.iter_mut().flat_map(|it| &mut it.sections);

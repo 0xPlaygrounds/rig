@@ -3573,3 +3573,55 @@ fn releasing_one_of_two_holds_wakes_the_loop() {
     app.update();
     assert!(has::<Started>(&app, effect), "the coordinator let go");
 }
+
+/// `model` as the catalog's DeepSeek model, with the cache retentions it
+/// honours.
+fn connection_caching(
+    model: &MockCompletionModel,
+    retention: Vec<rig_core::completion::CacheRetention>,
+) -> Option<Connection> {
+    let mut connection = connection(model)?;
+    let caching = rig_core::catalog::CacheSupport::new(retention);
+    let spec = (*connection.spec).clone().with_caching(caching);
+    connection.spec = Arc::new(spec);
+    Some(connection)
+}
+
+#[test]
+fn a_call_routed_to_another_model_asks_for_that_models_caching() {
+    use rig_core::completion::{CacheRetention, CompletionRequest};
+    let mut app = app();
+    let own = MockCompletionModel::from_stream_turns([answer("own")]);
+    let routed = MockCompletionModel::from_stream_turns([answer("routed"), answer("summary")]);
+    let to = connection_caching(&routed, vec![CacheRetention::Short]);
+    let route = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            call.connection = to.clone();
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
+    let agent = agent_on(&mut app, &own);
+    if let Some(plain) = connection_caching(&own, Vec::new()) {
+        app.world_mut().entity_mut(agent).insert(plain);
+    }
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // A call a plugin makes, leaving its caching to the model.
+    let summary = CompletionRequest::from(vec![Message::user("sum it up")]);
+    let summary = connection_caching(&routed, vec![CacheRetention::Short])
+        .map(|to| ModelRequest::new(summary).on(to));
+    if let Some(summary) = summary {
+        app.world_mut()
+            .spawn((summary, Effect::default(), ForAgent(agent)));
+    }
+    assert!(run_until(&mut app, |_| routed.request_count() == 2));
+    let caching: Vec<_> = routed
+        .requests()
+        .iter()
+        .map(|request| request.options.cache)
+        .collect();
+    assert_eq!(caching, [Some(CacheRetention::Short); 2]);
+    assert_eq!(own.request_count(), 0);
+}
