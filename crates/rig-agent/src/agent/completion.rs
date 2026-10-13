@@ -24,7 +24,6 @@ use crate::{
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
 use rig_core::error::ProviderError;
-use rig_core::id::ConversationId;
 
 use super::drive::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
@@ -182,7 +181,7 @@ fn unforce_output_tool(
     native
 }
 
-/// Configured model, request settings, hooks, memory, and tool registry for runs.
+/// Configured model, request settings, hooks, and tool registry for runs.
 /// Per-run overrides and dynamic retrieval determine each turn's effective request.
 ///
 /// Default hooks attached with [`AgentBuilder::add_hook`](crate::agent::AgentBuilder::add_hook)
@@ -259,8 +258,6 @@ pub(crate) struct AgentConfig {
     pub(crate) output_schema: Option<schemars::Schema>,
     /// How the schema is conveyed: output tool, native constraint, or prompt.
     pub(crate) output_mode: OutputMode,
-    /// Optional conversation memory backend that loads/saves history per conversation id.
-    pub(crate) memory_key: Option<Key<family::Memory>>,
     /// The models registered as routes at build (`model_route`), part of
     /// the required row: a program that can select them needs them served.
     pub(crate) route_keys: Vec<Key<family::Completion>>,
@@ -268,8 +265,6 @@ pub(crate) struct AgentConfig {
     /// (`dynamic_context`), part of the required row: every model call
     /// queries them.
     pub(crate) context_keys: Vec<Key<family::Retrieve>>,
-    /// Optional conversation id used when none is set per-request.
-    pub(crate) conversation_id: Option<ConversationId>,
     /// The anonymous model this value selected ([`Agent::set_model`],
     /// [`AgentRunner::using_model_value`]); its registration lives as long
     /// as the values sharing it.
@@ -300,8 +295,6 @@ impl AgentConfig {
             context_keys: Vec::new(),
             output_schema: None,
             output_mode: OutputMode::default(),
-            memory_key: None,
-            conversation_id: None,
             anonymous_model: None,
         }
     }
@@ -323,7 +316,6 @@ impl AgentConfig {
             Some(rig_core::effect::FamilyDescriptor::Completion { model, .. }) => model,
             Some(rig_core::effect::FamilyDescriptor::Tool { .. })
             | Some(rig_core::effect::FamilyDescriptor::Embed { .. })
-            | Some(rig_core::effect::FamilyDescriptor::Memory {})
             | Some(rig_core::effect::FamilyDescriptor::Retrieve {})
             | Some(rig_core::effect::FamilyDescriptor::Rerank { .. })
             | Some(rig_core::effect::FamilyDescriptor::Custom { .. })
@@ -344,21 +336,12 @@ impl AgentConfig {
             .dispatcher()
             .bind(&self.bus.model_key(label.as_str()))
     }
-
-    /// Bind the memory handle, when memory is configured.
-    pub(crate) fn memory_handle(
-        &self,
-    ) -> Option<Result<crate::bus::MemoryHandle, rig_core::error::ErrorReport>> {
-        self.memory_key
-            .as_ref()
-            .map(|key| self.bus.dispatcher().bind(key))
-    }
 }
 
 impl AgentConfig {
     /// The protocol-facing half of this configuration as plain data: what a
     /// driver needs to shape requests and budget a run, without the model,
-    /// hooks, memory or identity this config also carries.
+    /// hooks or identity this config also carries.
     pub(crate) fn run_spec(&self) -> crate::run::spec::RunSpec {
         crate::run::spec::RunSpec {
             preamble: self.preamble.clone(),
@@ -388,7 +371,7 @@ impl AgentConfig {
 
 impl Agent {
     /// Return serializable request settings and run policy, excluding live models,
-    /// tools, hooks, and memory.
+    /// tools, and hooks.
     pub fn run_spec(&self) -> crate::run::spec::RunSpec {
         self.config.run_spec()
     }
@@ -437,7 +420,6 @@ impl Agent {
                 rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
                 rig_core::effect::FamilyDescriptor::Tool { .. }
                 | rig_core::effect::FamilyDescriptor::Embed { .. }
-                | rig_core::effect::FamilyDescriptor::Memory {}
                 | rig_core::effect::FamilyDescriptor::Retrieve {}
                 | rig_core::effect::FamilyDescriptor::Rerank { .. }
                 | rig_core::effect::FamilyDescriptor::Custom { .. } => None,
@@ -477,7 +459,7 @@ impl Agent {
     }
 
     /// The owner segment of the keys this agent minted
-    /// (`<owner>/model:<label>`, `<owner>/memory`, ...): the label given to
+    /// (`<owner>/model:<label>`, ...): the label given to
     /// [`AgentBuilder::owner`](crate::agent::AgentBuilder::owner), else
     /// `agent#<n>`.
     pub fn owner(&self) -> &str {
@@ -500,7 +482,7 @@ impl Agent {
     }
 
     /// The effect row this program can dispatch to: its model, every tool
-    /// the registry serves, its memory backend and its retrieval indexes,
+    /// the registry serves and its retrieval indexes,
     /// each with the family it needs, from the registry rather than what a
     /// run happened to dispatch.
     pub fn required_row(&self) -> rig_core::effect::EffectRow {
@@ -512,9 +494,6 @@ impl Agent {
         );
         for route in &self.config.route_keys {
             row.insert(route.raw().clone(), EffectFamily::Completion);
-        }
-        if let Some(memory) = &self.config.memory_key {
-            row.insert(memory.raw().clone(), EffectFamily::Memory);
         }
         for (_, tool) in self.tool_server_handle.toolset().iter() {
             row.insert(tool.key().raw().clone(), EffectFamily::Tool);
@@ -613,7 +592,7 @@ impl Agent {
     ///
     /// The medium is chosen by the terminal call alone: an awaited runner asks
     /// the provider for a complete response, a streamed one for a stream.
-    /// Hooks, tools, memory and the resulting history are the same in each.
+    /// Hooks, tools and the resulting history are the same in each.
     ///
     /// ```rust,no_run
     /// # use rig_agent::Agent;
@@ -656,11 +635,7 @@ impl Agent {
     /// run-side value still shows through: the output tool the run pinned
     /// stays pinned even though the schema and mode advertising it are the
     /// runner's.
-    /// Conversation memory is neither
-    /// loaded nor appended: the history is already in the run, and the driver
-    /// that persisted it owns memory persistence and appends the finished run's
-    /// `messages` itself, since a suspended run never reached the `Done`
-    /// append, so the response's `memory_append` is `None`. Unanswered tool
+    /// Unanswered tool
     /// calls re-execute on resume: a tool that ran before the suspension but
     /// whose result was not fed to the run runs again (at least once), while
     /// answered calls keep their results. Drive it like any runner: `.await`,
@@ -686,8 +661,7 @@ impl Agent {
     /// the write-back; the runner form is the one to configure or stream.
     /// The returned [`PromptResponse`] keeps its `messages`.
     ///
-    /// The caller's history is the run's input history, so conversation
-    /// memory is bypassed (no load, no append) and the caller owns
+    /// The caller's history is the run's input history and the caller owns
     /// persistence. A run that fails appends nothing: the error carries the
     /// history the run had, the caller's vector is unchanged.
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]

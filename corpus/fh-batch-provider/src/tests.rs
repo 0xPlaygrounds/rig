@@ -2,7 +2,6 @@ use std::future::{self, Future};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::Pricing;
 use rig_core::http_client::{
     self, LazyBody, MultipartForm, Response, StatusCode, StreamingResponse,
@@ -10,6 +9,7 @@ use rig_core::http_client::{
 use rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::clock::ClockPlugin;
 use rig_harness::host::exit::ExitPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_on, log_ended, log_tool_outputs, pass_wall_clock, run_until,
     scripted_models,

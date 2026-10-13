@@ -1,17 +1,19 @@
+use std::sync::Arc;
+
 use bevy_ecs::system::RunSystemOnce;
-use rig_harness::harness_protocol::{Home, SessionDir};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_memory::MemoryStore;
 
 use super::*;
-use crate::tests::{scratch, transcript, view_app};
+use crate::tests::{transcript, view_app};
 
-/// The store of `session`, as the harness opens it.
-fn store(session: &SessionDir) -> Option<SessionStore> {
-    SessionStores::default()
-        .open(session)
-        .ok()
-        .map(SessionStore)
+/// Places for plugins' files, all in memory, the session's in `session`.
+fn data(session: &MemoryStore) -> PluginData {
+    PluginData {
+        session: Arc::new(session.clone()),
+        project: Arc::new(MemoryStore::default()),
+        user: Arc::new(MemoryStore::default()),
+    }
 }
 
 /// Where in `lines` the first that contains `text` is.
@@ -20,19 +22,25 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 }
 
 #[test]
-fn a_notice_stays_before_a_prompt_that_joins_the_message_it_followed() {
+fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {
+    use rig_core::completion::Message;
+    use rig_core::message::UserContent;
     let (mut app, agent) = view_app();
-    let note = |app: &mut App, text: &str| {
-        let note = Deliver::new(agent, text, DeliveryMode::Note);
-        app.world_mut().trigger(note);
-        app.update();
-    };
-    note(&mut app, "first");
+    let note = Deliver::new(agent, "first", DeliveryMode::Note);
+    app.world_mut().trigger(note);
+    app.update();
     app.world_mut()
         .write_message(Notice::info(agent, "Interrupted."));
     app.update();
-    // Left unanswered, the first note takes in the second.
-    note(&mut app, "second");
+    // A plugin's edit adds a second text to the message, which keeps its id.
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent)
+        && let Some(mut entry) = conversation.entry(0)
+        && let Message::User { content } = &mut entry.message
+    {
+        content.push(UserContent::text("second"));
+        conversation.splice(..1, [entry], Author::plugin("test"));
+    }
+    app.update();
     let messages = app
         .world()
         .get::<Conversation>(agent)
@@ -46,16 +54,13 @@ fn a_notice_stays_before_a_prompt_that_joins_the_message_it_followed() {
 
 #[test]
 fn notices_are_kept_for_the_next_build_of_the_session() {
-    let home = Home::at(scratch("notices"));
-    let Ok(id) = "1-1".parse() else { return };
-    let session = home.session(&id);
-    let Some(store) = store(&session) else { return };
+    let session = MemoryStore::default();
     let build = || {
         let (mut app, agent) = view_app();
         app.world_mut()
             .entity_mut(agent)
             .insert(AgentId("a1".to_owned()));
-        app.insert_resource(store.clone());
+        app.insert_resource(data(&session));
         let loaded = app.world_mut().run_system_once(load_notices);
         assert!(loaded.is_ok());
         (app, agent)
@@ -65,8 +70,6 @@ fn notices_are_kept_for_the_next_build_of_the_session() {
         .write_message(Notice::warn(agent, "Kept across a reload."));
     app.update();
     drop(app);
-    // The view's file is no agent log: the session is not saved yet.
-    assert!(!session.is_saved());
     let (mut app, agent) = build();
     let lines = transcript(&mut app, agent);
     assert!(
@@ -77,36 +80,29 @@ fn notices_are_kept_for_the_next_build_of_the_session() {
 
 #[test]
 fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
-    let home = Home::at(scratch("draft"));
-    let Ok(id) = "1-1".parse() else { return };
-    let session = home.session(&id);
-    let Some(store) = store(&session) else { return };
+    let session = MemoryStore::default();
     let (mut app, _) = view_app();
-    app.insert_resource(store.clone())
+    app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload);
     app.world_mut().resource_mut::<TuiInput>().set("/tools");
     assert!(app.world_mut().run_system_once(keep_draft).is_ok());
     drop(app);
     let (mut app, _) = view_app();
-    app.insert_resource(store.clone());
+    app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
     assert_eq!(app.world().resource::<TuiInput>().text(), "/tools");
     // Once: the build after this one starts empty.
     let (mut app, _) = view_app();
-    app.insert_resource(store);
+    app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
     assert!(app.world().resource::<TuiInput>().is_empty());
 }
 
-/// Adds `message` to `agent`'s conversation, as a commit does.
+/// Adds `message` to `agent`'s conversation.
 fn say(app: &mut App, agent: Entity, message: rig_core::completion::Message) {
-    let commit = move |mut commit: rig_ecs::journal::Commit,
-                       mut conversations: Query<&mut Conversation>| {
-        if let Ok(mut conversation) = conversations.get_mut(agent) {
-            commit.message(agent, &mut conversation, message.clone());
-        }
-    };
-    assert!(app.world_mut().run_system_once(commit).is_ok());
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(message);
+    }
     app.update();
 }
 
@@ -140,6 +136,26 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
         TranscriptSlot::After(1),
     ];
     assert!(order.is_sorted());
+}
+
+#[test]
+fn a_notice_about_an_agent_gone_before_it_is_read_is_drawn_in_no_other_transcript() {
+    use rig_core::completion::Message;
+    let (mut app, agent) = view_app();
+    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    say(&mut app, agent, Message::user("question"));
+    // A helper whose model call fails retires in the same pass.
+    let helper = app.world_mut().spawn(Agent).id();
+    app.update();
+    app.world_mut().write_message(Notice::error(
+        helper,
+        "Your last message was taken out of the conversation; send it again.",
+    ));
+    app.world_mut().despawn(helper);
+    app.update();
+    let lines = transcript(&mut app, agent);
+    assert!(line_of(&lines, "send it again").is_none(), "{lines:#?}");
+    assert!(line_of(&lines, "question").is_some(), "{lines:#?}");
 }
 
 #[test]

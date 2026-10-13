@@ -1,6 +1,6 @@
 //! Whether a value fits a JSON schema, and where it does not: the check a
 //! tool call's arguments pass before the tool runs
-//! ([`arguments_refusal`](crate::transcript::arguments_refusal)).
+//! ([`arguments_refusal`](crate::tool::feedback::arguments_refusal)).
 //!
 //! ```
 //! use rig_core::tool::validate::{Problem, validate};

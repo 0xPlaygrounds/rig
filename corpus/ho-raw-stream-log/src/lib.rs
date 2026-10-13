@@ -271,7 +271,8 @@ fn record_model_calls(
         return;
     };
     for (call, effect, of, supersedes) in &calls {
-        let earlier = supersedes.and_then(|&Supersedes(earlier)| files.get(earlier).ok());
+        let earlier =
+            supersedes.and_then(|of| of.iter().find_map(|earlier| files.get(earlier).ok()));
         let file = match earlier {
             Some(earlier) => earlier.clone(),
             None => {

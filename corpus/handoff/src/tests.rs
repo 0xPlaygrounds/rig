@@ -1,8 +1,8 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, commit_message, connect, log_ended, reply, run_until,
 };
@@ -85,6 +85,14 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     assert_eq!(from.as_ref(), world.get::<AgentId>(a));
     assert_eq!(world.get::<ModelChoice>(b), Some(&choice));
     assert_eq!(world.resource::<Shown>().0, Some(b), "B is shown");
+    // B's first message is the brief, by A, about the goal.
+    let author = world
+        .get::<Conversation>(b)
+        .and_then(|conversation| conversation.author(0).cloned());
+    let by_a = world
+        .get::<AgentId>(a)
+        .map(|a| Author::agent(a.0.clone(), None));
+    assert_eq!(author, by_a.map(|by_a| by_a.titled("implement API")));
     let b_id = world.get::<AgentId>(b).cloned();
 
     let requests = model.requests();
@@ -134,4 +142,37 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
                 .all(|name| name.starts_with("implement API (from ")),
         "{named:?}"
     );
+}
+
+/// Starts an agent handed off from `from`, once, as `take_brief` does in
+/// the agent loop.
+fn hand_off_once(
+    mut done: Local<bool>,
+    from: Query<&AgentId, With<Agent>>,
+    mut commands: Commands,
+) {
+    let Some(agent) = from.iter().next().filter(|_| !*done).cloned() else {
+        return;
+    };
+    *done = true;
+    let goal = "next".to_owned();
+    commands.spawn((Agent, HandedOffFrom { agent, goal }));
+}
+
+#[test]
+fn a_successor_started_in_the_agent_loop_is_shown_that_frame() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = start(&store);
+    app.add_systems(AgentPass, hand_off_once.in_set(Stage::Commit));
+    // Anything with an effect runs the loop.
+    app.world_mut().spawn(Effect::default());
+    app.update();
+
+    let world = app.world_mut();
+    let successor = world
+        .query_filtered::<Entity, With<HandedOffFrom>>()
+        .single(world)
+        .ok();
+    assert!(successor.is_some());
+    assert_eq!(world.resource::<Shown>().0, successor);
 }

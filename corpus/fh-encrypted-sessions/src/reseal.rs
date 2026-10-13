@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
-use rig_cassette::journal::{JsonlDirStore, fork_session};
 use rig_harness::harness_protocol::{Home, SessionDir};
-use rig_harness::prelude::JournalStore;
+use rig_harness::prelude::{Files, Store};
+use rig_harness::rig_memory::DirStore;
 
 use crate::store::{Crypt, CryptStore, Sealing, new_salt};
 use crate::{CryptConfig, key_dir};
@@ -37,7 +37,7 @@ pub fn list(home: &Home, current: &Path) -> String {
                 .map(|since| since.as_secs())
                 .max()
                 .unwrap_or_default();
-            let sealing = match Sealing::of(&plain(dir)) {
+            let sealing = match plain(dir).and_then(|plain| Sealing::of(&plain)) {
                 Ok(Sealing::Sealed) => "sealed",
                 Ok(_) => "plain",
                 Err(_) => "unreadable",
@@ -87,7 +87,7 @@ fn day(seconds: u64) -> String {
 pub fn migrate(home: &Home, current: &Path, crypt: &Crypt) -> Result<String, String> {
     let (mut sealed, mut skipped) = (0, 0);
     for dir in sessions(home, current) {
-        let plain = plain(&dir);
+        let plain = plain(&dir).map_err(|failure| failure.to_string())?;
         if Sealing::of(&plain).map_err(|failure| failure.to_string())? != Sealing::Plain {
             continue;
         }
@@ -130,7 +130,7 @@ pub fn rekey(
         .map_err(|failure| failure.to_string())?;
     let mut count = 0;
     for dir in others {
-        let plain = plain(&dir);
+        let plain = plain(&dir).map_err(|failure| failure.to_string())?;
         if Sealing::of(&plain).map_err(|failure| failure.to_string())? != Sealing::Sealed {
             continue;
         }
@@ -161,8 +161,8 @@ fn sessions(home: &Home, current: &Path) -> Vec<SessionDir> {
 }
 
 /// The store `dir` keeps as it is, as the harness's default store does.
-fn plain(dir: &SessionDir) -> JsonlDirStore {
-    JsonlDirStore::new(dir.path()).with_plain(&SessionDir::PLAIN_FILES)
+fn plain(dir: &SessionDir) -> io::Result<DirStore> {
+    Ok(DirStore::open(dir.path())?)
 }
 
 /// `dir` with `suffix` after its name.
@@ -176,21 +176,29 @@ fn beside(dir: &Path, suffix: &str) -> PathBuf {
 /// with `to`, puts it in the session's place, and shreds the old files:
 /// its logs, blobs and files through the stores, and the plain files
 /// beside them as they are, but for the text log and the plain output
-/// and images an encrypted session keeps nowhere.
-fn reseal(dir: &SessionDir, from: &dyn JournalStore, to: &Crypt) -> io::Result<()> {
+/// and images (folders) an encrypted session keeps nowhere.
+fn reseal(dir: &SessionDir, from: &dyn Store, to: &Crypt) -> io::Result<()> {
     let staging = SessionDir::at(beside(dir.path(), ".sealing"));
     if staging.path().exists() {
         fs::remove_dir_all(staging.path())?;
     }
     fs::create_dir_all(staging.path())?;
-    let target = CryptStore::new(Arc::new(plain(&staging)), to.clone());
-    fork_session(from, &target, None)?;
+    let target = CryptStore::new(Arc::new(plain(&staging)?), to.clone());
+    for name in from.logs()? {
+        target.append_log(&name, &from.read_log(&name)?)?;
+    }
+    for name in from.blobs()? {
+        target.put_blob(&name, &from.blob(&name)?)?;
+    }
     for name in from.files()? {
         target.write_file(&name, &from.read_file(&name)?)?;
     }
-    for name in SessionDir::PLAIN_FILES {
-        let file = dir.path().join(name);
-        if file.is_file() && file != dir.log() {
+    for entry in fs::read_dir(dir.path())? {
+        let file = entry?.path();
+        if file.is_file()
+            && file != dir.log()
+            && let Some(name) = file.file_name()
+        {
             fs::copy(&file, staging.path().join(name))?;
         }
     }

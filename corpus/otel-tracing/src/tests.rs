@@ -4,10 +4,10 @@ use opentelemetry::Value;
 use opentelemetry::trace::Status;
 use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SpanData, SpanExporter};
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::Usage;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use schemars::JsonSchema;
 use serde_json::json;
 

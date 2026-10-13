@@ -23,14 +23,13 @@ use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
-use super::renderers::{
-    CallState, EntryRenderer, EntryView, ToolCallView, ToolRenderer, UNNAMED_HOLD,
-};
+use super::renderers::{CallState, EntryRenderer, ToolCallView, ToolRenderer, UNNAMED_HOLD};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{
-    Below, CallFacts, EntryRenderers, Inside, Look, Marks, Part, Renderers, StreamingCalls,
-    Transcript, call_lines, entry_lines, notice_lines, plain_lines,
+    Below, CallFacts, CallTree, ChildCalls, EntryRenderers, Inside, Look, Marks, Part, Renderers,
+    ShownNote, StreamingCalls, Transcript, call_lines, entry_lines, live_call, notice_lines,
+    plain_lines,
 };
 use super::view::{
     Continuation, DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot,
@@ -40,11 +39,12 @@ use super::wrap::wrap_all;
 use rig_core::message::{CallId, ToolCall};
 use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
-use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Started};
+use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
 use rig_ecs::tools::ToolRequest;
+use rig_ecs::turn::{ModelRequest, SentTo};
+use rig_harness::note::Note;
 use rig_harness::prelude::{CallOutput, ToolProgress};
 use rig_harness::primary::Shown;
-use rig_harness::transcript::{TranscriptEntries, TranscriptEntry};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -90,8 +90,6 @@ pub(crate) fn needs_redraw(
             Changed<Calls>,
             Changed<StatusItems>,
             Changed<TuiPanel>,
-            Changed<TranscriptEntry>,
-            Changed<TranscriptEntries>,
             Changed<EntryRenderer>,
         )>,
     >,
@@ -116,7 +114,6 @@ pub(crate) fn needs_redraw(
         RemovedComponents<StatusItems>,
         RemovedComponents<Holds>,
         RemovedComponents<ToolProgress>,
-        RemovedComponents<TranscriptEntry>,
         RemovedComponents<EntryRenderer>,
     ),
     mut paced: Local<Paced>,
@@ -128,7 +125,6 @@ pub(crate) fn needs_redraw(
         + removed.2.read().count()
         + removed.3.read().count()
         + removed.4.read().count()
-        + removed.5.read().count()
         > 0;
     let changed = requested
         || removed
@@ -329,9 +325,25 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) partial: Option<&'a Partial>,
     /// The tool calls it streams.
     pub(crate) streaming: Vec<ToolCall>,
-    /// Its entries, in order.
-    pub(crate) entries: Vec<(Entity, &'a TranscriptEntry)>,
+    /// The notes in its conversation, in the order put.
+    pub(crate) notes: Vec<ShownNote<'a>>,
+    /// The calls under each of its tool calls that started any.
+    pub(crate) children: ChildCalls,
 }
+
+/// An effect not settled yet, a tool or model call or any other, as
+/// [`TranscriptLayout`] reads it for [`ToolCallView::children`].
+type LiveEffect = (
+    Entity,
+    &'static Effect,
+    (
+        Option<&'static ToolRequest>,
+        Option<&'static ModelRequest>,
+        Option<&'static SentTo>,
+    ),
+    (Option<&'static ForAgent>, Option<&'static Outcome>),
+    (Has<Started>, Has<Partial>),
+);
 
 /// What the transcript is drawn from besides the agent.
 pub(crate) struct Sources<'a> {
@@ -339,7 +351,7 @@ pub(crate) struct Sources<'a> {
     pub(crate) view: &'a TranscriptView,
     /// The tool renderers by tool name.
     pub(crate) renderers: &'a Renderers<'a>,
-    /// The entry renderers by origin.
+    /// The entry renderers by plugin name.
     pub(crate) entry_renderers: &'a EntryRenderers<'a>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
@@ -377,11 +389,11 @@ pub(crate) struct Sources<'a> {
 #[derive(SystemParam)]
 pub struct TranscriptLayout<'w, 's> {
     agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
-    lists: Query<'w, 's, &'static TranscriptEntries>,
-    entries: Query<'w, 's, &'static TranscriptEntry>,
     pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
     turns: Query<'w, 's, &'static Calls>,
-    partials: Query<'w, 's, &'static Partial>,
+    /// The replies streaming in that nothing superseded, such as a race's
+    /// running members.
+    partials: Query<'w, 's, &'static Partial, Without<SupersededBy>>,
     accepted: Query<
         'w,
         's,
@@ -391,6 +403,8 @@ pub struct TranscriptLayout<'w, 's> {
     pub(crate) renderers: Query<'w, 's, Ref<'static, ToolRenderer>>,
     pub(crate) entry_renderers: Query<'w, 's, Ref<'static, EntryRenderer>>,
     calls: CallStates<'w, 's>,
+    live: Query<'w, 's, LiveEffect, Without<Settled>>,
+    names: Query<'w, 's, &'static Name>,
     facts: Res<'w, CallFacts>,
     streaming: Res<'w, StreamingCalls>,
 }
@@ -442,14 +456,16 @@ impl TranscriptLayout<'_, '_> {
         let (id, conversation) = self.agents.get(entity).ok()?;
         let turn = self.active.get(entity).ok();
         let calls = turn.and_then(|turn| self.turns.get(turn.turn()).ok());
+        // The newest of the turn's replies streaming in that nothing
+        // superseded: in a race, the member still running.
         let partial = calls.and_then(|calls| {
-            let mut streams = calls.iter();
-            streams.find_map(|call| Some((call, self.partials.get(call).ok()?)))
+            let streams = calls.iter();
+            let mut streams =
+                streams.filter_map(|call| Some((call, self.partials.get(call).ok()?)));
+            streams.next_back()
         });
         let streaming = partial.map(|(call, _)| self.streaming.of(call));
         let streaming = streaming.unwrap_or_default().iter();
-        let entries = self.lists.get(entity).into_iter();
-        let entries = entries.flat_map(TranscriptEntries::iter);
         let mut inbox: Vec<(&Effect, &Incoming)> = self
             .accepted
             .iter()
@@ -467,23 +483,54 @@ impl TranscriptLayout<'_, '_> {
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial: partial.map(|(_, partial)| partial),
             streaming: streaming.map(|(_, call)| call.clone()).collect(),
-            entries: entries
-                .filter_map(|entry| Some((entry, self.entries.get(entry).ok()?)))
+            notes: conversation
+                .asides()
+                .filter_map(|(id, aside)| {
+                    let note = Note::of(aside)?;
+                    Some(ShownNote { id, aside, note })
+                })
                 .collect(),
+            children: self.facts.children(&self.live_calls(), &id.0),
         })
     }
 
-    /// The tool renderers by tool name and the entry renderers by origin.
+    /// The effects not settled yet, by the effects that started them, the
+    /// calls standing as they stand now.
+    fn live_calls(&self) -> CallTree {
+        let mut live = CallTree::default();
+        for (entity, effect, requests, (agent, outcome), (started, streams)) in &self.live {
+            let state = match requests.0 {
+                Some(request) => self.calls.of([entity]).remove(&request.call.id),
+                None if outcome.is_some() => Some(CallState::Done),
+                None if streams => Some(CallState::Streaming),
+                None if started => Some(CallState::Running(None)),
+                None => None,
+            };
+            let agent = agent.map(|ForAgent(agent)| *agent);
+            let name = agent.and_then(|agent| self.names.get(agent).ok());
+            let state = state.unwrap_or(CallState::Waiting);
+            let child = live_call(requests, (name, outcome), state);
+            live.add(effect.parent, effect.id(), child, None);
+            let id = agent.and_then(|agent| self.agents.get(agent).ok());
+            if let (Some(request), Some((id, _))) = (requests.0, id) {
+                live.tool_call(effect.id(), &id.0, request.call.id.clone());
+            }
+        }
+        live
+    }
+
+    /// The tool renderers by tool name and the entry renderers by plugin
+    /// name.
     pub(crate) fn looks(&self) -> (Renderers<'_>, EntryRenderers<'_>) {
         let tools = self.renderers.iter().map(|renderer| {
             let renderer = renderer.into_inner();
             (renderer.tool.as_str(), &renderer.render)
         });
-        let origins = self.entry_renderers.iter().map(|renderer| {
+        let plugins = self.entry_renderers.iter().map(|renderer| {
             let renderer = renderer.into_inner();
-            (renderer.origin.as_str(), &renderer.render)
+            (renderer.plugin.as_str(), &renderer.render)
         });
-        (tools.collect(), origins.collect())
+        (tools.collect(), plugins.collect())
     }
 
     /// What settled calls published and how long they ran.
@@ -494,7 +541,7 @@ impl TranscriptLayout<'_, '_> {
 
 /// Brings `transcript` up to date with the agent shown and returns its
 /// parts at `width`: each message, with the notices written inside it,
-/// after the entries and notices written before it; then those after the
+/// after the notes and notices written before it; then those after the
 /// last message, the reply streaming in with the tool calls it streams,
 /// and the messages the agent accepted and has not sent yet. Without an
 /// agent, the notices about every agent.
@@ -517,10 +564,10 @@ pub(crate) fn lay_out_transcript(
         return parts;
     };
     let (conversation, count) = (shown.conversation, shown.conversation.messages().len());
-    // Entries and notices before the first message, after each message,
+    // Notes and notices before the first message, after each message,
     // and notices inside one.
     let mut after: Vec<Vec<(usize, &ShownNotice)>> = vec![Vec::new(); count + 1];
-    let mut entries_after: Vec<Vec<(Entity, &TranscriptEntry)>> = vec![Vec::new(); count + 1];
+    let mut notes_after: Vec<Vec<&ShownNote<'_>>> = vec![Vec::new(); count + 1];
     let mut look = Look {
         renderers: sources.renderers,
         entries: sources.entry_renderers,
@@ -531,6 +578,7 @@ pub(crate) fn lay_out_transcript(
         whole: sources.whole,
         note_cut: sources.note_cut,
         facts: sources.facts,
+        children: &shown.children,
     };
     for (at, notice) in view.notices().iter().enumerate() {
         let before = match notice.slot(shown.id, conversation) {
@@ -547,34 +595,28 @@ pub(crate) fn lay_out_transcript(
             after.push((at, notice));
         }
     }
-    for &(entity, entry) in &shown.entries {
-        let before = match TranscriptSlot::of_entry(entry, conversation) {
+    for note in &shown.notes {
+        let before = match TranscriptSlot::of_aside(note.aside, conversation) {
             TranscriptSlot::Top => 0,
             TranscriptSlot::After(index) => index + 1,
             TranscriptSlot::Inside(index, item) => {
                 let inside = look.inside.entry(index).or_default();
-                inside.push((item, Inside::Entry(entity, entry)));
+                inside.push((item, Inside::Note(note)));
                 continue;
             }
         };
-        if let Some(at) = entries_after.get_mut(before) {
-            at.push((entity, entry));
+        if let Some(at) = notes_after.get_mut(before) {
+            at.push(note);
         }
     }
     transcript.update(shown.entity, conversation, shown.changed, &look, width);
-    let mut after = after.into_iter().zip(entries_after);
+    let mut after = after.into_iter().zip(notes_after);
     for index in 0..=count {
-        let (notices, entries) = after.next().unwrap_or_default();
-        for (entity, entry) in entries {
-            let item = TranscriptItem::Entry(entity);
+        let (notices, notes) = after.next().unwrap_or_default();
+        for note in notes {
+            let item = note.item();
             let (drawn, cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                let entry = EntryView {
-                    origin: &entry.origin,
-                    title: &entry.title,
-                    text: &entry.text,
-                    expanded,
-                };
-                entry_lines(&entry, sources.entry_renderers)
+                entry_lines(&note.view(expanded), sources.entry_renderers)
             });
             let mut lines = vec![Line::default()];
             lines.extend(drawn);
@@ -892,7 +934,7 @@ pub(crate) fn render(
     {
         transcript.clear();
     }
-    let (by_tool, by_origin) = from.looks();
+    let (by_tool, by_plugin) = from.looks();
     let edit = view
         .choosing
         .as_ref()
@@ -919,7 +961,7 @@ pub(crate) fn render(
             let sources = Sources {
                 view: transcript_view,
                 renderers: &by_tool,
-                entry_renderers: &by_origin,
+                entry_renderers: &by_plugin,
                 facts: from.facts(),
                 whole: false,
                 note_cut: drawn.is_some(),
@@ -988,11 +1030,11 @@ pub(crate) fn render(
             }
             let shown = view
                 .choosing
-                .as_ref()
+                .as_mut()
                 .filter(|choosing| choosing.draft.is_none())
-                .and_then(|choosing| Some((choosing, choices.shown(choosing.entity)?)));
+                .and_then(|choosing| Some((choices.shown(choosing.entity)?, choosing)));
             match shown {
-                Some((choosing, shown)) => draw_choice(frame, choosing, &shown),
+                Some((shown, choosing)) => draw_choice(frame, choosing, &shown),
                 None if focus.0.is_some() => {}
                 None => {
                     if let Some(completion) = &view.completion {
@@ -1224,10 +1266,10 @@ fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
 }
 
 /// The status line's pieces, left and right: the app's items, the shown
-/// agent's and its turn's, by `order`, with `no agent` where an agent's
-/// model would be when none is shown.
+/// agent's and its turn's, by `order`, then name, with `no agent` where an
+/// agent's model would be when none is shown.
 fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, Vec<Piece>) {
-    let no_agent = StatusItem::at(Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
+    let no_agent = StatusItem::new("agent", Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
     let mut items: Vec<&StatusItem> = items
         .into_iter()
         .flatten()
@@ -1236,7 +1278,7 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
     if !shown {
         items.push(&no_agent);
     }
-    items.sort_by_key(|item| item.order);
+    items.sort_by_key(|item| (item.order, item.name));
     let piece = |item: &StatusItem| {
         let style = match item.tone {
             Tone::Plain => Style::new(),
@@ -1259,10 +1301,15 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
     )
 }
 
+/// The rows a picker's list keeps, at least, when a long body takes the
+/// rest of its box.
+const LEAST_LIST: usize = 3;
+
 /// The picker or question in a centred box over the transcript: its body,
-/// what is typed, then the rows it leaves, each with its detail at the
-/// right, and for free text, the typed answer.
-fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
+/// scrolled to `choosing.scroll` (kept within it), what is typed, then the
+/// rows it leaves, each with its detail at the right and, in a choice of
+/// several, its tick box; for free text, the typed answer.
+fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) {
     let area = frame.area();
     let width = area.width.saturating_mul(4) / 5;
     let body = wrap_all(
@@ -1279,39 +1326,59 @@ fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
         .max(5);
     let popup = area.centered(Constraint::Length(width), Constraint::Length(height));
     frame.render_widget(Clear, popup);
-    let action = if shown.free_text {
+    let inner = Block::bordered().inner(popup);
+    // The body takes what the typed line, a gap and the list's least
+    // leave, and scrolls when that is not all of it.
+    let list_least = rows.len().clamp(1, LEAST_LIST);
+    let room = usize::from(inner.height).saturating_sub(2 + list_least);
+    let body_height = body.len().min(room);
+    choosing.scroll = choosing.scroll.min(body.len() - body_height);
+    let mut keys = vec![if shown.free_text {
         "type to filter or answer"
     } else {
         "type to filter"
-    };
+    }];
+    if body_height < body.len() {
+        keys.push("Shift+↑↓ scrolls");
+    }
+    if shown.multiple {
+        keys.push("Tab ticks");
+    }
     let block = Block::bordered().title(format!(
-        " {} · {action}, Enter picks, Esc closes ",
-        shown.title
+        " {} · {}, Enter picks, Esc closes ",
+        shown.title,
+        keys.join(", ")
     ));
-    let inner = block.inner(popup);
     frame.render_widget(block, popup);
-    let body_height = u16::try_from(body.len())
-        .unwrap_or(u16::MAX)
-        .min(inner.height.saturating_sub(2) / 2);
-    let gap = u16::from(body_height > 0);
     let [body_area, _, typed, list] = Layout::vertical([
-        Constraint::Length(body_height),
-        Constraint::Length(gap),
+        Constraint::Length(u16::try_from(body_height).unwrap_or(u16::MAX)),
+        Constraint::Length(u16::from(body_height > 0)),
         Constraint::Length(1),
         Constraint::Min(1),
     ])
     .areas(inner);
-    frame.render_widget(Paragraph::new(body), body_area);
+    let scroll = u16::try_from(choosing.scroll).unwrap_or(u16::MAX);
+    frame.render_widget(Paragraph::new(body).scroll((scroll, 0)), body_area);
     frame.render_widget(Line::from(format!("› {}▏", choosing.filter)), typed);
     let width = usize::from(list.width);
     let items: Vec<Line<'static>> = rows
         .iter()
         .map(|row| match row {
-            Row::Item(index) => shown
-                .items
-                .get(*index)
-                .map(|item| item.line(width))
-                .unwrap_or_default(),
+            Row::Item(index) => {
+                let Some(item) = shown.items.get(*index) else {
+                    return Line::default();
+                };
+                if !shown.multiple {
+                    return item.line(width);
+                }
+                let tick = match choosing.ticked.contains(index) {
+                    true => "[x] ",
+                    false => "[ ] ",
+                };
+                let mut line = item.line(width.saturating_sub(tick.len()));
+                line.spans.insert(0, Span::from(tick));
+                line
+            }
             Row::Typed if choosing.filter.trim().is_empty() => {
                 Line::from("✎ or type an answer").dim()
             }
@@ -1339,7 +1406,7 @@ fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
             DeliveryMode::Queue => "after this turn",
             DeliveryMode::Note => "noted",
         };
-        let text = &message.text;
+        let text = message.text();
         let first = text.lines().next().unwrap_or_default();
         let more = if text.lines().nth(1).is_some() {
             " …"

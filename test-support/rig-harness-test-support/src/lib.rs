@@ -2,7 +2,8 @@
 //! in a session directory, scripted models as the catalog's DeepSeek model
 //! or under references of their own, their replies, collectors of what the
 //! app wrote, a front that answers questions from a script
-//! ([`AnswerAsks`]) or one at a time ([`answer_open`]), and the clocks
+//! ([`AnswerAsks`]) or one at a time ([`answer_open`]), the terminal view
+//! without a terminal ([`tui_view`], driven by [`press`]), and the clocks
 //! moved on.
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -12,7 +13,6 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use bevy_time::TimeUpdateStrategy;
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::effect::EffectId;
 use rig_core::message::{Message as ChatMessage, ToolFunction, ToolName};
@@ -30,6 +30,8 @@ use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness::host::session::{SessionPaths, SessionPlugin};
 use rig_harness::services::RigHome;
 use rig_harness::settings::Settings;
+/// The store a test keeps its session in ([`app_on`]).
+pub use rig_memory::MemoryStore;
 
 /// How long a test waits for its agents.
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -85,27 +87,22 @@ pub fn first_agent(world: &mut World) -> Option<Entity> {
     agents.iter(world).next()
 }
 
-/// Adds `message` to the conversation of `agent` as `Commit::message`
-/// does, such as an earlier exchange a test starts from.
+/// Adds `message` to the conversation of `agent`, such as an earlier
+/// exchange a test starts from.
 ///
 /// # Errors
 ///
-/// When the system that commits it cannot run.
+/// When `agent` has no conversation.
 pub fn commit_message(
     world: &mut World,
     agent: Entity,
     message: ChatMessage,
 ) -> Result<(), String> {
-    let add = |In((agent, message)): In<(Entity, ChatMessage)>,
-               mut agents: Query<&mut Conversation>,
-               mut commit: Commit| {
-        if let Ok(mut conversation) = agents.get_mut(agent) {
-            commit.message(agent, &mut conversation, message);
-        }
-    };
-    world
-        .run_system_cached_with(add, (agent, message))
-        .map_err(|error| error.to_string())
+    let mut conversation = world
+        .get_mut::<Conversation>(agent)
+        .ok_or_else(|| format!("{agent} has no conversation"))?;
+    conversation.push(message);
+    Ok(())
 }
 
 /// How each turn ended, in the order they ended, kept by [`log_ended`].
@@ -174,7 +171,7 @@ pub fn scripted_models<'a>(
 pub struct Collected<M>(pub Vec<M>);
 
 /// Keeps every message `M` the app writes, such as [`Notice`] or
-/// [`Recorded`], in [`Collected<M>`], read in `Last`.
+/// [`EffectRecorded`], in [`Collected<M>`], read in `Last`.
 pub fn collect<M: Message + Clone>(app: &mut App) -> &mut App {
     let keep = |mut read: MessageReader<M>, mut kept: ResMut<Collected<M>>| {
         kept.0.extend(read.read().cloned());
@@ -334,4 +331,32 @@ fn answer_asks(
             decision.decide(Decider::Person, answer.outcome());
         }
     }
+}
+
+/// The terminal view on `app`, as in a run at the terminal but with no
+/// terminal: its input, key bindings, completion, pickers and questions,
+/// and the transcript it lays out, driven by the keys [`press`] puts in.
+/// Adds the [`TuiPlugin`](rig_tui::TuiPlugin) when the app has none.
+pub fn tui_view(app: &mut App) -> &mut App {
+    if !app.is_plugin_added::<rig_tui::TuiPlugin>() {
+        app.add_plugins(rig_tui::TuiPlugin);
+    }
+    rig_tui::add_view(app);
+    app
+}
+
+/// Presses `keys`, such as `esc 0 d w` or `ctrl+x ctrl+e`, in one frame of
+/// the terminal view ([`tui_view`]), then runs that frame.
+pub fn press(app: &mut App, keys: &str) {
+    use rig_tui::crossterm::event::{Event, KeyEvent};
+    use rig_tui::{KeyInput, Keys, TerminalEvents};
+
+    let parsed: Result<Keys, String> = keys.parse();
+    assert!(parsed.is_ok(), "{keys}: {parsed:?}");
+    let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+    for press in parsed.iter().flat_map(Keys::presses) {
+        let key = KeyEvent::new(press.code, press.modifiers);
+        events.0.push(KeyInput::Event(Event::Key(key)));
+    }
+    app.update();
 }

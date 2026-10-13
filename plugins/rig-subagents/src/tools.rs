@@ -196,12 +196,12 @@ fn send_briefs(
             let names: Vec<String> = siblings.iter().map(|(_, peer)| named(*peer)).collect();
             if !names.is_empty() {
                 let peers = format!("\n\nYour peers, by id: {}.", names.join(", "));
-                brief.message.text.push_str(&peers);
+                brief.message.text_mut().push_str(&peers);
             }
             for (sibling, _) in siblings.iter().filter(|(_, (.., briefing))| !briefing) {
                 let text = format!("A new peer works beside you: {}.", named(me));
                 let note = Deliver::new(*sibling, text, DeliveryMode::Note);
-                commands.trigger(note.with_origin(Origin::plugin("subagents")));
+                commands.trigger(note.with_author(Author::plugin("subagents")));
             }
         }
         commands.entity(child).remove::<Brief>();
@@ -246,7 +246,7 @@ impl Agents<'_, '_> {
             .map(|(sent, ..)| sent)
             .collect();
         let read = |request: &&Request| {
-            let named = |sent: &&Incoming| sent.origin.request.as_ref() == Some(&request.id);
+            let named = |sent: &&Incoming| sent.author.request.as_ref() == Some(&request.id);
             !unread.iter().any(named)
         };
         let owed = self.open.get(caller).into_iter();
@@ -335,13 +335,13 @@ impl Agents<'_, '_> {
             if !busy {
                 entity.insert(EffectParent(called.effect));
             }
-            let origin = Origin::agent(called.caller.clone(), Some(request));
+            let author = Author::agent(called.caller.clone(), Some(request));
             let mode = match waiting {
                 true => DeliveryMode::Steer,
                 false => DeliveryMode::Queue,
             };
             let request = Deliver::new(target.entity, text, mode);
-            self.commands.trigger(request.with_origin(origin));
+            self.commands.trigger(request.with_author(author));
             match (waiting, busy) {
                 (true, _) => "now; it was waiting for you.",
                 (false, true) => "to read after its current work.",
@@ -358,7 +358,7 @@ impl Agents<'_, '_> {
     fn came(&mut self, agent: Entity, from: &AgentId) -> Option<bool> {
         let mut came = None;
         for (mut sent, to, accepted) in &mut self.inboxes {
-            if to.0 != agent || sent.origin.from.as_deref() != Some(from.0.as_str()) {
+            if to.0 != agent || sent.author.from.as_deref() != Some(from.0.as_str()) {
                 continue;
             }
             came = Some(came == Some(true) || accepted);

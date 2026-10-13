@@ -9,9 +9,10 @@ use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use rig_cassette::journal::short_id;
+use rig_core::conversation::short_id;
 use rig_core::message::{DocumentData, DocumentSourceKind, Image, MimeType, ToolResultContent};
 use rig_harness::prelude::*;
+use rig_harness::rig_memory::summary_author;
 use serde_json::{Value, json};
 
 use super::{Export, ExportedAgent, ModelCall};
@@ -19,8 +20,9 @@ use super::{Export, ExportedAgent, ModelCall};
 /// The `format` field of an export's JSON. Its shape:
 ///
 /// ```json
-/// { "format": "rig-export/1",
-///   "session": { "id": "…", "name": "…", "started_ms": 1760000000000 },
+/// { "format": "rig-export/2",
+///   "session": { "id": "…", "name": "…", "started_ms": 1760000000000,
+///                "left_out": ["a log that could not be read (why)"] },
 ///   "models": ["vendor/model"],
 ///   "agents": [{
 ///     "id": "…", "parent": "…" | null,
@@ -32,9 +34,9 @@ use super::{Export, ExportedAgent, ModelCall};
 ///                 "usage": rig-core Usage (tokens, cost), "response_id": "…" | null,
 ///                 "disposition": "ran" | "superseded" | … }],
 ///     "messages": [rig-core Message, …],
-///     "origins": [{ "message": 0, "item": 0, "origin": Origin }] }] }
+///     "authors": [{ "message": 0, "author": Author }] }] }
 /// ```
-pub const JSON_FORMAT: &str = "rig-export/1";
+pub const JSON_FORMAT: &str = "rig-export/2";
 
 /// Most characters of a tool result shown in Markdown and HTML.
 const RESULT_CHARS: usize = 2000;
@@ -132,6 +134,9 @@ fn walk_session(sink: &mut dyn Sink, session: &Export) {
     if let Some(started) = session.started_ms {
         rows.push(("Started", utc(started / 1000)));
     }
+    if !session.left_out.is_empty() {
+        rows.push(("Left out", session.left_out.join("; ")));
+    }
     sink.header(&session.name, &rows);
     let mut walked = HashSet::new();
     let roots = session.agents.iter().filter(|agent| {
@@ -177,9 +182,9 @@ fn walk<'s>(
     for (at, message) in conversation.messages().iter().enumerate() {
         match message {
             message::Message::User { content } => {
-                for (item, content) in content.iter().enumerate() {
-                    let origin = conversation.origin(at, item);
-                    user_content(sink, content, origin);
+                let author = conversation.author(at);
+                for content in content {
+                    user_content(sink, content, author);
                     // A subagent follows the result of the call that
                     // spawned it.
                     if let UserContent::ToolResult(result) = content {
@@ -223,12 +228,12 @@ fn walk<'s>(
     sink.close();
 }
 
-fn user_content(sink: &mut dyn Sink, content: &UserContent, origin: Option<&Origin>) {
-    let summary = origin.is_some_and(|origin| *origin == Origin::plugin("compaction"));
+fn user_content(sink: &mut dyn Sink, content: &UserContent, author: Option<&Author>) {
+    let summary = author.is_some_and(|author| *author == summary_author());
     match content {
         // A compaction's summary, which stands for the messages it replaced.
         UserContent::Text(text) if summary => sink.summary(&text.text),
-        UserContent::Text(text) => sink.text(&sender(origin), &text.text),
+        UserContent::Text(text) => sink.text(&sender(author), &text.text),
         UserContent::ToolResult(result) => {
             let mut text = String::new();
             for part in &result.content {
@@ -246,37 +251,38 @@ fn user_content(sink: &mut dyn Sink, content: &UserContent, origin: Option<&Orig
             DocumentData::Text(text) => sink.text("Attached document", text),
             DocumentData::File(source) => sink.text("Attached document", &source.to_string()),
         },
-        UserContent::Audio(_) => sink.text(&sender(origin), "[audio]"),
-        UserContent::Video(_) => sink.text(&sender(origin), "[video]"),
+        UserContent::Audio(_) => sink.text(&sender(author), "[audio]"),
+        UserContent::Video(_) => sink.text(&sender(author), "[video]"),
     }
 }
 
-/// Who a user message's item is from.
-fn sender(origin: Option<&Origin>) -> String {
-    let Some(origin) = origin else {
+/// Who a user message is from.
+fn sender(author: Option<&Author>) -> String {
+    let Some(author) = author else {
         return "User".to_owned();
     };
-    let from = origin.from.as_deref().map(|from| short_id(from).to_owned());
-    match (&origin.kind, from) {
-        (OriginKind::User, _) => "User".to_owned(),
-        (OriginKind::Agent, Some(from)) => format!("Agent {from}"),
-        (OriginKind::Agent, None) => "An agent".to_owned(),
-        (OriginKind::Plugin(name), _) => format!("Plugin {name}"),
+    let from = author.from.as_deref().map(|from| short_id(from).to_owned());
+    match (&author.kind, from) {
+        (AuthorKind::User, _) => "User".to_owned(),
+        (AuthorKind::Agent, Some(from)) => format!("Agent {from}"),
+        (AuthorKind::Agent, None) => "An agent".to_owned(),
+        (AuthorKind::Plugin(name), _) => format!("Plugin {name}"),
+        (AuthorKind::Rig, _) => "Rig".to_owned(),
     }
 }
 
 /// The call that spawned `agent` and its task's title: the request and
-/// title of its first message, its brief, when its parent sent it.
+/// title of its brief, among the user messages it starts with, when its
+/// parent sent it.
 fn spawned_by(agent: &ExportedAgent) -> Option<(String, Option<String>)> {
-    let first = match agent.saved.conversation.messages().first()? {
-        message::Message::User { content } => content.len(),
-        _ => 0,
-    };
-    (0..first).find_map(|item| {
-        let origin = agent.saved.conversation.origin(0, item)?;
-        let from_parent = origin.from.is_some() && origin.from == agent.saved.parent;
-        let request = origin.request.as_ref().filter(|_| from_parent)?;
-        Some((request.0.clone(), origin.title.clone()))
+    let conversation = &agent.saved.conversation;
+    let first = conversation
+        .entries()
+        .take_while(|entry| matches!(entry.message, message::Message::User { .. }));
+    first.filter_map(|entry| entry.author).find_map(|author| {
+        let from_parent = author.from.is_some() && author.from == agent.saved.parent;
+        let request = author.request.as_ref().filter(|_| from_parent)?;
+        Some((request.0.clone(), author.title.clone()))
     })
 }
 
@@ -312,19 +318,13 @@ fn to_json(session: &Export) -> Value {
         .map(|agent| {
             let spawned = spawned_by(agent);
             let messages = agent.saved.conversation.messages();
-            let origins: Vec<Value> = messages
-                .iter()
-                .enumerate()
-                .flat_map(|(at, message)| {
-                    let items = match message {
-                        message::Message::User { content } => content.len(),
-                        _ => 0,
-                    };
-                    (0..items).map(move |item| (at, item))
-                })
-                .filter_map(|(at, item)| {
-                    let origin = agent.saved.conversation.origin(at, item)?;
-                    Some(json!({ "message": at, "item": item, "origin": origin }))
+            let authors: Vec<Value> = agent
+                .saved
+                .conversation
+                .entries()
+                .filter_map(|entry| {
+                    let author = entry.author?;
+                    Some(json!({ "message": entry.index, "author": author }))
                 })
                 .collect();
             json!({
@@ -338,13 +338,16 @@ fn to_json(session: &Export) -> Value {
                 "usage": agent.totals(),
                 "calls": agent.calls.iter().map(call_json).collect::<Vec<_>>(),
                 "messages": messages,
-                "origins": origins,
+                "authors": authors,
             })
         })
         .collect();
     json!({
         "format": JSON_FORMAT,
-        "session": { "id": session.id, "name": session.name, "started_ms": session.started_ms },
+        "session": {
+            "id": session.id, "name": session.name, "started_ms": session.started_ms,
+            "left_out": session.left_out,
+        },
         "models": models(session),
         "agents": agents,
     })

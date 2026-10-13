@@ -119,7 +119,10 @@ impl Plugin for MapReducePlugin {
             )
             .add_systems(Update, retire_orphans.before(AgentLoop));
         #[cfg(feature = "tui")]
-        app.add_systems(PostUpdate, show_progress.in_set(rig_tui::StatusSystems));
+        app.add_systems(
+            PostUpdate,
+            show_progress.in_set(rig_tui::StatusSystems::Show),
+        );
     }
 }
 
@@ -397,7 +400,6 @@ fn on_spawned(
     settled: On<Add<Settled>>,
     requests: Query<(&MapRequest, &Outcome, Option<&SpawnedAgent>)>,
     mut jobs: Query<(&mut MapJob, &mut Decision), ToolCalls>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     let Ok((MapRequest { job, path }, outcome, spawned)) = requests.get(settled.entity) else {
@@ -407,7 +409,7 @@ fn on_spawned(
     let Some((mut map, mut decision)) = jobs.get_mut(job).ok().filter(|(map, _)| !map.finished)
     else {
         if let Some(&SpawnedAgent(agent)) = spawned {
-            commit.retire(agent);
+            commands.trigger(Retire { entity: agent });
         }
         return;
     };
@@ -464,9 +466,9 @@ fn on_worker_end(
         return;
     };
     let result = match outcome {
-        TurnOutcome::Answered(message) => {
-            final_answer(message).ok_or_else(|| "ended without a final message".to_owned())
-        }
+        TurnOutcome::Answered(message) => message
+            .final_answer()
+            .ok_or_else(|| "ended without a final message".to_owned()),
         TurnOutcome::Failed(why) => Err(short(why)),
         TurnOutcome::Stopped(None) => Err("stopped".to_owned()),
         TurnOutcome::Stopped(Some(why)) => Err(format!("stopped: {why}")),
@@ -483,7 +485,6 @@ fn on_job_end(
     settled: On<Add<Settled>>,
     mut jobs: Query<(&mut MapJob, Option<&Workers>, Option<&Children>)>,
     open: Query<(), (With<MapRequest>, Without<Settled>)>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     let Ok((mut job, workers, children)) = jobs.get_mut(settled.entity) else {
@@ -491,7 +492,7 @@ fn on_job_end(
     };
     job.finished = true;
     for worker in workers.into_iter().flat_map(Workers::iter) {
-        commit.retire(worker);
+        commands.trigger(Retire { entity: worker });
     }
     let children = children.into_iter().flat_map(|children| children.iter());
     for request in children.filter(|&request| open.contains(request)) {
@@ -582,10 +583,10 @@ fn same_file(named: &Path, allowed: &Path) -> bool {
 /// so its restored turn never goes on.
 fn retire_orphans(
     restored: Query<Entity, (Added<WasMapWorker>, Without<WorkerOf>)>,
-    mut commit: Commit,
+    mut commands: Commands,
 ) {
     for worker in &restored {
-        commit.retire(worker);
+        commands.trigger(Retire { entity: worker });
     }
 }
 
@@ -597,7 +598,7 @@ fn show_progress(
 ) {
     use rig_tui::{Side, StatusItem, Tone};
     /// After the agent's subagents at work; gone just before them.
-    const PROGRESS: StatusItem = StatusItem::at(Side::Left, 65, 14);
+    const PROGRESS: StatusItem = StatusItem::new("map-reduce", Side::Left, 65, 14);
     for (job, &CallOf(turn)) in &jobs {
         if let Ok(mut items) = turns.get_mut(turn) {
             let text = match job.finished {

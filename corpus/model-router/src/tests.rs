@@ -1,8 +1,8 @@
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::ReasoningSupport;
 use rig_core::completion::{CompletionRequest, Effort as Level, Reasoning};
 use rig_core::effect::model_key;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply, run_until,
     scripted_models,
@@ -56,7 +56,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
         )
         .init_resource::<Ended>()
         .add_observer(log_ended);
-    collect::<Recorded>(&mut app);
+    collect::<EffectRecorded>(&mut app);
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
@@ -109,11 +109,11 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
     );
     let completions: Vec<_> = app
         .world()
-        .resource::<Collected<Recorded>>()
+        .resource::<Collected<EffectRecorded>>()
         .0
         .iter()
-        .filter(|Recorded(record)| record.kind.name() == "completion")
-        .map(|Recorded(record)| record.key.clone())
+        .filter(|EffectRecorded(record)| record.kind.name() == "completion")
+        .map(|EffectRecorded(record)| record.key.clone())
         .collect();
     assert_eq!(
         completions,

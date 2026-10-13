@@ -5,6 +5,12 @@
 //! over. The user's choice is a [`Pick`](rig_harness::pick::Pick), which the harness
 //! carries out.
 //!
+//! A picker or question that takes several items shows a tick box on each:
+//! Tab ticks the selected item and moves on, and Enter answers the ticked
+//! ones, or the selected one when none is ticked. A long body above the
+//! list scrolls with Shift+Up and Shift+Down; PageUp and PageDown page the
+//! list.
+//!
 //! A question with initial text or a multi-line answer is answered in the
 //! input instead: its text replaces the draft until Enter answers or Esc
 //! refuses, and the draft comes back. A question shown beside the work
@@ -38,6 +44,11 @@ pub(crate) struct Choosing {
     pub(crate) filter: String,
     /// The selected position among the visible rows.
     pub(crate) selected: usize,
+    /// The positions of the items ticked, in a choice of several, in list
+    /// order.
+    pub(crate) ticked: Vec<usize>,
+    /// The body's first row shown, which drawing keeps within the body.
+    pub(crate) scroll: usize,
     /// For a question answered in the input, what was typed there before,
     /// which comes back once it is answered.
     pub(crate) draft: Option<String>,
@@ -49,6 +60,8 @@ pub(crate) struct Listing<'a> {
     pub(crate) body: &'a str,
     pub(crate) items: Vec<Item<'a>>,
     pub(crate) free_text: bool,
+    /// Whether several items may be ticked.
+    pub(crate) multiple: bool,
     pub(crate) selected: usize,
     /// For a question answered in the input, the text it starts from.
     pub(crate) edit: Option<&'a str>,
@@ -59,6 +72,8 @@ pub(crate) struct Item<'a> {
     pub(crate) label: &'a str,
     /// What is shown beside the label, such as a session's age.
     pub(crate) detail: Option<&'a str>,
+    /// Whether it is ticked at first, in a choice of several.
+    pub(crate) checked: bool,
 }
 
 impl Item<'_> {
@@ -126,9 +141,11 @@ impl Choices<'_, '_> {
                     .map(|item| Item {
                         label: &item.label,
                         detail: item.detail.as_deref(),
+                        checked: item.checked,
                     })
                     .collect(),
                 free_text: picker.free_text,
+                multiple: picker.multiple,
                 selected: picker.selected,
                 edit: None,
             });
@@ -143,9 +160,11 @@ impl Choices<'_, '_> {
                 .map(|choice| Item {
                     label: &choice.label,
                     detail: None,
+                    checked: false,
                 })
                 .collect(),
             free_text: ask.free_text,
+            multiple: ask.multiple,
             selected: 0,
             // One beside the work is answered in the input once the user
             // chooses to type the answer.
@@ -216,10 +235,14 @@ pub(crate) fn show_first(view: &mut TuiView, choices: &Choices, input: &mut TuiI
             input.set(initial);
             draft
         });
+        let items = shown.items.iter().enumerate();
+        let ticked = items.filter(|(_, item)| shown.multiple && item.checked);
         Some(Choosing {
             entity,
             filter: String::new(),
             selected: shown.selected.min(shown.items.len().saturating_sub(1)),
+            ticked: ticked.map(|(index, _)| index).collect(),
+            scroll: 0,
             draft,
         })
     });
@@ -233,9 +256,12 @@ pub(crate) fn choice_key(
     shown: &Listing<'_>,
 ) -> Option<Option<Chosen>> {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     let rows = shown.rows(&choosing.filter);
     let last = rows.len().saturating_sub(1);
     match key.code {
+        KeyCode::Up if shift => choosing.scroll = choosing.scroll.saturating_sub(1),
+        KeyCode::Down if shift => choosing.scroll = choosing.scroll.saturating_add(1),
         KeyCode::Esc => return Some(None),
         KeyCode::Char('c') if control => return Some(None),
         KeyCode::Char(_) if control || key.modifiers.contains(KeyModifiers::ALT) => {}
@@ -251,8 +277,23 @@ pub(crate) fn choice_key(
         KeyCode::Down => choosing.selected = (choosing.selected + 1).min(last),
         KeyCode::PageUp => choosing.selected = choosing.selected.saturating_sub(PAGE),
         KeyCode::PageDown => choosing.selected = (choosing.selected + PAGE).min(last),
+        KeyCode::Tab if shown.multiple => {
+            if let Some(Row::Item(index)) = rows.get(choosing.selected) {
+                match choosing.ticked.binary_search(index) {
+                    Ok(at) => {
+                        choosing.ticked.remove(at);
+                    }
+                    Err(at) => choosing.ticked.insert(at, *index),
+                }
+                choosing.selected = (choosing.selected + 1).min(last);
+            }
+        }
         KeyCode::Enter => {
             return match rows.get(choosing.selected)? {
+                Row::Item(_) if shown.multiple && !choosing.ticked.is_empty() => {
+                    Some(Some(Chosen::Items(choosing.ticked.clone())))
+                }
+                Row::Item(index) if shown.multiple => Some(Some(Chosen::Items(vec![*index]))),
                 Row::Item(index) => Some(Some(Chosen::Item(*index))),
                 Row::Typed if choosing.filter.trim().is_empty() => None,
                 Row::Typed => Some(Some(Chosen::Text(choosing.filter.trim().to_owned()))),

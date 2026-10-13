@@ -1,14 +1,13 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 
 use super::*;
 use rig_harness_test_support::{
-    Collected, app_on, calls, collect, reply, run_until, scripted_models,
+    Collected, MemoryStore, app_on, calls, collect, reply, run_until, scripted_models,
 };
 
 /// What `file.txt` in the project held as the apply started.

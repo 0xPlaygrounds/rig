@@ -14,7 +14,7 @@ use rig_tui::{
 use super::{QueueNote, QueuedTask, RunningTurns, TaskQueue, TaskState, line, live_cost};
 
 /// After the other agents at work; gone early when the line is narrow.
-const QUEUE_ITEM: StatusItem = StatusItem::at(Side::Left, 75, 9);
+const QUEUE_ITEM: StatusItem = StatusItem::new("sn-task-queue", Side::Left, 75, 9);
 
 /// The most task rows the panel takes.
 const ROWS: usize = 8;
@@ -32,7 +32,7 @@ pub(super) fn add(app: &mut App) {
                 place_panel.run_if(resource_changed::<TaskQueue>),
                 draw.in_set(TuiSystems::Draw),
                 status
-                    .in_set(StatusSystems)
+                    .in_set(StatusSystems::Show)
                     .run_if(resource_changed::<TaskQueue>.or_eager(resource_changed::<QueueNote>)),
             ),
         );

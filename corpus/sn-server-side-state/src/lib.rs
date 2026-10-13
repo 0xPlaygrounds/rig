@@ -199,25 +199,20 @@ struct ChainHint {
 fn chain_calls(
     mut committed: MessageReader<Committed>,
     mut calls: Query<(&ForAgent, &mut Adapters), (Added<Admitted>, With<TurnCall>, ModelCalls)>,
-    mut chains: Query<(&Conversation, &mut ServerChain)>,
+    mut chains: Query<&mut ServerChain, With<Conversation>>,
     vendors: Res<StatefulVendors>,
 ) {
     for change in committed.read() {
-        let Committed::Splice { agent, changed, .. } = change else {
+        let Change::Splice { .. } = &change.change.change else {
             continue;
         };
-        let Ok((conversation, mut chain)) = chains.get_mut(*agent) else {
+        let Ok(mut chain) = chains.get_mut(change.agent) else {
             continue;
         };
         if chain.link.is_none() {
             continue;
         }
-        let summary = rig_compaction::summary_origin();
-        let condensed = changed
-            .iter()
-            .filter_map(|id| conversation.index_of(*id))
-            .any(|at| conversation.origin(at, 0) == Some(&summary));
-        let note = if condensed {
+        let note = if rig_compaction::summary_in(&change.change.change).is_some() {
             "conversation condensed"
         } else {
             "conversation edited"
@@ -225,7 +220,7 @@ fn chain_calls(
         chain.note = Some(note.to_owned());
     }
     for (&ForAgent(agent), mut adapters) in &mut calls {
-        let Ok((_, chain)) = chains.get(agent) else {
+        let Ok(chain) = chains.get(agent) else {
             continue;
         };
         let hint = ChainHint {

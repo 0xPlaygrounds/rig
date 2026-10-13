@@ -11,70 +11,506 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use bevy_ecs::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Line;
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{CallId, ToolCall, ToolFunction, ToolResult, UserContent};
+use rig_core::error::ErrorReport;
+use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
 use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
 use rig_core::tool::ToolResultContext;
 
 use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
-    CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
-    result_style, result_text,
+    CallState, ChildCall, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView,
+    excerpt, result_style, result_text,
 };
 use super::view::{
     Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, ShownNotice, TranscriptItem,
 };
 use super::wrap::wrap;
-use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
-use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
-use rig_ecs::stage::{Published, Settled, Started};
+use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
+use rig_ecs::agent::{AgentId, Conversation, NoticeLevel, Partial};
+use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind};
+use rig_ecs::stage::{EffectRecorded, Outcome};
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::StreamDelta;
-use rig_harness::transcript::TranscriptEntry;
+use rig_ecs::turn::{ModelRequest, SentTo, StreamDelta};
+use rig_harness::note::Note;
 use rig_tools::attach::attached_file;
 
 /// The tool renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
 
-/// The entry renderers by origin.
+/// The entry renderers by plugin name.
 pub(crate) type EntryRenderers<'a> = HashMap<&'a str, &'a Arc<RenderEntry>>;
 
 /// An item's rows (or lines) within a part.
 pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
 
-/// What this run knows of the tool calls that settled in it: what each
-/// published and how long it ran, by call id.
+/// What the view knows of the effects that settled, in this run and, once
+/// [`PastEffects`] brought them, before it: what each tool call published
+/// and how long it ran, by call id; and which calls each effect started,
+/// through any effect between, for [`ToolCallView::children`]. All of it
+/// comes from the kernel's effect records.
 #[derive(Resource, Default)]
-pub(crate) struct CallFacts(HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>);
+pub(crate) struct CallFacts {
+    /// This run's effects, noted as they settle.
+    run: Settled,
+    /// The effects before this run, as [`PastEffects`] brought them.
+    past: Arc<Settled>,
+    /// Each agent's name by its id, as last named: a record names its
+    /// agent by id, and a helper may be gone by the time it is drawn.
+    names: HashMap<String, String>,
+    /// How many times what it knows changed, so a look tells a change by
+    /// this alone.
+    changes: u64,
+    /// The calls under each tool call of an agent that started any, by the
+    /// agent's id, as the settled effects say: worked out when first asked
+    /// for after a change, not every frame.
+    children: Mutex<HashMap<String, Arc<CallsUnder>>>,
+}
+
+/// The calls under each tool call that started any, by its call id.
+pub(crate) type CallsUnder = BTreeMap<CallId, Vec<ChildCall>>;
 
 impl CallFacts {
     /// What `call` published and how long it ran, as far as known.
     fn of(&self, call: &CallId) -> (Option<&ToolResultContext>, Option<Duration>) {
-        self.0
-            .get(call)
-            .map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
+        let facts = self.run.facts.get(call);
+        let facts = facts.or_else(|| self.past.facts.get(call));
+        facts.map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
+    }
+
+    /// Notes the effect `record` settled in this run.
+    fn note(&mut self, record: &EffectRecord) {
+        if self.run.note(record) {
+            self.changed();
+        }
+    }
+
+    /// Takes over the effects before this run; a later batch replaces it.
+    fn take_past(&mut self, past: Arc<Settled>) {
+        self.past = past;
+        self.changed();
+    }
+
+    /// Notes that the agent with the id `agent` is called `name`; whether
+    /// that is new.
+    pub(crate) fn name(&mut self, agent: &str, name: &str) -> bool {
+        if self.names.get(agent).is_some_and(|known| known == name) {
+            return false;
+        }
+        self.names.insert(agent.to_owned(), name.to_owned());
+        self.changed();
+        true
+    }
+
+    /// Notes a change: what was worked out from before it is gone.
+    fn changed(&mut self) {
+        self.changes = self.changes.wrapping_add(1);
+        self.children
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+    }
+
+    /// The calls under each tool call of the agent with the id `agent`
+    /// that started any, as the settled effects and the `live` ones (not
+    /// settled) say: each call after the one that started it, in the order
+    /// they were made, through any effect between that is no call. What
+    /// the settled effects say is worked out once per change; over it, the
+    /// tool calls a live effect is under, which change as it runs.
+    pub(crate) fn children(&self, live: &CallTree, agent: &str) -> ChildCalls {
+        let settled = self.settled_children(agent);
+        let trees = [&self.past.calls, &self.run.calls, live];
+        // Every live effect, and every effect it is under.
+        let mut above = HashSet::new();
+        for &effect in live.parents.keys() {
+            let mut at = Some(effect);
+            while let Some(effect) = at.filter(|&effect| above.insert(effect)) {
+                at = trees
+                    .iter()
+                    .find_map(|tree| tree.parents.get(&effect).copied());
+            }
+        }
+        let mut live = CallsUnder::new();
+        for parent in above {
+            let starts_any = trees.iter().any(|tree| tree.children.contains_key(&parent));
+            match tool_call(&trees, parent) {
+                Some((of, call)) if **of == *agent && starts_any && !live.contains_key(call) => {
+                    live.insert(call.clone(), self.below(&trees, parent));
+                }
+                _ => {}
+            }
+        }
+        ChildCalls { settled, live }
+    }
+
+    /// What [`Self::children`] works out from the settled effects alone.
+    fn settled_children(&self, agent: &str) -> Arc<CallsUnder> {
+        let mut known = self.children.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(found) = known.get(agent) {
+            return Arc::clone(found);
+        }
+        let trees = [&self.past.calls, &self.run.calls];
+        let mut found = CallsUnder::new();
+        for parent in trees.iter().flat_map(|tree| tree.children.keys()) {
+            match tool_call(&trees, *parent) {
+                Some((of, call)) if **of == *agent && !found.contains_key(call) => {
+                    found.insert(call.clone(), self.below(&trees, *parent));
+                }
+                _ => {}
+            }
+        }
+        let found = Arc::new(found);
+        known.insert(agent.to_owned(), Arc::clone(&found));
+        found
+    }
+
+    /// The calls under `parent`, as `trees` say.
+    fn below(&self, trees: &[&CallTree], parent: EffectId) -> Vec<ChildCall> {
+        let mut out = Vec::new();
+        self.add_below(trees, parent, 0, &mut HashSet::from([parent]), &mut out);
+        out
+    }
+
+    /// Adds the calls under `parent`, `depth` below the tool call, to
+    /// `out`, each followed by those under it; an effect that is no call
+    /// adds those under it at its own depth. `seen` guards against an
+    /// effect named as its own ancestor, and an effect two trees hold
+    /// counts once.
+    fn add_below(
+        &self,
+        trees: &[&CallTree],
+        parent: EffectId,
+        depth: usize,
+        seen: &mut HashSet<EffectId>,
+        out: &mut Vec<ChildCall>,
+    ) {
+        let children = trees.iter().filter_map(|tree| tree.children.get(&parent));
+        let mut children: Vec<&Child> = children.flatten().collect();
+        children.sort_by_key(|child| child.id);
+        for child in children {
+            if !seen.insert(child.id) {
+                continue;
+            }
+            let Some(call) = &child.call else {
+                self.add_below(trees, child.id, depth, seen, out);
+                continue;
+            };
+            let name = child
+                .agent
+                .as_deref()
+                .and_then(|agent| self.names.get(agent));
+            out.push(ChildCall {
+                depth,
+                agent: name.cloned().or_else(|| call.agent.clone()),
+                ..call.clone()
+            });
+            self.add_below(trees, child.id, depth + 1, seen, out);
+        }
     }
 }
 
-/// Notes what a tool call published and how long it ran, as it settles.
-pub(crate) fn note_call_facts(
-    settled: On<Add<Settled>>,
-    calls: Query<(&ToolRequest, Option<&Published>, Option<&Started>)>,
+/// The agent (by id) and call id of the tool call effect `id` is, as the
+/// first of `trees` that knows says.
+fn tool_call<'a>(trees: &[&'a CallTree], id: EffectId) -> Option<&'a (Arc<str>, CallId)> {
+    trees.iter().find_map(|tree| tree.tool_calls.get(&id))
+}
+
+/// The calls under each tool call of an agent that started any, as
+/// [`CallFacts::children`] works them out: the settled effects' and, over
+/// them, those of the tool calls a live effect is under.
+#[derive(Default)]
+pub(crate) struct ChildCalls {
+    settled: Arc<CallsUnder>,
+    live: CallsUnder,
+}
+
+impl ChildCalls {
+    /// The calls under the tool call `call`, if it started any.
+    pub(crate) fn get(&self, call: &CallId) -> Option<&Vec<ChildCall>> {
+        self.live.get(call).or_else(|| self.settled.get(call))
+    }
+}
+
+/// Effects that settled, as the view keeps them: what each tool call
+/// published and how long it ran, by call id, and which calls each
+/// effect started.
+#[derive(Default)]
+pub(crate) struct Settled {
+    facts: HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>,
+    calls: CallTree,
+    /// The tool calls of each model call's reply that no tool call's
+    /// record claimed yet, by the model call: how a record, which names a
+    /// call's tool and arguments but not its id, finds which call it is.
+    replies: HashMap<EffectId, Vec<ToolCall>>,
+}
+
+impl Settled {
+    /// Notes the effect `record` settled: under the effect that started
+    /// it, as a call or as an effect calls go through; and, for a tool
+    /// call, what it published and how long it ran. A record read twice
+    /// counts once: whether it is new.
+    fn note(&mut self, record: &EffectRecord) -> bool {
+        if !self.calls.known.insert(record.id) {
+            return false;
+        }
+        let outcome = record.reviewed.as_ref().unwrap_or(&record.outcome);
+        let child = match &record.kind {
+            EffectKind::Completion { .. } => {
+                let reply = match outcome {
+                    Ok(effect::Outcome::Completion(reply)) => Some(reply),
+                    _ => None,
+                };
+                let calls = reply.into_iter().flat_map(|reply| &reply.choice);
+                let calls: Vec<ToolCall> = calls
+                    .filter_map(|content| match content {
+                        AssistantContent::ToolCall(call) => Some(call.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if !calls.is_empty() {
+                    self.replies.insert(record.id, calls);
+                }
+                let model = record.key.as_str().strip_prefix("model:");
+                let (failed, line) = answer(Some(outcome), false);
+                Some(ChildCall {
+                    depth: 0,
+                    call: None,
+                    name: model.unwrap_or("model").to_owned(),
+                    agent: None,
+                    state: CallState::Done,
+                    failed,
+                    line,
+                })
+            }
+            EffectKind::ToolCall { name: tool, args } => {
+                let call = self.claim(record, tool, args);
+                if let (Some(call), Some(agent)) = (&call, &record.scope) {
+                    self.calls.tool_call(record.id, agent, call.id.clone());
+                    let took = record.finished_ms.zip(record.started_ms);
+                    let took =
+                        took.map(|(end, start)| Duration::from_millis(end.saturating_sub(start)));
+                    self.facts
+                        .insert(call.id.clone(), (record.tool_output.clone(), took));
+                }
+                let (failed, line) = answer(Some(outcome), true);
+                Some(ChildCall {
+                    depth: 0,
+                    call,
+                    name: tool.clone(),
+                    agent: None,
+                    state: CallState::Done,
+                    failed,
+                    line,
+                })
+            }
+            _ => None,
+        };
+        let agent = record.scope.clone();
+        self.calls.add(record.parent, record.id, child, agent);
+        true
+    }
+
+    /// The call of its parent model call's reply a tool call's `record`
+    /// is: the first unclaimed one of that tool with these arguments, else
+    /// of that tool (a plugin may have changed the arguments); one made
+    /// from the record when its reply is not known, such as a call carried
+    /// over a restart.
+    fn claim(&mut self, record: &EffectRecord, tool: &str, args: &str) -> Option<ToolCall> {
+        let parent = record.parent;
+        let reply = parent.and_then(|parent| self.replies.get_mut(&parent));
+        if let Some(calls) = reply {
+            let named = |call: &ToolCall| call.function.name.as_str() == tool;
+            let same = calls
+                .iter()
+                .position(|call| named(call) && call.function.raw_arguments() == args);
+            let found = same.or_else(|| calls.iter().position(named));
+            let call = found.map(|at| calls.remove(at));
+            if calls.is_empty()
+                && let Some(parent) = parent
+            {
+                self.replies.remove(&parent);
+            }
+            if call.is_some() {
+                return call;
+            }
+        }
+        let name = ToolName::new(tool).ok()?;
+        let args = serde_json::from_str(args).unwrap_or_default();
+        let id = CallId::from_wire(format!("effect-{}", record.id));
+        Some(ToolCall::new(id, ToolFunction::new(name, args)))
+    }
+}
+
+/// Effects by the effect that started them (its `parent`), each with its
+/// own effect id and, for a tool or model call, the call; the effect each
+/// one was started by; and each tool call's agent (by id) and call id, by
+/// its effect.
+#[derive(Default)]
+pub(crate) struct CallTree {
+    children: HashMap<EffectId, Vec<Child>>,
+    parents: HashMap<EffectId, EffectId>,
+    tool_calls: HashMap<EffectId, (Arc<str>, CallId)>,
+    /// Every effect noted, so none is noted twice.
+    known: HashSet<EffectId>,
+}
+
+/// An effect under the one that started it.
+struct Child {
+    id: EffectId,
+    /// The call it is; `None` when calls only go through it.
+    call: Option<ChildCall>,
+    /// The id of the agent it is for, whose name is looked up when it is
+    /// drawn; `None` when the call names its agent itself.
+    agent: Option<Arc<str>>,
+}
+
+impl CallTree {
+    /// Notes the effect `id` as one `parent` started: `call` when it is a
+    /// call, `None` when calls only go through it; for the agent with the
+    /// id `agent`, when the call does not name it.
+    pub(crate) fn add(
+        &mut self,
+        parent: Option<EffectId>,
+        id: EffectId,
+        call: Option<ChildCall>,
+        agent: Option<Arc<str>>,
+    ) {
+        if let Some(parent) = parent {
+            self.parents.insert(id, parent);
+            let child = Child { id, call, agent };
+            self.children.entry(parent).or_default().push(child);
+        }
+    }
+
+    /// Notes that effect `id` is the tool call `call` of the agent with
+    /// the id `agent`.
+    pub(crate) fn tool_call(&mut self, id: EffectId, agent: &str, call: CallId) {
+        self.tool_calls.insert(id, (Arc::from(agent), call));
+    }
+}
+
+/// Whether an answer is a failure, and its first line: a tool's result
+/// (`tool`), else a model's reply, or why it failed; neither before it
+/// has one.
+pub(crate) fn answer(
+    outcome: Option<&Result<effect::Outcome, ErrorReport>>,
+    tool: bool,
+) -> (bool, Option<String>) {
+    let (failed, line) = match (outcome, tool) {
+        (None, _) => (false, None),
+        (Some(outcome), true) => {
+            let result = Outcome(outcome.clone()).tool_result();
+            let failed = result.is_error() || result.is_refused();
+            (failed, Some(result.output().render()))
+        }
+        (Some(Err(report)), false) => (true, Some(report.message.clone())),
+        (Some(Ok(effect::Outcome::Completion(reply))), false) => (false, Some(reply.text())),
+        (Some(Ok(_)), false) => (false, None),
+    };
+    (
+        failed,
+        line.and_then(|line| line.lines().next().map(str::to_owned)),
+    )
+}
+
+/// A tool or model call not settled yet as one of
+/// [`ToolCallView::children`], standing as `state`, `depth` 0; `None` for
+/// any other effect.
+pub(crate) fn live_call(
+    (request, model, sent): (Option<&ToolRequest>, Option<&ModelRequest>, Option<&SentTo>),
+    (agent, outcome): (Option<&Name>, Option<&Outcome>),
+    state: CallState,
+) -> Option<ChildCall> {
+    let connection = sent.map(|SentTo(connection)| connection);
+    let connection = connection.or(model.and_then(|model| model.connection.as_ref()));
+    let name = match (request, model) {
+        (Some(request), _) => request.call.function.name.to_string(),
+        (None, Some(_)) => connection.map_or("model".to_owned(), |c| c.spec.reference()),
+        (None, None) => return None,
+    };
+    let (failed, line) = answer(outcome.map(|Outcome(outcome)| outcome), request.is_some());
+    Some(ChildCall {
+        depth: 0,
+        call: request.map(|request| request.call.clone()),
+        name,
+        agent: agent.map(|name| name.as_str().to_owned()),
+        state,
+        failed,
+        line,
+    })
+}
+
+/// Effects that settled before this run, such as a resumed session's, for
+/// [`ToolCallView::children`] and each call's facts: read as the kernel's
+/// [`EffectRecorded`] records are. rig-telemetry sends the session's
+/// effect log once it was restored. [`PastEffects::new`] does all the work
+/// per record, so make it where the records are read, off the main thread
+/// for a long log: the view only takes it over. A later one replaces it.
+#[derive(Message, Clone)]
+pub struct PastEffects(Arc<Settled>);
+
+impl PastEffects {
+    /// The effects `records` settled, in the order they settled.
+    #[must_use]
+    pub fn new(records: impl IntoIterator<Item = EffectRecord>) -> Self {
+        let mut settled = Settled::default();
+        for record in records {
+            settled.note(&record);
+        }
+        Self(Arc::new(settled))
+    }
+
+    /// How many effects it holds.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.calls.known.len()
+    }
+
+    /// Whether it holds no effect.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.calls.known.is_empty()
+    }
+}
+
+/// Notes every effect that settled since the last frame, and takes over
+/// those [`PastEffects`] brought.
+pub(crate) fn note_effects(
+    mut recorded: MessageReader<EffectRecorded>,
+    mut past: MessageReader<PastEffects>,
     mut facts: ResMut<CallFacts>,
 ) {
-    let Ok((request, published, started)) = calls.get(settled.entity) else {
+    if recorded.is_empty() && past.is_empty() {
         return;
-    };
-    let took = started.and_then(|started| SystemTime::now().duration_since(started.at).ok());
-    let published = published.map(|Published(context)| context.clone());
-    facts.0.insert(request.call.id.clone(), (published, took));
+    }
+    for PastEffects(settled) in past.read() {
+        facts.take_past(Arc::clone(settled));
+    }
+    for EffectRecorded(record) in recorded.read() {
+        facts.note(record);
+    }
+}
+
+/// Notes each agent's name by its id, for the records that name it so.
+pub(crate) fn note_agent_name(
+    named: On<Insert<Name>>,
+    agents: Query<(&AgentId, &Name)>,
+    mut facts: ResMut<CallFacts>,
+) {
+    if let Ok((id, name)) = agents.get(named.entity)
+        && facts
+            .bypass_change_detection()
+            .name(id.0.as_str(), name.as_str())
+    {
+        facts.set_changed();
+    }
 }
 
 /// The tool calls a model call is streaming, by the model call, in the
@@ -149,13 +585,13 @@ pub(crate) fn follow_streams(
 pub(crate) struct Look<'a> {
     /// The tool renderers by tool name.
     pub(crate) renderers: &'a Renderers<'a>,
-    /// The entry renderers by origin.
+    /// The entry renderers by plugin name.
     pub(crate) entries: &'a EntryRenderers<'a>,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
     /// The output so far of each of its running calls that reports it.
     pub(crate) outputs: &'a BTreeMap<CallId, String>,
-    /// The notices and entries drawn inside a message, by its index, each
+    /// The notices and notes drawn inside a message, by its index, each
     /// with the content item it goes before.
     pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
     /// The items drawn whole.
@@ -167,6 +603,8 @@ pub(crate) struct Look<'a> {
     pub(crate) note_cut: bool,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
+    /// The calls under each tool call that started any.
+    pub(crate) children: &'a ChildCalls,
 }
 
 /// What is drawn inside a message, before one of its items.
@@ -174,9 +612,44 @@ pub(crate) struct Look<'a> {
 pub(crate) enum Inside<'a> {
     /// A notice written there, and its index in the notices shown.
     Notice(usize, &'a ShownNotice),
-    /// An entry whose message was taken out, after the start of what
-    /// stands for it.
-    Entry(Entity, &'a TranscriptEntry),
+    /// A note whose entry was taken out, after the start of what stands
+    /// for it.
+    Note(&'a ShownNote<'a>),
+}
+
+/// A plugin's note in the conversation of the agent shown.
+pub(crate) struct ShownNote<'a> {
+    /// Its aside's id.
+    pub(crate) id: AsideId,
+    /// The aside that holds it.
+    pub(crate) aside: &'a Aside,
+    /// What it shows.
+    pub(crate) note: Note,
+}
+
+impl ShownNote<'_> {
+    /// The note's item.
+    pub(crate) fn item(&self) -> TranscriptItem {
+        TranscriptItem::Note(self.id)
+    }
+
+    /// The note as its plugin's renderer sees it.
+    pub(crate) fn view(&self, expanded: bool) -> EntryView<'_> {
+        EntryView {
+            plugin: plugin_name(&self.aside.author),
+            title: &self.note.title,
+            text: &self.note.text,
+            expanded,
+        }
+    }
+}
+
+/// The name of the plugin `author` is, or empty for any other author.
+fn plugin_name(author: &Author) -> &str {
+    match &author.kind {
+        AuthorKind::Plugin(name) => name,
+        _ => "",
+    }
 }
 
 impl Look<'_> {
@@ -197,12 +670,12 @@ impl Look<'_> {
         (lines, cut)
     }
 
-    /// The notices and entries inside message `index`.
+    /// The notices and notes inside message `index`.
     fn inside(&self, index: usize) -> &[(usize, Inside<'_>)] {
         self.inside.get(&index).map_or(&[], Vec::as_slice)
     }
 
-    /// Hashes the notices and entries inside message `index`.
+    /// Hashes the notices and notes inside message `index`.
     fn hash_inside(&self, index: usize, hasher: &mut DefaultHasher) {
         for (item, inside) in self.inside(index) {
             item.hash(hasher);
@@ -212,11 +685,11 @@ impl Look<'_> {
                     level_code(notice.level).hash(hasher);
                     notice.text.hash(hasher);
                 }
-                Inside::Entry(entity, entry) => {
-                    entity.hash(hasher);
-                    (&entry.origin, &entry.title, &entry.text).hash(hasher);
-                    self.is_expanded(&TranscriptItem::Entry(*entity))
-                        .hash(hasher);
+                Inside::Note(note) => {
+                    note.id.hash(hasher);
+                    plugin_name(&note.aside.author).hash(hasher);
+                    (&note.note.title, &note.note.text).hash(hasher);
+                    self.is_expanded(&note.item()).hash(hasher);
                 }
             }
         }
@@ -253,6 +726,7 @@ impl Look<'_> {
                     self.is_expanded(&TranscriptItem::Call(call.id.clone()))
                         .hash(hasher);
                     self.facts.of(&call.id).1.hash(hasher);
+                    hash_children(self.children.get(&call.id), hasher);
                 }
             }
         }
@@ -282,10 +756,22 @@ impl Look<'_> {
             .iter()
             .map(|item| unordered(&|h| item.hash(h)));
         expanded.fold(0u64, u64::wrapping_add).hash(&mut hasher);
-        let facts = self.facts.0.iter();
-        let facts = facts.map(|(call, (_, took))| unordered(&|h| (call, took).hash(h)));
-        facts.fold(0u64, u64::wrapping_add).hash(&mut hasher);
+        // The settled calls' facts and children change only with it.
+        self.facts.changes.hash(&mut hasher);
+        for (call, children) in &self.children.live {
+            call.hash(&mut hasher);
+            hash_children(Some(children), &mut hasher);
+        }
         hasher.finish()
+    }
+}
+
+/// Hashes what a call's renderer draws of `children`.
+fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) {
+    for child in children.into_iter().flatten() {
+        (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
+        (child.failed, &child.line).hash(hasher);
+        child.call.as_ref().map(|call| &call.id).hash(hasher);
     }
 }
 
@@ -328,7 +814,7 @@ pub(crate) struct Transcript {
 }
 
 /// A part of the transcript, in order: a message's cached rows, or rows
-/// made for this frame (notices, an entry, the reply streaming in), with
+/// made for this frame (notices, a note, the reply streaming in), with
 /// where the items among them are and those drawn cut.
 pub(crate) enum Part {
     Message(usize),
@@ -874,8 +1360,8 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
 }
 
 /// Draws `message`, the `at`-th of `conversation`, with the notices and
-/// entries inside it before their items, and says which lines are the
-/// message and which each of its calls and entries. A tool call's result, which comes
+/// notes inside it before their items, and says which lines are the
+/// message and which each of its calls and notes. A tool call's result, which comes
 /// in the `next` message, is drawn with the call, so the results of a
 /// reply's calls are not drawn after all of its calls.
 fn message_lines(
@@ -891,6 +1377,11 @@ fn message_lines(
     // Whether the message's own text is drawn cut.
     let mut message_cut = false;
     let id = conversation.id(at);
+    let author = conversation.author(at);
+    let stopped = conversation
+        .entries()
+        .nth(at)
+        .is_some_and(|entry| entry.is_stopped_note());
     let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
     let inside = look.inside(at);
     let inside_before = |item: usize,
@@ -900,16 +1391,10 @@ fn message_lines(
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
             match inside {
                 Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
-                Inside::Entry(entity, entry) => {
-                    let item = TranscriptItem::Entry(*entity);
+                Inside::Note(note) => {
+                    let item = note.item();
                     let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                        let view = EntryView {
-                            origin: &entry.origin,
-                            title: &entry.title,
-                            text: &entry.text,
-                            expanded,
-                        };
-                        entry_lines(&view, look.entries)
+                        entry_lines(&note.view(expanded), look.entries)
                     });
                     let start = lines.len();
                     lines.push(Line::default());
@@ -933,15 +1418,19 @@ fn message_lines(
                             lines.push(Line::from(format!("  [{label}, {count} lines]")).dim());
                             continue;
                         }
-                        if text.text == STOPPED {
+                        if stopped {
                             lines.push(Line::from("  [stopped before it was answered]").dim());
                             continue;
                         }
                         lines.push(Line::default());
-                        match conversation.origin(at, item_at) {
-                            Some(origin) => {
+                        // The user's own text has no author, or the user with no title.
+                        let other = |author: &&Author| {
+                            author.kind != AuthorKind::User || author.title.is_some()
+                        };
+                        match author.filter(other) {
+                            Some(author) => {
                                 let (drawn, is_cut) = look.drawn(expanded, |expanded| {
-                                    delivered_lines(origin, &text.text, expanded, look)
+                                    delivered_lines(author, &text.text, expanded, look)
                                 });
                                 lines.extend(drawn);
                                 message_cut |= is_cut;
@@ -989,6 +1478,7 @@ fn message_lines(
                                 facts,
                                 took,
                                 output: look.outputs.get(&call.id).map(String::as_str),
+                                children: look.children.get(&call.id).map_or(&[], Vec::as_slice),
                             };
                             call_lines(&view, look.renderers)
                         });
@@ -1022,12 +1512,13 @@ pub(crate) fn call_lines(view: &ToolCallView<'_>, renderers: &Renderers<'_>) -> 
     }
 }
 
-/// An entry's lines, by its origin's renderer or the default look.
+/// A note's or a delivered text's lines, by its plugin's renderer or the
+/// default look.
 pub(crate) fn entry_lines(
     view: &EntryView<'_>,
     renderers: &EntryRenderers<'_>,
 ) -> Vec<Line<'static>> {
-    match renderers.get(view.origin) {
+    match renderers.get(view.plugin) {
         Some(render) => render(view),
         None => view.default_lines(),
     }
@@ -1049,22 +1540,18 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
 /// drawn by the renderer of the plugin that sent it, if it has one, else
 /// as where it came from and its start.
 fn delivered_lines(
-    origin: &Origin,
+    author: &Author,
     text: &str,
     expanded: bool,
     look: &Look<'_>,
 ) -> Vec<Line<'static>> {
-    let body = origin
+    let body = author
         .header()
         .and_then(|header| text.strip_prefix(&header))
         .map_or(text, |body| body.trim_start_matches('\n'));
-    let label = origin.label();
-    let name = match &origin.kind {
-        OriginKind::Plugin(name) => name.as_str(),
-        _ => "",
-    };
+    let label = author.label();
     let view = EntryView {
-        origin: name,
+        plugin: plugin_name(author),
         title: &label,
         text: body,
         expanded,

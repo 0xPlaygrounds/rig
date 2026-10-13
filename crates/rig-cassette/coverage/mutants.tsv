@@ -61,7 +61,6 @@ crates/rig-agent/src/run/prepare.rs: replace && with || in resolve_output_mode #
 crates/rig-agent/src/run/prepare.rs: replace == with != in prepare_request	caught	1	rig-agent test_utils::model_conformance::tests::hook_rewrites_chain_and_request_patch_is_turn_local
 crates/rig-agent/src/run/prepare.rs: replace match guard output_tool_callable with true in resolve_output_mode	caught	1	rig-agent run::prepare::tests::resolve_output_mode_degrades_to_native_when_output_tool_not_callable
 crates/rig-agent/src/run/response.rs: delete ! in finalize_output_tool_choice	caught	1	rig-agent agent::engine::tests::output_tool_finalization_emits_no_complete_tool_call_stream_item
-crates/rig-agent/src/run/response.rs: replace PromptResponse::memory_append -> Option<&MemoryAppend> with None	caught	1	rig-agent agent::streaming::tests::streaming_reports_a_refused_append_on_the_final_response
 crates/rig-agent/src/run/response.rs: replace PromptResponse::output -> String with String::new()	caught	8	rig-agent agent::engine::tests::a_portable_hook_can_retry_a_truncated_tool_free_turn, rig-agent agent::engine::tests::active_tools_filter_does_not_let_output_tool_collide_with_a_filtered_real_tool, rig-agent agent::engine::tests::approval_policy_allow_list_with_sticky_decisions
 crates/rig-agent/src/run/response.rs: replace PromptResponse::output_tool_calls -> usize with 0	missed	0	
 crates/rig-agent/src/run/response.rs: replace PromptResponse::with_output_tool_calls -> Self with Default::default()	unviable	0	

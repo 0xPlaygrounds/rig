@@ -141,6 +141,53 @@ fn clearing_keeps_the_newest_outputs_and_the_last_message() {
     assert_eq!(policy.clear(&mut messages), Cleared::default());
 }
 
+/// Clearing skips error results, which are short and still needed, and
+/// in a message with several parts replaces only the results it clears;
+/// an empty history clears nothing.
+#[test]
+fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
+    let big = "x".repeat(4_000);
+    let output = |id: &str, is_error: bool| {
+        UserContent::ToolResult(ToolResult {
+            is_error,
+            call: CallId::from_wire(id),
+            name: ToolName::new("read").expect("tool name"),
+            content: vec![ToolResultContent::text(big.as_str())],
+        })
+    };
+    let mut messages = vec![
+        call("1", "read", "a.rs"),
+        Message::User {
+            content: vec![
+                UserContent::text("see"),
+                output("1", false),
+                output("2", false),
+            ],
+        },
+        Message::User {
+            content: vec![output("3", true)],
+        },
+        Message::assistant("done"),
+    ];
+    let policy = ClearToolOutputs::new(1_500);
+    assert_eq!(policy.clear(&mut messages).results, 1);
+    let cleared = |message: &Message| -> Vec<bool> {
+        let Message::User { content } = message else {
+            return Vec::new();
+        };
+        content
+            .iter()
+            .map(|item| matches!(item, UserContent::ToolResult(result) if is_cleared(&result.content)))
+            .collect()
+    };
+    let parts: Vec<Vec<bool>> = messages.iter().map(cleared).collect();
+    assert_eq!(
+        parts,
+        [vec![], vec![false, true, false], vec![false], vec![]]
+    );
+    assert_eq!(policy.clear(&mut []), Cleared::default());
+}
+
 #[test]
 fn a_cut_rule_chooses_the_first_kept_message() {
     // Keep from the newest question on, whatever the budget says.
@@ -159,4 +206,48 @@ fn a_cut_rule_chooses_the_first_kept_message() {
     assert_eq!(policy.cut(&messages, 0, &threshold, None), Some(4));
     // An answer that summarizes nothing new counts as none.
     assert_eq!(policy.cut(&messages, 4, &threshold, None), None);
+}
+
+#[test]
+fn a_summary_takes_the_place_of_what_it_summarized_by_id() {
+    let big = "x".repeat(4_000);
+    let mut conversation = Conversation::from_messages([
+        Message::user("start"),
+        call("1", "read", "a.rs"),
+        result("1", &big),
+        call("2", "read", "b.rs"),
+        result("2", &big),
+        Message::assistant("done"),
+    ]);
+    let ids: Vec<MessageId> = conversation.entries().map(|entry| entry.id).collect();
+    let cleared =
+        ClearToolOutputs::new(1_500).clear_conversation(&mut conversation, summary_author());
+    assert_eq!(cleared.results, 1);
+    let kept: Vec<MessageId> = conversation.entries().map(|entry| entry.id).collect();
+    assert_eq!(kept, ids, "clearing keeps every id");
+    let last = |conversation: &mut Conversation| {
+        let change = conversation
+            .take_unsaved()
+            .pop()
+            .map(|recorded| recorded.change);
+        change.and_then(|change| summary_in(&change))
+    };
+    assert_eq!(last(&mut conversation), None, "clearing is no compaction");
+
+    // A summary planned up to the newest reply survives an edit before it.
+    let state = SummaryState {
+        summary: "read two files".to_owned(),
+        tracked: Vec::new(),
+    };
+    let upto = conversation.id(5);
+    conversation.splice(0..1, [], Author::plugin("other"));
+    let spliced = apply_summary(&mut conversation, upto, &state).expect("applied");
+    assert_eq!(spliced.removed.len(), 4);
+    assert_eq!(conversation.messages().len(), 2);
+    assert_eq!(summarized_prefix(&conversation), 1);
+    assert_eq!(conversation.author(0), Some(&summary_author()));
+    assert_eq!(last(&mut conversation), conversation.id(0));
+    // Once the kept message is gone, a summary replaces nothing.
+    conversation.splice(1.., [], Author::plugin("other"));
+    assert_eq!(apply_summary(&mut conversation, upto, &state), None);
 }

@@ -1,15 +1,16 @@
 //! The terminal view. It reads agent components, keeps its own view state
 //! in a resource, and sends the same requests any other view would. It
 //! never owns the app's loop: a thread reads the terminal and wakes the
-//! loop, `PreUpdate` handles what it read, and drawing is a system in
+//! loop, `PreUpdate` handles what it read, a key at a time ([`TuiKeys`]),
+//! and drawing is a system in
 //! `PostUpdate` that runs when something drawn changed.
 //!
 //! The input is a multiline editor with the prompt history
 //! ([`PromptHistory`]) and `/` and `@` completion. Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`], also while their arguments
-//! stream, and its transcript entries
-//! ([`TranscriptEntry`](rig_harness::transcript::TranscriptEntry)) and
+//! stream, and its transcript notes
+//! ([`Note`](rig_harness::note::Note)) and
 //! delivered texts with [`AppToolRenderersExt::add_entry_renderer`]. The
 //! [`TranscriptView`] says, and lets a plugin set, what is expanded and
 //! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;
@@ -35,13 +36,15 @@
 //! status line's items ([`StatusItems`], [`AppStatus`]); and the
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well, each doing an
-//! [`InputAction`], which a plugin may also send), the keys for a
+//! [`InputAction`], which a plugin may also put among the keys), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
-//! candidates for a command's argument ([`ArgCompletion`]), the terminal's
-//! events ([`TerminalEvent`]) and focus ([`TerminalFocus`]), its own escape
-//! codes ([`TerminalWrite`], [`CopyToClipboard`]), a program run with the
-//! terminal ([`RunInTerminal`]), the clipboard's image
-//! ([`read_clipboard_image`]), and a choice for the user, a
+//! candidates for a command's argument ([`ArgCompletion`]), the frame's
+//! keys before any binding sees them ([`TerminalEvents`], filtered one at
+//! a time in [`InputSystems::Filter`] of [`TuiKeys`], with
+//! [`TuiInputState`] saying what the input does with them), the terminal's focus ([`TerminalFocus`]), its own escape
+//! codes ([`TerminalWrite`], [`CopyToClipboard`], which also goes to this
+//! machine's clipboard), a program run with the terminal
+//! ([`RunInTerminal`]), and a choice for the user, a
 //! [`Picker`](rig_harness::pick::Picker). The view shows every plugin's
 //! pickers and answers every agent's questions ([`Ask`](rig_harness::ask::Ask)),
 //! one at a time: in front of the transcript, in the input for one with
@@ -72,17 +75,17 @@ mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 
-pub use clipboard::read_clipboard_image;
-pub use complete::{ArgCompletion, Candidate};
+pub use complete::{ArgCompletion, Candidate, Completion, CompletionKind};
 pub use crossterm;
 pub use editor::TuiInput;
-pub use history::{HistorySystems, PromptHistory};
-pub use input::TerminalEvent;
+pub use history::{HistorySystems, PromptHistory, Sent};
+pub use input::{InputSystems, KeyInput, TerminalEvents, TuiInputState, TuiKeys};
 pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
     run_command,
@@ -91,11 +94,12 @@ pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScr
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout};
 pub use renderers::{
-    AppToolRenderersExt, CallState, EntryRenderer, EntryView, RESULT_LINES, RenderEntry,
+    AppToolRenderersExt, CallState, ChildCall, EntryRenderer, EntryView, RESULT_LINES, RenderEntry,
     RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
+pub use transcript::PastEffects;
 pub use view::{
     Continuation, DrawnLine, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, LineSpan,
     ScrollTo, ShownNotice, TranscriptItem, TranscriptSlot, TranscriptView,
@@ -126,11 +130,30 @@ impl Plugin for TuiPlugin {
             .init_resource::<TuiInput>()
             .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
+            .init_resource::<TerminalEvents>()
+            .init_resource::<TuiInputState>()
             .add_message::<RequestRedraw>()
-            .add_message::<TerminalEvent>()
+            .add_message::<Sent>()
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()
-            .add_message::<InputAction>()
+            .add_message::<PastEffects>()
+            // One thread, as a key's work is small; a plugin built before
+            // this one may have added to it already.
+            .edit_schedule(TuiKeys, |keys| {
+                keys.set_executor(SingleThreadedExecutor::new());
+            })
+            .configure_sets(
+                TuiKeys,
+                (InputSystems::Filter, InputSystems::Dispatch).chain(),
+            )
+            .add_systems(PreUpdate, input::run_keys)
+            .add_systems(
+                TuiKeys,
+                input::clear_events
+                    .in_set(InputSystems::Dispatch)
+                    .run_if(not(resource_exists::<view::TuiView>))
+                    .ambiguous_with(input::read_input),
+            )
             .configure_sets(
                 PostUpdate,
                 (
@@ -140,7 +163,7 @@ impl Plugin for TuiPlugin {
                     TuiSystems::Render.run_if(render::frame_due),
                 )
                     .chain()
-                    .after(StatusSystems),
+                    .after(StatusSystems::Edit),
             )
             .configure_sets(
                 Update,
@@ -156,11 +179,8 @@ impl Plugin for TuiPlugin {
             return;
         }
         add_view(app);
-        if let Some(home) = app.world().get_resource::<RigHome>() {
-            let history = PromptHistory::load(home.0.history());
-            app.insert_resource(history);
-        }
-        app.add_systems(Startup, terminal::open_terminal)
+        app.add_systems(PreStartup, history::load)
+            .add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 Last,
                 (
@@ -173,12 +193,13 @@ impl Plugin for TuiPlugin {
 }
 
 /// Everything of the view but the terminal itself, which
-/// [`terminal::open_terminal`] opens: the view's tests run it on the
-/// events they write.
-fn add_view(app: &mut App) {
+/// [`terminal::open_terminal`] opens: tests run it on the keys they put
+/// in, as `rig_harness_test_support::tui_view` does.
+#[doc(hidden)]
+pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
-    app.add_message::<history::Sent>()
+    app.add_message::<rig_harness::watch::FileChanges>()
         .init_resource::<RigHome>()
         .init_resource::<Shown>()
         .init_resource::<view::TuiView>()
@@ -188,13 +209,22 @@ fn add_view(app: &mut App) {
         .add_systems(
             PreUpdate,
             (
-                input::receive_events.run_if(resource_exists::<input::TerminalInput>),
-                input::read_input,
-                terminal::track_focus,
-                complete::receive_paths,
-                clipboard::receive_images,
-            )
-                .chain(),
+                (
+                    input::receive_events.run_if(resource_exists::<input::TerminalInput>),
+                    complete::receive_paths,
+                    clipboard::receive_images,
+                )
+                    .chain()
+                    .before(input::run_keys),
+                input::note_state.after(input::run_keys),
+            ),
+        )
+        .add_systems(
+            TuiKeys,
+            (
+                input::note_state.before(InputSystems::Filter),
+                input::read_input.in_set(InputSystems::Dispatch),
+            ),
         )
         .add_systems(
             Update,
@@ -221,6 +251,7 @@ fn add_view(app: &mut App) {
                 terminal::run_in_terminal
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
+                transcript::note_effects.in_set(TuiSystems::Prepare),
                 (
                     complete::follow_input,
                     transcript::follow_streams,
@@ -239,13 +270,14 @@ fn add_view(app: &mut App) {
         // write to the terminal before the view lets it go.
         .add_systems(
             Last,
-            terminal::write_to_terminal
+            (terminal::write_to_terminal, clipboard::copy_to_system)
                 .after(bevy_app::OnAppExitSystems)
                 .run_if(resource_exists::<terminal::Tui>),
         )
+        .add_observer(keys::release_focus)
         .add_observer(view::on_focus)
         .add_observer(view::on_scroll_to)
-        .add_observer(transcript::note_call_facts);
+        .add_observer(transcript::note_agent_name);
 }
 
 /// The look of a failed build's note, which the model reads too.

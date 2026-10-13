@@ -2,10 +2,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ShellTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::rig_core::message::{self, UserContent};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
 use serde_json::json;
 

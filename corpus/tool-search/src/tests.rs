@@ -1,8 +1,8 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, ToolOutputs, app_on, calls, collect, connect, first_agent, log_ended,
     log_tool_outputs, reply, run_until,

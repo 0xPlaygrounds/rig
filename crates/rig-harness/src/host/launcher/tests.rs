@@ -4,8 +4,9 @@ use rig::harness_protocol::{Home, Invocation};
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 
-use super::{Invoked, LauncherPlugin, LauncherRun, refuse};
-use crate::host::exit::{Exit, ExitPlugin, ExitReason};
+use super::{Invoked, LauncherPlugin, LauncherRun, refuse, watch_launcher};
+use crate::host::exit::{Exit, ExitPlugin, ExitReason, SIGNAL_EXIT_CODE};
+use crate::host::session::Scratch;
 
 /// An app started with `args` on a terminal or not, through `finish` and
 /// `cleanup`.
@@ -69,7 +70,8 @@ fn an_exit_on_purpose_in_the_first_frame_counts_as_started() {
 }
 
 /// The launcher says a refusal again once it has the terminal back, as a
-/// restarted full-screen view kept the screen it was said on.
+/// restarted full-screen view kept the screen it was said on. The refused
+/// run keeps no files in its session.
 #[test]
 fn a_refusal_is_told_to_the_launcher() {
     let home = Home::at(std::env::temp_dir().join(format!("rig-refusal-{}", std::process::id())));
@@ -82,4 +84,42 @@ fn a_refusal_is_told_to_the_launcher() {
     let said = std::fs::read_to_string(run.refusal()).ok();
     std::fs::remove_dir_all(home.root()).ok();
     assert_eq!(said.as_deref(), Some("rig: this session is plain.\n"));
+    assert_eq!(app.world().get_resource::<Scratch>(), Some(&Scratch(None)));
+}
+
+/// An agent whose launcher is gone, such as one killed alone by `kill` or
+/// `timeout`, exits as on a signal rather than run on its own.
+#[test]
+fn an_agent_exits_once_its_launcher_is_gone() {
+    use std::time::{Duration, Instant};
+
+    let home = Home::at(std::env::temp_dir().join(format!("rig-gone-{}", std::process::id())));
+    let run = home.run(1);
+    std::fs::create_dir_all(run.path()).ok();
+    let lock = std::fs::File::create(run.lock());
+    assert!(lock.as_ref().is_ok_and(|lock| lock.try_lock().is_ok()));
+    let mut app = App::new();
+    app.add_message::<AppExit>()
+        .insert_resource(Invoked::default())
+        .insert_resource(LauncherRun(run))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+        .add_plugins((LauncherPlugin, ExitPlugin));
+    watch_launcher(&mut app);
+    app.finish();
+    app.cleanup();
+    let exits_within = |app: &mut App, wait: Duration| {
+        let deadline = Instant::now() + wait;
+        loop {
+            app.update();
+            if app.should_exit().is_some() || Instant::now() > deadline {
+                return app.should_exit();
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    assert_eq!(exits_within(&mut app, Duration::from_millis(200)), None);
+    drop(lock);
+    let exit = exits_within(&mut app, Duration::from_secs(5));
+    std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(exit, Some(AppExit::from_code(SIGNAL_EXIT_CODE)));
 }

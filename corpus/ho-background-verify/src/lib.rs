@@ -371,7 +371,7 @@ fn checked(
         match agents.get(agent) {
             Ok(true) => {
                 let message = Incoming::new(note.text.clone(), DeliveryMode::Note)
-                    .with_origin(Origin::plugin(VERIFY));
+                    .with_author(Author::plugin(VERIFY));
                 commands.spawn((message, ForAgent(agent), note.clone()));
             }
             Ok(false) => idle.push(agent),
@@ -487,16 +487,17 @@ fn attach_notes(
 ) {
     for (entity, mut typed, &ForAgent(agent)) in &mut typed {
         let note = typed.mode != DeliveryMode::Note && typed.command().is_none();
-        if typed.origin.kind != OriginKind::User || !note {
+        if typed.author.kind != AuthorKind::User || !note {
             continue;
         }
         let Some(note) = verify.waiting.remove(&agent) else {
             continue;
         };
-        typed.attachments.push(Attachment {
+        let attachment = Attachment {
             label: VERIFY.to_owned(),
             content: UserContent::text(note.text.clone()),
-        });
+        };
+        typed.parts.insert(0, MessagePart::Attachment(attachment));
         commands.entity(entity).insert(Carries(note));
     }
 }
@@ -575,12 +576,12 @@ mod status {
     use super::{CheckStatus, Verify};
 
     /// After the agents at work; gone early when the line is narrow.
-    const CHECK: StatusItem = StatusItem::at(Side::Left, 75, 9);
+    const CHECK: StatusItem = StatusItem::new("ho-background-verify", Side::Left, 75, 9);
 
     pub(super) fn add(app: &mut App) {
         app.init_resource::<AppStatus>().add_systems(
             PostUpdate,
-            show.in_set(StatusSystems)
+            show.in_set(StatusSystems::Show)
                 .run_if(resource_changed::<Verify>),
         );
     }

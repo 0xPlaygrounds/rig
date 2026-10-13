@@ -53,7 +53,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
              messages: Query<&Incoming>,
              mut delivered: ResMut<Delivered>| {
                 if let Ok(message) = messages.get(accepted.entity) {
-                    delivered.0.push(message.text.clone());
+                    delivered.0.push(message.text().to_owned());
                 }
             },
         )
@@ -100,8 +100,8 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
 
 #[test]
 fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
-    use crate::tests::{typed, view_app};
-    use crate::{KeyFocus, Placement, TerminalEvent, TuiPanel};
+    use crate::tests::{push, typed, view_app};
+    use crate::{KeyFocus, KeyInput, Placement, TuiPanel};
     use crossterm::event::Event;
     use ratatui::layout::Constraint;
 
@@ -110,8 +110,7 @@ fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
     let panel = app.world_mut().spawn(panel).id();
     app.world_mut().resource_mut::<KeyFocus>().0 = Some(panel);
     let paste = |app: &mut App| {
-        let paste = TerminalEvent(Event::Paste("cargo test".to_owned()));
-        app.world_mut().write_message(paste);
+        push(app, KeyInput::Event(Event::Paste("cargo test".to_owned())));
         app.update();
     };
     paste(&mut app);
@@ -120,4 +119,151 @@ fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
     app.world_mut().resource_mut::<KeyFocus>().0 = None;
     paste(&mut app);
     assert_eq!(typed(&app), "cargo test");
+}
+
+/// Keys a modal filter turned into actions, one at a time, as vim's
+/// normal mode would: `d` waits for its motion.
+fn normal_mode(mut events: ResMut<crate::TerminalEvents>, mut deleting: Local<bool>) {
+    use crate::{InputAction, KeyInput, KeyPress};
+    use crossterm::event::{Event, KeyCode};
+    let key = |item: &KeyInput| match item {
+        KeyInput::Event(Event::Key(key)) => Some(KeyPress::of(key).code),
+        _ => None,
+    };
+    let mut out = Vec::new();
+    for item in std::mem::take(&mut events.0) {
+        match (key(&item), std::mem::take(&mut *deleting)) {
+            (Some(KeyCode::Esc), _) => {}
+            (Some(KeyCode::Char('0')), _) => out.push(KeyInput::Action(InputAction::LineStart)),
+            (Some(KeyCode::Char('d')), _) => *deleting = true,
+            (Some(KeyCode::Char('w')), true) => {
+                out.push(KeyInput::Action(InputAction::DeleteWordAfter));
+            }
+            _ => out.push(item),
+        }
+    }
+    events.0 = out;
+}
+
+#[test]
+fn a_filter_turns_the_frames_keys_into_actions_in_their_order() {
+    use crate::tests::{press, type_text, typed, view_app};
+    use crate::{InputSystems, TuiKeys};
+
+    let (mut app, _) = view_app();
+    type_text(&mut app, "hello world");
+    app.add_systems(TuiKeys, normal_mode.in_set(InputSystems::Filter));
+    // One frame: Esc is dropped, `0` goes to the start, `dw` deletes the
+    // word; nothing is typed, and an Esc that reached the view would have
+    // interrupted the agent instead.
+    press(&mut app, "esc 0 d w");
+    assert_eq!(typed(&app), " world");
+    // Keys it leaves alone are the view's as before.
+    press(&mut app, "x");
+    assert_eq!(typed(&app), "x world");
+}
+
+/// The input as each key a filter saw found it.
+#[derive(Resource, Default)]
+struct Seen(Vec<String>);
+
+/// Notes the input as the key being done finds it.
+fn note_input(events: Res<crate::TerminalEvents>, input: Res<TuiInput>, mut seen: ResMut<Seen>) {
+    if !events.0.is_empty() {
+        seen.0.push(input.text().to_owned());
+    }
+}
+
+#[test]
+fn a_filter_sees_each_key_with_the_input_the_keys_before_it_left() {
+    use crate::tests::{press, view_app};
+    use crate::{InputSystems, TuiKeys};
+
+    let (mut app, _) = view_app();
+    app.init_resource::<Seen>()
+        .add_systems(TuiKeys, note_input.in_set(InputSystems::Filter));
+    press(&mut app, "a b");
+    assert_eq!(app.world().resource::<Seen>().0, ["", "a"]);
+}
+
+/// The searches `/` opened.
+#[derive(Resource, Default)]
+struct Searches(usize);
+
+/// `/` on an empty input opens a search instead of a slash command.
+fn slash_searches(
+    mut events: ResMut<crate::TerminalEvents>,
+    input: Res<TuiInput>,
+    mut searches: ResMut<Searches>,
+) {
+    use crate::KeyInput;
+    use crossterm::event::{Event, KeyCode};
+    let slash = |item: &KeyInput| matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'));
+    if input.is_empty() && events.0.first().is_some_and(slash) {
+        events.0.remove(0);
+        searches.0 += 1;
+    }
+}
+
+#[test]
+fn a_plugin_takes_slash_on_an_empty_input_and_leaves_it_typed_elsewhere() {
+    use crate::tests::{press, typed, view_app};
+    use crate::{InputSystems, TuiKeys};
+
+    let (mut app, _) = view_app();
+    app.init_resource::<Searches>()
+        .add_systems(TuiKeys, slash_searches.in_set(InputSystems::Filter));
+    press(&mut app, "/");
+    assert_eq!(
+        (app.world().resource::<Searches>().0, typed(&app)),
+        (1, String::new())
+    );
+    // A key a frame, as a person types: past the start, `/` is typed.
+    for key in ["a", "/", "b"] {
+        press(&mut app, key);
+    }
+    assert_eq!(
+        (app.world().resource::<Searches>().0, typed(&app)),
+        (1, "a/b".to_owned())
+    );
+}
+
+/// The times the transcript's `/` was pressed.
+#[derive(Resource, Default)]
+struct Searched(usize);
+
+#[test]
+fn the_transcript_has_the_keys_while_an_item_is_selected_until_typing() {
+    use crate::tests::{press, typed, view_app};
+    use crate::{AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, KeyScope, TranscriptItem};
+    use crossterm::event::KeyCode;
+    use rig_core::message::CallId;
+
+    let (mut app, _) = view_app();
+    let slash = KeyBinding::new(KeyPress::key(KeyCode::Char('/')), "Search the transcript");
+    let searched = |_: On<KeyPressed>, mut searched: ResMut<Searched>| searched.0 += 1;
+    app.init_resource::<Searched>()
+        .add_key_binding(slash.in_scope(KeyScope::Transcript), searched);
+    let selected = |app: &App| app.world().resource::<TranscriptView>().selected.clone();
+    let select = |app: &mut App| {
+        let item = TranscriptItem::Call(CallId::from_wire("c1"));
+        app.world_mut().resource_mut::<TranscriptView>().selected = Some(item);
+    };
+    select(&mut app);
+    press(&mut app, "/");
+    assert_eq!(
+        (app.world().resource::<Searched>().0, typed(&app)),
+        (1, String::new())
+    );
+    // Typing ends the reading: then `/` is typed, a slash command.
+    press(&mut app, "x /");
+    assert_eq!(
+        (app.world().resource::<Searched>().0, typed(&app)),
+        (1, "x/".to_owned())
+    );
+    assert_eq!(selected(&app), None);
+    // Esc on the transcript gives the keys back, and nothing else.
+    select(&mut app);
+    press(&mut app, "esc");
+    assert_eq!((selected(&app), typed(&app)), (None, "x/".to_owned()));
 }

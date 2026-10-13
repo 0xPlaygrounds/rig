@@ -1,12 +1,11 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
-    Ended, ToolOutputs, app_on, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
-    run_until,
+    Ended, MemoryStore, ToolOutputs, app_on, calls, connect, first_agent, log_ended,
+    log_tool_outputs, reply, run_until,
 };
 use serde_json::json;
 

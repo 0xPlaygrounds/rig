@@ -2,10 +2,11 @@
 //! `plugins.toml` lists (its `Name` and [`PluginSource`]), and
 //! [`ProvidedBy`] on what that plugin spawned, such as its commands,
 //! tools, prompt sections and observers. "What did plugin X add" is a
-//! query for `ProvidedBy(x)`.
+//! query for `ProvidedBy(x)`; which plugin added a schedule's system is in
+//! [`PluginSystems`].
 //!
-//! Every named entity and observer a plugin spawns in its `build`,
-//! `finish` and `cleanup` is attributed. What it spawns later, such as a
+//! Every named entity, observer and schedule system a plugin adds in its
+//! `build`, `finish` and `cleanup` is attributed. What it spawns later, such as a
 //! tool an MCP server lists, it attributes itself, with its entity from
 //! [`PluginEntity<P>`]:
 //!
@@ -27,11 +28,13 @@
 //! }
 //! ```
 
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 
 use bevy_app::prelude::*;
 use bevy_ecs::observer::Observer;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::{Schedules, SystemKey};
 use bevy_reflect::prelude::*;
 
 /// Where a plugin comes from, on the entity [`load`] spawns for it.
@@ -72,6 +75,58 @@ impl<P: Plugin> PluginEntity<P> {
     }
 }
 
+/// Which plugin added each schedule system, by the system's name and its
+/// schedule's label (such as `AgentPass`), as [`load`] saw it. Two plugins
+/// that add a system of the same name to one schedule are told apart by
+/// neither; a system a plugin adds later, while the app runs, is no
+/// plugin's.
+#[derive(Resource, Default, Debug)]
+pub struct PluginSystems(HashMap<(String, String), Option<Entity>>);
+
+impl PluginSystems {
+    /// The plugin that added the system `system` to the schedule labelled
+    /// `schedule`, if one plugin did.
+    pub fn plugin(&self, system: &str, schedule: &str) -> Option<Entity> {
+        let key = (system.to_owned(), schedule.to_owned());
+        self.0.get(&key).copied().flatten()
+    }
+
+    /// Records each system added since `before` as `plugin`'s.
+    fn record(world: &mut World, before: &HashSet<(String, SystemKey)>, plugin: Entity) {
+        let mut added = Vec::new();
+        if let Some(schedules) = world.get_resource::<Schedules>() {
+            for (label, schedule) in schedules.iter() {
+                let label = format!("{label:?}");
+                for (key, system, _) in schedule.graph().systems.iter() {
+                    if !before.contains(&(label.clone(), key)) {
+                        added.push((system.name().to_string(), label.clone()));
+                    }
+                }
+            }
+        }
+        let mut systems = world.get_resource_or_init::<PluginSystems>();
+        for key in added {
+            let by = systems.0.entry(key).or_insert(Some(plugin));
+            if *by != Some(plugin) {
+                *by = None;
+            }
+        }
+    }
+}
+
+/// Every system of every schedule, by its schedule's label.
+fn systems(world: &World) -> HashSet<(String, SystemKey)> {
+    let Some(schedules) = world.get_resource::<Schedules>() else {
+        return HashSet::new();
+    };
+    let systems = schedules.iter().flat_map(|(label, schedule)| {
+        let label = format!("{label:?}");
+        let keys = schedule.graph().systems.iter().map(|(key, ..)| key);
+        keys.map(move |key| (label.clone(), key))
+    });
+    systems.collect()
+}
+
 /// Adds `P`, unless the app has it already (another plugin added it), as
 /// the generated `main.rs` adds each plugin `plugins.toml` lists: with an
 /// entity of its own, named after it, from `krate` at `source`.
@@ -93,12 +148,14 @@ pub fn load<P: Plugin + Default>(app: &mut App, krate: &str, source: &str) {
         plugin: PhantomData,
     });
     let attribute = attribute(app.world_mut(), entity);
+    let before = systems(app.world());
     // `Attribute` before and after it brackets its `finish` and `cleanup`
     // (and the plugins it adds), which run in the order plugins were
     // added.
     app.add_plugins(Attribute::Open(entity));
     app.add_plugins(plugin);
     app.add_plugins(Attribute::Close);
+    PluginSystems::record(app.world_mut(), &before, entity);
     stop_attributing(app.world_mut(), attribute);
 }
 
@@ -129,9 +186,14 @@ enum Attribute {
     Close,
 }
 
-/// The observer attributing to the plugin being finished or cleaned up.
+/// The plugin being finished or cleaned up, the observer attributing to
+/// it, and the systems before it.
 #[derive(Resource)]
-struct Attributing(Entity);
+struct Attributing {
+    plugin: Entity,
+    observer: Entity,
+    before: HashSet<(String, SystemKey)>,
+}
 
 impl Attribute {
     fn bracket(&self, app: &mut App) {
@@ -139,11 +201,17 @@ impl Attribute {
         match self {
             Self::Open(plugin) => {
                 let observer = attribute(world, *plugin);
-                world.insert_resource(Attributing(observer));
+                let before = systems(world);
+                world.insert_resource(Attributing {
+                    plugin: *plugin,
+                    observer,
+                    before,
+                });
             }
             Self::Close => {
-                if let Some(Attributing(observer)) = world.remove_resource::<Attributing>() {
-                    stop_attributing(world, observer);
+                if let Some(attributing) = world.remove_resource::<Attributing>() {
+                    PluginSystems::record(world, &attributing.before, attributing.plugin);
+                    stop_attributing(world, attributing.observer);
                 }
             }
         }

@@ -227,7 +227,7 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         .map_err(|error| ToolExecutionError::invalid_args(format!("bad pattern: {error}")))?;
     let root = args.path.as_deref().unwrap_or(".");
     let files = workspace
-        .files(Path::new(root), args.glob.as_deref())
+        .files(Path::new(root), args.glob.as_deref(), false)
         .map_err(|error| match error.kind() {
             ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
             _ => io_error(root, error),

@@ -97,10 +97,15 @@ fn ask_for_a_name(
     {
         return;
     }
-    let Some(asked) = conversations.get(agent).ok().and_then(first_typed) else {
+    let Some(asked) = conversations
+        .get(agent)
+        .ok()
+        .and_then(|conversation| first_typed(conversation))
+    else {
         return;
     };
-    let answer: String = final_answer(message)
+    let answer: String = message
+        .final_answer()
         .unwrap_or_default()
         .chars()
         .take(ANSWER_CHARS)

@@ -1,9 +1,9 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
+use rig_harness_test_support::MemoryStore;
 use std::borrow::Cow;
 
-use corpus_ho_exit_notes::ExitNotesPlugin;
+use corpus_ho_exit_notes::{ExitNotesPlugin, NotesCall};
 use rig_basics::BasicCommandsPlugin;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::operation::Completion;
@@ -148,7 +148,7 @@ fn record(
         })
     });
     if let (Some(agent), Some(_)) = (first_agent(app.world_mut()), quit_in) {
-        let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue).with_origin(Origin::user());
+        let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue).with_author(Author::user());
         app.world_mut().trigger(quit);
         run_until(&mut app, &wakes, |world| {
             !world.resource::<Messages<AppExit>>().is_empty()
@@ -393,6 +393,66 @@ fn a_session_quit_under_exit_notes_replays_its_summary_call() {
     assert!(
         replayed.iter().any(|note| note.contains(SUMMARY)),
         "{replayed:?}"
+    );
+}
+
+/// Exit-notes' summary calls started.
+#[derive(Resource, Default)]
+struct SummariesStarted(usize);
+
+/// A session killed without an exit replays to its end, then exits as the
+/// replay front does: exit-notes' summary call is not in the record, so it
+/// is refused before it starts, and the replay stays clean.
+#[test]
+fn a_killed_session_replays_without_starting_an_exit_summary() {
+    let home = scratch_home("session-replay-killed");
+    let replay_root = home.root().join("replay");
+    let file = home.root().join("a.txt");
+    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id("5-1"), id("5-2"));
+    let recorded = record(&home, &recorded_id, &file.to_string_lossy(), connect, None);
+    std::fs::remove_file(&file).ok();
+
+    let model = MockCompletionModel::from_stream_turns([reply(SUMMARY)]);
+    let (mut app, wakes) = app_in(&home, &replay_id);
+    let dir = home.session(&recorded_id).path().to_string_lossy().into();
+    app.insert_resource(Invoked {
+        args: Invocation {
+            flags: vec![(REPLAY.to_owned(), Some(dir))],
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .add_plugins(SessionReplayPlugin);
+    with_agents(&mut app, connect(&model));
+    with_exit_notes(&mut app, &replay_root);
+    app.init_resource::<SummariesStarted>().add_observer(
+        |started: On<Add<Started>>,
+         summaries: Query<(), With<NotesCall>>,
+         mut count: ResMut<SummariesStarted>| {
+            count.0 += usize::from(summaries.contains(started.entity));
+        },
+    );
+    let outcome = run_replay(&mut app, &wakes);
+    assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (2, 1))));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Messages<AppExit>>().is_empty()
+    });
+    let exits = app.world().resource::<Messages<AppExit>>();
+    let exits: Vec<AppExit> = exits.iter_current_update_messages().cloned().collect();
+    assert_eq!(exits, [AppExit::Success]);
+    assert_eq!(conversation(&mut app), recorded);
+    assert_eq!(app.world().resource::<SummariesStarted>().0, 0);
+    assert!(model.requests().is_empty(), "the model was called");
+    let replay = app.world().get_resource::<Replay>();
+    let divergences = replay.map(Replay::divergences).unwrap_or_default();
+    assert_eq!(divergences, []);
+    let notes = notes_in(&replay_root);
+    assert!(
+        notes
+            .iter()
+            .any(|note| note.contains("(summary unavailable)")),
+        "{notes:?}"
     );
 }
 

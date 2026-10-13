@@ -18,7 +18,6 @@ rig-tui = { path = "../../plugins/rig-tui" }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 # The real `shell`, `write` and `read` tools whose calls are stepped.
 rig-coding-tools = { path = "../../plugins/rig-coding-tools" }

@@ -39,9 +39,11 @@ use bevy_log::warn;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::transcript::assistant_text_from_choice;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
-use rig_tui::{AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, Keys, TerminalEvent, TuiInput};
+use rig_tui::{
+    AppKeyBindingsExt, InputSystems, KeyBinding, KeyInput, KeyPress, KeyPressed, Keys,
+    TerminalEvents, TuiInput,
+};
 use serde::Deserialize;
 
 /// How long a transcript waits in the input before it is sent.
@@ -211,7 +213,7 @@ impl Plugin for VoicePlugin {
                 "Voice input and spoken answers: /voice on|off, /voice speak on|off",
                 voice,
             )
-            .add_systems(Update, hush_on_keys)
+            .add_systems(rig_tui::TuiKeys, hush_on_keys.in_set(InputSystems::Filter))
             .add_observer(on_talk)
             .add_observer(on_heard)
             .add_observer(on_send)
@@ -431,9 +433,9 @@ fn on_send(
 }
 
 /// A key pressed in the terminal stops the speaking.
-fn hush_on_keys(mut events: MessageReader<TerminalEvent>, backends: Res<VoiceBackends>) {
-    let typed = events.read().any(
-        |TerminalEvent(event)| matches!(event, Event::Key(key) if key.kind == KeyEventKind::Press),
+fn hush_on_keys(events: Res<TerminalEvents>, backends: Res<VoiceBackends>) {
+    let typed = events.0.iter().any(
+        |item| matches!(item, KeyInput::Event(Event::Key(key)) if key.kind == KeyEventKind::Press),
     );
     if typed {
         hush(&backends);
@@ -455,7 +457,7 @@ fn on_turn_ended(
     if !settings.speak || backends.speaker.is_none() || subagents.contains(agent) {
         return;
     }
-    let Some(answer) = final_answer(message) else {
+    let Some(answer) = message.final_answer() else {
         return;
     };
     let fallback = condense(&answer);
@@ -491,11 +493,7 @@ fn on_condensed(
     };
     let summary = outcome
         .and_then(Outcome::completion)
-        .map(|response| {
-            assistant_text_from_choice(&response.choice)
-                .trim()
-                .to_owned()
-        })
+        .map(|response| response.text().trim().to_owned())
         .filter(|text| !text.is_empty());
     if settings.speak {
         say(&backends, summary.as_deref().unwrap_or(fallback));

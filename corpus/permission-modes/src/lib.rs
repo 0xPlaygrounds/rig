@@ -35,7 +35,7 @@ use serde::Deserialize;
 mod tests;
 
 /// After the model's reasoning setting; gone early when the line is short.
-const MODE_ITEM: StatusItem = StatusItem::at(Side::Left, 45, 9);
+const MODE_ITEM: StatusItem = StatusItem::new("permission-modes", Side::Left, 45, 9);
 
 /// How much an agent may do without asking. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -229,7 +229,7 @@ impl Plugin for PermissionModesPlugin {
                 ),
             )
             .add_observer(inherit)
-            .add_systems(PostUpdate, show_mode.in_set(StatusSystems));
+            .add_systems(PostUpdate, show_mode.in_set(StatusSystems::Show));
         app.add_key_binding(
             KeyBinding::new(KeyPress::key(KeyCode::BackTab), "Cycle the permission mode"),
             run_command("mode"),

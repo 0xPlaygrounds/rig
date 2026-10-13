@@ -195,7 +195,10 @@ impl Plugin for BatchProviderPlugin {
             .add_observer(polled)
             .add_observer(settled);
         #[cfg(feature = "tui")]
-        app.add_systems(PostUpdate, status::show.in_set(rig_tui::StatusSystems));
+        app.add_systems(
+            PostUpdate,
+            status::show.in_set(rig_tui::StatusSystems::Show),
+        );
     }
 
     /// Mirrors Anthropic's models once every plugin added its own.
@@ -322,7 +325,7 @@ fn take_over(
         if decision.is_decided() {
             continue;
         }
-        let Ok((connection, request)) = starts.sent(model, adapters, agent) else {
+        let Ok((connection, request, _)) = starts.sent(model, adapters, agent) else {
             continue;
         };
         if connection.spec.provider.vendor() != VENDOR {
@@ -755,7 +758,7 @@ mod status {
     use super::Batched;
 
     /// After the status; gone before the reasoning setting.
-    const BATCH: StatusItem = StatusItem::at(Side::Left, 52, 12);
+    const BATCH: StatusItem = StatusItem::new("fh-batch-provider", Side::Left, 52, 12);
 
     /// Shows how long each agent's batch item has waited, in minutes.
     pub(super) fn show(

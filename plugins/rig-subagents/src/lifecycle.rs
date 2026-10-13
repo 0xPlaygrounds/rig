@@ -6,8 +6,7 @@ use rig_core::completion::Message;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
-    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, SubagentSystems,
-    Subtask, answered,
+    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, Subtask, answered,
 };
 use rig_harness::prelude::*;
 
@@ -28,7 +27,12 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
-        .add_systems(AgentPass, stop_restored.in_set(SubagentSystems::Gate));
+        .add_systems(
+            AgentPass,
+            stop_restored
+                .after(GateSystems::After)
+                .before(GateSystems::Fallback),
+        );
 }
 
 /// An agent as the subagent tools see it.
@@ -77,12 +81,12 @@ impl Agents<'_, '_> {
     }
 
     /// Output of `agent`, titled with its task when it has one.
-    pub(super) fn origin(&self, agent: Entity) -> Option<Origin> {
+    pub(super) fn author(&self, agent: Entity) -> Option<Author> {
         let agent = self.agents.get(agent).ok()?;
-        let origin = Origin::agent(agent.id.clone(), None);
+        let author = Author::agent(agent.id.clone(), None);
         Some(match agent.subtask {
-            Some(subtask) => origin.titled(subtask.0.clone()),
-            None => origin,
+            Some(subtask) => author.titled(subtask.0.clone()),
+            None => author,
         })
     }
 
@@ -152,7 +156,7 @@ impl Agents<'_, '_> {
         mut requests: Vec<Request>,
         text: &str,
     ) -> Vec<Entity> {
-        let from = self.origin(agent).unwrap_or_default();
+        let from = self.author(agent).unwrap_or_default();
         let mut reported = Vec::new();
         while let Some(asker) = requests.first().map(|first| first.asker.clone()) {
             let asked: Vec<Request> = requests.extract_if(.., |r| r.asker == asker).collect();
@@ -169,11 +173,11 @@ impl Agents<'_, '_> {
             } else {
                 DeliveryMode::Queue
             };
-            let mut origin = from.clone();
-            origin.request = Some(last.id.clone());
+            let mut author = from.clone();
+            author.request = Some(last.id.clone());
             let parent = self.agents.get(asker).ok().and_then(|a| a.effect_parent);
             self.commands.spawn((
-                Incoming::new(text, mode).with_origin(origin),
+                Incoming::new(text, mode).with_author(author),
                 ForAgent(asker),
                 Effect::child_of(parent.map(|parent| parent.0)),
                 Report,
@@ -253,7 +257,8 @@ fn step_on_turn_end(
     let step = match agents.awaited(agent).first().filter(|_| !restarted) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {
-            TurnOutcome::Answered(message) => final_answer(message)
+            TurnOutcome::Answered(message) => message
+                .final_answer()
                 .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
             TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
             TurnOutcome::Stopped(None) => failed("Interrupted: the subagent was stopped first."),
@@ -305,7 +310,7 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
     let Ok((message, &ForAgent(to), _)) = agents.inboxes.get(accepted.entity) else {
         return;
     };
-    let Some(from) = message.origin.from.clone().map(AgentId) else {
+    let Some(from) = message.author.from.clone().map(AgentId) else {
         return;
     };
     let from = &from;
@@ -329,16 +334,36 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
     }
 }
 
+/// On a restored turn [`stop_restored`] looked at.
+#[derive(Component)]
+pub(super) struct Considered;
+
 /// After a restart, a restored agent that owed reports stays idle: its
 /// restored turn is stopped before anything of it starts, and its end
-/// reports each request as interrupted.
+/// reports each request as interrupted, unless a plugin claimed any of the
+/// turn's restored work in Gate: held, decided or superseded one of its
+/// calls, or ended the turn. It looks at each restored turn once, after
+/// every gate of the pass its calls are admitted in, before the kernel's
+/// own answers.
 pub(super) fn stop_restored(
-    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
+    turns: Query<
+        (Entity, &TurnOf, &Calls),
+        (With<Restored>, Without<TurnOutcome>, Without<Considered>),
+    >,
+    calls: Query<(Has<Admitted>, Has<Holds>, Has<SupersededBy>, &Decision)>,
     open: Query<&OpenRequests>,
     mut commands: Commands,
 ) {
-    for (turn, &TurnOf(agent)) in &turns {
-        if open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
+    for (turn, &TurnOf(agent), of) in &turns {
+        let calls: Vec<_> = calls.iter_many(of.iter()).flatten().collect();
+        if !calls.iter().any(|&(admitted, ..)| admitted) {
+            continue;
+        }
+        commands.entity(turn).insert(Considered);
+        let claimed = calls
+            .iter()
+            .any(|&(_, held, superseded, decision)| held || superseded || decision.is_decided());
+        if !claimed && open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
             let stopped = TurnOutcome::Stopped(Some(RESTARTED.to_owned()));
             commands.entity(turn).insert(stopped);
         }

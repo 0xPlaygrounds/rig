@@ -219,13 +219,14 @@ fn fall_back(
         if let Ok(mut recovery) = turns.get_mut(turn) {
             recovery.retries = 0;
         }
-        commands.spawn((
-            request.clone().on(next),
-            TurnCall,
-            Supersedes(call),
-            CallOf(turn),
-            ForAgent(agent),
-            Effect::child_of(effect.parent),
-        ));
+        commands
+            .spawn((
+                request.clone().on(next),
+                TurnCall,
+                CallOf(turn),
+                ForAgent(agent),
+                Effect::child_of(effect.parent),
+            ))
+            .add_related::<SupersededBy>(&[call]);
     }
 }

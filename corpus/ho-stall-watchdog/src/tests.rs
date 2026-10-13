@@ -106,7 +106,7 @@ fn a_stalled_stream_is_sent_again_and_a_long_tool_is_reported() {
     let world = app.world();
     let ended = &world.resource::<Ended>().0;
     let answer = match ended.first() {
-        Some(TurnOutcome::Answered(message)) => final_answer(message),
+        Some(TurnOutcome::Answered(message)) => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("ok"), "{ended:?}");

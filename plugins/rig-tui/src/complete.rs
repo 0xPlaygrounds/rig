@@ -4,13 +4,13 @@
 //! project. Paths come from a walk of the
 //! [`ProjectRoot`] in the app's [`ProjectWorkspace`] that honours
 //! `.gitignore`, done on a thread of its own, whatever the workspace, and
-//! kept for a while. An item matches when it contains the query,
-//! ignoring case; the earlier the match, the higher it ranks.
+//! kept until a [`FileWatch`] of the root says something there changed.
+//! An item matches when it contains the query, ignoring case; the earlier
+//! the match, the higher it ranks.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -22,15 +22,12 @@ use super::view::TuiView;
 use rig_ecs::calls::Wake;
 use rig_harness::commands::SlashCommand;
 use rig_harness::services::ProjectRoot;
+use rig_harness::watch::{FileChanges, FileWatch};
 use rig_harness::workspace::ProjectWorkspace;
 use rig_tools::workspace::{Local, Workspace};
 
 /// Items a completion lists.
 const SHOWN: usize = 50;
-/// Paths the walk collects at most.
-const MOST_PATHS: usize = 50_000;
-/// How long a walk's paths are used before the next `@` walks again.
-const FRESH: Duration = Duration::from_secs(30);
 
 /// Candidates for an argument of a slash command, such as `/model`'s
 /// models, on an entity of the plugin's: the word typed at the argument's
@@ -91,9 +88,9 @@ impl ArgCompletion {
     }
 }
 
-/// What is being completed.
+/// What a [`Completion`] completes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Kind {
+pub enum CompletionKind {
     /// A command name after a leading `/`.
     Command,
     /// The argument at this position (from 0) of the command at the
@@ -112,15 +109,21 @@ pub struct Candidate {
     pub detail: String,
 }
 
-/// The open completion list.
-pub(crate) struct Completion {
-    pub(crate) kind: Kind,
-    /// The byte offset of the `/` or `@` in the input.
-    pub(crate) start: usize,
-    /// The text typed after it.
-    query: String,
-    pub(crate) items: Vec<Candidate>,
-    pub(crate) selected: usize,
+/// The open completion list of the input, as
+/// [`TuiInputState::completion`](crate::TuiInputState::completion) gives it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Completion {
+    /// What it completes.
+    pub kind: CompletionKind,
+    /// The byte offset in the input of the token it completes: its `/` or
+    /// `@`, or an argument's first character.
+    pub start: usize,
+    /// The text typed after the `/` or `@`, or the argument typed.
+    pub query: String,
+    /// What it lists, best first.
+    pub items: Vec<Candidate>,
+    /// The position of the item Tab and Enter put in, among `items`.
+    pub selected: usize,
     /// Whether the items came from a finished walk.
     complete: bool,
 }
@@ -150,7 +153,7 @@ impl Completion {
     }
 }
 
-impl Kind {
+impl CompletionKind {
     /// What the token starts with.
     pub(crate) fn marker(self) -> &'static str {
         match self {
@@ -166,14 +169,26 @@ impl Kind {
 pub(crate) struct FileIndex {
     paths: Arc<Vec<String>>,
     walking: Option<Receiver<Vec<String>>>,
-    walked: Option<Instant>,
+    /// Whether the paths are the project's as its watch last saw it.
+    fresh: bool,
+    /// The watch of the project's root, from the first `@` on.
+    watch: Option<Entity>,
 }
 
 impl FileIndex {
-    /// Starts a walk of `root` in `workspace` unless one runs or the last
-    /// one is fresh.
-    fn refresh(&mut self, wake: &Wake, (workspace, root): (Arc<dyn Workspace>, PathBuf)) {
-        if self.walking.is_some() || self.walked.is_some_and(|walked| walked.elapsed() < FRESH) {
+    /// Watches `root`, then starts a walk of it in `workspace` unless one
+    /// runs or nothing changed since the last.
+    fn refresh(
+        &mut self,
+        wake: &Wake,
+        (workspace, root): (Arc<dyn Workspace>, PathBuf),
+        commands: &mut Commands,
+    ) {
+        if self.watch.is_none() {
+            let watch = (Name::new("rig-tui: @ paths"), FileWatch::tree(&root));
+            self.watch = Some(commands.spawn(watch).id());
+        }
+        if self.walking.is_some() || self.fresh {
             return;
         }
         let (sender, receiver) = crossbeam_channel::bounded(1);
@@ -185,7 +200,8 @@ impl FileIndex {
                 wake.wake();
             });
         match started {
-            Ok(_) => self.walking = Some(receiver),
+            // A change seen from here on makes the walk stale.
+            Ok(_) => (self.walking, self.fresh) = (Some(receiver), true),
             Err(failure) => warn!("could not list the project's files: {failure}"),
         }
     }
@@ -197,7 +213,6 @@ impl FileIndex {
         };
         self.paths = Arc::new(paths);
         self.walking = None;
-        self.walked = Some(Instant::now());
         true
     }
 }
@@ -206,7 +221,7 @@ impl FileIndex {
 /// them, relative to it, directories ending in `/`, skipping what
 /// `.gitignore` and hidden names leave out.
 fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
-    let files = match workspace.files(root, None) {
+    let files = match workspace.files(root, None, false) {
         Ok(files) => files,
         Err(failure) => {
             warn!("could not list the project's files: {failure}");
@@ -228,16 +243,13 @@ fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
             }
         }
         paths.push(text(relative));
-        if paths.len() >= MOST_PATHS {
-            break;
-        }
     }
     paths
 }
 
 /// The `/command`, argument or `@path` token that ends at the cursor, if
 /// any; an argument's with the command's name and its position.
-fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
+fn token(text: &str, cursor: usize) -> Option<(CompletionKind, usize, &str, &str)> {
     let before = text.get(..cursor)?;
     let start = before
         .char_indices()
@@ -247,10 +259,10 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
     if let Some(query) = word.strip_prefix('/')
         && start == 0
     {
-        return Some((Kind::Command, start, query, ""));
+        return Some((CompletionKind::Command, start, query, ""));
     }
     if let Some(query) = word.strip_prefix('@') {
-        return Some((Kind::Path, start, query, ""));
+        return Some((CompletionKind::Path, start, query, ""));
     }
     let command = text.strip_prefix('/')?.split_whitespace().next()?;
     let position = before
@@ -258,7 +270,7 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
         .split_whitespace()
         .count()
         .checked_sub(1)?;
-    Some((Kind::Arg(position), start, word, command))
+    Some((CompletionKind::Arg(position), start, word, command))
 }
 
 /// What completion lists: the slash commands, and the candidates plugins
@@ -294,6 +306,7 @@ pub(crate) fn update(
     index: &mut FileIndex,
     sources: &Sources,
     wake: &Wake,
+    commands: &mut Commands,
 ) {
     let found = token(input.text(), input.cursor());
     let Some((kind, start, query, command)) = found else {
@@ -306,20 +319,20 @@ pub(crate) fn update(
         return;
     }
     view.dismissed = None;
-    if kind == Kind::Path {
-        index.refresh(wake, sources.project());
+    if kind == CompletionKind::Path {
+        index.refresh(wake, sources.project(), commands);
     }
     let complete = index.walking.is_none();
     if let Some(open) = &view.completion
         && open.kind == kind
         && open.start == start
         && open.query == query
-        && (kind != Kind::Path || open.complete == complete)
+        && (kind != CompletionKind::Path || open.complete == complete)
     {
         return;
     }
     let items = match kind {
-        Kind::Command => {
+        CompletionKind::Command => {
             let mut ranked: Vec<(usize, &str, &SlashCommand)> = sources
                 .commands
                 .iter()
@@ -337,7 +350,7 @@ pub(crate) fn update(
                 })
                 .collect()
         }
-        Kind::Arg(position) => {
+        CompletionKind::Arg(position) => {
             let candidates = sources
                 .arguments
                 .iter()
@@ -349,7 +362,7 @@ pub(crate) fn update(
             ranked.sort_by_key(|(at, _)| *at);
             ranked.into_iter().map(|(_, item)| item.clone()).collect()
         }
-        Kind::Path => path_items(&index.paths, query),
+        CompletionKind::Path => path_items(&index.paths, query),
     };
     let query = query.to_owned();
     view.completion = (!items.is_empty()).then_some(Completion {
@@ -389,18 +402,32 @@ fn path_items(paths: &[String], query: &str) -> Vec<Candidate> {
         .collect()
 }
 
-/// Takes a finished walk and updates an open `@` completion with it.
+/// Walks the project again once its watch saw a change while an `@` path
+/// is typed, and takes a finished walk to update the completion with it.
 pub(crate) fn receive_paths(
     mut index: ResMut<FileIndex>,
+    mut changes: MessageReader<FileChanges>,
     mut view: ResMut<TuiView>,
     input: Res<TuiInput>,
     sources: Sources,
-    wake: Res<Wake>,
+    (wake, mut commands): (Res<Wake>, Commands),
 ) {
-    if index.walking.is_none() || !index.receive() {
-        return;
+    let watch = index.watch;
+    let changed = changes.read().any(|change| Some(change.watch) == watch);
+    if changed {
+        index.fresh = false;
     }
-    update(&mut view, &input, &mut index, &sources, &wake);
+    let received = index.walking.is_some() && index.receive();
+    if changed || received {
+        update(
+            &mut view,
+            &input,
+            &mut index,
+            &sources,
+            &wake,
+            &mut commands,
+        );
+    }
 }
 
 /// Brings the completion up to date with the input once it changed, by a
@@ -410,10 +437,17 @@ pub(crate) fn follow_input(
     mut view: ResMut<TuiView>,
     input: Res<TuiInput>,
     sources: Sources,
-    wake: Res<Wake>,
+    (wake, mut commands): (Res<Wake>, Commands),
 ) {
     if input.is_changed() {
-        update(&mut view, &input, &mut index, &sources, &wake);
+        update(
+            &mut view,
+            &input,
+            &mut index,
+            &sources,
+            &wake,
+            &mut commands,
+        );
     }
 }
 

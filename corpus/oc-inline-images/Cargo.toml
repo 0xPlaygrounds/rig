@@ -1,0 +1,29 @@
+[package]
+name = "corpus-oc-inline-images"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (one-conversation fresh held-out): OC-17: 17. Images in the terminal transcript"
+
+[lints]
+workspace = true
+
+[dependencies]
+# A placement's bytes in a terminal escape.
+base64 = { workspace = true }
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# Decoding an image for its size and its half-block preview; already in the
+# workspace's lock.
+image = { workspace = true, features = ["png", "jpeg", "gif", "webp"] }
+rig-harness = { path = "../../crates/rig-harness" }
+# The images are drawn in the terminal view's transcript.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

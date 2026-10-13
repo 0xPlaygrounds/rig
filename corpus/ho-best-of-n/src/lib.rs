@@ -823,7 +823,7 @@ fn job_done(
         (Work::Apply { k, why, .. }, Ok(_)) => {
             let note = note(&run, *k, why);
             let deliver = Deliver::new(run.owner, note, DeliveryMode::Note);
-            commands.trigger(deliver.with_origin(Origin::plugin("best-of")));
+            commands.trigger(deliver.with_author(Author::plugin("best-of")));
             finish(run_entity, &run, &mut commands);
         }
         (Work::Apply { k, .. }, Err(why)) => {
@@ -1100,7 +1100,6 @@ fn candidate_done(
 fn cancel_on_interrupt(
     interrupt: On<Interrupt>,
     runs: Query<(Entity, &Run)>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -1110,7 +1109,7 @@ fn cancel_on_interrupt(
             .iter()
             .filter_map(|candidate| candidate.agent)
         {
-            commit.retire(agent);
+            commands.trigger(Retire { entity: agent });
         }
         notices.write(Notice::info(
             run.owner,
@@ -1125,9 +1124,9 @@ fn cancel_on_interrupt(
 /// waits for.
 fn retire_orphans(
     restored: Query<Entity, (Added<WasCandidate>, Without<CandidateOf>)>,
-    mut commit: Commit,
+    mut commands: Commands,
 ) {
     for candidate in &restored {
-        commit.retire(candidate);
+        commands.trigger(Retire { entity: candidate });
     }
 }

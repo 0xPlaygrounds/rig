@@ -1,12 +1,14 @@
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, channel};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::clock::ClockPlugin;
+use rig_harness::harness_protocol::SessionId;
 use rig_harness::load;
 use rig_harness_test_support::{
-    Collected, Ended, app_on, calls, collect, connect, first_agent, log_ended, reply, run_until,
+    Collected, Ended, app_in, calls, collect, connect, first_agent, log_ended, reply, run_until,
+    scratch_home,
 };
+use rig_harness_test_support::{press, tui_view};
 use rig_tui::{AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed};
 
 use super::*;
@@ -105,30 +107,6 @@ impl Plugin for Keyhog {
     }
 }
 
-/// Set to have the terminal view press Ctrl+K in the next frame.
-#[derive(Resource, Default)]
-struct PressKey(bool);
-
-/// What the terminal view does on a bound key: triggers its binding.
-fn press(
-    mut pending: ResMut<PressKey>,
-    bindings: Query<(Entity, &KeyBinding)>,
-    mut commands: Commands,
-) {
-    if !std::mem::take(&mut pending.0) {
-        return;
-    }
-    for (entity, binding) in &bindings {
-        if binding.label == "Freeze" {
-            commands.trigger(KeyPressed {
-                entity,
-                agent: None,
-                released: false,
-            });
-        }
-    }
-}
-
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ReadArgs {
     path: String,
@@ -141,18 +119,28 @@ fn read(called: On<ToolCalled<ReadArgs>>, mut calls: Query<&mut Decision, ToolCa
     }
 }
 
-fn start() -> (App, Receiver<()>) {
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin, ClockPlugin))
-        .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
-        .init_resource::<PressKey>()
-        .add_systems(Update, press)
-        .init_resource::<Ended>()
-        .add_observer(log_ended);
-    load::<PluginProfilerPlugin>(&mut app, "corpus-sn-plugin-profiler", "test");
-    load::<Slowpoke>(&mut app, "slowpoke", "test");
-    load::<Idle>(&mut app, "idle", "test");
-    load::<Keyhog>(&mut app, "keyhog", "test");
+/// An app whose log times every system and observer run, as the agent's
+/// does, with the session service (which ends each frame's timings), the
+/// profiler, `plugins`, and the terminal view, in the home `home`.
+fn start(home: &str, plugins: impl FnOnce(&mut App)) -> (App, Receiver<()>) {
+    let (mut app, _) = app_in(&scratch_home(home), &SessionId::generate());
+    app.add_plugins(HeadlessPlugins.build().disable::<TaskPoolPlugin>());
+    // The loop's wakes, in place of the headless runner's.
+    let (sender, wakes) = channel();
+    app.insert_resource(Wake::new(move || {
+        sender.send(()).ok();
+    }))
+    .add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        ClockPlugin,
+        PluginProfilerPlugin,
+    ))
+    .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
+    .init_resource::<Ended>()
+    .add_observer(log_ended);
+    plugins(&mut app);
+    tui_view(&mut app);
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
@@ -193,8 +181,11 @@ fn slow_notices(app: &App) -> Vec<String> {
         .collect()
 }
 
+/// The package the test plugins come from.
+const HERE: &str = "corpus-sn-plugin-profiler";
+
 #[test]
-fn names_the_plugin_that_holds_up_turns_and_the_one_that_stalls_the_keys() {
+fn names_the_plugin_that_holds_up_turns() {
     let reads = |id: &str| calls(id, "read", serde_json::json!({ "path": "a.txt" }));
     let model = MockCompletionModel::from_stream_turns([
         reads("r1"),
@@ -206,7 +197,11 @@ fn names_the_plugin_that_holds_up_turns_and_the_one_that_stalls_the_keys() {
         reads("r4"),
         reply("four"),
     ]);
-    let (mut app, wakes) = start();
+    let (mut app, wakes) = start("perf-holds", |app| {
+        // Two plugins of one package, told apart.
+        load::<Slowpoke>(app, HERE, "test");
+        load::<Idle>(app, HERE, "test");
+    });
     let (agent, connection) = (first_agent(app.world_mut()), connect(&model));
     assert!(
         agent.is_some() && connection.is_some(),
@@ -224,7 +219,9 @@ fn names_the_plugin_that_holds_up_turns_and_the_one_that_stalls_the_keys() {
     let session = report(&mut app, agent).session;
     let slowpoke = session.get("slowpoke").cloned().unwrap_or_default();
     assert!(slowpoke.held_up_ms >= 1200, "{slowpoke:?}");
+    // Its four holds; its systems ran besides.
     assert_eq!(slowpoke.calls, 4, "{slowpoke:?}");
+    assert!(slowpoke.runs > 0, "{slowpoke:?}");
     let slowest = slowpoke.slowest.unwrap_or(Slowest {
         ms: 0,
         handling: String::new(),
@@ -234,8 +231,10 @@ fn names_the_plugin_that_holds_up_turns_and_the_one_that_stalls_the_keys() {
         slowest.handling.starts_with("before request #"),
         "{slowest:?}"
     );
-    let idle = session.get("idle").map_or(0, |idle| idle.held_up_ms);
-    assert!(idle < 50, "{session:?}");
+    // Only `idle`'s own observer runs are charged to it, and held up little.
+    let idle = session.get("idle").cloned().unwrap_or_default();
+    assert!(idle.runs >= 2 && idle.calls == 0, "{session:?}");
+    assert!(idle.held_up_ms < 50, "{session:?}");
     assert!(slow_notices(&app).is_empty(), "600 ms a turn is under 1 s");
 
     // Over 500 ms in a turn is named once a session.
@@ -254,9 +253,14 @@ fn names_the_plugin_that_holds_up_turns_and_the_one_that_stalls_the_keys() {
     assert!(in_turn >= 600, "{last_turn:?}");
     turn(&mut app, &wakes, agent, 4);
     assert_eq!(slow_notices(&app).len(), 1);
+}
 
-    // A key whose handler blocks stalls the interface, and is named.
-    app.world_mut().resource_mut::<PressKey>().0 = true;
+#[test]
+fn names_the_plugin_whose_key_handler_stalls_the_interface() {
+    let (mut app, _) = start("perf-stall", |app| load::<Keyhog>(app, HERE, "test"));
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    press(&mut app, "ctrl+k");
+    // The harness hands over a frame's runs in the next one.
     app.update();
     let stalls = report(&mut app, agent).stalls;
     let stall = stalls.iter().find(|stall| stall.plugin == "keyhog");

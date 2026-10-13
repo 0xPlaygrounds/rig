@@ -189,7 +189,9 @@ fn ask_for_notes(
     mut notices: MessageWriter<Notice>,
 ) {
     for (mut call, &ForAgent(agent)) in &mut calls {
-        call.request.chat_history.push(Message::user(ASK));
+        if let Some(history) = &mut call.history {
+            history.push(Entry::new(Message::user(ASK)).by(Author::plugin("exit-notes")));
+        }
         let Some(model) = &settings.model else {
             continue;
         };

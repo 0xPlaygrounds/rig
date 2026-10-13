@@ -3,7 +3,7 @@
 //! shown, and the transcript as plugins read and steer it
 //! ([`TranscriptView`]): what is expanded and selected, the text lit,
 //! where it is scrolled, and recent notices, which are kept in the
-//! session's store for the next build.
+//! session's [`PluginData`] for the next build.
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -25,21 +25,18 @@ use super::pick::Choosing;
 use super::transcript::Scroll;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
-use rig_ecs::journal::SessionStore;
-use rig_ecs::prelude::MessageId;
-use rig_harness::prelude::ExitReason;
+use rig_ecs::prelude::{Aside, AsideId, MessageId};
+use rig_harness::prelude::{ExitReason, PluginData};
 use rig_harness::primary::Shown;
-use rig_harness::transcript::TranscriptEntry;
 
 /// Notices kept for display, and read back by the next build.
 const KEPT_NOTICES: usize = 200;
 
-/// The file of the session's store that keeps the notices shown, in the
-/// view's own directory.
+/// The file of the session's [`PluginData`] that keeps the notices shown.
 const NOTICES_FILE: &str = "tui/notices.jsonl";
 
-/// The file of the session's store that keeps what was typed and not sent
-/// for the build a reload starts, in the view's own directory.
+/// The file of the session's [`PluginData`] that keeps what was typed and
+/// not sent for the build a reload starts.
 const DRAFT_FILE: &str = "tui/draft.txt";
 
 /// Ask the view to show the agent and send what is typed to it, such as
@@ -85,8 +82,8 @@ pub enum TranscriptItem {
     Message(MessageId),
     /// A tool call, by its call id.
     Call(CallId),
-    /// A plugin's [`TranscriptEntry`](rig_harness::transcript::TranscriptEntry).
-    Entry(Entity),
+    /// A plugin's [`Note`](rig_harness::note::Note), by its aside's id.
+    Note(AsideId),
     /// A notice, by its index in [`TranscriptView::notices`].
     Notice(usize),
 }
@@ -352,7 +349,7 @@ impl DrawnTranscript {
 
     /// Each item's rows, top to bottom by first row. An item's rows hold
     /// those of the items drawn inside it: a message's, its calls and the
-    /// notices and entries written inside it. Rows of no item, such as the
+    /// notices and notes written inside it. Rows of no item, such as the
     /// reply streaming in, are in none.
     pub fn items(&self) -> &[(TranscriptItem, Range<usize>)] {
         &self.items
@@ -385,7 +382,7 @@ impl DrawnTranscript {
     /// Whether `item` is drawn cut: collapsed, it draws less than it does
     /// expanded, such as a shell call's last lines of output. Expanding it
     /// draws it whole. A message is cut when its own text is, not when
-    /// only a call or an entry in it is.
+    /// only a call or a note in it is.
     pub fn is_cut(&self, item: &TranscriptItem) -> bool {
         self.cut.contains(item)
     }
@@ -459,7 +456,7 @@ struct Anchor {
     items: usize,
 }
 
-/// Where a notice or an entry is drawn in an agent's transcript, by the
+/// Where a notice or a note is drawn in an agent's transcript, by the
 /// index of a message in its [`Conversation`]. Slots order as they are
 /// drawn: the top, then each message with the slots inside it by item,
 /// then the slot after it. Those in the same slot are drawn in the order
@@ -475,12 +472,12 @@ pub enum TranscriptSlot {
 }
 
 impl TranscriptSlot {
-    /// Where the entry `entry` is drawn in `conversation`: after its
-    /// message while that is there, else after the first item of the
-    /// message that stands for it now, such as the summary of a compaction
-    /// that took it out, which a kept prompt may have joined.
-    pub fn of_entry(entry: &TranscriptEntry, conversation: &Conversation) -> Self {
-        let Some(after) = entry.after else {
+    /// Where `aside` is drawn in `conversation`: after the entry it
+    /// follows while that is there, else after the first item of the entry
+    /// that stands for it now, such as the summary of a compaction that
+    /// took it out.
+    pub fn of_aside(aside: &Aside, conversation: &Conversation) -> Self {
+        let Some(after) = aside.after else {
             return Self::Top;
         };
         if let Some(index) = conversation.index_of(after) {
@@ -662,12 +659,12 @@ impl TranscriptView {
 }
 
 /// Reads back the notices an earlier build of the session showed, and
-/// keeps the next ones in the session's store.
-pub(crate) fn load_notices(store: Option<Res<SessionStore>>, mut view: ResMut<TranscriptView>) {
-    let Some(store) = store else {
+/// keeps the next ones in the session's [`PluginData`].
+pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut view: ResMut<TranscriptView>) {
+    let Some(data) = data else {
         return;
     };
-    let file = Kept::Stored(store.0.clone(), NOTICES_FILE);
+    let file = Kept(data.session.clone(), NOTICES_FILE);
     view.notices = jsonl::tail(&file, KEPT_NOTICES);
     view.notices_file = Some(file);
 }
@@ -677,10 +674,10 @@ pub(crate) fn load_notices(store: Option<Res<SessionStore>>, mut view: ResMut<Tr
 /// While a question is answered in the input, what was typed before it.
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
-    store: Option<Res<SessionStore>>,
+    data: Option<Res<PluginData>>,
     (input, view): (Res<TuiInput>, Option<Res<TuiView>>),
 ) {
-    let (Some(reason), Some(store)) = (reason, store) else {
+    let (Some(reason), Some(data)) = (reason, data) else {
         return;
     };
     let answering = view.as_deref().and_then(|view| view.choosing.as_ref());
@@ -689,18 +686,18 @@ pub(crate) fn keep_draft(
     if *reason != ExitReason::Reload || text.is_empty() {
         return;
     }
-    if let Err(failure) = store.0.write_file(DRAFT_FILE, text.as_bytes()) {
+    if let Err(failure) = data.session.write_file(DRAFT_FILE, text.as_bytes()) {
         warn!("could not keep the input for the next build: {failure}");
     }
 }
 
 /// Puts back in the input what the build before a reload kept.
-pub(crate) fn load_draft(store: Option<Res<SessionStore>>, mut input: ResMut<TuiInput>) {
-    let Some(store) = store else {
+pub(crate) fn load_draft(data: Option<Res<PluginData>>, mut input: ResMut<TuiInput>) {
+    let Some(data) = data else {
         return;
     };
-    if let Ok(text) = store.0.read_file(DRAFT_FILE) {
-        store.0.remove_file(DRAFT_FILE).ok();
+    if let Ok(text) = data.session.read_file(DRAFT_FILE) {
+        data.session.remove_file(DRAFT_FILE).ok();
         input.set(String::from_utf8_lossy(&text).into_owned());
     }
 }
@@ -763,7 +760,10 @@ pub(crate) fn on_scroll_to(
 }
 
 /// Keeps the latest notices for display, each placed where its agent's
-/// conversation ended when it arrived.
+/// conversation ended when it arrived. One about an agent gone before it
+/// is read, such as a helper retired in the pass its model call failed,
+/// has no transcript left to be drawn in, and is not taken for one about
+/// every agent.
 pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
     agents: Query<(&AgentId, &Conversation)>,
@@ -774,11 +774,14 @@ pub(crate) fn collect_notices(
         return;
     }
     for notice in notices.read() {
-        let about = notice.agent.and_then(|agent| agents.get(agent).ok());
-        let written = notice
-            .agent
-            .or(shown.0)
-            .and_then(|agent| agents.get(agent).ok());
+        let about = match notice.agent {
+            Some(agent) => match agents.get(agent) {
+                Ok(about) => Some(about),
+                Err(_) => continue,
+            },
+            None => None,
+        };
+        let written = about.or_else(|| shown.0.and_then(|agent| agents.get(agent).ok()));
         view.keep(ShownNotice {
             agent: about.map(|(id, _)| id.clone()),
             at: written.and_then(|(id, conversation)| anchor(id, conversation)),

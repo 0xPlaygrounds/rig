@@ -1,9 +1,9 @@
 use std::sync::Mutex;
 
 use bevy_time::TimeUpdateStrategy;
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, connect, reply, run_until};
 
 use super::*;
@@ -65,7 +65,7 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_an_answered_questi
     app.update();
     for agent in [parent, child] {
         let ask = Deliver::new(agent, "Go.", DeliveryMode::Queue);
-        app.world_mut().trigger(ask.with_origin(Origin::user()));
+        app.world_mut().trigger(ask);
     }
     run_until(&mut app, &wakes, |world| {
         top.request_count() > 0

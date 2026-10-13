@@ -62,7 +62,10 @@ impl Plugin for CheckAfterTurnPlugin {
             .add_observer(cancel_on_user)
             .add_observer(cancel_on_interrupt);
         #[cfg(feature = "tui")]
-        app.add_systems(PostUpdate, status::show.in_set(rig_tui::StatusSystems));
+        app.add_systems(
+            PostUpdate,
+            status::show.in_set(rig_tui::StatusSystems::Show),
+        );
     }
 }
 
@@ -363,7 +366,7 @@ fn check_done(
         ran.output.trim_end()
     );
     let deliver = Deliver::new(agent, message, DeliveryMode::Queue);
-    commands.trigger(deliver.with_origin(Origin::plugin(CHECK).titled(name.clone())));
+    commands.trigger(deliver.with_author(Author::plugin(CHECK).titled(name.clone())));
 }
 
 /// A message the user sends starts over: the checks running stop, and the
@@ -378,7 +381,7 @@ fn cancel_on_user(
     let Ok((message, &ForAgent(agent))) = messages.get(started.entity) else {
         return;
     };
-    if message.origin.kind != OriginKind::User || message.command().is_some() {
+    if message.author.kind != AuthorKind::User || message.command().is_some() {
         return;
     }
     stop(agent, &runs, &mut commands);
@@ -429,7 +432,7 @@ mod status {
     use super::CheckState;
 
     /// After the agent's status; gone before the reasoning setting.
-    const CHECKING: StatusItem = StatusItem::at(Side::Left, 56, 10);
+    const CHECKING: StatusItem = StatusItem::new("check-after-turn", Side::Left, 56, 10);
 
     pub(super) fn show(mut agents: Query<(&CheckState, &mut StatusItems), Changed<CheckState>>) {
         for (state, mut items) in &mut agents {

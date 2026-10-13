@@ -15,8 +15,8 @@
 //! `/btw` while it is open (`/btw new <question>` replaces it), Ctrl+Y
 //! copies the last answer into the main input without sending it and
 //! closes the box, and Esc closes it. Closing retires the side agent. Each
-//! side conversation is a [`TranscriptEntry`] of the agent it was asked
-//! beside, after the message it was asked at: titled by its first question
+//! side conversation is a [`Note`] aside of the agent it was asked beside,
+//! after the message it was asked at: titled by its first question
 //! and drawn cut until expanded, kept with the session, never part of the
 //! conversation. Its model calls are the side agent's, so its cost is that
 //! agent's spending, with the purpose [`PURPOSE`]. Interrupting either
@@ -28,7 +28,7 @@
 //! ```
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::transcript::{close_pending_with, pending_calls};
+use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
@@ -36,8 +36,9 @@ use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::{Block, Paragraph, Wrap};
 use rig_tui::{
-    AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, PanelCanvas,
-    Placement, RequestRedraw, TerminalEvent, TuiInput, TuiPanel, TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
+    KeyScope, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiInput, TuiPanel, TuiPlugin,
+    TuiSystems,
 };
 use serde::Deserialize;
 
@@ -116,8 +117,8 @@ pub struct SideChat {
     pub draft: String,
     /// The message of the agent it was asked after.
     after: Option<MessageId>,
-    /// Its [`TranscriptEntry`] in the agent's transcript, once answered.
-    entry: Option<Entity>,
+    /// Its [`Note`] aside in the agent's conversation, once answered.
+    entry: Option<AsideId>,
 }
 
 impl SideChat {
@@ -143,9 +144,9 @@ impl SideChat {
             .map(|exchange| exchange.answer.as_str())
     }
 
-    /// Its transcript entry: titled by the first question, holding every
+    /// Its note aside: titled by the first question, holding every
     /// exchange.
-    fn entry(&self) -> TranscriptEntry {
+    fn entry(&self) -> Aside {
         let first = self.exchanges.first();
         let title = first
             .map(|first| first.question.as_str())
@@ -159,7 +160,7 @@ impl SideChat {
             .iter()
             .map(|exchange| format!("› {}\n{}", exchange.question, exchange.answer))
             .collect();
-        TranscriptEntry::new(TITLE, self.after, title, text.join("\n\n"))
+        Note::new(title, text.join("\n\n")).aside(Author::plugin(TITLE), self.after)
     }
 }
 
@@ -191,11 +192,12 @@ impl Plugin for SideQuestionPlugin {
             .add_observer(side_purpose)
             .add_observer(answered)
             .add_systems(
+                rig_tui::TuiKeys,
+                type_follow_up.in_set(InputSystems::Filter),
+            )
+            .add_systems(
                 Update,
-                (
-                    type_follow_up.before(AgentLoop),
-                    discard_restored.run_if(resource_added::<SessionRestored>),
-                ),
+                discard_restored.run_if(resource_added::<SessionRestored>),
             )
             .add_systems(PostUpdate, (redraw, draw.in_set(TuiSystems::Draw)));
     }
@@ -243,7 +245,6 @@ fn ask_side(
     tools: Query<(&ToolDef, &Footprint)>,
     settings: Res<BtwSettings>,
     mut focus: ResMut<KeyFocus>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -258,14 +259,14 @@ fn ask_side(
         match chat.agent {
             Some(side) => {
                 let follow_up = Deliver::new(side, question, DeliveryMode::Queue);
-                commands.trigger(follow_up.with_origin(Origin::user().titled(TITLE)));
+                commands.trigger(follow_up.with_author(Author::user().titled(TITLE)));
             }
             None => chat.waiting.push(question),
         }
         focus.0 = Some(chat.panel);
         return;
     }
-    close(&mut chat, &mut commit, &mut commands);
+    close(&mut chat, &mut commands);
     let Ok((conversation, access)) = agents.get(main) else {
         notices.write(Notice::error(main, "/btw needs an agent to ask beside."));
         return;
@@ -315,25 +316,24 @@ fn seed_side_agent(
     requests: Query<(&SpawnedAgent, &Snapshot)>,
     mut agents: Query<&mut Conversation>,
     mut chat: ResMut<SideChat>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     let Ok((&SpawnedAgent(side), Snapshot(snapshot))) = requests.get(spawned.entity) else {
         return;
     };
     if chat.request != Some(spawned.entity) {
-        commit.retire(side);
+        commands.trigger(Retire { entity: side });
         return;
     }
     if let Ok(mut conversation) = agents.get_mut(side) {
-        commit.splice(side, &mut conversation, 0..0, snapshot.iter().cloned());
+        conversation.splice(0..0, snapshot.iter().cloned(), Author::plugin(TITLE));
     }
     commands.entity(side).insert(SideAgent);
     let section = PromptSection::new(PromptSection::ORDER_ROLE + 1, TITLE, SIDE_PROMPT);
     commands.spawn((section, SectionOf(side)));
     for question in chat.waiting.drain(..) {
         let question = Deliver::new(side, question, DeliveryMode::Queue);
-        commands.trigger(question.with_origin(Origin::user().titled(TITLE)));
+        commands.trigger(question.with_author(Author::user().titled(TITLE)));
     }
     chat.agent = Some(side);
     chat.request = None;
@@ -360,8 +360,7 @@ fn answered(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
     mut chat: ResMut<SideChat>,
-    mut entries: Query<&mut TranscriptEntry>,
-    mut commands: Commands,
+    mut agents: Query<&mut Conversation>,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
@@ -370,7 +369,7 @@ fn answered(
         return;
     };
     let answer = match outcome {
-        TurnOutcome::Answered(message) => final_answer(message).unwrap_or_default(),
+        TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("(failed: {why})"),
         TurnOutcome::Stopped(_) => "(stopped)".to_owned(),
     };
@@ -378,17 +377,20 @@ fn answered(
         last.answer = answer;
     }
     let entry = chat.entry();
-    match chat.entry.and_then(|shown| entries.get_mut(shown).ok()) {
-        Some(mut shown) => *shown = entry,
-        None => chat.entry = Some(commands.spawn((entry, EntryOf(main))).id()),
+    let Ok(mut conversation) = agents.get_mut(main) else {
+        return;
+    };
+    match chat.entry {
+        Some(shown) if conversation.replace_aside(shown, entry.clone()) => {}
+        _ => chat.entry = Some(conversation.add_aside(entry)),
     }
 }
 
 /// Closes the side conversation: the side agent is retired and the panel
-/// goes; its transcript entry stays.
-fn close(chat: &mut SideChat, commit: &mut Commit, commands: &mut Commands) {
+/// goes; its note in the transcript stays.
+fn close(chat: &mut SideChat, commands: &mut Commands) {
     if let Some(side) = chat.agent.take() {
-        commit.retire(side);
+        commands.trigger(Retire { entity: side });
     }
     if let Some(request) = chat.request.take() {
         commands.entity(request).try_despawn();
@@ -402,13 +404,12 @@ fn close_on_key(
     pressed: On<KeyPressed>,
     mut chat: ResMut<SideChat>,
     mut focus: ResMut<KeyFocus>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     if pressed.released {
         return;
     }
-    close(&mut chat, &mut commit, &mut commands);
+    close(&mut chat, &mut commands);
     focus.0 = None;
 }
 
@@ -419,7 +420,6 @@ fn send_to_agent(
     mut chat: ResMut<SideChat>,
     mut input: ResMut<TuiInput>,
     mut focus: ResMut<KeyFocus>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     if pressed.released {
@@ -428,23 +428,25 @@ fn send_to_agent(
     if let Some(answer) = chat.last_answer().filter(|answer| !answer.is_empty()) {
         input.set(answer.to_owned());
     }
-    close(&mut chat, &mut commit, &mut commands);
+    close(&mut chat, &mut commands);
     focus.0 = None;
 }
 
 /// Types into the panel while it has the keys: characters, pastes and
 /// Backspace edit the draft, and Enter asks it as a follow-up.
 fn type_follow_up(
-    mut events: MessageReader<TerminalEvent>,
+    events: Res<TerminalEvents>,
     focus: Res<KeyFocus>,
     mut chat: ResMut<SideChat>,
     mut commands: Commands,
 ) {
     let Some(main) = chat.main.filter(|_| focus.0 == Some(chat.panel)) else {
-        events.clear();
         return;
     };
-    for TerminalEvent(event) in events.read() {
+    for item in &events.0 {
+        let KeyInput::Event(event) = item else {
+            continue;
+        };
         match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                 KeyCode::Enter => {
@@ -476,15 +478,15 @@ fn type_follow_up(
 }
 
 /// Retires the side agents a restored session brings back: a side agent
-/// lives only while its panel is open, and its exchanges are in the
-/// transcript of the agent it was beside.
+/// lives only while its panel is open, and its exchanges are a note aside
+/// of the agent it was beside.
 fn discard_restored(
     sides: Query<Entity, With<SideAgent>>,
     chat: Res<SideChat>,
-    mut commit: Commit,
+    mut commands: Commands,
 ) {
     for side in sides.iter().filter(|&side| chat.agent != Some(side)) {
-        commit.retire(side);
+        commands.trigger(Retire { entity: side });
     }
 }
 

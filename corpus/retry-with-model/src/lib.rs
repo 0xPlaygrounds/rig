@@ -5,12 +5,11 @@
 //! alternative, and runs that turn again on the model named, for this turn
 //! only: the agent's own [`ModelChoice`] stays. `/alternatives` lists the
 //! kept answers and `/pick N` swaps the conversation to one of them. The
-//! conversation changes through [`Commit`], so the session log keeps them,
-//! and the alternatives are saved with the session. The input completes
+//! conversation changes are splices by this plugin, so the session log
+//! keeps them, and the alternatives are saved with the session. The input completes
 //! `/retry-with`'s argument to the models the agent can reach.
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_tui::ArgCompletion;
 use serde::{Deserialize, Serialize};
@@ -73,13 +72,13 @@ pub struct Alternatives {
 }
 
 impl Alternatives {
-    /// The answer to the user message at `turn` that `conversation` holds,
-    /// taken out of these as an alternative.
-    fn take_current(&mut self, conversation: &Conversation, turn: usize) -> Alternative {
+    /// The answer that `conversation` holds from `answer` on, taken out of
+    /// these as an alternative.
+    fn take_current(&mut self, conversation: &Conversation, answer: usize) -> Alternative {
         Alternative {
             model: std::mem::take(&mut self.model),
             changed: std::mem::take(&mut self.changed),
-            messages: (turn + 1..conversation.messages().len())
+            messages: (answer..conversation.messages().len())
                 .filter_map(|at| conversation.entry(at))
                 .collect(),
         }
@@ -94,7 +93,7 @@ pub struct Alternative {
     /// What its tool calls changed.
     pub changed: Vec<String>,
     /// The answer's messages, the tool calls and results included, with
-    /// their origins and ids.
+    /// their authors and ids.
     pub messages: Vec<Entry>,
 }
 
@@ -105,7 +104,7 @@ impl Alternative {
             .messages
             .iter()
             .rev()
-            .find_map(|entry| final_answer(&entry.message));
+            .find_map(|entry| entry.message.final_answer());
         let line = text
             .unwrap_or_default()
             .split_whitespace()
@@ -173,11 +172,8 @@ fn note_turn(
     let Ok((conversation, mut alternatives, connection)) = agents.get_mut(agent) else {
         return;
     };
-    let asked = conversation
-        .messages()
-        .get(conversation.start_of(turn.first_message));
-    if !matches!(outcome, TurnOutcome::Answered(_)) || !matches!(asked, Some(Message::User { .. }))
-    {
+    let asked = conversation.request(turn.first_message).is_some();
+    if !matches!(outcome, TurnOutcome::Answered(_)) || !asked {
         return;
     }
     if retry.is_none() && alternatives.turn != Some(turn.first_message) {
@@ -237,15 +233,18 @@ fn complete(
     }
 }
 
-/// The index of the last turn's user message, when the conversation still
-/// holds it.
+/// Where the answer to the last turn starts: after the user entries the
+/// turn answered, when the conversation still holds them.
 fn last_turn(conversation: &Conversation, alternatives: &Alternatives) -> Option<usize> {
-    let turn = conversation.index_of(alternatives.turn?)?;
-    matches!(
-        conversation.messages().get(turn),
-        Some(Message::User { .. })
-    )
-    .then_some(turn)
+    let turn = alternatives.turn?;
+    conversation.index_of(turn)?;
+    let asked = conversation.asked(turn).last()?;
+    asked.index.checked_add(1)
+}
+
+/// The author of this plugin's edits.
+fn author() -> Author {
+    Author::plugin("retry-with-model")
 }
 
 type Agents<'w, 's> = Query<
@@ -263,7 +262,6 @@ fn retry_with(
     In(args): In<CommandArgs>,
     mut agents: Agents,
     models: Res<Models>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -299,7 +297,7 @@ fn retry_with(
             return;
         }
     };
-    let Some(turn) = last_turn(&conversation, &alternatives) else {
+    let Some(answer) = last_turn(&conversation, &alternatives) else {
         notices.write(Notice::error(agent, "There is no last turn to retry."));
         return;
     };
@@ -317,11 +315,11 @@ fn retry_with(
         }
         notices.write(Notice::info(agent, format!("Not rolled back: {changed}.")));
     }
-    let current = alternatives.take_current(&conversation, turn);
+    let current = alternatives.take_current(&conversation, answer);
     if !current.messages.is_empty() {
         alternatives.kept.push(current);
     }
-    commit.splice(agent, &mut conversation, turn + 1.., []);
+    conversation.splice(answer.., [], author());
     notices.write(Notice::info(
         agent,
         format!("Retrying the last turn on {}.", connection.spec.reference()),
@@ -358,12 +356,7 @@ fn alternatives(
 
 /// `/pick N`: the conversation takes alternative N, which takes the
 /// answer it replaces.
-fn pick(
-    In(args): In<CommandArgs>,
-    mut agents: Agents,
-    mut commit: Commit,
-    mut notices: MessageWriter<Notice>,
-) {
+fn pick(In(args): In<CommandArgs>, mut agents: Agents, mut notices: MessageWriter<Notice>) {
     let agent = args.agent;
     let Ok((mut conversation, mut alternatives, busy)) = agents.get_mut(agent) else {
         return;
@@ -386,16 +379,16 @@ fn pick(
         ));
         return;
     };
-    let Some(turn) = last_turn(&conversation, &alternatives) else {
+    let Some(answer) = last_turn(&conversation, &alternatives) else {
         notices.write(Notice::error(agent, "The last turn is gone."));
         return;
     };
-    let current = alternatives.take_current(&conversation, turn);
+    let current = alternatives.take_current(&conversation, answer);
     let Some(slot) = alternatives.kept.get_mut(index) else {
         return;
     };
     let chosen = std::mem::replace(slot, current);
-    commit.splice(agent, &mut conversation, turn + 1.., chosen.messages);
+    conversation.splice(answer.., chosen.messages, author());
     notices.write(Notice::info(
         agent,
         format!("Picked the answer of {}.", chosen.model),

@@ -1,7 +1,7 @@
 //! Subagents: agents that start, message and wait on other agents, built
 //! only on the kernel's public API: open tools, an effect of its own
 //! ([`SpawnSubagent`]), spawned agents ([`SpawnedBy`]), messages
-//! ([`Incoming`]) with an [`Origin`], [`TurnOutcome`], [`Restored`] work and
+//! ([`Incoming`]) with an [`Author`], [`TurnOutcome`], [`Restored`] work and
 //! saved components. Leave [`SubagentsPlugin`] out of the app, or replace
 //! it, and there are no subagents.
 //!
@@ -83,6 +83,7 @@
 use rig_core::effect::EffectId;
 
 use rig_harness::prelude::*;
+use serde::{Deserialize, Serialize};
 
 mod lifecycle;
 #[cfg(feature = "tui")]
@@ -92,11 +93,16 @@ mod tools;
 
 pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
 
-/// The plugin's stage systems, by stage.
+/// The plugin's stage systems, by stage. After a restart, once every gate
+/// had its say and before the kernel's own answers
+/// ([`GateSystems::Fallback`]), the plugin stops the restored turn of an
+/// agent that owed reports, so its requests are reported as interrupted,
+/// unless a plugin claimed any of the turn's restored work in Gate: held
+/// it, decided it, superseded it or ended the turn. A plugin that lets
+/// that work carry on does one of those, not only remove `Interrupted`.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SubagentSystems {
-    /// Refuses a request deeper than [`SubagentPolicy`] allows, and stops
-    /// the restored turn of an agent that owed reports.
+    /// Refuses a request deeper than [`SubagentPolicy`] allows.
     Gate,
 }
 pub use tools::{MESSAGE, TASK, WAIT};
@@ -131,7 +137,7 @@ pub struct Subtask(pub String);
 pub struct Helper(pub String);
 
 /// On a message: it is an agent's report on requests it was sent; its
-/// origin names the agent and the last request.
+/// author names the agent and the last request.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Report;
 
@@ -143,12 +149,23 @@ pub struct Peers;
 
 /// On an agent: the requests other agents sent it, oldest first, until it
 /// reports on them. Each gets exactly one report, to its asker.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+/// Saved through serde, as it holds rig-core's [`RequestId`].
+#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
+#[reflect(
+    opaque,
+    Component,
+    Saved,
+    Default,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize
+)]
+#[serde(transparent)]
 pub struct OpenRequests(pub Vec<Request>);
 
 /// A request an agent owes a report on.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
     /// The call that asked, which the report names.
     pub id: RequestId,
@@ -157,7 +174,7 @@ pub struct Request {
     /// For a `task` reported with the other `task` calls of one reply:
     /// that reply's model call. Not saved: a restart answers every open
     /// request at once.
-    #[reflect(ignore)]
+    #[serde(skip)]
     pub batch: Option<EffectId>,
 }
 

@@ -216,7 +216,7 @@ impl Template {
         // The user's own words, sent as typed even if they start with `/`,
         // titled so the transcript names the template.
         let incoming = Incoming::new(text, args.mode)
-            .with_origin(Origin::user().titled(self.name.clone()))
+            .with_author(Author::user().titled(self.name.clone()))
             .literal();
         let model = match &self.model {
             None => None,

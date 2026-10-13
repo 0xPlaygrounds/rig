@@ -1,12 +1,13 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
+use rig_core::message::Message;
 use rig_core::operation::Completion;
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 
 use super::*;
 use rig_harness_test_support::{app_on, reply, run_until};
@@ -49,7 +50,8 @@ fn start(store: &MemoryStore, models: Models) -> (App, Receiver<()>, Entity) {
 fn last_answer(world: &World, agent: Entity) -> String {
     let conversation = world.get::<Conversation>(agent);
     let last = conversation.and_then(|conversation| conversation.messages().last());
-    last.and_then(final_answer).unwrap_or_default()
+    last.and_then(|message| message.final_answer())
+        .unwrap_or_default()
 }
 
 /// How many user messages the conversation holds.

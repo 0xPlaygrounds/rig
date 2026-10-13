@@ -19,7 +19,6 @@ serde_json = { workspace = true }
 [dev-dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-rig-cassette = { workspace = true }
 # The default tools whose looks this plugin replaces.
 rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
 rig-core = { workspace = true, features = ["test-utils"] }

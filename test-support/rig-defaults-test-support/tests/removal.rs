@@ -97,7 +97,7 @@ fn answered(
         return;
     };
     let answered = matches!(outcome,
-        TurnOutcome::Answered(message) if final_answer(message).as_deref() == Some("read"));
+        TurnOutcome::Answered(message) if message.final_answer().as_deref() == Some("read"));
     let scaffold = |plugin: &PluginSource| plugin.krate == "rig-hello";
     let added_once = plugins.iter().filter(|plugin| scaffold(plugin)).count() == 1;
     let command = |(name, by): (&Name, &ProvidedBy)| {

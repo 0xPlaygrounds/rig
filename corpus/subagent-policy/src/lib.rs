@@ -93,7 +93,7 @@ struct QueuedTasks(usize);
 struct PolicyColumn(Entity);
 
 /// After the agent's subagents at work in the status line.
-const QUEUED: StatusItem = StatusItem::at(Side::Left, 65, 15);
+const QUEUED: StatusItem = StatusItem::new("subagent-policy", Side::Left, 65, 15);
 
 /// The plugin's stage systems, to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -143,7 +143,7 @@ impl Plugin for SubagentPolicyPlugin {
                 ),
             )
             .add_systems(Update, show_column)
-            .add_systems(PostUpdate, show_queued.in_set(StatusSystems));
+            .add_systems(PostUpdate, show_queued.in_set(StatusSystems::Show));
     }
 
     /// Once rig-subagents read its own settings: its depth is this policy's.

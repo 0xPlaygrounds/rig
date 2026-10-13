@@ -1,19 +1,26 @@
 //! Driving a run nobody sits at, for a front such as `--print` or one
 //! that streams JSON: [`AppHeadlessExt::run_headless`] sends one prompt to
 //! the primary agent, then exits once no agent works, so the subagents it
-//! started have answered. Just before the exit, [`HeadlessEnded`] says how
-//! it went, for the front to write out.
+//! started have answered. Each time the agents' work settles after a turn
+//! of the primary agent ended, [`HeadlessTurnEnded`] carries that turn's
+//! answer; just before the exit, [`HeadlessEnded`] says how it went, for
+//! the front to write out.
+//!
+//! A plugin that keeps sending the agent work, such as one that watches
+//! files, keeps the run going with a [`KeepRunning`] entity: while one
+//! exists, the run waits when its agents are idle, and it ends once none
+//! does and no agent works. Such a run may start without a prompt.
 //!
 //! The agent uses `--model`, else the model its restored session chose,
 //! else the first model the environment has a key for. A prompt that is a
 //! slash command, such as `/login`, runs without a model. The exit code is
-//! 0 when the turn ended with an answer, 2 for an empty prompt or a refused
+//! 0 when the turn ended with an answer, 2 for no prompt or a refused
 //! slash command (unknown, or arguments it does not take), 1 otherwise,
 //! such as an error notice about the agent and no answer. A warning
-//! notice never fails it.
+//! notice never fails it. A run of several turns exits with the worst.
 //!
 //! ```
-//! use rig_harness::headless::{AppHeadlessExt, HeadlessEnded};
+//! use rig_harness::headless::{AppHeadlessExt, HeadlessTurnEnded};
 //! use rig_harness::prelude::*;
 //!
 //! #[derive(Default)]
@@ -26,7 +33,8 @@
 //!
 //!     fn finish(&self, app: &mut App) {
 //!         if app.runs_front("answer") {
-//!             app.run_headless("Say hello").add_observer(|ended: On<HeadlessEnded>| {
+//!             let hello = Some("Say hello".to_owned());
+//!             app.run_headless(hello).add_observer(|ended: On<HeadlessTurnEnded>| {
 //!                 println!("{}", ended.answer.as_deref().unwrap_or_default());
 //!             });
 //!         }
@@ -38,7 +46,6 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use rig_core::completion::Message;
-use rig_core::transcript::final_answer;
 use rig_ecs::prelude::*;
 
 use crate::host::exit::{Exit, ExitReason, ExitRequest};
@@ -48,28 +55,52 @@ use crate::primary::{PrimaryQuery, primary};
 /// Running a headless run.
 pub trait AppHeadlessExt {
     /// Sends `prompt` to the primary agent once it has a model, and exits
-    /// when no agent works any more. Call it once, from the front's
-    /// `finish`.
-    fn run_headless(&mut self, prompt: impl Into<String>) -> &mut Self;
+    /// when no agent works any more and no [`KeepRunning`] exists. Without
+    /// a prompt, the run waits for the work a `KeepRunning` plugin sends.
+    /// Call it once, from the front's `finish`.
+    fn run_headless(&mut self, prompt: Option<String>) -> &mut Self;
 }
 
 impl AppHeadlessExt for App {
-    fn run_headless(&mut self, prompt: impl Into<String>) -> &mut Self {
+    fn run_headless(&mut self, prompt: Option<String>) -> &mut Self {
         let model = self
             .world()
             .get_resource::<Invoked>()
             .is_some_and(|invoked| invoked.args.model.is_some());
         self.insert_resource(HeadlessRun {
-            prompt: prompt.into(),
+            prompt: prompt.filter(|prompt| !prompt.trim().is_empty()),
             model,
             step: Step::Start,
             answer: None,
+            turned: false,
+            last: None,
             failed: false,
             refused: false,
+            worst: 0,
         })
-        .add_systems(Update, drive)
+        .add_systems(Update, drive.after(AgentLoop))
         .add_observer(keep_answer)
     }
+}
+
+/// While any entity has it, a headless run does not end when its agents
+/// are idle: a plugin that sends the agent work over time, such as one
+/// that watches files, spawns one, and despawns it to let the run end.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct KeepRunning;
+
+/// Triggered each time a headless run's work settles (no agent works)
+/// after a turn of the agent its prompts go to ended, before the run waits
+/// or ends.
+#[derive(Event, Clone, Debug, PartialEq, Eq)]
+pub struct HeadlessTurnEnded {
+    /// The agent the prompts go to.
+    pub agent: Entity,
+    /// The answer of its last turn, if it had one.
+    pub answer: Option<String>,
+    /// Whether it failed: an error notice about the agent and no answer,
+    /// or a refused slash command.
+    pub failed: bool,
 }
 
 /// How a headless run ended, triggered as it asks to exit ([`Exit`]).
@@ -77,29 +108,37 @@ impl AppHeadlessExt for App {
 pub struct HeadlessEnded {
     /// The agent the prompt went to, if it got that far.
     pub agent: Option<Entity>,
-    /// The final answer to the prompt, if it had one.
+    /// The answer of the last [`HeadlessTurnEnded`], if it had one.
     pub answer: Option<String>,
     /// Why the run could not send the prompt, such as no model.
     pub why: Option<String>,
     /// Why it exits: [`ExitReason::Quit`] when it answered, else
-    /// [`ExitReason::Failed`] with its exit code.
+    /// [`ExitReason::Failed`] with the worst exit code of its turns.
     pub exit: ExitReason,
 }
 
 /// Where the headless run is.
 #[derive(Resource)]
 struct HeadlessRun {
-    prompt: String,
+    /// The prompt, if one was given.
+    prompt: Option<String>,
     /// Whether `--model` named the model, which a models plugin chooses.
     model: bool,
     step: Step,
-    /// The message the last turn of the agent the prompt went to answered
-    /// with, if one did.
+    /// The message the last turn of the agent the prompts go to answered
+    /// with since the work last settled, if one did.
     answer: Option<Message>,
-    /// Whether an error notice about the agent came while it ran.
+    /// Whether a turn of the agent ended since the work last settled.
+    turned: bool,
+    /// The answer of the last [`HeadlessTurnEnded`].
+    last: Option<String>,
+    /// Whether an error notice about the agent came since the work last
+    /// settled.
     failed: bool,
-    /// Whether the prompt was a refused slash command.
+    /// Whether a slash command was refused since the work last settled.
     refused: bool,
+    /// The worst exit code so far; 0 for none.
+    worst: u8,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -108,8 +147,11 @@ enum Step {
     Start,
     /// A model was chosen for `agent`, which connects it at once.
     Connecting { agent: Entity },
-    /// The prompt went to `agent`.
+    /// The prompt went to `agent`, or other work came, and the agents
+    /// work.
     Sent { agent: Entity },
+    /// The agents are idle, and a [`KeepRunning`] keeps the run going.
+    Waiting { agent: Entity },
     /// Exited.
     Done,
 }
@@ -139,6 +181,8 @@ struct Agents<'w, 's> {
             Or<(Without<Started>, With<Outcome>)>,
         ),
     >,
+    /// What keeps the run going while its agents are idle.
+    keep: Query<'w, 's, (), With<KeepRunning>>,
 }
 
 impl Agents<'_, '_> {
@@ -165,7 +209,8 @@ fn drive(
         run.refused = true;
     }
     for notice in notices.read() {
-        if let Step::Sent { agent, .. } | Step::Connecting { agent } = run.step
+        if let Step::Sent { agent } | Step::Waiting { agent } | Step::Connecting { agent } =
+            run.step
             && notice.level == NoticeLevel::Error
             && notice.agent.is_none_or(|about| about == agent)
         {
@@ -173,7 +218,10 @@ fn drive(
         }
     }
     // A command such as `/login` runs without a model.
-    let command = run.prompt.trim_start().starts_with('/');
+    let command = run
+        .prompt
+        .as_ref()
+        .is_some_and(|prompt| prompt.trim_start().starts_with('/'));
     let failed = |agent: Option<Entity>, why: Option<&str>, code: u8| HeadlessEnded {
         agent,
         answer: None,
@@ -221,32 +269,46 @@ fn drive(
                 // The notice of the failed choice says why.
                 return end(&mut run, failed(Some(agent), None, 1), commands);
             }
-            if run.prompt.trim().is_empty() {
-                let why = "no prompt: give one after --print, or pipe it in";
-                return end(&mut run, failed(Some(agent), Some(why), 2), commands);
+            match run.prompt.clone() {
+                Some(text) => {
+                    commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
+                    run.step = Step::Sent { agent };
+                }
+                None if !agents.keep.is_empty() => run.step = Step::Waiting { agent },
+                None => {
+                    let why = "no prompt: give one after --print, or pipe it in";
+                    return end(&mut run, failed(Some(agent), Some(why), 2), commands);
+                }
             }
-            let text = run.prompt.clone();
-            commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-            run.step = Step::Sent { agent };
             return;
         }
-        Step::Sent { agent } => {
+        Step::Sent { agent } | Step::Waiting { agent } => {
             // The turn starts with the request once the agent accepted
             // it; a command may start none, or other work, such as a
             // sign-in. A subagent's answer starts another turn of the agent
             // that started it.
             if !agents.idle() {
+                run.step = Step::Sent { agent };
                 return;
             }
-            let answer = run.answer.as_ref().and_then(final_answer);
-            let exit = match (run.refused, run.failed && answer.is_none()) {
-                (true, _) => ExitReason::Failed(2),
-                (false, false) => ExitReason::Quit,
-                (false, true) => ExitReason::Failed(1),
+            let keep = !agents.keep.is_empty();
+            // A turn may start and end between two runs of this system, as
+            // a fast model's can within one run of the agent loop: the
+            // turn's end, not having seen it work, says it happened.
+            if run.step == (Step::Sent { agent }) || run.turned || !keep {
+                settle(&mut run, agent, &mut commands);
+            }
+            if keep {
+                run.step = Step::Waiting { agent };
+                return;
+            }
+            let exit = match run.worst {
+                0 => ExitReason::Quit,
+                code => ExitReason::Failed(code),
             };
             HeadlessEnded {
                 agent: Some(agent),
-                answer,
+                answer: run.last.clone(),
                 why: None,
                 exit,
             }
@@ -256,19 +318,46 @@ fn drive(
     end(&mut run, ended, commands);
 }
 
-/// Keeps the answer of each turn of the agent the prompt went to that ended
-/// answered, whatever its conversation looks like now, such as after a
-/// compaction.
+/// Notes each turn of the agent the prompts go to that ended, with its
+/// answer when it answered, whatever its conversation looks like now, such
+/// as after a compaction.
 fn keep_answer(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
     mut run: ResMut<HeadlessRun>,
 ) {
-    if let Ok((TurnOutcome::Answered(message), &ForAgent(agent))) = turns.get(settled.entity)
-        && run.step == (Step::Sent { agent })
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+        return;
+    };
+    if let Step::Sent { agent: to } | Step::Waiting { agent: to } = run.step
+        && to == agent
     {
-        run.answer = Some(message.clone());
+        run.turned = true;
+        if let TurnOutcome::Answered(message) = outcome {
+            run.answer = Some(message.clone());
+        }
     }
+}
+
+/// Takes what came since the work last settled: the exit code it earns,
+/// and a [`HeadlessTurnEnded`] when a turn of `agent` ended.
+fn settle(run: &mut HeadlessRun, agent: Entity, commands: &mut Commands) {
+    let answer = run.answer.take().and_then(|message| message.final_answer());
+    let code = match (run.refused, run.failed && answer.is_none()) {
+        (true, _) => 2,
+        (false, true) => 1,
+        (false, false) => 0,
+    };
+    run.worst = run.worst.max(code);
+    if run.turned {
+        commands.trigger(HeadlessTurnEnded {
+            agent,
+            answer: answer.clone(),
+            failed: code != 0,
+        });
+        run.last = answer;
+    }
+    (run.turned, run.failed, run.refused) = (false, false, false);
 }
 
 /// Ends the run as `ended` says.

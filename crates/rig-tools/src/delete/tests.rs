@@ -1,4 +1,4 @@
-use rig_core::tool::{FileChange, FilesChanged, Tool, ToolContext, ToolErrorKind};
+use rig_core::tool::{FileChange, FileState, FilesChanged, Tool, ToolContext, ToolErrorKind};
 
 use super::{Delete, DeleteArgs};
 
@@ -40,7 +40,13 @@ fn a_delete_stays_in_its_base_and_publishes_the_deleted_file() {
     let path = base.join("a.txt").to_string_lossy().into_owned();
     assert_eq!(
         changed.map(|changed| changed.0),
-        Some(vec![FileChange::deleted(&path, 2)])
+        Some(vec![
+            FileChange::deleted(&path, 2)
+                .with_diff(format!(
+                    "--- {path}\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-one\n-two\n"
+                ))
+                .with_before(FileState::of(b"one\ntwo\n"))
+        ])
     );
     assert!(!base.join("a.txt").exists());
     assert!(run("sub").0.is_err());

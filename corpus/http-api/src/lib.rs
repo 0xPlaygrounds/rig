@@ -329,7 +329,7 @@ fn turn_ended(
     let agent = events.agent(agent);
     let data = match outcome {
         TurnOutcome::Answered(message) => {
-            json!({ "agent": agent, "outcome": "answered", "answer": final_answer(message) })
+            json!({ "agent": agent, "outcome": "answered", "answer": message.final_answer() })
         }
         TurnOutcome::Failed(why) => json!({ "agent": agent, "outcome": "failed", "error": why }),
         TurnOutcome::Stopped(why) => json!({ "agent": agent, "outcome": "stopped", "reason": why }),

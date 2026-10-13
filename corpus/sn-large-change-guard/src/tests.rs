@@ -1,9 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::ask::AskPlugin;
+use rig_harness::rig_ecs::AgentPlugin;
+use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, answer_open, app_on, calls, connect, first_agent,
     log_ended, log_tool_outputs, reply, run_until,
@@ -58,8 +61,8 @@ fn start(
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .insert_resource(LargeChangeConfig::default())
-        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, EditTool))
+        .add_plugins((AgentPlugin, JournalPlugin, AskPlugin, PreviewPlugin))
+        .add_plugins((WriteTool, EditTool))
         .add_plugins(LargeChangeGuardPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended)

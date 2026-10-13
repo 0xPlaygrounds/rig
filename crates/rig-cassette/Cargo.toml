@@ -44,10 +44,9 @@ workspace = true
 [features]
 default = []
 agent = ["dep:rig-agent"]
-# Effect logs and session journals as JSON-lines files (native file I/O).
-jsonl = []
-# Bevy reflection for the journal types a Bevy app keeps in its components.
-reflect = ["dep:bevy_reflect"]
+# Effect logs as JSON-lines files (native file I/O), or as a file of a
+# session's store (rig-memory's `Files`).
+jsonl = ["dep:rig-memory"]
 http = [
     "dep:rig-reqwest",
     "dep:axum",
@@ -64,26 +63,22 @@ bedrock = ["http", "dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+rig-memory = { path = "../rig-memory", version = "0.44.0", optional = true }
 rig-agent = { path = "../rig-agent", version = "0.44.0", default-features = false, optional = true }
 rig-reqwest = { path = "../rig-reqwest", version = "0.44.0", default-features = false, features = ["rustls"], optional = true }
 aws-smithy-eventstream = { workspace = true, optional = true }
 aws-smithy-types = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 base64 = { workspace = true }
-bevy_reflect = { workspace = true, optional = true }
 futures = { workspace = true }
 httpdate = { workspace = true, optional = true }
 httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true, optional = true }
-# The names of the blobs a session journal stores images in.
-sha2 = { workspace = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs", "time"], optional = true }
 url = { workspace = true, optional = true }
-# A session log line's time, also on the web.
-web-time = { workspace = true }
 
 # Repository-only provider and verification dependencies. Downstream users select
 # the independent runtime integrations and native engine through features above.
@@ -119,6 +114,8 @@ proptest = "1"
 reqwest = { workspace = true, features = ["json", "stream"] }
 schemars = { workspace = true }
 serde_path_to_error = { workspace = true }
+# The image fixture's hash.
+sha2 = { workspace = true }
 rmcp = { workspace = true, features = [
   "client",
   "macros",

@@ -4,7 +4,7 @@ use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_core::tool::{ChangeKind, FilesChanged, Tool, ToolContext};
+use rig_core::tool::{ChangeKind, ContentHash, FilesChanged, Tool, ToolContext, content_hash};
 
 use super::{Contents, Stat, Workspace};
 use crate::process::{Launcher, Process, Spawn};
@@ -16,10 +16,10 @@ use crate::{
 /// Files held in memory, by absolute path: a workspace that is not this
 /// machine's disk.
 #[derive(Debug, Default)]
-struct Memory(Mutex<BTreeMap<PathBuf, Vec<u8>>>);
+pub(crate) struct Memory(Mutex<BTreeMap<PathBuf, Vec<u8>>>);
 
 impl Memory {
-    fn files(&self) -> std::sync::MutexGuard<'_, BTreeMap<PathBuf, Vec<u8>>> {
+    pub(crate) fn files(&self) -> std::sync::MutexGuard<'_, BTreeMap<PathBuf, Vec<u8>>> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -35,6 +35,7 @@ impl Workspace for Memory {
             Some(bytes) => Stat::File {
                 size: bytes.len() as u64,
                 read_only: false,
+                modified: None,
             },
             None if files.keys().any(|file| file.starts_with(path)) => Stat::Dir,
             None => Stat::Missing,
@@ -83,7 +84,7 @@ impl Workspace for Memory {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, _: bool) -> io::Result<Vec<PathBuf>> {
         let suffix = glob.map(|glob| glob.trim_start_matches('*'));
         Ok(self
             .files()
@@ -127,9 +128,20 @@ fn changes(context: &ToolContext) -> Vec<(String, ChangeKind)> {
         .collect()
 }
 
+/// The content each changed file held before the call, by its hash.
+fn befores(context: &ToolContext) -> Vec<Option<ContentHash>> {
+    let changed: FilesChanged = context.result().ok().flatten().unwrap_or_default();
+    changed
+        .0
+        .into_iter()
+        .map(|change| change.before.and_then(|it| it.hash))
+        .collect()
+}
+
 /// Every file tool acts on its workspace, here files in memory: what one
-/// writes the next reads, edits, finds, moves and deletes, and nothing
-/// reaches this machine's disk.
+/// writes the next reads, edits, finds, moves and deletes, each change
+/// naming the content it was made to, and nothing reaches this machine's
+/// disk.
 #[test]
 fn every_file_tool_goes_through_its_workspace() {
     let memory = Arc::new(Memory::default());
@@ -176,11 +188,12 @@ fn every_file_tool_goes_through_its_workspace() {
     );
     assert!(!Path::new("/project/src/a.rs").exists());
 
-    let (edited, _) = call(
+    let (edited, context) = call(
         &edit,
         EditArgs::new("src/a.rs", [Replacement::new("one", "two")]),
     );
     assert!(edited.is_ok(), "{edited:?}");
+    assert_eq!(befores(&context), [Some(content_hash(b"fn one() {}\n"))]);
     let (shown, _) = call(&read, ReadArgs::new("src/../src/a.rs"));
     assert_eq!(shown.ok().as_deref(), Some("     1\tfn two() {}\n"));
     let (found, _) = call(&search, SearchArgs::new("two").glob("*.rs"));
@@ -197,8 +210,13 @@ fn every_file_tool_goes_through_its_workspace() {
             ("/project/src/b.rs".to_owned(), ChangeKind::Created)
         ]
     );
+    assert_eq!(
+        befores(&context),
+        [Some(content_hash(b"fn two() {}\n")), None]
+    );
     let (deleted, context) = call(&delete, DeleteArgs::new("src/b.rs"));
     assert!(deleted.is_ok(), "{deleted:?}");
+    assert_eq!(befores(&context), [Some(content_hash(b"fn two() {}\n"))]);
     assert_eq!(
         changes(&context),
         [("/project/src/b.rs".to_owned(), ChangeKind::Deleted)]

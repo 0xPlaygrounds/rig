@@ -12,7 +12,6 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use bevy_time::{Time, TimeUpdateStrategy, Virtual};
-use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
 use rig_core::completion::{Message, Reasoning, Section, ToolDefinition};
@@ -22,10 +21,10 @@ use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_core::transcript::final_answer;
 use rig_ecs::effects::{Effects, Handler};
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+use rig_memory::MemoryStore;
 use serde::Deserialize;
 
 /// How long a turn may take before the test gives up.
@@ -86,7 +85,7 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
         .init_resource::<Settles>()
         .add_systems(
             Last,
-            |mut recorded: MessageReader<Recorded>, mut settles: ResMut<Settles>| {
+            |mut recorded: MessageReader<EffectRecorded>, mut settles: ResMut<Settles>| {
                 settles
                     .0
                     .extend(recorded.read().map(|record| record.0.clone()));
@@ -212,7 +211,7 @@ fn a_turn_ends_answered_after_one_tool_round() {
     let ended = &app.world().resource::<Ended>().0;
     assert_eq!(ended.len(), 1, "{ended:?}");
     let answer = match ended.first() {
-        Some(TurnOutcome::Answered(message)) => final_answer(message),
+        Some(TurnOutcome::Answered(message)) => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("5"), "{ended:?}");
@@ -348,7 +347,7 @@ fn a_failed_call_is_sent_again_once_its_backoff_passed_on_the_clock() {
     run_until(&mut app, &wakes, a_turn_ended);
     let ended = &app.world().resource::<Ended>().0;
     let answer = match ended.as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("5"), "{ended:?}");
@@ -525,8 +524,8 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     let (mut app, _) = kernel(&MemoryStore::default());
     let edit = |mut typed: Query<&mut Incoming, Added<Admitted>>| {
         for mut typed in &mut typed {
-            if typed.origin.kind == OriginKind::User && typed.text == "hi" {
-                typed.text = "hello".to_owned();
+            if typed.author.kind == AuthorKind::User && typed.text() == "hi" {
+                *typed.text_mut() = "hello".to_owned();
             }
         }
     };
@@ -534,7 +533,7 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     let take_over =
         |mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>| {
             for (typed, mut decision) in &mut typed {
-                if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
+                if typed.author.kind == AuthorKind::User && typed.text().starts_with('!') {
                     decision.decide(Decider::plugin("test"), Outcome::custom("shell"));
                 }
             }
@@ -563,4 +562,80 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
         })
         .collect();
     assert_eq!(sent, ["hello", "/echo typed"]);
+}
+
+/// What Gate read of each turn request's history: who changed it, and
+/// whether it was a splice at the start.
+#[derive(Resource, Default)]
+struct Attributed(Vec<(Option<Author>, bool)>);
+
+/// A Prepare edit of a request is attributed to its plugin, goes to the
+/// model after the system prompt, and never reaches the conversation or
+/// its log.
+#[test]
+fn a_prepare_edit_of_a_request_is_attributed_and_never_saved() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = kernel(&store);
+    let note = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            if let Some(history) = &mut call.history {
+                let entry = Entry::new(Message::user("Be brief.")).by(Author::plugin("x"));
+                history.splice(0..0, [entry], Author::plugin("x"));
+            }
+        }
+    };
+    let read = |calls: Query<&ModelRequest, (Undecided, ModelCalls)>,
+                mut seen: ResMut<Attributed>| {
+        for call in &calls {
+            let changes = call.history.iter().flat_map(|history| history.unsaved());
+            seen.0.extend(changes.map(|change| {
+                let at_start = matches!(change.change, Change::Splice { from: 0, to: 0, .. });
+                (change.by.clone(), at_start)
+            }));
+        }
+    };
+    app.init_resource::<Attributed>().add_systems(
+        AgentPass,
+        (note.in_set(PrepareSystems::Edit), read.in_set(Stage::Gate)),
+    );
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("5"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let Some(agent) = connected(&mut app, &model) else {
+        return;
+    };
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(SystemPrompt("You add.".into()));
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, a_turn_ended);
+    let seen = &app.world().resource::<Attributed>().0;
+    assert_eq!(seen, &[(Some(Author::plugin("x")), true)]);
+    let sent = model.requests();
+    let sent = sent.first().map(|request| request.chat_history.as_slice());
+    // The model's wire joins the two user messages.
+    let asked = [
+        Message::system("You add."),
+        Message::User {
+            content: vec![
+                UserContent::text("Be brief."),
+                UserContent::text("What is 2 + 3?"),
+            ],
+        },
+    ];
+    assert_eq!(sent, Some(asked.as_slice()));
+    // Neither the conversation nor its log has the plugin's entry.
+    let by_x = |conversation: &rig_core::conversation::Conversation| {
+        let mut entries = conversation.entries();
+        entries.any(|entry| entry.author == Some(&Author::plugin("x")))
+    };
+    let kept = app.world().get::<Conversation>(agent);
+    assert!(kept.is_some_and(|kept| kept.messages().len() == 2 && !by_x(kept)));
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let saved = Session::read(&store).map(|session| session.agents);
+    assert!(saved.is_ok_and(
+        |agents| !agents.is_empty() && agents.iter().all(|agent| !by_x(&agent.conversation))
+    ),);
 }

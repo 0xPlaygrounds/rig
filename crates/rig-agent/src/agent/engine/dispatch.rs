@@ -283,7 +283,6 @@ fn report_of(error: &PromptError) -> ErrorReport {
         PromptError::Report(report) => report.clone(),
         PromptError::Provider(error) => error.report(),
         PromptError::Cancelled { reason, .. } => ErrorReport::new(ErrorKind::Cancelled, reason),
-        PromptError::Memory(error) => error.report(),
         other => ErrorReport::new(ErrorKind::Internal, other.to_string()),
     }
 }

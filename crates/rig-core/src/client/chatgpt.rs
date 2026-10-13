@@ -2,6 +2,7 @@
 //! request reads afresh, so a long session outlives its access token.
 
 use crate::catalog::{Catalog, ModelSpec};
+use crate::completion::UnsupportedOption;
 use crate::driver::DynModel;
 use crate::effect::{EffectKind, HandlerDescriptor, family};
 use crate::error::{ErrorKind, ErrorReport};
@@ -36,7 +37,9 @@ pub struct SignedInModel {
     spec: ModelSpec,
     authenticator: Authenticator,
     http: DynHttpClient,
-    descriptor: HandlerDescriptor,
+    /// The model connected without a credential: what it is and what it
+    /// would leave out, neither of which sends anything.
+    unsigned: ModelAdapter<Completion>,
 }
 
 impl SignedInModel {
@@ -50,16 +53,13 @@ impl SignedInModel {
         authenticator: Authenticator,
         http: DynHttpClient,
     ) -> Result<Self, ConnectError> {
-        // Connected without a credential only for the description.
         let unsigned = Catalog::builtin()
             .connect_with(&spec, ConnectOptions::new().api_key("").http(http.clone()))?;
-        let descriptor =
-            Serve::descriptor(&ModelAdapter::<Completion>::new(spec.reference(), unsigned));
         Ok(Self {
+            unsigned: ModelAdapter::new(spec.reference(), unsigned),
             spec,
             authenticator,
             http,
-            descriptor,
         })
     }
 
@@ -92,7 +92,13 @@ impl Serve for SignedInModel {
     type Family = family::Completion;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        self.descriptor.clone()
+        self.unsigned.descriptor()
+    }
+
+    /// What the model leaves out, from the unsigned model: a check is a
+    /// dry run, which needs no credential.
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        self.unsigned.check(kind)
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {

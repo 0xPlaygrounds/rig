@@ -124,7 +124,7 @@ fn a_rate_limited_and_a_refused_key_fail_over_to_the_spare() {
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);
-    collect::<Recorded>(&mut app);
+    collect::<EffectRecorded>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -141,7 +141,7 @@ fn a_rate_limited_and_a_refused_key_fail_over_to_the_spare() {
     until_ended(&mut app, &wakes, 1);
     let ended = &app.world().resource::<Ended>().0;
     let answer = match ended.first() {
-        Some(TurnOutcome::Answered(message)) => final_answer(message),
+        Some(TurnOutcome::Answered(message)) => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("From the spare."), "{ended:?}");
@@ -191,7 +191,7 @@ fn a_rate_limited_and_a_refused_key_fail_over_to_the_spare() {
     );
 
     // No key's value in a notice, an effect record or the session's files.
-    let records = &app.world().resource::<Collected<Recorded>>().0;
+    let records = &app.world().resource::<Collected<EffectRecorded>>().0;
     let records: Vec<String> = records
         .iter()
         .map(|record| format!("{:?}", record.0))

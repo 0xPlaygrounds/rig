@@ -71,8 +71,6 @@ use crate::message::{
 };
 use crate::wasm_compat::WasmCompatSync;
 
-pub use crate::transcript::NO_RESULT_PROVIDED;
-
 /// What replaces a user image for a model without image input.
 pub const USER_IMAGE_OMITTED: &str = "(image omitted: model does not support images)";
 
@@ -460,8 +458,8 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   and without tools calls and results become text.
 /// - Opaque items marked not to replay are always dropped, and so is a turn
 ///   that ended in an error or was aborted, with the results answering it.
-/// - Calls and results pair by [`crate::transcript::pair`]: an unanswered
-///   call gets a [`NO_RESULT_PROVIDED`] result and an orphan result is dropped.
+/// - Calls and results pair by [`crate::conversation::pairing::pair`]: an unanswered
+///   call gets a [`NO_RESULT_PROVIDED`](crate::conversation::pairing::NO_RESULT_PROVIDED) result and an orphan result is dropped.
 /// - Adjacent user messages become one. A turn left empty is dropped, and so
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
@@ -642,11 +640,11 @@ pub(crate) fn adapt_for(
     // Calls and results pair first, so an orphan result goes whether or not
     // the request declares tools; only then does a request without tools
     // get them as text, with no result made up for an unanswered call.
-    let pairing = crate::transcript::Pairing {
+    let pairing = crate::conversation::pairing::Pairing {
         stored,
         answers: accepts.tools,
     };
-    let shaped = merge_users(crate::transcript::pair(shaped, pairing).messages);
+    let shaped = merge_users(crate::conversation::pairing::pair(shaped, pairing).messages);
     let shaped = if accepts.tools {
         shaped
     } else {
@@ -667,6 +665,110 @@ pub(crate) fn adapt_for(
     } else {
         shaped
     }
+}
+
+/// `points`, which name `written` (a request's history before its
+/// `documents` join it), as they fall in `adapted`, what [`adapt_for`] made
+/// of it with `request`. A message point becomes the longest part of
+/// `adapted` that the adaption of its prefix alone begins with: the point
+/// never covers what follows the prefix, however the adaption dropped,
+/// added or joined messages around it. A point past the end of `written`
+/// goes.
+pub(crate) fn cache_points(
+    points: &[crate::completion::CachePoint],
+    written: &[Message],
+    documents: Option<&Message>,
+    adapted: &[Message],
+    target: &dyn ReplayTarget,
+    request: &Request<'_>,
+) -> Vec<crate::completion::CachePoint> {
+    use crate::completion::CachePoint;
+    let prefix_of = |turns: usize, items: Option<usize>| -> Option<Vec<Message>> {
+        let mut prefix = Vec::new();
+        let mut counted = 0;
+        for message in written {
+            if counted == turns {
+                break;
+            }
+            let mut message = message.clone();
+            if !matches!(message, Message::System { .. }) {
+                counted += 1;
+            }
+            match (&mut message, items.filter(|_| counted == turns)) {
+                (Message::User { content }, Some(items)) => content.truncate(items),
+                (Message::Assistant(turn), Some(items)) => turn.content.truncate(items),
+                _ => {}
+            }
+            prefix.push(message);
+        }
+        (counted == turns).then_some(prefix)
+    };
+    points
+        .iter()
+        .filter_map(|point| {
+            let prefix = match *point {
+                CachePoint::Tools | CachePoint::System | CachePoint::Messages(0) => {
+                    return Some(*point);
+                }
+                CachePoint::Messages(turns) => prefix_of(turns, None),
+                CachePoint::Within { message, items } => message
+                    .checked_add(1)
+                    .and_then(|turns| prefix_of(turns, Some(items))),
+            };
+            let mut prefix = prefix?;
+            if let Some(documents) = documents {
+                crate::completion::request::insert_after_leading_system(
+                    &mut prefix,
+                    documents.clone(),
+                );
+            }
+            Some(shared_prefix(adapted, &adapt_for(&prefix, target, request)))
+        })
+        .collect()
+}
+
+/// Where `prefix` stops being the start of `history`, both adapted, as a
+/// cache point over `history`. System messages are not counted.
+fn shared_prefix(history: &[Message], prefix: &[Message]) -> crate::completion::CachePoint {
+    use crate::completion::CachePoint;
+    fn turns(history: &[Message]) -> impl Iterator<Item = &Message> {
+        history
+            .iter()
+            .filter(|message| !matches!(message, Message::System { .. }))
+    }
+    fn lead<T: PartialEq>(whole: &[T], part: &[T]) -> (usize, usize, usize) {
+        let shared = whole
+            .iter()
+            .zip(part)
+            .take_while(|(whole, part)| whole == part)
+            .count();
+        (shared, whole.len(), part.len())
+    }
+    let mut message = 0;
+    for (whole, part) in turns(history).zip(turns(prefix)) {
+        let (shared, whole, part) = match (whole, part) {
+            (Message::User { content: whole }, Message::User { content: part }) => {
+                lead(whole, part)
+            }
+            (Message::Assistant(whole), Message::Assistant(part)) => {
+                lead(&whole.content, &part.content)
+            }
+            _ => (0, 1, 1),
+        };
+        if shared == whole && shared == part {
+            message += 1;
+            continue;
+        }
+        return if shared == 0 {
+            CachePoint::Messages(message)
+        } else {
+            CachePoint::Within {
+                message,
+                items: shared,
+            }
+        };
+    }
+    CachePoint::Messages(message)
 }
 
 /// `history` with its calls and results as text, for a request that

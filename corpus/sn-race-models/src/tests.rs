@@ -1,7 +1,11 @@
+use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_cassette::journal::MemoryStore;
+use futures::FutureExt;
+use futures::channel::oneshot;
+use futures::future::Shared as Opened;
+
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Pricing, Transport};
 use rig_core::completion::Message;
 use rig_core::effect::{EffectKind, HandlerDescriptor, family};
@@ -10,13 +14,26 @@ use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, calls, log_ended, reply, run_until};
-use rig_telemetry::UsagePlugin;
+use rig_telemetry::{SessionSpending, UsagePlugin};
 
 use super::*;
 
 const A: &str = "provider-a/model-x";
 const B: &str = "provider-b/model-y";
+const C: &str = "provider-c/model-z";
+
+/// When a scripted member starts answering a request.
+#[derive(Clone)]
+enum Wait {
+    /// At once.
+    Now,
+    /// Never: it waits until it is cancelled.
+    Never,
+    /// When the gate opens.
+    Until(Opened<oneshot::Receiver<()>>),
+}
 
 /// What a scripted member saw: the requests sent to it, and those
 /// cancelled before it streamed anything.
@@ -33,10 +50,10 @@ fn seen(shared: &Shared) -> (usize, usize) {
     (seen.requests, seen.cancelled)
 }
 
-/// A scripted model that starts answering `delay` after each request.
+/// A scripted model that starts answering each request when its wait says.
 struct Paced {
     inner: ErasedHandler,
-    delay: Duration,
+    waits: Arc<Mutex<VecDeque<Wait>>>,
     seen: Shared,
 }
 
@@ -54,15 +71,6 @@ impl Drop for Waiting {
     }
 }
 
-async fn sleep(by: Duration) {
-    let (done, wait) = futures::channel::oneshot::channel();
-    std::thread::spawn(move || {
-        std::thread::sleep(by);
-        done.send(()).ok();
-    });
-    wait.await.ok();
-}
-
 impl Serve for Paced {
     type Family = family::Dynamic;
 
@@ -75,22 +83,33 @@ impl Serve for Paced {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .requests += 1;
+        let wait = self
+            .waits
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
+            .unwrap_or(Wait::Now);
         let mut waiting = Waiting(self.seen.clone(), true);
-        sleep(self.delay).await;
+        match wait {
+            Wait::Now => {}
+            Wait::Never => futures::future::pending().await,
+            Wait::Until(gate) => {
+                gate.await.ok();
+            }
+        }
         waiting.1 = false;
         self.inner.handle(kind, dispatch).await
     }
 }
 
-/// The catalog with A and B answered by their scripts after their delays,
-/// both priced, and what each saw.
-fn members(
-    a: (&MockCompletionModel, u64),
-    b: (&MockCompletionModel, u64),
-) -> (Models, Shared, Shared) {
+/// The catalog with each member answered by its script when its waits
+/// say, all priced, and what each saw.
+fn members<const N: usize>(
+    scripts: [(&str, &MockCompletionModel, Vec<Wait>); N],
+) -> (Models, [Shared; N]) {
     let mut connector = Connector::new(Catalog::builtin().clone());
-    let mut shared = Vec::new();
-    for (reference, (model, delay)) in [(A, a), (B, b)] {
+    let shared: [Shared; N] = std::array::from_fn(|_| Shared::default());
+    for ((reference, model, waits), seen) in scripts.into_iter().zip(shared.clone()) {
         let Some((vendor, id)) = reference.split_once('/') else {
             continue;
         };
@@ -101,11 +120,9 @@ fn members(
             .with_tools(true)
             .with_pricing(Pricing::new(1.0, 2.0));
         connector.catalog_mut().insert(spec.clone());
-        let seen = Shared::default();
-        shared.push(seen.clone());
         // Named as its member, as a provider's reply is.
         let model = model.clone().priced_as(spec);
-        let delay = Duration::from_millis(delay);
+        let waits = Arc::new(Mutex::new(VecDeque::from(waits)));
         connector.provide(
             vendor,
             move |spec: &ModelSpec,
@@ -114,14 +131,12 @@ fn members(
                   -> Result<ErasedHandler, ConnectError> {
                 let inner = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
                 let inner = ErasedHandler::new(inner);
-                let seen = seen.clone();
-                Ok(ErasedHandler::new(Paced { inner, delay, seen }))
+                let (waits, seen) = (waits.clone(), seen.clone());
+                Ok(ErasedHandler::new(Paced { inner, waits, seen }))
             },
         );
     }
-    let b = shared.pop().unwrap_or_default();
-    let a = shared.pop().unwrap_or_default();
-    (Models(connector), a, b)
+    (Models(connector), shared)
 }
 
 /// How often `probe` ran.
@@ -149,12 +164,11 @@ fn probed(
     }
 }
 
-/// An app whose agent uses `race-fast`, raced over A and B.
-fn race(models: Models) -> (App, Receiver<()>, Entity) {
+/// An app whose agent uses `race-fast`, raced over `over`.
+fn race(models: Models, over: &[&str]) -> (App, Receiver<()>, Entity) {
     let mut races = RaceModels::default();
-    races
-        .models
-        .insert("race-fast".to_owned(), vec![A.to_owned(), B.to_owned()]);
+    let over = over.iter().map(|member| (*member).to_owned()).collect();
+    races.models.insert("race-fast".to_owned(), over);
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(models)
@@ -221,24 +235,35 @@ fn last_reply(app: &App, agent: Entity) -> Option<(String, Option<String>)> {
 }
 
 #[test]
-fn the_faster_member_answers_and_the_slower_is_cancelled_but_paid_for() {
+fn the_faster_member_answers_and_the_slower_are_cancelled_but_paid_for() {
     let a = MockCompletionModel::from_stream_turns([reply("from A"), reply("from A")]);
     let b = MockCompletionModel::from_stream_turns([
         calls("c1", "probe", serde_json::json!({})),
         reply("from B"),
     ]);
-    let (models, seen_a, seen_b) = members((&a, 500), (&b, 50));
-    let (mut app, wakes, agent) = race(models);
-    let cancelled = seen_a.clone();
+    let c = MockCompletionModel::from_stream_turns([reply("from C"), reply("from C")]);
+    let slow = || vec![Wait::Never, Wait::Never];
+    let (models, [seen_a, seen_b, seen_c]) = members([
+        (A, &a, slow()),
+        (B, &b, vec![Wait::Now, Wait::Now]),
+        (C, &c, slow()),
+    ]);
+    let (mut app, wakes, agent) = race(models, &[A, B, C]);
+    let (cancelled_a, cancelled_c) = (seen_a.clone(), seen_c.clone());
     ask(&mut app, &wakes, agent, "Go.", move || {
-        seen(&cancelled).1 == 2
+        seen(&cancelled_a).1 == 2 && seen(&cancelled_c).1 == 2
     });
 
-    // Both got each request; A's two were cancelled before it streamed.
+    // All got each request; A's and C's were cancelled before they streamed.
     assert_eq!(seen(&seen_a), (2, 2), "A got both requests, both cancelled");
+    assert_eq!(seen(&seen_c), (2, 2), "C got both requests, both cancelled");
     assert_eq!(seen(&seen_b), (2, 0), "B got both requests and answered");
-    assert_eq!(a.request_count(), 0, "A never started answering");
-    // B's tool call ran once, and the next request raced both again.
+    assert_eq!(
+        a.request_count() + c.request_count(),
+        0,
+        "A and C never answered"
+    );
+    // B's tool call ran once, and the next request raced all again.
     assert_eq!(app.world().resource::<Probes>().0, 1);
     let messages = stored(&app, agent);
     assert!(
@@ -256,13 +281,13 @@ fn the_faster_member_answers_and_the_slower_is_cancelled_but_paid_for() {
     assert!(spent_a.tokens.input_tokens.unwrap_or_default() > 0);
     assert!(spent_a.cost > 0.0);
     assert_eq!(
-        session.total.calls, 4,
-        "B's two replies and A's two cancelled requests"
+        session.total.calls, 6,
+        "B's two replies and A's and C's two cancelled requests each"
     );
     let stats = &app.world().resource::<RaceStats>().0;
     let tally = stats.get("race-fast").cloned().unwrap_or_default();
     assert_eq!(tally.members.get(B).map(|b| b.wins), Some(2));
-    assert_eq!(tally.cancelled, 2);
+    assert_eq!(tally.cancelled, 4);
 }
 
 #[test]
@@ -275,8 +300,21 @@ fn a_member_that_fails_first_drops_out_and_both_failing_fails_once() {
         vec![MockStreamEvent::error("B broke")],
         vec![MockStreamEvent::error("B broke")],
     ]);
-    let (models, _, _) = members((&a, 200), (&b, 0));
-    let (mut app, wakes, agent) = race(models);
+    // A answers the first request only once B has dropped out.
+    let (open, gate) = oneshot::channel();
+    let (models, _) = members([
+        (A, &a, vec![Wait::Until(gate.shared()), Wait::Now]),
+        (B, &b, vec![Wait::Now, Wait::Now]),
+    ]);
+    let (mut app, wakes, agent) = race(models, &[A, B]);
+    let open = Mutex::new(Some(open));
+    app.add_systems(Update, move |dropped: Query<(), Added<DroppedOut>>| {
+        if !dropped.is_empty()
+            && let Some(open) = open.lock().unwrap_or_else(PoisonError::into_inner).take()
+        {
+            open.send(()).ok();
+        }
+    });
 
     // B fails at once; A's reply is used, and no error is shown.
     ask(&mut app, &wakes, agent, "Go.", || true);
@@ -318,8 +356,11 @@ fn a_winner_that_fails_mid_stream_is_replaced_by_the_other_member_alone() {
         MockStreamEvent::text("partial"),
         MockStreamEvent::error("cut off"),
     ]]);
-    let (models, seen_a, _) = members((&a, 300), (&b, 0));
-    let (mut app, wakes, agent) = race(models);
+    let (models, [seen_a, _]) = members([
+        (A, &a, vec![Wait::Never, Wait::Now]),
+        (B, &b, vec![Wait::Now]),
+    ]);
+    let (mut app, wakes, agent) = race(models, &[A, B]);
     ask(&mut app, &wakes, agent, "Go.", || true);
 
     assert_eq!(seen(&seen_a), (2, 1), "A was cancelled, then asked alone");
@@ -336,6 +377,14 @@ fn a_winner_that_fails_mid_stream_is_replaced_by_the_other_member_alone() {
             .iter()
             .any(|text| text == &format!("restarting on {A}")),
         "{notices:?}"
+    );
+    // B's cut-off reply and A's cancelled request are paid for too.
+    let session = &app.world().resource::<SessionSpending>().0;
+    let calls_to = |model: &str| session.models.get(model).map(|spent| spent.calls);
+    assert_eq!(
+        (calls_to(A), calls_to(B)),
+        (Some(2), Some(1)),
+        "{session:?}"
     );
     assert!(matches!(
         app.world().resource::<Ended>().0.last(),

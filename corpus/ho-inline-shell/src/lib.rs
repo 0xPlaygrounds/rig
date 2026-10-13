@@ -29,7 +29,7 @@ mod tests;
 pub const OUTPUT_LIMIT: usize = 4 * 1024;
 
 /// The status item: after the agent's status.
-const EXPANDING: StatusItem = StatusItem::at(Side::Left, 52, 10);
+const EXPANDING: StatusItem = StatusItem::new("ho-inline-shell", Side::Left, 52, 10);
 
 /// The `[inline_shell]` table: `enabled = false` turns expansion off;
 /// `timeout_secs` is how long each command may run.
@@ -80,7 +80,7 @@ impl Plugin for InlineShellPlugin {
                     .in_set(InlineShellSystems)
                     .run_if(|settings: Res<InlineShell>| settings.enabled),
             )
-            .add_systems(PostUpdate, show_expanding.in_set(StatusSystems))
+            .add_systems(PostUpdate, show_expanding.in_set(StatusSystems::Show))
             .add_observer(finished);
     }
 }
@@ -177,11 +177,11 @@ fn expand(
     mut commands: Commands,
 ) {
     for (message, mut incoming, &ForAgent(agent)) in &mut messages {
-        let typed = incoming.origin.kind == OriginKind::User;
+        let typed = incoming.author.kind == AuthorKind::User;
         if !typed || incoming.literal || incoming.command().is_some() {
             continue;
         }
-        let pieces = pieces(&incoming.text);
+        let pieces = pieces(incoming.text());
         let shells: Vec<(usize, String)> = pieces
             .iter()
             .enumerate()
@@ -192,8 +192,8 @@ fn expand(
             .collect();
         if shells.is_empty() {
             let text = compose(&pieces, &HashMap::new());
-            if text != incoming.text {
-                incoming.text = text;
+            if text != incoming.text() {
+                *incoming.text_mut() = text;
             }
             continue;
         }
@@ -343,14 +343,15 @@ fn finished(
         return;
     }
     let text = compose(&pieces, &blocks);
-    let expanded = Incoming::new(text, incoming.mode).with_origin(incoming.origin.clone());
-    commands.spawn((
-        expanded,
-        Expanded,
-        ForAgent(job.agent),
-        Supersedes(message),
-        Effect::child_of(effect.parent),
-    ));
+    let expanded = Incoming::new(text, incoming.mode).with_author(incoming.author.clone());
+    commands
+        .spawn((
+            expanded,
+            Expanded,
+            ForAgent(job.agent),
+            Effect::child_of(effect.parent),
+        ))
+        .add_related::<SupersededBy>(&[message]);
     for (hold, _) in mine {
         commands.entity(hold).despawn();
     }

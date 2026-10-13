@@ -83,6 +83,6 @@ macro_rules! scripted {
     };
 }
 
-scripted!(CHAT: chat; truncated_after_text, truncated_after_tool_call, error_after_text, filtered_with_text, filtered_empty, failing_load, failing_load_streamed, status_429, status_503);
-scripted!(RESPONSES: responses; truncated_after_text, truncated_after_tool_call, error_after_text, filtered_with_text, filtered_empty, failing_load, failing_load_streamed, status_429, status_503);
-scripted!(GEMINI: gemini; truncated_after_text, truncated_after_tool_call, error_after_text, filtered_with_text, filtered_empty, failing_load, failing_load_streamed, status_429, status_503);
+scripted!(CHAT: chat; truncated_after_text, truncated_after_tool_call, error_after_text, filtered_with_text, filtered_empty, status_429, status_503);
+scripted!(RESPONSES: responses; truncated_after_text, truncated_after_tool_call, error_after_text, filtered_with_text, filtered_empty, status_429, status_503);
+scripted!(GEMINI: gemini; truncated_after_text, truncated_after_tool_call, error_after_text, filtered_with_text, filtered_empty, status_429, status_503);

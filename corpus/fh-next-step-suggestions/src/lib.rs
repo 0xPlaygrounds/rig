@@ -163,7 +163,7 @@ fn ask(
     let Some(asked) = (0..len).rev().find_map(|at| typed(conversation, at)) else {
         return;
     };
-    let answer = final_answer(message).unwrap_or_default();
+    let answer = message.final_answer().unwrap_or_default();
     let prompt = format!("The user's last message:\n{asked}\n\nThe agent's final reply:\n{answer}");
     let mut request =
         ModelRequest::new(CompletionRequest::new(Message::user(prompt)).preamble(PREAMBLE));
@@ -209,7 +209,7 @@ fn on_message(
     mut commands: Commands,
 ) {
     if let Ok((message, &ForAgent(agent))) = messages.get(added.entity)
-        && message.origin.kind == OriginKind::User
+        && message.author.kind == AuthorKind::User
     {
         clear(agent, &calls, &mut commands);
     }

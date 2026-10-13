@@ -1,10 +1,9 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
-use rig_harness::transcript::TranscriptPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, calls, reply, run_until, scripted_models};
 use rig_subagents::SubagentsPlugin;
 
@@ -42,7 +41,6 @@ fn start(
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
-            TranscriptPlugin,
             SubagentsPlugin,
             SideQuestionPlugin,
         ))
@@ -94,13 +92,15 @@ fn open_shell(world: &mut World) -> Option<Entity> {
         .map(|(call, _)| call)
 }
 
-/// The side conversations in `agent`'s transcript.
-fn side_entries(world: &mut World, agent: Entity) -> Vec<TranscriptEntry> {
-    let mut entries = world.query::<(&TranscriptEntry, &EntryOf)>();
-    entries
-        .iter(world)
-        .filter(|(entry, of)| of.0 == agent && entry.origin == TITLE)
-        .map(|(entry, _)| entry.clone())
+/// The side conversations in `agent`'s conversation: the message each
+/// follows, and its note.
+fn side_entries(world: &World, agent: Entity) -> Vec<(Option<MessageId>, Note)> {
+    let Some(conversation) = world.get::<Conversation>(agent) else {
+        return Vec::new();
+    };
+    (conversation.asides())
+        .filter(|(_, aside)| aside.author == Author::plugin(TITLE))
+        .filter_map(|(_, aside)| Note::of(aside).map(|note| (aside.after, note)))
         .collect()
 }
 
@@ -224,10 +224,10 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
     // The side conversation is an entry after the message it was asked at,
     // the reply calling `shell`.
     let at = app.world().get::<Conversation>(agent).and_then(|c| c.id(1));
-    let entries = side_entries(app.world_mut(), agent);
+    let entries = side_entries(app.world(), agent);
     assert_eq!(entries.len(), 1);
     let entry = entries.first().cloned();
-    assert_eq!(entry.as_ref().map(|entry| entry.after), Some(at));
+    assert_eq!(entry.as_ref().map(|entry| entry.0), Some(at));
     drop(app);
 
     // Resumed, the side exchange is its own entry, and the main agent's
@@ -237,12 +237,12 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         Vec<rig_core::test_utils::MockStreamEvent>,
     >::new());
     let (mut app, wakes, agent) = start(&store, &main, &side);
-    let kept = side_entries(app.world_mut(), agent);
+    let kept = side_entries(app.world(), agent);
     assert_eq!(kept.first(), entry.as_ref());
     assert_eq!(kept.len(), 1);
     let kept = kept
         .first()
-        .map(|entry| (entry.title.as_str(), entry.text.as_str()));
+        .map(|(_, note)| (note.title.as_str(), note.text.as_str()));
     assert_eq!(kept, Some(("btw: what is X?", "› what is X?\nX is Y")));
     let world = app.world_mut();
     let mut sides = world.query::<&SideAgent>();

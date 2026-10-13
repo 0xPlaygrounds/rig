@@ -569,7 +569,7 @@ fn tell_ended(
     mut agents: Query<&mut TerminalNames>,
 ) {
     for (mut message, &ForAgent(agent)) in &mut messages {
-        if message.origin.kind != OriginKind::User {
+        if message.author.kind != AuthorKind::User {
             continue;
         }
         let Ok(mut names) = agents.get_mut(agent) else {
@@ -583,10 +583,11 @@ fn tell_ended(
             "The terminals `{ended}` ended when rig last stopped; terminals are not restored. \
              Open new ones with term_open if you still need them."
         );
-        message.attachments.push(Attachment {
+        let attachment = Attachment {
             label: "terminals".to_owned(),
             content: UserContent::text(text),
-        });
+        };
+        message.parts.insert(0, MessagePart::Attachment(attachment));
     }
 }
 

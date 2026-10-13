@@ -70,7 +70,7 @@ fn a_key_is_read_by_its_grammar_and_written_back() {
         ("host/note", Some("host"), None, "note", None),
         ("model:fast", None, Some("model"), "fast", None),
         ("tool:lookup#7", None, Some("tool"), "lookup", Some(7)),
-        ("memory", None, None, "memory", None),
+        ("retrieve", None, None, "retrieve", None),
         ("not-a-model", None, None, "not-a-model", None),
     ] {
         let parts = HandlerKey::from(key).parts();
@@ -108,7 +108,6 @@ fn family_markers_name_their_family() {
     assert_eq!(family::Completion::FAMILY, EffectFamily::Completion);
     assert_eq!(family::Tool::FAMILY, EffectFamily::Tool);
     assert_eq!(family::Embed::FAMILY, EffectFamily::Embed);
-    assert_eq!(family::Memory::FAMILY, EffectFamily::Memory);
     assert_eq!(family::Retrieve::FAMILY, EffectFamily::Retrieve);
 }
 
@@ -147,37 +146,6 @@ fn every_kind_round_trips_and_names_itself() {
             },
             "embed",
             EffectFamily::Embed,
-            false,
-        ),
-        (
-            EffectKind::Memory {
-                op: MemoryOp::Append {
-                    conversation: ConversationId::from("c1"),
-                    messages: vec![Message::user("hello")],
-                },
-            },
-            "memory",
-            EffectFamily::Memory,
-            false,
-        ),
-        (
-            EffectKind::Memory {
-                op: MemoryOp::Load {
-                    conversation: ConversationId::from("c1"),
-                },
-            },
-            "memory",
-            EffectFamily::Memory,
-            false,
-        ),
-        (
-            EffectKind::Memory {
-                op: MemoryOp::Clear {
-                    conversation: ConversationId::from("c1"),
-                },
-            },
-            "memory",
-            EffectFamily::Memory,
             false,
         ),
         (
@@ -277,20 +245,6 @@ fn every_outcome_round_trips() {
             EffectFamily::Embed,
         ),
         (
-            Outcome::Memory(MemoryOutcome::Loaded {
-                messages: vec![Message::user("hi")],
-            }),
-            EffectFamily::Memory,
-        ),
-        (
-            Outcome::Memory(MemoryOutcome::Appended),
-            EffectFamily::Memory,
-        ),
-        (
-            Outcome::Memory(MemoryOutcome::Cleared),
-            EffectFamily::Memory,
-        ),
-        (
             Outcome::Documents(RetrievedDocuments::Scored(vec![(
                 0.9,
                 "d1".into(),
@@ -349,12 +303,13 @@ fn tool_output_rejects_an_empty_wire_list() {
 
 #[test]
 fn a_family_reports_another_familys_outcome_as_a_mismatch() {
-    let report = family::Completion::unwrap(Outcome::Memory(MemoryOutcome::Cleared))
-        .expect_err("not a completion");
+    let report =
+        family::Completion::unwrap(Outcome::Documents(RetrievedDocuments::Ids(Vec::new())))
+            .expect_err("not a completion");
     assert_eq!(report.kind, ErrorKind::Internal);
     assert!(
         report.message.contains("expected a completion outcome")
-            && report.message.contains("memory"),
+            && report.message.contains("retrieve"),
         "{}",
         report.message
     );
@@ -401,8 +356,9 @@ fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
     assert_eq!(report.kind, ErrorKind::Internal);
     assert!(report.message.contains(AskUser::KIND), "{}", report.message);
 
-    let report = family::Custom::<AskUser>::unwrap(Outcome::Memory(MemoryOutcome::Cleared))
-        .expect_err("another family");
+    let report =
+        family::Custom::<AskUser>::unwrap(Outcome::Documents(RetrievedDocuments::Ids(Vec::new())))
+            .expect_err("another family");
     assert!(
         report.message.contains("expected a custom outcome"),
         "{}",
@@ -495,14 +451,14 @@ fn a_row_is_checked_against_a_handler_table_and_names_its_first_gap() {
     assert_eq!(gap.needed, EffectFamily::Tool);
     assert_eq!(gap.served, None);
     assert_eq!(gap.to_string(), "`a/tool:add#0` (tool_call) is not served");
-    let wrong = vec![descriptor("a/model:default", FamilyDescriptor::Memory {})];
+    let wrong = vec![descriptor("a/model:default", FamilyDescriptor::Retrieve {})];
     let gap = row
         .is_subset_of(&wrong)
         .expect_err("served as another family");
-    assert_eq!(gap.served, Some(EffectFamily::Memory));
+    assert_eq!(gap.served, Some(EffectFamily::Retrieve));
     assert_eq!(
         gap.to_string(),
-        "`a/model:default` is needed as completion but served as memory"
+        "`a/model:default` is needed as completion but served as retrieve"
     );
 }
 
@@ -517,7 +473,7 @@ fn a_row_diff_names_every_difference() {
     .into_iter()
     .collect();
     let other: EffectRow = [
-        (HandlerKey::from("b"), EffectFamily::Memory),
+        (HandlerKey::from("b"), EffectFamily::Retrieve),
         (HandlerKey::from("c"), EffectFamily::Retrieve),
     ]
     .into_iter()
@@ -527,7 +483,7 @@ fn a_row_diff_names_every_difference() {
         diffs,
         [
             "`a` (completion) is missing",
-            "`b` is tool_call here and memory there",
+            "`b` is tool_call here and retrieve there",
             "`c` (retrieve) is extra",
         ]
     );

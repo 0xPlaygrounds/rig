@@ -6,31 +6,35 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
 use ratatui::style::Style;
 use ratatui::text::Line;
-use rig_core::completion::Message;
+use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
+use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
-use rig_ecs::agent::Conversation;
-use rig_ecs::agent::Partial;
-use rig_ecs::prelude::{Entry, MessageId, Origin};
-use rig_ecs::stage::{HoldOf, Started};
+use rig_core::tool::ToolResult;
+use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
+use rig_ecs::prelude::{Aside, AsideId, Author, Entry, Halt, MessageId};
+use rig_ecs::stage::{
+    Effect, EffectRecorded, EffectRequest, ForAgent, HoldOf, Outcome, Started, SupersededBy,
+};
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::StreamDelta;
-use rig_harness::prelude::App;
+use rig_ecs::turn::{ModelRequest, StreamDelta};
+use rig_harness::note::Note;
 use rig_harness::prelude::ToolProgress;
-use rig_harness::transcript::{EntryOf, TranscriptEntry};
+use rig_harness::prelude::{App, Last, Update};
 use serde_json::json;
 
 use super::{
-    Below, CallFacts, EntryRenderers, Look, Part, Renderers, Scroll, StreamingCalls, Transcript,
+    Below, CallFacts, ChildCalls, EntryRenderers, Look, Part, Renderers, Scroll, StreamingCalls,
+    Transcript,
 };
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
     AppToolRenderersExt, CallState, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow,
-    LineSpan, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem, TranscriptLayout,
-    TranscriptView,
+    LineSpan, PastEffects, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem,
+    TranscriptLayout, TranscriptView,
 };
 
 const WIDTH: u16 = 80;
@@ -114,6 +118,7 @@ fn drawn(
         whole: false,
         note_cut: false,
         facts: &facts,
+        children: &ChildCalls::default(),
     };
     // The conversation is the same each time.
     transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
@@ -126,11 +131,9 @@ fn drawn(
 /// A conversation of one reply that calls `call`.
 fn calling(call: &ToolCall) -> Option<Conversation> {
     let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
-    let conversation = serde_json::from_value::<Conversation>(json!({
-        "messages": [Message::Assistant(reply)],
-        "origins": [],
-    }));
-    conversation.ok()
+    let conversation =
+        rig_core::conversation::Conversation::from_messages([Message::Assistant(reply)]);
+    Some(Conversation(conversation))
 }
 
 #[test]
@@ -223,16 +226,18 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
     assert_eq!(shown, "> cc a.c\n> cc b.c\n> ld app");
 }
 
-/// Adds `message` to `agent`'s conversation, as a commit does.
+/// Adds `message` to `agent`'s conversation.
 fn say(app: &mut App, agent: Entity, message: Message) {
-    let commit = move |mut commit: rig_ecs::journal::Commit,
-                       mut conversations: Query<&mut Conversation>| {
-        if let Ok(mut conversation) = conversations.get_mut(agent) {
-            commit.message(agent, &mut conversation, message.clone());
-        }
-    };
-    assert!(app.world_mut().run_system_once(commit).is_ok());
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(message);
+    }
     app.update();
+}
+
+/// Adds `aside` to `agent`'s conversation; its id.
+fn add_aside(app: &mut App, agent: Entity, aside: Aside) -> Option<AsideId> {
+    let mut conversation = app.world_mut().get_mut::<Conversation>(agent)?;
+    Some(conversation.add_aside(aside))
 }
 
 /// The id of message `index` of `agent`'s conversation.
@@ -247,7 +252,7 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 }
 
 #[test]
-fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
+fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
     let (mut app, agent) = view_app();
     app.add_entry_renderer("btw", |entry| {
         let text = if entry.expanded {
@@ -261,18 +266,18 @@ fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
     say(&mut app, agent, Message::assistant("first answer"));
     say(&mut app, agent, Message::user("second question"));
     let after = message_id(&app, agent, 1);
-    let entry = TranscriptEntry::new("btw", after, "Why tabs?", "The style says so.");
-    let entry = app.world_mut().spawn((entry, EntryOf(agent))).id();
+    let note = Note::new("Why tabs?", "The style says so.").aside(Author::plugin("btw"), after);
+    let note = add_aside(&mut app, agent, note);
     app.update();
     let lines = on_screen(&mut app, agent, 100);
     let order = ["first answer", "btw: Why tabs?", "second question"];
     let order = order.map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
-    // Alt+Up selects the newest item, the last message; again, the entry.
+    // Alt+Up selects the newest item, the last message; again, the note.
     press(&mut app, "alt+up alt+up");
     let selected = app.world().resource::<TranscriptView>().selected.clone();
-    assert_eq!(selected, Some(TranscriptItem::Entry(entry)));
+    assert_eq!(selected, note.map(TranscriptItem::Note));
     // Ctrl+O expands it: drawn whole.
     press(&mut app, "ctrl+o");
     let lines = on_screen(&mut app, agent, 100);
@@ -283,31 +288,52 @@ fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
 }
 
 #[test]
-fn an_entry_whose_message_was_summarized_is_drawn_right_after_the_summary() {
+fn a_note_whose_message_was_summarized_is_drawn_right_after_the_summary() {
     let (mut app, agent) = view_app();
     say(&mut app, agent, Message::user("old question"));
     say(&mut app, agent, Message::assistant("old answer"));
     say(&mut app, agent, Message::user("kept prompt"));
     say(&mut app, agent, Message::assistant("kept answer"));
     let after = message_id(&app, agent, 1);
-    let entry = TranscriptEntry::new("btw", after, "marked", "");
-    app.world_mut().spawn((entry, EntryOf(agent)));
-    // A compaction: the summary takes the first two messages' place, and
-    // the kept prompt joins it.
-    let compact = move |mut commit: rig_ecs::journal::Commit,
-                        mut conversations: Query<&mut Conversation>| {
-        if let Ok(mut conversation) = conversations.get_mut(agent) {
-            let summary = Entry::from(Message::user("the summary"), Origin::plugin("compaction"));
-            commit.splice(agent, &mut conversation, ..2, [summary]);
-        }
-    };
-    assert!(app.world_mut().run_system_once(compact).is_ok());
+    let note = Note::new("marked", "").aside(Author::plugin("btw"), after);
+    add_aside(&mut app, agent, note);
+    // A compaction: the summary takes the first two messages' place.
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        let compaction = Author::plugin("compaction");
+        let summary = Entry::new(Message::user("the summary")).by(compaction.clone());
+        conversation.splice(..2, [summary], compaction);
+    }
     app.update();
     let lines = on_screen(&mut app, agent, 100);
     let order = ["the summary", "marked", "kept prompt", "kept answer"];
     let order = order.map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
+}
+
+#[test]
+fn the_note_rig_adds_after_a_stop_is_drawn_as_a_stop() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("first question"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.halt(Halt::Stopped);
+    }
+    say(&mut app, agent, Message::user("second question"));
+    let lines = on_screen(&mut app, agent, 100);
+    let order = [
+        "first question",
+        "[stopped before it was answered]",
+        "second question",
+    ];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.contains("not the user's words")),
+        "{lines:#?}"
+    );
 }
 
 #[test]
@@ -703,4 +729,170 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
             .of(effect)
             .is_empty()
     );
+}
+
+/// An app with what a [`TranscriptLayout`] reads and no kernel, so the
+/// effects a test spawns stay as spawned; and an agent in it.
+fn layout_app() -> (App, Entity) {
+    let mut app = App::new();
+    app.init_resource::<CallFacts>()
+        .init_resource::<StreamingCalls>()
+        .init_resource::<TranscriptView>()
+        .init_resource::<rig_ecs::effects::Effects>()
+        .add_message::<EffectRecorded>()
+        .add_message::<PastEffects>()
+        .add_systems(Update, super::note_effects)
+        .add_observer(super::note_agent_name);
+    let agent = app
+        .world_mut()
+        .spawn((
+            Name::new("main"),
+            AgentId("main".to_owned()),
+            Conversation::default(),
+        ))
+        .id();
+    (app, agent)
+}
+
+#[test]
+fn a_race_draws_the_reply_of_its_member_still_running() {
+    let (mut app, agent) = layout_app();
+    let world = app.world_mut();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let streaming = |text: &str| Partial {
+        text: text.to_owned(),
+        reasoning: String::new(),
+    };
+    // Losers older and newer than it: a superseded reply is never drawn.
+    let first = world.spawn((CallOf(turn), streaming("first loser's"))).id();
+    let winner = world.spawn((CallOf(turn), streaming("the winner's"))).id();
+    world.spawn((
+        CallOf(turn),
+        streaming("second loser's"),
+        SupersededBy(winner),
+    ));
+    world.entity_mut(first).insert(SupersededBy(winner));
+    world.flush();
+    let rows = laid_out(&mut app, agent, Expanded::AsShown);
+    let rows: Vec<&str> = rows
+        .iter()
+        .flat_map(DrawnTranscript::rows)
+        .map(|row| row.text.as_str())
+        .collect();
+    assert!(rows.contains(&"the winner's"), "{rows:?}");
+    assert!(!rows.iter().any(|row| row.contains("loser")), "{rows:?}");
+}
+
+/// The records of the effects that settled, as the kernel wrote them.
+#[derive(Resource, Default)]
+struct Records(Vec<EffectRecord>);
+
+/// A model's reply: `text`, then `calls`.
+fn reply(text: &str, calls: Vec<ToolCall>) -> Outcome {
+    let mut choice = vec![AssistantContent::text(text)];
+    choice.extend(calls.into_iter().map(AssistantContent::ToolCall));
+    let origin = rig_core::message::Origin::new("test.api", "test", "model-a");
+    let reply = CompletionResponse::new(choice, Usage::default(), origin, json!({}));
+    Outcome::from(Ok(effect::Outcome::Completion(reply)))
+}
+
+/// Spawns `effect`, answered, under `parent`, and runs a frame, so the
+/// kernel settles it before the next is made, as a reply settles before
+/// its calls start; its id.
+fn settle(app: &mut App, parent: Option<EffectId>, effect: impl Bundle) -> Option<EffectId> {
+    let spawned = app.world_mut().spawn((effect, Effect::child_of(parent)));
+    let id = spawned.get::<Effect>().map(Effect::id);
+    app.update();
+    id
+}
+
+/// A plain effect of a plugin's own, answered.
+fn plain(kind: &str) -> (EffectRequest, Outcome) {
+    let kind = EffectKind::Custom {
+        kind: Arc::from(kind),
+        payload: json!(null),
+    };
+    let request = EffectRequest {
+        kind,
+        handler: None,
+    };
+    (request, Outcome::custom(json!(null)))
+}
+
+/// The rows a `consult` renderer draws of `agent`'s transcript: one per
+/// call under its call, with its depth, name, agent, state and first line.
+fn consult_rows(app: &mut App, agent: Entity) -> Vec<String> {
+    let rows = laid_out(app, agent, Expanded::AsShown);
+    let rows = rows.iter().flat_map(DrawnTranscript::rows);
+    rows.map(|row| row.text.clone()).collect()
+}
+
+#[test]
+fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resume() {
+    let (mut app, agent) = view_app();
+    let keep = |mut read: MessageReader<EffectRecorded>, mut records: ResMut<Records>| {
+        records
+            .0
+            .extend(read.read().map(|recorded| recorded.0.clone()));
+    };
+    app.init_resource::<Records>().add_systems(Last, keep);
+    let looks = |app: &mut App| {
+        app.add_tool_renderer("consult", |view| {
+            let children = view.children.iter().map(|child| {
+                let agent = child.agent.as_deref().unwrap_or("-");
+                let line = child.line.as_deref().unwrap_or("-");
+                let (depth, name, state) = (child.depth, &child.name, &child.state);
+                Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
+            });
+            children.collect()
+        });
+    };
+    looks(&mut app);
+    let (Ok(consult), Ok(read)) = (ToolName::new("consult"), ToolName::new("read")) else {
+        return;
+    };
+    let consulting = ToolCall::from_wire("c1", ToolFunction::new(consult, json!({})));
+    let asked = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+        consulting.clone(),
+    )]));
+    say(&mut app, agent, asked.clone());
+    let id = app.world().get::<AgentId>(agent).cloned();
+    let helper = (Name::new("helper"), AgentId("helper".to_owned()));
+    let helper = app.world_mut().spawn(helper).id();
+    // The real chain: the agent's model call asks for the consult, which
+    // spawns a helper (a plain effect) and briefs it (another); the
+    // helper's model call, under the brief, asks for a read.
+    let model = |text: &str| ModelRequest::new(CompletionRequest::new(Message::user(text)));
+    let turn = (model("consult"), ForAgent(agent));
+    let turn = settle(&mut app, None, (turn, reply("", vec![consulting.clone()])));
+    let answered = Outcome::from(ToolResult::success("both answered".to_owned().into()));
+    let consulted = (ToolRequest { call: consulting }, ForAgent(agent), answered);
+    let consulted = settle(&mut app, turn, consulted);
+    let spawned = settle(&mut app, consulted, plain("subagent"));
+    let briefed = settle(&mut app, spawned, (plain("message"), ForAgent(helper)));
+    let reading = ToolCall::from_wire("r1", ToolFunction::new(read, json!({ "path": "a.rs" })));
+    let asking = (model("look"), ForAgent(helper));
+    let asking = (asking, reply("looking", vec![reading.clone()]));
+    let asking = settle(&mut app, briefed, asking);
+    let source = ToolResult::success("fn main() {}\n".to_owned().into());
+    let read = (ToolRequest { call: reading }, ForAgent(helper));
+    settle(&mut app, asking, (read, Outcome::from(source)));
+    let expected = [
+        "0 model helper Done looking",
+        "1 read helper Done fn main() {}",
+    ];
+    assert_eq!(consult_rows(&mut app, agent), expected);
+
+    // Resumed: the same records, read back, and no effect left.
+    let records = std::mem::take(&mut app.world_mut().resource_mut::<Records>().0);
+    let (mut resumed, agent) = layout_app();
+    looks(&mut resumed);
+    let world = resumed.world_mut();
+    if let Some(id) = id {
+        world.entity_mut(agent).insert(id);
+    }
+    world.spawn((Name::new("helper"), AgentId("helper".to_owned())));
+    world.write_message(PastEffects::new(records));
+    say(&mut resumed, agent, asked);
+    assert_eq!(consult_rows(&mut resumed, agent), expected);
 }

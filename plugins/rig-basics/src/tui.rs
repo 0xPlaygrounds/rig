@@ -16,11 +16,11 @@ use rig_tui::{Focus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 use super::{AgentColumn, AgentColumns};
 
 /// Where a spawned agent's name is: before its model.
-const TITLE: StatusItem = StatusItem::at(Side::Left, 20, 14);
+const TITLE: StatusItem = StatusItem::new("title", Side::Left, 20, 14);
 /// Where its subagents at work are counted: after its status.
-const SUBAGENTS: StatusItem = StatusItem::at(Side::Left, 60, 15);
+const SUBAGENTS: StatusItem = StatusItem::new("subagents", Side::Left, 60, 15);
 /// Where the other agents at work are counted.
-const OTHERS: StatusItem = StatusItem::at(Side::Left, 70, 13);
+const OTHERS: StatusItem = StatusItem::new("others", Side::Left, 70, 13);
 
 pub(super) fn add(app: &mut App) {
     app.add_command(
@@ -30,7 +30,7 @@ pub(super) fn add(app: &mut App) {
     )
     .add_systems(
         PostUpdate,
-        show.in_set(StatusSystems)
+        show.in_set(StatusSystems::Show)
             .run_if(any_component_removed::<ActiveTurn>.or_eager(changed)),
     );
 }
@@ -158,6 +158,7 @@ fn agents(
             ),
             command: format!("agents {}", agent.id.0),
             detail: None,
+            checked: false,
         });
     }
     commands.spawn(Picker {

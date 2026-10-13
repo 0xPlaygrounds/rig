@@ -2,18 +2,18 @@
 //! changed and its last test or build commands, tracked from the facts its
 //! tool calls publish ([`FilesRead`], [`FilesChanged`], [`ExitStatus`]).
 //! Whenever a compaction splices a summary into an agent's conversation
-//! ([`Committed::Splice`] with an item of the origin `compaction`, by
-//! rig-compaction or `/compact`), a "Working set" block goes into the
-//! conversation right after the summary, by a splice that keeps the
-//! message's id, and into the request already built from it, so it goes
-//! with the next request and a resumed session has it. The tracking is saved with the
+//! (a [`Committed`] splice that took messages out and put in an entry by
+//! [`summary_author`](rig_compaction::summary_author), from rig-compaction or `/compact`), a "Working set"
+//! entry goes into the conversation right after the summary, and into the
+//! request already built from it, so it goes with the next request and a
+//! resumed session has it. The tracking is saved with the
 //! session ([`WorkingSet`]).
 
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
-use rig_compaction::summary_origin;
+use rig_compaction::summary_in;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead};
 use serde::{Deserialize, Serialize};
@@ -199,67 +199,45 @@ fn track(
 }
 
 /// Puts the working set right after the summary each time a compaction
-/// splices one into an agent's conversation, in the conversation and in
-/// the agent's turn request built this pass, if any, and starts the read
-/// list over. A restore commits nothing, so it carries nothing over again.
+/// splices one into an agent's conversation, as its own entry, in the
+/// conversation and in the agent's turn request built this pass, if any,
+/// and starts the read list over. A restore commits nothing, so it carries
+/// nothing over again.
 fn carry_over(
-    // What was committed is read before the splice commits more.
-    mut committing: ParamSet<(MessageReader<Committed>, Commit)>,
+    mut committed: MessageReader<Committed>,
     mut agents: Query<(&mut Conversation, &mut WorkingSet)>,
     mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     root: Res<ProjectRoot>,
 ) {
-    let summary = summary_origin();
-    let compactions: Vec<Entity> = committing
-        .p0()
+    let compactions: Vec<(Entity, MessageId)> = committed
         .read()
-        .filter_map(|change| match change {
-            Committed::Splice { agent, removed, .. } if !removed.is_empty() => Some(*agent),
-            _ => None,
-        })
+        .filter_map(|Committed { agent, change }| Some((*agent, summary_in(&change.change)?)))
         .collect();
-    for agent in compactions {
+    for (agent, summary) in compactions {
         let Ok((mut conversation, mut set)) = agents.get_mut(agent) else {
             continue;
         };
-        let Some(mut entry) = conversation.entry(0) else {
+        let Some(at) = conversation.index_of(summary) else {
             continue;
         };
         let Some(text) = render(&set, &root.0) else {
             continue;
         };
-        // The summary's items lead the first message.
-        let origins = &entry.origins;
-        let leads = |item: &usize| {
-            let summarized = |(at, origin): &(usize, Origin)| at == item && *origin == summary;
-            origins.iter().any(summarized)
-        };
-        let after = (0..usize::MAX).take_while(leads).count();
-        let message::Message::User { content } = &mut entry.message else {
-            continue;
-        };
-        if after == 0 {
-            continue;
-        }
-        let block = UserContent::text(text);
-        content.insert(after, block.clone());
-        for (item, _) in &mut entry.origins {
-            if *item >= after {
-                *item += 1;
-            }
-        }
-        entry.origins.push((after, Origin::plugin("working-set")));
-        committing
-            .p1()
-            .splice(agent, &mut conversation, 0..1, [entry]);
+        let summarized = conversation.messages().get(at).cloned();
+        let block = message::Message::user(text);
+        let entry = Entry::new(block.clone()).by(Author::plugin("working-set"));
+        conversation.splice(at + 1..at + 1, [entry], Author::plugin("working-set"));
         for (mut call, _) in calls.iter_mut().filter(|(_, to)| to.0 == agent) {
-            let history = &mut call.request.chat_history;
-            let first = history.iter_mut().find_map(|message| match message {
-                message::Message::User { content } => Some(content),
-                _ => None,
-            });
-            if let Some(content) = first {
-                content.insert(after.min(content.len()), block.clone());
+            let Some(history) = &mut call.history else {
+                continue;
+            };
+            let found = history
+                .messages()
+                .iter()
+                .position(|message| Some(message) == summarized.as_ref());
+            if let Some(found) = found {
+                let entry = Entry::new(block.clone()).by(Author::plugin("working-set"));
+                history.splice(found + 1..found + 1, [entry], Author::plugin("working-set"));
             }
         }
         set.read.clear();

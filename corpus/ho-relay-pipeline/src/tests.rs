@@ -1,13 +1,12 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Home;
 
 use super::*;
 use rig_harness_test_support::{
-    app_on, commit_message, reply, run_until, scratch_home, scripted_models,
+    MemoryStore, app_on, commit_message, reply, run_until, scratch_home, scripted_models,
 };
 
 const PIPELINES: &str = r#"

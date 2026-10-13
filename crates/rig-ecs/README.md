@@ -19,18 +19,21 @@ What it holds, by module:
   (`TurnCall`) and a side call built from an agent (`BuildFrom`) have
   their request built by the kernel, with the system prompt in parts
   (rig-core's `SystemPrompt`: the role and tagged sections), a plugin
-  edits it in Prepare (prompt, messages, tools, options, the model it goes
-  to) and pushes its `Adapters` (an `outermost()` one wraps all the
-  others), and Start renders the prompt and fits the request to that
-  model; `ModelStarts::sent` gives what Start will send, and
-  `ModelStarts::prompt` its prompt in parts. Its stream is
+  edits it in Prepare (prompt, tools, options, the model it goes to, and
+  its messages as a view of the agent's conversation, `history`, each
+  edit attributed to its author and never saved) and pushes its
+  `Adapters` (an `outermost()` one wraps all the others), and Start
+  renders the prompt and fits the request to that model, putting on it
+  the options left out (`Fitted`); `ModelStarts::sent` gives what Start
+  will send, and `ModelStarts::prompt` its prompt in parts. Its stream is
   written as `StreamDelta`s (rig-core's `StreamEvent`s: a part's start,
   its fragments, its end) and stamped on the call (`Streamed`). A failed
   call carries its `RetryVerdict`, which Review may act on by superseding
-  the call, such as on another model. A turn ends with a `TurnOutcome` on
-  it: the kernel proposes one, Review may edit it in place, hold it or
-  carry the turn on, a plugin may fail or stop the turn, and once its
-  calls settled the turn ends, `Settled`.
+  the call, such as on another model (any number of effects may be
+  `SupersededBy` one successor, as a race's losers are by its winner). A
+  turn ends with a `TurnOutcome` on it: the kernel proposes one, Review
+  may edit it in place, hold it or carry the turn on, a plugin may fail
+  or stop the turn, and once its calls settled the turn ends, `Settled`.
 - `stage`: effects as entities. An effect's components are its request and
   its outcome, and each frame the `AgentPass` schedule runs its stages
   (Arrive, Review, Commit, Admit, Prepare, Gate, Start) until nothing
@@ -40,17 +43,19 @@ What it holds, by module:
   who decided, rig-core's `Decider`; the first decision wins), where an
   answer from a record of an earlier run, such as a session replay's, goes
   first and an answer standing in for running it goes after every gate
-  (`GateSystems`: FromRecord, After), and reads or edits the `Outcome` in
+  (`GateSystems`: FromRecord, After, then Fallback for the kernel's own
+  answers), and reads or edits the `Outcome` in
   place in Review (`ReviewSystems`: Edit, then Act), so Bevy reports two
   unordered deciders or reviewers. Kind filters (`ToolCalls`,
   `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell Bevy which
   effects two systems can never share. A tool call is such an effect
   (`ToolRequest`): as Gate opens, the kernel gives it the `Footprint` of
-  what it reads and writes (rig-core's `Touches`), and Gate sees it when
+  what it reads and writes (rig-core's `Touches`; one a plugin `Declared`
+  on the call in Prepare stands), and Gate sees it when
   it is about to run, once every earlier call of its reply it conflicts
   with settled (`Waiting`). A running effect's owner keeps `IfStopped`
   current, the answer the kernel gives if it stops the effect first. Every
-  settled effect is `Recorded`, with its raw and reviewed outcome. A
+  settled effect is `EffectRecorded`, with its raw and reviewed outcome. A
   failing Prepare, Gate or Review system closes its stage for that pass.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens.
@@ -59,31 +64,40 @@ What it holds, by module:
   `SectionOf` one, that agent alone); tools can also come and go while the
   app runs (`WorldToolsExt`).
 - `inbox`: a message to an agent is an effect too (`Incoming`, spawned by
-  `Deliver`): plugins edit it in Prepare and take it over in Gate, as
+  `Deliver`), its text and attachments in its author's order
+  (`MessagePart`): plugins edit it in Prepare and take it over in Gate, as
   rig-harness does to run a user's `/` line as a slash command; the kernel
   accepts it at Start, and an agent's accepted, unanswered messages are its
   inbox.
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.
 - `effects`: the one dispatch path, recorded into the kernel's own buffer
-  and written as `Recorded` when each effect settles.
-- `journal`, `restore`: the append-only session log and its restore. The
-  conversation model and the log format, its writer and readers, are
-  rig-cassette's `journal`; the kernel's `Conversation` component wraps
-  the library's, read-only. Every conversation change goes through
-  `Commit` (add a message, splice messages after the fact, halt, retire
-  the agent) and is seen as a `Committed` message. A splice replaces a
-  range of messages: a cut, a compaction's summary or an edit in place;
-  each message keeps its `MessageId` across splices and restores; a
-  component that says `#[reflect(Component, Saved)]`, or a resource that
-  says `#[reflect(Resource, Saved)]`, is logged and restored by
-  reflection. rig-cassette's `read_session` reads a session's logs without
-  restoring or writing, `write_session` writes one from data, and
-  `fork_session` copies a session as it was when one of its messages was
-  made. The work a restart carries on is marked `Restored` and gated like
-  any. The store (`SessionStore`) is any rig-cassette `JournalStore`,
-  such as `MemoryStore` or, with its feature `jsonl`, `JsonlDirStore`; it
-  also holds the session's other files by name.
+  and written as `EffectRecorded` when each effect settles.
+- `journal`, `restore`: the append-only session log and its restore. An
+  agent's `Conversation` component is rig-core's conversation (it derefs
+  to it): a plugin changes it by calling its methods (push, splice with
+  its own `Author`, halt, asides), and each change waits in the
+  conversation's outbox until the kernel saves it with rig-memory's
+  `Writer`, between the stages of every pass, at the end of the frame and
+  before a tool that may change something, and announces it as a
+  `Committed`. `Retire` retires an agent for good. A component that says
+  `#[reflect(Component, Saved)]`, or a resource that says
+  `#[reflect(Resource, Saved)]`, is logged and restored by reflection; one
+  reflected opaquely with serde (`#[reflect(opaque, Component, Saved,
+  Clone, Serialize, Deserialize)]`) is saved through serde, the way to
+  save rig-core data such as a `MessageId`. The store (`SessionStore`) is
+  any rig-memory `Store`; `open_session` reads it strictly, refusing an old
+  or broken session before anything is written, and sets a torn last line
+  aside (`SessionRestored::repairs`). The work a restart carries on is
+  marked `Restored` and gated like any, a turn keeping its index and first
+  message. A tool call that may change something is marked in the
+  conversation before it starts (a `rig.call` aside), and any call that
+  settles while its reply runs on is marked with its result, so a restart
+  can tell those from calls that never started: such a call is restored
+  `Interrupted`, which no holding gate sees, a plugin may answer or hold
+  in Gate or let run again in Prepare, and the kernel answers it in
+  `GateSystems::Fallback` once nothing holds it (an error, or the result
+  it had). Nothing is decided before plugins run.
 
 `AgentPlugin` adds Bevy's `TimePlugin` when the app has none. The crate has
 no features and builds for `wasm32-unknown-unknown`.

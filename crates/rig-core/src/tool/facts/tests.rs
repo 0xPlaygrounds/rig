@@ -9,7 +9,12 @@ fn published_facts_read_back_with_a_stable_shape() {
         FileChange::created("new.rs", 4),
         FileChange::modified("lib.rs", 2, 1)
             .with_diff("@@ -1 +1,2 @@\n-a\n+b\n+c\n")
-            .with_after(ContentHash("c0ffee".to_owned())),
+            .with_before(FileState {
+                bytes: 2,
+                lines: Some(1),
+                hash: Some(ContentHash("beef".to_owned())),
+            })
+            .with_after(FileState::unread(4)),
         FileChange::deleted("old.rs", 9),
     ]);
     let read = FilesRead(vec![
@@ -26,7 +31,15 @@ fn published_facts_read_back_with_a_stable_shape() {
     context
         .insert_result(ExitStatus::Exited(2))
         .expect("encodes");
+    let cut = OutputCut {
+        kept: KeptEnd::End,
+        kept_lines: 2,
+        total_lines: 5,
+        spill: Some("/scratch/out.txt".to_owned()),
+    };
+    context.insert_result(cut.clone()).expect("encodes");
     let published = context.result_context();
+    assert_eq!(published.get::<OutputCut>().ok().flatten(), Some(cut));
     assert_eq!(
         published.get::<FilesChanged>().ok().flatten(),
         Some(changed)
@@ -39,6 +52,8 @@ fn published_facts_read_back_with_a_stable_shape() {
         serde_json::to_value(&published).ok(),
         Some(serde_json::json!({
             "exit_status": {"exited": 2},
+            "output_cut": {"kept": "end", "kept_lines": 2, "total_lines": 5,
+                           "spill": "/scratch/out.txt"},
             "files_read": [
                 {"path": "/work/a.rs", "hash": "aa"},
                 {"path": "/work/b.rs", "hash": "bb",
@@ -47,7 +62,8 @@ fn published_facts_read_back_with_a_stable_shape() {
             "files_changed": [
                 {"path": "new.rs", "kind": "created", "added": 4, "removed": 0},
                 {"path": "lib.rs", "kind": "modified", "added": 2, "removed": 1,
-                 "diff": "@@ -1 +1,2 @@\n-a\n+b\n+c\n", "after": "c0ffee"},
+                 "diff": "@@ -1 +1,2 @@\n-a\n+b\n+c\n", "before": {"bytes": 2, "lines": 1, "hash": "beef"},
+                 "after": {"bytes": 4}},
                 {"path": "old.rs", "kind": "deleted", "added": 0, "removed": 9},
             ],
         }))

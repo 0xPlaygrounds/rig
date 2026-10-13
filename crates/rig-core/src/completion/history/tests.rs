@@ -948,3 +948,83 @@ fn a_leading_turn_goes_with_its_results_and_its_user_message_stays() {
     ];
     assert_eq!(from_first_user(foreign), vec![unrelated]);
 }
+
+/// Cache points move with the history they name: a point inside a message
+/// keeps its items, a point on a message the wire joins with the next one
+/// ends inside the joined message, a point past the end goes, documents
+/// count as the start of the first user message, and a point never covers
+/// a result the wire moves in front of the text it ends after.
+#[test]
+fn cache_points_follow_the_history_through_adapting() {
+    use crate::completion::CachePoint::{Messages, System, Tools, Within};
+    let request = Request::default();
+    let moved = |written: &[Message],
+                 documents: Option<&Message>,
+                 points: &[crate::completion::CachePoint]| {
+        let mut sent = written.to_vec();
+        if let Some(documents) = documents {
+            crate::completion::request::insert_after_leading_system(&mut sent, documents.clone());
+        }
+        let adapted = adapt_for(&sent, &TARGET, &request);
+        cache_points(points, written, documents, &adapted, &TARGET, &request)
+    };
+    let written = vec![
+        Message::user("a"),
+        turn(
+            Some(same()),
+            vec![AssistantContent::text("b1"), AssistantContent::text("b2")],
+        ),
+        Message::user("c"),
+        Message::user("d"),
+    ];
+    let points = [
+        Tools,
+        System,
+        Messages(0),
+        Within {
+            message: 1,
+            items: 1,
+        },
+        Within {
+            message: 3,
+            items: 1,
+        },
+        Messages(3),
+        Messages(9),
+    ];
+    assert_eq!(
+        moved(&written, None, &points),
+        [
+            Tools,
+            System,
+            Messages(0),
+            Within {
+                message: 1,
+                items: 1
+            },
+            Messages(3),
+            Within {
+                message: 2,
+                items: 1
+            },
+        ]
+    );
+
+    let documents = Message::User {
+        content: vec![UserContent::text("doc")],
+    };
+    assert_eq!(
+        moved(&written, Some(&documents), &[Messages(1), Messages(2)]),
+        [Messages(1), Messages(2)]
+    );
+
+    let steered = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![call("c1")]),
+        Message::user("and also"),
+        Message::User {
+            content: vec![result("c1", "done")],
+        },
+    ];
+    assert_eq!(moved(&steered, None, &[Messages(3)]), [Messages(2)]);
+}

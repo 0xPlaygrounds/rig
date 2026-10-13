@@ -10,14 +10,12 @@ use rig_core::effect::EffectFamily::Completion;
 
 use rig_core::effect::EffectFamily::Custom;
 
-use rig_core::effect::EffectFamily::Memory as Mem;
-
 use rig_core::effect::EffectFamily::Tool;
 
 use super::corpus::{
-    CANCEL_ADD_DISPATCH, CANCEL_ADD_OUTCOME, CANCEL_ANSWER, CONVERSATION, Choice, Ending, Hook,
-    LATE_ROUTE, LayerAt, LayerKind, LayerSpec, NESTING, Nesting, Output, Program, REPLACED_ANSWER,
-    ROUTE, STOP_AFTER_TURN, STOP_AT_ANSWER, STOP_ON_TEXT_DELTA, STOP_ON_TOOL_CALL_DELTA,
+    CANCEL_ADD_DISPATCH, CANCEL_ADD_OUTCOME, CANCEL_ANSWER, Choice, Ending, Hook, LATE_ROUTE,
+    LayerAt, LayerKind, LayerSpec, NESTING, Nesting, Output, Program, REPLACED_ANSWER, ROUTE,
+    STOP_AFTER_TURN, STOP_AT_ANSWER, STOP_ON_TEXT_DELTA, STOP_ON_TOOL_CALL_DELTA,
 };
 
 pub(crate) const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
@@ -32,7 +30,6 @@ pub(crate) const NOTE_PREAMBLE: &str =
     "You are a note-taking assistant. Use the write_note tool to save notes.";
 pub(crate) const NOTE_PROMPT: &str = "Save a note titled 'Rust' whose body is a 400-word essay on the history of the Rust programming language, then reply with just the word saved.";
 pub(crate) const READY_PROMPT: &str = "Reply with the single word: ready.";
-pub(crate) const SECOND_PROMPT: &str = "Now reply with the single word: again.";
 pub(crate) const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
 pub(crate) const CONTEXT_PROMPT: &str = "What is a glarb-glarb? Answer in one sentence.";
 pub(crate) const STRUCTURED_OUTPUT_PROMPT: &str =
@@ -173,10 +170,6 @@ impl ThinkingWire {
     }
 }
 
-pub(crate) fn bypass_history() -> Vec<rig_core::message::Message> {
-    super::corpus::bypass_history()
-}
-
 /// The tools a cell grants, in registration order (`golden/tool:<name>#<n>`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ToolKind {
@@ -206,18 +199,6 @@ pub(crate) enum ToolKind {
     /// `lookup_orchard_label` that fails every call
     /// (`super::faults::FailingOrchard`).
     BrokenBeta,
-}
-
-/// The conversation store a cell remembers in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(clippy::enum_variant_names)]
-pub(crate) enum Memory {
-    None,
-    InMemory,
-    /// `FailingMemory::append_fails()`: the append is refused.
-    FailingAppend,
-    /// `FailingMemory::load_fails()`: the load is refused.
-    FailingLoad,
 }
 
 /// How the cell is served.
@@ -272,7 +253,9 @@ pub(crate) struct Cell {
     /// The image the first prompt carries, and how (`super::image`).
     pub(crate) image: Option<super::image::ImageCell>,
     pub(crate) tools: &'static [ToolKind],
-    pub(crate) memory: Memory,
+    /// A second prompt after the first run settles, continuing its
+    /// conversation: the second run starts from the first run's messages.
+    pub(crate) followup: Option<&'static str>,
     pub(crate) bus: Bus,
     /// The host serves `host/note`.
     pub(crate) notes: bool,
@@ -290,7 +273,7 @@ pub(crate) const CELL: Cell = Cell {
     reasoning: None,
     image: None,
     tools: &[],
-    memory: Memory::None,
+    followup: None,
     bus: Bus::Own,
     notes: false,
     events: false,
@@ -302,7 +285,6 @@ const CC: &[EffectFamily] = &[Completion, Completion];
 const CT: &[EffectFamily] = &[Completion, Tool];
 const CTC: &[EffectFamily] = &[Completion, Tool, Completion];
 const CTTC: &[EffectFamily] = &[Completion, Tool, Tool, Completion];
-const MCTCM: &[EffectFamily] = &[Mem, Completion, Tool, Completion, Mem];
 
 const TOOLS: Program = Program {
     preamble: Some(TOOLS_PREAMBLE),
@@ -490,23 +472,20 @@ pub(crate) const IMAGE_INLINE_TOOL_STREAMED: Cell = Cell {
     ..IMAGE_INLINE_TOOL_UNARY
 };
 /// The first run answers the image; the second run, a text prompt about
-/// it, is fed the first run's committed history through the conversation
-/// store both runs append to and load from.
+/// it, starts from the first run's committed history.
 #[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_INLINE_FOLLOWUP: Cell = Cell {
     name: "image_inline_followup",
     program: Program {
         max_turns: Some(3),
-        conversation: Some(CONVERSATION),
-        second_prompt: Some(super::image::FOLLOWUP_PROMPT),
         ..IMAGE_TEXT
     },
+    followup: Some(super::image::FOLLOWUP_PROMPT),
     image: Some(ImageCell {
         case: ImageCase::Followup,
         source: ImageSource::Inline,
     }),
-    memory: Memory::InMemory,
-    families: TWO_RUNS,
+    families: CC,
     ..CELL
 };
 #[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
@@ -640,12 +619,9 @@ pub(crate) const ENDINGS_TOOL_OUTCOME_CANCELLED_STREAMED: Cell = Cell {
 pub(crate) const HOOKS_OBSERVE_EVERYTHING: Cell = Cell {
     name: "hooks_observe_everything",
     program: Program {
-        conversation: Some(CONVERSATION),
         hooks: &[Hook::ObserveEverything],
         ..TOOLS
     },
-    memory: Memory::InMemory,
-    families: MCTCM,
     ..ADD
 };
 pub(crate) const HOOKS_PATCH_TOOL_ARGS: Cell = Cell {
@@ -918,16 +894,31 @@ pub(crate) const SERVING_CAPACITY_ONE: Cell = Cell {
     bus: Bus::CapacityOne,
     ..SIGNALS
 };
-pub(crate) const SERVING_SERIAL_MEMORY_TOOLS: Cell = Cell {
-    name: "serving_serial_memory_tools",
+/// The two-tool stream at temperature 0, served serially, events kept.
+pub(crate) const SERVING_SERIAL_TWO_TOOLS_AT_ZERO: Cell = Cell {
+    name: "serving_serial_two_tools_at_zero",
     program: Program {
-        conversation: Some(CONVERSATION),
-        ..TOOLS
+        temperature: Some(0.0),
+        ..TWO_TOOLS
     },
-    memory: Memory::InMemory,
     bus: Bus::Serial,
-    families: MCTCM,
-    ..ADD
+    events: true,
+    ..SIGNALS
+};
+/// One streamed answer to the ready prompt, events kept.
+pub(crate) const SERVING_READY_STREAMED: Cell = Cell {
+    name: "serving_ready_streamed",
+    program: Program {
+        preamble: Some(BASIC_PREAMBLE),
+        prompt: READY_PROMPT,
+        temperature: Some(0.0),
+        max_turns: Some(8),
+        streamed: true,
+        ..Program::DEFAULT
+    },
+    events: true,
+    families: C,
+    ..CELL
 };
 pub(crate) const SERVING_MODEL_ROUTE: Cell = Cell {
     name: "serving_model_route",
@@ -1026,154 +1017,6 @@ pub(crate) const LAYERS_PATCH_BENEATH_HOOK_PATCH: Cell = Cell {
     },
     ..ADD
 };
-pub(crate) const LAYERS_MEMORY_LOAD_REPLACED: Cell = Cell {
-    name: "layers_memory_load_replaced",
-    program: Program {
-        preamble: Some(BASIC_PREAMBLE),
-        prompt: NAME_PROMPT,
-        temperature: Some(0.0),
-        conversation: Some(CONVERSATION),
-        hooks: &[Hook::HistoryIsReplaced],
-        layers: &[LayerSpec {
-            at: LayerAt::Memory,
-            layer: LayerKind::ReplaceLoad,
-        }],
-        ..Program::DEFAULT
-    },
-    memory: Memory::InMemory,
-    families: &[Mem, Completion, Mem],
-    ..CELL
-};
-
-// -- memory (`corpus_memory`) -------------------------------------------------
-
-const MEMORY: Program = Program {
-    preamble: Some(BASIC_PREAMBLE),
-    prompt: READY_PROMPT,
-    temperature: Some(0.0),
-    max_turns: Some(3),
-    conversation: Some(CONVERSATION),
-    ..Program::DEFAULT
-};
-const REMEMBERS: Cell = Cell {
-    program: MEMORY,
-    memory: Memory::InMemory,
-    families: &[Mem, Completion, Mem],
-    ..CELL
-};
-const TWO_RUNS: &[EffectFamily] = &[Mem, Completion, Mem, Mem, Completion, Mem];
-
-pub(crate) const MEMORY_CLEAR_AT_START: Cell = Cell {
-    name: "memory_clear_at_start",
-    program: Program {
-        hooks: &[Hook::ClearAtStart],
-        ..MEMORY
-    },
-    families: &[Mem, Mem, Completion, Mem],
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_CLEAR_AT_SETTLED: Cell = Cell {
-    name: "memory_clear_at_settled",
-    program: Program {
-        hooks: &[Hook::ClearAtSettled],
-        ..MEMORY
-    },
-    families: &[Mem, Completion, Mem, Mem],
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_TWO_RUNS: Cell = Cell {
-    name: "memory_two_runs",
-    program: Program {
-        second_prompt: Some(SECOND_PROMPT),
-        ..MEMORY
-    },
-    families: TWO_RUNS,
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_TWO_RUNS_STREAMED: Cell = Cell {
-    name: "memory_two_runs_streamed",
-    program: Program {
-        second_prompt: Some(SECOND_PROMPT),
-        max_turns: Some(8),
-        streamed: true,
-        ..MEMORY
-    },
-    events: true,
-    families: TWO_RUNS,
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_CLEAR_AT_SETTLED_TWO_RUNS: Cell = Cell {
-    name: "memory_clear_at_settled_two_runs",
-    program: Program {
-        hooks: &[Hook::ClearAtSettled],
-        second_prompt: Some(SECOND_PROMPT),
-        ..MEMORY
-    },
-    families: &[Mem, Completion, Mem, Mem, Mem, Completion, Mem, Mem],
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_CLEAR_AT_START_TWO_RUNS: Cell = Cell {
-    name: "memory_clear_at_start_two_runs",
-    program: Program {
-        hooks: &[Hook::ClearAtStart],
-        second_prompt: Some(SECOND_PROMPT),
-        ..MEMORY
-    },
-    families: &[Mem, Mem, Completion, Mem, Mem, Mem, Completion, Mem],
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_HISTORY_BYPASS: Cell = Cell {
-    name: "memory_history_bypass",
-    program: Program {
-        prompt: NAME_PROMPT,
-        history: Some(bypass_history),
-        max_turns: None,
-        ..MEMORY
-    },
-    families: C,
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_HOST_BUS_MEMORY: Cell = Cell {
-    name: "memory_host_bus_memory",
-    program: Program {
-        max_turns: None,
-        ..MEMORY
-    },
-    bus: Bus::Host,
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_SERIAL_TWO_TOOLS: Cell = Cell {
-    name: "memory_serial_two_tools",
-    program: Program {
-        preamble: Some(TWO_TOOL_STREAM_PREAMBLE),
-        prompt: TWO_TOOL_STREAM_PROMPT,
-        max_turns: Some(8),
-        streamed: true,
-        ..MEMORY
-    },
-    tools: &[ToolKind::Alpha, ToolKind::Beta],
-    bus: Bus::Serial,
-    events: true,
-    families: &[Mem, Completion, Tool, Tool, Completion, Mem],
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_FAILING_APPEND: Cell = Cell {
-    name: "memory_failing_append",
-    memory: Memory::FailingAppend,
-    ..REMEMBERS
-};
-pub(crate) const MEMORY_FAILING_APPEND_STREAMED: Cell = Cell {
-    name: "memory_failing_append_streamed",
-    program: Program {
-        max_turns: Some(8),
-        streamed: true,
-        ..MEMORY
-    },
-    memory: Memory::FailingAppend,
-    events: true,
-    ..REMEMBERS
-};
-
 // -- output modes (`corpus_output`) -------------------------------------------
 
 const SCHEMA: Program = Program {

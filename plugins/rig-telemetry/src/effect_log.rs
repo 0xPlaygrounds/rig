@@ -1,27 +1,35 @@
 //! The effect log: every effect the agents' work settles, model calls,
 //! tool calls, delivered messages and plugins' own effects, recorded with
-//! rig-core's effect types into the session's [`EFFECT_LOG`], a file of its
-//! store:
-//! each effect's [`Recorded`] record, in id order, as it settles. Its
+//! rig-core's effect types into the session's [`SESSION_EFFECT_LOG`], a
+//! file of its store ([`Files`]): each effect's [`EffectRecorded`] record, in id order, as it settles. Its
 //! header describes the tools and the models the agents connect to, and
 //! names each key the records use. Ids continue after the highest one the
 //! log already holds, so a resumed session keeps adding to the same log.
 //! A plugin reads it back with the [`EffectLog`] resource, narrowed by an
-//! [`EffectFilter`].
+//! [`EffectFilter`]. With the default `tui` feature, in a run of the
+//! terminal view, a restored session's log is read back once, off the main
+//! thread, and sent to the view as `rig_tui::PastEffects`, so a resumed
+//! session's tool calls show the calls they started and what they
+//! published.
 
 use std::io;
 use std::sync::Arc;
 
 use bevy_log::error;
+#[cfg(feature = "tui")]
+use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
 use rig_cassette::effect_log::{self, LogHeader, jsonl};
-use rig_cassette::journal::EFFECT_LOG;
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
 use rig_ecs::WriteJournal;
 use rig_ecs::effects::Effects;
+#[cfg(feature = "tui")]
+use rig_ecs::journal::SessionRestored;
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
-use rig_harness::prelude::JournalStore;
+#[cfg(feature = "tui")]
+use rig_harness::prelude::AppCliExt;
 
 /// Records every effect into the session's effect log, in its store, once
 /// the harness opened it; without a store it records nothing.
@@ -35,7 +43,8 @@ impl Plugin for EffectLogPlugin {
         let Some(SessionStore(store)) = app.world().get_resource::<SessionStore>().cloned() else {
             return;
         };
-        let mut writer = jsonl::Writer::on(store.clone(), EFFECT_LOG);
+        let store: Arc<dyn Files> = store;
+        let mut writer = jsonl::Writer::on(store.clone(), SESSION_EFFECT_LOG);
         let last = writer.last_id().ok().flatten();
         let header = LogHeader::default();
         app.insert_resource(Effects::continue_after(last))
@@ -44,7 +53,65 @@ impl Plugin for EffectLogPlugin {
             .add_systems(Startup, describe_tools)
             .add_systems(Last, write_effects.in_set(WriteJournal))
             .add_observer(describe_model);
+        #[cfg(feature = "tui")]
+        if app.runs_front(rig_tui::FRONT) {
+            app.add_systems(Update, read_past.run_if(resource_added::<SessionRestored>))
+                .add_observer(send_past);
+        }
     }
+}
+
+/// The past effects [`read_past`] read and worked out off the main thread,
+/// until [`send_past`] takes them.
+#[cfg(feature = "tui")]
+#[derive(Component)]
+struct PastRead(Option<io::Result<rig_tui::PastEffects>>);
+
+#[cfg(feature = "tui")]
+impl From<io::Result<rig_tui::PastEffects>> for PastRead {
+    fn from(read: io::Result<rig_tui::PastEffects>) -> Self {
+        Self(Some(read))
+    }
+}
+
+/// Reads the log of the session just restored off the main thread, once,
+/// for the terminal view's call tree ([`rig_tui::PastEffects`]): a resumed
+/// session's calls show what they started and published, as this run's do.
+/// The task reads only what the tree needs, no request's history, and does
+/// all the work per record, so the main thread only hands the result over.
+#[cfg(feature = "tui")]
+fn read_past(log: Res<EffectLog>, wake: Res<Wake>, mut commands: Commands) {
+    let log = log.clone();
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    let read = async move { log.read_outcomes().map(rig_tui::PastEffects::new) };
+    commands.spawn((
+        Name::new("effect log: past effects"),
+        Running::spawn_into::<PastRead, _>(pool, &wake, read),
+    ));
+}
+
+/// Sends what [`read_past`] read to the terminal view; a log that could not
+/// be read leaves the view without the past calls' children and facts, and
+/// says so.
+#[cfg(feature = "tui")]
+fn send_past(
+    read: On<Insert<PastRead>>,
+    mut reads: Query<&mut PastRead>,
+    mut past: MessageWriter<rig_tui::PastEffects>,
+    mut commands: Commands,
+) {
+    match reads
+        .get_mut(read.entity)
+        .ok()
+        .and_then(|mut read| read.0.take())
+    {
+        Some(Ok(effects)) => {
+            past.write(effects);
+        }
+        Some(Err(failure)) => error!("reading the effect log failed: {failure}"),
+        None => {}
+    }
+    commands.entity(read.entity).despawn();
 }
 
 /// The session's effect log, to read back; there when
@@ -53,16 +120,30 @@ impl Plugin for EffectLogPlugin {
 /// its `Last`.
 #[derive(Resource, Clone)]
 pub struct EffectLog {
-    store: Arc<dyn JournalStore>,
+    store: Arc<dyn Files>,
 }
 
 impl EffectLog {
     /// Every record written so far, in the order written; none before the
-    /// first. It reads the whole file: off the main thread, such as in a
-    /// task, for a long session.
+    /// first. It reads the whole file and rebuilds every model call's
+    /// request: off the main thread, such as in a task, for a long session.
     pub fn read(&self) -> io::Result<Vec<EffectRecord>> {
-        match self.store.read_file(EFFECT_LOG) {
-            Ok(bytes) => Ok(jsonl::read_from(bytes.as_slice())?.records),
+        let bytes = self.bytes()?;
+        Ok(jsonl::read_from(bytes.as_slice())?.records)
+    }
+
+    /// Every record written so far, as [`read`](Self::read) gives them but
+    /// with each model call's request history and tools left empty
+    /// ([`jsonl::read_outcomes_from`]): what each effect was and how it
+    /// ended, read in time linear in the log's size.
+    pub fn read_outcomes(&self) -> io::Result<Vec<EffectRecord>> {
+        jsonl::read_outcomes_from(self.bytes()?.as_slice())
+    }
+
+    /// The log's bytes; none before the first record.
+    fn bytes(&self) -> io::Result<Vec<u8>> {
+        match self.store.read_file(SESSION_EFFECT_LOG) {
+            Ok(bytes) => Ok(bytes),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
             Err(error) => Err(error),
         }
@@ -178,7 +259,7 @@ fn describe_model(
 /// is shown once.
 fn write_effects(
     mut log: ResMut<EffectLogFile>,
-    mut recorded: MessageReader<Recorded>,
+    mut recorded: MessageReader<EffectRecorded>,
     mut failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {

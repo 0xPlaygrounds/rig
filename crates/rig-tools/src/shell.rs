@@ -11,7 +11,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use rig_core::completion::ToolAnnotations;
-use rig_core::tool::{ExitStatus, Tool, ToolContext, ToolExecutionError, args_schema};
+use rig_core::tool::{
+    ExitStatus, KeptEnd, OutputCut, Tool, ToolContext, ToolExecutionError, args_schema,
+};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -20,7 +22,6 @@ use crate::workspace::{Local, Workspace};
 use crate::{Cut, Live, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
-const MAX_TIMEOUT: u64 = 600;
 /// How long output pipes may stay open after the command exits before the
 /// rest of its process group is killed, and how long reading goes on after
 /// that kill.
@@ -33,7 +34,8 @@ const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
 /// Runs a command with `sh -c` in its own session and process group, in its
 /// [`Workspace`], as its [`Launcher`] starts processes. Publishes how the
-/// command ended ([`ExitStatus`]) beside its output, and reports the output
+/// command ended ([`ExitStatus`]) beside its output, and how the output was
+/// cut ([`OutputCut`]) when it was, and reports the output
 /// as it comes to its [`Live`], if it has one.
 #[derive(Clone, Debug)]
 pub struct Shell {
@@ -54,11 +56,15 @@ pub struct Shell {
     /// refused. What the command itself does is not confined: it may still
     /// `cd` anywhere.
     pub confine: bool,
+    /// The most seconds a call may ask for in `timeout_secs`; a longer
+    /// timeout is cut to it.
+    pub max_timeout: u64,
 }
 
 impl Default for Shell {
     /// Started on this machine as this process starts it, nothing spilled
-    /// or reported live, output cut as [`Cut::default`] cuts it.
+    /// or reported live, output cut as [`Cut::default`] cuts it, timeouts
+    /// of at most ten minutes.
     fn default() -> Self {
         Self {
             workspace: Arc::new(Local),
@@ -67,6 +73,7 @@ impl Default for Shell {
             spill: None,
             cut: Some(Cut::default()),
             confine: false,
+            max_timeout: 600,
         }
     }
 }
@@ -131,10 +138,18 @@ impl Shell {
     /// returns the output and how the command ended. Dropping the future
     /// kills the command's process group at once.
     pub async fn run(&self, args: ShellArgs) -> Result<ShellRun, ToolExecutionError> {
+        self.execute(args).await.map(|(ran, _)| ran)
+    }
+
+    /// [`run`](Self::run), and how its output was cut.
+    async fn execute(
+        &self,
+        args: ShellArgs,
+    ) -> Result<(ShellRun, Option<OutputCut>), ToolExecutionError> {
         let timeout = Duration::from_secs(
             args.timeout_secs
-                .unwrap_or(DEFAULT_TIMEOUT)
-                .clamp(1, MAX_TIMEOUT),
+                .unwrap_or(DEFAULT_TIMEOUT.min(self.max_timeout))
+                .clamp(1, self.max_timeout.max(1)),
         );
         let process = self.start(&args)?;
         let _stop = KillOnDrop(process.group());
@@ -161,8 +176,10 @@ impl Tool for Shell {
         format!(
             "Run a shell command with `sh -c` in the current directory, or in cwd. stdin is \
              empty. Returns the exit code and stdout and stderr interleaved, {kept}. The \
-             command is killed after timeout_secs (default {DEFAULT_TIMEOUT}, at most \
-             {MAX_TIMEOUT}), or once it printed more than {} MB.",
+             command is killed after timeout_secs (default {}, at most {}), or once it \
+             printed more than {} MB.",
+            DEFAULT_TIMEOUT.min(self.max_timeout).max(1),
+            self.max_timeout.max(1),
             OUTPUT_LIMIT / 1024 / 1024
         )
     }
@@ -180,8 +197,11 @@ impl Tool for Shell {
         context: &mut ToolContext,
         args: ShellArgs,
     ) -> Result<String, ToolExecutionError> {
-        let ran = self.run(args).await?;
+        let (ran, cut) = self.execute(args).await?;
         context.insert_result(ran.status)?;
+        if let Some(cut) = cut {
+            context.insert_result(cut)?;
+        }
         Ok(ran.output)
     }
 }
@@ -216,7 +236,7 @@ impl Shell {
         &self,
         mut process: Process,
         timeout: Duration,
-    ) -> Result<ShellRun, ToolExecutionError> {
+    ) -> Result<(ShellRun, Option<OutputCut>), ToolExecutionError> {
         let mut tail = Tail {
             spill: self.spill.clone(),
             cut: self.cut,
@@ -252,7 +272,7 @@ impl Shell {
             process.kill().ok();
             tail.read_rest(process.lines());
         }
-        let mut output = tail.text();
+        let (mut output, cut) = tail.text();
         let status = match end {
             End::Exited(status) => match status.code() {
                 Some(code) => {
@@ -279,7 +299,7 @@ impl Shell {
                 ExitStatus::Killed
             }
         };
-        Ok(ShellRun { output, status })
+        Ok((ShellRun { output, status }, cut))
     }
 }
 
@@ -401,8 +421,9 @@ impl Tail {
     }
 
     /// The kept output, as the cut keeps it, after a line saying how many
-    /// earlier lines were cut and which file has them all.
-    fn text(mut self) -> String {
+    /// earlier lines were cut and which file has them all, and that cut as
+    /// a fact.
+    fn text(mut self) -> (String, Option<OutputCut>) {
         let (front, back) = self.bytes.as_slices();
         let output = String::from_utf8_lossy(&[front, back].concat()).into_owned();
         let mut cut = self.cut_lines;
@@ -420,6 +441,7 @@ impl Tail {
         };
         cut += dropped;
         let mut text = String::new();
+        let mut fact = None;
         if cut > 0 {
             self.spill();
             match &self.spilled {
@@ -429,12 +451,22 @@ impl Tail {
                 )),
                 None => text.push_str(&format!("[{cut} earlier lines cut]\n")),
             }
+            let kept_lines = kept.lines().count();
+            fact = Some(OutputCut {
+                kept: KeptEnd::End,
+                kept_lines,
+                total_lines: kept_lines + cut,
+                spill: self
+                    .spilled
+                    .as_ref()
+                    .map(|(path, _)| path.to_string_lossy().into_owned()),
+            });
         }
         for line in kept.lines() {
             text.push_str(line);
             text.push('\n');
         }
-        text
+        (text, fact)
     }
 }
 

@@ -1,8 +1,8 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::clock::ClockPlugin;
+use rig_harness_test_support::MemoryStore;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
@@ -111,7 +111,7 @@ fn steered(world: &World, worker: Entity, text: &str) -> bool {
     let mut messages = world.try_query_filtered::<(&Incoming, &ForAgent), With<Started>>();
     let mut messages = messages.iter_mut().flat_map(|query| query.iter(world));
     messages.any(|(message, &ForAgent(to))| {
-        to == worker && message.mode == DeliveryMode::Steer && message.text == text
+        to == worker && message.mode == DeliveryMode::Steer && message.text() == text
     })
 }
 

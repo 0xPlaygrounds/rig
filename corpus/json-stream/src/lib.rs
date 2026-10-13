@@ -88,7 +88,7 @@ impl Plugin for JsonStreamPlugin {
         if !rpc {
             // Nobody answers questions: with no `Answerer`, plugins refuse.
             if let Some(prompt) = prompt {
-                app.run_headless(prompt).add_observer(headless_ended);
+                app.run_headless(Some(prompt)).add_observer(headless_ended);
             }
             return;
         }
@@ -254,7 +254,7 @@ fn settled(
     } else if let Some(ended) = ended {
         let fields = match ended {
             TurnOutcome::Answered(message) => {
-                json!({ "outcome": "answered", "text": final_answer(message) })
+                json!({ "outcome": "answered", "text": message.final_answer() })
             }
             TurnOutcome::Failed(why) => json!({ "outcome": "failed", "error": why }),
             TurnOutcome::Stopped(why) => json!({ "outcome": "stopped", "error": why }),

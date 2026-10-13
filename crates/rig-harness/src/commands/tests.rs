@@ -53,15 +53,15 @@ fn a_users_slash_line_runs_as_a_command_unless_taken_over_sent_literally_or_not_
     // Prepare edits come first: this one makes a line a command.
     let edit = |mut typed: Query<&mut Incoming, Added<Admitted>>| {
         for mut typed in &mut typed {
-            if typed.text == "hi" {
-                typed.text = "/echo hello".to_owned();
+            if typed.text() == "hi" {
+                *typed.text_mut() = "/echo hello".to_owned();
             }
         }
     };
     // A Gate system ordered before the commands takes its own lines over.
     let take_over = |typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands| {
         for (message, typed) in &typed {
-            if typed.text.starts_with("/secret") {
+            if typed.text().starts_with("/secret") {
                 commands
                     .entity(message)
                     .insert_if_new(Outcome::custom("mine"));
@@ -81,7 +81,7 @@ fn a_users_slash_line_runs_as_a_command_unless_taken_over_sent_literally_or_not_
         Deliver::new(agent, "/echo typed", DeliveryMode::Queue),
         note("/secret x"),
         note("/echo sent").literal(),
-        note("/echo reported").with_origin(Origin::plugin("p")),
+        note("/echo reported").with_author(Author::plugin("p")),
     ] {
         app.world_mut().trigger(typed);
     }

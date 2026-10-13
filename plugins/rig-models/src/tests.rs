@@ -105,7 +105,7 @@ fn the_last_model_chosen_is_kept_in_the_apps_home() {
         app
     };
     let mut first = app(&home);
-    first.insert_resource(SessionRestored);
+    first.insert_resource(SessionRestored::default());
     let world = first.world_mut();
     let agent = world.spawn((Agent, Effort::default())).id();
     world

@@ -20,6 +20,8 @@ base64 = { workspace = true }
 futures = { workspace = true }
 # `search` walks the tree as git ignores it.
 ignore = { workspace = true }
+# `Local::watch` hears of changes from the system instead of polling.
+notify = { workspace = true }
 regex = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 # Each tool's parameters, derived from its arguments type.
@@ -28,6 +30,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The unified diff `edit` returns.
 similar = { workspace = true }
+# Why a checkpoint of a call could not be taken.
+tracing = { workspace = true }
 # `shorten` cuts by the columns a terminal draws.
 unicode-width = { workspace = true }
 

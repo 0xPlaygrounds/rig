@@ -1,9 +1,9 @@
 use std::cell::Cell;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::completion::{Cost, Usage};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use serde_json::json;
 
 use super::*;

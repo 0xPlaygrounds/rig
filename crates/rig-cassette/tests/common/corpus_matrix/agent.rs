@@ -27,13 +27,11 @@ use rig_core::serve::ErasedHandler;
 
 use rig_core::serve::adapters::ModelAdapter;
 
-use super::cells::{Bus, Cell, Memory, ToolKind};
+use super::cells::{Bus, Cell, ToolKind};
 use super::corpus::{self, Ending, LayerAt, Lookup, Nesting, Program};
 use super::faults::FailingOrchard;
 use super::{OWNER, Wire};
-use crate::goldens::{
-    Adder, CONVERSATION, FailingAdd, FailingMemory, NoteTaker, WriteNote, add_tool_under, families,
-};
+use crate::goldens::{Adder, FailingAdd, NoteTaker, WriteNote, add_tool_under, families};
 use crate::support::{AlphaSignal, BetaSignal};
 
 /// Each record's kind in a line, for a failed shape assertion.
@@ -55,7 +53,6 @@ pub(crate) fn record_summary(log: &rig_cassette::effect_log::EffectLog) -> Vec<S
 enum RunFailure {
     Cancelled(String),
     MaxTurns,
-    MemoryError,
     Report(ErrorReport),
 }
 
@@ -63,7 +60,6 @@ fn classify_prompt(error: PromptError) -> RunFailure {
     match error {
         PromptError::Cancelled { reason, .. } => RunFailure::Cancelled(reason),
         PromptError::MaxTurns { .. } => RunFailure::MaxTurns,
-        PromptError::Memory(_) => RunFailure::MemoryError,
         PromptError::Report(report) => RunFailure::Report(report),
         PromptError::Provider(error) => RunFailure::Report(ErrorReport::from(&error)),
         other => panic!("the run fails as one of the program's endings, not {other:?}"),
@@ -95,8 +91,7 @@ fn expect_ending(result: Result<String, RunFailure>, ending: Ending, fixture: &s
             assert_eq!(reason, expected, "{fixture}: the hook's reason");
             String::new()
         }
-        (Err(RunFailure::MaxTurns), Ending::MaxTurns)
-        | (Err(RunFailure::MemoryError), Ending::MemoryError) => String::new(),
+        (Err(RunFailure::MaxTurns), Ending::MaxTurns) => String::new(),
         (Err(RunFailure::Report(report)), Ending::ProviderError)
             if report.kind == ErrorKind::ProviderResponse =>
         {
@@ -177,11 +172,10 @@ impl Buildable for AgentBuilder<WithToolServerHandle> {
     }
 }
 
-/// Apply the cell's memory and route, then build.
+/// Apply the cell's route, then build.
 fn finish<S, W, T>(
     mut builder: AgentBuilder<S>,
     wire: &Wire<rig::driver::Model<W, T>>,
-    cell: &Cell,
     program: &Program,
 ) -> rig_agent::agent::Agent
 where
@@ -189,25 +183,6 @@ where
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
-    let memory_layered = program.layers.iter().any(|spec| spec.at == LayerAt::Memory);
-    builder = match cell.memory {
-        Memory::None => builder,
-        Memory::InMemory if memory_layered => builder.memory_handler(corpus::layered(
-            ErasedHandler::new(rig_core::serve::adapters::MemoryAdapter::new(
-                rig_core::memory::InMemoryConversationMemory::new(),
-            )),
-            program,
-            LayerAt::Memory,
-            &None,
-        )),
-        Memory::InMemory => builder.memory(rig_core::memory::InMemoryConversationMemory::new()),
-        Memory::FailingAppend => builder.memory(FailingMemory::append_fails()),
-        Memory::FailingLoad => builder.memory(FailingMemory::load_fails()),
-    };
-    if let Some(conversation) = program.conversation {
-        assert_eq!(conversation, CONVERSATION);
-        builder = builder.conversation(conversation);
-    }
     if let Some(label) = program.route {
         builder = builder.model_route(label, wire.route());
     }
@@ -253,10 +228,10 @@ where
     if layered_tool {
         assert_eq!(cell.tools, [ToolKind::Adder], "the layer cells grant add");
         let server = add_tool_under(|adder| corpus::layered(adder, program, LayerAt::Tool, &None));
-        return finish(builder.tool_server_handle(server), wire, cell, program);
+        return finish(builder.tool_server_handle(server), wire, program);
     }
     match cell.tools {
-        [] => finish(builder, wire, cell, program),
+        [] => finish(builder, wire, program),
         [ToolKind::Lookup] => {
             let nesting: Nesting = program.nesting.expect("the nesting program");
             let server = rig_agent::tool::server::ToolServer::new()
@@ -269,7 +244,7 @@ where
                     .expect("a tool-family handler"),
                 )
                 .run();
-            finish(builder.tool_server_handle(server), wire, cell, program)
+            finish(builder.tool_server_handle(server), wire, program)
         }
         [first, rest @ ..] => {
             let mut builder = match first {
@@ -293,7 +268,7 @@ where
             for tool in rest {
                 builder = typed_tool(builder, cell, *tool);
             }
-            finish(builder, wire, cell, program)
+            finish(builder, wire, program)
         }
     }
 }
@@ -309,14 +284,21 @@ async fn run_prompts(
         None => rig_core::message::Message::user(program.prompt),
     };
     let prompts: Vec<rig_core::message::Message> = std::iter::once(first)
-        .chain(program.second_prompt.map(rig_core::message::Message::user))
+        .chain(cell.followup.map(rig_core::message::Message::user))
         .collect();
     let last = prompts.len() - 1;
-    let mut outputs = Vec::new();
+    let mut outputs: Vec<rig_agent::agent::PromptResponse> = Vec::new();
     for (n, prompt) in prompts.into_iter().enumerate() {
         let mut runner = agent.prompt(prompt);
         if let Some(history) = program.history {
             runner = runner.history(history());
+        } else if !outputs.is_empty() {
+            // A follow-up continues the conversation the earlier runs made.
+            runner = runner.history(
+                outputs
+                    .iter()
+                    .flat_map(|response| response.messages.iter().cloned()),
+            );
         }
         if let Some(max_turns) = program.max_turns {
             runner = runner.max_turns(max_turns);

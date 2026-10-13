@@ -5,13 +5,13 @@ use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FileChange, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
-    content_hash,
+    FileChange, FileState, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches,
+    args_schema,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{file_change, io_error};
+use crate::fs::{Previous, io_error};
 use crate::workspace::{Local, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking};
 
@@ -183,14 +183,16 @@ fn move_file(
     workspace
         .rename(from, to)
         .map_err(|error| io_error(&shown_from, error))?;
-    let mut created = file_change(&shown_to, before.as_deref(), &text);
-    if let Some(bytes) = &moved {
-        created = created.with_after(content_hash(bytes));
-    }
-    Ok(vec![
-        FileChange::deleted(shown_from, text.lines().count()),
-        created,
-    ])
+    // The moved file's content is in the created half's diff, so the
+    // deleted half has none.
+    let state = moved
+        .as_deref()
+        .map_or_else(|| FileState::unread(size), FileState::of);
+    let mut created = Previous::change(before.as_ref(), &shown_to, Some(text.as_bytes()));
+    created.after = Some(state.clone());
+    let deleted =
+        FileChange::deleted(shown_from, state.lines.unwrap_or_default()).with_before(state);
+    Ok(vec![deleted, created])
 }
 
 #[cfg(test)]

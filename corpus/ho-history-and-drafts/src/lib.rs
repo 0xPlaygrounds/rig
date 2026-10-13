@@ -2,7 +2,7 @@
 //! drafts (spec `H21-history-and-drafts.md`).
 //!
 //! **History.** Every message the user sends, in any front (`Incoming`
-//! from `Origin::user()`), is appended to
+//! from `Author::user()`), is appended to
 //! `RIG_HOME/history/<project-hash>.jsonl` as `{text, time, session}`. At
 //! most [`MAX_ENTRIES`] are kept per project, the oldest trimmed. Not
 //! recorded: a repeat of the previous entry, a message starting with a
@@ -38,9 +38,9 @@ use rig_tui::ratatui::style::Stylize;
 use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    AppKeyBindingsExt, HistorySystems, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope,
-    PanelCanvas, Placement, PromptHistory, RequestRedraw, TerminalEvent, TuiInput, TuiPanel,
-    TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, HistorySystems, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress,
+    KeyPressed, KeyScope, PanelCanvas, Placement, PromptHistory, RequestRedraw, TerminalEvents,
+    TuiInput, TuiPanel, TuiPlugin, TuiSystems,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -206,7 +206,7 @@ impl Plugin for HistoryPlugin {
                     .after(HistorySystems::Record)
                     .before(HistorySystems::Save),
             )
-            .add_systems(Update, type_search)
+            .add_systems(rig_tui::TuiKeys, type_search.in_set(InputSystems::Filter))
             .add_systems(
                 PostUpdate,
                 (
@@ -286,14 +286,14 @@ fn record(
         return;
     };
     // A titled message is a plugin's on the user's behalf, not typed.
-    if message.origin.kind != OriginKind::User || message.origin.title.is_some() {
+    if message.author.kind != AuthorKind::User || message.author.title.is_some() {
         return;
     }
     // The view recorded what it sent as it is; [`offer`] puts this
     // project's history back in its place, kept or not.
     history.set_changed();
-    if history.keeps(&message.text)
-        && let Err(why) = history.append(&message.text)
+    if history.keeps(message.text())
+        && let Err(why) = history.append(message.text())
     {
         let why = format!("Could not save the prompt history: {why}");
         notices.write(Notice::error(None, why));
@@ -441,7 +441,7 @@ fn spread(prompt: &str, filter: &str) -> Option<usize> {
 /// Enter puts the selected prompt in the input. Esc, which the view
 /// answers by taking the keys back, closes it.
 fn type_search(
-    mut events: MessageReader<TerminalEvent>,
+    events: Res<TerminalEvents>,
     mut searches: Query<(Entity, &mut Search)>,
     focus: Res<KeyFocus>,
     mut input: ResMut<TuiInput>,
@@ -449,15 +449,14 @@ fn type_search(
     mut commands: Commands,
 ) {
     let Ok((panel, mut search)) = searches.single_mut() else {
-        events.clear();
         return;
     };
     if focus.0 != Some(panel) {
         commands.entity(panel).despawn();
         return;
     }
-    for TerminalEvent(event) in events.read() {
-        let Event::Key(key) = event else {
+    for item in &events.0 {
+        let KeyInput::Event(Event::Key(key)) = item else {
             continue;
         };
         if key.kind == KeyEventKind::Release {

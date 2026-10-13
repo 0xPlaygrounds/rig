@@ -29,8 +29,8 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
+use rig_core::tool::feedback::arguments_refusal;
 use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_definition};
-use rig_core::transcript::arguments_refusal;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -167,7 +167,8 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
 /// what its calls touch when they cannot say more; on a call, what it
 /// touches as Gate sees it, computed by the kernel when Gate opens: what
 /// its handler says of its final arguments, else its tool's, its paths
-/// [`normalized`](Touches::normalized). A call waits
+/// [`normalized`](Touches::normalized), unless a plugin [`Declared`] it on
+/// the call. A call waits
 /// while an earlier call of its reply that conflicts with it is not
 /// settled ([`Waiting`](super::stage::Waiting)).
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -182,10 +183,19 @@ impl Default for Footprint {
     }
 }
 
-/// On a tool registered with a [`ToolOptions::footprint`]: that footprint
-/// is each of its calls', whatever its handler says.
-#[derive(Component)]
-pub(crate) struct Declared;
+/// A [`Footprint`] that stands. On a tool registered with a
+/// [`ToolOptions::footprint`]: that footprint is each of its calls',
+/// whatever its handler says. On a call, inserted with its `Footprint` in
+/// Prepare: the kernel keeps that footprint (made
+/// [`normalized`](Touches::normalized)) instead of asking the call's
+/// handler, so a plugin that knows what a call touches, such as a shell
+/// command that only reads, lets the reply's other calls run beside it:
+///
+/// ```ignore
+/// commands.entity(call).insert((Footprint(Touches::Writes(Scope::Paths(vec![src]))), Declared));
+/// ```
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Declared;
 
 /// How a tool is registered with [`AppToolsExt::add_tool_with`].
 #[derive(Clone, Debug, Default)]
@@ -410,7 +420,7 @@ pub(crate) fn complete_calls(
 
 /// Gives each admitted tool call that has not started the [`Footprint`]
 /// of the call as it stands, when Gate opens: after every Prepare edit of
-/// its arguments or handler.
+/// its arguments or handler; one a plugin [`Declared`] on the call stands.
 pub(crate) fn compute_footprints(
     calls: Query<
         (
@@ -418,19 +428,25 @@ pub(crate) fn compute_footprints(
             &ToolRequest,
             Option<&CallHandler>,
             Option<&Footprint>,
+            Has<Declared>,
         ),
         (With<Admitted>, Without<Started>, Without<Settled>),
     >,
     tools: Query<(&ToolDef, &Footprint, Has<Declared>)>,
     mut commands: Commands,
 ) {
-    for (entity, ToolRequest { call }, handler, had) in &calls {
-        let name = call.function.name.as_str();
-        let tool = tools
-            .iter()
-            .find(|(def, ..)| def.0.name.as_str() == name)
-            .map(|(_, footprint, declared)| (footprint, declared));
-        let footprint = footprint_of(call, handler.map(|handler| &handler.0), tool);
+    for (entity, ToolRequest { call }, handler, had, declared) in &calls {
+        let footprint = match had {
+            Some(Footprint(touches)) if declared => Footprint(touches.clone().normalized()),
+            _ => {
+                let name = call.function.name.as_str();
+                let tool = tools
+                    .iter()
+                    .find(|(def, ..)| def.0.name.as_str() == name)
+                    .map(|(_, footprint, declared)| (footprint, declared));
+                footprint_of(call, handler.map(|handler| &handler.0), tool)
+            }
+        };
         if had != Some(&footprint) {
             commands.entity(entity).try_insert(footprint);
         }

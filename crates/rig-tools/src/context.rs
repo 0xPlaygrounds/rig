@@ -10,11 +10,33 @@ use crate::workspace::{Local, Stat, Workspace};
 /// The names of an instruction file, in order of preference: one per
 /// directory is read.
 pub const FILE_NAMES: [&str; 2] = ["AGENTS.md", "CLAUDE.md"];
-/// The most of one instruction file read.
+/// The most of one instruction file read by default ([`Limits::file_bytes`]).
 pub const MAX_FILE_BYTES: usize = 32 * 1024;
-/// The most of all instruction files together. The most specific files are
-/// kept first.
+/// The most of all instruction files together by default
+/// ([`Limits::total_bytes`]).
 pub const MAX_TOTAL_BYTES: usize = 64 * 1024;
+
+/// How much of the instruction files is read. It reads from settings as
+/// `file_bytes` and `total_bytes`, each its default when left out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Limits {
+    /// The most of one file read; the rest is cut, and the file says so.
+    pub file_bytes: usize,
+    /// The most of all files together. The most specific files are kept
+    /// first.
+    pub total_bytes: usize,
+}
+
+impl Default for Limits {
+    /// [`MAX_FILE_BYTES`] of one file, [`MAX_TOTAL_BYTES`] of all.
+    fn default() -> Self {
+        Self {
+            file_bytes: MAX_FILE_BYTES,
+            total_bytes: MAX_TOTAL_BYTES,
+        }
+    }
+}
 
 /// An instruction file as read.
 pub struct InstructionFile {
@@ -33,7 +55,8 @@ impl Instructions {
     /// Reads the instruction files of the `general` directories on this
     /// machine, such as the user's own, then of each directory of
     /// `workspace` from the root down to `cwd`. A file reached twice is read
-    /// once; empty files are left out.
+    /// once; empty files are left out, but not one the limits cut to
+    /// nothing.
     ///
     /// Reads `workspace`: on a thread that must not wait, call it only for
     /// a local one ([`Workspace::host`] is `None`).
@@ -41,6 +64,16 @@ impl Instructions {
         general: impl IntoIterator<Item = PathBuf>,
         cwd: &Path,
         workspace: &dyn Workspace,
+    ) -> Self {
+        Self::discover_with(general, cwd, workspace, Limits::default())
+    }
+
+    /// [`discover`](Self::discover), reading as much as `limits` allows.
+    pub fn discover_with(
+        general: impl IntoIterator<Item = PathBuf>,
+        cwd: &Path,
+        workspace: &dyn Workspace,
+        limits: Limits,
     ) -> Self {
         let local: &dyn Workspace = &Local;
         let mut dirs: Vec<(&dyn Workspace, PathBuf)> =
@@ -67,16 +100,17 @@ impl Instructions {
         }
 
         // The budget goes to the most specific files first.
-        let mut budget = MAX_TOTAL_BYTES;
+        let mut budget = limits.total_bytes;
         let mut files = Vec::new();
         let mut unreadable = Vec::new();
         for (place, path) in found.into_iter().rev() {
-            let cap = budget.min(MAX_FILE_BYTES);
+            let cap = budget.min(limits.file_bytes);
             match place.read(&path, cap as u64) {
                 Ok(contents) => {
                     let contents = Prefix::of(contents, cap);
                     budget = budget.saturating_sub(contents.text.len());
-                    if !contents.text.trim().is_empty() {
+                    // A file cut to nothing is kept, so the prompt names it.
+                    if contents.cut() || !contents.text.trim().is_empty() {
                         files.push(InstructionFile { path, contents });
                     }
                 }
@@ -145,3 +179,6 @@ pub fn instruction_file_in(workspace: &dyn Workspace, dir: &Path) -> Option<Path
         .map(|name| dir.join(name))
         .find(|path| matches!(workspace.stat(path), Ok(Stat::File { .. })))
 }
+
+#[cfg(test)]
+mod tests;

@@ -82,7 +82,6 @@ cells! {
     serving_concurrent_concurrency_two: (venice, "venice", "corpus_matrix/serving_concurrent_concurrency_two", cells::SERVING_CONCURRENT_CONCURRENCY_TWO);
     serving_concurrent_concurrency_two_events: (deepseek, "deepseek", "corpus_matrix/serving_concurrent_concurrency_two_events", cells::SERVING_CONCURRENT_CONCURRENCY_TWO_EVENTS);
     serving_capacity_one: (doubleword, "doubleword", "corpus_matrix/serving_capacity_one", cells::SERVING_CAPACITY_ONE);
-    serving_serial_memory_tools: (gemini, "gemini", "corpus_matrix/serving_serial_memory_tools", cells::SERVING_SERIAL_MEMORY_TOOLS);
     serving_model_route: (openai_chat, "openai", "corpus_matrix_chat/serving_model_route", cells::SERVING_MODEL_ROUTE);
     serving_model_route_unselected: (openai_responses, "openai", "corpus_matrix_responses/serving_model_route_unselected", cells::SERVING_MODEL_ROUTE_UNSELECTED);
     serving_host_bus: (venice, "venice", "corpus_matrix/serving_host_bus", cells::SERVING_HOST_BUS);
@@ -93,18 +92,6 @@ cells! {
     layers_two_layers: (openai_responses, "openai", "corpus_matrix_responses/layers_two_layers", cells::LAYERS_TWO_LAYERS);
     layers_host_deny_over_host_bus: (venice, "venice", "corpus_matrix/layers_host_deny_over_host_bus", cells::LAYERS_HOST_DENY_OVER_HOST_BUS);
     layers_patch_beneath_hook_patch: (deepseek, "deepseek", "corpus_matrix/layers_patch_beneath_hook_patch", cells::LAYERS_PATCH_BENEATH_HOOK_PATCH);
-    layers_memory_load_replaced: (doubleword, "doubleword", "corpus_matrix/layers_memory_load_replaced", cells::LAYERS_MEMORY_LOAD_REPLACED);
-    memory_clear_at_start: (gemini, "gemini", "corpus_matrix/memory_clear_at_start", cells::MEMORY_CLEAR_AT_START);
-    memory_clear_at_settled: (openai_chat, "openai", "corpus_matrix_chat/memory_clear_at_settled", cells::MEMORY_CLEAR_AT_SETTLED);
-    memory_two_runs: (venice, "venice", "corpus_matrix/memory_two_runs", cells::MEMORY_TWO_RUNS);
-    memory_two_runs_streamed: (openai_responses, "openai", "corpus_matrix_responses/memory_two_runs_streamed", cells::MEMORY_TWO_RUNS_STREAMED);
-    memory_clear_at_settled_two_runs: (deepseek, "deepseek", "corpus_matrix/memory_clear_at_settled_two_runs", cells::MEMORY_CLEAR_AT_SETTLED_TWO_RUNS);
-    memory_clear_at_start_two_runs: (doubleword, "doubleword", "corpus_matrix/memory_clear_at_start_two_runs", cells::MEMORY_CLEAR_AT_START_TWO_RUNS);
-    memory_history_bypass: (gemini, "gemini", "corpus_matrix/memory_history_bypass", cells::MEMORY_HISTORY_BYPASS);
-    memory_host_bus_memory: (openai_chat, "openai", "corpus_matrix_chat/memory_host_bus_memory", cells::MEMORY_HOST_BUS_MEMORY);
-    memory_serial_two_tools: (openai_responses, "openai", "corpus_matrix_responses/memory_serial_two_tools", cells::MEMORY_SERIAL_TWO_TOOLS);
-    memory_failing_append: (venice, "venice", "corpus_matrix/memory_failing_append", cells::MEMORY_FAILING_APPEND);
-    memory_failing_append_streamed: (deepseek, "deepseek", "corpus_matrix/memory_failing_append_streamed", cells::MEMORY_FAILING_APPEND_STREAMED);
     output_tool_unary: (doubleword, "doubleword", "corpus_matrix/output_tool_unary", cells::OUTPUT_TOOL_UNARY);
     output_tool_streamed: (openai_chat, "openai", "corpus_matrix_chat/output_tool_streamed", cells::OUTPUT_TOOL_STREAMED);
     output_prompted_unary: (gemini, "gemini", "corpus_matrix/output_prompted_unary", cells::OUTPUT_PROMPTED_UNARY);

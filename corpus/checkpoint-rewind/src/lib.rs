@@ -22,12 +22,16 @@ use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_tools::process::Launcher;
+use serde::{Deserialize, Serialize};
 
 /// Where the checkpoints are kept, below the session's id.
 const REFS: &str = "refs/rig/checkpoints";
 
+/// The author of the conversation cuts this plugin makes.
+const NAME: &str = "checkpoint-rewind";
+
 /// The files before one of the user's messages.
-#[derive(Reflect, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Checkpoint {
     /// The turn's index, as in its ref's name.
     pub turn: u64,
@@ -44,8 +48,8 @@ pub struct Checkpoint {
 }
 
 /// An agent's checkpoints, oldest first, kept with the session.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved)]
+#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct Checkpoints {
     /// The checkpoints.
     pub list: Vec<Checkpoint>,
@@ -196,8 +200,7 @@ fn snapshot(
             continue;
         };
         commands.entity(turn_entity).insert(Snapshotted);
-        let message = turn.first_message;
-        let Some(text) = user_text(conversation, conversation.start_of(message)) else {
+        let Some((message, text)) = user_text(conversation, turn.first_message) else {
             continue;
         };
         // A retried or restored turn answers a message that has one.
@@ -436,7 +439,6 @@ struct Rewinder<'w, 's> {
     agents: Query<'w, 's, (&'static mut Conversation, &'static mut Checkpoints)>,
     busy: Query<'w, 's, (), With<ActiveTurn>>,
     repo: Repo<'w>,
-    commit: Commit<'w, 's>,
     answerers: Answerers<'w, 's>,
     notices: MessageWriter<'w, Notice>,
     recalled: MessageWriter<'w, Recalled>,
@@ -562,19 +564,20 @@ impl Rewinder<'_, '_> {
             checkpoints.settled = Some(target.tree.clone());
         }
         if rewind.scope.chat() {
-            let before = joined(&conversation, message);
-            self.commit.splice(agent, &mut conversation, message.., []);
-            // What the user's message was joined to, such as a stopped
+            // What went before the user's message, such as a stopped
             // turn's tool results, stays, stopped as it was.
-            for (item, origin) in before.items {
-                let joined = message::Message::User {
-                    content: vec![item],
-                };
-                self.commit
-                    .message_from(agent, &mut conversation, joined, origin);
-            }
-            if before.stopped {
-                self.commit.halt(agent, &mut conversation, Halt::Stopped);
+            let stopped = message
+                .checked_sub(1)
+                .and_then(|before| conversation.entries().nth(before))
+                .is_some_and(|entry| entry.is_stopped_note());
+            let from = if stopped {
+                message.saturating_sub(1)
+            } else {
+                message
+            };
+            conversation.splice(from.., [], Author::plugin(NAME));
+            if stopped {
+                conversation.halt(Halt::Stopped);
             }
             let dropped = checkpoints.list.split_off(at);
             let kept: BTreeSet<&str> = checkpoints
@@ -683,50 +686,28 @@ fn prune(mut deleted: MessageReader<SessionDeleted>, repo: Repo) {
     }
 }
 
-/// The text the user typed in message `at`, without tool results or what
-/// plugins added.
-fn user_text(conversation: &Conversation, at: usize) -> Option<String> {
-    let Some(message::Message::User { content }) = conversation.messages().get(at) else {
-        return None;
-    };
-    let texts: Vec<&str> = content
+/// The user's own message of the turn that began at `start`, and what
+/// they typed in it and any they sent after it: plugins' entries, tool
+/// results and the stopped note are left out.
+fn user_text(conversation: &Conversation, start: MessageId) -> Option<(MessageId, String)> {
+    let own: Vec<EntryRef<'_>> = conversation
+        .asked(start)
+        .filter(EntryRef::is_users_own)
+        .collect();
+    let id = own.first()?.id;
+    let texts: Vec<&str> = own
         .iter()
-        .enumerate()
-        .filter(|(item, _)| conversation.origin(at, *item).is_none())
-        .filter_map(|(_, item)| match item {
-            UserContent::Text(text) if text.text != STOPPED => Some(text.text.as_str()),
+        .filter_map(|entry| match entry.message {
+            message::Message::User { content } => Some(content),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|item| match item {
+            UserContent::Text(text) => Some(text.text.as_str()),
             _ => None,
         })
         .collect();
-    (!texts.is_empty()).then(|| texts.join("\n"))
-}
-
-/// What the user's message `at` was joined to, as a user message
-/// following the user's or a stopped request does.
-struct Joined {
-    /// The items before the user's text, with their origins.
-    items: Vec<(UserContent, Option<Origin>)>,
-    /// Whether the user's text followed a request they stopped.
-    stopped: bool,
-}
-
-fn joined(conversation: &Conversation, at: usize) -> Joined {
-    let content = match conversation.messages().get(at) {
-        Some(message::Message::User { content }) => content.as_slice(),
-        _ => &[],
-    };
-    let typed = |(item, content): &(usize, &UserContent)| {
-        matches!(content, UserContent::Text(_)) && conversation.origin(at, *item).is_none()
-    };
-    let first = content.iter().enumerate().find(typed);
-    let items = content
-        .iter()
-        .enumerate()
-        .take(first.map_or(0, |(item, _)| item))
-        .map(|(item, content)| (content.clone(), conversation.origin(at, item).cloned()))
-        .collect();
-    let stopped = matches!(first, Some((_, UserContent::Text(text))) if text.text == STOPPED);
-    Joined { items, stopped }
+    (!texts.is_empty()).then(|| (id, texts.join("\n")))
 }
 
 /// Takes the snapshot of turn `index`: a new ref, or the last one when the

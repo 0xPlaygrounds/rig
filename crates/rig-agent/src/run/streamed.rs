@@ -116,7 +116,7 @@ impl PartialStreamedTurn {
             return None;
         };
         let user_message = Message::User {
-            content: rig_core::transcript::invalid_call_feedback(
+            content: rig_core::tool::feedback::invalid_call_feedback(
                 &turn.content,
                 &invalid_tool_call.id,
                 &feedback,

@@ -12,16 +12,13 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The origin of a compaction's summary, counted as its own kind.
-rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
-# The token estimate compaction uses too.
+# The token estimate compaction uses too, and the author of its summaries.
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 # Spec 13's few-shot plugin, which the test loads beside this one.
 corpus-few-shot-examples = { path = "../few-shot-examples" }

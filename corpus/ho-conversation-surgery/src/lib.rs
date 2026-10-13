@@ -23,6 +23,9 @@ use rig_harness::rig_core::message::{CallId, Message, ToolResultContent};
 use rig_harness::rig_core::serde_json;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
 
+/// Who the edits are recorded as made by.
+const PLUGIN: &str = "conversation-surgery";
+
 #[derive(Default)]
 pub struct ConversationSurgeryPlugin;
 
@@ -65,22 +68,11 @@ fn call_ids(message: &Message) -> Vec<CallId> {
 /// `entry` without the calls and results of `ids`; `None` when nothing
 /// worth sending is left.
 fn without(mut entry: Entry, ids: &HashSet<CallId>) -> Option<Entry> {
-    let Entry {
-        message, origins, ..
-    } = &mut entry;
-    let left = match message {
+    let left = match &mut entry.message {
         Message::User { content } => {
-            let items = std::mem::take(content);
-            let was = std::mem::take(origins);
-            for (item, value) in items.into_iter().enumerate() {
-                if matches!(&value, UserContent::ToolResult(result) if ids.contains(&result.call)) {
-                    continue;
-                }
-                if let Some((_, origin)) = was.iter().find(|(at, _)| *at == item) {
-                    origins.push((content.len(), origin.clone()));
-                }
-                content.push(value);
-            }
+            content.retain(
+                |item| !matches!(item, UserContent::ToolResult(result) if ids.contains(&result.call)),
+            );
             !content.is_empty()
         }
         Message::Assistant(turn) => {
@@ -103,14 +95,13 @@ fn estimate(entries: &[Entry]) -> u64 {
     u64::try_from(tokens).unwrap_or(u64::MAX)
 }
 
-/// Messages `range` of `conversation`, with their ids and origins.
+/// Messages `range` of `conversation`, with their ids and authors.
 fn entries(conversation: &Conversation, range: Range<usize>) -> Vec<Entry> {
     range.filter_map(|at| conversation.entry(at)).collect()
 }
 
 /// An edit of an agent's conversation, kept for `/drop undo`: the
-/// messages it changed, a neighbour on each side included, before and
-/// after it, and where they began.
+/// messages it replaced, those it put in, and where they began.
 #[derive(Clone, Debug)]
 struct Edit {
     at: usize,
@@ -131,8 +122,8 @@ struct Plan {
     keep: bool,
 }
 
-/// What an edit changes: the agent's conversation and its last usage,
-/// through the commit that logs it.
+/// What an edit changes: the agent's conversation, whose log keeps it, and
+/// its last usage.
 #[derive(SystemParam)]
 struct Surgery<'w, 's> {
     agents: Query<
@@ -144,7 +135,6 @@ struct Surgery<'w, 's> {
             Option<&'static mut LastUsage>,
         ),
     >,
-    commit: Commit<'w, 's>,
     edits: ResMut<'w, LastEdits>,
     notices: MessageWriter<'w, Notice>,
 }
@@ -176,37 +166,30 @@ impl Surgery<'_, '_> {
                 return;
             }
         };
-        // What the splice may change: the range and the neighbours a user
-        // message there may merge with.
-        let len = conversation.messages().len();
-        let start = plan.range.start.saturating_sub(1);
-        let end = plan.range.end.saturating_add(1).min(len);
-        let before = entries(&conversation, start..end);
+        let before = entries(&conversation, plan.range.clone());
+        let at = plan.range.start;
         let halted = conversation.halted();
-        self.commit
-            .splice(agent, &mut conversation, plan.range, plan.with);
+        let spliced = conversation.splice(plan.range, plan.with, Author::plugin(PLUGIN));
         // A splice of the end clears the halt; a user message left last
         // still waits for the next one rather than going to the model on a
         // restore, as the user stopped or kept it.
-        self.commit
-            .halt(agent, &mut conversation, halted.unwrap_or(Halt::Kept));
-        let grown = conversation.messages().len();
-        let after = entries(&conversation, start..(end + grown).saturating_sub(len));
+        conversation.halt(halted.unwrap_or(Halt::Kept));
+        let after: Vec<Entry> = spliced
+            .changed
+            .iter()
+            .filter_map(|id| conversation.index_of(*id))
+            .filter_map(|at| conversation.entry(at))
+            .collect();
         if let Some(mut usage) = usage
             && let Some(context) = usage.context()
         {
-            let left = (context + estimate(&after)).saturating_sub(estimate(&before));
+            let left = context
+                .saturating_add(estimate(&after))
+                .saturating_sub(estimate(&before));
             *usage = LastUsage(Some(Usage::new().total_tokens(left)));
         }
         if plan.keep {
-            self.edits.0.insert(
-                agent,
-                Edit {
-                    at: start,
-                    before,
-                    after,
-                },
-            );
+            self.edits.0.insert(agent, Edit { at, before, after });
         } else {
             self.edits.0.remove(&agent);
         }
@@ -362,8 +345,8 @@ fn drop_messages(In(args): In<CommandArgs>, mut surgery: Surgery) {
 }
 
 /// Drops messages `chosen` and every call or result paired with one of
-/// theirs, then joins the messages left side by side: the splice merges
-/// the user's, this joins the model's.
+/// theirs, then joins the messages left side by side: two of the model's,
+/// or two user messages by the same author (one entry has one author).
 fn plan_drop(conversation: &Conversation, chosen: Range<usize>) -> Plan {
     let messages = conversation.messages();
     let ids: HashSet<CallId> = messages
@@ -410,14 +393,15 @@ fn plan_drop(conversation: &Conversation, chosen: Range<usize>) -> Plan {
             continue;
         };
         match (&mut last.message, &mut entry.message) {
-            (Message::User { .. }, Message::User { .. }) => {
+            (Message::User { content }, Message::User { content: more })
+                if last.author == entry.author =>
+            {
                 notes.push(format!(
                     "joined message {} to message {}",
                     at + 1,
                     *into + 1
                 ));
-                let into = *into;
-                kept.push((into, entry));
+                content.append(more);
             }
             (Message::Assistant(turn), Message::Assistant(more)) => {
                 notes.push(format!(

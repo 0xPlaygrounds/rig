@@ -9,10 +9,8 @@
 use futures::StreamExt;
 
 use crate::{
-    agent::{AgentBuilder, MultiTurnStreamItem},
-    completion::Message,
-    run::AgentRun,
-    test_utils::{CountingMemory, MockCompletionModel, MockStreamEvent},
+    agent::AgentBuilder,
+    test_utils::{MockCompletionModel, MockStreamEvent},
 };
 
 fn unary_model() -> MockCompletionModel {
@@ -49,50 +47,5 @@ async fn the_terminal_alone_chooses_the_medium() {
     assert!(
         error.to_string().contains("no scripted completion turn"),
         "the provider was asked for a completion: {error}"
-    );
-}
-
-/// A resumed run carries its history, so nothing is loaded, but with memory
-/// and a conversation configured the messages it adds are appended once, on
-/// either medium (#2244).
-#[tokio::test]
-async fn resume_appends_its_messages_without_loading() {
-    let memory = CountingMemory::default();
-    let agent = AgentBuilder::new(unary_model())
-        .memory(memory.clone())
-        .build();
-    let run = AgentRun::from_spec(&agent.run_spec(), Message::user("from the run"), None);
-
-    let response = agent
-        .resume(run)
-        .conversation("thread")
-        .await
-        .expect("the resumed run completes");
-
-    assert_eq!(response.output(), "collected");
-    assert_eq!(memory.load_count(), 0, "the run carries its history");
-    assert_eq!(
-        memory.append_count(),
-        1,
-        "the run's messages are appended once"
-    );
-
-    let agent = AgentBuilder::new(streaming_model())
-        .memory(memory.clone())
-        .build();
-    let run = AgentRun::from_spec(&agent.run_spec(), Message::user("from the run"), None);
-    let mut stream = agent.resume(run).conversation("thread").stream();
-    let mut final_output = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) = item.expect("a stream item") {
-            final_output = Some(response.output());
-        }
-    }
-    assert_eq!(final_output.as_deref(), Some("streamed"));
-    assert_eq!(memory.load_count(), 0, "the run carries its history");
-    assert_eq!(
-        memory.append_count(),
-        2,
-        "the streamed run appends once too"
     );
 }

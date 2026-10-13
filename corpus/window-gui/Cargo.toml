@@ -42,6 +42,5 @@ rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

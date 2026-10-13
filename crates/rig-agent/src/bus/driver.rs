@@ -22,7 +22,7 @@ use tracing::Instrument;
 use rig_core::{
     effect::{EffectId, HandlerDescriptor, HandlerKey},
     error::ErrorReport,
-    serve::{Dispatch, Origin, Recorder},
+    serve::{Dispatch, DispatchContext, Recorder},
     wasm_compat::WasmBoxedFuture,
 };
 
@@ -287,7 +287,7 @@ impl BusDriver {
                     id,
                     key.clone(),
                     kind.clone(),
-                    Origin {
+                    DispatchContext {
                         parent,
                         scope,
                         purpose: None,

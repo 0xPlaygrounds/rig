@@ -1,11 +1,11 @@
 //! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`],
-//! [`Shell`], [`Delete`] and [`Move`]. Each has a description of what it does, its usage
+//! [`List`], [`Shell`], [`Delete`] and [`Move`]. Each has a description of what it does, its usage
 //! `RULES`, the lines a system prompt carries on when to pick it, such as
 //! "use `read`, not `cat`", and annotations saying what it does to the
 //! world (read-only or destructive). They are [`Tool`](rig_core::tool::Tool)s
 //! that publish what they did beside their text: the files they read
 //! ([`FilesRead`](rig_core::tool::FilesRead)), what a search found
-//! ([`SearchHits`]), the files they changed, with their diffs
+//! ([`SearchHits`]), what a listing showed ([`FilesListed`]), the files they changed, with their diffs
 //! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
 //! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). Each acts on a
 //! [`Workspace`](workspace::Workspace): this machine
@@ -13,8 +13,8 @@
 //! reached over SSH. The file tools name files by their resolved paths
 //! (`resolve` on [`Workspace`](workspace::Workspace)), from an optional
 //! base directory they can be confined to. Each call says what it may read
-//! and change ([`footprint`](rig_core::tool::Tool::footprint)): `read` and
-//! `search` read the path they name, `write`, `edit`, `delete` and `move`
+//! and change ([`footprint`](rig_core::tool::Tool::footprint)): `read`,
+//! `search` and `list` read the path they name, `write`, `edit`, `delete` and `move`
 //! write theirs, and `shell` may change anything, so a host runs calls on
 //! different files side by side. `shell` reports its output as it comes to
 //! a [`Live`]. Their arguments are plain data with public fields, to build
@@ -23,8 +23,13 @@
 //! Also the pieces they are made of, for tools of your own:
 //! - [`edit::apply`]: what `edit` makes of a file's text, without the file,
 //!   and [`ReadArgs::show`]: what `read` shows of it;
-//! - [`workspace`]: the disk and the commands the tools act on;
+//! - [`workspace`]: the disk and the commands the tools act on, and
+//!   [`overlay`]: one that keeps the tools' writes from the disk, to
+//!   preview them;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
+//! - [`checkpoint`]: the files under a root at one moment, what changed by
+//!   a later one, and a handler that reports what any call changed;
+//! - [`clipboard`]: the system clipboard's text and images;
 //! - [`context`]: the project's instruction files (`AGENTS.md`, or
 //!   `CLAUDE.md`) from the working directory up;
 //! - [`fs`]: an atomic file write and capped text reads on this machine;
@@ -44,23 +49,29 @@ use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 pub mod attach;
 mod blocking;
+pub mod checkpoint;
+pub mod clipboard;
 pub mod context;
 mod delete;
 pub mod edit;
 pub mod fs;
+mod list;
 mod live;
 mod move_file;
+pub mod overlay;
 pub mod process;
 mod read;
 mod search;
 mod shell;
 mod spill;
+mod watch;
 pub mod workspace;
 mod write;
 
 pub use blocking::blocking;
 pub use delete::{Delete, DeleteArgs};
 pub use edit::{Edit, EditArgs, Replacement};
+pub use list::{FilesListed, List, ListArgs};
 pub use live::Live;
 pub use move_file::{Move, MoveArgs};
 pub use read::{Read, ReadArgs, numbered};
@@ -161,6 +172,26 @@ pub fn shorten(text: &str, width: usize) -> String {
     match width {
         0 => String::new(),
         _ => format!("{}…", text.get(..end).unwrap_or_default()),
+    }
+}
+
+/// How long ago `elapsed` was, roughly, for a list a person reads:
+/// `just now`, `3m ago`, `5h ago`, `2d ago`.
+///
+/// ```
+/// use std::time::Duration;
+/// use rig_tools::ago;
+///
+/// assert_eq!(ago(Duration::from_secs(30)), "just now");
+/// assert_eq!(ago(Duration::from_secs(5 * 3600 + 59)), "5h ago");
+/// ```
+pub fn ago(elapsed: std::time::Duration) -> String {
+    let seconds = elapsed.as_secs();
+    match seconds {
+        0..60 => "just now".to_owned(),
+        60..3600 => format!("{}m ago", seconds / 60),
+        3600..86_400 => format!("{}h ago", seconds / 3600),
+        _ => format!("{}d ago", seconds / 86_400),
     }
 }
 

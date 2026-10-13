@@ -13,13 +13,13 @@ use super::{SessionTitle, list};
 
 /// Where the session's name is in the status line: first, and gone before
 /// what the session spends when the line is too narrow.
-const NAME: StatusItem = StatusItem::at(Side::Left, 10, 2);
+const NAME: StatusItem = StatusItem::new("session", Side::Left, 10, 2);
 
 pub(super) fn add(app: &mut App) {
     app.init_resource::<AppStatus>().add_systems(
         PostUpdate,
         show_name
-            .in_set(StatusSystems)
+            .in_set(StatusSystems::Show)
             .run_if(resource_changed::<SessionTitle>),
     );
 }
@@ -45,6 +45,7 @@ pub(super) fn pick_session(
             label: session.label(),
             command: format!("resume {}", session.id),
             detail: Some(session.detail()),
+            checked: false,
         })
         .collect();
     if items.is_empty() {

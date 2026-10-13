@@ -1,10 +1,10 @@
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, calls, connect, first_agent, reply, run_until};
+use rig_harness_test_support::MemoryStore;
+use rig_harness_test_support::{app_on, calls, connect, first_agent, reply, run_until, start_call};
 use schemars::JsonSchema;
 
 use super::*;
@@ -124,12 +124,11 @@ fn said(world: &World, agent: Entity, text: &str) -> bool {
                     let message::Message::User { content } = message else {
                         return false;
                     };
-                    content.iter().enumerate().any(|(item, content)| {
-                        matches!(content, UserContent::Text(said) if said.text == text)
-                            && conversation
-                                .origin(at, item)
-                                .is_some_and(|origin| origin.title.as_deref() == Some("U1"))
-                    })
+                    content.iter().any(
+                        |content| matches!(content, UserContent::Text(said) if said.text == text),
+                    ) && conversation
+                        .author(at)
+                        .is_some_and(|author| author.title.as_deref() == Some("U1"))
                 })
         })
 }
@@ -196,4 +195,23 @@ fn a_thread_gets_its_own_agent_its_answers_and_its_questions() {
             agent: Some(restored)
         })
     );
+}
+
+#[test]
+fn a_turn_ended_in_the_frame_its_calls_started_still_posts_its_work() {
+    let fake = Fake::default();
+    let (mut app, _wakes) = bridge_app(&MemoryStore::default(), &fake, None);
+    let world = app.world_mut();
+    let thread = ChatThread {
+        channel: "C1".to_owned(),
+        thread: "T1".to_owned(),
+    };
+    let agent = world.spawn((Agent, thread)).id();
+    let call = start_call(world, agent, ("read", "r1"), serde_json::json!({}));
+    assert!(call.is_some());
+    let answered = TurnOutcome::Answered(message::Message::assistant("fixed"));
+    world.spawn((answered, ForAgent(agent))).insert(Settled);
+    app.update();
+    assert!(fake.posted("T1", "working… read 1 file"));
+    assert!(fake.posted("T1", "fixed"));
 }

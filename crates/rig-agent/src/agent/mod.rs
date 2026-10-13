@@ -30,7 +30,7 @@ mod typed;
 pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub use crate::bus::ModelHandle;
-pub use crate::run::response::{CompletionCall, MemoryAppend, PromptResponse};
+pub use crate::run::response::{CompletionCall, PromptResponse};
 pub use crate::run::spec::RunSpec;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::{Agent, AgentParts};
@@ -38,8 +38,8 @@ pub use hook::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, HookStack,
     InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, ModelSelection,
     ModelSelectionAction, ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta,
-    RequestPatch, RetryRequest, RunEntry, RunHandle, RunId, RunSettled, RunStart, RunStartAction,
-    Scratchpad, SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
+    RequestPatch, RetryRequest, RunHandle, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
+    SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 pub use rig_core::completion::ModelRef;

@@ -31,8 +31,6 @@ mod corpus_invalid;
 mod corpus_layers;
 #[path = "../corpus_leftovers.rs"]
 mod corpus_leftovers;
-#[path = "../corpus_memory.rs"]
-mod corpus_memory;
 #[path = "../corpus_oracle.rs"]
 mod corpus_oracle;
 #[path = "../corpus_outcome.rs"]

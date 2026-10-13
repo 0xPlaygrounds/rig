@@ -80,7 +80,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 Rig separates portable provider/backend contracts from agent orchestration:
 
 - `rig-core` contains provider-neutral messages, completion models, portable and
-  contextual tool contracts, memory and vector-store contracts, and built-in
+  contextual tool contracts, the conversation type, vector-store contracts, and built-in
   provider mappings.
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
   the live tool registry, extraction, and the serializable `AgentRun` state machine.
@@ -224,14 +224,23 @@ Ask it why the build failed and it can read the log, fix the cause, and
 reload.
 
 The session is written as it happens. Each agent, subagents included, has an
-append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
-usage and compactions; images are stored once in `blobs/`, and `meta.json`
-caches what `/resume` lists. A tool call that may change something starts
-only once the reply that asked for it is on disk. After a crash, a closed
-terminal or a `/quit` mid-turn, resuming the session reads the logs back and settles what
-was left half done: read-only tool calls run again, other unfinished tool
-calls are answered as interrupted by the restart, and a turn that waited on
-the model carries on.
+append-only log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings,
+usage and compactions; images are stored once in `blobs/`, and `files/meta.json`
+caches what `/resume` lists. A session saved by an older rig, in another
+format, is refused when resumed, and nothing of it is changed. A tool call that may change something starts
+only once the reply that asked for it, and a mark that it started, are on
+disk. After a crash, a closed terminal or a `/quit` mid-turn, resuming the
+session reads the logs back and settles what was left half done: a tool
+call that may change something and had started is answered as interrupted
+by the restart (or with its result, if it finished before the crash), and a
+plugin may answer it first; any other unfinished call, one still waiting for
+your approval included, goes through the permission checks again and runs;
+and a turn that waited on the model carries on. Every `shell` call (and any
+other call that may write anywhere) reports the files it changed, from
+snapshots of the project before and after it, kept in the session's scratch
+directory, never in the repository's `.git`; `[checkpoints] enabled = false`
+in `RIG_HOME/settings.toml` turns that off, and `[shell] max_timeout` sets
+the longest timeout a `shell` call may ask for (ten minutes by default).
 Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
 cost, directory, age) and resumes the one picked, in its own directory;
@@ -295,18 +304,22 @@ in follows the prompt (`git diff | rig -p "review this"`), and piped in
 without `-p` it is the prompt: `rig` runs the terminal view only on an
 interactive terminal. `-m vendor/model` picks the model (else the session's,
 else the first one with a key; in the terminal view too), and `-r <id>`
-resumes a given session instead of starting a new one.
+resumes a given session instead of starting a new one. A plugin may keep such
+a run going, sending the agent work over time (`KeepRunning`); each answer is
+then printed as it comes.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
-the most general to the most specific, at most 32 KB each and 64 KB together,
-along with the working directory, platform and date. They are
+the most general to the most specific, at most 32 KB each and 64 KB together
+(`[context] file_bytes` and `total_bytes` in `settings.toml` change that, and a
+file cut short is named in a notice), along with the working directory,
+platform and date. They are
 re-read when a turn starts, so an edited `AGENTS.md` counts from the next
 message; `/context` re-reads them now and lists what the prompt holds.
 
 The input takes several lines: Enter sends, Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line, Up and Down move between lines and through the
-prompts sent before (kept in `RIG_HOME/history.jsonl`), and the usual emacs
+prompts sent before (kept in `RIG_HOME/data/tui/history.jsonl`), and the usual emacs
 keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
 and `@` completes paths of the project (skipping what `.gitignore` leaves out);
 Tab or Enter takes the selected one. A command that is unknown or refused, such
@@ -318,7 +331,7 @@ Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
-the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl`,
+plugins' data across sessions in `data/` (the prompt history `data/tui/history.jsonl`) and per project in `projects/`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, `files/` (`meta.json`, the effect log `effects.jsonl`, plugins' files),
 `spill/` (the whole output of a `shell` call that was cut, which the model reads
 by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
@@ -466,7 +479,7 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | Google Vertex AI | [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai) | `vertexai` | `rig::vertexai` |
 | HelixDB | [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb) | `helixdb` | `rig::helixdb` |
 | LanceDB | [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-lancedb) | `lancedb` | `rig::lancedb` |
-| Memory policies | [`rig-memory`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-memory) | `memory` | `rig::memory` |
+| Conversations over time | [`rig-memory`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-memory) | `memory` | `rig::memory` |
 | Milvus | [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-milvus) | `milvus` | `rig::milvus` |
 | MongoDB | [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb) | `mongodb` | `rig::mongodb` |
 | Neo4j | [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j) | `neo4j` | `rig::neo4j` |
@@ -477,10 +490,9 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | SurrealDB | [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb) | `surrealdb` | `rig::surrealdb` |
 | TypeSafe Jev (experimental judgments) | [`rig-typesafeai`](crates/rig-typesafeai) | `typesafeai` | `rig::typesafeai` |
 
-`rig::memory` is available without the `memory` feature; it contains the core
-conversation memory traits and in-memory backend re-exported from `rig-core`.
-Enabling `features = ["memory"]` adds reusable history-shaping policy types from
-the `rig-memory` companion crate to the same module.
+`rig::conversation` (from `rig-core`) is the one conversation type. Enabling
+`features = ["memory"]` adds `rig::memory`, the `rig-memory` crate: windows,
+compaction, and saving and resuming conversations.
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.

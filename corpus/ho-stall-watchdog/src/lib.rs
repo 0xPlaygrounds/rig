@@ -29,7 +29,7 @@ const NAME: &str = "stall_watchdog";
 const FILE: &str = "stall-watchdog/stalls.jsonl";
 
 /// After the status; gone before most items when the line is narrow.
-const PLACE: StatusItem = StatusItem::at(Side::Left, 55, 9);
+const PLACE: StatusItem = StatusItem::new("ho-stall-watchdog", Side::Left, 55, 9);
 
 /// The `[stall_watchdog]` table of the settings, in seconds.
 #[derive(Resource, Deserialize, Clone, Debug)]
@@ -96,7 +96,7 @@ impl Plugin for StallWatchdogPlugin {
             app.add_plugins(ClockPlugin);
         }
         app.add_setting::<StallSettings>(NAME)
-            .add_systems(PostUpdate, show_overdue.in_set(StatusSystems))
+            .add_systems(PostUpdate, show_overdue.in_set(StatusSystems::Show))
             .add_observer(arm)
             .add_observer(model_due)
             .add_observer(tool_due)

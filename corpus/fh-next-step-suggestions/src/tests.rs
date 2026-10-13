@@ -58,7 +58,7 @@ fn start(
         .add_observer(count_asks)
         .init_resource::<Ended>()
         .add_observer(log_ended);
-    collect::<Recorded>(&mut app);
+    collect::<EffectRecorded>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -194,20 +194,20 @@ fn a_message_sent_first_cancels_the_suggesting_call() {
     app.world_mut().trigger(typed);
     let cancelled = |world: &World| {
         world
-            .resource::<Collected<Recorded>>()
+            .resource::<Collected<EffectRecorded>>()
             .0
             .iter()
-            .any(|Recorded(record)| {
+            .any(|EffectRecorded(record)| {
                 record.purpose.as_deref() == Some(NAME)
                     && record.disposition == Disposition::Cancelled
             })
     };
     run_until(&mut app, &wakes, cancelled);
     assert!(cancelled(app.world()));
-    assert_eq!(suggested(app.world(), agent), None);
-    assert_eq!(suggester.request_count(), 0);
 
-    // The next turn's answer gets suggestions of its own.
+    // The next turn's answer gets suggestions of its own; the cancelled
+    // call never reached the suggester. (The next turn may end in the
+    // frame the call was cancelled in.)
     run_until(&mut app, &wakes, |world| suggested(world, agent).is_some());
     assert_eq!(suggester.request_count(), 1);
     assert!(format!("{:?}", suggester.requests()).contains("now check the lexer"));

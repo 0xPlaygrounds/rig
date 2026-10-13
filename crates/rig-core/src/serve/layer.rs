@@ -1,5 +1,5 @@
 //! Handler composition with pre-dispatch decisions and post-answer verdicts.
-//! Recording observes the innermost handler: denied dispatches leave no record,
+//! Recording observes the handler a layer wraps: denied dispatches leave no record,
 //! and replaced answers retain the handler's original outcome for replay.
 //!
 //! ```
@@ -125,6 +125,10 @@ impl<I: Intercept> Serve for Layer<I> {
 
     fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
         self.inner.footprint(kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<crate::completion::UnsupportedOption> {
+        self.inner.check(kind)
     }
 
     async fn serve(&self, kind: EffectKind, mut dispatch: Dispatch) -> Reply {

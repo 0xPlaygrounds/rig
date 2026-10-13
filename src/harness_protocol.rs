@@ -9,6 +9,7 @@ use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The exit code with which the agent asks its launcher to restart it on
@@ -98,13 +99,20 @@ pub fn first_errors<'a>(lines: impl IntoIterator<Item = &'a str>, count: usize) 
 pub struct SessionId(String);
 
 impl SessionId {
-    /// A new id: the Unix time in seconds and this process's id.
+    /// A new id: the Unix time in seconds and this process's id, then,
+    /// after the process's first, how many it made before, so no two of
+    /// one process are the same.
     pub fn generate() -> Self {
+        static MADE: AtomicU64 = AtomicU64::new(0);
         let seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|elapsed| elapsed.as_secs())
             .unwrap_or_default();
-        Self(format!("{seconds}-{}", std::process::id()))
+        let id = format!("{seconds}-{}", std::process::id());
+        match MADE.fetch_add(1, Ordering::Relaxed) {
+            0 => Self(id),
+            made => Self(format!("{id}-{made}")),
+        }
     }
 
     /// The id in [`env::SESSION`], or `None` when it is unset or empty.
@@ -275,10 +283,15 @@ impl Home {
             .ok()
     }
 
-    /// The prompts typed into the terminal view, one JSON string per line,
-    /// shared by every session on this root.
-    pub fn history(&self) -> PathBuf {
-        self.root.join("history.jsonl")
+    /// `data/`, where plugins keep files across sessions and projects.
+    pub fn data(&self) -> PathBuf {
+        self.root.join("data")
+    }
+
+    /// `projects/`, where plugins keep files per project, one directory
+    /// for each project the agent worked in.
+    pub fn projects(&self) -> PathBuf {
+        self.root.join("projects")
     }
 
     /// The directory holding every running launcher's [`RunDir`].
@@ -371,33 +384,17 @@ impl RunDir {
     }
 }
 
-/// A session's directory. The agent keeps the session's files there
-/// through its store, which a plugin may replace, so only the plain files
-/// kept beside the store are named here ([`Self::PLAIN_FILES`]): the
-/// markers of a session an agent started in ([`Self::started`]) and
-/// logged to ([`Self::is_saved`]), the text log, the lock of the launcher
-/// running it, its working directory and the session to switch to.
+/// A session's directory. The agent keeps the session there through its
+/// store, which a plugin may replace (by default in the folders `logs`,
+/// `blobs` and `files`), so only the plain files beside the store are
+/// named here: the markers of a session an agent started in
+/// ([`Self::started`]), logged to ([`Self::is_saved`]) and being deleted
+/// ([`Self::is_deleting`]), the text log, the lock of the launcher running
+/// it, its working directory and the session to switch to.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
 impl SessionDir {
-    /// The top-level names in a session's directory that are plain files
-    /// beside its store, which hold no conversation: the files named
-    /// below, and the directories of output cut short (`spill`) and pasted
-    /// images (`images`) the agent keeps there by default. A store over
-    /// the directory leaves them out, and a copy of a session into another
-    /// store copies them as they are, if at all.
-    pub const PLAIN_FILES: [&str; 8] = [
-        "launcher.lock",
-        "directory",
-        "switch",
-        "started",
-        "saved",
-        "agent.log",
-        "spill",
-        "images",
-    ];
-
     /// The session kept in the directory `path`, such as one a command
     /// names, rather than one of a [`Home`]'s.
     pub fn at(path: impl Into<PathBuf>) -> Self {
@@ -415,9 +412,33 @@ impl SessionDir {
     }
 
     /// Whether an agent of the session wrote its log, so it can be
-    /// resumed: the session has the marker [`Self::mark_saved`] writes.
+    /// resumed: the session has the marker [`Self::mark_saved`] writes and
+    /// is not being deleted.
     pub fn is_saved(&self) -> bool {
-        self.saved().exists()
+        self.saved().exists() && !self.is_deleting()
+    }
+
+    /// Whether the session is being deleted: it has the marker
+    /// [`Self::mark_deleting`] writes. Listings leave it out, and the
+    /// agent's next start finishes deleting it.
+    pub fn is_deleting(&self) -> bool {
+        self.deleting().exists()
+    }
+
+    /// Marks the session as being deleted, before anything of it is
+    /// removed, so a delete a crash cuts short is finished later and never
+    /// leaves a half-removed session to resume.
+    ///
+    /// # Errors
+    ///
+    /// When the marker cannot be written.
+    pub fn mark_deleting(&self) -> std::io::Result<()> {
+        std::fs::write(self.deleting(), b"")
+    }
+
+    /// The plain, empty marker of a session being deleted.
+    fn deleting(&self) -> PathBuf {
+        self.0.join("deleting")
     }
 
     /// Marks the session saved, as the agent's store does when it first

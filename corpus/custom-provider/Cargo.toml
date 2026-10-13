@@ -22,7 +22,6 @@ serde_json = { workspace = true }
 toml = "1"
 
 [dev-dependencies]
-rig-cassette = { workspace = true }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 # `/model`, its completions with each model's status.
 rig-models = { path = "../../plugins/rig-models" }

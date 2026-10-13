@@ -33,8 +33,11 @@ impl Plugin for ActivityPlugin {
             .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
             .add_observer(feed_deliveries);
         #[cfg(feature = "tui")]
-        app.configure_sets(PostUpdate, ActivitySystems.before(rig_tui::StatusSystems))
-            .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems));
+        app.configure_sets(
+            PostUpdate,
+            ActivitySystems.before(rig_tui::StatusSystems::Show),
+        )
+        .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show));
     }
 }
 
@@ -144,8 +147,9 @@ pub struct FedMessage {
     pub to: Entity,
     /// The agent it came from, when an agent sent it.
     pub from: Option<Entity>,
-    /// Where it came from.
-    pub origin: Origin,
+    /// Who wrote it.
+    #[reflect(ignore)]
+    pub author: Author,
     /// Its first [`FEED_CHARS`] characters.
     pub text: String,
 }
@@ -161,7 +165,7 @@ fn feed_deliveries(
     let Ok((message, &ForAgent(to))) = messages.get(accepted.entity) else {
         return;
     };
-    let from = message.origin.from.as_ref().and_then(|from| {
+    let from = message.author.from.as_ref().and_then(|from| {
         agents
             .iter()
             .find_map(|(entity, id)| (id.0 == *from).then_some(entity))
@@ -172,8 +176,8 @@ fn feed_deliveries(
     feed.entries.push_back(FedMessage {
         to,
         from,
-        origin: message.origin.clone(),
-        text: message.text.chars().take(FEED_CHARS).collect(),
+        author: message.author.clone(),
+        text: message.text().chars().take(FEED_CHARS).collect(),
     });
 }
 
@@ -277,7 +281,8 @@ fn update_activity(
 
 /// Where an agent's status is in the status line.
 #[cfg(feature = "tui")]
-const STATUS: rig_tui::StatusItem = rig_tui::StatusItem::at(rig_tui::Side::Left, 50, u8::MAX);
+const STATUS: rig_tui::StatusItem =
+    rig_tui::StatusItem::new("status", rig_tui::Side::Left, 50, u8::MAX);
 
 /// Each agent's status, in its status line: green when idle, yellow at
 /// work, red waiting to retry.

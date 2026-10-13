@@ -382,9 +382,9 @@ fn dispatch(
         let Some(mut job) = desk.waiting.get_mut(name).and_then(VecDeque::pop_front) else {
             continue;
         };
-        let origin = Origin::agent(job.asker.clone(), Some(job.request.clone()));
-        let origin = origin.titled(first_line(&job.task));
-        let message = Incoming::new(job.task.clone(), DeliveryMode::Queue).with_origin(origin);
+        let author = Author::agent(job.asker.clone(), Some(job.request.clone()));
+        let author = author.titled(first_line(&job.task));
+        let message = Incoming::new(job.task.clone(), DeliveryMode::Queue).with_author(author);
         let message = commands.spawn((message, ForAgent(agent), Assignment(name.clone())));
         job.message = Some(message.id());
         desk.working.insert(name.clone(), job);
@@ -433,7 +433,9 @@ fn finished(
     {
         let answer: Outcome = match outcome {
             TurnOutcome::Answered(message) => {
-                let text = final_answer(message).unwrap_or_else(|| "(no answer)".to_owned());
+                let text = message
+                    .final_answer()
+                    .unwrap_or_else(|| "(no answer)".to_owned());
                 ToolResult::success(format!("`{name}` reports:\n{text}").into()).into()
             }
             TurnOutcome::Failed(why) => Outcome::refused(format!("`{name}` failed: {why}")),
@@ -574,7 +576,6 @@ fn team_command(
     team: Res<Team>,
     desk: Res<Desk>,
     mut members: Query<(Entity, &TeamMember, &mut Conversation, Has<ActiveTurn>)>,
-    mut commit: Commit,
     mut notices: MessageWriter<Notice>,
 ) {
     let words: Vec<&str> = args.args.split_whitespace().collect();
@@ -608,8 +609,8 @@ fn team_command(
                     let why = format!("`{name}` is working; stop it first.");
                     notices.write(Notice::error(args.agent, why));
                 }
-                Some((agent, _, mut conversation, _)) => {
-                    commit.splice(agent, &mut conversation, .., []);
+                Some((_, _, mut conversation, _)) => {
+                    conversation.splice(.., [], Author::plugin("fh-standing-team"));
                     notices.write(Notice::info(args.agent, format!("`{name}` starts afresh.")));
                 }
             }

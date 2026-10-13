@@ -13,12 +13,11 @@ use std::sync::{Arc, OnceLock};
 
 use crate::bus::{Bus, Dispatcher, Recording, Registrar};
 use rig_core::serve::ServingPolicy;
-use rig_core::serve::adapters::{MemoryAdapter, ModelAdapter, RetrieveAdapter};
+use rig_core::serve::adapters::{ModelAdapter, RetrieveAdapter};
 use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
     completion::{Document, ModelRef},
     effect::{HandlerKey, Key, family},
-    memory::ConversationMemory,
     vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -128,9 +127,8 @@ enum DefaultModel {
 /// Builds an [`Agent`].
 ///
 /// Every handler the builder registers (the default model, model routes,
-/// memory, dynamic-context indexes) is minted a key under the agent's
-/// owner label at build: `<owner>/model:<label>`, `<owner>/memory`, and
-/// `<owner>/retrieve:context#<n>`. Hosts sharing a bus must choose distinct
+/// dynamic-context indexes) is minted a key under the agent's owner label at
+/// build: `<owner>/model:<label>` and `<owner>/retrieve:context#<n>`. Hosts sharing a bus must choose distinct
 /// owners to avoid replacing each other's bindings. The explicit owner takes
 /// precedence over the agent name, then a generated `agent#<n>` label.
 pub struct AgentBuilder<ToolState = NoToolConfig> {
@@ -143,7 +141,6 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     pending: Vec<(String, ErasedHandler)>,
     /// The dynamic-context hooks' key slots, by key suffix.
     dynamic_contexts: Vec<(String, Arc<OnceLock<Key<family::Retrieve>>>)>,
-    memory: bool,
     recorder: Option<Recording>,
     retrieval_indexes: usize,
     /// The labels `model_route` registered, in order.
@@ -442,34 +439,6 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Persist and load conversation history through `memory`, registered
-    /// on the agent's bus.
-    pub fn memory<B>(mut self, memory: B) -> Self
-    where
-        B: ConversationMemory + 'static,
-    {
-        self.pending.push((
-            "memory".to_owned(),
-            ErasedHandler::new(MemoryAdapter::new(memory)),
-        ));
-        self.memory = true;
-        self
-    }
-
-    /// Register a memory-family handler under the agent's memory key.
-    pub fn memory_handler(mut self, handler: impl rig_core::serve::Serve + 'static) -> Self {
-        self.pending
-            .push(("memory".to_owned(), ErasedHandler::new(handler)));
-        self.memory = true;
-        self
-    }
-
-    /// The conversation id memory loads and saves under.
-    pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
-        self.config.conversation_id = Some(id.into());
-        self
-    }
-
     /// Register another model the run can select by label
     /// (`ModelSelectionAction::select(label)`, `using_model(label)`).
     pub fn model_route(
@@ -502,7 +471,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Name the agent's keys: `<owner>/model:<label>`, `<owner>/memory`,
+    /// Name the agent's keys: `<owner>/model:<label>`,
     /// `<owner>/retrieve:context#<n>`, and its own tools' `<owner>/tool:…`.
     /// Defaults to the agent's name, or a process-local `agent#<n>` counter.
     /// Use stable, distinct owners for replay and agents sharing a bus.
@@ -557,7 +526,6 @@ impl<ToolState> AgentBuilder<ToolState> {
             model: self.model,
             pending: self.pending,
             dynamic_contexts: self.dynamic_contexts,
-            memory: self.memory,
             recorder: self.recorder,
             retrieval_indexes: self.retrieval_indexes,
             routes: self.routes,
@@ -601,7 +569,6 @@ impl<ToolState> AgentBuilder<ToolState> {
             model,
             mut pending,
             dynamic_contexts,
-            memory,
             recorder,
             retrieval_indexes: _,
             routes,
@@ -653,15 +620,6 @@ impl<ToolState> AgentBuilder<ToolState> {
             .iter()
             .map(|label| config.bus.model_key(label))
             .collect();
-        if memory {
-            config.memory_key = Some(config.bus.key("memory"));
-        } else if let Some(conversation) = &config.conversation_id {
-            // Warn once at construction rather than silently ignoring memory on each run.
-            tracing::warn!(
-                %conversation,
-                "AgentBuilder::conversation set without memory(..) or memory_handler(..): nothing is loaded or saved"
-            );
-        }
         if let Some(recorder) = recorder {
             match (host, config.bus.record_to(recorder)) {
                 (Some(caller), Err(_)) => recording_over_a_hosts_bus(caller),
@@ -739,7 +697,6 @@ impl AgentBuilder<NoToolConfig> {
             model,
             pending: Vec::new(),
             dynamic_contexts: Vec::new(),
-            memory: false,
             recorder: None,
             retrieval_indexes: 0,
             routes: Vec::new(),
@@ -829,7 +786,6 @@ impl AgentBuilder<WithBuilderTools> {
             model,
             pending,
             dynamic_contexts,
-            memory,
             recorder,
             retrieval_indexes,
             routes,
@@ -842,7 +798,6 @@ impl AgentBuilder<WithBuilderTools> {
             model,
             pending,
             dynamic_contexts,
-            memory,
             recorder,
             retrieval_indexes,
             routes,

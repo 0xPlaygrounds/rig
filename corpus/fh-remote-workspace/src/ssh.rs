@@ -300,6 +300,7 @@ impl Workspace for Ssh {
             (Some(size), Some(access)) => Stat::File {
                 size: size.parse().map_err(io::Error::other)?,
                 read_only: access == "r",
+                modified: None,
             },
             _ => return Err(io::Error::other(format!("stat said `{}`", out.trim()))),
         })
@@ -378,7 +379,7 @@ impl Workspace for Ssh {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>> {
         let globs = glob
             .map(|glob| {
                 OverrideBuilder::new(root)
@@ -389,9 +390,13 @@ impl Workspace for Ssh {
                     })
             })
             .transpose()?;
+        let git = match all {
+            true => "false",
+            false => "git rev-parse --is-inside-work-tree >/dev/null 2>&1",
+        };
         let script = format!(
             "r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; cd \"$r\" || exit {NOT_FOUND}; \
-             if git rev-parse --is-inside-work-tree >/dev/null 2>&1; \
+             if {git}; \
              then git ls-files -z -co --exclude-standard; \
              else find . -type f -print0; fi",
             Self::quoted(root)
@@ -408,7 +413,7 @@ impl Workspace for Ssh {
             .map(|name| Path::new(name.trim_start_matches("./")))
             .filter(|name| !name.as_os_str().is_empty())
             .filter(|name| {
-                name.components().all(|part| {
+                all || name.components().all(|part| {
                     let part = part.as_os_str().as_encoded_bytes();
                     part != b"target" && !part.starts_with(b".")
                 })

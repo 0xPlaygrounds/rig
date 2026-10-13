@@ -5,13 +5,11 @@ use serde_json::json;
 use super::*;
 use crate::bus::Bus;
 use rig_core::{
-    completion::Message,
     driver::{Exchange, Local, Model, Opened, Opening, Step, Transport},
     effect::{EffectFamily, HandlerKey, family},
     embeddings::{Embedding, EmbeddingResponse},
     error::ErrorKind,
-    memory::InMemoryConversationMemory,
-    serve::adapters::{MemoryAdapter, ModelAdapter, ToolAdapter},
+    serve::adapters::{ModelAdapter, ToolAdapter},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolExecutionError},
     wire::Capabilities,
@@ -119,12 +117,6 @@ fn bus() -> (
         .register("double", ToolAdapter::new(Double))
         .expect("register");
     driver
-        .register(
-            "memory",
-            MemoryAdapter::new(InMemoryConversationMemory::new()),
-        )
-        .expect("register");
-    driver
         .register("embed", ModelAdapter::new("tiny", Tiny::model()))
         .expect("register");
     (dispatcher, registrar, tokio::spawn(driver))
@@ -157,7 +149,7 @@ async fn binding_checks_the_family_typed_at_bind_time() {
 }
 
 #[tokio::test]
-async fn tool_memory_index_and_embed_handles_call_their_families() {
+async fn tool_index_and_embed_handles_call_their_families() {
     let (dispatcher, _registrar, _task) = bus();
     let tool: ToolHandle = dispatcher
         .handle(&HandlerKey::from("double"))
@@ -168,27 +160,6 @@ async fn tool_memory_index_and_embed_handles_call_their_families() {
             .await
             .expect("called");
     assert_eq!(result.output().as_json(), Some(&json!(42)));
-
-    let memory: MemoryHandle = dispatcher
-        .handle(&HandlerKey::from("memory"))
-        .expect("memory");
-    let conversation = ConversationId::from("c");
-    within(memory.append(conversation.clone(), vec![Message::user("x")]))
-        .await
-        .expect("appended");
-    let loaded = within(memory.load(conversation.clone()))
-        .await
-        .expect("loaded");
-    assert_eq!(loaded.len(), 1);
-    within(memory.clear(conversation.clone()))
-        .await
-        .expect("cleared");
-    assert!(
-        within(memory.load(conversation))
-            .await
-            .expect("loaded")
-            .is_empty()
-    );
 
     let embed: EmbedHandle = dispatcher
         .handle(&HandlerKey::from("embed"))

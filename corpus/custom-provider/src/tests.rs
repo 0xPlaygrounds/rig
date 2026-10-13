@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use rig_cassette::journal::MemoryStore;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
 use rig_models::ModelsPlugin;
 use rig_telemetry::{Spending, UsagePlugin};
@@ -172,7 +172,7 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
         !world.resource::<Ended>().0.is_empty()
     });
     let answer = match app.world().resource::<Ended>().0.as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         other => Some(format!("{other:?}")),
     };
     assert_eq!(answer.as_deref(), Some("hi"));

@@ -1,58 +1,35 @@
 # rig-memory
 
-Conversation memory policies for the [Rig](https://github.com/0xPlaygrounds/rig)
-agent framework.
+Conversations over time for the [Rig](https://github.com/0xPlaygrounds/rig)
+agent framework, over rig-core's one `Conversation` type:
 
-`rig-core` ships the `ConversationMemory` trait and an in-process
-`InMemoryConversationMemory` backend. This crate provides reusable named
-policies for shaping loaded history before it is sent to the model:
+- `window`: what of a conversation a request sends (`LastMessages`,
+  `TokenBudget`), never a tool result without its call.
+- compaction: a `CompactionPolicy` that says when (near the model's window)
+  and where to cut and plans the summary request, a `SummaryState` carried
+  from one summary to the next, `apply_summary`, and `ClearToolOutputs`,
+  which frees context without a model call. rig-harness's compaction plugin
+  is built on it.
+- saving and resuming: the session format `rig-session/1` (one JSON-lines
+  log per agent, images kept as blobs), a `Store` trait with `MemoryStore`
+  and, with feature `fs`, `DirStore`, and its `Files` half for named files
+  on their own (`DirFiles` over a plain directory, where rig-harness keeps
+  plugins' data per project and per user); `load`/`save` for one conversation,
+  `Session` for a whole session, `Writer` for a running host, `fork`,
+  `history` and `as_of`. Reading is strict: a session that cannot be read
+  whole is refused, and nothing is written. `Session::read_lenient` reads
+  each log that reads and names the others, for readers such as an export.
 
-- [`NoopMemoryPolicy`] — identity policy, useful as a default.
-- [`SlidingWindowMemory`] — keep at most the most recent `N` messages.
-- [`TokenWindowMemory`] — keep the most recent messages that fit within a token
-  budget supplied by a [`TokenCounter`].
-
-- `compaction` — summarizing a long conversation: a `CompactionPolicy` that
-  says when (near the model's window) and where to cut and plans the summary
-  request of the older messages, a `SummaryState` carried from one summary
-  to the next, `SummaryPrompts::DEFAULT` for a structured checkpoint, and
-  `ClearToolOutputs`, which frees context without a model call. rig-harness's
-  compaction plugin is built on it.
-
-Both window policies remove the leading prefix through any tool-result
-messages whose assistant calls were truncated. Results are detected anywhere
-in a user message, including after text and across intervening system messages.
-Cleanup stops at the first retained assistant; later paired exchanges remain
-intact. Whole removed messages are included in `apply_with_demoted`'s demoted
-prefix in original order, including accompanying text, so demotion hooks lose
-no content.
-
-## Usage
-
-```rust,no_run
-use rig_memory::{InMemoryConversationMemory, SlidingWindowMemory, IntoFilter};
-
-let memory = InMemoryConversationMemory::new()
-    .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
-```
-
-For backends other than `InMemoryConversationMemory`, apply a policy directly:
+With default features the crate is pure data and builds for wasm32.
 
 ```rust,ignore
-use rig_memory::{MemoryPolicy, SlidingWindowMemory};
+use rig_core::message::Message;
+use rig_memory::window::{LastMessages, view};
+use rig_memory::{MemoryStore, load, save};
 
-let policy = SlidingWindowMemory::last_messages(20);
-let trimmed = policy.apply(loaded_messages)?;
-```
-
-To wrap any backend with a policy and propagate policy errors to the caller
-(rather than silently degrading to identity on failure), use `PolicyMemory`:
-
-```rust,no_run
-use rig_memory::{InMemoryConversationMemory, PolicyMemory, SlidingWindowMemory};
-
-let memory = PolicyMemory::new(
-    InMemoryConversationMemory::new(),
-    SlidingWindowMemory::last_messages(20),
-);
+let store = MemoryStore::default();
+let mut conversation = load(&store, "user-123")?;
+conversation.push(Message::user("My name is Alice."));
+save(&store, "user-123", &mut conversation)?;
+let request = view(conversation.messages(), &LastMessages(20));
 ```

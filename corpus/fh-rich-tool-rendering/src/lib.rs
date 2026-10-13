@@ -18,8 +18,8 @@ mod looks;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{AssistantContent, Message};
 use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, InputAction, KeyBinding, KeyPress, KeyPressed,
-    ToolRenderer, TranscriptItem, TranscriptView, TuiPlugin,
+    AppKeyBindingsExt, AppToolRenderersExt, InputAction, KeyBinding, KeyInput, KeyPress,
+    KeyPressed, TerminalEvents, ToolRenderer, TranscriptItem, TranscriptView, TuiPlugin,
 };
 
 pub use looks::{COLLAPSED_LINES, SHELL_TAIL};
@@ -66,10 +66,10 @@ fn toggle_calls(
     pressed: On<KeyPressed>,
     agents: Query<&Conversation>,
     mut view: ResMut<TranscriptView>,
-    mut actions: MessageWriter<InputAction>,
+    mut events: ResMut<TerminalEvents>,
 ) {
     if view.selected.is_some() {
-        actions.write(InputAction::Expand);
+        events.0.push(KeyInput::Action(InputAction::Expand));
         return;
     }
     let Some(conversation) = pressed.agent.and_then(|agent| agents.get(agent).ok()) else {

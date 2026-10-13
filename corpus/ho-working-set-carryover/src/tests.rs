@@ -1,15 +1,16 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ReadTool, ShellTool};
 use rig_compaction::{Compact, CompactionPlugin};
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };
 use serde_json::json;
 
 use super::*;
+use rig_compaction::summary_author;
 
 /// The spec's pattern: a command starting with `echo test` tests.
 const SETTINGS: &str = "[working_set]\ntest_pattern = '^echo test'\n";
@@ -81,14 +82,11 @@ fn the_working_set_follows_a_compaction_and_a_resume() {
         focus,
     });
     until_ended(&mut app, &wakes, 2);
-    let summary = Origin::plugin("compaction");
+    let summary = summary_author();
     let compacted = app
         .world()
         .get::<Conversation>(agent)
-        .and_then(|conversation| {
-            let entry = conversation.entry(0)?;
-            Some(entry.origins.iter().any(|(_, origin)| *origin == summary))
-        });
+        .and_then(|conversation| Some(conversation.author(0)? == &summary));
     assert_eq!(compacted, Some(true), "compacted");
     let next = Deliver::new(agent, "Go on.", DeliveryMode::Steer);
     app.world_mut().trigger(next);

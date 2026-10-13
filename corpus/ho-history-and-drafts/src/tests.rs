@@ -1,10 +1,10 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
-    Ended, advance, app_on, connect, first_agent, log_ended, reply, run_until, scratch_home,
+    Ended, MemoryStore, advance, app_on, connect, first_agent, log_ended, reply, run_until,
+    scratch_home,
 };
 
 use super::*;
@@ -60,7 +60,7 @@ fn history_skips_repeats_and_secrets_and_the_draft_survives_a_restart() {
             .insert((connection, choice));
     }
     for text in ["a", "a", " secret", "key sk-abc123"] {
-        let message = Deliver::new(agent, text, DeliveryMode::Queue).with_origin(Origin::user());
+        let message = Deliver::new(agent, text, DeliveryMode::Queue);
         app.world_mut().trigger(message);
     }
     run_until(&mut app, &wakes, |world| {

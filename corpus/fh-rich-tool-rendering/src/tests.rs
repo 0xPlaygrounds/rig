@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ShellTool};
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
@@ -9,6 +8,7 @@ use rig_core::streaming::parse_partial_arguments;
 use rig_core::test_utils::MockCompletionModel;
 use rig_core::tool::ToolResultContext;
 use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };

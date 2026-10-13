@@ -23,7 +23,7 @@ use rig_ecs::agent::{
 use rig_ecs::calls::{PollCalls, Wake};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::model::{Effort, ModelChoice, Models};
-use rig_ecs::prelude::{Origin, RequestId};
+use rig_ecs::prelude::{Author, RequestId};
 use rig_ecs::stage::{AgentLoop, Effect, ForAgent, Outcome, Settled, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 
@@ -108,19 +108,19 @@ impl Harness {
         .await
     }
 
-    /// Delivers `text` to the agent `to` as a request from `origin`, queued
+    /// Delivers `text` to the agent `to` as a request from `author`, queued
     /// behind its current work when it is busy, and returns the request's
-    /// id: `origin.request` when given, a new one otherwise. A request id
+    /// id: `author.request` when given, a new one otherwise. A request id
     /// already sent is not delivered again, so it doubles as an idempotency
     /// key.
     pub async fn send(
         &self,
         to: AgentId,
         text: String,
-        origin: Origin,
+        author: Author,
     ) -> Result<RequestId, String> {
         self.ask(move |world, answer: Answer<RequestId>| {
-            answer.send(send(world, &to, text, origin)).ok();
+            answer.send(send(world, &to, text, author)).ok();
         })
         .await
     }
@@ -290,13 +290,13 @@ fn send(
     world: &mut World,
     to: &AgentId,
     text: String,
-    origin: Origin,
+    author: Author,
 ) -> Result<RequestId, String> {
     let agent = find(world, to)?;
     if text.trim().is_empty() {
         return Err("the message is empty".to_owned());
     }
-    let request = origin
+    let request = author
         .request
         .clone()
         .unwrap_or_else(|| RequestId(uuid::Uuid::new_v4().to_string()));
@@ -311,11 +311,11 @@ fn send(
             state: ReplyState::Waiting(Vec::new()),
         },
     );
-    let origin = Origin {
+    let author = Author {
         request: Some(request.clone()),
-        ..origin
+        ..author
     };
-    world.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_origin(origin));
+    world.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_author(author));
     Ok(request)
 }
 

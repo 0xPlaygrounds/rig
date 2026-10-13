@@ -1,12 +1,12 @@
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_cassette::journal::MemoryStore;
 use rig_core::effect::{Decider, Disposition, EffectKind, Outcome as EffectOutcome};
 use rig_ecs::agent::{Agent, Conversation};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Incoming};
 use rig_ecs::journal::SessionStore;
-use rig_ecs::stage::{ForAgent, Outcome, Recorded, Started};
+use rig_ecs::stage::{EffectRecorded, ForAgent, Outcome, Started};
+use rig_memory::MemoryStore;
 
 use super::{Answer, Answerer, Answerers, Ask, AskPlugin};
 use crate::commands::CommandPlugin;
@@ -26,7 +26,7 @@ fn app() -> (App, Entity) {
         .init_resource::<Records>()
         .add_systems(
             Last,
-            |mut recorded: MessageReader<Recorded>, mut records: ResMut<Records>| {
+            |mut recorded: MessageReader<EffectRecorded>, mut records: ResMut<Records>| {
                 records
                     .0
                     .extend(recorded.read().map(|recorded| recorded.0.clone()));
@@ -110,7 +110,7 @@ fn the_users_next_line_answers_a_question_that_takes_text() {
         .filter(|(_, outcome)| {
             matches!(&outcome.0, Ok(EffectOutcome::Custom { payload }) if payload == "answer")
         })
-        .map(|(incoming, _)| incoming.text.clone())
+        .map(|(incoming, _)| incoming.text().to_owned())
         .collect();
     assert_eq!(answered, ["it deletes the cache"]);
 }

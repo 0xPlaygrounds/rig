@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ReadTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::pick::PickPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
 
 use super::*;

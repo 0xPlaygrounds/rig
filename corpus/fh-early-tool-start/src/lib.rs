@@ -117,7 +117,7 @@ impl Plugin for EarlyToolStartPlugin {
         #[cfg(feature = "tui")]
         app.add_systems(
             PostUpdate,
-            status::show_count.in_set(rig_tui::StatusSystems),
+            status::show_count.in_set(rig_tui::StatusSystems::Show),
         );
     }
 }
@@ -369,7 +369,7 @@ mod status {
     use super::EarlyCount;
 
     /// The running turn's count of early calls: after the status.
-    const EARLY: StatusItem = StatusItem::at(Side::Left, 56, 9);
+    const EARLY: StatusItem = StatusItem::new("fh-early-tool-start", Side::Left, 56, 9);
 
     /// Shows the running turn's count of early calls.
     pub(super) fn show_count(

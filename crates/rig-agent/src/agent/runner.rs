@@ -1,5 +1,5 @@
 //! Hook-aware execution of [`AgentRun`] with per-run overrides, completion
-//! requests, tools, and conversation memory.
+//! requests and tools.
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
@@ -22,7 +22,7 @@ use tracing_futures::Instrument;
 use super::{
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent},
-    hook::{AgentHook, HookContext, RunSettled, SettledOutcome, StepEventKind},
+    hook::{AgentHook, HookContext},
     run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
@@ -72,21 +72,13 @@ pub struct AgentRunner<O = ()> {
     pub(crate) output: O,
 }
 
-/// Where a run starts. A prompt builds a fresh [`AgentRun`] (after any
-/// memory load); a persisted run is continued as it is, so neither a prompt
-/// nor a history nor a memory load applies to it.
+/// Where a run starts. A prompt builds a fresh [`AgentRun`]; a persisted run
+/// is continued as it is, so neither a prompt nor a history applies to it.
 #[derive(Clone)]
 pub(crate) enum RunOrigin {
     Prompt(Message),
     Resume(AgentRun),
 }
-
-/// The `(history_override, memory_handle)` pair resolved for one run by
-/// [`AgentRunner::resolve_history_and_memory`].
-pub(crate) type HistoryAndMemory = (
-    Option<Vec<Message>>,
-    Option<(crate::bus::MemoryHandle, rig_core::id::ConversationId)>,
-);
 
 impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
@@ -198,8 +190,7 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// Set the chat history preceding the prompt. Passing explicit history
-    /// bypasses conversation memory for this run.
+    /// Set the chat history preceding the prompt.
     pub fn history<I, T>(mut self, history: I) -> Self
     where
         I: IntoIterator<Item = T>,
@@ -472,28 +463,6 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// Set the conversation id used to load and persist memory for this run.
-    ///
-    /// With a memory backend configured, the run loads the conversation
-    /// before its first model call (a load failure fails the run with
-    /// [`PromptError::Memory`] before any completion) and appends its
-    /// `messages` once it finishes. The append is acknowledged on the
-    /// response's [`memory_append`](PromptResponse::memory_append): a
-    /// failed append does not invalidate the answer and does not prove that no
-    /// write occurred. Explicit
-    /// [`history`](Self::history) bypasses both.
-    pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
-        self.config.conversation_id = Some(id.into());
-        self
-    }
-
-    /// Disable conversation memory for this run (no load, no save).
-    pub fn without_memory(mut self) -> Self {
-        self.config.memory_key = None;
-        self.config.conversation_id = None;
-        self
-    }
-
     /// Set the retry budget for invalid tool-call recovery. Invalid tool-call
     /// retries also consume the total model-call budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
@@ -553,11 +522,9 @@ impl<O> AgentRunner<O> {
     }
 
     /// The [`AgentRun`] this runner drives: the persisted run it continues,
-    /// or a fresh one from its prompt and configuration. `history_override`
-    /// replaces the configured chat history (e.g. with memory-loaded
-    /// history) and applies only to a fresh run. The one construction site,
-    /// so the blocking and streaming drivers configure runs identically.
-    pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
+    /// or a fresh one from its prompt and configuration. The one construction
+    /// site, so the blocking and streaming drivers configure runs identically.
+    pub(crate) fn build_run(&self) -> AgentRun {
         let prompt = match &self.origin {
             RunOrigin::Resume(run) => return run.clone(),
             RunOrigin::Prompt(prompt) => prompt.clone(),
@@ -574,11 +541,7 @@ impl<O> AgentRunner<O> {
                 .map(|schema| schema.as_value().clone()),
             ..crate::run::spec::RunSpec::new()
         };
-        let run = AgentRun::from_spec(
-            &spec,
-            prompt,
-            history_override.or_else(|| self.chat_history.clone()),
-        );
+        let run = AgentRun::from_spec(&spec, prompt, self.chat_history.clone());
         match &self.output_tool_name {
             Some(name) => run.with_output_tool_name(name.clone()),
             None => run,
@@ -628,67 +591,8 @@ impl AgentRunner {
         (agent_span, created_agent_span)
     }
 
-    /// Resolve the history override and memory handle for this run.
-    ///
-    /// When the caller passes explicit history, memory is fully bypassed
-    /// (no load AND no save). Otherwise, if a memory backend and conversation
-    /// id are both configured, prior history is loaded. Each surface adapts a
-    /// load failure to its own error channel.
-    /// The memory a resumed run appends to: the run carries its history, so
-    /// nothing is loaded, but the messages it adds are appended once, at its
-    /// end, to the conversation the runner names.
-    pub(crate) fn resumed_memory(&self) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
-        match (self.config.memory_handle(), &self.config.conversation_id) {
-            (Some(memory), Some(id)) => {
-                let memory = memory.map_err(|report| {
-                    rig_core::memory::MemoryError::Internal(report.to_string())
-                })?;
-                Ok((None, Some((memory, id.clone()))))
-            }
-            _ => Ok((None, None)),
-        }
-    }
-
-    pub(crate) async fn resolve_history_and_memory(
-        &self,
-        hook_ctx: &HookContext,
-    ) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
-        match &self.chat_history {
-            Some(_) => Ok((None, None)),
-            None => match (self.config.memory_handle(), &self.config.conversation_id) {
-                (Some(memory), Some(id)) => {
-                    let memory = memory.map_err(|report| {
-                        rig_core::memory::MemoryError::Internal(report.to_string())
-                    })?;
-                    // The load is a `Memory` dispatch at the boundary:
-                    // observe-only for hooks unless one opts in.
-                    let loaded = crate::agent::engine::dispatch_effect(
-                        self,
-                        hook_ctx,
-                        memory.key(),
-                        rig_core::effect::EffectKind::Memory {
-                            op: rig_core::effect::MemoryOp::Load {
-                                conversation: id.clone(),
-                            },
-                        },
-                    )
-                    .await
-                    .and_then(|outcome| match outcome {
-                        rig_core::effect::Outcome::Memory(
-                            rig_core::effect::MemoryOutcome::Loaded { messages },
-                        ) => Ok(messages),
-                        other => Err(crate::agent::engine::wrong_outcome("loaded memory", &other)),
-                    })
-                    .map_err(memory_error_from_report)?;
-                    Ok((Some(loaded), Some((memory, id.clone()))))
-                }
-                _ => Ok((None, None)),
-            },
-        }
-    }
-
-    /// The run-scoped hook context: minted once per run, before the memory
-    /// load (a dispatch too), shared by every hook event.
+    /// The run-scoped hook context: minted once per run, shared by every
+    /// hook event.
     pub(crate) fn hook_context(&self, is_streaming: bool) -> HookContext {
         HookContext::new(
             is_streaming,
@@ -716,43 +620,8 @@ impl AgentRunner {
         let (agent_span, created_agent_span) = self.open_agent_span(ambient);
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
-        // Resumed history is authoritative and loads nothing; the messages
-        // the run adds are appended at its end, once.
-        let (history_override, memory_handle) = match &self.origin {
-            RunOrigin::Resume(_) => match self.resumed_memory() {
-                Ok(resolved) => resolved,
-                Err(err) => return Err(err.into()),
-            },
-            RunOrigin::Prompt(_) => {
-                // A memory load is a dispatch too: drive the bus while resolving.
-                let resolve = self.resolve_history_and_memory(&hook_ctx);
-                futures::pin_mut!(resolve);
-                let mut driven = bus.drive(futures::stream::once(resolve));
-                match driven.next().await {
-                    Some(Ok(resolved)) => resolved,
-                    // A run that never reached the engine still settles:
-                    // the load failure is its ending.
-                    Some(Err(err)) => {
-                        if self.config.hooks.observes(StepEventKind::RunSettled) {
-                            let reason = err.to_string();
-                            self.config
-                                .hooks
-                                .on_run_settled(
-                                    &hook_ctx,
-                                    RunSettled {
-                                        outcome: SettledOutcome::Error(&reason),
-                                        messages: None,
-                                    },
-                                )
-                                .await;
-                        }
-                        return Err(err.into());
-                    }
-                    None => (None, None),
-                }
-            }
-        };
-        let run = self.build_run(history_override);
+        bus.settle();
+        let run = self.build_run();
 
         // Instrument the fold under the captured agent span, not the poller's span.
         let record_telemetry_content = self.config.record_telemetry_content;
@@ -762,7 +631,6 @@ impl AgentRunner {
             run,
             agent_span.clone(),
             created_agent_span,
-            memory_handle,
             hook_ctx,
         );
         let driver = bus.drive(Box::pin(driver));
@@ -814,36 +682,3 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) mod prompt_tests;
-
-/// A memory report back into the memory error the run surface names.
-pub(crate) fn memory_error_from_report(
-    report: rig_core::error::ErrorReport,
-) -> rig_core::memory::MemoryError {
-    match report.kind {
-        rig_core::error::ErrorKind::MemoryPolicy => {
-            rig_core::memory::MemoryError::Policy(report.message)
-        }
-        rig_core::error::ErrorKind::MemoryBackend => {
-            rig_core::memory::MemoryError::Backend(Box::new(report))
-        }
-        // Layer denials are memory-policy failures, not backend faults.
-        rig_core::error::ErrorKind::Denied => rig_core::memory::MemoryError::Policy(report.message),
-        rig_core::error::ErrorKind::Http
-        | rig_core::error::ErrorKind::Json
-        | rig_core::error::ErrorKind::Url
-        | rig_core::error::ErrorKind::Request
-        | rig_core::error::ErrorKind::Response
-        | rig_core::error::ErrorKind::Provider
-        | rig_core::error::ErrorKind::ProviderResponse
-        | rig_core::error::ErrorKind::Tool(_)
-        | rig_core::error::ErrorKind::Internal
-        | rig_core::error::ErrorKind::Cancelled
-        | rig_core::error::ErrorKind::Timeout
-        | rig_core::error::ErrorKind::BusClosed
-        | rig_core::error::ErrorKind::HandlerUnavailable
-        | rig_core::error::ErrorKind::Divergence
-        | rig_core::error::ErrorKind::Other => {
-            rig_core::memory::MemoryError::Internal(report.to_string())
-        }
-    }
-}

@@ -8,14 +8,17 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::time::SystemTime;
 
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use rig_core::tool::ToolExecutionError;
 
 use crate::MAX_FILE_BYTES;
-use crate::fs::{io_error, write_atomic};
+use crate::fs::{Previous, io_error, write_atomic};
 use crate::process::{Launcher, Process, Spawn};
+pub use crate::watch::Watch;
 
 /// The disk and the commands the tools act on: this machine's ([`Local`]),
 /// or another, such as one reached over SSH. Paths are the workspace's own:
@@ -38,7 +41,8 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     }
 
     /// What `path` is, its links followed: a file (its size, whether it is
-    /// read-only), a directory, something else, or nothing.
+    /// read-only, when it was last changed), a directory, something else, or
+    /// nothing.
     fn stat(&self, path: &Path) -> io::Result<Stat>;
 
     /// Up to `limit` bytes of the regular file `path`, and its whole size.
@@ -68,10 +72,11 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// The regular files under `root` (or `root` itself when it is a file),
     /// in walk order, as `root` joined with their path below it: without the
     /// files `.gitignore` leaves out, hidden ones (named with a leading `.`)
-    /// and `target` directories, and only those matching `glob`, such as
-    /// `*.rs`, when it is given. A malformed glob is an
+    /// and `target` directories (with `all`, every regular file, none of
+    /// those left out), and only those matching `glob`, such as `*.rs`,
+    /// when it is given. A malformed glob is an
     /// [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
-    fn files(&self, root: &Path, glob: Option<&str>) -> io::Result<Vec<PathBuf>>;
+    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>>;
 
     /// Starts `program` with `args` in `dir` (`None`: the launcher's own
     /// directory) under `launcher`'s policy: its wrapper and variables.
@@ -83,6 +88,21 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
         args: &[OsString],
         how: Spawn,
     ) -> io::Result<Process>;
+
+    /// Watches `root`, a file or a directory (with `recursive`, every
+    /// directory under it too), from now on: a batch of the paths created,
+    /// changed or removed each time something changed, the files
+    /// [`files`](Self::files) would list, or every file with `all`.
+    /// Dropping the [`Watch`] stops it. To miss nothing, list the files
+    /// once after the watch has started.
+    ///
+    /// By default it looks at what [`files`](Self::files) lists (with
+    /// `all`) every second, on a thread of its own, comparing each file's
+    /// size and change time (its hash when [`stat`](Self::stat) cannot tell
+    /// the time). [`Local`] hears of changes from the system instead.
+    fn watch(self: Arc<Self>, root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
+        crate::watch::poll(self, root, recursive, all)
+    }
 }
 
 /// What [`Workspace::read`] read.
@@ -103,6 +123,9 @@ pub enum Stat {
         size: u64,
         /// Whether it may not be written.
         read_only: bool,
+        /// When its content last changed, when the workspace can tell:
+        /// how a scan or a polling watch sees an edit that kept the size.
+        modified: Option<SystemTime>,
     },
     /// A directory.
     Dir,
@@ -185,20 +208,19 @@ impl dyn Workspace {
         })
     }
 
-    /// The text of the file `path` before a tool changes it: `None` when
-    /// there is none; empty when it is too large, or no regular file, to
-    /// diff. Bytes that are not UTF-8 are replaced.
-    pub(crate) fn previous(&self, path: &Path) -> Option<String> {
+    /// What the file `path` holds before a tool changes it: `None` when
+    /// there is none; empty, with only its size, when it is too large to
+    /// read; empty, with no state, when it is no regular file.
+    pub(crate) fn previous(&self, path: &Path) -> Option<Previous> {
         match self.stat(path) {
             Ok(Stat::Missing) => None,
-            Ok(Stat::File { size, .. }) if size <= MAX_FILE_BYTES => {
-                let bytes = self
-                    .read(path, MAX_FILE_BYTES)
-                    .map(|contents| contents.bytes)
-                    .unwrap_or_default();
-                Some(String::from_utf8_lossy(&bytes).into_owned())
-            }
-            _ => Some(String::new()),
+            Ok(Stat::File { size, .. }) => Some(
+                (size <= MAX_FILE_BYTES)
+                    .then(|| self.read(path, MAX_FILE_BYTES).ok())
+                    .flatten()
+                    .map_or_else(|| Previous::unread(size), |it| Previous::of(&it.bytes)),
+            ),
+            _ => Some(Previous::default()),
         }
     }
 }
@@ -213,6 +235,7 @@ impl Workspace for Local {
             Ok(meta) if meta.is_file() => Ok(Stat::File {
                 size: meta.len(),
                 read_only: meta.permissions().readonly(),
+                modified: meta.modified().ok(),
             }),
             Ok(meta) if meta.is_dir() => Ok(Stat::Dir),
             Ok(_) => Ok(Stat::Other),
@@ -275,11 +298,14 @@ impl Workspace for Local {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>> {
         let mut walk = WalkBuilder::new(root);
-        walk.hidden(false).filter_entry(|entry| {
-            entry.depth() == 0 || (entry.file_name() != "target" && !is_hidden(entry.path()))
-        });
+        match all {
+            true => walk.standard_filters(false),
+            false => walk.hidden(false).filter_entry(|entry| {
+                entry.depth() == 0 || (entry.file_name() != "target" && !is_hidden(entry.path()))
+            }),
+        };
         if let Some(glob) = glob {
             let overrides = OverrideBuilder::new(root)
                 .add(glob)
@@ -311,14 +337,22 @@ impl Workspace for Local {
             None => launcher.spawn(program, args, how),
         }
     }
+
+    /// The system's file events under `root`, filtered as
+    /// [`files`](Workspace::files) lists unless `all`, gathered into a
+    /// batch until no event came for 50 ms. A `root` that does not exist
+    /// yet is looked at every second, as the default does.
+    fn watch(self: Arc<Self>, root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
+        crate::watch::notified(root, recursive, all)
+    }
 }
 
 /// Whether `path` is hidden: its name starts with a `.`, such as `.env` or
 /// `.github/`.
-fn is_hidden(path: &Path) -> bool {
+pub(crate) fn is_hidden(path: &Path) -> bool {
     path.file_name()
         .is_some_and(|name| name.as_encoded_bytes().starts_with(b"."))
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

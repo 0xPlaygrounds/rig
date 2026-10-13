@@ -300,13 +300,16 @@ fn redact_messages(
         if message.command().is_some() {
             continue;
         }
-        let mut text = message.text.clone();
-        if secrets.vault().redact(&mut text, "a message") {
-            message.text = text;
-        }
-        for attachment in &mut message.attachments {
-            let source = format!("the attachment {}", attachment.label);
-            secrets.redact_data(&mut attachment.content, &source);
+        for part in &mut message.parts {
+            match part {
+                MessagePart::Text(text) => {
+                    secrets.vault().redact(text, "a message");
+                }
+                MessagePart::Attachment(attachment) => {
+                    let source = format!("the attachment {}", attachment.label);
+                    secrets.redact_data(&mut attachment.content, &source);
+                }
+            }
         }
     }
 }
@@ -395,8 +398,8 @@ fn redact_results(
 
 /// Every record reaches the effect log with placeholders: the revealed
 /// arguments of a tool call, its raw result, the request as built.
-fn redact_records(mut records: MessageMutator<Recorded>, secrets: Res<Secrets>) {
-    for Recorded(record) in records.read() {
+fn redact_records(mut records: MessageMutator<EffectRecorded>, secrets: Res<Secrets>) {
+    for EffectRecorded(record) in records.read() {
         secrets.redact_data(record, "the effect log");
     }
 }

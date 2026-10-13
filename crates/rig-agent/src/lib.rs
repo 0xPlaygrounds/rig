@@ -11,7 +11,7 @@
     )
 )]
 //! Rig's classic agent runtime: builders, serializable run state, hooks, tools,
-//! memory orchestration, and typed extraction.
+//! and typed extraction.
 //!
 //! Portable contracts are available through [`core`]; recording accepts
 //! [`rig_core::serve::Recorder`], with concrete replay adapters in `rig-cassette`.
@@ -28,7 +28,7 @@
 
 extern crate self as rig;
 
-/// Portable provider, data, memory, and tool contracts, also used as the expansion
+/// Portable provider, data, conversation, and tool contracts, also used as the expansion
 /// root for portable `#[rig_tool]` functions. These exports are not forwarded to
 /// the `rig_agent` crate root.
 ///

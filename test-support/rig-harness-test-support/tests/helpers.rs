@@ -32,7 +32,7 @@ fn a_scripted_catalog_model_answers_in_a_session_directory_and_its_work_is_colle
         .add_observer(log_tool_outputs)
         .init_resource::<Ended>()
         .add_observer(log_ended);
-    collect::<Recorded>(&mut app);
+    collect::<EffectRecorded>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -53,10 +53,10 @@ fn a_scripted_catalog_model_answers_in_a_session_directory_and_its_work_is_colle
     assert_eq!(model.request_count(), 2);
     let kinds: Vec<String> = app
         .world()
-        .resource::<Collected<Recorded>>()
+        .resource::<Collected<EffectRecorded>>()
         .0
         .iter()
-        .map(|Recorded(record)| record.kind.name().to_owned())
+        .map(|EffectRecorded(record)| record.kind.name().to_owned())
         .collect();
     assert!(kinds.iter().any(|kind| kind == "tool_call"), "{kinds:?}");
     assert!(home.session(&id).path().is_dir());

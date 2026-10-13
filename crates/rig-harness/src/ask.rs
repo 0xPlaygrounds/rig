@@ -17,7 +17,8 @@
 //! line the user sends the agent is its answer, not a message to the
 //! model, unless the question is [`inline`](Ask::inline).
 //!
-//! A question may propose an answer for the user to edit
+//! A question may take several of its choices ([`Ask::multiple`]),
+//! answered with [`Answer::Choices`], propose an answer for the user to edit
 //! ([`Ask::initial`]), take an answer of several lines
 //! ([`Ask::multiline`]), and be shown beside the work rather than in front
 //! of it ([`Ask::inline`]): the user keeps typing to the agent and answers
@@ -49,7 +50,7 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
-use rig_cassette::journal::OriginKind;
+use rig_core::conversation::AuthorKind;
 use rig_core::effect::{Decider, EffectKind, Outcome as EffectOutcome};
 use rig_ecs::inbox::Incoming;
 use rig_ecs::stage::{
@@ -85,6 +86,10 @@ pub struct Ask {
     /// agent is then a message, not its answer.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub inline: bool,
+    /// Whether the user may take several of its choices
+    /// ([`Answer::Choices`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub multiple: bool,
 }
 
 /// One answer an [`Ask`] offers.
@@ -107,6 +112,7 @@ impl Ask {
             initial: None,
             multiline: false,
             inline: false,
+            multiple: false,
         }
     }
 
@@ -157,6 +163,13 @@ impl Ask {
         self.inline = true;
         self
     }
+
+    /// The same question, answered by any number of its choices, none
+    /// included.
+    pub fn multiple(mut self) -> Self {
+        self.multiple = true;
+        self
+    }
 }
 
 /// How an [`Ask`] was answered.
@@ -165,6 +178,9 @@ impl Ask {
 pub enum Answer {
     /// One of its choices, by id.
     Choice(String),
+    /// The choices taken, by id in the question's order, of a question that
+    /// takes several ([`Ask::multiple`]).
+    Choices(Vec<String>),
     /// The text the user gave.
     Text(String),
 }
@@ -262,7 +278,7 @@ fn answer_with_text(
     >,
 ) {
     for (incoming, &ForAgent(agent), mut taken) in &mut typed {
-        let typed_by_user = incoming.origin.kind == OriginKind::User;
+        let typed_by_user = incoming.author.kind == AuthorKind::User;
         if !typed_by_user || incoming.command().is_some() || taken.is_decided() {
             continue;
         }
@@ -276,7 +292,7 @@ fn answer_with_text(
         let Some(Ok((.., mut decision))) = open.map(|ask| asks.get_mut(ask)) else {
             continue;
         };
-        let answer = Answer::Text(incoming.text.clone()).outcome();
+        let answer = Answer::Text(incoming.text().to_owned()).outcome();
         decision.decide(Decider::Person, answer);
         taken.decide(Decider::plugin("rig-harness"), Outcome::custom("answer"));
     }

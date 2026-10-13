@@ -21,8 +21,8 @@ pub use driver::BusDriver;
 pub(crate) use driver::Recording;
 pub(crate) use handle::wrap_stream;
 pub use handle::{
-    Completion, DispatchScope, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle,
-    RerankHandle, Retrieval, ToolAnswer, ToolCall, ToolHandle, Typed,
+    Completion, DispatchScope, EmbedHandle, Handle, IndexHandle, ModelHandle, RerankHandle,
+    Retrieval, ToolAnswer, ToolCall, ToolHandle, Typed,
 };
 pub use registrar::Registrar;
 use rig_core::serve::ServingPolicy;

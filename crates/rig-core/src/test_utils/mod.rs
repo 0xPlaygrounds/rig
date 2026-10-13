@@ -4,7 +4,6 @@ mod completion;
 mod embeddings;
 pub mod history;
 pub mod history_conformance;
-mod memory;
 pub mod observations;
 #[cfg(test)]
 pub(crate) mod provider_extensions;
@@ -24,7 +23,6 @@ pub use completion::{
     refuse_options,
 };
 pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
-pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use relay::MockRelay;
 pub use rig_http::test_utils::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,

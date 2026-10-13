@@ -1,5 +1,4 @@
 use bevy_ecs::prelude::*;
-use rig_cassette::journal::MemoryStore;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::test_utils::MockCompletionModel;
@@ -9,6 +8,7 @@ use rig_ecs::prelude::*;
 use rig_harness_test_support::{
     ToolOutputs, app_on, calls, connect, log_tool_outputs, reply, run_until,
 };
+use rig_memory::MemoryStore;
 use rig_tools::Live;
 
 use super::{CallOutput, ProgressPlugin, ToolProgress};

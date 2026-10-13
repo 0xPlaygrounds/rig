@@ -2,7 +2,8 @@
 
 What the agent records about itself: what model calls cost, per agent, turn
 and session and split per model and purpose (`Spending`, `SessionSpending`),
-in `/usage`, which other plugins add `UsageRow`s to, and the terminal view's
+in `/usage`, which other plugins add `UsageRow`s to, in each session's line in
+`/resume` (a rig-sessions `ResumeLabel`), and the terminal view's
 status line with the default `tui` feature (`UsagePlugin`), every model and tool call in the session's `effects.jsonl`
 (`EffectLogPlugin`), and the process's warnings and errors, Bevy's included,
 as the `Diagnostics` resource (`DiagnosticsPlugin`).

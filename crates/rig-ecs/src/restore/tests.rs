@@ -6,28 +6,32 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
-use rig_cassette::journal::{Entry, Halt, JournalStore, MemoryStore, Origin, STOPPED};
 use rig_core::completion::{Message, Reasoning, Usage};
-use rig_core::message::UserContent;
+use rig_core::conversation::{Author, Change, Entry, Halt, MessageId, STOPPED};
+use rig_memory::{Files, MemoryStore, Store};
 use serde_json::Value;
 
 use crate::AgentPlugin;
 use crate::agent::{
-    Agent, AgentId, Conversation, Interrupt, LastUsage, Notice, SystemPrompt, ToolAccess, TurnOf,
-    TurnOutcome,
+    Agent, AgentId, Conversation, Interrupt, LastUsage, Notice, SystemPrompt, ToolAccess, Turn,
+    TurnOf, TurnOutcome,
 };
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode};
-use crate::journal::tests::commit_message;
+use crate::journal::tests::{edit, push_message};
 use crate::journal::{
-    Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
+    Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
 };
 use crate::model::{Connection, Effort, ModelChoice};
-use crate::restore::{INTERRUPTED, Restored};
-use crate::stage::{AgentPass, HoldOf, Settled, Stage, Undecided, Unreviewed};
+use crate::restore::{INTERRUPTED, Interrupted, Restored};
+use crate::stage::{
+    AgentPass, Decision, HoldOf, Outcome, PrepareSystems, Settled, Stage, Started, Undecided,
+    Unreviewed,
+};
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
 use rig_core::catalog::Catalog;
+use rig_core::effect::Decider;
 use rig_core::error::retry::Verdict;
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
@@ -54,7 +58,7 @@ fn first_agent(app: &mut App) -> Option<Entity> {
 }
 
 fn say(app: &mut App, agent: Entity, message: Message) {
-    commit_message(app.world_mut(), agent, message);
+    push_message(app.world_mut(), agent, message);
 }
 
 /// A plugin's per-agent counter, as the plugin guide's example keeps one.
@@ -96,7 +100,7 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     first.world_mut().insert_resource(Compactions(1));
     first.update();
     assert_eq!(
-        store.agents().ok(),
+        store.logs().ok(),
         Some(Vec::new()),
         "nothing said, nothing kept"
     );
@@ -121,20 +125,12 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
         first.world_mut().insert_resource(Compactions(n + 2));
         first.update();
     }
-    let summarize =
-        |In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
-            if let Ok(mut conversation) = agents.get_mut(agent) {
-                let summary = Message::user("The user asked three questions.");
-                let summary = Entry::from(summary, Origin::plugin("compaction"));
-                commit.splice(agent, &mut conversation, ..6, [summary]);
-            }
-        };
-    assert!(
-        first
-            .world_mut()
-            .run_system_cached_with(summarize, agent)
-            .is_ok()
-    );
+    edit(first.world_mut(), agent, |conversation| {
+        let summary = Message::user("The user asked three questions.");
+        let compaction = Author::plugin("compaction");
+        let summary = Entry::new(summary).by(compaction.clone());
+        conversation.splice(..6, [summary], compaction);
+    });
     first.update();
     let live = first.world().get::<Conversation>(agent);
     let live = live.map(|conversation| conversation.messages().to_vec());
@@ -144,10 +140,13 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     assert_eq!(before.get(ToolCounts::type_path()), Some(&newest));
     let id = first.world().get::<AgentId>(agent).cloned();
     drop(first);
-    let gone =
-        r#"{"seq":99,"n":99,"t":0,"type":"component","component":"a_plugin::Gone","value":1}"#;
+    let gone = r#"{"seq":99,"n":99,"t":0,"type":"state","key":"a_plugin::Gone","value":1}"#;
     let id = id.unwrap_or_default().0;
-    assert!(store.append(&id, format!("{gone}\n").as_bytes()).is_ok());
+    assert!(
+        store
+            .append_log(&id, format!("{gone}\n").as_bytes())
+            .is_ok()
+    );
 
     let mut second = app(&store);
     // What was saved before the summary still comes back; the resource,
@@ -164,15 +163,15 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     let kept = agent.and_then(|agent| world.get::<Conversation>(agent));
     let kept = kept.map(|conversation| conversation.messages().to_vec());
     assert_eq!(kept, live);
-    // The summary went into the first kept question, so user and model
-    // still take turns.
-    let summary = ["The user asked three questions.", "question 3"].map(UserContent::text);
-    let summary = Message::User {
-        content: summary.into(),
-    };
+    // The summary is its own entry, before the question it kept.
+    let summary = Message::user("The user asked three questions.");
     assert_eq!(
         kept.unwrap_or_default(),
-        [summary, Message::assistant("answer 3")]
+        [
+            summary,
+            Message::user("question 3"),
+            Message::assistant("answer 3")
+        ]
     );
 }
 
@@ -226,15 +225,18 @@ fn every_change_the_log_records_is_committed() {
     app.update();
     let committed = app.world().resource::<Messages<Committed>>();
     let mut cursor = committed.get_cursor();
-    let changes = cursor.read(committed).map(|change| match change {
-        Committed::Message { .. } => "message",
-        Committed::Splice { .. } => "splice",
-        Committed::Halt { .. } => "halt",
-        Committed::Retired { .. } => "retired",
-    });
+    let changes = cursor
+        .read(committed)
+        .map(|change| match change.change.change {
+            Change::Push { .. } => "push",
+            Change::Splice { .. } => "splice",
+            Change::Halt { .. } => "halt",
+            Change::Aside { .. } => "aside",
+            Change::Reset { .. } => "reset",
+        });
     assert_eq!(
         changes.collect::<Vec<_>>(),
-        ["message", "splice", "message", "halt"]
+        ["push", "splice", "push", "halt"]
     );
 }
 
@@ -275,11 +277,9 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
         "and 3 + 3?",
     ];
     // The second is asked for again, and that turn fails and keeps it.
-    let keep = |In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
-        if let Ok(mut conversation) = agents.get_mut(agent) {
-            assert!(commit.resume(agent, &mut conversation));
-            commit.halt(agent, &mut conversation, Halt::Kept);
-        }
+    let keep = |conversation: &mut Conversation| {
+        assert!(conversation.resume());
+        conversation.halt(Halt::Kept);
     };
     let live = session(&store, |world, agent| {
         for (at, text) in texts.into_iter().enumerate() {
@@ -289,43 +289,20 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
             world.trigger(Interrupt::new(agent));
             world.flush();
             if at == 1 {
-                assert!(world.run_system_cached_with(keep, agent).is_ok());
+                edit(world, agent, keep);
             }
         }
     });
     let [first, second, third] = texts;
-    let content = [first, STOPPED, second, third].map(UserContent::text);
-    assert_eq!(
-        live,
-        [Message::User {
-            content: content.into()
-        }]
-    );
+    let said = [first, STOPPED, second, third].map(Message::user);
+    assert_eq!(live, said);
     assert_eq!(session(&store, |_, _| {}), live);
 }
 
 /// A store on a full disk: it reads, but every log write fails.
 struct Full;
 
-impl JournalStore for Full {
-    fn agents(&self) -> io::Result<Vec<String>> {
-        Ok(Vec::new())
-    }
-    fn read(&self, _: &str) -> io::Result<Vec<u8>> {
-        Ok(Vec::new())
-    }
-    fn truncate(&self, _: &str, _: u64) -> io::Result<()> {
-        Ok(())
-    }
-    fn append(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Err(io::Error::other("disk full"))
-    }
-    fn put_blob(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Ok(())
-    }
-    fn blob(&self, _: &str) -> io::Result<Vec<u8>> {
-        Ok(Vec::new())
-    }
+impl Files for Full {
     fn write_file(&self, _: &str, _: &[u8]) -> io::Result<()> {
         Err(io::Error::other("disk full"))
     }
@@ -336,6 +313,39 @@ impl JournalStore for Full {
         Err(io::ErrorKind::NotFound.into())
     }
     fn remove_file(&self, _: &str) -> io::Result<()> {
+        Ok(())
+    }
+    fn files(&self) -> io::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+}
+
+impl Store for Full {
+    fn logs(&self) -> io::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+    fn read_log(&self, _: &str) -> io::Result<Vec<u8>> {
+        Err(io::ErrorKind::NotFound.into())
+    }
+    fn append_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Err(io::Error::other("disk full"))
+    }
+    fn truncate_log(&self, _: &str, _: u64) -> io::Result<()> {
+        Ok(())
+    }
+    fn remove_log(&self, _: &str) -> io::Result<()> {
+        Ok(())
+    }
+    fn put_blob(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Ok(())
+    }
+    fn blob(&self, _: &str) -> io::Result<Vec<u8>> {
+        Err(io::ErrorKind::NotFound.into())
+    }
+    fn blobs(&self) -> io::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+    fn destroy(&self) -> io::Result<()> {
         Ok(())
     }
 }
@@ -528,7 +538,7 @@ fn said(app: &mut App) -> String {
 }
 
 #[test]
-fn a_restart_gates_its_reruns_again_and_answers_a_held_change_as_interrupted() {
+fn a_restart_gates_every_call_again_and_asks_about_a_held_change_again() {
     let store = held_at_exit();
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("done"),
@@ -537,13 +547,16 @@ fn a_restart_gates_its_reruns_again_and_answers_a_held_change_as_interrupted() {
     let mut app = tools_app(&store, &model, |_| {});
     let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended));
-    // The held change was never gated again: it was answered as
-    // interrupted. The read-only call was gated again, as restored work.
+    // The held change never started, so it is restored work every gate
+    // sees again, as is the read-only call.
     let gated = app.world().resource::<Gated>().0.clone();
-    assert_eq!(gated, [("look".to_owned(), true)]);
+    assert_eq!(
+        gated,
+        [("touch".to_owned(), true), ("look".to_owned(), true)]
+    );
     let said = said(&mut app);
     assert!(
-        said.contains(INTERRUPTED) && said.contains("seen"),
+        !said.contains(INTERRUPTED) && said.contains("touched") && said.contains("seen"),
         "{said}"
     );
     assert_eq!(model.request_count(), 1);
@@ -552,6 +565,186 @@ fn a_restart_gates_its_reruns_again_and_answers_a_held_change_as_interrupted() {
         [TurnOutcome::Answered(_)]
     );
     assert!(answered, "{:?}", app.world().resource::<Ended>().0);
+}
+
+/// May change anything, and never answers.
+struct Wait;
+
+impl PortableTool for Wait {
+    const NAME: &'static str = "wait";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Waits.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+        std::future::pending::<()>().await;
+        Ok(String::new())
+    }
+}
+
+/// A session whose agent's model asked to `first` (`touch` or `look`),
+/// then `wait`, that crashed while `wait` ran, `first` settled.
+fn crashed_mid_reply(first: &str) -> MemoryStore {
+    let store = MemoryStore::default();
+    let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([vec![
+        call("t1", first),
+        call("w1", "wait"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Wait);
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    let waiting = |world: &World| {
+        let started = world
+            .iter_entities()
+            .filter(|entity| entity.contains::<Started>());
+        started
+            .filter_map(|entity| entity.get::<ToolRequest>())
+            .any(|request| request.call.function.name.as_str() == "wait")
+    };
+    assert!(run_until(&mut app, waiting));
+    // A crash: nothing more is written.
+    drop(app);
+    store
+}
+
+/// Who decided each tool call that settled, by tool.
+#[derive(Resource, Default)]
+struct Decided(Vec<(String, Option<Decider>)>);
+
+/// [`tools_app`] after a crash mid-reply, with `Wait`, noting who decided
+/// each call, with what `configure` adds, run until its turn ended; the
+/// conversation as JSON.
+fn restart_after_crash(configure: impl FnOnce(&mut App)) -> (App, String, MemoryStore) {
+    restart_after(crashed_mid_reply("touch"), configure)
+}
+
+/// As [`restart_after_crash`], from `store`.
+fn restart_after(
+    store: MemoryStore,
+    configure: impl FnOnce(&mut App),
+) -> (App, String, MemoryStore) {
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Wait).init_resource::<Decided>().add_observer(
+            |settled: On<Add<Settled>>,
+             calls: Query<(&ToolRequest, &Decision)>,
+             mut decided: ResMut<Decided>| {
+                if let Ok((request, decision)) = calls.get(settled.entity) {
+                    let name = request.call.function.name.as_str().to_owned();
+                    decided.0.push((name, decision.by().cloned()));
+                }
+            },
+        );
+        configure(app);
+    });
+    let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended));
+    let said = said(&mut app);
+    // Every mark goes with the results.
+    let agent = first_agent(&mut app);
+    let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
+    let marks = conversation.map(|conversation| conversation.asides().count());
+    assert_eq!(marks, Some(0), "{said}");
+    (app, said, store)
+}
+
+#[test]
+fn a_restart_answers_what_a_crash_interrupted_after_every_gate() {
+    let (mut app, said, store) = restart_after_crash(|_| {});
+    // `touch` settled before the crash: its result stands, and it did not
+    // run again; `wait` was running: it is answered as interrupted. No gate
+    // saw either.
+    assert!(
+        said.contains("touched") && said.contains(INTERRUPTED),
+        "{said}"
+    );
+    assert!(app.world().resource::<Gated>().0.is_empty());
+    let rig = Some(Decider::plugin("rig-ecs"));
+    let decided = &app.world().resource::<Decided>().0;
+    assert_eq!(
+        decided,
+        &[("touch".to_owned(), rig.clone()), ("wait".to_owned(), rig)]
+    );
+    // The saved session has no mark left either.
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let saved = rig_memory::Session::read(&store).map(|session| session.agents);
+    let marks = saved.map(|agents| {
+        agents
+            .iter()
+            .map(|it| it.conversation.asides().count())
+            .sum()
+    });
+    assert_eq!(marks.ok(), Some(0usize));
+}
+
+/// Answers a restored `wait` that a crash interrupted.
+fn answer_waits(mut calls: Query<(&ToolRequest, &Interrupted, &mut Decision), Without<Outcome>>) {
+    for (request, interrupted, mut decision) in &mut calls {
+        if request.call.function.name.as_str() == "wait"
+            && matches!(interrupted, Interrupted::Started)
+        {
+            let answer = rig_core::tool::ToolResult::skipped("not waited for again");
+            decision.decide(Decider::plugin("crash-resume"), answer);
+        }
+    }
+}
+
+#[test]
+fn a_plugin_answers_a_call_a_crash_interrupted_first() {
+    let (_, said, _) = restart_after_crash(|app| {
+        app.add_systems(AgentPass, answer_waits.in_set(Stage::Gate));
+    });
+    assert!(
+        said.contains("not waited for again") && !said.contains(INTERRUPTED),
+        "{said}"
+    );
+}
+
+/// Lets a restored `touch` run again.
+fn rerun_touches(calls: Query<(Entity, &ToolRequest), With<Interrupted>>, mut commands: Commands) {
+    for (call, request) in &calls {
+        if request.call.function.name.as_str() == "touch" {
+            commands.entity(call).remove::<Interrupted>();
+        }
+    }
+}
+
+#[test]
+fn a_call_a_plugin_lets_run_again_is_gated_first() {
+    let (app, said, _) = restart_after_crash(|app| {
+        app.add_systems(AgentPass, rerun_touches.in_set(PrepareSystems::Edit));
+    });
+    let gated = &app.world().resource::<Gated>().0;
+    assert_eq!(gated, &[("touch".to_owned(), true)]);
+    let decided = &app.world().resource::<Decided>().0;
+    let touch = decided.iter().find(|(tool, _)| tool == "touch");
+    assert_eq!(
+        touch,
+        Some(&("touch".to_owned(), None)),
+        "it ran: {decided:?}"
+    );
+    assert!(
+        said.contains("touched") && said.contains(INTERRUPTED),
+        "{said}"
+    );
 }
 
 #[test]
@@ -573,4 +766,109 @@ fn a_restored_turn_a_gate_stops_starts_nothing() {
         "{said}"
     );
     assert_eq!(model.request_count(), 0);
+}
+
+/// Where each restored turn began and its index, as Gate saw it.
+#[derive(Resource, Default)]
+struct Began(Vec<(u64, MessageId)>);
+
+#[test]
+fn a_turn_a_crash_cut_short_carries_on_where_it_began() {
+    let (mut app, _, _) = restart_after_crash(|app| {
+        let note = |turns: Query<&Turn, (With<Restored>, With<TurnOf>)>,
+                    mut began: ResMut<Began>| {
+            began
+                .0
+                .extend(turns.iter().map(|turn| (turn.index, turn.first_message)));
+        };
+        app.init_resource::<Began>()
+            .add_systems(AgentPass, note.in_set(Stage::Gate));
+    });
+    let agent = first_agent(&mut app);
+    let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
+    let go = conversation.and_then(|conversation| {
+        let mut entries = conversation.entries();
+        entries
+            .find(|entry| entry.message == &Message::user("go"))
+            .map(|entry| entry.id)
+    });
+    assert!(go.is_some());
+    // The same, first turn, carried on from the message that started it.
+    let began = &app.world().resource::<Began>().0;
+    assert_eq!(began.first().copied(), go.map(|go| (0, go)), "{began:?}");
+}
+
+/// The holds a gate put on restored calls while it asked someone.
+#[derive(Resource, Default)]
+struct Asking(Vec<Entity>);
+
+/// On a call [`ask`] asked about.
+#[derive(Component)]
+struct Asked;
+
+/// Holds each restored call a crash interrupted while it asks, once.
+fn ask(
+    calls: Query<Entity, (With<Interrupted>, Without<Outcome>, Without<Asked>)>,
+    mut asking: ResMut<Asking>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        commands.entity(call).insert(Asked);
+        asking.0.push(commands.spawn(HoldOf(call)).id());
+    }
+}
+
+#[test]
+fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
+    let store = crashed_mid_reply("touch");
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Wait)
+            .init_resource::<Asking>()
+            .add_systems(AgentPass, ask.in_set(Stage::Gate));
+    });
+    for _ in 0..5 {
+        app.update();
+    }
+    let world = app.world_mut();
+    let mut answered = world.query_filtered::<(), (With<Interrupted>, With<Outcome>)>();
+    assert_eq!(
+        answered.iter(world).count(),
+        0,
+        "nothing is answered while held"
+    );
+    assert!(world.resource::<Ended>().0.is_empty());
+    let holds = std::mem::take(&mut world.resource_mut::<Asking>().0);
+    assert_eq!(holds.len(), 2);
+    for hold in holds {
+        world.despawn(hold);
+    }
+    let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended));
+    let said = said(&mut app);
+    assert!(
+        said.contains("touched") && said.contains(INTERRUPTED),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_read_that_finished_before_a_crash_keeps_its_result() {
+    let (app, said, _) = restart_after(crashed_mid_reply("look"), |_| {});
+    // `look` reads only, and settled while `wait` ran: answered with its
+    // result, so no gate saw it and it did not run again.
+    assert!(
+        said.contains("seen") && said.contains(INTERRUPTED),
+        "{said}"
+    );
+    assert!(app.world().resource::<Gated>().0.is_empty());
+    let rig = Some(Decider::plugin("rig-ecs"));
+    let decided = &app.world().resource::<Decided>().0;
+    assert_eq!(
+        decided,
+        &[("look".to_owned(), rig.clone()), ("wait".to_owned(), rig)]
+    );
 }

@@ -3,13 +3,15 @@
 //! from what the agent's state alone would have sent.
 //!
 //! A turn's model call is an effect entity whose [`ModelRequest`] the
-//! kernel builds in Admit, its system prompt in parts beside it; Prepare
-//! systems then edit it, and Start renders the prompt in front, fits the
-//! request to the model and sends it. The kernel's own request is kept as
-//! the call's [`Built`] when the `ModelRequest` is inserted, before any
-//! Prepare system ran. The prompt in parts as Start will send it, after
-//! Prepare, is kept as the call's [`Parts`] ([`ModelStarts::prompt`]).
-//! When the call is `Started`, the request as sent
+//! kernel builds in Admit, its system prompt in parts and its messages as
+//! a view of the agent's conversation beside it; Prepare systems then edit
+//! it, each message edit recorded with its author, and Start renders the
+//! prompt in front of the messages and sends it. The kernel's own prompt
+//! and tools are kept as the call's [`Built`] when the `ModelRequest` is
+//! inserted, before any Prepare system ran. After Prepare, the prompt in
+//! parts as Start will send it ([`ModelStarts::prompt`]), who wrote each
+//! message and the attributed edits of the messages are kept as the
+//! call's [`Prepared`]. When the call is `Started`, the request as sent
 //! goes to the agent's [`LastRequest`] with the model it went to after
 //! every adapter ([`SentTo`]) and, for each prompt section, the plugin that
 //! spawned it ([`ProvidedBy`]).
@@ -23,18 +25,21 @@
 
 use std::fmt::Write as _;
 
-use rig_compaction::summary_origin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{
     self, CompletionRequest, Section, ToolDefinition, tokens_label,
 };
 use rig_harness::rig_ecs::prompt::TOOL_RULES;
-use rig_memory::{HeuristicTokenCounter, TokenCounter};
+use rig_memory::{HeuristicTokenCounter, TokenCounter, summary_author};
 
 use message::Message;
 
 /// The width of the token bar, in characters.
 const BAR: u64 = 40;
+
+/// Said of a change to the prompt or tools: the kernel records no author
+/// for those.
+const UNNAMED: &str = ", by a Prepare system the kernel does not name";
 
 /// Adds `/why`, `/context --last`, and what they read.
 #[derive(Default)]
@@ -43,8 +48,9 @@ pub struct ContextInspectorPlugin;
 /// The plugin's stage systems.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContextInspectorSystems {
-    /// After Prepare: a turn's prompt in parts, as Start will send it.
-    Parts,
+    /// After Prepare: a turn's prompt in parts and messages, as Start will
+    /// send them, and who edited the messages.
+    Prepared,
     /// `/context --last` taken over as `/why`, before the harness runs the
     /// line as `/context`.
     Alias,
@@ -55,7 +61,7 @@ impl Plugin for ContextInspectorPlugin {
         app.configure_sets(
             AgentPass,
             (
-                ContextInspectorSystems::Parts
+                ContextInspectorSystems::Prepared
                     .in_set(Stage::Prepare)
                     .after(PrepareSystems::Fit),
                 ContextInspectorSystems::Alias
@@ -66,7 +72,7 @@ impl Plugin for ContextInspectorPlugin {
         .add_systems(
             AgentPass,
             (
-                keep_parts.in_set(ContextInspectorSystems::Parts),
+                keep_prepared.in_set(ContextInspectorSystems::Prepared),
                 alias.in_set(ContextInspectorSystems::Alias),
             ),
         )
@@ -80,15 +86,29 @@ impl Plugin for ContextInspectorPlugin {
     }
 }
 
-/// On a turn's model call: its request and prompt as the kernel built them
+/// On a turn's model call: its prompt and tools as the kernel built them
 /// from the agent, before Prepare systems changed them.
-#[derive(Component, Clone)]
-pub struct Built(pub ModelRequest);
-
-/// On a turn's model call, after Prepare: its system prompt in parts as
-/// Start sends it, its `tool_rules` filled for the tools carried.
 #[derive(Component, Clone, Debug)]
-pub struct Parts(pub completion::SystemPrompt);
+pub struct Built {
+    /// The system prompt in parts.
+    pub prompt: Option<completion::SystemPrompt>,
+    /// The tools offered.
+    pub tools: Vec<ToolDefinition>,
+}
+
+/// On a turn's model call, after Prepare: what Start sends, and who
+/// changed its messages.
+#[derive(Component, Clone, Debug)]
+pub struct Prepared {
+    /// The system prompt in parts as Start sends it, its `tool_rules`
+    /// filled for the tools carried.
+    pub prompt: completion::SystemPrompt,
+    /// Who wrote each message, in order.
+    pub authors: Vec<Option<Author>>,
+    /// The edits Prepare systems made to the messages, each with its
+    /// author.
+    pub edits: Vec<Recorded>,
+}
 
 /// An agent's last turn request, as it was sent.
 #[derive(Component, Clone)]
@@ -99,14 +119,12 @@ pub struct LastRequest {
     pub window: Option<u32>,
     /// The request as sent.
     pub sent: CompletionRequest,
-    /// The request as the kernel built it, if it built it.
+    /// The prompt and tools as the kernel built them, if it built it.
     pub built: Option<Built>,
-    /// Its system prompt in parts, if the kernel built it.
-    pub parts: Option<Parts>,
+    /// What Prepare left, if the kernel built it.
+    pub prepared: Option<Prepared>,
     /// Each part of the system prompt sent, in order.
     pub notes: Vec<SectionNote>,
-    /// The texts of the summaries that replaced older messages.
-    pub summaries: Vec<String>,
 }
 
 /// A part of a system prompt as sent, and where it came from.
@@ -132,29 +150,45 @@ fn tagged(tag: &str, text: &str) -> String {
     prompt.text()
 }
 
-/// Keeps the request of each turn's call as it is first put on the call.
+/// Keeps the prompt and tools of each turn's call as they are first put
+/// on the call.
 fn keep_built(
     inserted: On<Insert<ModelRequest>>,
     calls: Query<&ModelRequest, (With<TurnCall>, Without<Built>)>,
     mut commands: Commands,
 ) {
     if let Ok(call) = calls.get(inserted.entity) {
-        let built = Built(call.clone());
+        let built = Built {
+            prompt: call.prompt.clone(),
+            tools: call.request.tools.clone(),
+        };
         commands.entity(inserted.entity).try_insert_if_new(built);
     }
 }
 
-/// After Prepare, keeps each admitted turn call's prompt in parts as Start
-/// will send it.
-fn keep_parts(
+/// After Prepare, keeps what each admitted turn call will send and who
+/// edited its messages, before Start takes its prompt and history.
+fn keep_prepared(
     calls: Query<(Entity, &ModelRequest, &Adapters, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
     starts: ModelStarts,
     mut commands: Commands,
 ) {
     for (call, model, adapters, &ForAgent(agent)) in &calls {
-        if let Some(prompt) = starts.prompt(model, Some(adapters), Some(agent)) {
-            commands.entity(call).try_insert(Parts(prompt));
-        }
+        let (Some(prompt), Some(history)) = (
+            starts.prompt(model, Some(adapters), Some(agent)),
+            &model.history,
+        ) else {
+            continue;
+        };
+        let prepared = Prepared {
+            prompt,
+            authors: history
+                .entries()
+                .map(|entry| entry.author.cloned())
+                .collect(),
+            edits: history.unsaved().to_vec(),
+        };
+        commands.entity(call).try_insert(prepared);
     }
 }
 
@@ -166,12 +200,11 @@ fn keep_sent(
             &ModelRequest,
             &SentTo,
             Option<&Built>,
-            Option<&Parts>,
+            Option<&Prepared>,
             &ForAgent,
         ),
         With<TurnCall>,
     >,
-    conversations: Query<&Conversation>,
     sections: Query<(
         &PromptSection,
         Option<&SectionOf>,
@@ -181,7 +214,7 @@ fn keep_sent(
     names: Query<&Name>,
     mut commands: Commands,
 ) {
-    let Ok((call, SentTo(sent_to), built, parts, &ForAgent(agent))) = calls.get(started.entity)
+    let Ok((call, SentTo(sent_to), built, prepared, &ForAgent(agent))) = calls.get(started.entity)
     else {
         return;
     };
@@ -213,44 +246,18 @@ fn keep_sent(
             from,
         })
     };
-    let notes = parts.map_or_else(Vec::new, |Parts(prompt)| {
-        prompt.sections.iter().filter_map(note).collect()
+    let notes = prepared.map_or_else(Vec::new, |prepared| {
+        prepared.prompt.sections.iter().filter_map(note).collect()
     });
     let last = LastRequest {
         model: sent_to.spec.reference(),
         window: sent_to.spec.context_window,
         sent: call.request.clone(),
         built: built.cloned(),
-        parts: parts.cloned(),
+        prepared: prepared.cloned(),
         notes,
-        summaries: conversations.get(agent).map(summaries).unwrap_or_default(),
     };
     commands.entity(agent).try_insert(last);
-}
-
-/// The texts of the compaction summaries in `conversation`, each
-/// spliced in place of the messages it replaced.
-fn summaries(conversation: &Conversation) -> Vec<String> {
-    let summary = summary_origin();
-    let messages = conversation.messages().iter().enumerate();
-    let items = messages.filter_map(|(at, message)| match message {
-        Message::User { content } => Some(
-            content
-                .iter()
-                .enumerate()
-                .map(move |(item, part)| (at, item, part)),
-        ),
-        _ => None,
-    });
-    items
-        .flatten()
-        .filter_map(|(at, item, part)| match part {
-            UserContent::Text(text) if conversation.origin(at, item) == Some(&summary) => {
-                Some(text.text.clone())
-            }
-            _ => None,
-        })
-        .collect()
 }
 
 /// `/context --last [full] [agent]` runs as `/why [full] [agent]`, taken
@@ -384,23 +391,18 @@ fn split(request: &CompletionRequest) -> (&str, &[Message]) {
 #[derive(Default, Clone, Copy)]
 struct Tally(usize, u64);
 
-/// The kind of a message, as `/why` groups them, given the summaries'
-/// texts.
-fn kind(message: &Message, summaries: &[String]) -> usize {
+/// The kind of a message written by `author`, as `/why` groups them.
+fn kind(message: &Message, author: Option<&Author>) -> usize {
     match message {
+        _ if author == Some(&summary_author()) => 3,
         Message::Assistant(_) => 1,
         Message::System { .. } => 4,
         Message::User { content } => {
-            let parts = content.iter();
-            if parts
-                .clone()
+            if content
+                .iter()
                 .any(|part| matches!(part, UserContent::ToolResult(_)))
             {
                 2
-            } else if parts.clone().any(
-                |part| matches!(part, UserContent::Text(text) if summaries.contains(&text.text)),
-            ) {
-                3
             } else {
                 0
             }
@@ -414,7 +416,7 @@ const KINDS: [(&str, char); 5] = [
     ("assistant", 'A'),
     ("tool results", 'R'),
     ("summaries", 'C'),
-    ("system", 'U'),
+    ("system", 'S'),
 ];
 
 /// The `/why` report of `agent`'s `last` request; `providers` says which
@@ -453,9 +455,14 @@ fn report(
         lines.push(format!("  {name}: ~{size} ({plugin})"));
     }
 
+    let authors = last
+        .prepared
+        .iter()
+        .flat_map(|prepared| prepared.authors.iter().map(Option::as_ref))
+        .chain(std::iter::repeat(None));
     let mut kinds = [Tally::default(); KINDS.len()];
-    for message in messages {
-        if let Some(tally) = kinds.get_mut(kind(message, &last.summaries)) {
+    for (message, author) in messages.iter().zip(authors) {
+        if let Some(tally) = kinds.get_mut(kind(message, author)) {
             tally.0 += 1;
             tally.1 += message_tokens(message);
         }
@@ -489,20 +496,22 @@ fn report(
         last.model
     ));
 
-    if let Some(Built(built)) = &last.built {
-        if let (Some(built), Some(Parts(sent))) = (&built.prompt, &last.parts) {
-            changes.extend(prompt_changes(built, sent));
+    if let Some(built) = &last.built {
+        if let (Some(built), Some(prepared)) = (&built.prompt, &last.prepared) {
+            changes.extend(prompt_changes(built, &prepared.prompt));
         }
-        changes.extend(tool_changes(&built.request.tools, tools));
-        changes.extend(message_changes(split(&built.request).1, messages));
+        changes.extend(tool_changes(&built.tools, tools));
+        for change in &mut changes {
+            change.push_str(UNNAMED);
+        }
+    }
+    if let Some(prepared) = &last.prepared {
+        changes.extend(prepared.edits.iter().flat_map(message_changes));
     }
     lines.push(match (&last.built, changes.is_empty()) {
         (None, _) => "Changes by plugins: unknown (the kernel did not build it).".to_owned(),
         (Some(_), true) => "Changes by plugins: none.".to_owned(),
-        (Some(_), false) => format!(
-            "Changes by plugins' Prepare systems (the kernel does not say whose):\n  {}",
-            changes.join("\n  ")
-        ),
+        (Some(_), false) => format!("Changes by plugins:\n  {}", changes.join("\n  ")),
     });
 
     let total = system_tokens + tool_total + message_total;
@@ -540,7 +549,10 @@ fn report(
 /// The parts of the system prompt sent, in order: the role, then each
 /// section with where it came from.
 fn prompt_lines(last: &LastRequest) -> Vec<String> {
-    let role = last.parts.as_ref().map(|Parts(prompt)| prompt.role.trim());
+    let role = last
+        .prepared
+        .as_ref()
+        .map(|prepared| prepared.prompt.role.trim());
     let role = role
         .filter(|role| !role.is_empty())
         .map(|role| format!("  the role: ~{}", size(role)));
@@ -557,8 +569,8 @@ fn prompt_lines(last: &LastRequest) -> Vec<String> {
 }
 
 /// How the `sent` prompt's parts differ from the `built` ones: the role,
-/// and sections added, rewritten or left out. Start fills the tool rules,
-/// so they are not compared.
+/// and sections added, rewritten or left out. Start fills the tool rules, so they are not
+/// compared.
 fn prompt_changes(
     built: &completion::SystemPrompt,
     sent: &completion::SystemPrompt,
@@ -610,32 +622,44 @@ fn tool_changes(built: &[ToolDefinition], sent: &[ToolDefinition]) -> Vec<String
         .collect()
 }
 
-/// How the `sent` messages differ from the `built` ones: the run between
-/// their common start and end, as messages added, rewritten or left out.
-fn message_changes(built: &[Message], sent: &[Message]) -> Vec<String> {
-    let start = built.iter().zip(sent).take_while(|(a, b)| a == b).count();
-    let built = built.get(start..).unwrap_or_default();
-    let sent = sent.get(start..).unwrap_or_default();
-    let end = built
-        .iter()
-        .rev()
-        .zip(sent.iter().rev())
-        .take_while(|(a, b)| a == b)
-        .count();
-    let built = built.get(..built.len() - end).unwrap_or_default();
-    let sent = sent.get(..sent.len() - end).unwrap_or_default();
-    let rewritten = built.len().min(sent.len());
-    let at = match start {
-        0 => "before the conversation".to_owned(),
-        _ => format!("after message {start}"),
+/// What one attributed edit of a request's messages did, naming who made
+/// it: messages added, rewritten (spliced in again under their own ids) or
+/// left out. Asides and halts never reach the model.
+fn message_changes(edit: &Recorded) -> Vec<String> {
+    let by = edit
+        .by
+        .as_ref()
+        .map_or_else(|| "rig".to_owned(), Author::label);
+    let (at, removed, with): (_, &[MessageId], &[Entry]) = match &edit.change {
+        Change::Push { entries } => ("at the end".to_owned(), &[], entries),
+        Change::Splice {
+            from,
+            removed,
+            with,
+            ..
+        } => {
+            let at = match from {
+                0 => "before the conversation".to_owned(),
+                from => format!("after message {from}"),
+            };
+            (at, removed, with)
+        }
+        Change::Reset { .. } => return vec![format!("~ the messages replaced, by {by}")],
+        Change::Halt { .. } | Change::Aside { .. } => return Vec::new(),
     };
+    let (rewritten, added): (Vec<&Entry>, Vec<&Entry>) = with
+        .iter()
+        .partition(|entry| entry.id.is_some_and(|id| removed.contains(&id)));
     let mut changes = Vec::new();
-    if rewritten > 0 {
-        changes.push(format!("~ {rewritten} messages rewritten {at}"));
+    if !rewritten.is_empty() {
+        changes.push(format!("~ {} messages rewritten {at}", rewritten.len()));
     }
-    if let Some(added) = sent.get(rewritten..).filter(|added| !added.is_empty()) {
-        let roles: Vec<&str> = added.iter().map(role).collect();
-        let size: u64 = added.iter().map(message_tokens).sum();
+    if !added.is_empty() {
+        let roles: Vec<&str> = added.iter().map(|entry| role(&entry.message)).collect();
+        let size: u64 = added
+            .iter()
+            .map(|entry| message_tokens(&entry.message))
+            .sum();
         changes.push(format!(
             "+ {} messages added {at} ({}; ~{} tokens)",
             added.len(),
@@ -643,10 +667,14 @@ fn message_changes(built: &[Message], sent: &[Message]) -> Vec<String> {
             tokens_label(size)
         ));
     }
-    if let Some(dropped) = built.get(rewritten..).filter(|dropped| !dropped.is_empty()) {
-        changes.push(format!("- {} messages left out {at}", dropped.len()));
+    let dropped = removed.len().saturating_sub(rewritten.len());
+    if dropped > 0 {
+        changes.push(format!("- {dropped} messages left out {at}"));
     }
     changes
+        .into_iter()
+        .map(|change| format!("{change}, by {by}"))
+        .collect()
 }
 
 /// A message's role.

@@ -1,15 +1,18 @@
 //! Watching files. An entity with a [`FileWatch`] on a file or a
 //! directory gets a [`FileChanges`] message naming the files there when it
-//! was armed, then one naming what was created, changed or removed under
-//! it, within about a second, and the loop is woken for each; despawning
-//! it, or removing the `FileWatch`, stops the watch. A plugin that reloads
-//! templates or skills from a directory watches it, and reads them on its
-//! first `FileChanges`, so no file made in between is missed.
+//! was armed, then one for each batch of files created, changed or removed
+//! under it, as the system reports them, and the loop is woken for each;
+//! despawning it, or removing the `FileWatch`, stops the watch. A plugin
+//! that reloads templates or skills from a directory watches it, and reads
+//! them on its first `FileChanges`, so no file made in between is missed.
 //!
 //! The watch is a [`Running::stream`] on its entity, so put a `FileWatch`
-//! on an entity of its own. It looks at the watched path's files (their
-//! size and change time) each second, off the app's thread, and at most
-//! [`MAX_FILES`] files.
+//! on an entity of its own. It watches through the project's workspace
+//! ([`ProjectWorkspace`], this machine when there is none): on this
+//! machine the system tells it of changes; another workspace may look
+//! every second ([`Workspace::watch`]). It reports the files
+//! [`Workspace::files`] lists, leaving out ignored and hidden files and
+//! `target`, unless the watch is [`all`](FileWatch::all).
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -27,25 +30,20 @@
 //! }
 //! ```
 
-use std::collections::BTreeMap;
-use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
-use bevy_tasks::futures_lite::{Stream, stream};
+use bevy_log::warn;
+use bevy_tasks::futures_lite::{Stream, StreamExt as _, stream};
 use bevy_tasks::{IoTaskPool, TaskPool};
-use futures_timer::Delay;
 use rig_ecs::calls::{Done, Running, Wake};
+use rig_tools::workspace::{Watch, Workspace};
 
-/// How often a watch looks.
-const EVERY: Duration = Duration::from_secs(1);
-
-/// The most files one watch looks at; what is beyond goes unseen.
-pub const MAX_FILES: usize = 10_000;
+use crate::workspace::ProjectWorkspace;
 
 /// Watches `path`: the file, or the directory's files (with `recursive`,
 /// the files of every directory under it). Inserting another arms it
@@ -57,6 +55,10 @@ pub struct FileWatch {
     pub path: PathBuf,
     /// Whether directories under it are watched too.
     pub recursive: bool,
+    /// Whether ignored and hidden files and `target` are reported too.
+    /// The first [`FileChanges`] still lists only what
+    /// [`Workspace::files`] lists.
+    pub all: bool,
 }
 
 impl FileWatch {
@@ -65,6 +67,7 @@ impl FileWatch {
         Self {
             path: path.into(),
             recursive: false,
+            all: false,
         }
     }
 
@@ -73,7 +76,15 @@ impl FileWatch {
         Self {
             path: path.into(),
             recursive: true,
+            all: false,
         }
+    }
+
+    /// The same watch, reporting ignored and hidden files and `target`
+    /// too.
+    pub fn all(mut self) -> Self {
+        self.all = true;
+        self
     }
 }
 
@@ -97,21 +108,23 @@ impl Plugin for WatchPlugin {
     }
 }
 
-/// What a watch saw in one look.
+/// What a watch saw: the files there, then a batch of changes.
 struct Looked(Vec<PathBuf>);
 
-/// Starts the watch's looks.
+/// Starts the watch through the project's workspace.
 fn arm(mut world: DeferredWorld, context: HookContext) {
     let Some(watch) = world.get::<FileWatch>(context.entity).cloned() else {
         return;
     };
+    let workspace = world.get_resource::<ProjectWorkspace>().cloned();
+    let workspace = workspace.unwrap_or_default().0;
     let wake = world.get_resource::<Wake>().cloned().unwrap_or_default();
     let pool = IoTaskPool::get_or_init(TaskPool::default);
-    let running = Running::stream(pool, &wake, looks(watch));
+    let running = Running::stream(pool, &wake, looks(workspace, watch));
     world.commands().entity(context.entity).insert(running);
 }
 
-/// Stops the watch's looks.
+/// Stops the watch.
 fn disarm(mut world: DeferredWorld, context: HookContext) {
     world
         .commands()
@@ -133,66 +146,49 @@ fn changed(
     }
 }
 
-/// The files `watch` covers at first, then each [`EVERY`] what changed,
-/// when something did.
-fn looks(watch: FileWatch) -> impl Stream<Item = Looked> {
-    stream::unfold(None, move |before: Option<Files>| {
-        let watch = watch.clone();
-        async move {
-            let Some(before) = before else {
-                let files = files(&watch);
-                return Some((Looked(files.keys().cloned().collect()), Some(files)));
-            };
-            let mut before = before;
-            loop {
-                Delay::new(EVERY).await;
-                let files = files(&watch);
-                let paths = differences(&before, &files);
-                before = files;
-                if !paths.is_empty() {
-                    return Some((Looked(paths), Some(before)));
-                }
+/// Where a watch is.
+enum Look {
+    /// Not armed yet.
+    Arm(Arc<dyn Workspace>, FileWatch),
+    /// Armed: the batches to come.
+    Watching(Watch),
+}
+
+/// The files `watch` covers at first, then each batch of changes the
+/// workspace reports.
+fn looks(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<Item = Looked> {
+    stream::unfold(Some(Look::Arm(workspace, watch)), |look| async move {
+        match look? {
+            Look::Arm(workspace, watch) => {
+                // Armed before listing, so nothing made in between is missed.
+                let armed = workspace
+                    .clone()
+                    .watch(&watch.path, watch.recursive, watch.all);
+                let there = there(&*workspace, &watch);
+                let next = match armed {
+                    Ok(armed) => Some(Look::Watching(armed)),
+                    Err(error) => {
+                        warn!("cannot watch {}: {error}", watch.path.display());
+                        None
+                    }
+                };
+                Some((Looked(there), next))
+            }
+            Look::Watching(mut armed) => {
+                let paths = armed.next().await?;
+                Some((Looked(paths), Some(Look::Watching(armed))))
             }
         }
     })
 }
 
-/// Each file's size and change time.
-type Files = BTreeMap<PathBuf, (u64, Option<SystemTime>)>;
-
-/// The files `watch` covers, at most [`MAX_FILES`].
-fn files(watch: &FileWatch) -> Files {
-    let mut files = Files::new();
-    let mut directories = vec![(watch.path.clone(), true)];
-    while let Some((path, top)) = directories.pop() {
-        let Ok(metadata) = fs::metadata(&path) else {
-            continue;
-        };
-        if !metadata.is_dir() {
-            files.insert(path, (metadata.len(), metadata.modified().ok()));
-        } else if top || watch.recursive {
-            let entries = fs::read_dir(&path).into_iter().flatten().flatten();
-            directories.extend(entries.map(|entry| (entry.path(), false)));
-        }
-        if files.len() >= MAX_FILES {
-            break;
-        }
-    }
+/// The files `watch` covers now, in path order.
+fn there(workspace: &dyn Workspace, watch: &FileWatch) -> Vec<PathBuf> {
+    let root = watch.path.as_path();
+    let mut files = workspace.files(root, None, false).unwrap_or_default();
+    files.retain(|path| watch.recursive || path == root || path.parent() == Some(root));
+    files.sort();
     files
-}
-
-/// The paths created, changed or removed from `before` to `after`.
-fn differences(before: &Files, after: &Files) -> Vec<PathBuf> {
-    let changed = after
-        .iter()
-        .filter(|(path, now)| before.get(path.as_path()) != Some(now))
-        .map(|(path, _)| path);
-    let removed = before
-        .keys()
-        .filter(|path| !after.contains_key(path.as_path()));
-    let mut paths: Vec<PathBuf> = changed.chain(removed).cloned().collect();
-    paths.sort();
-    paths
 }
 
 #[cfg(test)]

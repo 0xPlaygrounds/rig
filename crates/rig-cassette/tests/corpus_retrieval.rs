@@ -59,8 +59,7 @@
 //!   builder's `dynamic_context` and the tool server's `retrieved_tools`
 //!   take a `VectorStoreIndex`, and a replayer is a handler.
 //!   `dynamic_context_handler` and `retrieved_tools_handler` register any
-//!   retrieval-family handler under the same keys, as `memory_handler` does
-//!   for memory.
+//!   retrieval-family handler under the same keys.
 
 use crate::corpus;
 

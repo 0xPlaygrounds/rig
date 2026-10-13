@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use serde_json::json;
 
 use super::*;
@@ -76,7 +76,7 @@ fn an_answer_with_open_items_is_nudged_once_and_the_list_is_restored() {
         .0
         .iter()
         .map(|outcome| match outcome {
-            TurnOutcome::Answered(message) => final_answer(message),
+            TurnOutcome::Answered(message) => message.final_answer(),
             _ => None,
         })
         .collect();

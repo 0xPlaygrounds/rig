@@ -319,7 +319,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
                 .expect("the second prompt");
             assert_eq!(
                 *last_user,
-                Message::user(cell.program.second_prompt.expect("the follow-up")),
+                Message::user(cell.followup.expect("the follow-up")),
                 "{}: the second prompt is text only",
                 cell.name
             );
@@ -343,12 +343,12 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
 
 /// The committed transcript of a run, checked as the requests were. The
 /// follow-up's second run owns only its own turn — its prompt and its
-/// answer; the loaded conversation is the request's history, not the
+/// answer; the first run's messages are the request's history, not the
 /// run's transcript — so a transcript that opens with the text prompt is
 /// the second run's, and carries no image at all.
 pub(crate) fn assert_history(cell: &Cell, history: &[Message], what: &str) {
     let Some(image) = cell.image else { return };
-    let second = cell.program.second_prompt.map(Message::user);
+    let second = cell.followup.map(Message::user);
     let first_user = history
         .iter()
         .find(|message| matches!(message, Message::User { .. }));

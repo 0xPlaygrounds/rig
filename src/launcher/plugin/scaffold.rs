@@ -8,7 +8,7 @@
 //! own effects, settings, state kept with the session, time, the
 //! workspace and child processes, sessions and their store, turning off
 //! or replacing what another plugin added, fronts, options and commands of
-//! its own (`rig <name>`), transcript entries, the status line, a
+//! its own (`rig <name>`), transcript notes, the status line, a
 //! terminal panel, and a window. Every name they use comes from
 //! `rig_harness::prelude` or the plugin crate the example names, such as
 //! `rig_tui`; the optional `inspect` tool (crate `rig-inspect`) shows the
@@ -84,8 +84,12 @@ fn command(
         return;
     };
     uses.0 += 1;
-    // `final_answer` is the text of a final answer, `None` for other messages.
-    let answer = conversation.messages().iter().rev().find_map(final_answer);
+    // `Message::final_answer` is the text of a final answer, `None` for other messages.
+    let answer = conversation
+        .messages()
+        .iter()
+        .rev()
+        .find_map(|message| message.final_answer());
     let text = match answer {
         Some(answer) => format!(
             "The last answer has {} words (use {}).",

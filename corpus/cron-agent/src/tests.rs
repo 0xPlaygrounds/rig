@@ -1,8 +1,8 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, app_on, collect, connect, first_agent, pass_wall_clock, reply, run_until,
 };
@@ -34,7 +34,7 @@ fn session(
              messages: Query<(&Incoming, &ForAgent)>,
              mut seen: ResMut<Seen>| {
                 if let Ok((message, &ForAgent(to))) = messages.get(sent.entity) {
-                    let entry = (to, message.mode, message.text.clone());
+                    let entry = (to, message.mode, message.text().to_owned());
                     seen.delivered.push(entry);
                 }
             },

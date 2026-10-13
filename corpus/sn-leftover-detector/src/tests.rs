@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
-use rig_coding_tools::EditTool;
+use rig_coding_tools::{EditTool, ShellTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };
@@ -55,14 +55,28 @@ fn prompt(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
     }
 }
 
+/// Edits by `edit` and by `shell` count; only the lines a turn added.
 #[test]
 fn added_leftovers_get_one_nudge_and_kept_ones_are_not_raised_again() {
     let dir = scratch_home("corpus-sn-leftover-detector")
         .root()
         .to_path_buf();
+    let keep = scratch_home("corpus-sn-leftover-detector-scratch")
+        .root()
+        .to_path_buf();
     assert!(std::fs::create_dir_all(&dir).is_ok(), "a scratch project");
     let lib = dir.join("lib.rs");
     assert!(std::fs::write(&lib, LIB).is_ok(), "lib.rs is written");
+    let app_js = dir.join("app.js");
+    let js = "console.log(\"old\");\n";
+    assert!(std::fs::write(&app_js, js).is_ok(), "app.js is written");
+    // A work tree of its own: the build directory it is in is ignored by
+    // the repository around it, which a checkpoint would honour.
+    let git = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&dir)
+        .status();
+    assert!(git.is_ok_and(|status| status.success()), "git init");
 
     let model = MockCompletionModel::from_stream_turns([
         // Prompt 1: adds `dbg!(x);` at line 10 and `// TODO later` at 12.
@@ -85,7 +99,18 @@ fn added_leftovers_get_one_nudge_and_kept_ones_are_not_raised_again() {
             &[("    let g = 8;\n", "    let g = 8;\n    let y = 9;\n")],
         ),
         reply("Added y."),
-        // Prompt 3, with the checks off: adds a `dbg!`.
+        // Prompt 3: `shell` adds a log to app.js and a breakpoint in a
+        // new file.
+        calls(
+            "5",
+            "shell",
+            serde_json::json!({
+                "command": "printf 'console.log(y);\\n' >> app.js && printf 'breakpoint()\\n' > new.py"
+            }),
+        ),
+        reply("Logged y."),
+        reply("Both stay: the log and the breakpoint are the feature."),
+        // Prompt 4, with the checks off: adds a `dbg!`.
         edit(
             "4",
             &lib,
@@ -95,7 +120,15 @@ fn added_leftovers_get_one_nudge_and_kept_ones_are_not_raised_again() {
     ]);
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, EditTool, LeftoverDetectorPlugin))
+        .insert_resource(Scratch(Some(keep.clone())))
+        .add_plugins((
+            AgentPlugin,
+            JournalPlugin,
+            EditTool,
+            ShellTool,
+            CheckpointPlugin,
+            LeftoverDetectorPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
@@ -133,12 +166,25 @@ fn added_leftovers_get_one_nudge_and_kept_ones_are_not_raised_again() {
     prompt(&mut app, &wakes, agent, "Add y.");
     assert_eq!(model.request_count(), 6, "no nudge without leftovers added");
 
+    prompt(&mut app, &wakes, agent, "Log y.");
+    let requests = sent(&model);
+    assert_eq!(requests.len(), 9, "the turn and its nudge");
+    let nudge = requests.get(8).map(String::as_str).unwrap_or_default();
+    assert!(nudge.contains("- app.js:2: console.log(y);"), "{nudge}");
+    assert!(nudge.contains("- new.py:1: breakpoint()"), "{nudge}");
+    assert_eq!(
+        nudge.matches("- app.js:").count(),
+        1,
+        "not the old log: {nudge}"
+    );
+
     app.world_mut()
         .trigger(RunCommand::new(agent, "leftovers off"));
     app.update();
     prompt(&mut app, &wakes, agent, "Debug y.");
-    assert_eq!(model.request_count(), 8, "no nudge with the checks off");
+    assert_eq!(model.request_count(), 11, "no nudge with the checks off");
     std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_dir_all(&keep).ok();
 }
 
 #[test]

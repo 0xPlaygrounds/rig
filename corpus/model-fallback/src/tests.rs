@@ -1,7 +1,6 @@
 use std::sync::mpsc::Receiver;
 
 use bevy_time::{TimeUpdateStrategy, Virtual};
-use rig_cassette::journal::MemoryStore;
 use rig_compaction::CompactionPlugin;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::{Catalog, ModelSpec, Transport};
@@ -10,6 +9,7 @@ use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, log_ended, reply, run_until};
 
 use super::*;
@@ -52,7 +52,7 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) -> Option
         .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
     run_until(app, wakes, |world| ended(world) > before);
     match app.world().resource::<Ended>().0.last() {
-        Some(TurnOutcome::Answered(message)) => final_answer(message),
+        Some(TurnOutcome::Answered(message)) => message.final_answer(),
         _ => None,
     }
 }

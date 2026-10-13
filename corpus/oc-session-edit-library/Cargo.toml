@@ -1,0 +1,28 @@
+[package]
+name = "corpus-oc-session-edit-library"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (one-conversation fresh held-out): OC-25: 25. Standalone session editor program"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "session-edit"
+path = "src/main.rs"
+
+[dependencies]
+# A plain program on rig's library crates: no Bevy, no harness.
+rig-core = { workspace = true }
+rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
+# The `RIG_HOME` layout (`rig::harness_protocol`): std only, no Bevy.
+rig = { path = "../..", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Only the test resumes an edited session in the harness.
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

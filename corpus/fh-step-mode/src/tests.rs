@@ -1,11 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, ShellTool, WriteTool};
 use rig_core::completion::{CompletionRequest, Message as Chat};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::prelude::read_session;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, answer_open, app_on, connect, first_agent, log_ended, reply, run_until,
 };
@@ -201,13 +200,16 @@ fn calls_are_stepped_one_at_a_time_skipped_and_edited() {
         .collect();
     assert_eq!(writes, [&json!({ "path": "notes.txt", "content": "y" })]);
     let noted = app
-        .world_mut()
-        .query::<&TranscriptEntry>()
-        .iter(app.world())
-        .any(|entry| entry.title.contains(EDITED));
+        .world()
+        .get::<Conversation>(agent)
+        .is_some_and(|conversation| {
+            (conversation.asides())
+                .filter_map(|(_, aside)| Note::of(aside))
+                .any(|note| note.title.contains(EDITED))
+        });
     assert!(noted);
     // The saved conversation says the model asked for the edited call.
-    let saved = read_session(&store).ok().unwrap_or_default();
+    let saved = Session::read(&store).ok().unwrap_or_default();
     let calls: Vec<ToolCall> = (saved.agents.iter())
         .flat_map(|agent| agent.conversation.messages().to_vec())
         .filter_map(|message| match message {

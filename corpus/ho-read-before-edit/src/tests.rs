@@ -1,14 +1,16 @@
 use std::path::PathBuf;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ReadTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, MemoryStore, app_on, calls, connect, log_ended, reply, run_until,
+};
 use serde_json::json;
 
 use bevy_ecs::system::RunSystemOnce;
 
 use super::*;
+use rig_harness::rig_memory::summary_author;
 
 /// An app on `store` with the file tools and the plugin, its agent talking
 /// to `model`, after its first frame.
@@ -123,11 +125,11 @@ fn edits_need_a_read_of_the_file_as_it_is() {
     // A conversation compacted into a summary forgets what its agent read.
     let remembered = |world: &World| world.get::<ReadFiles>(agent).map(|read| read.0.len());
     assert_eq!(remembered(second.world()), Some(2), "a.txt and new.txt");
-    let compact = move |mut agents: Query<&mut Conversation>, mut commit: Commit| {
+    let compact = move |mut agents: Query<&mut Conversation>| {
         if let Ok(mut conversation) = agents.get_mut(agent) {
             let summary = message::Message::user("The files were read.");
-            let summary = Entry::from(summary, Origin::plugin("compaction"));
-            commit.splice(agent, &mut conversation, ..2, [summary]);
+            let summary = Entry::new(summary).by(summary_author());
+            conversation.splice(..2, [summary], summary_author());
         }
     };
     assert!(second.world_mut().run_system_once(compact).is_ok());

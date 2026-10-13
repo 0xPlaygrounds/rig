@@ -14,7 +14,6 @@ bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 futures = { workspace = true }
-rig-cassette = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }

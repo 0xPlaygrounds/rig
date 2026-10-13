@@ -9,9 +9,8 @@ use std::sync::{Arc, Mutex};
 
 use futures::channel::oneshot;
 use futures::future::Shared;
-use rig_core::transcript::final_answer;
 use rig_ecs::agent::{AgentId, TurnOutcome};
-use rig_ecs::prelude::{Origin, RequestId};
+use rig_ecs::prelude::{Author, RequestId};
 use serde_json::{Map, Value};
 use steel::SteelVal;
 use steel::parser::lexer::TokenStream;
@@ -355,8 +354,8 @@ impl Host {
         }
         let number = self.sent.fetch_add(1, Ordering::Relaxed);
         let request = RequestId(format!("{}.{number}", self.call));
-        let origin = Origin::agent(self.me.clone(), Some(request));
-        let request = self.wait(self.harness.send(to, text, origin))??;
+        let author = Author::agent(self.me.clone(), Some(request));
+        let request = self.wait(self.harness.send(to, text, author))??;
         Ok(SteelVal::StringV(request.0.into()))
     }
 
@@ -364,7 +363,7 @@ impl Host {
         let request = RequestId(string(request, "the request id")?);
         match self.wait(self.harness.reply(request))?? {
             TurnOutcome::Answered(message) => Ok(SteelVal::StringV(
-                final_answer(&message).unwrap_or_default().into(),
+                message.final_answer().unwrap_or_default().into(),
             )),
             TurnOutcome::Failed(why) => Err(format!("the agent's turn failed: {why}")),
             TurnOutcome::Stopped(None) => {

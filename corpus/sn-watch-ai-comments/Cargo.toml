@@ -13,13 +13,10 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The front of a `--print` run.
-rig-print = { path = "../../plugins/rig-print" }
 # The status item.
 rig-tui = { path = "../../plugins/rig-tui" }
 
 [dev-dependencies]
-rig-cassette = { workspace = true }
 # The real `edit` tool, whose writes never trigger.
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }

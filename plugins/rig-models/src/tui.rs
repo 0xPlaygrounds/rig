@@ -12,12 +12,12 @@ use rig_tui::{ArgCompletion, Side, StatusItem, StatusItems, StatusSystems, Tone,
 use super::{ModelItem, ModelLabel};
 
 /// Where the model is: always shown.
-const MODEL: StatusItem = StatusItem::at(Side::Left, 30, u8::MAX);
+const MODEL: StatusItem = StatusItem::new("model", Side::Left, 30, u8::MAX);
 /// Where the reasoning setting is.
-const REASONING: StatusItem = StatusItem::at(Side::Left, 40, 12);
+const REASONING: StatusItem = StatusItem::new("reasoning", Side::Left, 40, 12);
 
 pub(super) fn add(app: &mut App) {
-    app.add_systems(PostUpdate, show.in_set(StatusSystems))
+    app.add_systems(PostUpdate, show.in_set(StatusSystems::Show))
         .add_systems(Update, complete_models);
 }
 
@@ -94,11 +94,13 @@ pub(super) fn pick_model(
         label: item.label.clone(),
         command: item.command.clone(),
         detail: None,
+        checked: false,
     });
     let listed = catalog(&models.0).into_iter().map(|listed| PickItem {
         label: listed.line,
         command: format!("model {}", listed.reference),
         detail: None,
+        checked: false,
     });
     let items: Vec<PickItem> = contributed.chain(listed).collect();
     if items.is_empty() {
@@ -176,6 +178,7 @@ pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, commands: &mut Comman
                 label: choice.label(),
                 command: format!("effort {}", choice.name),
                 detail: None,
+                checked: false,
             })
             .collect(),
         ..Picker::new(title).for_agent(agent)

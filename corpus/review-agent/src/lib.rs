@@ -241,14 +241,14 @@ fn on_user_message(
     let Ok((message, &ForAgent(agent))) = messages.get(started.entity) else {
         return;
     };
-    if message.origin.kind != OriginKind::User || message.command().is_some() {
+    if message.author.kind != AuthorKind::User || message.command().is_some() {
         return;
     }
     let Ok(mut reviews) = agents.get_mut(agent) else {
         return;
     };
     reviews.done = 0;
-    message.text.trim().clone_into(&mut reviews.request);
+    message.text().trim().clone_into(&mut reviews.request);
     for (review, _) in open.iter().filter(|(_, of)| of.0 == agent) {
         commands.entity(review).try_despawn();
         notices.write(Notice::info(agent, "Review cancelled by your message."));
@@ -477,7 +477,7 @@ fn reviewer_answered(
     };
     let model = short_model(model);
     let answer = match outcome {
-        TurnOutcome::Answered(message) => final_answer(message).unwrap_or_default(),
+        TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => {
             notices.write(Notice::error(agent, format!("The review failed: {why}")));
             finish(
@@ -518,8 +518,8 @@ fn reviewer_answered(
     let text = format!(
         "Reviewer ({model}) found:\n\n{answer}\n\nAddress these findings, or say why one does not apply."
     );
-    let origin = Origin::agent(id.clone(), None).titled(REVIEW);
-    commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_origin(origin));
+    let author = Author::agent(id.clone(), None).titled(REVIEW);
+    commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_author(author));
 }
 
 /// Stops the reviewer of a review that went away while it works, as when a

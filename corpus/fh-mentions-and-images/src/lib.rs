@@ -17,7 +17,8 @@
 //!   image is dropped with a notice and the model is told so;
 //! - a path reference with nothing there stays plain text, with a warning.
 //!
-//! The attachments go into the conversation as they were sent, so a
+//! Each attachment goes after the message's text: pasted images, then the
+//! `@` mentions in the order the message names them. They go into the conversation as they were sent, so a
 //! resumed session shows the file contents of send time and the images
 //! are stored with the session. Each attached text file is published as
 //! read ([`FilesRead`]) on the message's effect, which the effect log
@@ -47,7 +48,6 @@ use rig_tools::workspace::{Local, Stat, Workspace};
 use rig_tools::{blocking, numbered};
 use rig_tui::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyPress, KeyPressed, KeyScope, TuiInput,
-    read_clipboard_image,
 };
 use serde::Deserialize;
 
@@ -253,7 +253,7 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
 /// what `.gitignore` leaves out), one per line, within `max_bytes`.
 fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<String, String> {
     let files = workspace
-        .files(path, None)
+        .files(path, None, false)
         .map_err(|failure| failure.to_string())?;
     let mut list = String::new();
     for (at, file) in files.iter().enumerate() {
@@ -370,7 +370,9 @@ fn paste_image(
         .map(|processes| processes.launcher())
         .unwrap_or_default();
     let read = blocking(move || {
-        let saved = read_clipboard_image(&launcher, &images);
+        let saved = rig_tools::clipboard::read_image(&launcher, &images)
+            .map_err(|failure| format!("No image pasted: {failure}."))
+            .and_then(|saved| saved.ok_or_else(|| "No image in the clipboard.".to_owned()));
         Ok(saved.and_then(|path| read_image(&Local, &path)))
     });
     let pool = IoTaskPool::get_or_init(TaskPool::default);
@@ -435,13 +437,13 @@ fn attach(
     mut adding: Adding,
 ) {
     for (message, mut typed, &ForAgent(agent), effect) in &mut typed {
-        if typed.origin.kind != OriginKind::User || typed.command().is_some() {
+        if typed.author.kind != AuthorKind::User || typed.command().is_some() {
             continue;
         }
         // The input's pastes go with the message it sends, and the next
         // message's are numbered from 1 again.
         let pastes = std::mem::take(&mut pasted.0);
-        let attached = pasted_images(&typed.text)
+        let attached = pasted_images(typed.text())
             .into_iter()
             .filter_map(|number| {
                 let image = pastes.get(number.checked_sub(1)?)?;
@@ -456,11 +458,11 @@ fn attach(
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
         let max_bytes = adding.config.max_bytes;
         if workspace.0.host().is_none() {
-            let found = read_mentions(&typed.text, &base, &*workspace.0, max_bytes);
+            let found = read_mentions(typed.text(), &base, &*workspace.0, max_bytes);
             adding.add(message, effect, agent, &mut typed, found);
             continue;
         }
-        let (text, workspace) = (typed.text.clone(), workspace.0.clone());
+        let (text, workspace) = (typed.text().to_owned(), workspace.0.clone());
         let read = blocking(move || Ok(read_mentions(&text, &base, &*workspace, max_bytes)));
         let pool = IoTaskPool::get_or_init(TaskPool::default);
         adding.commands.spawn((
@@ -524,6 +526,7 @@ impl Adding<'_, '_> {
             .agents
             .get(agent)
             .is_ok_and(|connection| connection.spec.input.image);
+        // Each goes after the text, in the order found.
         for (label, content) in found.attached {
             let content = match content {
                 UserContent::Image(_) if !sees_images => {
@@ -531,7 +534,8 @@ impl Adding<'_, '_> {
                 }
                 content => content,
             };
-            typed.attachments.push(Attachment { label, content });
+            let attachment = Attachment { label, content };
+            typed.parts.push(MessagePart::Attachment(attachment));
         }
         if !found.read.is_empty() {
             let mut published = ToolContext::new();
@@ -647,10 +651,10 @@ fn take_descriptions(
                 format!("[{label}: {UNSEEN}]")
             }
         };
-        let slot = incoming
-            .attachments
-            .iter_mut()
-            .find(|attachment| attachment.label == *label);
+        let slot = incoming.parts.iter_mut().find_map(|part| match part {
+            MessagePart::Attachment(attachment) if attachment.label == *label => Some(attachment),
+            _ => None,
+        });
         if let Some(slot) = slot {
             slot.content = UserContent::text(text);
         }

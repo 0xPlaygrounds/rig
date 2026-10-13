@@ -57,25 +57,30 @@
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
 pub mod ask;
+pub mod checkpoint;
 pub mod clock;
 pub mod commands;
 pub mod describe;
 pub mod headless;
 pub mod host;
 mod load;
+pub mod note;
+pub mod per_call;
 pub mod pick;
+pub mod plugin_data;
+pub mod preview;
 pub mod primary;
 pub mod progress;
 pub mod secrets;
 pub mod services;
 pub mod settings;
 pub mod successor;
-pub mod transcript;
+pub mod timings;
 pub mod watch;
 pub mod workspace;
 
 pub use describe::run;
-pub use load::{PluginEntity, PluginSource, ProvidedBy, Provides, load};
+pub use load::{PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, load};
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
 /// that reads it.
@@ -102,6 +107,10 @@ pub use rig::harness_protocol;
 pub use rig_core;
 /// The agent runtime this app is built on.
 pub use rig_ecs;
+/// The store this app keeps its sessions in, for reading, saving and
+/// forking a session without restoring it (`rig_harness::rig_memory::DirStore`,
+/// `load`, `save`) and for compaction's pure functions.
+pub use rig_memory;
 /// The tool library this app is built on, for the process runner
 /// [`Processes`](services::Processes) hands out
 /// (`rig_harness::rig_tools::process::Spawn`) and the file tools' rules
@@ -122,34 +131,39 @@ pub mod prelude {
     pub use bevy_app::OnAppExitSystems;
 
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
+    pub use crate::checkpoint::{CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint};
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
     };
     pub use crate::harness_protocol::Home;
-    pub use crate::headless::{AppHeadlessExt, HeadlessEnded};
+    pub use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded, KeepRunning};
     pub use crate::host::cli::{AppCliExt, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
         DeleteSession, FirstStart, ForkSession, ForkedFrom, LogEvents, Logged, Scratch,
-        SessionDeleted, SessionForked, SessionPaths, SessionStores, first_typed, typed,
+        SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
+        first_typed, typed,
     };
+    pub use crate::note::Note;
+    pub use crate::per_call::{AppPerCallExt, Place};
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
+    pub use crate::plugin_data::PluginData;
+    pub use crate::preview::{Preview, PreviewPlugin, PreviewSystems, Previewed};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};
-    pub use crate::transcript::{EntryOf, TranscriptEntries, TranscriptEntry};
+    pub use crate::timings::{PluginTimings, SystemTimings};
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
-        HeadlessPlugins, PluginEntity, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
+        HeadlessPlugins, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides,
+        RigHarnessPlugins,
     };
-    pub use rig_cassette::journal::JournalStore;
-    pub use rig_core::transcript::final_answer;
     pub use rig_tools::{Spill, blocking};
 }
 
@@ -159,8 +173,10 @@ pub mod prelude {
 /// session logs, the launcher protocol with the plugins' options and
 /// fronts ([`host`]), slash commands ([`commands`]), why the app exits,
 /// wall-clock wakes ([`clock`]),
-/// file watches ([`watch`]), questions for the user ([`ask`]) and pickers
-/// with the agent the user looks at ([`pick`]).
+/// file watches ([`watch`]), questions for the user ([`ask`]), pickers
+/// with the agent the user looks at ([`pick`]), previews of what a tool
+/// call would leave on disk ([`preview`]) and what every call that may
+/// write anywhere changed ([`checkpoint`]).
 /// Everything else is a plugin `plugins.toml` lists, which can leave it
 /// out.
 pub struct RigHarnessPlugins;
@@ -180,7 +196,8 @@ impl PluginGroup for RigHarnessPlugins {
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
-            .add(transcript::TranscriptPlugin)
+            .add(preview::PreviewPlugin)
+            .add(checkpoint::CheckpointPlugin)
     }
 }
 

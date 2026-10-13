@@ -263,13 +263,13 @@ fn today() -> u64 {
 /// Counts each tool call recorded this frame, in the session's table and,
 /// through the worker, the project's.
 fn count(
-    mut recorded: MessageReader<Recorded>,
+    mut recorded: MessageReader<EffectRecorded>,
     agents: Query<(&AgentId, &Name, Has<SpawnedBy>)>,
     mut session: ResMut<SessionStats>,
     worker: Option<Res<Worker>>,
 ) {
     let mut project = Vec::new();
-    for Recorded(record) in recorded.read() {
+    for EffectRecorded(record) in recorded.read() {
         let Some((tool, totals)) = Totals::of(record) else {
             continue;
         };

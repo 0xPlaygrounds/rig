@@ -5,16 +5,16 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::prelude::*;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{Ended, MemoryStore, app_on, connect, log_ended, reply, run_until};
 use rig_tools::process::{Launcher, Process, Spawn};
 use rig_tools::workspace::{Contents, Stat, Workspace};
 
 use rig_harness::commands::RunCommand;
 use rig_harness::harness_protocol::Home;
 use rig_harness::services::WorkDir;
+use rig_harness::settings::Settings;
 
 use super::{
     ContextEntry, DEFAULT_SYSTEM_PROMPT, PROJECT, ProjectContextPlugin, ProjectRoot,
@@ -142,6 +142,43 @@ fn a_refresh_puts_an_edited_agents_md_in_the_prompt() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// The user's `[context]` limits cut an instruction file, and the user is
+/// told so from the start.
+#[test]
+fn an_instruction_file_the_settings_cut_says_so() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let root = exe.with_file_name(format!("limits-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    std::fs::write(root.join("AGENTS.md"), "Use tabs, always.").ok();
+    let mut app = App::new();
+    app.insert_resource(RigHome(Home::at(root.join("home"))))
+        .insert_resource(ProjectRoot(root.clone()))
+        .insert_resource(Settings::from_toml("[context]\nfile_bytes = 8"))
+        .add_plugins((AgentPlugin, ProjectContextPlugin));
+    app.finish();
+    let world = app.world_mut();
+    let text = project_text(world);
+    assert!(
+        text.contains("Use tabs\n[Cut after 8 of its 17 bytes"),
+        "{text}"
+    );
+    let mut notices = world.resource_mut::<Messages<Notice>>();
+    let warned: Vec<String> = notices
+        .drain()
+        .filter(|notice| notice.level == NoticeLevel::Warn)
+        .map(|notice| notice.text)
+        .collect();
+    let path = root.join("AGENTS.md");
+    let cut = format!("{} is cut to 8 of its 17 bytes", path.display());
+    // The directories above the test's, the repository's included, may
+    // hold instruction files of their own.
+    assert!(
+        warned.iter().any(|text| text.starts_with(&cut)),
+        "{warned:?}"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
 /// A workspace that is not this machine: it has one file,
 /// `/remote/AGENTS.md`, and runs nothing.
 #[derive(Debug, Default)]
@@ -186,6 +223,7 @@ impl Workspace for Remote {
             return Ok(Stat::File {
                 size: self.bytes().len() as u64,
                 read_only: false,
+                modified: None,
             });
         }
         Ok(Stat::Missing)
@@ -221,7 +259,7 @@ impl Workspace for Remote {
         path.to_path_buf()
     }
 
-    fn files(&self, _: &Path, _: Option<&str>) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, _: &Path, _: Option<&str>, _: bool) -> io::Result<Vec<PathBuf>> {
         Ok(Vec::new())
     }
 

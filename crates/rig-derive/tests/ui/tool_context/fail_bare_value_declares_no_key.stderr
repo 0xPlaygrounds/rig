@@ -17,6 +17,9 @@ help: the following other types implement trait `ContextValue`
   | impl ContextValue for FilesChanged {
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FilesChanged`
 ...
+  | impl ContextValue for OutputCut {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `OutputCut`
+...
   | impl ContextValue for ExitStatus {
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `rig_core::tool::ExitStatus`
 note: required by a bound in `ToolContext::insert`

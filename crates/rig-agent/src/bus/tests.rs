@@ -16,17 +16,12 @@ use super::{Bus, BusDriver, Dispatcher, ModelHandle, Pending, Registrar, Serving
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     Reply as CoreReply, Serve,
-    adapters::{MemoryAdapter, ModelAdapter, ToolAdapter, ToolFn},
+    adapters::{ModelAdapter, ToolAdapter, ToolFn},
 };
 use rig_core::{
-    completion::{CompletionRequest, Message},
-    effect::{
-        EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
-        MemoryOutcome, Outcome,
-    },
+    completion::CompletionRequest,
+    effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
-    id::ConversationId,
-    memory::InMemoryConversationMemory,
     message::AssistantContent,
     rerank::{RerankResponse, RerankResult},
     streaming::{Item, Relayed, StreamEvent},
@@ -372,16 +367,10 @@ async fn stream_dispatch_of_a_unary_kind_is_an_invalid_dispatch() {
 }
 
 #[tokio::test]
-async fn tool_memory_and_fn_adapters_serve_their_families() {
+async fn tool_and_fn_adapters_serve_their_families() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver
         .register("add", ToolAdapter::new(Add))
-        .expect("register");
-    driver
-        .register(
-            "memory",
-            MemoryAdapter::new(InMemoryConversationMemory::new()),
-        )
         .expect("register");
     driver
         .register(
@@ -429,42 +418,6 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
         panic!("expected a tool result");
     };
     assert_eq!(result.output().as_text(), Some("HI"));
-
-    let conversation = ConversationId::from("c1");
-    let memory = HandlerKey::from("memory");
-    within(dispatcher.dispatch(
-        &memory,
-        EffectKind::Memory {
-            op: MemoryOp::Append {
-                conversation: conversation.clone(),
-                messages: vec![Message::user("remember me")],
-            },
-        },
-    ))
-    .await
-    .expect("appended");
-    let loaded = within(dispatcher.dispatch(
-        &memory,
-        EffectKind::Memory {
-            op: MemoryOp::Load {
-                conversation: conversation.clone(),
-            },
-        },
-    ))
-    .await
-    .expect("loaded");
-    assert!(matches!(
-        loaded,
-        Outcome::Memory(MemoryOutcome::Loaded { ref messages }) if messages.len() == 1
-    ));
-    within(dispatcher.dispatch(
-        &memory,
-        EffectKind::Memory {
-            op: MemoryOp::Clear { conversation },
-        },
-    ))
-    .await
-    .expect("cleared");
 
     // A family mismatch at the handler is `HandlerUnavailable`, not a hang.
     let report = within(dispatcher.dispatch(&HandlerKey::from("add"), custom(json!(1))))
@@ -1034,7 +987,7 @@ impl rig_core::serve::Recorder for Counting {
         id: rig_core::effect::EffectId,
         key: HandlerKey,
         kind: EffectKind,
-        origin: rig_core::serve::Origin,
+        origin: rig_core::serve::DispatchContext,
     ) {
         self.begun.fetch_add(1, Ordering::SeqCst);
         if let Some(sink) = &self.observation_sink {
@@ -1683,24 +1636,15 @@ fn retained_lineage_cancels_parked_unary_and_stream_sends() {
     assert!(stream.poll_next_unpin(&mut cx).is_ready());
 }
 
-/// Two memories and two indexes on one bus: each labelled adapter mints its
-/// own key (`memory:<label>`, `retrieve:<label>`), so a host serves several
-/// backends beside an agent's own bare `memory`/`retrieve` and dispatches
-/// to each by key.
+/// Two indexes on one bus: each labelled adapter mints its own key
+/// (`retrieve:<label>`), so a host serves several backends beside an
+/// agent's own bare `retrieve` and dispatches to each by key.
 #[tokio::test]
-async fn labelled_memory_and_retrieve_adapters_serve_side_by_side() {
-    use rig_core::effect::{MemoryOp, MemoryOutcome, memory_key, retrieve_key};
-    use rig_core::serve::adapters::{MemoryAdapter, RetrieveAdapter};
-    use rig_core::test_utils::CountingMemory;
+async fn labelled_retrieve_adapters_serve_side_by_side() {
+    use rig_core::effect::{RetrieveQuery, RetrievedDocuments, retrieve_key};
+    use rig_core::serve::adapters::RetrieveAdapter;
+    use rig_core::vector_store::request::{Filter, VectorSearchRequest};
     let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let tenant_a = CountingMemory::default();
-    let tenant_b = CountingMemory::default();
-    driver
-        .register("memory:a", MemoryAdapter::labelled("a", tenant_a.clone()))
-        .expect("first memory");
-    driver
-        .register("memory:b", MemoryAdapter::labelled("b", tenant_b.clone()))
-        .expect("second memory");
     driver
         .register(
             "retrieve:docs",
@@ -1713,38 +1657,26 @@ async fn labelled_memory_and_retrieve_adapters_serve_side_by_side() {
             RetrieveAdapter::labelled("code", crate::test_utils::MockToolIndex::new(["t2"])),
         )
         .expect("second index");
-    assert_eq!(memory_key("a"), HandlerKey::from("memory:a"));
     assert_eq!(retrieve_key("code"), HandlerKey::from("retrieve:code"));
     let _task = spawn(driver);
 
-    let conversation = rig_core::id::ConversationId::from("c1");
-    within(dispatcher.dispatch(
-        &memory_key("a"),
-        EffectKind::Memory {
-            op: MemoryOp::Append {
-                conversation: conversation.clone(),
-                messages: vec![Message::user("only in a")],
-            },
-        },
-    ))
-    .await
-    .expect("appended to a");
-    for (label, expected) in [("a", 1), ("b", 0)] {
-        let loaded = within(dispatcher.dispatch(
-            &memory_key(label),
-            EffectKind::Memory {
-                op: MemoryOp::Load {
-                    conversation: conversation.clone(),
-                },
+    for (label, expected) in [("docs", "t1"), ("code", "t2")] {
+        let req = VectorSearchRequest::builder()
+            .query("q")
+            .samples(1)
+            .build()
+            .map_filter(Filter::interpret);
+        let found = within(dispatcher.dispatch(
+            &retrieve_key(label),
+            EffectKind::Retrieve {
+                query: RetrieveQuery::TopNIds { req },
             },
         ))
         .await
-        .expect("loaded");
+        .expect("retrieved");
         assert!(
-            matches!(loaded, Outcome::Memory(MemoryOutcome::Loaded { ref messages }) if messages.len() == expected),
-            "memory:{label} holds its own conversation: {loaded:?}"
+            matches!(&found, Outcome::Documents(RetrievedDocuments::Ids(ids)) if ids.iter().map(|(_, id)| id.as_str()).eq([expected])),
+            "retrieve:{label} answers from its own index: {found:?}"
         );
     }
-    assert_eq!(tenant_a.load_count(), 1);
-    assert_eq!(tenant_b.load_count(), 1);
 }

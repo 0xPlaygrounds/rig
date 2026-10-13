@@ -662,7 +662,7 @@ fn schedule(
                 notices.write(Notice::info(run_now.owner, summary));
             } else {
                 let message = Deliver::new(run_now.owner, summary, DeliveryMode::Queue);
-                commands.trigger(message.with_origin(Origin::plugin("run-plan")));
+                commands.trigger(message.with_author(Author::plugin("run-plan")));
             }
         }
         if changed {
@@ -678,7 +678,6 @@ fn on_item_spawned(
     settled: On<Add<Settled>>,
     requests: Query<(&ItemRequest, &Outcome, Option<&SpawnedAgent>)>,
     mut runs: Query<&mut PlanRun>,
-    mut commit: Commit,
     mut notices: MessageWriter<Notice>,
     (wake, mut commands): (Res<Wake>, Commands),
 ) {
@@ -693,7 +692,7 @@ fn on_item_spawned(
     };
     let Some(mut plan) = runs.get_mut(run).ok().filter(|plan| starting(plan)) else {
         if let Some(&SpawnedAgent(agent)) = spawned {
-            commit.retire(agent);
+            commands.trigger(Retire { entity: agent });
         }
         return;
     };
@@ -754,7 +753,7 @@ fn on_item_end(
     let state = match (failure, outcome) {
         (Some(why), _) => ItemState::Failed(why.clone()),
         (None, TurnOutcome::Answered(message)) => {
-            let answer = final_answer(message).unwrap_or_default();
+            let answer = message.final_answer().unwrap_or_default();
             let line = first_line(&answer);
             ItemState::Done(if line.is_empty() {
                 "done".to_owned()
@@ -781,7 +780,6 @@ fn on_interrupt(
     interrupt: On<Interrupt>,
     mut runs: Query<(Entity, &mut PlanRun)>,
     open: Query<(Entity, &ItemRequest), Without<Settled>>,
-    mut commit: Commit,
     (wake, mut commands): (Res<Wake>, Commands),
 ) {
     wake.wake();
@@ -793,7 +791,7 @@ fn on_interrupt(
         run.interrupted = true;
         for item in &mut run.items {
             if let ItemState::Running(agent) = item.state {
-                commit.retire(agent);
+                commands.trigger(Retire { entity: agent });
             }
             if item.state.active() {
                 item.state = ItemState::Cancelled;
@@ -859,10 +857,10 @@ fn offer_fail_item_to_items(
 /// loop, so its restored turn never goes on.
 fn retire_orphans(
     restored: Query<Entity, (Added<WasPlanItem>, Without<PlanItemAgent>)>,
-    mut commit: Commit,
+    mut commands: Commands,
 ) {
     for agent in &restored {
-        commit.retire(agent);
+        commands.trigger(Retire { entity: agent });
     }
 }
 

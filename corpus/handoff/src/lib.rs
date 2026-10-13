@@ -7,7 +7,8 @@
 //! interrupt cancels it. A new top-level agent on the same model, reasoning
 //! setting, system prompt and tools then starts from the brief alone, shown
 //! in the terminal view: the brief waits in the input line to be edited and
-//! sent, or is sent at once with `--now` (and in a run without the view).
+//! sent, or is sent at once with `--now` (and in a run without the view),
+//! by the old agent, titled with the goal.
 //! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which
 //! names it, and a handoff moves the agent shown ([`Shown`], in any front)
 //! from the old agent to the new one, when it happens and again when the
@@ -31,6 +32,25 @@ const SYSTEM: &str = "You write a handoff brief. A fresh coding agent that has n
     conversation will start from your brief alone and work on the next goal the user names. \
     Do not continue the conversation and do not answer questions in it. Output only the brief.";
 
+/// rig-memory's summarizer, asked for a brief for the goal it is given
+/// as its focus.
+const BRIEF_WRITER: Summarizer = Summarizer {
+    prompts: SummaryPrompts {
+        system: Cow::Borrowed(SYSTEM),
+        initial: Cow::Borrowed(ASK),
+        update: Cow::Borrowed(ASK),
+        format: Cow::Borrowed(FORMAT),
+    },
+    limits: SummaryLimits {
+        summary_tokens: BRIEF_TOKENS,
+        ..SummaryLimits::DEFAULT
+    },
+};
+
+/// What the brief's model is asked, before the goal.
+const ASK: &str = "The conversation above is being handed off. Write the brief for the agent \
+    that takes over, for the next goal, given below as the additional focus.";
+
 /// The brief's format, after the request.
 const FORMAT: &str = "\n\nUse exactly this format:\n\n\
     ## Goal\n[The next goal, stated precisely.]\n\n\
@@ -53,7 +73,7 @@ impl Plugin for HandoffPlugin {
                 "Start a fresh agent from a brief for the next goal; --now sends it unedited",
                 handoff,
             )
-            .add_systems(Update, show_successor)
+            .add_systems(Update, show_successor.after(AgentLoop))
             .add_observer(take_brief)
             .add_observer(follow_successor::<Briefing>)
             .add_observer(name_successor);
@@ -139,12 +159,11 @@ fn handoff(
         notices.write(Notice::no_model(agent));
         return;
     };
-    let messages = conversation.messages().to_vec();
-    if messages.is_empty() {
+    if conversation.messages().is_empty() {
         notices.write(Notice::info(agent, "Nothing to hand off yet."));
         return;
     }
-    let request = match brief_writer(&goal).request(&messages, "", "", &spec) {
+    let request = match BRIEF_WRITER.request(conversation.messages(), "", &goal, &spec) {
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, format!("Cannot hand off: {why}.")));
@@ -166,26 +185,6 @@ fn handoff(
     ));
 }
 
-/// rig-memory's summarizer, asked for a brief for `goal`.
-fn brief_writer(goal: &str) -> Summarizer {
-    let ask = format!(
-        "The conversation above is being handed off. Write the brief for the agent that takes \
-         over, for this next goal: {goal}"
-    );
-    Summarizer {
-        prompts: SummaryPrompts {
-            system: Cow::Borrowed(SYSTEM),
-            initial: Cow::Owned(ask.clone()),
-            update: Cow::Owned(ask),
-            format: Cow::Borrowed(FORMAT),
-        },
-        limits: SummaryLimits {
-            summary_tokens: BRIEF_TOKENS,
-            ..SummaryLimits::DEFAULT
-        },
-    }
-}
-
 /// The settings a new agent takes over from the one handed off from.
 type Inherited<'a> = (
     &'a AgentId,
@@ -198,7 +197,7 @@ type Inherited<'a> = (
 
 /// Takes a settled brief: ends the handoff's turn and starts the new
 /// agent with the old one's settings, with the brief in the input line,
-/// or sent the brief at once.
+/// or sent the brief at once by the old agent.
 fn take_brief(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Briefing, &Outcome)>,
@@ -246,8 +245,11 @@ fn take_brief(
     let successor = successor.id();
     match input.filter(|_| editable.0 && !briefing.now) {
         Some(mut input) => input.set(brief),
-        // The model's text, never a command.
-        None => commands.trigger(Deliver::new(successor, brief, DeliveryMode::Queue).literal()),
+        None => {
+            let author = Author::agent(id.0.clone(), None).titled(briefing.goal.clone());
+            let brief = Deliver::new(successor, brief, DeliveryMode::Queue).with_author(author);
+            commands.trigger(brief);
+        }
     }
     notices.write(Notice::info(
         agent,

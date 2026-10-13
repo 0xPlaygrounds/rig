@@ -3,9 +3,9 @@ use std::net::{SocketAddr, TcpStream};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::pick::PickPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, connect, reply, scratch_home};
 
 use super::*;

@@ -289,3 +289,63 @@ fn an_unavailable_handler_answers_every_effect_with_its_reason() {
         );
     }
 }
+
+/// A model's handler says which options of a completion its model would
+/// leave out, through every wrapper a host puts around it (layers, stream
+/// maps, sharing, erasing again), and sends nothing to say so; a tool call
+/// has nothing to leave out.
+#[test]
+fn a_model_handler_names_what_its_model_leaves_out() {
+    struct Pass;
+    impl crate::serve::Intercept for Pass {
+        fn name(&self) -> String {
+            "pass".to_owned()
+        }
+        async fn before(&self, _: EffectId, _: &EffectKind) -> crate::serve::Decision {
+            crate::serve::Decision::Proceed
+        }
+        async fn after(
+            &self,
+            _: EffectId,
+            _: &EffectKind,
+            _: &Result<Outcome, ErrorReport>,
+        ) -> crate::serve::Verdict {
+            crate::serve::Verdict::Keep
+        }
+    }
+    let http = crate::test_utils::RecordingHttpClient::new("{}");
+    let model = crate::catalog::Catalog::builtin()
+        .connect_with(
+            "anthropic/claude-fable-5",
+            crate::providers::registry::ConnectOptions::new()
+                .api_key("sk-test")
+                .http(http.clone()),
+        )
+        .expect("connects");
+    let handler = ErasedHandler::new(crate::serve::adapters::ModelAdapter::new(
+        "anthropic/claude-fable-5",
+        model,
+    ))
+    .layered(Pass)
+    .map_stream("same", |_| |relayed| vec![relayed]);
+    // Shared and erased again, as a host registers one handler twice.
+    let handler = ErasedHandler::new(Arc::new(ErasedHandler::new(handler)));
+    let kind = EffectKind::Completion {
+        request: crate::completion::CompletionRequest::new("hi")
+            .temperature(0.2)
+            .top_p(0.9),
+        stream: true,
+    };
+    let left_out: Vec<String> = handler
+        .check(&kind)
+        .iter()
+        .map(|refusal| refusal.option.to_string())
+        .collect();
+    assert_eq!(left_out, ["top_p", "temperature"]);
+    assert!(http.requests().is_empty(), "a check sends nothing");
+    let call = EffectKind::ToolCall {
+        name: "lookup".to_owned(),
+        args: "{}".to_owned(),
+    };
+    assert!(handler.check(&call).is_empty());
+}

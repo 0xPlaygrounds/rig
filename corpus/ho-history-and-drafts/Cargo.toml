@@ -21,6 +21,5 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

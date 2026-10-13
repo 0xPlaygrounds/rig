@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
 use rig_basics::BasicCommandsPlugin;
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness_test_support::{
-    Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until,
+    Ended, MemoryStore, app_on, calls, connect, first_agent, log_ended, reply, run_until,
 };
 
 use super::*;
@@ -67,13 +66,13 @@ fn session(root: &Path, model: &MockCompletionModel, say: &[&str]) -> Vec<Messag
     };
     world.entity_mut(agent).insert(connection);
     for (turn, text) in say.iter().enumerate() {
-        let said = Deliver::new(agent, *text, DeliveryMode::Queue).with_origin(Origin::user());
+        let said = Deliver::new(agent, *text, DeliveryMode::Queue);
         app.world_mut().trigger(said);
         run_until(&mut app, &wakes, |world| {
             world.resource::<Ended>().0.len() > turn
         });
     }
-    let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue).with_origin(Origin::user());
+    let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue);
     app.world_mut().trigger(quit);
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Messages<AppExit>>().is_empty()
@@ -119,6 +118,15 @@ fn quitting_writes_the_summary_and_the_changed_files() {
     });
     assert!(!summarized, "{conversation:#?}");
     assert_eq!(conversation.len(), 4, "{conversation:#?}");
+    // The summary call asked for the note last.
+    let requests = model.requests();
+    let asked = requests
+        .last()
+        .and_then(|request| request.chat_history.last());
+    assert!(
+        asked.is_some_and(|asked| format!("{asked:?}").contains("The session ends here")),
+        "{asked:?}"
+    );
     std::fs::remove_dir_all(root).ok();
 }
 

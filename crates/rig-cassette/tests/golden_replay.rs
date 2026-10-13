@@ -1,15 +1,15 @@
-//! The original effect corpus: ten golden effect logs, each recorded once by one
+//! The original effect corpus: nine golden effect logs, each recorded once by one
 //! root-suite test against a cassette transport (a real provider's bytes,
 //! replayed over HTTP) with an explicit `EffectLogRecorder`, committed under
-//! `fixtures/effects/*.effects.json`, and replayed here with **no provider, no
-//! tool and no memory behind any key** — a replayer answers every dispatch
+//! `fixtures/effects/*.effects.json`, and replayed here with **no provider and
+//! no tool behind any key** — a replayer answers every dispatch
 //! from the record.
 //!
 //! Both interpreters of the agent program reproduce every golden:
 //!
 //! - the bus-driven engine (`AgentBuilder::over_bus` … `prompt(..)` awaited
 //!   or streamed), the program it was recorded with — same preamble,
-//!   prompt, tools, hooks, memory, bus policy and run options — hardcoded
+//!   prompt, tools, hooks, bus policy and run options — hardcoded
 //!   here per fixture;
 //! - a hand driver of `AgentRun` that steps the run protocol itself and
 //!   dispatches each step over the same bus handles.
@@ -27,7 +27,6 @@
 //! | fixture | root test |
 //! |---|---|
 //! | `anthropic_completion_smoke` | `tests/providers/anthropic/cassette/agent.rs` `completion_smoke_effect_log_is_the_golden_fixture` |
-//! | `anthropic_memory_conversation` | `tests/providers/anthropic/cassette/agent.rs` `memory_conversation_effect_log_is_the_golden_fixture` |
 //! | `anthropic_streaming_with_events` | `tests/providers/anthropic/cassette/streaming_tools.rs` `streaming_tools_effect_log_is_the_golden_fixture` |
 //! | `anthropic_concurrent_tools_serial` | `tests/providers/anthropic/cassette/streaming_tools.rs` `concurrent_tools_serial_effect_log_is_the_golden_fixture` |
 //! | `gemini_tool_call_turns` | `tests/providers/gemini/cassette/hook_stress.rs` `tool_call_turns_effect_log_is_the_golden_fixture` |
@@ -75,13 +74,6 @@ const COMPLETION_SMOKE: Program = Program {
     fixture: "anthropic_completion_smoke",
     preamble: Some(BASIC_PREAMBLE),
     prompt: BASIC_PROMPT,
-    ..DEFAULT
-};
-const MEMORY_CONVERSATION: Program = Program {
-    fixture: "anthropic_memory_conversation",
-    preamble: Some(BASIC_PREAMBLE),
-    prompt: BASIC_PROMPT,
-    conversation: Some("golden-conversation"),
     ..DEFAULT
 };
 const STREAMING_WITH_EVENTS: Program = Program {
@@ -158,7 +150,6 @@ const OPENAI_TOOL_CALL_TURNS: Program = Program {
 
 both_interpreters! {
     reproduces_completion_smoke: COMPLETION_SMOKE,
-    reproduces_memory_conversation: MEMORY_CONVERSATION,
     reproduces_streaming_with_events: STREAMING_WITH_EVENTS,
     reproduces_concurrent_tools_serial: CONCURRENT_TOOLS_SERIAL,
     reproduces_tool_call_turns: TOOL_CALL_TURNS,

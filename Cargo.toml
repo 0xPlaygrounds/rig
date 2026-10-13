@@ -331,6 +331,8 @@ mime_guess = "2"
 # 3.2: 3.0/3.1 no longer build against their own `^3` macro crate.
 mongodb = "3.2"
 neo4rs = "0.8"
+# rig-tools' `Local::watch`: file events instead of polling.
+notify = "8"
 opentelemetry = "0.32"
 opentelemetry-otlp = "0.32"
 opentelemetry_sdk = "0.32"

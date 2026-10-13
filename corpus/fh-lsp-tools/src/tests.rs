@@ -1,9 +1,9 @@
 use std::io::{BufRead, BufReader, Write};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness::services::ServicesPlugin;
+use rig_harness_test_support::MemoryStore;
 use serde_json::{Value, json};
 
 use super::*;
@@ -163,6 +163,22 @@ fn exists(pid: u32) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+/// Whether the child `pid` has exited, every thread of it, and waits to be
+/// reaped: its leader can show as a zombie while its other threads still
+/// exit.
+fn exited(pid: u32) -> bool {
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default();
+    let field = |name: &str| {
+        status
+            .lines()
+            .find_map(|line| line.strip_prefix(name))
+            .map(str::trim)
+    };
+    status.is_empty()
+        || (field("State:").is_some_and(|state| state.starts_with('Z'))
+            && field("Threads:") == Some("1"))
+}
+
 fn running(world: &World) -> Vec<(String, u32)> {
     world.resource::<LspServers>().running()
 }
@@ -284,6 +300,12 @@ fn a_fake_server_answers_follows_edits_restarts_and_shuts_down() {
         .arg(first_pid.to_string())
         .status();
     assert!(killed.is_ok_and(|status| status.success()));
+    // The signal is sent; the server is dead once all of it has exited.
+    let started = std::time::Instant::now();
+    while !exited(first_pid) && started.elapsed() < std::time::Duration::from_secs(10) {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(exited(first_pid));
     app.world_mut()
         .trigger(Deliver::new(agent, "Check again.", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {

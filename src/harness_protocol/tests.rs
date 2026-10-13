@@ -156,6 +156,13 @@ fn a_home_at_a_root_lays_out_its_files_under_it() {
 }
 
 #[test]
+fn ids_generated_in_one_second_by_one_process_differ() {
+    let (first, second) = (super::SessionId::generate(), super::SessionId::generate());
+    assert_ne!(first, second);
+    assert!(second.as_str().parse::<super::SessionId>().is_ok());
+}
+
+#[test]
 fn a_session_directory_knows_its_id() {
     let id = "1700000000-42".parse::<super::SessionId>().ok();
     assert!(id.is_some());
@@ -179,19 +186,25 @@ fn new_sessions_of_one_second_take_the_next_free_id() {
 }
 
 #[test]
-fn a_session_is_saved_once_marked_and_not_for_a_log_file_alone() {
+fn a_session_is_saved_once_marked_and_not_for_a_log_file_alone_nor_while_deleting() {
     let root = std::env::temp_dir().join(format!("rig-saved-{}", std::process::id()));
     std::fs::remove_dir_all(&root).ok();
     let made = Home::at(&root).new_session();
     assert!(made.is_ok(), "{made:?}");
     let Ok((_, dir)) = made else { return };
-    std::fs::write(dir.path().join("a1.jsonl"), "").ok();
+    std::fs::create_dir_all(dir.path().join("logs")).ok();
+    std::fs::write(dir.path().join("logs/a1.jsonl"), "").ok();
     let before = dir.is_saved();
     let marked = dir.mark_saved();
     let after = dir.is_saved();
+    let deleting = dir.mark_deleting();
+    let hidden = !dir.is_saved() && dir.is_deleting();
     std::fs::remove_dir_all(&root).ok();
-    assert!(marked.is_ok(), "{marked:?}");
-    assert!(!before && after);
+    assert!(
+        marked.is_ok() && deleting.is_ok(),
+        "{marked:?} {deleting:?}"
+    );
+    assert!(!before && after && hidden);
 }
 
 #[test]

@@ -5,8 +5,8 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use rig_cassette::journal::MemoryStore;
 use rig_harness::rig_core::catalog::ModelStatus;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, first_agent, log_ended, run_until};
 use rig_models::ModelsPlugin;
 
@@ -266,7 +266,7 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
 
     say(&mut app, &wakes, agent, "hello", 1);
     let answer = match app.world().resource::<Ended>().0.as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         other => return Err(format!("the turn ended as {other:?}")),
     };
     let window = app

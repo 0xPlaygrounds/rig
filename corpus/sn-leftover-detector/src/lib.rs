@@ -12,9 +12,14 @@
 //!
 //! The content before the turn is read in `Gate`, as each call that writes
 //! named files (its `Footprint`) is about to run, the first time the turn
-//! touches each file. A subagent's calls count for the agent at the root
-//! of its spawns, whose turn ends with them. `/leftovers off|on` switches
-//! it for the session, saved with it.
+//! touches each file. A call that may write anywhere, such as `shell`,
+//! reports what it changed (its checkpoint's `FilesChanged`): a file it is
+//! the first to change was missing before (created) or is read, as the
+//! call settles, from the turn's checkpoint taken before its first such
+//! call (`TurnCheckpoint`), which keeps content in the session's scratch.
+//! A subagent's calls count for the agent at the root of its spawns, whose
+//! turn ends with them. `/leftovers off|on` switches it for the session,
+//! saved with it.
 //!
 //! The project's `.rig/leftovers.toml` adds patterns:
 //!
@@ -34,6 +39,7 @@ use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
+use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
 use rig_harness::rig_tools::workspace::Workspace;
 use serde::Deserialize;
 
@@ -68,6 +74,7 @@ impl Plugin for LeftoverDetectorPlugin {
                 toggle,
             )
             .add_observer(snapshot_read)
+            .add_observer(checkpointed)
             .add_observer(scanned)
             .add_observer(reset);
     }
@@ -82,8 +89,8 @@ pub struct LeftoverSwitch {
 }
 
 /// On each agent: the content, before its running turn, of each file the
-/// turn (its subagents' too) is about to change; `None` for a file that
-/// was not there or not text.
+/// turn (its subagents' too) is about to change or changed; `None` for a
+/// file that was not there or not text.
 #[derive(Component, Default, Debug)]
 pub struct TurnFiles {
     before: BTreeMap<PathBuf, Option<String>>,
@@ -292,7 +299,7 @@ fn pool() -> &'static TaskPool {
 }
 
 /// A file's content before the turn, read off the main thread.
-struct Snapshot {
+struct Reading {
     agent: Entity,
     path: PathBuf,
     text: Option<String>,
@@ -337,7 +344,7 @@ fn snapshot(
             let work = async move {
                 let (from, at) = (workspace.clone(), path.clone());
                 let text = blocking(move || Ok(read(&*from, &at))).await.ok().flatten();
-                Snapshot {
+                Reading {
                     agent: root,
                     path,
                     text,
@@ -350,8 +357,8 @@ fn snapshot(
 
 /// Keeps a file's content read off the main thread, and lets its call go.
 fn snapshot_read(
-    read: On<Insert<Done<Snapshot>>>,
-    snapshots: Query<&Done<Snapshot>>,
+    read: On<Insert<Done<Reading>>>,
+    snapshots: Query<&Done<Reading>>,
     mut agents: Query<&mut TurnFiles>,
     mut commands: Commands,
 ) {
@@ -364,6 +371,54 @@ fn snapshot_read(
         files.before.entry(snapshot.path.clone()).or_insert(text);
     }
     commands.entity(read.entity).despawn();
+}
+
+/// Keeps the content before the turn of each file a call that may write
+/// anywhere is the first of the turn to change: none for a file it
+/// created, else the file as the turn's checkpoint from before its first
+/// such call kept it, a read of the session's scratch on this machine.
+fn checkpointed(
+    settled: On<Add<Settled>>,
+    calls: Query<(&Footprint, &Published, &ForAgent, &CallOf), With<ToolRequest>>,
+    turns: Query<&TurnCheckpoint>,
+    parents: Query<&SpawnedBy>,
+    mut agents: Query<&mut TurnFiles>,
+    switch: Res<LeftoverSwitch>,
+) {
+    let Ok((footprint, published, &ForAgent(agent), &CallOf(turn))) = calls.get(settled.entity)
+    else {
+        return;
+    };
+    if switch.off || footprint.0 != Touches::Writes(Scope::Anything) {
+        return;
+    }
+    let Ok(FilesChanged(changes)) = published
+        .0
+        .get::<FilesChanged>()
+        .map(Option::unwrap_or_default)
+    else {
+        return;
+    };
+    let Ok(mut files) = agents.get_mut(root_of(agent, &parents)) else {
+        return;
+    };
+    let first = turns.get(turn).ok().and_then(TurnCheckpoint::first);
+    for change in changes {
+        let path = PathBuf::from(change.path);
+        if files.before.contains_key(&path) {
+            continue;
+        }
+        let was = match (change.kind, &first) {
+            (ChangeKind::Created, _) => None,
+            // Not kept: larger than a checkpoint keeps, or no scratch.
+            (ChangeKind::Modified, Some(first)) => match first.content(&path) {
+                Some(Ok(bytes)) => Some(String::from_utf8_lossy(&bytes).into_owned()),
+                _ => continue,
+            },
+            _ => continue,
+        };
+        files.before.insert(path, was);
+    }
 }
 
 /// A check of a turn's files done off the main thread.
@@ -471,8 +526,8 @@ fn nudge(
         text.push_str(&line);
     }
     text.push_str("Remove each one, or say why it should stay.");
-    let origin = Origin::plugin(NAME).titled("leftover debug code");
-    commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_origin(origin));
+    let author = Author::plugin(NAME).titled("leftover debug code");
+    commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_author(author));
     true
 }
 

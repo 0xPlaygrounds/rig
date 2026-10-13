@@ -17,7 +17,7 @@ use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 /// After the agent's status, before its subagents at work.
-const SPEED: StatusItem = StatusItem::at(Side::Left, 55, 9);
+const SPEED: StatusItem = StatusItem::new("ho-throughput-item", Side::Left, 55, 9);
 /// How often the live item may change.
 const EVERY: Duration = Duration::from_millis(250);
 /// The samples kept per model for the medians.
@@ -38,7 +38,7 @@ impl Plugin for ThroughputPlugin {
             .register_required_components::<ModelRequest, Tally>()
             .configure_sets(AgentPass, ThroughputSystems.in_set(Stage::Review))
             .add_systems(AgentPass, tally_deltas.in_set(ThroughputSystems))
-            .add_systems(PostUpdate, show.in_set(StatusSystems))
+            .add_systems(PostUpdate, show.in_set(StatusSystems::Show))
             .add_observer(went_live)
             .add_observer(answered)
             .add_observer(settled)

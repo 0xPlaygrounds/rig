@@ -128,6 +128,21 @@ impl Operation for Completion {
         // Every option the routed wire cannot honour is reported here, before
         // any wire encodes, whatever its encoder does.
         crate::completion::options::check(target, &mut request)?;
+        // Message cache points name the history as written; they are moved
+        // with it once it is adapted.
+        let written = request.cache_points.iter().any(|point| {
+            matches!(
+                point,
+                crate::completion::CachePoint::Messages(_)
+                    | crate::completion::CachePoint::Within { .. }
+            )
+        });
+        let written = written.then(|| {
+            let documents = (!target.takes_documents())
+                .then(|| request.normalized_documents())
+                .flatten();
+            (request.chat_history.clone(), documents)
+        });
         // Documents join the history before it is adapted, so the adapter's
         // rules apply to them, unless the encoder sends them itself.
         if !target.takes_documents() {
@@ -149,8 +164,18 @@ impl Operation for Completion {
                 )
             }),
         };
-        request.chat_history =
-            crate::completion::history::adapt_for(&request.chat_history, target, &shape);
+        let adapted = crate::completion::history::adapt_for(&request.chat_history, target, &shape);
+        if let Some((written, documents)) = written {
+            request.cache_points = crate::completion::history::cache_points(
+                &request.cache_points,
+                &written,
+                documents.as_ref(),
+                &adapted,
+                target,
+                &shape,
+            );
+        }
+        request.chat_history = adapted;
         request.validate_message_content()?;
         Ok(request)
     }

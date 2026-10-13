@@ -18,7 +18,10 @@
 //! exits with 1. A recorded exit that ended the session for good, such as
 //! `/quit`, is asked for again where it was, so what held it, such as a
 //! summary call, replays too, and the replay ends as the exit goes; one
-//! that restarted the session, a reload or a switch, is passed over.
+//! that restarted the session, a reload or a switch, is passed over. Once
+//! the replay ended, every new effect but the exit, such as the summary
+//! call of a killed session's exit, is refused before it starts: the record
+//! does not have it.
 //!
 //! `rig --replay=DIR` gives the run to the replay's own front, which keeps
 //! no session: it replays the session kept in `DIR`, prints the report as
@@ -32,10 +35,8 @@ use std::fmt;
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_cassette::effect_log::{
-    EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
-};
-use rig_cassette::journal::EFFECT_LOG;
+use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
+use rig_cassette::effect_log::{EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck};
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{ModelSpec, SignIn, Transport};
@@ -88,9 +89,9 @@ pub struct ReplaySource {
 
 impl ReplaySource {
     /// The session kept in `store`, read only.
-    pub fn from_store(store: &dyn JournalStore, flags: ReplayFlags) -> io::Result<Self> {
+    pub fn from_store(store: &dyn Files, flags: ReplayFlags) -> io::Result<Self> {
         Ok(Self {
-            effects: jsonl::read_from(store.read_file(EFFECT_LOG)?.as_slice())?,
+            effects: jsonl::read_from(store.read_file(SESSION_EFFECT_LOG)?.as_slice())?,
             flags,
         })
     }
@@ -104,7 +105,8 @@ impl ReplaySource {
             live_tools: invoked.flag(LIVE_TOOLS),
             original_timing: invoked.flag(SPEED),
         };
-        Self::from_store(&*stores.open(&SessionDir::at(dir))?, flags)
+        let store = stores.open(&SessionDir::at(dir))?;
+        Self::from_store(&*store, flags)
     }
 }
 
@@ -191,6 +193,8 @@ struct Answers {
     /// How long each effect answered from the record ran when recorded,
     /// kept until Review holds it that long.
     took: HashMap<EffectId, Duration>,
+    /// The replay ended: every effect after is past the record.
+    ended: bool,
 }
 
 impl Answers {
@@ -251,6 +255,16 @@ impl Answers {
         });
         self.answered.1 += usize::from(answer.is_ok());
         answer
+    }
+
+    /// Why no effect is answered from the record any more: the replay
+    /// stopped at a divergence, or it ended.
+    fn past(&self) -> Option<&'static str> {
+        match (self.divergences.is_empty(), self.ended) {
+            (false, _) => Some(STOPPED),
+            (true, true) => Some(ENDED),
+            (true, false) => None,
+        }
     }
 
     /// Notes how long `record`, the answer to the effect `id`, ran.
@@ -410,7 +424,7 @@ fn said(record: &EffectRecord) -> Option<Step> {
     let message = MessageRecord::read(&record.kind)?;
     let delivered = matches!(&record.outcome,
         Ok(effect::Outcome::Custom { payload }) if payload == "delivered");
-    (delivered && message.origin.kind == OriginKind::User).then(|| Step {
+    (delivered && message.author.kind == AuthorKind::User).then(|| Step {
         act: Act::Say(message),
         at_ms: recorded_at(record),
     })
@@ -517,9 +531,13 @@ const ADAPTER: &str = "replay";
 /// Why an effect after a divergence is refused.
 const STOPPED: &str = "the replay stopped at a divergence";
 
+/// Why an effect after the replay ended is refused.
+const ENDED: &str = "not in the record: the replay ended";
+
 /// A model of a replayed agent: answers each request it is served from the
-/// recorded agent's calls, in order; after a divergence it refuses, or
-/// with `--continue-live` passes the request to the live model.
+/// recorded agent's calls, in order; after a divergence or the replay's
+/// end it refuses, or with `--continue-live` passes the request to the
+/// live model.
 struct FromRecord {
     answers: Arc<Mutex<Answers>>,
     scope: Option<Arc<str>>,
@@ -538,8 +556,8 @@ impl Serve for FromRecord {
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let answer = {
             let mut answers = lock(&self.answers);
-            if !answers.divergences.is_empty() {
-                let stopped = ErrorReport::new(ErrorKind::Divergence, STOPPED);
+            if let Some(why) = answers.past() {
+                let stopped = ErrorReport::new(ErrorKind::Divergence, why);
                 (!self.flags.continue_live).then_some(Err(stopped))
             } else {
                 let key = self.live.descriptor().key;
@@ -835,6 +853,7 @@ fn finish(
 /// Ends the replay with `status`, and says so.
 fn end(replay: &mut Replay, status: ReplayStatus, commands: &mut Commands) {
     replay.status = status;
+    lock(&replay.answers).ended = true;
     commands.trigger(ReplayEnded(status));
 }
 
@@ -932,18 +951,11 @@ type Answerable<'a> = (
 /// Decides each tool call (unless tools run live) and [`Replayable`]
 /// plugin effect about to start, and not decided yet, with the record its
 /// request matches, in id order. At a divergence the effect is refused,
-/// which stops the replay, as is everything after it but the exit; with
-/// `continue_live` they are left to start live.
+/// which stops the replay, as is everything after it but the exit, model
+/// calls included; so is everything after the replay ended, as no record
+/// has it. With `continue_live` they are left to start live.
 fn answer_from_record(
-    mut effects: Query<
-        Answerable,
-        (
-            Undecided,
-            Without<Incoming>,
-            Without<ModelRequest>,
-            Without<ExitRequest>,
-        ),
-    >,
+    mut effects: Query<Answerable, (Undecided, Without<Incoming>, Without<ExitRequest>)>,
     replayable: Query<&Replayable>,
     replay: Res<Replay>,
     mut commands: Commands,
@@ -955,11 +967,11 @@ fn answer_from_record(
         if decision.is_decided() {
             continue;
         }
-        if !answers.divergences.is_empty() {
+        if let Some(why) = answers.past() {
             if replay.flags.continue_live {
                 return;
             }
-            decision.decide(Decider::plugin("session-replay"), Outcome::refused(STOPPED));
+            decision.decide(Decider::plugin("session-replay"), Outcome::refused(why));
             continue;
         }
         let replays = |kind: &EffectKind| {

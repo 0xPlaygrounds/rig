@@ -354,7 +354,6 @@ fn pipe(
     runs: Query<&PipelineRun>,
     working: Query<(), With<ActiveTurn>>,
     (home, root): (Res<RigHome>, Res<ProjectRoot>),
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -380,7 +379,7 @@ fn pipe(
                         reason,
                     });
                 }
-                (Some(agent), _) => commit.retire(agent),
+                (Some(agent), _) => commands.trigger(Retire { entity: agent }),
                 (None, Some(request)) => commands.entity(request).try_despawn(),
                 (None, None) => {}
             }
@@ -501,9 +500,9 @@ fn step(
         return;
     };
     let answer = match outcome {
-        TurnOutcome::Answered(message) => {
-            final_answer(message).ok_or_else(|| "it gave no answer".to_owned())
-        }
+        TurnOutcome::Answered(message) => message
+            .final_answer()
+            .ok_or_else(|| "it gave no answer".to_owned()),
         TurnOutcome::Failed(why) => Err(format!("failed: {why}")),
         TurnOutcome::Stopped(why) => Err(format!(
             "stopped {}",
@@ -521,7 +520,7 @@ fn go_on(commands: &mut Commands, host: Entity, run: &mut PipelineRun, next: Nex
         Next::Stage => spawn_stage(commands, host, run),
         Next::Ended { passed } => {
             let report = Deliver::new(host, run.report(passed), DeliveryMode::Queue);
-            commands.trigger(report.with_origin(Origin::plugin("pipe")));
+            commands.trigger(report.with_author(Author::plugin("pipe")));
             commands.entity(host).remove::<PipelineRun>();
         }
     }

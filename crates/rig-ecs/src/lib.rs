@@ -3,20 +3,21 @@
 //! prompt and tool access; a running turn is an entity of its agent, and
 //! its model and tool calls are entities of the turn that run on Bevy's
 //! task pools. Every call goes through one effect dispatch path, recorded
-//! as it settles ([`effects`]). Tools are registered by plugins, and the
-//! session journal is kept in the [`journal::SessionStore`] the app
-//! inserts. Time is Bevy's: a retried model call waits on a delayed
+//! as it settles ([`effects`]). Tools are registered by plugins. An agent's
+//! [`Conversation`](agent::Conversation) is rig-core's, changed by calling
+//! its methods, and the kernel saves every change to the session journal
+//! in the [`journal::SessionStore`] the app inserts. Time is Bevy's: a retried model call waits on a delayed
 //! command, and plugins that animate or poll run on `on_real_timer`,
 //! instead of threads of their own.
 //!
 //! The runtime depends on no view and no file system: the app fills in
-//! what it needs, such as the store (one of rig-cassette's
-//! [`journal`](rig_cassette::journal) stores) and the [`model::Models`].
+//! what it needs, such as the store (any [`rig_memory::Store`]) and the
+//! [`model::Models`].
 //!
 //! ```no_run
-//! use rig_cassette::journal::MemoryStore;
 //! use rig_ecs::journal::SessionStore;
 //! use rig_ecs::prelude::*;
+//! use rig_memory::MemoryStore;
 //!
 //! let mut app = App::new();
 //! app.insert_resource(SessionStore::new(MemoryStore::default()))
@@ -37,9 +38,11 @@ pub mod turn;
 
 /// What a plugin needs: Bevy's app, ECS, reflection and time preludes
 /// with the time run conditions and `Disabled`, the agent components and
-/// requests, the tool registry, and rig-core's message types
+/// requests, the tool registry, rig-core's message and conversation types
 /// (`message::Message` is the conversation's message; the prelude's own
-/// `Message` is Bevy's message trait).
+/// `Message` is Bevy's message trait; `Conversation` is the agent's
+/// component, which derefs to `rig_core::conversation::Conversation`), and
+/// rig-memory's session store and reading.
 pub mod prelude {
     pub use bevy_app::prelude::*;
     pub use bevy_ecs::entity_disabling::Disabled;
@@ -56,29 +59,30 @@ pub mod prelude {
     };
     pub use crate::calls::{Done, PollCalls, Running, Wake};
     pub use crate::inbox::{
-        Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessageRecord, Recalled,
+        Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
+        Recalled,
     };
-    pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved, SessionRestored};
+    pub use crate::journal::{Committed, JournalPlugin, ReflectSaved, Retire, SessionRestored};
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
-    pub use crate::restore::Restored;
+    pub use crate::restore::{Interrupted, Restored};
     pub use crate::stage::{
-        Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRequest, ForAgent,
-        GateSystems, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
-        PluginEffects, PrepareSystems, Published, Recorded, ReviewSystems, Settled, Stage, Started,
+        Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,
+        ForAgent, GateSystems, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
+        PluginEffects, PrepareSystems, Published, ReviewSystems, Settled, Stage, Started,
         SupersededBy, Supersedes, ToolCalls, Undecided, Unreviewed, Waiting,
     };
     pub use crate::tools::{
-        AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,
-        WorldToolsExt,
+        AppToolsExt, CallHandler, Declared, Footprint, ToolCalled, ToolDef, ToolOptions,
+        ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapter, Adapters, Backoff, BuildFrom, ModelRequest, ModelStarts, Recovery, RetryVerdict,
-        SentTo, StreamDelta, Streamed, TurnCall,
+        Adapter, Adapters, Backoff, BuildFrom, Fitted, ModelRequest, ModelStarts, Recovery,
+        RetryVerdict, SentTo, StreamDelta, Streamed, TurnCall,
     };
-    pub use rig_cassette::journal::{
-        Entry, Halt, MessageId, Origin, OriginKind, RequestId, STOPPED, SavedAgent, SavedSession,
-        fork_session, now_ms, read_session, write_session,
+    pub use rig_core::conversation::{
+        Aside, AsideId, Author, AuthorKind, Change, Entry, EntryRef, Halt, MessageId, Recorded,
+        RequestId, STOPPED, Spliced,
     };
     pub use rig_core::effect::Decider;
     pub use rig_core::error::retry::Verdict;
@@ -86,6 +90,9 @@ pub mod prelude {
     pub use rig_core::streaming::{Part, PartKind, StreamEvent};
     pub use rig_core::tool::{
         PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
+    };
+    pub use rig_memory::{
+        Files, Repair, SavedAgent, Session, Stamp, Store, as_of, fork, history, now_ms,
     };
 }
 
@@ -96,7 +103,7 @@ use bevy_time::TimePlugin;
 
 use agent::{Agent, Notice};
 use calls::{PollCalls, Wake, poll_calls, settle};
-use journal::SessionLog;
+use journal::{SessionLog, save_conversations};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
 /// them for the restart, unended. It runs before
@@ -108,16 +115,18 @@ pub struct StopTurns;
 /// [`journal::SessionStore`], and those a plugin adds to write its own logs, such as
 /// the effect log: such a system says `.in_set(WriteJournal)` and nothing
 /// else, and runs after the turns stopped on exit, so it writes what they
-/// left too.
+/// left too. The conversations changed are saved before it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WriteJournal;
 
 /// Agents, their turn loop, effects, and the tool registry.
-/// Spawns one agent at startup when the restored session has none. Its
-/// [`SessionLog`] logs to the app's [`journal::SessionStore`], if any, once
-/// [`journal::JournalPlugin`] restored the session from it. It adds Bevy's `TimePlugin` unless the app has it, for the
-/// clock a retried model call waits on, and then runs `First` and
-/// `PreUpdate` on Bevy's single-threaded executor. It sets no error
+/// Spawns one agent at startup when the restored session has none. It
+/// saves every change of an agent's conversation and announces it as a
+/// [`journal::Committed`]; its [`SessionLog`] logs to the app's
+/// [`journal::SessionStore`], if any, once [`journal::JournalPlugin`]
+/// restored the session from it. It adds Bevy's `TimePlugin` unless the app has it, for the
+/// clock a retried model call waits on, and then runs `First`, `PreUpdate`
+/// and `Last` on Bevy's single-threaded executor. It sets no error
 /// handler: that is the application's choice.
 pub struct AgentPlugin;
 
@@ -126,14 +135,17 @@ impl Plugin for AgentPlugin {
         if !app.is_plugin_added::<TimePlugin>() {
             // An app without a clock of its own is a small headless one, not
             // a game: its `First` and `PreUpdate` hold little but the clock's
-            // systems, too little for Bevy's multi-threaded executor, which
-            // would wake the task pool for them every frame.
+            // systems, and its `Last` little but the journal's, too little
+            // for Bevy's multi-threaded executor, which would wake the task
+            // pool for them every frame (a frame that saves a conversation
+            // paid more in thread handoffs than in saving).
             let single = |schedule: &mut Schedule| {
                 schedule.set_executor(SingleThreadedExecutor::new());
             };
             app.add_plugins(TimePlugin)
                 .edit_schedule(First, single)
-                .edit_schedule(PreUpdate, single);
+                .edit_schedule(PreUpdate, single)
+                .edit_schedule(Last, single);
         }
         app.init_resource::<effects::Effects>()
             .init_resource::<SessionLog>()
@@ -167,8 +179,10 @@ impl Plugin for AgentPlugin {
                     turn::stop_turns_on_exit
                         .in_set(StopTurns)
                         .run_if(on_message::<AppExit>),
+                    save_conversations.after(StopTurns).before(WriteJournal),
                 ),
             )
+            .add_observer(journal::retire)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)

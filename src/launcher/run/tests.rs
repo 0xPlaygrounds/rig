@@ -133,6 +133,79 @@ exit 2";
     assert_eq!(left, Some((ExitCode::from(2), false, log)));
 }
 
+/// A refused run of a saved session, such as a `/resume` of one an older
+/// rig saved, logged into the launcher's run directory: the launcher
+/// names that log, not the session's, which earlier runs wrote.
+#[cfg(unix)]
+#[test]
+fn a_refused_run_of_a_saved_session_names_the_log_of_the_run() {
+    let root = std::env::temp_dir().join(format!("rig-refused-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let named = home::hold_run(&home).and_then(|run| {
+        let (id, session) = home.new_session()?;
+        session.mark_saved()?;
+        fs::write(session.log(), "earlier runs\n")?;
+        let (claimed, _) = claim(&home, Start::Resume(id), None)?;
+        fs::write(run.dir().refusal(), "rig: refused.\n")?;
+        let named = claimed.leave(&home, run.dir(), false);
+        let kept = fs::read_to_string(session.log())?;
+        Ok((named == run.dir().log(), kept))
+    });
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(named.ok(), Some((true, "earlier runs\n".to_owned())));
+}
+
+/// A `/resume` of a session whose run is refused, such as one an older rig
+/// saved, goes back to the session it left, told why, instead of ending.
+#[cfg(unix)]
+#[test]
+fn a_refused_switch_goes_back_to_the_session_it_left() {
+    let home = builds("switch-back", "", "");
+    let back = home::hold_run(&home).and_then(|run| {
+        let saved = || -> Result<SessionId> {
+            let (id, session) = home.new_session()?;
+            session.mark_saved()?;
+            Ok(id)
+        };
+        let (left, refused) = (saved()?, saved()?);
+        let agent = format!(
+            "echo \"$RIG_SESSION $RIG_NOTICE\" >> \"$RIG_HOME/started\"
+touch \"$RIG_RUN/ready\"
+[ \"$RIG_SESSION\" = {refused} ] && echo 'rig: too old.' > \"$RIG_RUN/refusal\" && exit 2
+[ -e \"$RIG_HOME/switched\" ] && exit 0
+touch \"$RIG_HOME/switched\"
+echo {refused} > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
+exit 75"
+        );
+        for build in [home.staged(), home.good()] {
+            fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
+        }
+        let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
+        let code = launch(
+            &home,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            None,
+            None,
+        )?;
+        let started = fs::read_to_string(home.root().join("started"))?;
+        Ok((code, started, left, refused))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let back = back.map_err(|failure| failure.to_string());
+    assert!(back.is_ok(), "{back:?}");
+    if let Ok((code, started, left, refused)) = back {
+        assert_eq!(code, ExitCode::SUCCESS);
+        let expected = format!(
+            "{left} \n{refused} Resumed the session.\n{left} Could not switch sessions: too old.\n"
+        );
+        assert_eq!(started, expected);
+    }
+}
+
 /// A build that describes itself as adding the command `name`.
 #[cfg(unix)]
 fn describing(name: &str) -> String {

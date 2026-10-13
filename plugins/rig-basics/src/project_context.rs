@@ -7,7 +7,9 @@
 //! [`PromptSection`]s, the environment one per agent, re-read when a turn
 //! starts, by `/context` and by any plugin that triggers
 //! [`RefreshProjectContext`], so an edited `AGENTS.md` counts from the next
-//! message without a rebuild. A section only changes when its text does,
+//! message without a rebuild. How much of the files is read is the user's
+//! `[context]` setting ([`ContextLimits`]); a file cut short says so in the
+//! prompt and in a notice. A section only changes when its text does,
 //! so the prompt stays cached. An agent with no
 //! [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own is told it is
 //! rig, a coding agent ([`DEFAULT_SYSTEM_PROMPT`]), at the head of its
@@ -23,7 +25,7 @@ use bevy_reflect::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_core::tool::ToolExecutionError;
 use rig_tools::blocking;
-use rig_tools::context::Instructions;
+use rig_tools::context::{Instructions, Limits};
 use rig_tools::workspace::Workspace;
 
 use rig_ecs::agent::{Agent, Notice, TurnOf};
@@ -33,7 +35,9 @@ use rig_ecs::stage::{Admitted, AgentPass, HoldOf, PrepareSystems};
 use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::services::{ProjectRoot, RigHome, WorkDir};
+use rig_harness::settings::AppSettingsExt;
 use rig_harness::workspace::ProjectWorkspace;
+use serde::Deserialize;
 
 /// What an agent with no [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own is told it is.
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
@@ -76,6 +80,18 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work i
 #[derive(Event, Clone, Copy, Debug, Default)]
 pub struct RefreshProjectContext;
 
+/// How much of the instruction files goes in the prompt: `[context]` in
+/// `settings.toml`, each limit rig-tools' default when left out.
+///
+/// ```toml
+/// [context]
+/// file_bytes = 65536   # of one file; 32 KiB by default
+/// total_bytes = 131072 # of all of them; 64 KiB by default
+/// ```
+#[derive(Resource, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct ContextLimits(pub Limits);
+
 /// Spawns the project [`PromptSection`] and each agent's environment one,
 /// re-reads them when a turn starts and on [`RefreshProjectContext`], adds
 /// `/context`, and gives an agent with no prompt of its own rig's
@@ -87,7 +103,8 @@ impl Plugin for ProjectContextPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
-            .init_resource::<ProjectWorkspace>();
+            .init_resource::<ProjectWorkspace>()
+            .add_setting::<ContextLimits>("context");
         let section = PromptSection::new(PromptSection::ORDER_PROJECT, PROJECT, "");
         let project = (Name::new("prompt:project"), Project::default(), section);
         app.world_mut().spawn(project);
@@ -111,21 +128,25 @@ impl Plugin for ProjectContextPlugin {
     /// else as the first turn starts.
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
-        let (Some(home), Some(root), Some(workspace)) = (
+        let (Some(home), Some(root), Some(workspace), Some(limits)) = (
             world.get_resource::<RigHome>(),
             world.get_resource::<ProjectRoot>(),
             world.get_resource::<ProjectWorkspace>(),
+            world.get_resource::<ContextLimits>(),
         ) else {
             return;
         };
         if workspace.0.host().is_some() {
             return;
         }
-        let read = discover(home.0.root(), &root.0, &*workspace.0);
+        let read = discover(home.0.root(), &root.0, &*workspace.0, *limits);
         let mut projects = world.query::<(&mut PromptSection, &mut Project)>();
+        let mut cut = Vec::new();
         for (mut section, mut project) in projects.iter_mut(world) {
             project.put(&mut section, &read);
+            cut.extend(project.cut_notices());
         }
+        world.write_message_batch(cut);
     }
 }
 
@@ -182,6 +203,8 @@ struct Project {
     paths: String,
     /// Files that exist but could not be read, with why.
     unreadable: Vec<String>,
+    /// Files the limits cut: each one's path, the bytes kept and its size.
+    cut: Vec<(String, usize, u64)>,
 }
 
 impl Project {
@@ -189,6 +212,14 @@ impl Project {
     fn put(&mut self, section: &mut Mut<PromptSection>, read: &Instructions) -> bool {
         self.paths = read.paths();
         self.unreadable.clone_from(&read.unreadable);
+        let cut = read.files.iter().filter(|file| file.contents.cut());
+        self.cut = cut
+            .map(|file| {
+                let contents = &file.contents;
+                let path = file.path.display().to_string();
+                (path, contents.text.len(), contents.size)
+            })
+            .collect();
         let text = read.prompt_text();
         section.set_if_neq(PromptSection::new(
             PromptSection::ORDER_PROJECT,
@@ -208,7 +239,19 @@ impl Project {
         notices.extend(
             unreadable.map(|problem| Notice::error(None, format!("Cannot read {problem}."))),
         );
+        notices.extend(self.cut_notices());
         notices
+    }
+
+    /// A warning for each file the limits cut.
+    fn cut_notices(&self) -> impl Iterator<Item = Notice> + '_ {
+        self.cut.iter().map(|(path, kept, size)| {
+            let text = format!(
+                "{path} is cut to {kept} of its {size} bytes in the prompt; `file_bytes` and \
+                 `total_bytes` under [context] in settings.toml set how much is read."
+            );
+            Notice::warn(None, text)
+        })
     }
 }
 
@@ -238,9 +281,14 @@ impl From<Result<Instructions, ToolExecutionError>> for Read {
 }
 
 /// The instruction files of `home` on this machine and of `root` and
-/// above in `workspace`, read now.
-fn discover(home: &Path, root: &Path, workspace: &dyn Workspace) -> Instructions {
-    Instructions::discover([home.to_path_buf()], root, workspace)
+/// above in `workspace`, read now within `limits`.
+fn discover(
+    home: &Path,
+    root: &Path,
+    workspace: &dyn Workspace,
+    limits: ContextLimits,
+) -> Instructions {
+    Instructions::discover_with([home.to_path_buf()], root, workspace, limits.0)
 }
 
 /// The environment section of an agent working in `dir`, in the
@@ -313,11 +361,12 @@ fn refresh(
     mut environments: Query<(&SectionOf, &mut PromptSection), With<Environment>>,
     agents: Query<Option<&WorkDir>, With<Agent>>,
     reading: Query<Entity, With<Reading>>,
-    (home, root, workspace, wake): (
+    (home, root, workspace, wake, limits): (
         Res<RigHome>,
         Res<ProjectRoot>,
         Res<ProjectWorkspace>,
         Res<Wake>,
+        Res<ContextLimits>,
     ),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -330,7 +379,7 @@ fn refresh(
         }
     }
     if host.is_none() {
-        let read = discover(home.0.root(), &root.0, &*workspace.0);
+        let read = discover(home.0.root(), &root.0, &*workspace.0, *limits);
         for (mut section, mut project) in &mut projects {
             if project.put(&mut section, &read) {
                 notices.write_batch(project.notices());
@@ -345,20 +394,19 @@ fn refresh(
     commands.spawn((
         Name::new("project instructions"),
         Reading,
-        read_files(&home, &root, &workspace, &wake),
+        read_files((&home, &root, &workspace, &wake), *limits),
     ));
 }
 
-/// Reads the instruction files off the main thread, ending as a [`Read`].
+/// Reads the instruction files off the main thread within `limits`,
+/// ending as a [`Read`].
 fn read_files(
-    home: &RigHome,
-    root: &ProjectRoot,
-    workspace: &ProjectWorkspace,
-    wake: &Wake,
+    (home, root, workspace, wake): (&RigHome, &ProjectRoot, &ProjectWorkspace, &Wake),
+    limits: ContextLimits,
 ) -> Running {
     let (home, root) = (home.0.root().to_path_buf(), root.0.clone());
     let workspace: Arc<dyn Workspace> = workspace.0.clone();
-    let read = blocking(move || Ok(discover(&home, &root, &*workspace)));
+    let read = blocking(move || Ok(discover(&home, &root, &*workspace, limits)));
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     Running::spawn_into::<Read, _>(pool, wake, read)
 }
@@ -389,11 +437,12 @@ fn read_off_thread(
     holds: Query<&HoldOf>,
     mut projects: Query<(&mut PromptSection, &mut Project)>,
     mut requests: Query<&mut ModelRequest>,
-    (home, root, workspace, wake): (
+    (home, root, workspace, wake, limits): (
         Res<RigHome>,
         Res<ProjectRoot>,
         Res<ProjectWorkspace>,
         Res<Wake>,
+        Res<ContextLimits>,
     ),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -402,7 +451,7 @@ fn read_off_thread(
         return;
     };
     if stale {
-        let again = read_files(&home, &root, &workspace, &wake);
+        let again = read_files((&home, &root, &workspace, &wake), *limits);
         commands
             .entity(done.entity)
             .remove::<(Read, Stale)>()

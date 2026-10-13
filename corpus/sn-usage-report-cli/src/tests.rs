@@ -22,9 +22,9 @@ use super::*;
 #[derive(Resource)]
 struct Shift(i64);
 
-fn shift(shift: Res<Shift>, mut records: MessageMutator<Recorded>) {
+fn shift(shift: Res<Shift>, mut records: MessageMutator<EffectRecorded>) {
     let moved = |ms: u64| u64::try_from(i64::try_from(ms).unwrap_or(0) + shift.0).unwrap_or(0);
-    for Recorded(record) in records.read() {
+    for EffectRecorded(record) in records.read() {
         record.started_ms = record.started_ms.map(moved);
         record.finished_ms = record.finished_ms.map(moved);
     }
@@ -281,10 +281,17 @@ fn reports_saved_sessions_by_model_project_and_day() {
     );
 
     // A damaged session is skipped, said on stderr only.
-    let log = s3_dir.path().join(rig_cassette::journal::EFFECT_LOG);
-    let mut damaged = std::fs::read(&log).unwrap_or_default();
+    let log = rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
+    let store = SessionStores::default().open(&s3_dir);
+    let mut damaged = store
+        .as_ref()
+        .ok()
+        .and_then(|store| store.read_file(log).ok())
+        .unwrap_or_default();
     damaged.splice(0..0, b"{not json}\n".iter().copied());
-    std::fs::write(&log, damaged).ok();
+    if let Ok(store) = &store {
+        store.write_file(log, &damaged).ok();
+    }
     let run = usage(&home, &p2, &[&all[..], &["--format", "json"]].concat());
     assert_eq!(run.status, 0, "{run:?}");
     let s3_id = s3_dir.id().map(|id| id.to_string()).unwrap_or_default();

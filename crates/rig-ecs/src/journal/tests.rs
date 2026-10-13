@@ -1,30 +1,48 @@
+use std::sync::Arc;
+
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::RunSystemOnce;
 use bevy_reflect::Reflect;
-use rig_cassette::journal::{
-    Entry, Halt, JournalStore, MemoryStore, MessageId, Origin, STOPPED, SavedSession, fork_session,
-    read_session,
-};
+use bevy_reflect::prelude::{ReflectDeserialize, ReflectSerialize};
 use rig_core::completion::Message;
+use rig_core::conversation::{
+    self, Aside, Author, AuthorKind, Change, Entry, Halt, MessageId, STOPPED,
+};
 use rig_core::message::UserContent;
+use rig_memory::{Files, MemoryStore, Record, Repair, Session, Store, history};
+use serde::{Deserialize, Serialize};
 
-use super::{Commit, Committed, JournalPlugin, ReflectSaved, SessionStore};
+use super::{
+    Committed, JournalPlugin, ReflectSaved, Retire, SessionRestored, SessionStore, open_session,
+};
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, Conversation, SpawnedBy};
+use crate::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
+use crate::inbox::{Deliver, DeliveryMode};
+use crate::stage::{Admitted, AgentPass, ForAgent, Stage};
+use crate::turn::TurnCall;
 
-/// Adds `message` to the conversation of `agent` as [`Commit::message`]
-/// does.
-pub(crate) fn commit_message(world: &mut World, agent: Entity, message: Message) {
-    let add = |In((agent, message)): In<(Entity, Message)>,
-               mut agents: Query<&mut Conversation>,
-               mut commit: Commit| {
-        if let Ok(mut conversation) = agents.get_mut(agent) {
-            commit.message(agent, &mut conversation, message);
-        }
-    };
-    let added = world.run_system_cached_with(add, (agent, message));
-    assert!(added.is_ok(), "{added:?}");
+/// Runs `edit` on the conversation of `agent`, as a plugin's system would.
+pub(crate) fn edit(
+    world: &mut World,
+    agent: Entity,
+    edit: impl FnOnce(&mut Conversation) + Send + Sync + 'static,
+) {
+    let run =
+        |In((agent, edit)): In<(Entity, Box<dyn FnOnce(&mut Conversation) + Send + Sync>)>,
+         mut agents: Query<&mut Conversation>| {
+            if let Ok(mut conversation) = agents.get_mut(agent) {
+                edit(&mut conversation);
+            }
+        };
+    let edited = world.run_system_cached_with(run, (agent, Box::new(edit)));
+    assert!(edited.is_ok(), "{edited:?}");
+}
+
+/// Pushes `message` to the conversation of `agent`.
+pub(crate) fn push_message(world: &mut World, agent: Entity, message: Message) {
+    edit(world, agent, |conversation| {
+        conversation.push(message);
+    });
 }
 
 /// An app on `store`, after its first frame restored the session.
@@ -56,33 +74,47 @@ fn messages(app: &App, agent: Entity) -> Vec<Message> {
     conversation.map_or_else(Vec::new, |conversation| conversation.messages().to_vec())
 }
 
-/// Runs `edit` with the conversation of `agent` and a [`Commit`].
-fn commit(
-    app: &mut App,
-    agent: Entity,
-    edit: impl Fn(Entity, &mut Conversation, &mut Commit) + Send + Sync + 'static,
-) {
-    let run = move |mut agents: Query<&mut Conversation>, mut commit: Commit| {
-        if let Ok(mut conversation) = agents.get_mut(agent) {
-            edit(agent, &mut conversation, &mut commit);
-        }
-    };
-    assert!(app.world_mut().run_system_once(run).is_ok());
+fn id_of(app: &App, agent: Entity) -> String {
+    let id = app.world().get::<AgentId>(agent);
+    id.map(|id| id.0.clone()).unwrap_or_default()
+}
+
+/// Every change announced so far.
+fn committed(app: &App) -> Vec<Committed> {
+    let committed = app.world().resource::<Messages<Committed>>();
+    let mut cursor = committed.get_cursor();
+    cursor.read(committed).cloned().collect()
+}
+
+/// The kind of each change of the log `id`.
+fn logged(store: &MemoryStore, id: &str) -> Vec<&'static str> {
+    let records = history(store, id).unwrap_or_default();
+    records
+        .into_iter()
+        .filter_map(|(_, record)| match record {
+            Record::Change(recorded) => Some(kind(&recorded.change)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn kind(change: &Change) -> &'static str {
+    match change {
+        Change::Push { .. } => "push",
+        Change::Splice { .. } => "splice",
+        Change::Halt { .. } => "halt",
+        Change::Aside { .. } => "aside",
+        Change::Reset { .. } => "reset",
+    }
 }
 
 /// Four messages: two questions and their answers.
 fn talk(app: &mut App, agent: Entity) {
     for n in 1..=2 {
-        commit_message(
-            app.world_mut(),
-            agent,
-            Message::user(format!("question {n}")),
-        );
-        commit_message(
-            app.world_mut(),
-            agent,
-            Message::assistant(format!("answer {n}")),
-        );
+        let question = Message::user(format!("question {n}"));
+        push_message(app.world_mut(), agent, question);
+        let answer = Message::assistant(format!("answer {n}"));
+        push_message(app.world_mut(), agent, answer);
     }
     app.update();
 }
@@ -99,30 +131,32 @@ fn a_cut_and_a_retired_agent_are_logged_and_a_restore_follows_them() {
     let child = first.world_mut().spawn((Agent, SpawnedBy(agent))).id();
     let grandchild = first.world_mut().spawn((Agent, SpawnedBy(child))).id();
     for spawned in [child, grandchild] {
-        commit_message(first.world_mut(), spawned, Message::user("work"));
+        push_message(first.world_mut(), spawned, Message::user("work"));
     }
-    commit(&mut first, agent, |agent, conversation, commit| {
-        commit.splice(agent, conversation, 2.., []);
+    edit(first.world_mut(), agent, |conversation| {
+        conversation.splice(2.., [], Author::plugin("cut"));
     });
-    commit(&mut first, child, |child, _, commit| commit.retire(child));
+    let child_id = id_of(&first, child);
+    first.world_mut().trigger(Retire { entity: child });
     first.update();
     assert_eq!(messages(&first, agent).len(), 2);
     assert!(
         first.world().get_entity(grandchild).is_err(),
         "retired with its parent"
     );
-    let committed = first.world().resource::<Messages<Committed>>();
-    let mut cursor = committed.get_cursor();
-    let changes: Vec<_> = cursor
-        .read(committed)
-        .filter(|change| !matches!(change, Committed::Message { .. }))
-        .map(|change| match change {
-            Committed::Splice { removed, .. } => format!("cut {}", removed.len()),
-            Committed::Retired { .. } => "retired".to_owned(),
-            other => format!("{other:?}"),
+    let cuts: Vec<_> = committed(&first)
+        .into_iter()
+        .filter(|committed| committed.agent == agent)
+        .filter_map(|committed| match committed.change.change {
+            Change::Splice { removed, .. } => Some((removed.len(), committed.change.by)),
+            _ => None,
         })
         .collect();
-    assert_eq!(changes, ["cut 2", "retired"]);
+    assert_eq!(cuts, [(2, Some(Author::plugin("cut")))]);
+    let session = Session::read(&store).unwrap_or_default();
+    let child = session.agent(&child_id);
+    let child = child.map(|saved| (saved.retired, saved.conversation.messages().len()));
+    assert_eq!(child, Some((true, 1)), "the work it did is saved first");
     drop(first);
 
     let mut second = app(&store);
@@ -137,42 +171,29 @@ fn a_cut_and_a_retired_agent_are_logged_and_a_restore_follows_them() {
     assert_eq!(world.query::<&Agent>().iter(world).count(), 1);
 }
 
-/// Every message of `conversation` with its origins and id, and its halt.
-fn state(conversation: &rig_cassette::journal::Conversation) -> (Vec<Entry>, Option<Halt>) {
+/// Every entry of `conversation` and its halt.
+fn state(conversation: &conversation::Conversation) -> (Vec<Entry>, Option<Halt>) {
     let entries = (0..conversation.messages().len()).filter_map(|at| conversation.entry(at));
     (entries.collect(), conversation.halted())
 }
 
-/// The session in `store` as a restore reads it, by agent id.
-fn saved_state(store: &MemoryStore, id: &AgentId) -> Option<(Vec<Entry>, Option<Halt>)> {
-    let session = read_session(store).ok()?;
-    let saved = session.agents.into_iter().find(|saved| saved.id == id.0)?;
-    Some(state(&saved.conversation))
-}
-
 #[test]
-fn splices_keep_ids_origins_and_the_halt_and_a_restore_makes_the_same_changes() {
+fn edits_keep_ids_and_authors_and_a_restore_makes_the_same_changes() {
     let store = MemoryStore::default();
     let mut app = app(&store);
     let Some(&agent) = agents(&mut app).first() else {
         return;
     };
-    let id = app.world().get::<AgentId>(agent).cloned();
-    let Some(id) = id else { return };
-    commit(&mut app, agent, |agent, conversation, commit| {
-        commit.message(agent, conversation, Message::user("question 1"));
-        commit.message(agent, conversation, Message::assistant("answer 1"));
-        let note = Some(Origin::plugin("note"));
-        commit.message_from(agent, conversation, Message::user("question 2"), note);
-        commit.message(agent, conversation, Message::assistant("answer 2"));
-        commit.message(agent, conversation, Message::user("question 3"));
-        commit.halt(agent, conversation, Halt::Stopped);
+    edit(app.world_mut(), agent, |conversation| {
+        conversation.extend([Message::user("question 1"), Message::assistant("answer 1")]);
+        conversation.push(Entry::new(Message::user("question 2")).by(Author::plugin("note")));
+        conversation.extend([Message::assistant("answer 2"), Message::user("question 3")]);
+        conversation.halt(Halt::Stopped);
     });
     let ids = |app: &App| {
         let conversation = app.world().get::<Conversation>(agent);
         conversation.map_or_else(Vec::new, |conversation| {
-            let len = conversation.messages().len();
-            (0..len).filter_map(|at| conversation.id(at)).collect()
+            conversation.entries().map(|entry| entry.id).collect()
         })
     };
     let before: Vec<MessageId> = ids(&app);
@@ -180,74 +201,50 @@ fn splices_keep_ids_origins_and_the_halt_and_a_restore_makes_the_same_changes() 
     let [q1, a1, q2, a2, q3] = before.as_slice() else {
         return;
     };
-    // An edit in place, then a splice in the middle, then a summary over
-    // both that merges into the prompt it kept.
-    commit(&mut app, agent, |agent, conversation, commit| {
+    // An edit in place, then a summary of the first two.
+    edit(app.world_mut(), agent, |conversation| {
         let Some(mut edited) = conversation.entry(2) else {
             return;
         };
         edited.message = Message::user("question 2, edited");
-        commit.splice(agent, conversation, 2..3, [edited]);
-        let shorter = Message::assistant("answer 1, shorter");
-        commit.splice(agent, conversation, 1..2, [shorter.into()]);
-        let summary = Message::user("Summary: question 1.");
-        let summary = Entry::from(summary, Origin::plugin("compaction"));
-        commit.splice(agent, conversation, 0..2, [summary]);
+        conversation.splice(2..3, [edited], Author::plugin("editor"));
+        let summary = Entry::new(Message::user("Summary: question 1."));
+        let compaction = Author::plugin("compaction");
+        conversation.splice(0..2, [summary.by(compaction.clone())], compaction);
     });
     app.update();
     let after = ids(&app);
-    assert_eq!(
-        after,
-        [*q2, *a2, *q3],
-        "the edited, kept prompt keeps its id"
-    );
+    assert_eq!(after.get(1..), Some([*q2, *a2, *q3].as_slice()));
+    assert!(!after.contains(q1) && !after.contains(a1));
     let live = app.world().get::<Conversation>(agent).map(|c| state(c));
-    let Some((entries, halted)) = live.clone() else {
-        return;
-    };
+    let halted = live.as_ref().and_then(|(_, halted)| *halted);
     assert_eq!(
         halted,
         Some(Halt::Stopped),
         "a splice before the end keeps it"
     );
-    let first = entries
-        .first()
-        .map(|entry| (&entry.message, &entry.origins));
-    let texts = ["Summary: question 1.", "question 2, edited"].map(UserContent::text);
-    let merged = Message::User {
-        content: texts.into(),
+    let note = live.as_ref().and_then(|(entries, _)| entries.get(1));
+    let note = note.and_then(|entry| entry.author.clone());
+    assert_eq!(
+        note,
+        Some(Author::plugin("note")),
+        "the edit kept its author"
+    );
+    let id = id_of(&app, agent);
+    let saved = |store: &MemoryStore| {
+        let session = Session::read(store).ok()?;
+        session.agent(&id).map(|saved| state(&saved.conversation))
     };
-    let origins = vec![
-        (0, Origin::plugin("compaction")),
-        (1, Origin::plugin("note")),
-    ];
-    assert_eq!(first, Some((&merged, &origins)));
-    let committed = app.world().resource::<Messages<Committed>>();
-    let mut cursor = committed.get_cursor();
-    let last_splice = cursor.read(committed).filter_map(|change| match change {
-        Committed::Splice {
-            removed, changed, ..
-        } => Some((removed.clone(), changed.clone())),
-        _ => None,
-    });
-    let last_splice = last_splice.last();
-    assert!(last_splice.is_some(), "splices are committed");
-    let Some((removed, changed)) = last_splice else {
-        return;
-    };
-    assert!(!removed.contains(q2) && removed.contains(q1) && !removed.contains(a1));
-    assert_eq!(changed, [*q2]);
-    assert_eq!(saved_state(&store, &id), live, "restored as made live");
+    assert_eq!(saved(&store), live, "saved as made live");
 
     // A cut of the tail clears the halt, and a restore agrees.
-    commit(&mut app, agent, |agent, conversation, commit| {
+    edit(app.world_mut(), agent, |conversation| {
         let last = conversation.messages().len().saturating_sub(1);
-        commit.splice(agent, conversation, last.., []);
+        conversation.splice(last.., [], Author::user());
     });
     app.update();
     let live = app.world().get::<Conversation>(agent).map(|c| state(c));
     assert_eq!(live.as_ref().map(|(_, halted)| *halted), Some(None));
-    assert_eq!(saved_state(&store, &id), live);
     drop(app);
     let mut second = self::app(&store);
     let Some(&agent) = agents(&mut second).first() else {
@@ -264,12 +261,12 @@ fn a_retried_request_is_not_said_to_be_stopped_after_a_restore() {
     let Some(&agent) = agents(&mut app).first() else {
         return;
     };
-    commit(&mut app, agent, |agent, conversation, commit| {
-        commit.message(agent, conversation, Message::user("run the tests"));
-        commit.halt(agent, conversation, Halt::Stopped);
+    edit(app.world_mut(), agent, |conversation| {
+        conversation.push(Message::user("run the tests"));
+        conversation.halt(Halt::Stopped);
         // A retry asks again; the user steers before the model answers.
-        assert!(commit.resume(agent, conversation));
-        commit.message(agent, conversation, Message::user("only the fast ones"));
+        assert!(conversation.resume());
+        conversation.push(Message::user("only the fast ones"));
     });
     app.update();
     let live = messages(&app, agent);
@@ -299,14 +296,16 @@ fn a_saved_change_starts_the_agents_log_and_the_values_it_was_spawned_with_do_no
         return;
     };
     first.update();
-    let id = first.world().get::<AgentId>(agent).cloned();
-    let log = |id: Option<AgentId>| id.and_then(|id| store.read(&id.0).ok());
-    assert_eq!(log(id.clone()), None, "a session nobody used is not kept");
+    let id = id_of(&first, agent);
+    assert!(
+        store.read_log(&id).is_err(),
+        "a session nobody used is not kept"
+    );
     // A plugin's state, such as a mode the user turned on before any
     // message, is kept for the next start.
     first.world_mut().entity_mut(agent).insert(Counter(1));
     first.update();
-    assert!(log(id).is_some());
+    assert!(store.read_log(&id).is_ok());
     drop(first);
 
     let mut second = app(&store);
@@ -320,145 +319,333 @@ fn a_saved_change_starts_the_agents_log_and_the_values_it_was_spawned_with_do_no
     assert_eq!(counter, Some(1));
 }
 
-#[test]
-fn a_session_is_read_without_writing_and_forked_as_of_a_message() {
-    let store = MemoryStore::default();
-    let mut app = app(&store);
-    let Some(&agent) = agents(&mut app).first() else {
-        return;
-    };
-    for n in 1..=2 {
-        app.world_mut().entity_mut(agent).insert(Counter(n));
-        let said = [
-            Message::user(format!("question {n}")),
-            Message::assistant(format!("answer {n}")),
-        ];
-        for message in said {
-            commit_message(app.world_mut(), agent, message);
-        }
-        app.update();
-    }
-    let second_question = app
-        .world()
-        .get::<Conversation>(agent)
-        .and_then(|conversation| conversation.id(2));
-    // A summary of the first question, merged into the second, which keeps
-    // its id.
-    commit(&mut app, agent, |agent, conversation, commit| {
-        let summary = Message::user("The first question.");
-        let summary = Entry::from(summary, Origin::plugin("compaction"));
-        commit.splice(agent, conversation, 0..2, [summary]);
-    });
-    app.update();
-    let id = app
-        .world()
-        .get::<AgentId>(agent)
-        .cloned()
-        .unwrap_or_default();
-    drop(app);
-    // A crash left half a line.
-    assert!(store.append(&id.0, b"{\"seq\":").is_ok());
-    let before = store.read(&id.0).ok();
-
-    let read = read_session(&store);
-    assert!(read.is_ok());
-    let SavedSession { agents, .. } = read.unwrap_or_default();
-    assert_eq!(store.read(&id.0).ok(), before, "read without writing");
-    assert_eq!(agents.len(), 1);
-    let Some(saved) = agents.first() else {
-        return;
-    };
-    assert!(saved.id == id.0 && saved.parent.is_none() && !saved.retired);
-    assert!(saved.started_ms > 0);
-    // The conversation as it is, the summary in place of the first two
-    // messages.
-    assert_eq!(saved.conversation.messages().len(), 2);
-    assert_eq!(saved.conversation.id(0), second_question);
-    let counter = saved.saved.get(std::any::type_name::<Counter>());
-    assert_eq!(counter, Some(&serde_json::json!(2)), "{:?}", saved.saved);
-
-    // Forked as of the second question: the conversation and the counter
-    // as they were then.
-    let fork = MemoryStore::default();
-    assert!(second_question.is_some(), "the second question was logged");
-    let Some(second_question) = second_question else {
-        return;
-    };
-    assert!(fork_session(&store, &fork, Some((&id.0, second_question))).is_ok());
-    let forked = read_session(&fork).unwrap_or_default();
-    assert_eq!(forked.agents.len(), 1);
-    let Some(branch) = forked.agents.first() else {
-        return;
-    };
-    let kept = [Message::user("question 1"), Message::assistant("answer 1")];
-    assert_eq!(branch.conversation.messages(), kept);
-    let counter = branch.saved.get(std::any::type_name::<Counter>());
-    assert_eq!(counter, Some(&serde_json::json!(1)));
+/// A plugin's bookmark on a message, saved with the agent through serde:
+/// rig-core's `MessageId` is not `Reflect`.
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Clone, Serialize, Deserialize)]
+struct Bookmark {
+    at: MessageId,
+    label: String,
 }
 
-/// A plugin's mode, saved with the session.
-#[derive(Resource, Reflect, Default)]
-#[reflect(Resource, Saved)]
-struct Mode(String);
+#[test]
+fn a_saved_component_holding_a_message_id_survives_a_restore() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let Some(&agent) = agents(&mut first).first() else {
+        return;
+    };
+    talk(&mut first, agent);
+    let second_question = first
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|c| c.id(2));
+    assert!(second_question.is_some());
+    let Some(at) = second_question else {
+        return;
+    };
+    let mark = Bookmark {
+        at,
+        label: "the second question".to_owned(),
+    };
+    first.world_mut().entity_mut(agent).insert(mark.clone());
+    first.update();
+    drop(first);
+
+    let mut second = app(&store);
+    let Some(&agent) = agents(&mut second).first() else {
+        return;
+    };
+    let world = second.world();
+    assert_eq!(world.get::<Bookmark>(agent), Some(&mark));
+    let index = world
+        .get::<Conversation>(agent)
+        .and_then(|c| c.index_of(at));
+    assert_eq!(index, Some(2), "the id names the same message");
+}
+
+/// The pass of the frame, counted in Arrive.
+#[derive(Resource, Default)]
+struct Pass(u32);
+
+/// The pass a plugin wrote its note in, and the pass a later stage read
+/// it in.
+#[derive(Resource, Default)]
+struct Seen {
+    wrote: Option<u32>,
+    read: Option<u32>,
+}
 
 #[test]
-fn a_session_saved_before_the_log_format_moved_still_restores() {
-    // rig-cassette's fixture: this kernel wrote it, with `Counter` and
-    // `Mode` of this module, before the format moved there.
-    let store = MemoryStore::default();
-    let mut log = None;
-    for line in include_str!("../../../rig-cassette/src/journal/session/saved-session.txt").lines()
-    {
-        let written = match line.strip_prefix("=== ") {
-            Some(name) => {
-                log = Some(name);
-                Ok(())
-            }
-            None => match log.map(|name| (name, name.strip_prefix("blob "))) {
-                Some((_, Some(blob))) => store.put_blob(blob, line.as_bytes()),
-                Some((agent, None)) => store.append(agent, format!("{line}\n").as_bytes()),
-                None => Ok(()),
-            },
-        };
-        assert!(written.is_ok());
-    }
+fn a_committed_reader_in_a_later_stage_of_the_pass_sees_the_change() {
     let mut app = App::new();
-    app.add_plugins((AgentPlugin, JournalPlugin))
-        .register_type::<Mode>()
-        .insert_resource(SessionStore::new(store.clone()));
+    let count = |mut pass: ResMut<Pass>| pass.0 += 1;
+    // A note on each turn's first call, put in when Admit admits it.
+    let write = |calls: Query<&ForAgent, (Added<Admitted>, With<TurnCall>)>,
+                 mut agents: Query<&mut Conversation>,
+                 pass: Res<Pass>,
+                 mut seen: ResMut<Seen>| {
+        for &ForAgent(agent) in &calls {
+            if let Ok(mut conversation) = agents.get_mut(agent) {
+                let note = Entry::new(Message::user("a note")).by(Author::plugin("writer"));
+                conversation.push(note);
+                seen.wrote.get_or_insert(pass.0);
+            }
+        }
+    };
+    let read =
+        |mut committed: MessageReader<Committed>, pass: Res<Pass>, mut seen: ResMut<Seen>| {
+            let writer = Some(Author::plugin("writer"));
+            if committed
+                .read()
+                .any(|committed| committed.change.by == writer)
+            {
+                seen.read.get_or_insert(pass.0);
+            }
+        };
+    app.add_plugins(AgentPlugin)
+        .init_resource::<Pass>()
+        .init_resource::<Seen>()
+        .add_systems(
+            AgentPass,
+            (
+                count.in_set(Stage::Arrive),
+                write.in_set(Stage::Admit),
+                read.in_set(Stage::Prepare),
+            ),
+        );
     app.finish();
     app.update();
     let world = app.world_mut();
-    let mut restored = world.query::<(Entity, &AgentId, Option<&SpawnedBy>, &Conversation)>();
-    let mut restored: Vec<_> = restored
-        .iter(world)
-        .map(|(entity, id, parent, conversation)| {
-            let texts = conversation.messages().len();
-            (entity, id.0.clone(), parent.map(|parent| parent.0), texts)
-        })
-        .collect();
-    restored.sort_by(|a, b| a.1.cmp(&b.1));
-    let main = restored.iter().find(|(.., parent, _)| parent.is_none());
-    let main = main.map(|(entity, ..)| *entity);
-    let shape: Vec<_> = restored
-        .iter()
-        .map(|(_, id, parent, messages)| (id.as_str(), *parent, *messages))
-        .collect();
-    let main_id = "cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32";
-    // The agent and its subagent, not the retired one.
-    assert_eq!(shape, [(main_id, None, 5), ("child-agent", main, 1)]);
-    let Some(main) = main else {
+    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
+    assert!(agent.is_ok());
+    let Ok(agent) = agent else {
         return;
     };
-    let conversation = world.get::<Conversation>(main);
-    let halted = conversation.and_then(|conversation| conversation.halted());
-    assert_eq!(halted, Some(Halt::Kept), "the user's last message waits");
-    let counter = world.get::<Counter>(main).map(|counter| counter.0);
-    assert_eq!(counter, Some(3));
-    let mode = world.get_resource::<Mode>().map(|mode| mode.0.as_str());
-    assert_eq!(mode, Some("plan"));
-    // Nothing was rewritten.
-    let main_log = store.read(main_id).ok();
+    world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     app.update();
-    assert_eq!(store.read(main_id).ok(), main_log);
+    let seen = app.world().resource::<Seen>();
+    assert!(seen.wrote.is_some());
+    assert_eq!(seen.read, seen.wrote, "read in the pass it was written in");
+}
+
+#[test]
+fn a_conversation_inserted_over_an_agents_own_is_saved_as_one_reset() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let Some(&agent) = agents(&mut first).first() else {
+        return;
+    };
+    talk(&mut first, agent);
+    // An edit not saved yet when the value is replaced in the same frame.
+    push_message(first.world_mut(), agent, Message::user("question 3"));
+    let fresh = conversation::Conversation::from_messages([Message::user("fresh")]);
+    first
+        .world_mut()
+        .entity_mut(agent)
+        .insert(Conversation(fresh));
+    first.update();
+    let id = id_of(&first, agent);
+    let kinds = ["push", "push", "push", "push", "push", "reset"];
+    assert_eq!(logged(&store, &id), kinds);
+    let committed = committed(&first);
+    let last = committed
+        .iter()
+        .rev()
+        .take(2)
+        .map(|c| kind(&c.change.change));
+    assert_eq!(last.collect::<Vec<_>>(), ["reset", "push"]);
+    // The value goes on from the reset.
+    push_message(first.world_mut(), agent, Message::assistant("hi"));
+    first.update();
+    assert_eq!(logged(&store, &id).last(), Some(&"push"));
+    drop(first);
+
+    let mut second = app(&store);
+    let Some(&agent) = agents(&mut second).first() else {
+        return;
+    };
+    let kept = [Message::user("fresh"), Message::assistant("hi")];
+    assert_eq!(messages(&second, agent), kept);
+}
+
+/// How many frames saw an agent's conversation changed.
+#[derive(Resource, Default)]
+struct ChangedFrames(u32);
+
+#[test]
+fn a_saved_conversation_is_not_marked_changed_again() {
+    let mut app = app(&MemoryStore::default());
+    let count = |changed: Query<(), Changed<Conversation>>, mut frames: ResMut<ChangedFrames>| {
+        if !changed.is_empty() {
+            frames.0 += 1;
+        }
+    };
+    app.init_resource::<ChangedFrames>()
+        .add_systems(Update, count);
+    app.update();
+    app.world_mut().resource_mut::<ChangedFrames>().0 = 0;
+    let Some(&agent) = agents(&mut app).first() else {
+        return;
+    };
+    push_message(app.world_mut(), agent, Message::user("hello"));
+    app.update();
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<ChangedFrames>().0, 1);
+    assert_eq!(committed(&app).len(), 1, "saved once");
+}
+
+#[test]
+fn unsaved_asides_never_reach_the_log() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let Some(&agent) = agents(&mut first).first() else {
+        return;
+    };
+    edit(first.world_mut(), agent, |conversation| {
+        conversation.push(Message::user("hello"));
+        let author = Author::plugin("notes");
+        let draft = Aside::new("draft", author.clone(), "for now".into()).unsaved();
+        conversation.add_aside(draft);
+        conversation.add_aside(Aside::new("note", author, "kept".into()));
+    });
+    first.update();
+    push_message(first.world_mut(), agent, Message::assistant("hi"));
+    first.update();
+    let id = id_of(&first, agent);
+    assert_eq!(logged(&store, &id), ["push", "aside", "push"]);
+    drop(first);
+
+    let mut second = app(&store);
+    let Some(&agent) = agents(&mut second).first() else {
+        return;
+    };
+    let conversation = second.world().get::<Conversation>(agent);
+    let kinds: Vec<String> = conversation
+        .map(|conversation| conversation.asides().map(|(_, a)| a.kind.clone()).collect())
+        .unwrap_or_default();
+    assert_eq!(kinds, ["note"]);
+}
+
+/// Every log of `store`, with its bytes.
+fn logs(store: &MemoryStore) -> Vec<(String, Vec<u8>)> {
+    let mut names = store.logs().unwrap_or_default();
+    names.sort();
+    let read = |name: String| {
+        let bytes = store.read_log(&name).unwrap_or_default();
+        (name, bytes)
+    };
+    names.into_iter().map(read).collect()
+}
+
+#[test]
+fn a_session_in_an_older_format_is_refused_before_anything_is_written() {
+    let store = MemoryStore::default();
+    // A log as the journal wrote it before rig-session/1.
+    let old = br#"{"seq":0,"t":1791779409181,"header":{"agent":"a1"}}"#;
+    assert!(
+        store
+            .append_log("a1", &[old.as_slice(), b"\n"].concat())
+            .is_ok()
+    );
+    let before = logs(&store);
+    let mut world = World::new();
+    let opened = open_session(&mut world, Arc::new(store.clone()));
+    assert!(opened.is_err());
+    assert!(!world.contains_resource::<SessionStore>());
+
+    let mut app = app(&store);
+    assert!(!app.world().contains_resource::<SessionRestored>());
+    let notices = app.world().resource::<Messages<Notice>>();
+    let mut cursor = notices.get_cursor();
+    let refused = cursor
+        .read(notices)
+        .any(|notice| notice.text.starts_with("The session cannot be resumed"));
+    assert!(refused);
+    // The app runs on, saving nothing.
+    if let Some(&agent) = agents(&mut app).first() {
+        push_message(app.world_mut(), agent, Message::user("hello"));
+    }
+    app.update();
+    app.update();
+    assert_eq!(logs(&store), before);
+    assert_eq!(store.files().unwrap_or_default(), Vec::<String>::new());
+}
+
+#[test]
+fn a_last_line_a_crash_cut_short_is_set_aside_and_reported() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let Some(&agent) = agents(&mut first).first() else {
+        return;
+    };
+    talk(&mut first, agent);
+    let id = id_of(&first, agent);
+    drop(first);
+    assert!(store.append_log(&id, b"{\"seq\":").is_ok());
+
+    let mut second = app(&store);
+    let repairs = second.world().get_resource::<SessionRestored>();
+    let repairs = repairs
+        .map(|restored| restored.repairs.clone())
+        .unwrap_or_default();
+    let torn = match repairs.as_slice() {
+        [
+            Repair::TornTail {
+                cut: 7,
+                set_aside: Some(file),
+                ..
+            },
+        ] => Some(file),
+        _ => None,
+    };
+    assert!(torn.is_some(), "one torn tail: {repairs:?}");
+    let Some(file) = torn else {
+        return;
+    };
+    assert_eq!(store.read_file(file).ok(), Some(b"{\"seq\":".to_vec()));
+    let Some(&agent) = agents(&mut second).first() else {
+        return;
+    };
+    assert_eq!(messages(&second, agent).len(), 4);
+    let notices = second.world().resource::<Messages<Notice>>();
+    let mut cursor = notices.get_cursor();
+    let reported = cursor
+        .read(notices)
+        .any(|notice| notice.text.contains("cut short"));
+    assert!(reported);
+    // The log goes on whole.
+    push_message(second.world_mut(), agent, Message::user("question 3"));
+    second.update();
+    drop(second);
+    let session = Session::read(&store).unwrap_or_default();
+    assert_eq!(session.repairs, []);
+    let saved = session
+        .agent(&id)
+        .map(|saved| saved.conversation.messages().len());
+    assert_eq!(saved, Some(5));
+}
+
+#[test]
+fn a_message_from_another_author_is_its_own_entry() {
+    let mut app = app(&MemoryStore::default());
+    let Some(&agent) = agents(&mut app).first() else {
+        return;
+    };
+    let note =
+        Deliver::new(agent, "build passed", DeliveryMode::Note).with_author(Author::plugin("ci"));
+    app.world_mut().trigger(note);
+    app.update();
+    let world = app.world();
+    let conversation = world.get::<Conversation>(agent);
+    let authors: Vec<_> = conversation
+        .map(|conversation| {
+            let entries = conversation.entries();
+            entries
+                .map(|entry| entry.author.map(|author| author.kind.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(authors, [Some(AuthorKind::Plugin("ci".to_owned()))]);
 }

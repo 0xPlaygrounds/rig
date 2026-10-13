@@ -214,7 +214,7 @@ fn ended(
     }
     let first_line = |text: &str| text.lines().next().unwrap_or_default().trim().to_owned();
     let text = match outcome {
-        TurnOutcome::Answered(message) => match final_answer(message) {
+        TurnOutcome::Answered(message) => match message.final_answer() {
             Some(answer) => format!("rig: done — {}", first_line(&answer)),
             None => "rig: done".to_owned(),
         },

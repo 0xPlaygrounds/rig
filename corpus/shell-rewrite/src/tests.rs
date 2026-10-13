@@ -70,7 +70,7 @@ fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_ca
             ShellRewritePlugin,
             AnswerAsks,
         ));
-    collect::<Recorded>(&mut app);
+    collect::<EffectRecorded>(&mut app);
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([
@@ -116,10 +116,10 @@ fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_ca
     );
     // The effect log records what ran.
     let logged: Vec<&str> = world
-        .resource::<Collected<Recorded>>()
+        .resource::<Collected<EffectRecorded>>()
         .0
         .iter()
-        .filter_map(|Recorded(record)| match &record.kind {
+        .filter_map(|EffectRecorded(record)| match &record.kind {
             EffectKind::ToolCall { args, .. } => Some(args.as_str()),
             _ => None,
         })

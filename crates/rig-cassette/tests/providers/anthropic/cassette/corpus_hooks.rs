@@ -96,8 +96,8 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-/// An observe-only hook opted into every family, over memory and a tool:
-/// it sees the memory dispatches and changes nothing. The header names it.
+/// An observe-only hook opted into every family, over a tool: it sees
+/// every dispatch and changes nothing. The header names it.
 #[tokio::test]
 async fn observe_everything_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/observe_everything", |client| async move {
@@ -107,8 +107,6 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
             .tool(Adder)
-            .memory(rig::memory::InMemoryConversationMemory::new())
-            .conversation("golden-conversation")
             .add_hook(ObserveEverything)
             .record_to(recorder.clone())
             .build();
@@ -122,11 +120,9 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
         assert_eq!(
             families(&log),
             [
-                EffectFamily::Memory,
                 EffectFamily::Completion,
                 EffectFamily::Tool,
                 EffectFamily::Completion,
-                EffectFamily::Memory,
             ]
         );
         assert_eq!(log.header.hooks, ["ObserveEverything"]);

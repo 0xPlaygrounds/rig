@@ -12,7 +12,6 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 chrono = { workspace = true }
-rig-cassette = { workspace = true }
 rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }

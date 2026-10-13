@@ -2,10 +2,10 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ShellTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply,
     run_until, scripted_models,

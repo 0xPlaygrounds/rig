@@ -36,7 +36,7 @@ use rig_harness::rig_core::effect;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 /// After the cached input of `rig-telemetry`, before the cost.
-const RATE: StatusItem = StatusItem::at(Side::Right, 25, 2);
+const RATE: StatusItem = StatusItem::new("fh-prompt-cache-shaping", Side::Right, 25, 2);
 /// The breaks `/cache why` keeps per agent.
 const KEPT_BREAKS: usize = 10;
 
@@ -61,7 +61,7 @@ impl Plugin for CacheShapingPlugin {
                     .before(PrepareSystems::Fit),
             )
             .add_systems(AgentPass, shape.in_set(CacheShapingSystems))
-            .add_systems(PostUpdate, show.in_set(StatusSystems))
+            .add_systems(PostUpdate, show.in_set(StatusSystems::Show))
             .add_observer(record_usage)
             .add_command(
                 "cache",
@@ -170,7 +170,10 @@ fn shape(
             .extend(changed.map(|(section, _)| section.tag.clone()));
 
         let ModelRequest {
-            request, prompt, ..
+            request,
+            prompt,
+            history: conversation,
+            ..
         } = &mut *call;
         request
             .tools
@@ -203,14 +206,17 @@ fn shape(
                 )
             }
         };
-        let lead = usize::from(matches!(
-            request.chat_history.first(),
-            Some(Message::System { .. })
-        ));
+        // A request the kernel built sends its conversation after the
+        // system prompt; one a plugin brought, its messages.
+        let messages = match conversation {
+            Some(conversation) => conversation.messages(),
+            None => &request.chat_history,
+        };
+        let lead = usize::from(matches!(messages.first(), Some(Message::System { .. })));
         let now = Prefix {
             tools: request.tools.clone(),
             prompt,
-            messages: request.chat_history.iter().skip(lead).cloned().collect(),
+            messages: messages.iter().skip(lead).cloned().collect(),
         };
 
         request
@@ -260,9 +266,26 @@ fn shape(
                 sections: moved,
             }
             .text();
-            match request.chat_history.last_mut() {
-                Some(Message::User { content }) => content.push(UserContent::text(text)),
-                _ => request.chat_history.push(Message::user(text)),
+            match conversation {
+                Some(conversation) => {
+                    let by = Author::plugin("prompt-cache-shaping");
+                    let last = conversation.messages().len().saturating_sub(1);
+                    match conversation.entry(last) {
+                        Some(mut entry) if matches!(entry.message, Message::User { .. }) => {
+                            if let Message::User { content } = &mut entry.message {
+                                content.push(UserContent::text(text));
+                            }
+                            conversation.splice(last.., [entry], by);
+                        }
+                        _ => {
+                            conversation.push(Entry::new(Message::user(text)).by(by));
+                        }
+                    }
+                }
+                None => match request.chat_history.last_mut() {
+                    Some(Message::User { content }) => content.push(UserContent::text(text)),
+                    _ => request.chat_history.push(Message::user(text)),
+                },
             }
         }
         history.prefix = Some(now);

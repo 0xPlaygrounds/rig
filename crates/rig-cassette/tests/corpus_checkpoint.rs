@@ -21,12 +21,12 @@
 //! | axis | values |
 //! |---|---|
 //! | checkpoint position | after turn 1's tools · after turn 2's tools · a streamed head |
-//! | program | plain tools · hooks · memory · a committed output tool · a route · retrieval · a Matrix Q parent chain · a Matrix P layer |
+//! | program | plain tools · hooks · a committed output tool · a route · retrieval · a Matrix Q parent chain · a Matrix P layer |
 //! | check mode | `Payload` · `Hash` |
 //! | replayed against | the tail · the full log (refused by id) |
 //!
-//! Full cross-product: 3 × 8 × 2 × 2 = 96. Recorded: 14 programs × 2 modes
-//! × 2 targets = 56 rows, plus the rows below. Pruned: the position is the
+//! Full cross-product: 3 × 7 × 2 × 2 = 84. Recorded: 12 programs × 2 modes
+//! × 2 targets = 48 rows, plus the rows below. Pruned: the position is the
 //! program's (a two-turn program checkpoints after turn 2, a streamed one
 //! has a streamed head); a mode crossed with the full-log target beyond
 //! payload (the refusal is by id, before any request is compared).
@@ -41,8 +41,6 @@
 //! | `anthropic_hooks_two_hooks` | after turn 1's tools |
 //! | `anthropic_hooks_lookup_before_run` | after turn 1's tools |
 //! | `anthropic_host_custom_at_outcome` | after turn 1's tools |
-//! | `anthropic_serving_serial_memory_tools` | after turn 1's tools (memory) |
-//! | `anthropic_memory_serial_two_tools` | a streamed head (memory, two tools in one turn) |
 //! | `anthropic_output_tool_with_real_tool` | after turn 1's tools (a committed output tool) |
 //! | `anthropic_serving_model_route` | after turn 1's tools (a route) |
 //! | `gemini_retrieval_context_and_tools` | after turn 1's tools (retrieval) |
@@ -53,8 +51,7 @@
 //! Plus: `hash_mode_accepts_every_golden` (every golden replayed record by
 //! record under `Hash`, counted); `a_one_byte_change_is_refused_by_hash_or_by_pointer`;
 //! `a_checkpoint_of_another_format_is_refused_by_name`;
-//! `a_tail_that_does_not_begin_at_the_checkpoint_is_refused`;
-//! `a_resumed_memory_program_appends_once_and_loads_nothing`.
+//! `a_tail_that_does_not_begin_at_the_checkpoint_is_refused`.
 //!
 //! # What the matrix found
 //!
@@ -69,18 +66,11 @@ use corpus::{
     Hook, LayerAt, LayerKind, LayerSpec, NESTING, NestedChild, Nesting, Output, Program, ROUTE,
 };
 use rig_cassette::effect_log::{Checkpoint, EffectLog, RequestCheck};
-use rig_core::effect::{EffectFamily, EffectKind, HandlerKey};
+use rig_core::effect::{EffectKind, HandlerKey};
 use rig_core::error::ErrorKind;
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
-const TWO_TOOL_STREAM_PREAMBLE: &str = "\
-You are a precise assistant. When tools are available, you must use them instead of guessing. \
-Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. \
-Never call the same tool twice once you already have its result.";
-const TWO_TOOL_STREAM_PROMPT: &str = "\
-Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. \
-After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.";
 const SUM_EVENT_PROMPT: &str = "Use the add tool to add 17 and 25, then return a concise event object for a Rust meetup in Seattle whose summary states the sum.";
 const EVENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"]}"#;
 const RETRIEVED_TOOLS_PREAMBLE: &str =
@@ -137,20 +127,6 @@ const LOOKUP_BEFORE_RUN: Program = Program {
 const CUSTOM_AT_OUTCOME: Program = Program {
     fixture: "anthropic_host_custom_at_outcome",
     hooks: &[Hook::NoteAtOutcome],
-    ..TOOLS
-};
-const SERIAL_MEMORY_TOOLS: Program = Program {
-    fixture: "anthropic_serving_serial_memory_tools",
-    conversation: Some(corpus::CONVERSATION),
-    ..TOOLS
-};
-const MEMORY_SERIAL_TWO_TOOLS: Program = Program {
-    fixture: "anthropic_memory_serial_two_tools",
-    preamble: Some(TWO_TOOL_STREAM_PREAMBLE),
-    prompt: TWO_TOOL_STREAM_PROMPT,
-    max_turns: Some(8),
-    streamed: true,
-    conversation: Some(corpus::CONVERSATION),
     ..TOOLS
 };
 const OUTPUT_TOOL_WITH_REAL_TOOL: Program = Program {
@@ -260,8 +236,6 @@ checkpointed! {
     two_hooks: TWO_HOOKS after 1,
     lookup_before_run: LOOKUP_BEFORE_RUN after 1,
     custom_at_outcome: CUSTOM_AT_OUTCOME after 1,
-    serial_memory_tools: SERIAL_MEMORY_TOOLS after 1,
-    memory_serial_two_tools: MEMORY_SERIAL_TWO_TOOLS after 1,
     output_tool_with_real_tool: OUTPUT_TOOL_WITH_REAL_TOOL after 1,
     model_route: MODEL_ROUTE after 1,
     gemini_context_and_tools: GEMINI_CONTEXT_AND_TOOLS after 1,
@@ -283,7 +257,7 @@ async fn hash_mode_accepts_every_golden() {
         })
         .collect();
     fixtures.sort();
-    assert!(fixtures.len() >= 206, "the corpus: {}", fixtures.len());
+    assert!(fixtures.len() >= 189, "the corpus: {}", fixtures.len());
     let mut replayed = 0usize;
     for fixture in &fixtures {
         let log = corpus::golden(fixture);
@@ -411,45 +385,4 @@ fn a_tail_that_does_not_begin_at_the_checkpoint_is_refused() {
             log[2].id, log[3].id
         )
     );
-}
-
-/// A resumed memory program appends once and loads nothing: the head
-/// loaded, the tail appends.
-#[test]
-fn a_resumed_memory_program_appends_once_and_loads_nothing() {
-    let log = corpus::golden(SERIAL_MEMORY_TOOLS.fixture);
-    let memory = HandlerKey::from("golden/memory");
-    let ops: Vec<&str> = log
-        .iter()
-        .filter(|record| record.key == memory)
-        .map(|record| match &record.kind {
-            EffectKind::Memory { op } => match op {
-                rig_core::effect::MemoryOp::Load { .. } => "load",
-                rig_core::effect::MemoryOp::Append { .. } => "append",
-                rig_core::effect::MemoryOp::Clear { .. } => "clear",
-            },
-            other => panic!("a memory op, not {other:?}"),
-        })
-        .collect();
-    assert_eq!(ops, ["load", "append"]);
-    // The cut after the first tool turn leaves the append to the tail, and
-    // only the append: the resumed engine loads nothing.
-    let first_tool = log
-        .iter()
-        .position(|record| record.kind.family() == EffectFamily::Tool)
-        .expect("a tool record");
-    let (_, tail) = log.checkpoint(first_tool + 1, serde_json::Value::Null);
-    let tail_ops: Vec<bool> = tail
-        .iter()
-        .filter(|record| record.key == memory)
-        .map(|record| {
-            matches!(
-                &record.kind,
-                EffectKind::Memory {
-                    op: rig_core::effect::MemoryOp::Append { .. }
-                }
-            )
-        })
-        .collect();
-    assert_eq!(tail_ops, [true], "one append, no load, in the tail");
 }

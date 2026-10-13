@@ -6,13 +6,13 @@ use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 use crate::ReloadStatus;
 
 /// Where the rebuild is: last on the left.
-const RELOAD: StatusItem = StatusItem::at(Side::Left, 90, 16);
+const RELOAD: StatusItem = StatusItem::new("reload", Side::Left, 90, 16);
 
 pub(crate) fn add(app: &mut App) {
     app.init_resource::<AppStatus>().add_systems(
         PostUpdate,
         show_reload
-            .in_set(StatusSystems)
+            .in_set(StatusSystems::Show)
             .run_if(resource_changed::<ReloadStatus>),
     );
 }

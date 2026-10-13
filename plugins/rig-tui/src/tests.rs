@@ -28,7 +28,7 @@ pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
 }
 
 /// An agent with the terminal view's input and choices, but no terminal:
-/// its keys are the [`TerminalEvent`]s [`press`] writes. Also returns the
+/// its keys are the [`TerminalEvents`] [`press`] pushes. Also returns the
 /// agent.
 pub(crate) fn view_app() -> (App, Entity) {
     let mut app = App::new();
@@ -41,7 +41,7 @@ pub(crate) fn view_app() -> (App, Entity) {
              messages: Query<&Incoming>,
              mut delivered: ResMut<Delivered>| {
                 if let Ok(message) = messages.get(accepted.entity) {
-                    delivered.0.push(message.text.clone());
+                    delivered.0.push(message.text().to_owned());
                 }
             },
         );
@@ -62,10 +62,17 @@ pub(crate) fn key_events(app: &mut App, keys: &str, kind: KeyEventKind) {
     assert!(parsed.is_ok(), "{parsed:?}");
     for press in parsed.iter().flat_map(Keys::presses) {
         let key = KeyEvent::new_with_kind(press.code, press.modifiers, kind);
-        app.world_mut()
-            .write_message(TerminalEvent(Event::Key(key)));
+        push(app, KeyInput::Event(Event::Key(key)));
     }
     app.update();
+}
+
+/// Puts `item` among the frame's [`TerminalEvents`].
+pub(crate) fn push(app: &mut App, item: KeyInput) {
+    app.world_mut()
+        .resource_mut::<TerminalEvents>()
+        .0
+        .push(item);
 }
 
 /// Presses `keys`, as [`key_events`] writes them.
@@ -235,7 +242,7 @@ fn the_terminal_says_when_it_has_the_users_focus() {
         TerminalFocus(None)
     );
     for (event, focused) in [(Event::FocusLost, false), (Event::FocusGained, true)] {
-        app.world_mut().write_message(TerminalEvent(event));
+        push(&mut app, KeyInput::Event(event));
         app.update();
         let focus = *app.world().resource::<TerminalFocus>();
         assert_eq!(focus, TerminalFocus(Some(focused)));

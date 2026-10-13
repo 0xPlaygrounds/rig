@@ -51,7 +51,7 @@ fn a_watch_lists_the_files_there_then_names_the_files_made_and_stops_when_despaw
     app.world_mut().despawn(watch);
     app.update();
     std::fs::remove_file(&made).ok();
-    std::thread::sleep(Duration::from_millis(2200));
+    std::thread::sleep(Duration::from_millis(1200));
     app.update();
     assert_eq!(app.world().resource::<Seen>().0.len(), 2);
     std::fs::remove_dir_all(&root).ok();

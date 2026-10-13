@@ -84,7 +84,7 @@ pub(crate) fn check(
                     continue;
                 }
                 let after = join(&lines, true);
-                let change = file_change(&path, None, &after);
+                let change = file_change(&path, None, Some(&after));
                 plan.summary.push(format!("A {path} (+{})", change.added));
                 plan.writes.push((path, after));
             }
@@ -94,7 +94,7 @@ pub(crate) fn check(
                 };
                 match workspace.read_text(&resolved) {
                     Ok(before) => {
-                        let change = file_change(&path, Some(&before), "");
+                        let change = file_change(&path, Some(&before), Some(""));
                         plan.summary.push(format!("D {path} (-{})", change.removed));
                         plan.deletes.push(path);
                     }
@@ -127,7 +127,7 @@ pub(crate) fn check(
                         continue;
                     }
                 };
-                let change = file_change(&path, Some(&before), &after);
+                let change = file_change(&path, Some(&before), Some(&after));
                 let counts = format!("(+{} -{})", change.added, change.removed);
                 let Some(to) = move_to else {
                     plan.summary.push(format!("M {path} {counts}"));

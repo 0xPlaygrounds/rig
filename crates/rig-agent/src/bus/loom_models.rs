@@ -409,7 +409,7 @@ impl rig_core::serve::Recorder for Begun {
         _id: EffectId,
         _key: HandlerKey,
         _kind: EffectKind,
-        _origin: rig_core::serve::Origin,
+        _origin: rig_core::serve::DispatchContext,
     ) {
         self.begun.fetch_add(1, StdOrdering::SeqCst);
     }

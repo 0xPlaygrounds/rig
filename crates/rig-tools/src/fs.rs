@@ -8,7 +8,7 @@ use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rig_core::tool::{FileChange, ToolExecutionError};
+use rig_core::tool::{FileChange, FileState, ToolExecutionError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -79,8 +79,6 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// text) and makes this process the file's owner. A crash between create
 /// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
-    /// Tells apart the temporary files of writes running at once.
-    static NEXT: AtomicU64 = AtomicU64::new(0);
     let (target, permissions) = match fs::metadata(path) {
         Ok(meta) if !meta.is_file() => {
             return Err(io::Error::new(
@@ -107,12 +105,7 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     let name = target
         .file_name()
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
-    let temporary = target.with_file_name(format!(
-        ".{}.{}-{}.tmp",
-        name.to_string_lossy(),
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
+    let temporary = temporary_beside(&target, name);
     let written = File::create_new(&temporary).and_then(|mut file| {
         if let Some(permissions) = permissions {
             file.set_permissions(permissions)?;
@@ -124,6 +117,36 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     written.inspect_err(|_| {
         fs::remove_file(&temporary).ok();
     })
+}
+
+/// Writes `contents` to the file `path` names in one step, as
+/// [`write_atomic`] does, but without forcing it to disk, and with none of
+/// its checks: for scratch that no run after a crash reads, such as a
+/// checkpoint's kept content. A reader never sees it half written.
+pub(crate) fn write_scratch(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
+    let temporary = temporary_beside(path, name);
+    let written = File::create_new(&temporary)
+        .and_then(|mut file| file.write_all(contents))
+        .and_then(|()| fs::rename(&temporary, path));
+    written.inspect_err(|_| {
+        fs::remove_file(&temporary).ok();
+    })
+}
+
+/// A temporary file's path beside `target`, whose file name is `name`:
+/// `.name.<pid>-<n>.tmp`, unique among this process's writes.
+fn temporary_beside(target: &Path, name: &std::ffi::OsStr) -> PathBuf {
+    /// Tells apart the temporary files of writes running at once.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    target.with_file_name(format!(
+        ".{}.{}-{}.tmp",
+        name.to_string_lossy(),
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 /// The JSON file at `path` as a `T`, or `None` when it is missing or is
@@ -213,30 +236,38 @@ fn local() -> &'static dyn Workspace {
     &Local
 }
 
-/// What turning `before` (`None`: there was no file) into `after` did to the
-/// file at `path`: its lines added and removed, counted by a line diff, and
-/// that diff, unified with 3 lines of context: the fact a tool that writes
+/// What turning `before` into `after` did to the file at `path` (`None`:
+/// there was no file before, or there is none after): its lines added and
+/// removed, counted by a line diff, that diff, unified with 3 lines of
+/// context, and the [`FileState`] of each text: the fact a tool that writes
 /// files publishes ([`FilesChanged`](rig_core::tool::FilesChanged)).
 ///
 /// ```
 /// use rig_core::tool::ChangeKind;
 /// use rig_tools::fs::file_change;
 ///
-/// let created = file_change("a.rs", None, "one\ntwo\n");
+/// let created = file_change("a.rs", None, Some("one\ntwo\n"));
 /// assert_eq!((created.kind, created.added, created.removed), (ChangeKind::Created, 2, 0));
-/// let changed = file_change("a.rs", Some("one\ntwo\n"), "one\n2\nthree\n");
+/// let changed = file_change("a.rs", Some("one\ntwo\n"), Some("one\n2\nthree\n"));
 /// assert_eq!((changed.kind, changed.added, changed.removed), (ChangeKind::Modified, 2, 1));
 /// assert_eq!(
 ///     changed.diff.as_deref(),
 ///     Some("--- a.rs\n+++ a.rs\n@@ -1,2 +1,3 @@\n one\n-two\n+2\n+three\n")
 /// );
+/// assert_eq!(changed.before.and_then(|before| before.lines), Some(2));
+/// let deleted = file_change("a.rs", Some("one\n"), None);
+/// assert_eq!((deleted.kind, deleted.removed), (ChangeKind::Deleted, 1));
+/// assert_eq!(deleted.diff.as_deref(), Some("--- a.rs\n+++ /dev/null\n@@ -1 +0,0 @@\n-one\n"));
 /// ```
-pub fn file_change(path: &str, before: Option<&str>, after: &str) -> FileChange {
-    let diff = similar::TextDiff::from_lines(before.unwrap_or_default(), after);
+pub fn file_change(path: &str, before: Option<&str>, after: Option<&str>) -> FileChange {
+    let diff = similar::TextDiff::from_lines(before.unwrap_or_default(), after.unwrap_or_default());
     let unified = diff
         .unified_diff()
         .context_radius(3)
-        .header(before.map_or("/dev/null", |_| path), path)
+        .header(
+            before.map_or("/dev/null", |_| path),
+            after.map_or("/dev/null", |_| path),
+        )
         .to_string();
     let (mut added, mut removed) = (0, 0);
     for change in diff.iter_all_changes() {
@@ -246,11 +277,54 @@ pub fn file_change(path: &str, before: Option<&str>, after: &str) -> FileChange 
             similar::ChangeTag::Equal => {}
         }
     }
-    match before {
-        None => FileChange::created(path, added),
-        Some(_) => FileChange::modified(path, added, removed),
+    let mut change = match (before, after) {
+        (_, None) => FileChange::deleted(path, removed),
+        (None, Some(_)) => FileChange::created(path, added),
+        (Some(_), Some(_)) => FileChange::modified(path, added, removed),
+    };
+    change.diff = (!unified.is_empty()).then_some(unified);
+    change.before = before.map(|text| FileState::of(text.as_bytes()));
+    change.after = after.map(|text| FileState::of(text.as_bytes()));
+    change
+}
+
+/// What a file held before a tool changed it.
+#[derive(Default)]
+pub(crate) struct Previous {
+    /// Its text, any bytes that are not UTF-8 replaced, to diff; empty when
+    /// it was not read.
+    pub(crate) text: String,
+    /// The file, when it is a regular file.
+    pub(crate) state: Option<FileState>,
+}
+
+impl Previous {
+    /// A file that held `bytes`.
+    pub(crate) fn of(bytes: &[u8]) -> Self {
+        Self {
+            text: String::from_utf8_lossy(bytes).into_owned(),
+            state: Some(FileState::of(bytes)),
+        }
     }
-    .with_diff(unified)
+
+    /// A file of `size` bytes that was not read.
+    pub(crate) fn unread(size: u64) -> Self {
+        Self {
+            text: String::new(),
+            state: Some(FileState::unread(size)),
+        }
+    }
+
+    /// The change from this file (`None`: none) to `after` (`None`: removed):
+    /// a [`file_change`] with this file's own state, and that of the bytes
+    /// `after` holds.
+    pub(crate) fn change(this: Option<&Self>, path: &str, after: Option<&[u8]>) -> FileChange {
+        let text = after.map(String::from_utf8_lossy);
+        let mut change = file_change(path, this.map(|it| it.text.as_str()), text.as_deref());
+        change.before = this.and_then(|it| it.state.clone());
+        change.after = after.map(FileState::of);
+        change
+    }
 }
 
 #[cfg(test)]

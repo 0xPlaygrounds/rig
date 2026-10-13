@@ -15,6 +15,7 @@ use std::path::Path;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FileChange, FilesChanged, FilesRead, content_hash};
+use rig_harness::rig_memory::summary_in;
 use rig_tools::{Edit, Read, Write};
 
 /// The content hash of each file the agent last read or wrote itself, by
@@ -115,7 +116,7 @@ fn remember(
             let changed = published.0.get::<FilesChanged>().ok().flatten();
             let changed = changed.unwrap_or_default().0.into_iter();
             changed
-                .map(|FileChange { path, after, .. }| (path, after))
+                .map(|FileChange { path, after, .. }| (path, after.and_then(|it| it.hash)))
                 .collect()
         }
         _ => return,
@@ -130,32 +131,14 @@ fn remember(
 
 /// Forgets what an agent read once its conversation is compacted into a
 /// summary: its model no longer holds the files' content.
-fn forget(
-    mut committed: MessageReader<Committed>,
-    mut agents: Query<(&Conversation, &mut ReadFiles)>,
-) {
-    for change in committed.read() {
-        if let Committed::Splice {
-            agent,
-            removed,
-            changed,
-        } = change
-            && let Ok((conversation, mut read)) = agents.get_mut(*agent)
-            && !removed.is_empty()
-            && changed.iter().any(|id| summary(conversation, *id))
+fn forget(mut committed: MessageReader<Committed>, mut agents: Query<&mut ReadFiles>) {
+    for Committed { agent, change } in committed.read() {
+        if summary_in(&change.change).is_some()
+            && let Ok(mut read) = agents.get_mut(*agent)
         {
             read.0.clear();
         }
     }
-}
-
-/// Whether the message `id` of `conversation` holds a compaction's summary.
-fn summary(conversation: &Conversation, id: MessageId) -> bool {
-    let summary = Origin::plugin("compaction");
-    let entry = conversation
-        .index_of(id)
-        .and_then(|at| conversation.entry(at));
-    entry.is_some_and(|entry| entry.origins.iter().any(|(_, origin)| *origin == summary))
 }
 
 #[cfg(test)]

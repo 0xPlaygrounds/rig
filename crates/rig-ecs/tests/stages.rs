@@ -59,7 +59,6 @@ use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::tool::{
     ContextValue, ExitStatus, ToolContext, ToolErrorKind, ToolOutput, ToolResult,
 };
-use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
 use rig_ecs::turn::RETRY;
@@ -149,7 +148,7 @@ fn open(kind: &str) -> EffectRequest {
 #[derive(Resource, Default)]
 struct Seen(Vec<String>);
 
-/// Every [`Recorded`] and [`Notice`] so far.
+/// Every [`EffectRecorded`] and [`Notice`] so far.
 #[derive(Resource, Default)]
 struct Written {
     records: Vec<EffectRecord>,
@@ -166,7 +165,7 @@ fn app() -> App {
         .init_resource::<Written>()
         .add_systems(
             Last,
-            |mut records: MessageReader<Recorded>,
+            |mut records: MessageReader<EffectRecorded>,
              mut notices: MessageReader<Notice>,
              mut written: ResMut<Written>| {
                 let records = records.read().map(|recorded| recorded.0.clone());
@@ -996,7 +995,8 @@ fn every_way_an_effect_ends_is_recorded() {
         decision.decide(Decider::plugin("test"), answer);
     }
     // Replaced while held: it never starts.
-    let successor = world.spawn((open("successor"), Supersedes(replaced))).id();
+    let successor = world.spawn(open("successor")).id();
+    world.entity_mut(replaced).insert(SupersededBy(successor));
     // Despawned before it settles.
     world.despawn(dropped);
     app.update();
@@ -1463,6 +1463,54 @@ fn a_held_call_holds_back_only_the_calls_that_touch_what_it_writes() {
     );
 }
 
+/// In Prepare, declares that the call `held` writes only under `/work/src`.
+fn declare_src(mut calls: Query<(Entity, &ToolRequest), Added<Admitted>>, mut commands: Commands) {
+    for (call, request) in &mut calls {
+        if request.call.id.to_string() == "held" {
+            let src = Scope::Paths(vec![PathBuf::from("/work/src/../src")]);
+            commands
+                .entity(call)
+                .insert((Footprint(Touches::Writes(src)), Declared));
+        }
+    }
+}
+
+#[test]
+fn a_footprint_a_plugin_declared_on_a_call_stands() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("held", "touch", serde_json::json!({})),
+            MockStreamEvent::tool_call(
+                "docs",
+                "read",
+                serde_json::json!({ "path": "/work/docs/a.md" }),
+            ),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        answer("done"),
+    ]);
+    app.add_tool(ReadFile).init_resource::<Gated>().add_systems(
+        AgentPass,
+        (declare_src.in_set(Stage::Prepare), gate.in_set(Stage::Gate)),
+    );
+    agent_on(&mut app, &model);
+    let held = run_until(&mut app, |world| world.resource::<Gated>().hold.is_some());
+    assert!(held, "the gate held the shell-like call");
+    // Without the declaration, `touch` writes anything and the read waits.
+    let docs = run_until(&mut app, |world| {
+        call_named(world, "docs").is_some_and(|docs| world.get::<Started>(docs).is_some())
+    });
+    let world = app.world_mut();
+    let held = call_named(world, "held").unwrap_or(Entity::PLACEHOLDER);
+    let src = Scope::Paths(vec![PathBuf::from("/work/src")]);
+    assert_eq!(
+        world.get::<Footprint>(held).map(|f| f.0.clone()),
+        Some(Touches::Writes(src))
+    );
+    assert!(docs, "the read of docs/ ran beside the held call");
+}
+
 /// The footprints Gate saw, by call id.
 #[derive(Resource, Default)]
 struct GatedFootprints(Vec<(String, Touches)>);
@@ -1629,14 +1677,15 @@ fn fall_back(
             let (Verdict::GaveUp(_), Some(to)) = (&verdict.0, to.clone()) else {
                 continue;
             };
-            commands.spawn((
-                request.clone().on(to),
-                TurnCall,
-                Supersedes(call),
-                CallOf(of.0),
-                ForAgent(agent.0),
-                Effect::child_of(effect.parent),
-            ));
+            commands
+                .spawn((
+                    request.clone().on(to),
+                    TurnCall,
+                    CallOf(of.0),
+                    ForAgent(agent.0),
+                    Effect::child_of(effect.parent),
+                ))
+                .add_related::<SupersededBy>(&[call]);
         }
     }
 }
@@ -1661,7 +1710,7 @@ fn a_call_that_gave_up_is_superseded_on_another_model_and_the_turn_goes_on() {
     let done = run_until(&mut app, |world| !world.resource::<Ended>().0.is_empty());
     assert!(done, "{:?}", notices(&app));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
@@ -1817,8 +1866,10 @@ fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
     let mut app = app();
     let ask = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<BuildFrom>)>| {
         for mut call in &mut calls {
-            let question = Message::user("And in one word?");
-            call.request.chat_history.push(question);
+            let question = Entry::new(Message::user("And in one word?"));
+            if let Some(history) = &mut call.history {
+                history.push(question.by(Author::plugin("side")));
+            }
         }
     };
     app.init_resource::<SideAnswers>()
@@ -1828,7 +1879,7 @@ fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
              calls: Query<&Outcome, With<BuildFrom>>,
              mut answers: ResMut<SideAnswers>| {
                 let reply = calls.get(settled.entity).ok().and_then(Outcome::completion);
-                let text = reply.and_then(|reply| final_answer(&reply.message()?));
+                let text = reply.and_then(|reply| reply.message()?.final_answer());
                 answers.0.extend(text);
             },
         );
@@ -1873,7 +1924,7 @@ fn nudge(
         if matches!(outcome, TurnOutcome::Answered(_)) && !*nudged {
             *nudged = true;
             let nudge = Deliver::new(agent, "And the tests?", DeliveryMode::Queue);
-            commands.trigger(nudge.with_origin(Origin::plugin("nudge")));
+            commands.trigger(nudge.with_author(Author::plugin("nudge")));
         }
     }
 }
@@ -1909,7 +1960,7 @@ fn a_reviewer_carries_a_turn_on_with_a_queued_nudge() {
     assert!(run_until(&mut app, ended_once), "{:?}", notices(&app));
     // One turn: the nudge carried it on instead of ending it.
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("second"), "{:?}", ended(&app));
@@ -2038,16 +2089,59 @@ fn a_hold_on_a_proposed_end_goes_when_the_turn_carries_on() {
     let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended_once));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("third"), "{:?}", ended(&app));
 }
 
+#[test]
+fn a_messages_parts_go_to_the_model_in_its_authors_order() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("a cat")]);
+    let world = app.world_mut();
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    let agent = agents.iter(world).next().unwrap_or(Entity::PLACEHOLDER);
+    let spec = Catalog::builtin().resolve("anthropic/claude-fable-5");
+    let Ok(spec) = spec.map(|spec| spec.shared()) else {
+        return;
+    };
+    assert!(spec.input.image);
+    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+    let handler = Handler(ErasedHandler::new(handler));
+    world.entity_mut(agent).insert(Connection { spec, handler });
+    let image = UserContent::image_base64("iVBORw0KGgo=", None, None);
+    let mut message =
+        Incoming::new("look", DeliveryMode::Steer).with_author(Author::plugin("eyes"));
+    let picture = Attachment {
+        label: "cat.png".to_owned(),
+        content: image.clone(),
+    };
+    message.parts.push(MessagePart::Attachment(picture));
+    world.spawn((message, ForAgent(agent)));
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|c| c.messages().len() == 2)
+    });
+    assert!(done, "{:?}", notices(&app));
+    let conversation = app.world().get::<Conversation>(agent);
+    let first = conversation.and_then(|c| c.entries().next());
+    let header = Author::plugin("eyes").header().unwrap_or_default();
+    let said = UserContent::text(format!("{header}\nlook"));
+    assert!(
+        matches!(first, Some(entry)
+            if entry.author == Some(&Author::plugin("eyes"))
+                && matches!(entry.message, Message::User { content }
+                    if content.iter().eq([&said, &image]))),
+        "{first:?}"
+    );
+}
+
 /// Takes over the user's messages that start with `!`, as a shell would.
 fn run_in_shell(mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>) {
     for (typed, mut decision) in &mut typed {
-        if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
+        if typed.author.kind == AuthorKind::User && typed.text().starts_with('!') {
             decision.decide(Decider::plugin("test"), Outcome::custom("ran in a shell"));
         }
     }
@@ -2118,7 +2212,7 @@ fn a_message_taken_over_in_gate_is_never_delivered_and_one_accepted_carries_the_
     let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended_once));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("second"), "{:?}", ended(&app));
@@ -2152,7 +2246,7 @@ fn an_accepted_note_withdrawn_by_deciding_it_is_never_delivered() {
     let held = |world: &mut World| world.resource::<Judging>().0.is_some();
     assert!(run_until(&mut app, held));
     let note = |text: &str| {
-        let note = Incoming::new(text, DeliveryMode::Note).with_origin(Origin::plugin("check"));
+        let note = Incoming::new(text, DeliveryMode::Note).with_author(Author::plugin("check"));
         (note, ForAgent(agent))
     };
     let kept = app.world_mut().spawn(note("the docs build")).id();
@@ -2218,7 +2312,7 @@ fn a_length_cutoff_is_a_proposal_that_a_new_turn_call_carries_on() {
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("done"), "{:?}", ended(&app));
@@ -2333,7 +2427,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     assert!(world.get::<Settled>(turn).is_some());
     assert!(world.get::<Started>(check).is_none());
     let said = conversation(&app, agent);
-    let kept = said.last().and_then(final_answer);
+    let kept = said.last().and_then(|message| message.final_answer());
     assert_eq!(kept.as_deref(), Some("The answer is"), "{said:?}");
     // A late release starts nothing.
     for _ in 0..3 {
@@ -2379,14 +2473,15 @@ fn an_interrupt_keeps_no_text_of_a_superseded_call() {
     let (Some((loser, request, parent, turn)), Some(connection)) = (loser, connection) else {
         return;
     };
-    world.spawn((
-        request.on(connection),
-        TurnCall,
-        Supersedes(loser),
-        CallOf(turn),
-        ForAgent(agent),
-        Effect::child_of(parent),
-    ));
+    world
+        .spawn((
+            request.on(connection),
+            TurnCall,
+            CallOf(turn),
+            ForAgent(agent),
+            Effect::child_of(parent),
+        ))
+        .add_related::<SupersededBy>(&[loser]);
     world.flush();
     world.trigger(Interrupt::new(agent));
     world.flush();
@@ -2394,9 +2489,85 @@ fn an_interrupt_keeps_no_text_of_a_superseded_call() {
     assert!(
         !said
             .iter()
-            .filter_map(final_answer)
+            .filter_map(|message| message.final_answer())
             .any(|text| text.contains("The answer is")),
         "{said:?}"
+    );
+}
+
+/// Two calls of a turn streaming halfway and a third: once both name the
+/// third their successor, only its reply is the turn's, and both are
+/// recorded as superseded.
+#[test]
+fn a_race_of_any_size_commits_only_its_winner() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    let halfway = Handler(ErasedHandler::new(Halfway));
+    let Some(mut first) = app.world_mut().get_mut::<Connection>(agent) else {
+        return;
+    };
+    first.handler = halfway;
+    let streaming = |world: &mut World| {
+        let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+        partials
+            .iter(world)
+            .filter(|partial| !partial.text.is_empty())
+            .count()
+    };
+    assert!(run_until(&mut app, |world| streaming(world) == 1));
+    let world = app.world_mut();
+    let racing = world.get::<Connection>(agent).cloned();
+    let mut first = world.query_filtered::<(Entity, &ModelRequest, &Effect, &CallOf), (With<TurnCall>, Without<Settled>)>();
+    let first = first
+        .iter(world)
+        .next()
+        .map(|(call, request, effect, of)| (call, request.clone(), effect.parent, of.0));
+    let winning = MockCompletionModel::from_stream_turns([answer("ok")]);
+    let (Some((first, request, parent, turn)), Some(racing), Some(winning)) =
+        (first, racing, connection(&winning))
+    else {
+        return;
+    };
+    let racer = |request: ModelRequest| {
+        (
+            request,
+            TurnCall,
+            CallOf(turn),
+            ForAgent(agent),
+            Effect::child_of(parent),
+        )
+    };
+    let second = world.spawn(racer(request.clone().on(racing))).id();
+    assert!(run_until(&mut app, |world| streaming(world) == 2));
+    let world = app.world_mut();
+    let winner = world.spawn(racer(request.on(winning))).id();
+    world.entity_mut(first).insert(SupersededBy(winner));
+    world.entity_mut(second).insert(SupersededBy(winner));
+    assert_eq!(world.get::<Supersedes>(winner).map(|of| of.len()), Some(2));
+    assert!(run_until(&mut app, |world| !world
+        .resource::<Ended>()
+        .0
+        .is_empty()));
+    let answer = match ended(&app).as_slice() {
+        [TurnOutcome::Answered(message)] => message.final_answer(),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
+    assert_eq!(conversation(&app, agent).len(), 2);
+    let mut models: Vec<_> = model_records(&app)
+        .iter()
+        .map(|record| record.disposition)
+        .collect();
+    models.sort_by_key(|disposition| format!("{disposition:?}"));
+    assert_eq!(
+        models,
+        [
+            Disposition::Ran,
+            Disposition::Superseded,
+            Disposition::Superseded
+        ]
     );
 }
 
@@ -2405,10 +2576,10 @@ fn an_interrupt_keeps_no_text_of_a_superseded_call() {
 fn retire_when_done(
     settled: On<Add<Settled>>,
     turns: Query<&ForAgent, With<TurnOutcome>>,
-    mut commit: Commit,
+    mut commands: Commands,
 ) {
     if let Ok(&ForAgent(agent)) = turns.get(settled.entity) {
-        commit.retire(agent);
+        commands.trigger(Retire { entity: agent });
     }
 }
 
@@ -2643,7 +2814,12 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
         assert!(stamp.last >= stamp.first, "{stamp:?}");
     }
     let said = conversation(&app, agent);
-    assert_eq!(said.last().and_then(final_answer).as_deref(), Some("Hello"));
+    assert_eq!(
+        said.last()
+            .and_then(|message| message.final_answer())
+            .as_deref(),
+        Some("Hello")
+    );
 }
 
 #[test]
@@ -2795,7 +2971,7 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("adapted"), "{:?}", ended(&app));
@@ -2928,6 +3104,83 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
         [&Message::system(
             "You add.\n\n<environment>\nToday is Monday.\n</environment>"
         )]
+    );
+}
+
+/// A model's handler whose wire does not take `seed`.
+struct NoSeed(ErasedHandler);
+
+impl Serve for NoSeed {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.0.descriptor()
+    }
+
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        self.0.serve(kind, dispatch).await
+    }
+
+    fn check(&self, _: &EffectKind) -> Vec<rig_core::completion::UnsupportedOption> {
+        vec![rig_core::completion::UnsupportedOption::new(
+            "seed", "test", "model", "no seed",
+        )]
+    }
+}
+
+/// What `ModelStarts::sent` said in Prepare, and `Fitted` after Start.
+#[derive(Resource, Default)]
+struct LeftOut(Vec<Vec<String>>);
+
+fn options(dropped: &[rig_core::completion::UnsupportedOption]) -> Vec<String> {
+    dropped.iter().map(|it| it.option.to_string()).collect()
+}
+
+#[test]
+fn a_call_knows_the_options_its_model_left_out() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("ok")]);
+    let ask_top_p =
+        |mut calls: Query<(&mut ModelRequest, &Adapters, &ForAgent), Added<Admitted>>,
+         starts: ModelStarts,
+         mut left: ResMut<LeftOut>| {
+            for (mut call, adapters, agent) in &mut calls {
+                call.request.options.top_p = Some(0.9);
+                if let Ok((.., dropped)) = starts.sent(&call, Some(adapters), Some(agent.0)) {
+                    left.0.push(options(&dropped));
+                }
+            }
+        };
+    app.init_resource::<Ended>()
+        .init_resource::<LeftOut>()
+        .add_observer(log_ended)
+        .add_observer(
+            |fitted: On<Add<Fitted>>, calls: Query<&Fitted>, mut left: ResMut<LeftOut>| {
+                left.0
+                    .extend(calls.get(fitted.entity).map(|it| options(&it.0)));
+            },
+        )
+        .add_systems(AgentPass, ask_top_p.in_set(PrepareSystems::Edit));
+    let agent = agent_on(&mut app, &model);
+    let spec = Catalog::builtin().resolve("anthropic/claude-fable-5");
+    let Ok(spec) = spec.map(|spec| spec.shared()) else {
+        return;
+    };
+    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+    let handler = Handler(ErasedHandler::new(NoSeed(ErasedHandler::new(handler))));
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(Connection { spec, handler });
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // Fitting to the spec left `top_p` out; the handler's dry run names
+    // `seed`. Prepare and Start agree.
+    let left = &app.world().resource::<LeftOut>().0;
+    assert_eq!(left, &[vec!["top_p", "seed"], vec!["top_p", "seed"]]);
+    let sent = model.requests();
+    assert_eq!(
+        sent.first().map(|request| request.options.top_p),
+        Some(None)
     );
 }
 
@@ -3065,7 +3318,7 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     }
     // The plugin's own message: spawning it is all it takes.
     let typed =
-        Incoming::new("go", DeliveryMode::Steer).with_origin(Origin::user().titled("review"));
+        Incoming::new("go", DeliveryMode::Steer).with_author(Author::user().titled("review"));
     let sent = world.spawn((typed, ForAgent(agent), Templated)).id();
     let message = world
         .get::<Effect>(sent)
@@ -3088,8 +3341,8 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     assert_eq!(delivery.parents, [first_call, Some(task)]);
     // A user's message keeps its title, and goes to the model as typed.
     let conversation = app.world().get::<Conversation>(agent);
-    let origin = conversation.and_then(|conversation| conversation.origin(0, 0));
-    assert_eq!(origin, Some(&Origin::user().titled("review")));
+    let author = conversation.and_then(|conversation| conversation.author(0));
+    assert_eq!(author, Some(&Author::user().titled("review")));
     let said = conversation.map(|conversation| format!("{:?}", conversation.messages()));
     assert!(said.is_some_and(|said| said.contains("\"go\"") && !said.contains("[Output of")));
 }
@@ -3138,7 +3391,7 @@ fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
         sent,
         Some(MessageRecord {
             text: "go".to_owned(),
-            origin: Origin::user(),
+            author: Author::user(),
             mode: DeliveryMode::Steer,
         })
     );
@@ -3319,4 +3572,56 @@ fn releasing_one_of_two_holds_wakes_the_loop() {
     app.update();
     app.update();
     assert!(has::<Started>(&app, effect), "the coordinator let go");
+}
+
+/// `model` as the catalog's DeepSeek model, with the cache retentions it
+/// honours.
+fn connection_caching(
+    model: &MockCompletionModel,
+    retention: Vec<rig_core::completion::CacheRetention>,
+) -> Option<Connection> {
+    let mut connection = connection(model)?;
+    let caching = rig_core::catalog::CacheSupport::new(retention);
+    let spec = (*connection.spec).clone().with_caching(caching);
+    connection.spec = Arc::new(spec);
+    Some(connection)
+}
+
+#[test]
+fn a_call_routed_to_another_model_asks_for_that_models_caching() {
+    use rig_core::completion::{CacheRetention, CompletionRequest};
+    let mut app = app();
+    let own = MockCompletionModel::from_stream_turns([answer("own")]);
+    let routed = MockCompletionModel::from_stream_turns([answer("routed"), answer("summary")]);
+    let to = connection_caching(&routed, vec![CacheRetention::Short]);
+    let route = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            call.connection = to.clone();
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
+    let agent = agent_on(&mut app, &own);
+    if let Some(plain) = connection_caching(&own, Vec::new()) {
+        app.world_mut().entity_mut(agent).insert(plain);
+    }
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // A call a plugin makes, leaving its caching to the model.
+    let summary = CompletionRequest::from(vec![Message::user("sum it up")]);
+    let summary = connection_caching(&routed, vec![CacheRetention::Short])
+        .map(|to| ModelRequest::new(summary).on(to));
+    if let Some(summary) = summary {
+        app.world_mut()
+            .spawn((summary, Effect::default(), ForAgent(agent)));
+    }
+    assert!(run_until(&mut app, |_| routed.request_count() == 2));
+    let caching: Vec<_> = routed
+        .requests()
+        .iter()
+        .map(|request| request.options.cache)
+        .collect();
+    assert_eq!(caching, [Some(CacheRetention::Short); 2]);
+    assert_eq!(own.request_count(), 0);
 }

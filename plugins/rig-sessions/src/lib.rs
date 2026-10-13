@@ -1,9 +1,9 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`, and
-//! [`NameSession`] for a plugin naming any session. The end
-//! of each turn rewrites the session's [`Meta`] in its store (its
-//! [`SessionTitle`], the [`ResumeLabel`]s other plugins add, cost and when
-//! it was updated), which `/resume` lists and a resumed session reads its
-//! title back from. With the default
+//! [`NameSession`] for a plugin naming any session. Each change of a
+//! conversation, title or label rewrites the session's [`Meta`] in its
+//! store (its [`SessionTitle`], the [`ResumeLabel`]s plugins add, such as
+//! rig-telemetry's cost, and when it was updated), which `/resume` lists
+//! and a resumed session reads its title back from. With the default
 //! `tui` feature, `/resume` without arguments is a picker and the terminal
 //! view's status line shows the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
@@ -23,29 +23,26 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_reflect::prelude::*;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
-use rig_tools::shorten;
+use rig_tools::{ago, shorten};
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::{dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
-use rig_ecs::journal::SessionStore;
+use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
+use rig_ecs::journal::{Committed, SessionStore};
 use rig_ecs::prelude::now_ms;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::prelude::{
-    Exit, ExitReason, JournalStore, RigHome, SessionPaths, SessionStores, first_typed,
+    Exit, ExitReason, Files, RigHome, SessionPaths, SessionStores, first_typed,
 };
 use rig_harness::primary::primary_order;
-use rig_telemetry::SessionSpending;
 
 #[cfg(feature = "tui")]
 mod tui;
 
 /// Most characters of a session's title.
 const TITLE_CHARS: usize = 60;
-/// Most sessions `/resume` lists.
-const LISTED: usize = 200;
-/// The file of a session's store that holds its [`Meta`].
+/// The file of a session's store that holds its [`Meta`]
+/// (`files/meta.json` in its directory).
 const META: &str = "meta.json";
 
 /// `/new`, `/resume`, `/name`, and the listing cache written at the end of
@@ -56,6 +53,7 @@ pub struct SessionsPlugin;
 impl Plugin for SessionsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SessionTitle>()
+            .init_resource::<Listed>()
             .init_resource::<RigHome>()
             .init_resource::<SessionStores>()
             .add_command("new", "Start a new session; this one is kept", new)
@@ -74,9 +72,8 @@ impl Plugin for SessionsPlugin {
             .add_systems(PreStartup, restore_title)
             .add_systems(
                 Last,
-                update_meta.in_set(WriteJournal).run_if(
-                    any_component_removed::<ActiveTurn>
-                        .or_eager(on_message::<AppExit>)
+                update_meta.after(WriteJournal).run_if(
+                    on_message::<Committed>
                         .or_eager(resource_changed::<SessionTitle>)
                         .or_eager(labels_changed),
                 ),
@@ -133,7 +130,7 @@ pub struct SwitchSession {
 }
 
 /// Names a session: its title in `/resume`, and nothing else of its
-/// listing, such as what it cost. Naming this session is `/name`'s.
+/// listing, such as its labels. Naming this session is `/name`'s.
 #[derive(Event, Clone, Debug)]
 pub struct NameSession {
     /// The session.
@@ -143,7 +140,7 @@ pub struct NameSession {
 }
 
 /// What `/resume` lists of a session, kept in its store: what it is
-/// listed as, what it cost and when it was updated. The agent logs hold
+/// listed as, its labels and when it was updated. The agent logs hold
 /// the same facts; a plugin that writes a session, such as an import,
 /// writes it with [`write_meta`].
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -152,20 +149,18 @@ pub struct Meta {
     /// What it is listed as.
     #[serde(flatten)]
     pub title: SessionTitle,
-    /// The [`ResumeLabel`]s' texts, by tag.
+    /// The [`ResumeLabel`]s' texts, by tag, such as rig-telemetry's
+    /// `spent`: the session's cost, or its tokens when no call was priced.
     pub labels: BTreeMap<String, String>,
-    /// What the session's model calls cost, in USD, or `None` when no call
-    /// was priced, such as a local or subscription model's.
-    pub cost: Option<f64>,
-    /// The tokens the session's model calls read and wrote.
-    pub tokens: u64,
     /// When it was written, in milliseconds since the Unix epoch.
     pub updated: u64,
 }
 
 impl Meta {
     /// The listing of the session kept in `store`, if it has one.
-    pub fn of(store: &dyn JournalStore) -> Option<Self> {
+    /// Generic, so it is passed as it is where a store is any `Files`,
+    /// such as `store.as_deref().and_then(Meta::of)`.
+    pub fn of(store: &(impl Files + ?Sized)) -> Option<Self> {
         serde_json::from_slice(&store.read_file(META).ok()?).ok()
     }
 }
@@ -175,7 +170,7 @@ impl Meta {
 /// # Errors
 ///
 /// When the store cannot write it.
-pub fn write_meta(store: &dyn JournalStore, meta: &Meta) -> io::Result<()> {
+pub fn write_meta(store: &(impl Files + ?Sized), meta: &Meta) -> io::Result<()> {
     store.write_file(META, &serde_json::to_vec_pretty(meta)?)
 }
 
@@ -209,17 +204,9 @@ impl SessionEntry {
         label
     }
 
-    /// What it cost, or its tokens, and its age, shown whole beside the
-    /// label.
+    /// How long ago it changed, shown whole beside the label.
     pub fn detail(&self) -> String {
-        let age = age(self.saved.elapsed().unwrap_or_default());
-        match self.meta.cost {
-            Some(cost) if cost > 0.0 => format!("{} · {age}", dollars_label(cost)),
-            _ if self.meta.tokens > 0 => {
-                format!("{} tokens · {age}", tokens_label(self.meta.tokens))
-            }
-            _ => age,
-        }
+        ago(self.saved.elapsed().unwrap_or_default())
     }
 }
 
@@ -237,7 +224,7 @@ pub fn list(home: &Home, stores: &SessionStores, current: &Path) -> Vec<SessionE
             if dir.path() == current || !dir.is_saved() {
                 return None;
             }
-            let meta = stores.open(&dir).ok().and_then(|store| Meta::of(&*store));
+            let meta = stores.open(&dir).ok().as_deref().and_then(Meta::of);
             let saved = match &meta {
                 Some(meta) => UNIX_EPOCH + Duration::from_millis(meta.updated),
                 None => fs::metadata(dir.path()).ok()?.modified().ok()?,
@@ -251,19 +238,7 @@ pub fn list(home: &Home, stores: &SessionStores, current: &Path) -> Vec<SessionE
         })
         .collect();
     sessions.sort_by_key(|session| Reverse(session.saved));
-    sessions.truncate(LISTED);
     sessions
-}
-
-/// How long ago, roughly: `3m ago`, `5h ago`, `2d ago`.
-fn age(elapsed: Duration) -> String {
-    let seconds = elapsed.as_secs();
-    match seconds {
-        0..60 => "just now".to_owned(),
-        60..3600 => format!("{}m ago", seconds / 60),
-        3600..86_400 => format!("{}h ago", seconds / 3600),
-        _ => format!("{}d ago", seconds / 86_400),
-    }
 }
 
 /// `path` with the home directory shown as `~`.
@@ -275,14 +250,25 @@ fn tilde(path: &Path) -> String {
     }
 }
 
+/// What the session's listing cache holds of the title and labels, as
+/// last written or read back: a title or label set to what it already
+/// says is no change, so resuming a session leaves its place in `/resume`.
+#[derive(Resource, Default, PartialEq)]
+struct Listed(SessionTitle, BTreeMap<String, String>);
+
 /// Reads the session's title from its listing cache.
-fn restore_title(store: Option<Res<SessionStore>>, mut title: ResMut<SessionTitle>) {
+fn restore_title(
+    store: Option<Res<SessionStore>>,
+    mut title: ResMut<SessionTitle>,
+    mut listed: ResMut<Listed>,
+) {
     let Some(store) = store else {
         return;
     };
     if let Some(meta) = Meta::of(&*store.0) {
         // Not a change: nothing to write back.
-        *title.bypass_change_detection() = meta.title;
+        title.bypass_change_detection().clone_from(&meta.title);
+        *listed = Listed(meta.title, meta.labels);
     }
 }
 
@@ -294,16 +280,17 @@ fn labels_changed(
     removed.read().count() > 0 || !labels.is_empty()
 }
 
-/// Rewrites the session's listing cache, at the end of a turn, on a new
-/// name or label and on exit, once some agent logged a message; the first
+/// Rewrites the session's listing cache when a conversation changed, and
+/// on a new name or label, once some agent logged a message; the first
 /// time, the title takes the start of the first message typed.
 fn update_meta(
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
-    mut title: ResMut<SessionTitle>,
+    (mut title, mut listed): (ResMut<SessionTitle>, ResMut<Listed>),
+    mut committed: MessageReader<Committed>,
     agents: Query<(&AgentId, &Conversation, Has<SpawnedBy>), With<Agent>>,
     labels: Query<&ResumeLabel>,
-    spent: Option<Res<SessionSpending>>,
 ) {
+    let changed = committed.read().count() > 0;
     let (Some(_), Some(store)) = (paths.filter(|paths| paths.is_saved()), store) else {
         return;
     };
@@ -323,16 +310,18 @@ fn update_meta(
         .filter(|label| !label.text.is_empty())
         .map(|label| (label.tag.clone(), title_of(&label.text)))
         .collect();
-    let spent = spent.map(|spent| spent.0.total).unwrap_or_default();
+    let now = Listed(title.clone(), labels);
+    if !changed && *listed == now {
+        return;
+    }
     let meta = Meta {
-        title: title.clone(),
-        labels,
-        cost: (spent.unpriced < spent.calls).then_some(spent.cost),
-        tokens: spent.total_tokens(),
+        title: now.0.clone(),
+        labels: now.1.clone(),
         updated: now_ms(),
     };
-    if let Err(failure) = write_meta(&*store.0, &meta) {
-        error!("could not write the session's meta.json: {failure}");
+    match write_meta(&*store.0, &meta) {
+        Ok(()) => *listed = now,
+        Err(failure) => error!("could not write the session's meta.json: {failure}"),
     }
 }
 
@@ -425,7 +414,7 @@ fn name_session(
     let written = if dir.path().is_dir() {
         stores
             .open(&dir)
-            .and_then(|store| rename(&*store, name))
+            .and_then(|store| Ok(rename(&*store, name)?))
             .map_err(|failure| failure.to_string())
     } else {
         Err("there is no such session".to_owned())
@@ -437,7 +426,7 @@ fn name_session(
 }
 
 /// Names the session in `store` `name`, keeping the rest of its listing.
-fn rename(store: &dyn JournalStore, name: String) -> io::Result<()> {
+fn rename(store: &dyn Files, name: String) -> io::Result<()> {
     let meta = Meta::of(store).unwrap_or_else(|| Meta {
         updated: now_ms(),
         ..Meta::default()

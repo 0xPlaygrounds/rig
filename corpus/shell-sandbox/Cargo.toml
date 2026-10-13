@@ -22,7 +22,6 @@ rig-tools = { path = "../../crates/rig-tools" }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 # The app on a session store and the scripted model the tests run on.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 # The default `shell`, which the sandbox wraps.
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }

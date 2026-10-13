@@ -63,7 +63,7 @@ fn state(app: &mut App) -> (Vec<String>, Option<u32>) {
                     _ => None,
                 })
                 .collect(),
-            message => final_answer(message).unwrap_or_default(),
+            message => message.final_answer().unwrap_or_default(),
         })
         .collect();
     (texts, Some(turns.0))
@@ -81,7 +81,7 @@ fn three_turns(
     app.world_mut().entity_mut(agent).insert(connect(&model)?);
     for (done, text) in (1..).zip(["one", "two", "three"]) {
         before(text);
-        let typed = Deliver::new(agent, text, DeliveryMode::Queue).with_origin(Origin::user());
+        let typed = Deliver::new(agent, text, DeliveryMode::Queue).with_author(Author::user());
         app.world_mut().trigger(typed);
         run_until(app, wakes, |world| {
             world
@@ -96,7 +96,7 @@ fn three_turns(
 /// Types `line` for `agent` and picks "two" in the `/branch` picker it
 /// opens; `false` without a picker of the three messages.
 fn branch_before_two(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) -> bool {
-    let line = Deliver::new(agent, line, DeliveryMode::Queue).with_origin(Origin::user());
+    let line = Deliver::new(agent, line, DeliveryMode::Queue).with_author(Author::user());
     app.world_mut().trigger(line);
     run_until(app, wakes, |world| {
         world

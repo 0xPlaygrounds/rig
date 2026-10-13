@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::Catalog;
 use rig_core::completion::{CompletionRequest, ProviderCapabilities};
 use rig_core::effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, family, model_key};
@@ -14,6 +13,7 @@ use rig_core::operation::Finish;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
 use rig_core::tool::{ContentHash, FileRead, FilesRead, ToolContext};
 use rig_harness::rig_ecs::effects::Handler;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, first_agent, log_ended, run_until};
 use schemars::JsonSchema;
 use serde_json::json;

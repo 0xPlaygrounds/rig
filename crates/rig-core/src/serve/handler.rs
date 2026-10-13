@@ -8,13 +8,17 @@
 //! ```
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     task::Poll,
 };
 
 use futures::{StreamExt, channel::oneshot};
 
 use crate::{
+    completion::UnsupportedOption,
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
     streaming::{Item, Relayed, StreamEvent, StreamEvents},
@@ -31,8 +35,8 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 /// A registered effect handler returning an outcome or an owned stream.
 ///
 /// Provider and tool authors do not implement this directly: the adapters
-/// in [`crate::serve::adapters`] wrap models, tools, memories and indexes
-/// (`Model`, `Tool`, `ConversationMemory`, `VectorStoreIndex`). A
+/// in [`crate::serve::adapters`] wrap models, tools and indexes
+/// (`Model`, `Tool`, `VectorStoreIndex`). A
 /// host implements it for out-of-tree kinds ([`EffectKind::Custom`], typed
 /// through [`crate::effect::CustomEffect`]) or for a replayer.
 ///
@@ -93,6 +97,15 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
         let _ = kind;
         None
     }
+
+    /// The options of `kind` this handler would leave out when it serves
+    /// it, with nothing sent: for a model's handler, what its wire or model
+    /// cannot honour ([`DynModel::check`](crate::driver::DynModel::check)).
+    /// Empty when it leaves nothing out or cannot say, as by default.
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        let _ = kind;
+        Vec::new()
+    }
 }
 
 /// Object-safe handler interface implemented for every [`Serve`].
@@ -100,6 +113,7 @@ pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
     fn descriptor(&self) -> HandlerDescriptor;
     fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_>;
     fn footprint(&self, kind: &EffectKind) -> Option<Touches>;
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption>;
 }
 
 // A type that is not a `Serve` should be told to implement `Serve`, never
@@ -114,8 +128,16 @@ impl<T: Serve> Handler for T {
         let observer = dispatch.observer.clone();
         let folded = dispatch.folded.clone();
         let streaming = dispatch.is_stream();
+        let level = Level::enter(&dispatch.serving);
         Box::pin(async move {
             let reply = self.serve(kind, dispatch).await;
+            // A handler that serves the dispatch inside another one, such
+            // as a wrapper's inner handler, leaves the observer to the
+            // outermost: what the wrapper publishes once its inner handler
+            // answered is part of the record.
+            if !level.outermost() {
+                return reply.observed(streaming, None, None);
+            }
             let seen = observer.and_then(|slot| lock(&slot).take());
             reply.observed(streaming, seen, folded)
         })
@@ -123,6 +145,10 @@ impl<T: Serve> Handler for T {
 
     fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
         Serve::footprint(self, kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        Serve::check(self, kind)
     }
 }
 
@@ -141,6 +167,33 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
 
     fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
         (**self).footprint(kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        (**self).check(kind)
+    }
+}
+
+/// One handler serving a dispatch, counted in the dispatch's handlers that
+/// serve it one inside another until it answers or is dropped.
+struct Level(Arc<AtomicUsize>);
+
+impl Level {
+    fn enter(serving: &Arc<AtomicUsize>) -> Self {
+        serving.fetch_add(1, Ordering::AcqRel);
+        Self(serving.clone())
+    }
+
+    /// Whether no handler serves the dispatch around this one: the inner
+    /// ones answered or were dropped by now.
+    fn outermost(&self) -> bool {
+        self.0.load(Ordering::Acquire) == 1
+    }
+}
+
+impl Drop for Level {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -237,6 +290,11 @@ impl ErasedHandler {
         self.0.footprint(kind)
     }
 
+    /// The options of `kind` this handler would leave out ([`Serve::check`]).
+    pub fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        self.0.check(kind)
+    }
+
     /// Whether two erased handlers are the same allocation.
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
@@ -287,6 +345,10 @@ impl Serve for ErasedHandler {
 
     fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
         self.0.footprint(kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        self.0.check(kind)
     }
 }
 
@@ -522,6 +584,9 @@ pub struct Dispatch {
     streaming: bool,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
     observer: Option<Arc<Mutex<Option<Observed>>>>,
+    /// How many handlers serve it now, one inside another: only the
+    /// outermost tells the observer and the fold, once it answered.
+    serving: Arc<AtomicUsize>,
     /// The layer whose verdict replaced the answer the consumer receives,
     /// once one did. Shared down the layer chain; a driver reads it after
     /// the reply ([`Dispatch::replaced_by`]).
@@ -552,6 +617,7 @@ impl Dispatch {
             adapter_context_explicit: false,
             scopes: Vec::new(),
             observer: None,
+            serving: Arc::default(),
             replaced_by: Arc::new(Mutex::new(None)),
             folded: None,
         }
@@ -595,6 +661,9 @@ impl Dispatch {
     }
 
     /// Observe the original handler answer independently of layer verdicts.
+    /// A handler that serves the dispatch through an inner one, passing it
+    /// on, is observed once it answered, with what it published by then;
+    /// a [`Layer`](super::Layer) hands the observer to the handler it wraps.
     pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
         if !self.adapter_context_explicit {
             self.adapter_context = observer.adapter_context();
@@ -660,22 +729,6 @@ impl Dispatch {
         Attribution(self.replaced_by.clone())
     }
 
-    /// A dispatch of the same effect for a wrapped handler whose reply the
-    /// wrapper rewrites and is recorded at: the observer and the fold stay
-    /// with this dispatch, so they see the rewritten reply.
-    pub(crate) fn unobserved(&self) -> Self {
-        Self {
-            id: self.id,
-            streaming: self.streaming,
-            adapter_context: self.adapter_context.clone(),
-            adapter_context_explicit: self.adapter_context_explicit,
-            scopes: self.scopes.clone(),
-            observer: None,
-            replaced_by: self.replaced_by.clone(),
-            folded: None,
-        }
-    }
-
     pub(crate) fn inner(&mut self, folded: Option<Folded>) -> Self {
         let observer = self.observer.as_ref().and_then(|slot| lock(slot).take());
         Self {
@@ -685,6 +738,7 @@ impl Dispatch {
             adapter_context_explicit: self.adapter_context_explicit,
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
+            serving: Arc::default(),
             replaced_by: self.replaced_by.clone(),
             folded,
         }

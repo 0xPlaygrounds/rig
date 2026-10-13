@@ -31,7 +31,6 @@ corpus-permission-modes = { path = "../permission-modes" }
 corpus-fh-encrypted-sessions = { path = "../fh-encrypted-sessions" }
 corpus-fh-remote-workspace = { path = "../fh-remote-workspace" }
 corpus-fh-transcript-search = { path = "../fh-transcript-search" }
-rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }

@@ -50,10 +50,6 @@ pub struct TypedPromptResponse<T> {
     /// Append it to caller-owned history to continue the conversation.
     #[serde(default)]
     pub messages: Vec<Message>,
-    /// How the accepted attempt's conversation-memory append settled; see
-    /// [`PromptResponse::memory_append`](crate::agent::PromptResponse::memory_append).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory_append: Option<crate::run::MemoryAppend>,
 }
 
 impl<T> TypedPromptResponse<T> {
@@ -64,7 +60,6 @@ impl<T> TypedPromptResponse<T> {
             usage,
             completion_calls: Vec::new(),
             messages: Vec::new(),
-            memory_append: None,
         }
     }
 
@@ -185,7 +180,6 @@ where
                         usage,
                         completion_calls: response.completion_calls,
                         messages: response.messages,
-                        memory_append: response.memory_append,
                     })
                 }
                 Err(err) => {

@@ -1097,125 +1097,6 @@ impl rig_agent::agent::AgentHook for EmbedPrompt {
 }
 
 // ---------------------------------------------------------------------------
-// Matrix J: memory operations.
-
-/// The agent's memory key (`<owner>/memory`, the owner `golden`).
-pub const MEMORY_KEY: &str = "golden/memory";
-/// The conversation every memory cell loads and saves under.
-pub const CONVERSATION: &str = "golden-conversation";
-
-/// Clear the conversation from a hook, through the run's memory handle.
-async fn clear_conversation(ctx: &rig_agent::agent::HookContext) {
-    let memory = ctx
-        .memory(&rig_core::effect::HandlerKey::from(MEMORY_KEY))
-        .expect("the run's bus serves memory");
-    let outcome = memory
-        .dispatch(rig_core::effect::MemoryOp::Clear {
-            conversation: rig_core::id::ConversationId::from(CONVERSATION),
-        })
-        .await
-        .expect("the memory clears");
-    assert!(
-        matches!(outcome, rig_core::effect::MemoryOutcome::Cleared),
-        "{outcome:?}"
-    );
-}
-
-/// `on_run_start` → `Clear`; the hook fires after the run's `Load`, so
-/// the clear lands between the load and the append.
-pub struct ClearAtStart;
-
-impl rig_agent::agent::AgentHook for ClearAtStart {
-    async fn on_run_start(
-        &self,
-        ctx: &rig_agent::agent::HookContext,
-        _event: rig_agent::agent::RunStart<'_>,
-    ) -> rig_agent::agent::RunStartAction {
-        clear_conversation(ctx).await;
-        rig_agent::agent::RunStartAction::continue_run()
-    }
-}
-
-/// `on_run_settled` → `Clear` after the run's `Append`.
-pub struct ClearAtSettled;
-
-impl rig_agent::agent::AgentHook for ClearAtSettled {
-    async fn on_run_settled(
-        &self,
-        ctx: &rig_agent::agent::HookContext,
-        _event: rig_agent::agent::RunSettled<'_>,
-    ) {
-        clear_conversation(ctx).await;
-    }
-}
-
-/// An in-memory conversation store whose `load` or `append` refuses.
-pub struct FailingMemory {
-    inner: rig_core::memory::InMemoryConversationMemory,
-    fail_load: bool,
-    fail_append: bool,
-}
-
-impl FailingMemory {
-    /// Construct memory that fails loads while allowing appends.
-    pub fn load_fails() -> Self {
-        Self {
-            inner: rig_core::memory::InMemoryConversationMemory::new(),
-            fail_load: true,
-            fail_append: false,
-        }
-    }
-
-    /// Construct memory that loads successfully but fails appends.
-    pub fn append_fails() -> Self {
-        Self {
-            inner: rig_core::memory::InMemoryConversationMemory::new(),
-            fail_load: false,
-            fail_append: true,
-        }
-    }
-}
-
-fn refused(op: &str) -> rig_core::memory::MemoryError {
-    rig_core::memory::MemoryError::Backend(format!("the store refused the {op}").into())
-}
-
-impl rig_core::memory::ConversationMemory for FailingMemory {
-    fn load<'a>(
-        &'a self,
-        conversation_id: &'a rig_core::id::ConversationId,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<
-        'a,
-        Result<Vec<rig_core::message::Message>, rig_core::memory::MemoryError>,
-    > {
-        if self.fail_load {
-            Box::pin(async { Err(refused("load")) })
-        } else {
-            self.inner.load(conversation_id)
-        }
-    }
-
-    fn append<'a>(
-        &'a self,
-        conversation_id: &'a rig_core::id::ConversationId,
-        messages: Vec<rig_core::message::Message>,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, Result<(), rig_core::memory::MemoryError>> {
-        if self.fail_append {
-            Box::pin(async { Err(refused("append")) })
-        } else {
-            self.inner.append(conversation_id, messages)
-        }
-    }
-
-    fn clear<'a>(
-        &'a self,
-        conversation_id: &'a rig_core::id::ConversationId,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, Result<(), rig_core::memory::MemoryError>> {
-        self.inner.clear(conversation_id)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Matrix K: the delta wire.
 
 /// Expected stop reason for a tool-arguments delta.
@@ -1849,14 +1730,6 @@ pub const WORLD_DENY_REASON: &str = "blocked by the world";
 /// Expected cancellation message from a stream-intercepting layer.
 pub const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
 
-/// The history the memory layer answers a `Load` with: two turns naming Ada.
-pub fn replaced_history() -> Vec<Message> {
-    vec![
-        Message::user("My name is Ada."),
-        Message::assistant("Hello, Ada."),
-    ]
-}
-
 fn is_add(kind: &rig_core::effect::EffectKind) -> bool {
     matches!(kind, rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add")
 }
@@ -2096,33 +1969,6 @@ impl rig_core::serve::Intercept for CancelStreamLayer {
     }
 }
 
-/// `after` on a memory `Load` → the replacement history in the store's place.
-pub struct ReplaceLoadLayer;
-
-impl rig_core::serve::Intercept for ReplaceLoadLayer {
-    fn name(&self) -> String {
-        "ReplaceLoadLayer".to_owned()
-    }
-    proceed_before!();
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        match outcome {
-            Ok(rig_core::effect::Outcome::Memory(rig_core::effect::MemoryOutcome::Loaded {
-                ..
-            })) => rig_core::serve::Verdict::Replace(Ok(rig_core::effect::Outcome::Memory(
-                rig_core::effect::MemoryOutcome::Loaded {
-                    messages: replaced_history(),
-                },
-            ))),
-            _ => rig_core::serve::Verdict::Keep,
-        }
-    }
-}
-
 /// The host denies everything on the key.
 pub struct DenyAllLayer;
 
@@ -2163,21 +2009,6 @@ impl rig_agent::agent::AgentHook for NoteDeniedAtStart {
             "{report:?}"
         );
         assert_eq!(report.message, HOST_DENY_REASON);
-        rig_agent::agent::RunStartAction::continue_run()
-    }
-}
-
-/// `on_run_start` asserts the run starts with the history the memory
-/// layer put in the `Load`'s place.
-pub struct HistoryIsReplaced;
-
-impl rig_agent::agent::AgentHook for HistoryIsReplaced {
-    async fn on_run_start(
-        &self,
-        _ctx: &rig_agent::agent::HookContext,
-        event: rig_agent::agent::RunStart<'_>,
-    ) -> rig_agent::agent::RunStartAction {
-        assert_eq!(event.history, replaced_history());
         rig_agent::agent::RunStartAction::continue_run()
     }
 }

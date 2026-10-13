@@ -7,13 +7,33 @@
 //! model still streams its arguments too ([`CallState::Streaming`]), from
 //! what has come of them.
 //!
-//! The same goes for an origin's look with
-//! [`AppToolRenderersExt::add_entry_renderer`] (`entry:<origin>`): it draws
-//! a plugin's [`TranscriptEntry`](rig_harness::transcript::TranscriptEntry)
-//! of that origin, and text the conversation holds from a plugin of that
-//! name, such as a compaction's summary. One without draws as
+//! The same goes for a plugin's look with
+//! [`AppToolRenderersExt::add_entry_renderer`] (`entry:<plugin>`): it draws
+//! the [`Note`](rig_harness::note::Note)s that plugin wrote, and the
+//! entries of the conversation it wrote, such as a compaction's summary. One without draws as
 //! [`EntryView::default_lines`]. A change to a renderer draws the
 //! transcript again.
+//!
+//! A renderer also sees the calls its call started, such as a subagent's
+//! model and tool calls, through the spawn and the brief between them
+//! ([`ToolCallView::children`]), and draws them nested where it likes:
+//!
+//! ```no_run
+//! use rig_harness::prelude::*;
+//! use rig_tui::AppToolRenderersExt;
+//! use rig_tui::ratatui::text::Line;
+//!
+//! fn build(app: &mut App) {
+//!     app.add_tool_renderer("consult", |view| {
+//!         let mut lines = view.default_lines();
+//!         for child in view.children {
+//!             let indent = "  ".repeat(child.depth + 2);
+//!             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
+//!         }
+//!         lines
+//!     });
+//! }
+//! ```
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,7 +44,7 @@ use bevy_log::warn;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::message::{ToolCall, ToolResult};
-use rig_core::tool::ToolResultContext;
+use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
 use rig_tools::shorten;
 
 use super::diff;
@@ -51,11 +71,10 @@ pub struct ToolCallView<'a> {
     /// Whether it is drawn whole: the user expanded it.
     pub expanded: bool,
     /// What the call published, such as rig-core's `ExitStatus` and
-    /// `FilesChanged`, once it settled in this run; not kept with the
-    /// session.
+    /// `FilesChanged`, once it settled: in this run, or in an earlier one
+    /// of a resumed session whose effect log was kept.
     pub facts: Option<&'a ToolResultContext>,
-    /// How long it ran, once it settled in this run; not kept with the
-    /// session.
+    /// How long it ran, once it settled, as for [`facts`](Self::facts).
     pub took: Option<Duration>,
     /// The output so far of a running call whose tool reports it as it
     /// runs ([`CallOutput`]), such as a command's: cut as tool output is
@@ -64,6 +83,36 @@ pub struct ToolCallView<'a> {
     ///
     /// [`CallOutput`]: rig_harness::prelude::CallOutput
     pub output: Option<&'a str>,
+    /// The tool and model calls the call started, and those they started,
+    /// in order, each after the one that started it, through any effect
+    /// between that is no call: such as a subagent's calls under the call
+    /// that spawned it, through the spawn and the brief it was sent. Also
+    /// after a resume, from the session's effect log
+    /// ([`PastEffects`](crate::PastEffects)).
+    pub children: &'a [ChildCall],
+}
+
+/// A tool or model call that a tool call started, or one of those
+/// started, as a renderer sees it ([`ToolCallView::children`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChildCall {
+    /// How far below the call it is: 0 for one the call started itself.
+    pub depth: usize,
+    /// The tool call, or `None` for a model call.
+    pub call: Option<ToolCall>,
+    /// The tool's name, or the model's catalog reference (`vendor/model`),
+    /// or `model` before it is known.
+    pub name: String,
+    /// The name of the agent it is for, such as a subagent's.
+    pub agent: Option<String>,
+    /// Where it stands; a model call is [`CallState::Streaming`] while its
+    /// reply streams in.
+    pub state: CallState,
+    /// Whether it failed: a tool's error result, or a model call's error.
+    pub failed: bool,
+    /// The first line of its answer, once it has one: a tool's result, a
+    /// model's reply, or why it failed.
+    pub line: Option<String>,
 }
 
 /// Where a tool call stands. A call of an earlier turn, or one whose
@@ -101,6 +150,7 @@ impl<'a> ToolCallView<'a> {
             facts: None,
             took: None,
             output: None,
+            children: &[],
         }
     }
 
@@ -146,8 +196,9 @@ impl<'a> ToolCallView<'a> {
     }
 
     /// Up to `limit` lines of the result under a `⎿`, red for an error,
-    /// and how many more there are. A unified diff is coloured. Before the
-    /// result, a running call's progress line.
+    /// and how many more there are. A unified diff is coloured. The line
+    /// that says the tool cut its output ([`OutputCut`]) is shown whole,
+    /// on its side. Before the result, a running call's progress line.
     pub fn result_lines(&self, limit: usize) -> Vec<Line<'static>> {
         let Some(text) = self.result_text() else {
             return self.progress_lines();
@@ -157,30 +208,49 @@ impl<'a> ToolCallView<'a> {
         {
             return lines;
         }
-        excerpt(&text, limit, result_style(self.failed()))
+        let (output, marker) = self.cut_marker(&text);
+        let more = format!("… {} more lines", output.len().saturating_sub(limit));
+        let more = (output.len() > limit).then_some(more.as_str());
+        let shown = output.iter().copied().take(limit).chain(more);
+        result_rows(shown, marker, result_style(self.failed()))
     }
 
     /// The last `limit` lines of the result, where a command's errors and
-    /// summary are, after a count of the earlier ones; a cut marker before
-    /// them names the file with all of it. Before the result, a running
+    /// summary are, after a count of the earlier ones; the line that says
+    /// the tool cut its output ([`OutputCut`]), naming the file with all
+    /// of it, is shown whole, on its side. Before the result, a running
     /// call's progress line.
     pub fn tail_lines(&self, limit: usize) -> Vec<Line<'static>> {
         let Some(text) = self.result_text() else {
             return self.progress_lines();
         };
-        let mut output = text.lines().peekable();
-        let marker = output.next_if(|first| is_cut_marker(first));
-        let output: Vec<&str> = output.collect();
+        let (output, marker) = self.cut_marker(&text);
         let skipped = output.len().saturating_sub(limit);
         let earlier = format!("… {skipped} earlier lines");
         let earlier = (skipped > 0).then_some(earlier.as_str());
-        let shown = marker.into_iter().chain(earlier);
-        let shown = shown.chain(output.into_iter().skip(skipped));
-        let style = result_style(self.failed());
-        shown
-            .enumerate()
-            .map(|(index, line)| result_line(index == 0, line, style))
-            .collect()
+        let shown = earlier.into_iter().chain(output.into_iter().skip(skipped));
+        result_rows(shown, marker, result_style(self.failed()))
+    }
+
+    /// The lines of `text`, the result, without the line that says the
+    /// tool cut its output, and that line with the end it is on, when the
+    /// call published [`OutputCut`] (a call of an earlier run has no facts,
+    /// so its marker is a line like any other).
+    fn cut_marker<'t>(&self, text: &'t str) -> (Vec<&'t str>, Option<(&'t str, KeptEnd)>) {
+        let mut lines: Vec<&str> = text.lines().collect();
+        let cut = self
+            .facts
+            .and_then(|facts| facts.get::<OutputCut>().ok().flatten());
+        let marker = cut.and_then(|cut| {
+            let line = match cut.kept {
+                // The output's end is kept: the marker is its first line.
+                KeptEnd::End if lines.is_empty() => None,
+                KeptEnd::End => Some(lines.remove(0)),
+                KeptEnd::Start => lines.pop(),
+            };
+            Some((line?, cut.kept))
+        });
+        (lines, marker)
     }
 
     /// A running call's progress line (its first line) under a `⎿`,
@@ -190,7 +260,7 @@ impl<'a> ToolCallView<'a> {
             return Vec::new();
         };
         let line = progress.lines().next().unwrap_or_default();
-        vec![result_line(true, line, Style::new().yellow())]
+        result_rows(std::iter::once(line), None, Style::new().yellow())
     }
 
     /// The look of a tool with no renderer: the name and arguments, then
@@ -210,15 +280,15 @@ impl<'a> ToolCallView<'a> {
     }
 }
 
-/// An entry or a delivered text, as an entry renderer sees it: a plugin's
-/// [`TranscriptEntry`](rig_harness::transcript::TranscriptEntry), or a
-/// content item the conversation holds from a plugin, such as a compaction
-/// summary.
+/// A note or a delivered text, as an entry renderer sees it: a plugin's
+/// [`Note`](rig_harness::note::Note), or a text of an entry of the
+/// conversation another author wrote, such as a compaction summary.
 pub struct EntryView<'a> {
-    /// The origin whose look draws it: the entry's, or the plugin's name.
-    pub origin: &'a str,
-    /// What a collapsed one shows in a line: the entry's title, or the
-    /// origin's label.
+    /// The plugin whose look draws it: the name of the plugin that wrote
+    /// it, or empty when no plugin did (an agent, rig).
+    pub plugin: &'a str,
+    /// What a collapsed one shows in a line: the note's title, or the
+    /// author's label.
     pub title: &'a str,
     /// What it holds; a delivered text without the header the model reads.
     pub text: &'a str,
@@ -227,7 +297,7 @@ pub struct EntryView<'a> {
 }
 
 impl EntryView<'_> {
-    /// The look of an origin with no renderer: `⤶` and the title, then
+    /// The look of a plugin with no renderer: `⤶` and the title, then
     /// the first lines of the text, or all of it when expanded.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         let mut lines = vec![Line::styled(
@@ -263,38 +333,43 @@ pub(crate) fn result_style(failed: bool) -> Style {
     }
 }
 
-/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, a
-/// count of the rest, and the cut marker that ends a cut result.
+/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, and
+/// a count of the rest.
 pub fn excerpt(text: &str, limit: usize, style: Style) -> Vec<Line<'static>> {
-    let mut all: Vec<&str> = text.lines().collect();
-    let marker = all.pop_if(|last| is_cut_marker(last));
+    let all: Vec<&str> = text.lines().collect();
     let more = format!("… {} more lines", all.len().saturating_sub(limit));
     let more = (all.len() > limit).then_some(more.as_str());
-    let shown = all.into_iter().take(limit).chain(more).chain(marker);
-    shown
-        .enumerate()
-        .map(|(index, line)| result_line(index == 0, line, style))
-        .collect()
+    result_rows(all.into_iter().take(limit).chain(more), None, style)
 }
 
-/// Whether `line` is a tool's cut marker, which says what was cut and
-/// which file has all of it, such as `[Cut at 16384 of 113000 bytes; all
-/// of it is in …]`.
-fn is_cut_marker(line: &str) -> bool {
-    line.starts_with('[') && line.ends_with(']') && line.to_lowercase().contains("cut")
-}
-
-/// A line of a result in `style`, under a `⎿` when `first`; a long one is
-/// shortened, but a cut marker is shown whole.
-fn result_line(first: bool, line: &str, style: Style) -> Line<'static> {
-    let prefix = if first { "  ⎿ " } else { "    " };
-    let line = line.replace('\t', "    ");
-    let line = if is_cut_marker(&line) {
-        line
-    } else {
-        shorten(&line, LINE_CHARS)
+/// `lines` of a result in `style`, the first under a `⎿`, each shortened,
+/// with `marker` whole before them when the output's end was kept and
+/// after them when its start was.
+fn result_rows<'t>(
+    lines: impl Iterator<Item = &'t str>,
+    marker: Option<(&'t str, KeptEnd)>,
+    style: Style,
+) -> Vec<Line<'static>> {
+    let (before, after) = match marker {
+        Some((marker, KeptEnd::End)) => (Some(marker), None),
+        Some((marker, KeptEnd::Start)) => (None, Some(marker)),
+        None => (None, None),
     };
-    Line::styled(format!("{prefix}{line}"), style)
+    let lines = lines.map(|line| (line, false));
+    let rows = before.map(|marker| (marker, true)).into_iter().chain(lines);
+    let rows = rows.chain(after.map(|marker| (marker, true)));
+    rows.enumerate()
+        .map(|(index, (line, whole))| {
+            let prefix = if index == 0 { "  ⎿ " } else { "    " };
+            let line = line.replace('\t', "    ");
+            let line = if whole {
+                line
+            } else {
+                shorten(&line, LINE_CHARS)
+            };
+            Line::styled(format!("{prefix}{line}"), style)
+        })
+        .collect()
 }
 
 /// Draws a tool call as transcript lines, not yet wrapped.
@@ -309,16 +384,17 @@ pub struct ToolRenderer {
     pub render: Arc<RenderToolCall>,
 }
 
-/// Draws an entry or a delivered text as transcript lines, not yet wrapped.
+/// Draws a note or a delivered text as transcript lines, not yet wrapped.
 pub type RenderEntry = dyn Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync;
 
-/// The look of the entries and delivered texts of `origin`, on an entity
-/// of its own.
+/// The look of the notes and delivered texts of the plugin `plugin`, on an
+/// entity of its own.
 #[derive(Component, Clone)]
 pub struct EntryRenderer {
-    /// The origin, such as `btw` or `compaction`.
-    pub origin: String,
-    /// Draws one of its entries.
+    /// The plugin's name, as its [`Author::plugin`](rig_core::conversation::Author::plugin)
+    /// says, such as `btw` or `compaction`.
+    pub plugin: String,
+    /// Draws one of its notes or texts.
     pub render: Arc<RenderEntry>,
 }
 
@@ -334,12 +410,12 @@ pub trait AppToolRenderersExt {
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 
-    /// Draw the entries and delivered texts of `origin` with `render`,
-    /// unless the origin has a renderer already: that one stays, with a
-    /// warning, and `Disabled` on it frees the origin, as for tools.
+    /// Draw the notes and delivered texts of the plugin `plugin` with
+    /// `render`, unless the plugin has a renderer already: that one stays,
+    /// with a warning, and `Disabled` on it frees the plugin, as for tools.
     fn add_entry_renderer(
         &mut self,
-        origin: &str,
+        plugin: &str,
         render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 }
@@ -369,24 +445,24 @@ impl AppToolRenderersExt for App {
 
     fn add_entry_renderer(
         &mut self,
-        origin: &str,
+        plugin: &str,
         render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self {
         let world = self.world_mut();
         let mut renderers = world.query::<&EntryRenderer>();
         if renderers
             .iter(world)
-            .any(|renderer| renderer.origin == origin)
+            .any(|renderer| renderer.plugin == plugin)
         {
             warn!(
-                "renderer not added: origin `{origin}` has one; insert `Disabled` on it to replace it"
+                "renderer not added: plugin `{plugin}` has one; insert `Disabled` on it to replace it"
             );
             return self;
         }
         world.spawn((
-            Name::new(format!("entry:{origin}")),
+            Name::new(format!("entry:{plugin}")),
             EntryRenderer {
-                origin: origin.to_owned(),
+                plugin: plugin.to_owned(),
                 render: Arc::new(render),
             },
         ));

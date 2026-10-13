@@ -3,16 +3,20 @@
 //! adds the usage its provider reported to its agent's [`Spending`], to the
 //! session's [`SessionSpending`], both saved with the session, and to its
 //! turn's [`TurnSpending`], also when the turn-failure rule rejects the
-//! reply. Each [`Spending`] keeps the total, and the same split per model
+//! reply. A call that settles without a reply (cancelled, superseded, or
+//! failed mid-stream) adds its [`CallUsage`], when whoever knows what it
+//! used put one on it, the same way. Each [`Spending`] keeps the total, and the same split per model
 //! that answered and per purpose the call was made for (`turn`, `compaction`,
 //! a plugin's own), as plain data: a budget plugin reads
 //! [`SessionSpending`] in a Gate system, and a plugin that pays for work
 //! that is no model request [`record`](Spending::record)s it in both.
 //! rig-core prices a reply its provider did not price at the model's
 //! catalog [`Pricing`](rig_core::catalog::Pricing), so the cost here is
-//! the provider's figure or the catalog's list price. The context in use
-//! is the agent's [`LastUsage`], which the kernel keeps: the next request
-//! sends all of it again. Other plugins add lines to `/usage` with
+//! the provider's figure or the catalog's list price. A call counts under
+//! the model it went to ([`SentTo`]), and the context in use is the
+//! agent's [`LastUsage`], which the kernel keeps (the next request sends
+//! all of it again), against the window of the model its last turn reply
+//! came from, such as the member of a race that won. Other plugins add lines to `/usage` with
 //! [`UsageRow`]s. With the default `tui` feature, each agent's status
 //! line in the terminal view shows its meter (tokens in and out, cached
 //! input, cost, context) and what its turn spent so far.
@@ -42,6 +46,7 @@ impl Plugin for UsagePlugin {
                 usage,
             )
             .add_observer(record_spending);
+        super::resume::add(app);
         #[cfg(feature = "tui")]
         status::add(app);
     }
@@ -116,29 +121,62 @@ impl UsageRow {
     }
 }
 
-/// Adds a settled model call's usage to its agent's, its turn's and the
-/// session's, under the model it went to (the call's own connection, else
-/// its agent's, else the one its reply names) and its purpose.
+/// What a model call used that settled without a reply (cancelled,
+/// superseded, or failed mid-stream), as whoever knows says: a plugin's
+/// estimate, or the provider's partial count. Put it on the call before it
+/// settles, such as on a race's loser before superseding it; it counts as
+/// a reply's usage does, under the model the call went to and its purpose.
+/// A reply's own usage wins over it.
+#[derive(Component, Clone, Debug, Default, PartialEq)]
+pub struct CallUsage(pub Usage);
+
+/// The context window of the model the agent's last turn reply that
+/// reported its tokens came from, as its call's [`SentTo`] says; until one
+/// did, the window of the agent's [`Connection`] stands.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Window(pub(crate) Option<u32>);
+
+impl Window {
+    /// The window `window` says, else that of the agent's `connection`.
+    pub(crate) fn of(window: Option<&Self>, connection: Option<&Connection>) -> Option<u32> {
+        match window {
+            Some(Window(window)) => *window,
+            None => connection.and_then(|connection| connection.spec.context_window),
+        }
+    }
+}
+
+/// A model call as [`record_spending`] reads it.
+type SpendingCall<'a> = (
+    (&'a ModelRequest, &'a Effect, Option<&'a SentTo>),
+    (Option<&'a Outcome>, Option<&'a CallUsage>),
+    (Option<&'a ForAgent>, Option<&'a CallOf>, Has<TurnCall>),
+);
+
+/// Adds a settled model call's usage, its reply's, else its [`CallUsage`],
+/// to its agent's, its turn's and the session's, under the model it went
+/// to (where it was sent, else the call's own connection, else its
+/// agent's, else the one its reply names) and its purpose. A turn's reply
+/// that reported its tokens sets its agent's [`Window`].
 fn record_spending(
     settled: On<Add<Settled>>,
-    calls: Query<(
-        &Outcome,
-        &ModelRequest,
-        &Effect,
-        Option<&ForAgent>,
-        Option<&CallOf>,
-    )>,
+    calls: Query<SpendingCall>,
     mut turns: Query<&mut TurnSpending>,
     mut agents: Query<(Option<&mut Spending>, Option<&Connection>)>,
     mut session: ResMut<SessionSpending>,
+    mut commands: Commands,
 ) {
-    let Ok((outcome, request, effect, agent, of)) = calls.get(settled.entity) else {
+    let Ok(((request, effect, sent), (outcome, estimate), (agent, of, turn_call))) =
+        calls.get(settled.entity)
+    else {
         return;
     };
-    let Some(response) = outcome.completion() else {
+    let response = outcome.and_then(Outcome::completion);
+    let Some(usage) =
+        (response.map(|response| &response.usage)).or(estimate.map(|CallUsage(usage)| usage))
+    else {
         return;
     };
-    let usage = &response.usage;
     if let Some(mut turn_spent) = of.and_then(|of| turns.get_mut(of.0).ok()) {
         turn_spent.0.record(usage);
     }
@@ -146,14 +184,27 @@ fn record_spending(
     let (spent, own) = agent
         .and_then(|agent| agents.get_mut(agent.0).ok())
         .unwrap_or((None, None));
-    let model = match request.connection.as_ref().or(own) {
-        Some(connection) => connection.spec.reference(),
-        None => format!("{}/{}", response.origin.provider, response.origin.model),
+    let went_to = (sent.map(|SentTo(connection)| connection))
+        .or(request.connection.as_ref())
+        .or(own);
+    if let (Some(agent), true, Some(_), Some(_)) =
+        (agent, turn_call, response, usage.context_tokens())
+    {
+        let window = went_to.and_then(|connection| connection.spec.context_window);
+        commands.entity(agent.0).try_insert(Window(window));
+    }
+    let model = match (went_to, response) {
+        (Some(connection), _) => Some(connection.spec.reference()),
+        (None, Some(response)) => Some(format!(
+            "{}/{}",
+            response.origin.provider, response.origin.model
+        )),
+        (None, None) => None,
     };
     if let Some(mut spent) = spent {
-        spent.record(Some(&model), purpose, usage);
+        spent.record(model.as_deref(), purpose, usage);
     }
-    session.0.record(Some(&model), purpose, usage);
+    session.0.record(model.as_deref(), purpose, usage);
 }
 
 /// `/usage`: the shown agent's tokens, cost and context, what each agent
@@ -164,7 +215,7 @@ fn usage(
     agents: Query<(
         &Spending,
         &LastUsage,
-        Option<&Connection>,
+        (Option<&Connection>, Option<&Window>),
         Option<&ActiveTurn>,
     )>,
     turns: Query<&TurnSpending>,
@@ -174,7 +225,9 @@ fn usage(
     rows: Query<&UsageRow>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((Spending { total: spent, .. }, last, connection, turn)) = agents.get(args.agent) else {
+    let Ok((Spending { total: spent, .. }, last, (connection, window), turn)) =
+        agents.get(args.agent)
+    else {
         return;
     };
     let SessionSpending(session) = &*session;
@@ -192,7 +245,7 @@ fn usage(
     {
         lines.push(format!("This turn: {turn}."));
     }
-    let window = connection.and_then(|connection| connection.spec.context_window);
+    let window = Window::of(window, connection);
     match last.context().map(|tokens| ContextUse { tokens, window }) {
         Some(context) => lines.push(format!(
             "Context: {context} tokens{}.",

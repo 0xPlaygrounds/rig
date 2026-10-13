@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, ShellTool, WriteTool};
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_subagents::SubagentsPlugin;
 use rig_tools::ReadArgs;
 use serde_json::json;
@@ -145,16 +145,22 @@ fn vendored_instructions_are_fenced_and_taint_the_turn_until_the_user_writes() {
     let trusted = result_of(requests.get(5), "r2");
     assert!(trusted.contains("IGNORE PREVIOUS") && !trusted.contains("<untrusted-"));
     let quarantine = app.world().get::<Quarantine>(agent).cloned();
-    assert_eq!(quarantine.and_then(|q| q.taint), None);
+    assert_eq!(quarantine.and_then(|q| q.0), None);
 
-    // The saved record keeps the result as read, and the mark.
-    let saved = read_session(&store).unwrap_or_default();
-    let first = saved.agents.first();
-    let messages = first.map(|agent| agent.conversation.messages());
+    // The saved record keeps the result as read, its mark and the user's
+    // warning.
+    let saved = Session::read(&store).unwrap_or_default();
+    let conversation = saved.agents.first().map(|agent| &agent.conversation);
+    let conversation = conversation.cloned().unwrap_or_default();
     let shown = ReadArgs::new("vendor/lib/README.md").show(VENDORED);
-    assert_eq!(result_in(messages.unwrap_or_default(), "r1"), shown);
-    let marks = first.map(|agent| format!("{:?}", agent.saved));
-    assert!(marks.is_some_and(|marks| marks.contains("vendor/lib/README.md")));
+    assert_eq!(result_in(conversation.messages(), "r1"), shown);
+    let marks = Untrusted::in_conversation(&conversation);
+    let sources: Vec<_> = marks.iter().map(|mark| mark.source.as_str()).collect();
+    assert_eq!(sources, ["read vendor/lib/README.md"]);
+    let notes = conversation
+        .asides()
+        .filter_map(|(_, aside)| Note::of(aside));
+    assert!(notes.into_iter().any(|note| note.title == WARNING));
     drop(app);
 
     // Resumed, it fences again with another nonce.

@@ -12,9 +12,6 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# The session format: a bookmark's message id, and the saved history read
-# back from a copy of the session as it was before a condensing.
-rig-cassette = { workspace = true, features = ["reflect"] }
 rig-harness = { path = "../../crates/rig-harness" }
 # The marker's look, and scrolling to and selecting a bookmarked message.
 rig-tui = { path = "../../plugins/rig-tui" }

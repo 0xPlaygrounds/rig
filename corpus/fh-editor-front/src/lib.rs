@@ -590,7 +590,8 @@ fn receive(
                         "The user's selection, {label}:\n{}",
                         selection.text
                     ));
-                    incoming.attachments.push(Attachment { label, content });
+                    let selection = Attachment { label, content };
+                    incoming.parts.insert(0, MessagePart::Attachment(selection));
                 }
                 commands.spawn((incoming, ForAgent(agent)));
             }
@@ -1057,12 +1058,14 @@ fn forward(
         };
         broadcast(&clients, &message);
     }
-    for change in committed.read() {
-        if let Committed::Message { agent, message, .. } = change
-            && let Some(agent) = id_of(&ids, *agent)
+    for committed in committed.read() {
+        if let Change::Push { entries } = &committed.change.change
+            && let Some(agent) = id_of(&ids, committed.agent)
         {
-            let message = message.clone();
-            broadcast(&clients, &ToEditor::Message { agent, message });
+            for entry in entries {
+                let (agent, message) = (agent.clone(), entry.message.clone());
+                broadcast(&clients, &ToEditor::Message { agent, message });
+            }
         }
     }
     for notice in notices.read() {

@@ -19,7 +19,6 @@ tui = ["dep:rig-tui"]
 argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tui = { path = "../../plugins/rig-tui", optional = true }
 ring = "0.17"

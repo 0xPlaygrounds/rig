@@ -42,7 +42,7 @@ pub const EDITED: &str = "(arguments edited by the user)";
 const ORIGIN: &str = "fh-step-mode";
 
 /// The status line's `STEP`, before the agent's status; never dropped.
-const STEP_ITEM: StatusItem = StatusItem::at(Side::Left, 45, u8::MAX);
+const STEP_ITEM: StatusItem = StatusItem::new("fh-step-mode", Side::Left, 45, u8::MAX);
 
 /// Whether every agent steps, those spawned later included (`/step all`).
 #[derive(Resource, Default, Debug)]
@@ -95,7 +95,7 @@ impl Plugin for StepModePlugin {
                 ),
             )
             .add_systems(Update, edited.before(AgentLoop))
-            .add_systems(PostUpdate, show_step.in_set(StatusSystems));
+            .add_systems(PostUpdate, show_step.in_set(StatusSystems::Show));
     }
 }
 
@@ -350,7 +350,6 @@ fn answered(
     mut calls: Query<(&mut ToolRequest, &Effect, Option<&CallOf>, &mut Decision), ToolCalls>,
     tools: Query<&ToolDef>,
     mut agents: Query<&mut Conversation>,
-    mut commit: Commit,
     mut all: ResMut<StepAll>,
     mut edits: Edits,
 ) {
@@ -368,13 +367,13 @@ fn answered(
                     Ok(arguments) => {
                         request.call.function.arguments = arguments;
                         request.call.function.invalid_arguments = None;
-                        let after = agents.get_mut(agent).ok().and_then(|mut conversation| {
-                            record(agent, &mut conversation, &request.call, &mut commit)
-                        });
-                        let title = format!("`{tool}` {EDITED}");
-                        let text = pretty(&request.call.function.arguments);
-                        let note = TranscriptEntry::new(ORIGIN, after, title, text);
-                        edits.commands.spawn((note, EntryOf(agent)));
+                        if let Ok(mut conversation) = agents.get_mut(agent) {
+                            let after = record(&mut conversation, &request.call);
+                            let title = format!("`{tool}` {EDITED}");
+                            let text = pretty(&request.call.function.arguments);
+                            let note = Note::new(title, text).aside(Author::plugin(ORIGIN), after);
+                            conversation.add_aside(note);
+                        }
                         edits.commands.entity(call).insert(Stepped);
                     }
                     Err(why) => {
@@ -387,7 +386,7 @@ fn answered(
             // Closed: the step's question comes back.
             (HoldKind::Editing, _) => continue,
             (_, Some(Answer::Choice(choice))) => choice,
-            (_, Some(Answer::Text(_))) => continue,
+            (_, Some(Answer::Text(_) | Answer::Choices(_))) => continue,
             // Closed: the user stops the turn, as an interrupt does.
             (_, None) => {
                 edits.commands.trigger(Interrupt::new(agent));
@@ -470,12 +469,7 @@ fn fitting(text: &str, schema: Option<&Value>) -> Result<Map<String, Value>, Str
 /// Puts `call`, edited, in place of the call of that id in the model's
 /// message that asked for it, so the saved conversation has it; returns
 /// that message's id.
-fn record(
-    agent: Entity,
-    conversation: &mut Conversation,
-    call: &ToolCall,
-    commit: &mut Commit,
-) -> Option<MessageId> {
+fn record(conversation: &mut Conversation, call: &ToolCall) -> Option<MessageId> {
     let asked = |message: &Message| {
         matches!(message, Message::Assistant(reply)
             if reply.tool_calls().any(|asked| asked.id == call.id))
@@ -491,7 +485,7 @@ fn record(
             }
         }
     }
-    commit.splice(agent, conversation, at..=at, [entry]);
+    conversation.splice(at..=at, [entry], Author::plugin(ORIGIN));
     conversation.id(at)
 }
 

@@ -224,7 +224,10 @@ impl Context<'_, '_> {
         for change in &changed.0 {
             let after = match change.kind {
                 ChangeKind::Deleted => None,
-                _ => change.after.as_ref().map(|hash| hash.0.clone()),
+                _ => change
+                    .after
+                    .as_ref()
+                    .and_then(|it| Some(it.hash.as_ref()?.0.clone())),
             };
             match files.iter_mut().find(|file| file.path == change.path) {
                 Some(file) => file.after = after,
@@ -438,6 +441,7 @@ fn record_answer(
     };
     let answer = match Answer::of(outcome) {
         Some(Answer::Choice(id)) => id,
+        Some(Answer::Choices(ids)) => ids.join(", "),
         Some(Answer::Text(text)) => redact::text(&text).into_owned(),
         None => "no answer".to_owned(),
     };

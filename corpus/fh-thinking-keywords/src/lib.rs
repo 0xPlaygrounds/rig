@@ -18,7 +18,7 @@ use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 mod tests;
 
 /// After the agent's reasoning setting, gone just after it.
-const THINK_ITEM: StatusItem = StatusItem::at(Side::Left, 45, 12);
+const THINK_ITEM: StatusItem = StatusItem::new("fh-thinking-keywords", Side::Left, 45, 12);
 
 /// The keywords and budgets of `RIG_HOME/think.toml`:
 ///
@@ -201,7 +201,7 @@ impl Plugin for ThinkingKeywordsPlugin {
                     (raise_requests, raise_subagents).in_set(ThinkSystems),
                 ),
             )
-            .add_systems(PostUpdate, show_raised.in_set(StatusSystems))
+            .add_systems(PostUpdate, show_raised.in_set(StatusSystems::Show))
             .add_observer(carry_to_turn);
     }
 }
@@ -220,10 +220,10 @@ fn mark_messages(
     mut commands: Commands,
 ) {
     for (message, incoming) in &messages {
-        if incoming.origin.kind != OriginKind::User {
+        if incoming.author.kind != AuthorKind::User {
             continue;
         }
-        if let Some((keyword, level)) = config.find(&incoming.text) {
+        if let Some((keyword, level)) = config.find(incoming.text()) {
             let keyword = keyword.to_owned();
             commands
                 .entity(message)

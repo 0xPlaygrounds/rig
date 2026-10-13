@@ -3,7 +3,12 @@
 //! summary of its older messages, a [`SummaryState`] with the summary and
 //! the values tracked across compactions, a [`Summarizer`] that asks a
 //! model for the summary, and [`ClearToolOutputs`], which frees context
-//! without a model call.
+//! without a model call. Over a [`Conversation`]:
+//! [`CompactionPolicy::plan_summary`] plans the summary of its messages not
+//! summarized yet ([`summarized_prefix`]), [`apply_summary`] puts the
+//! summary in their place as an entry by [`summary_author`], and
+//! [`ClearToolOutputs::clear_conversation`] clears old outputs keeping
+//! every entry's id.
 //!
 //! The summarizer's default prompts ask for pi's structured checkpoint;
 //! the tool arguments a summary keeps track of are the caller's.
@@ -17,7 +22,7 @@
 //! ```
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Write as _};
 use std::sync::Arc;
 
@@ -26,6 +31,7 @@ use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message,
     UnsupportedOption,
 };
+use rig_core::conversation::{Author, Change, Conversation, Entry, MessageId, Spliced};
 use rig_core::message::{ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
@@ -376,6 +382,105 @@ impl CompactionPolicy {
     }
 }
 
+/// Who writes a compaction's summary: the author of its entry.
+pub fn summary_author() -> Author {
+    Author::plugin("compaction")
+}
+
+/// The summary a compaction put in, when `change` is one: the id of the
+/// entry by [`summary_author`] in a splice that took messages out.
+/// Clearing old tool outputs, by the same author, keeps every message and
+/// is none.
+pub fn summary_in(change: &Change) -> Option<MessageId> {
+    let Change::Splice { removed, with, .. } = change else {
+        return None;
+    };
+    let kept = |id: &MessageId| with.iter().any(|entry| entry.id == Some(*id));
+    if removed.iter().all(kept) {
+        return None;
+    }
+    let summary = summary_author();
+    with.iter()
+        .find(|entry| entry.author.as_ref() == Some(&summary))
+        .and_then(|entry| entry.id)
+}
+
+/// How many of the first entries of `conversation` are summaries (by
+/// [`summary_author`]): what a new compaction builds on from its
+/// [`SummaryState`] instead of reading it again. It is the `from` the
+/// policy's [`cut`](CompactionPolicy::cut) and
+/// [`plan`](CompactionPolicy::plan) are given.
+pub fn summarized_prefix(conversation: &Conversation) -> usize {
+    let author = summary_author();
+    let summaries = conversation.entries();
+    summaries
+        .take_while(|entry| entry.author == Some(&author))
+        .count()
+}
+
+/// A summary [`CompactionPolicy::plan_summary`] planned.
+#[derive(Clone, Debug)]
+pub struct SummaryPlan {
+    /// The first message the compaction keeps; `None` when it summarizes
+    /// every message. By id, so a splice made while the summary is written
+    /// does not move it.
+    pub upto: Option<MessageId>,
+    /// The state the summary goes into.
+    pub state: SummaryState,
+    /// The request for the summary.
+    pub request: CompletionRequest,
+}
+
+impl CompactionPolicy {
+    /// Plans a compaction of `conversation` for `reason`, written by
+    /// `spec`, building on `state`: where it cuts ([`Self::cut`]) and the
+    /// summary request ([`Self::plan`]) of its messages not summarized yet
+    /// ([`summarized_prefix`]). `None` when nothing new would be
+    /// summarized.
+    ///
+    /// # Errors
+    ///
+    /// When `spec` does not take the summary request's options.
+    pub fn plan_summary(
+        &self,
+        conversation: &Conversation,
+        state: &SummaryState,
+        reason: &CompactReason,
+        spec: &ModelSpec,
+    ) -> Result<Option<SummaryPlan>, UnsupportedOption> {
+        let messages = conversation.messages();
+        let from = summarized_prefix(conversation);
+        let Some(upto) = self.cut(messages, from, reason, Some(spec)) else {
+            return Ok(None);
+        };
+        let (state, request) = self.plan(state, messages, from, upto, spec, reason)?;
+        let upto = conversation.id(upto);
+        Ok(Some(SummaryPlan {
+            upto,
+            state,
+            request,
+        }))
+    }
+}
+
+/// Puts the summary of `state` in place of the messages of
+/// `conversation` before `upto` (every message with `None`), earlier
+/// summaries included: one user entry by [`summary_author`], a splice it
+/// makes. `None`, changing nothing, when `upto` was taken out meanwhile or
+/// `state` has no summary.
+pub fn apply_summary(
+    conversation: &mut Conversation,
+    upto: Option<MessageId>,
+    state: &SummaryState,
+) -> Option<Spliced> {
+    let end = match upto {
+        None => conversation.messages().len(),
+        Some(upto) => conversation.index_of(upto)?,
+    };
+    let summary = Entry::new(Message::user(state.message()?)).by(summary_author());
+    Some(conversation.splice(..end, [summary], summary_author()))
+}
+
 /// What a [`Summarizer`] asks the model.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SummaryPrompts {
@@ -698,17 +803,44 @@ impl ClearToolOutputs {
 
     /// Clears older tool outputs of `messages` in place.
     pub fn clear(&self, messages: &mut [Message]) -> Cleared {
+        let (targets, cleared) = self.targets(messages);
+        for (at, items) in targets {
+            if let Some(message) = messages.get_mut(at) {
+                clear_items(message, &items);
+            }
+        }
+        cleared
+    }
+
+    /// Clears older tool outputs of `conversation`, as [`Self::clear`]
+    /// does, rewriting the entries that change in place by `by`
+    /// ([`Conversation::edit_each`]), so they keep their ids.
+    pub fn clear_conversation(&self, conversation: &mut Conversation, by: Author) -> Cleared {
+        let (targets, cleared) = self.targets(conversation.messages());
+        conversation.edit_each(by, |entry| {
+            let items = targets.get(&entry.index)?;
+            let mut message = entry.message.clone();
+            clear_items(&mut message, items);
+            Some(message)
+        });
+        cleared
+    }
+
+    /// The tool results of `messages` to clear, as the indices of their
+    /// content items by message, and what clearing them takes out.
+    fn targets(&self, messages: &[Message]) -> (BTreeMap<usize, Vec<usize>>, Cleared) {
         let counter = HeuristicTokenCounter::default();
         let mut cleared = Cleared::default();
+        let mut targets: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
         let mut kept = 0;
-        let Some((_, earlier)) = messages.split_last_mut() else {
-            return cleared;
+        let Some((_, earlier)) = messages.split_last() else {
+            return (targets, cleared);
         };
-        for message in earlier.iter_mut().rev() {
+        for (at, message) in earlier.iter().enumerate().rev() {
             let Message::User { content } = message else {
                 continue;
             };
-            for item in content.iter_mut().rev() {
+            for (item_at, item) in content.iter().enumerate().rev() {
                 let tokens = counter.count_user(item);
                 let UserContent::ToolResult(result) = item else {
                     continue;
@@ -720,12 +852,26 @@ impl ClearToolOutputs {
                 if kept <= self.keep_tokens {
                     continue;
                 }
-                result.content = vec![ToolResultContent::text(Self::PLACEHOLDER)];
+                targets.entry(at).or_default().push(item_at);
                 cleared.results += 1;
                 cleared.tokens += tokens;
             }
         }
-        cleared
+        (targets, cleared)
+    }
+}
+
+/// Replaces the tool results at `items` of `message` with the placeholder.
+fn clear_items(message: &mut Message, items: &[usize]) {
+    let Message::User { content } = message else {
+        return;
+    };
+    for (at, item) in content.iter_mut().enumerate() {
+        if let UserContent::ToolResult(result) = item
+            && items.contains(&at)
+        {
+            result.content = vec![ToolResultContent::text(ClearToolOutputs::PLACEHOLDER)];
+        }
     }
 }
 

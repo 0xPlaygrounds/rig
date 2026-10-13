@@ -3,10 +3,10 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::journal::JournalPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     app_on, calls, connect, first_agent, reply, run_until, scratch_home,
 };

@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, ShellTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Home;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, answer_open, app_on, calls, collect, first_agent, reply, run_until, scratch_home,
     scripted_models,

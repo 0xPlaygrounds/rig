@@ -341,6 +341,17 @@ fn replies_and_tool_results_are_stored_once_and_a_compacted_request_keeps_its_ta
     for (restored, original) in log.records.iter().zip(&written) {
         assert_eq!(history_of(restored), history_of(original));
     }
+
+    // Read for what each effect was and how it ended: every record, with
+    // no request rebuilt.
+    let bytes = std::fs::read(&path).expect("log bytes");
+    let outcomes = read_outcomes_from(bytes.as_slice()).expect("outcomes");
+    assert_eq!(outcomes.len(), log.records.len());
+    let json = |record: &EffectRecord| serde_json::to_value(&record.outcome).expect("outcome");
+    for (read, whole) in outcomes.iter().zip(&log.records) {
+        assert_eq!((read.id, json(read)), (whole.id, json(whole)));
+        assert!(history_of(read).is_empty());
+    }
 }
 
 #[test]
