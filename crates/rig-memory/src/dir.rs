@@ -125,13 +125,37 @@ fn absent_is_fine(removed: io::Result<()>) -> io::Result<()> {
 /// Writes `bytes` to `path` atomically: to a part file beside it, then
 /// renamed over it.
 fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let part = write_part(path, bytes, false)?;
+    fs::rename(&part, path)
+}
+
+/// As [`write_atomic`], and durably: the part file is synced before the
+/// rename and the folder after it (best effort), so a power loss leaves
+/// the old file or the new, never an empty one.
+fn write_durable(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let part = write_part(path, bytes, true)?;
+    fs::rename(&part, path)?;
+    if let Some(parent) = path.parent() {
+        let _ = File::open(parent).and_then(|folder| folder.sync_all());
+    }
+    Ok(())
+}
+
+/// Writes `bytes` to the part file beside `path`, whose folder it makes,
+/// synced with `sync`; its path.
+fn write_part(path: &Path, bytes: &[u8], sync: bool) -> io::Result<PathBuf> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let mut part = path.as_os_str().to_owned();
     part.push(PART);
-    fs::write(&part, bytes)?;
-    fs::rename(&part, path)
+    let part = PathBuf::from(part);
+    let mut file = File::create(&part)?;
+    file.write_all(bytes)?;
+    if sync {
+        file.sync_all()?;
+    }
+    Ok(part)
 }
 
 impl Files for DirFiles {
@@ -225,10 +249,15 @@ impl Store for DirStore {
         open.entry(name.to_owned()).or_insert(file).write_all(bytes)
     }
 
-    fn truncate_log(&self, name: &str, len: u64) -> io::Result<()> {
+    /// Under the lock appends take, the log's open handle is dropped (it
+    /// would append to the replaced file) and the new log is written
+    /// beside, synced and renamed over it: the one synced write, as it is
+    /// rare and replaces history.
+    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         let path = self.log(name)?;
-        self.open_logs().remove(name);
-        OpenOptions::new().write(true).open(path)?.set_len(len)
+        let mut open = self.open_logs();
+        open.remove(name);
+        write_durable(&path, bytes)
     }
 
     fn remove_log(&self, name: &str) -> io::Result<()> {
@@ -252,6 +281,10 @@ impl Store for DirStore {
     fn blobs(&self) -> io::Result<Vec<String>> {
         let names = names(&self.dir.join(BLOBS))?.into_iter();
         Ok(names.filter(|name| !name.ends_with(PART)).collect())
+    }
+
+    fn remove_blob(&self, name: &str) -> io::Result<()> {
+        absent_is_fine(fs::remove_file(self.blob_path(name)?))
     }
 
     /// Each folder is renamed to a trash name inside the directory, so it

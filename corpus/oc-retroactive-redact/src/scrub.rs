@@ -187,8 +187,7 @@ pub(crate) fn scrub_store(store: &dyn Store, pairs: &[Pair]) -> Result<Scrubbed,
     }
     Session::read(&check).map_err(|why| format!("the redacted session would not load: {why}"))?;
     for (name, bytes) in &rewritten {
-        store.truncate_log(name, 0).map_err(failed)?;
-        store.append_log(name, bytes).map_err(failed)?;
+        store.replace_log(name, bytes).map_err(failed)?;
     }
     let mut files = 0;
     for name in store.files().map_err(failed)? {

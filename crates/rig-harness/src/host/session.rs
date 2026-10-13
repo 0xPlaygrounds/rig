@@ -142,8 +142,8 @@ impl Store for Marking {
         Ok(())
     }
 
-    fn truncate_log(&self, name: &str, len: u64) -> io::Result<()> {
-        self.inner.truncate_log(name, len)
+    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.inner.replace_log(name, bytes)
     }
 
     fn remove_log(&self, name: &str) -> io::Result<()> {
@@ -160,6 +160,10 @@ impl Store for Marking {
 
     fn blobs(&self) -> io::Result<Vec<String>> {
         self.inner.blobs()
+    }
+
+    fn remove_blob(&self, name: &str) -> io::Result<()> {
+        self.inner.remove_blob(name)
     }
 
     fn destroy(&self) -> io::Result<()> {

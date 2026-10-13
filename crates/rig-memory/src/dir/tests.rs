@@ -90,3 +90,28 @@ fn a_session_keeps_its_three_folders_and_destroy_finishes_a_crashed_one() {
     assert!(fs::read_dir(&dir).expect("listed").count() == 1);
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_replaced_log_takes_the_next_append_and_a_crashed_replace_is_not_a_log() {
+    let dir = scratch("replace");
+    let store = DirStore::open(&dir).expect("opened");
+    // The first append opens the handle later appends reuse.
+    store.append_log("main", b"old 1\n").expect("appended");
+    store.append_log("main", b"old 2\n").expect("appended");
+    store.replace_log("main", b"new\n").expect("replaced");
+    store.append_log("main", b"after\n").expect("appended");
+    assert_eq!(store.read_log("main").expect("read"), b"new\nafter\n");
+
+    // A replace that crashed before its rename leaves a part file beside
+    // the log: the old log stands and no new log is listed.
+    fs::write(dir.join("logs/main.jsonl.rig-part"), b"half").expect("a part");
+    let store = DirStore::open(&dir).expect("reopened");
+    assert_eq!(store.logs().expect("logs"), ["main"]);
+    assert_eq!(store.read_log("main").expect("read"), b"new\nafter\n");
+
+    store.put_blob("abc.png", b"png").expect("a blob");
+    store.remove_blob("abc.png").expect("removed");
+    store.remove_blob("abc.png").expect("removed again");
+    assert!(store.blobs().expect("blobs").is_empty());
+    let _ = fs::remove_dir_all(&dir);
+}

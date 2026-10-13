@@ -330,8 +330,8 @@ impl Store for Full {
     fn append_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
         Err(io::Error::other("disk full"))
     }
-    fn truncate_log(&self, _: &str, _: u64) -> io::Result<()> {
-        Ok(())
+    fn replace_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Err(io::Error::other("disk full"))
     }
     fn remove_log(&self, _: &str) -> io::Result<()> {
         Ok(())
@@ -344,6 +344,9 @@ impl Store for Full {
     }
     fn blobs(&self) -> io::Result<Vec<String>> {
         Ok(Vec::new())
+    }
+    fn remove_blob(&self, _: &str) -> io::Result<()> {
+        Ok(())
     }
     fn destroy(&self) -> io::Result<()> {
         Ok(())

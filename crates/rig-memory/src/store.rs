@@ -41,9 +41,11 @@ pub trait Store: Files {
     /// Appends `bytes` to the log `name`, which it starts when there is none.
     fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
 
-    /// Cuts the log `name` to its first `len` bytes, such as a torn last
-    /// line a crash left.
-    fn truncate_log(&self, name: &str, len: u64) -> io::Result<()>;
+    /// Replaces the log `name` with `bytes`, atomically and durably: a
+    /// reader, and a crash or power loss, leave the old log or the new,
+    /// never a part of either or an empty file; an append after it goes
+    /// after the new bytes. Starts the log when there is none.
+    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
 
     /// Removes the log `name`; removing one that is not there succeeds.
     fn remove_log(&self, name: &str) -> io::Result<()>;
@@ -57,6 +59,9 @@ pub trait Store: Files {
 
     /// The names of the blobs, in no particular order.
     fn blobs(&self) -> io::Result<Vec<String>>;
+
+    /// Removes the blob `name`; removing one that is not there succeeds.
+    fn remove_blob(&self, name: &str) -> io::Result<()>;
 
     /// Removes everything the store holds: logs, blobs and files.
     /// Idempotent: calling it again after a crash midway finishes the job.
@@ -167,11 +172,9 @@ impl Store for MemoryStore {
         Ok(())
     }
 
-    fn truncate_log(&self, name: &str, len: u64) -> io::Result<()> {
-        let len = usize::try_from(len).map_err(io::Error::other)?;
-        if let Some(log) = self.memory().logs.get_mut(name) {
-            log.truncate(len);
-        }
+    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        check_leaf(name)?;
+        self.memory().logs.insert(name.to_owned(), bytes.to_vec());
         Ok(())
     }
 
@@ -196,6 +199,11 @@ impl Store for MemoryStore {
 
     fn blobs(&self) -> io::Result<Vec<String>> {
         Ok(self.memory().blobs.keys().cloned().collect())
+    }
+
+    fn remove_blob(&self, name: &str) -> io::Result<()> {
+        self.memory().blobs.remove(name);
+        Ok(())
     }
 
     fn destroy(&self) -> io::Result<()> {

@@ -418,20 +418,20 @@ impl Writer {
 }
 
 /// Copies the bytes of the log `log` after its first `kept` to the free
-/// file `recovered/<log>-<k>.part`, then cuts them off; that file's name.
+/// file `recovered/<log>-<k>.part`, then replaces the log with the bytes
+/// before them; that file's name. A crash between the two leaves the tail
+/// in the log, set aside again by the next open.
 fn set_aside_tail(store: &dyn Store, log: &str, kept: u64) -> Result<String, LoadError> {
     let bytes = store.read_log(log)?;
-    let tail = usize::try_from(kept)
-        .ok()
-        .and_then(|kept| bytes.get(kept..))
-        .unwrap_or_default();
+    let kept = usize::try_from(kept).unwrap_or(usize::MAX);
+    let (prefix, tail) = bytes.split_at_checked(kept).unwrap_or((&bytes, &[]));
     let files = store.files()?;
     let name = (1..=files.len() + 1)
         .map(|k| format!("recovered/{log}-{k}.part"))
         .find(|name| !files.contains(name))
         .unwrap_or_default();
     store.write_file(&name, tail)?;
-    store.truncate_log(log, kept)?;
+    store.replace_log(log, prefix)?;
     Ok(name)
 }
 
