@@ -1,10 +1,9 @@
 //! FH-20: transcript search, as in `less`.
 //!
 //! Ctrl+F opens a search bar under the transcript (a [`TuiPanel`] that
-//! takes the keys), and so does `/` while the person reads the transcript
-//! rather than the input: with the input empty, an item selected or the
-//! view scrolled up, and nothing being completed, picked or answered.
-//! Otherwise `/` starts a slash command, as it does without the plugin.
+//! takes the keys), and so does `/` while the transcript has the keys
+//! ([`KeyScope::Transcript`]: an item of it is selected). Otherwise `/`
+//! starts a slash command, as it does without the plugin.
 //! What is typed searches as it is typed, ignoring case unless the query
 //! has a capital letter; `re:` makes the rest a regular expression. It
 //! searches the transcript as the view lays it out ([`TranscriptLayout`]),
@@ -39,7 +38,7 @@ use rig_tui::{
     AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Highlight, InputSystems, ItemRow,
     KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope, LineSpan, PanelCanvas,
     Placement, RequestRedraw, ScrollTo, TerminalEvents, TranscriptItem, TranscriptLayout,
-    TranscriptView, TuiInput, TuiInputState, TuiPanel, TuiPlugin, TuiSystems,
+    TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
 };
 
 /// Whose transcript is searched.
@@ -347,7 +346,7 @@ fn highlights(drawn: &[Hit], shown: Option<&MatchKey>) -> Vec<Highlight> {
 }
 
 /// Transcript search in the terminal view, on Ctrl+F, or `/` while the
-/// person reads the transcript.
+/// transcript has the keys.
 #[derive(Default)]
 pub struct TranscriptSearchPlugin;
 
@@ -361,72 +360,37 @@ impl Plugin for TranscriptSearchPlugin {
             KeyBinding::new(KeyPress::ctrl('f'), "Search the transcript"),
             open,
         );
-        // `/` opens the bar before the frame's other keys type into it.
-        let filters = (slash_opens, type_in_bar).chain();
-        app.add_systems(rig_tui::TuiKeys, filters.in_set(InputSystems::Filter))
+        // Shadows the input's `/` only while an item is selected.
+        app.add_key_binding(
+            KeyBinding::new(KeyPress::key(KeyCode::Char('/')), "Search the transcript")
+                .in_scope(KeyScope::Transcript),
+            open,
+        );
+        app.add_systems(rig_tui::TuiKeys, type_in_bar.in_set(InputSystems::Filter))
+            .add_systems(Update, follow)
             .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
     }
 }
 
-/// What opening the bar needs.
-#[derive(bevy_ecs::system::SystemParam)]
-struct Opener<'w, 's> {
-    bars: Query<'w, 's, (), With<TranscriptSearch>>,
-    shown: Res<'w, Shown>,
-    view: Res<'w, TranscriptView>,
-    focus: ResMut<'w, KeyFocus>,
-    commands: Commands<'w, 's>,
-}
-
-impl Opener<'_, '_> {
-    /// Opens the bar with the keys, noting where the view was.
-    fn open(&mut self) {
-        let back = self.shown.0.map(|agent| (agent, self.view.top().cloned()));
-        let bar = (
-            TranscriptSearch::new(back),
-            TuiPanel::new(Placement::Bottom(Constraint::Length(1))),
-        );
-        self.focus.0 = Some(self.commands.spawn(bar).id());
-    }
-}
-
-/// Ctrl+F: opens the bar, unless it is open.
-fn open(pressed: On<KeyPressed>, mut opener: Opener) {
-    if !pressed.released && opener.bars.is_empty() {
-        opener.open();
-    }
-}
-
-/// `/` first among the frame's keys opens the bar, unless it is open,
-/// while the person reads the transcript rather than the input: the input
-/// has the keys and is empty, no completion, picker or question is open,
-/// and an item is selected or the view is scrolled up. Otherwise the view
-/// gets the `/`, which starts a slash command.
-fn slash_opens(
-    mut events: ResMut<TerminalEvents>,
-    input: Res<TuiInput>,
-    state: Res<TuiInputState>,
-    mut opener: Opener,
+/// Opens the bar with the keys, unless it is open, noting where the view
+/// was.
+fn open(
+    pressed: On<KeyPressed>,
+    bars: Query<(), With<TranscriptSearch>>,
+    shown: Res<Shown>,
+    view: Res<TranscriptView>,
+    mut focus: ResMut<KeyFocus>,
+    mut commands: Commands,
 ) {
-    let slash = |item: &KeyInput| {
-        let KeyInput::Event(Event::Key(key)) = item else {
-            return false;
-        };
-        let plain = !key
-            .modifiers
-            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
-        key.code == KeyCode::Char('/') && key.kind != KeyEventKind::Release && plain
-    };
-    let reading = opener.view.selected.is_some() || opener.view.top().is_some();
-    let free = matches!(state.scope(), KeyScope::Input | KeyScope::Transcript)
-        && state.completion().is_none()
-        && state.picking().is_none()
-        && state.answering().is_none();
-    let open = reading && free && input.is_empty() && opener.bars.is_empty();
-    if open && events.0.first().is_some_and(slash) {
-        events.0.remove(0);
-        opener.open();
+    if pressed.released || !bars.is_empty() {
+        return;
     }
+    let back = shown.0.map(|agent| (agent, view.top().cloned()));
+    let bar = (
+        TranscriptSearch::new(back),
+        TuiPanel::new(Placement::Bottom(Constraint::Length(1))),
+    );
+    focus.0 = Some(commands.spawn(bar).id());
 }
 
 /// What the bar searches, read live.
@@ -475,14 +439,12 @@ impl Transcripts<'_, '_> {
     }
 }
 
-/// Types into the open bar, in order, then searches again when the query
-/// or what it searches changed, and shows the match in the transcript. It
-/// closes when it loses the keys, as on an Esc. A filter of the frame's
-/// keys.
+/// Types the key into the open bar, searching again when the query
+/// changed, and shows the match in the transcript; Esc closes it. A filter
+/// of each key.
 fn type_in_bar(
     mut events: ResMut<TerminalEvents>,
     mut bars: Query<(Entity, &mut TranscriptSearch)>,
-    focus: Res<KeyFocus>,
     transcripts: Transcripts,
     mut view: ResMut<TranscriptView>,
     mut redraw: MessageWriter<RequestRedraw>,
@@ -491,10 +453,6 @@ fn type_in_bar(
     let Ok((bar, mut search)) = bars.single_mut() else {
         return;
     };
-    if focus.0 != Some(bar) {
-        close(bar, &mut search, &mut view, &mut commands);
-        return;
-    }
     // The bar takes the keys it does, as the panel with the keys; those
     // after an Esc are the input's again.
     let (mut closing, mut typed) = (false, false);
@@ -519,15 +477,31 @@ fn type_in_bar(
     });
     if closing {
         close(bar, &mut search, &mut view, &mut commands);
+    } else if typed {
+        show(&mut search, &mut view, &transcripts, &mut commands);
+        redraw.write(RequestRedraw);
+    }
+}
+
+/// Each frame: searches the open bar again when what it searches changed,
+/// such as a reply streaming in, and closes it when it lost the keys.
+fn follow(
+    mut bars: Query<(Entity, &mut TranscriptSearch)>,
+    focus: Res<KeyFocus>,
+    transcripts: Transcripts,
+    mut view: ResMut<TranscriptView>,
+    mut redraw: MessageWriter<RequestRedraw>,
+    mut commands: Commands,
+) {
+    let Ok((bar, mut search)) = bars.single_mut() else {
         return;
-    }
-    // The view counts as changed only when it changes, such as on a new
-    // width, which the layout wraps at, or a notice; not on a key.
-    if !search.dirty && (transcripts.changed() || view.is_changed()) {
+    };
+    if focus.0 != Some(bar) {
+        close(bar, &mut search, &mut view, &mut commands);
+    } else if transcripts.changed() || view.is_changed() {
+        // The view counts as changed only when it changes, such as on a
+        // new width, which the layout wraps at, or a notice.
         search.search(&transcripts, &view);
-        typed = true;
-    }
-    if typed {
         show(&mut search, &mut view, &transcripts, &mut commands);
         redraw.write(RequestRedraw);
     }

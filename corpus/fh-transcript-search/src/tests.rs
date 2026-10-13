@@ -7,8 +7,8 @@ use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
     tui_view,
 };
-use rig_tui::DrawnRow;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use rig_tui::{DrawnRow, TuiInput};
 
 use super::*;
 
@@ -54,9 +54,11 @@ fn note_interrupt(_: On<Interrupt>, mut interrupts: ResMut<Interrupts>) {
     interrupts.0 += 1;
 }
 
-/// Ctrl+F, then `keys` in the next frame.
+/// Ctrl+F, then `keys`, in one frame: the bar takes the keys after it.
 fn search(app: &mut App, keys: impl IntoIterator<Item = KeyCode>) {
-    rig_harness_test_support::press(app, "ctrl+f");
+    let ctrl_f = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
+    let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+    events.0.push(KeyInput::Event(Event::Key(ctrl_f)));
     press(app, keys);
 }
 
@@ -107,6 +109,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         calls("c1", "shell", serde_json::json!({})),
         reply("The build failed: a name is missing."),
         reply(LAST_REPLY),
+        reply("Still E0425."),
     ]);
     let home = scratch_home("transcript-search");
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
@@ -166,8 +169,13 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
             .position(|row| row.text.contains("E0425"))
     });
 
-    // `/` on the empty input starts a slash command.
+    // `/` on the input starts a slash command, also after typing ended
+    // the reading of a selected item.
     rig_harness_test_support::press(&mut app, "/");
+    assert_eq!((counter(&mut app), input(&app)), (None, "/"));
+    app.world_mut().resource_mut::<TranscriptView>().selected = Some(call.clone());
+    let keys = [KeyCode::Backspace, KeyCode::Char('x'), KeyCode::Backspace];
+    press(&mut app, keys.into_iter().chain([KeyCode::Char('/')]));
     assert_eq!((counter(&mut app), input(&app)), (None, "/"));
     rig_harness_test_support::press(&mut app, "backspace");
     assert_eq!(input(&app), "");
@@ -200,23 +208,36 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(drawn.lit_in(&call), 1);
 
     // Esc after Enter: the view stays at the match, unlit; the bar took
-    // the keys, so none was typed and Esc stopped nothing.
+    // the keys, so none was typed and Esc stopped nothing. A second Esc
+    // gives the keys back to the input, still stopping nothing.
     press(&mut app, [KeyCode::Esc]);
     assert_eq!(counter(&mut app), None);
     let view = app.world().resource::<TranscriptView>();
     assert!(view.highlights.is_empty() && view.expanded.contains(&call));
     assert_eq!(app.world().resource::<Scrolls>().0.len(), scrolled);
+    press(&mut app, [KeyCode::Esc]);
+    let view = app.world().resource::<TranscriptView>();
+    assert_eq!(view.selected, None);
     assert_eq!(
         (input(&app), app.world().resource::<Interrupts>().0),
         ("", 0)
     );
-    let mut view = app.world_mut().resource_mut::<TranscriptView>();
-    view.expanded.clear();
-    view.selected = None;
+    app.world_mut()
+        .resource_mut::<TranscriptView>()
+        .expanded
+        .clear();
 
-    // A capital letter makes the search match case.
+    // A capital letter makes the search match case. What arrives while
+    // searching is searched too, with no key pressed.
     search(&mut app, typed("E0425"));
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
+    app.world_mut()
+        .trigger(Deliver::new(agent, "Again?", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() > 3
+    });
+    app.update();
+    assert_eq!(counter(&mut app).as_deref(), Some("2/2"));
     press(&mut app, [KeyCode::Esc]);
 
     // A regular expression counts what the same expression finds in the
