@@ -227,23 +227,56 @@ fn base(
     // How many wire messages the first `n` turns became, at `n`. System
     // messages are placed apart, so the turns are counted alone.
     let mut after = vec![0];
+    // Each turn with the index its wire message takes, if it sends one.
+    let mut turns = Vec::new();
     for message in &history {
+        let at = messages.len();
         messages.extend(message_json(message, wire, &ids)?);
         if !matches!(message, Message::System { .. }) {
             after.push(messages.len());
+            turns.push((at, message));
         }
     }
-    let points = request
-        .cache_points
-        .iter()
-        .filter_map(|point| match point {
+    let ending = |turns: usize| {
+        after
+            .get(turns)
+            .map(|wired| wired.checked_sub(1).map_or(Spot::System, Spot::last))
+    };
+    let mut points = Vec::with_capacity(request.cache_points.len());
+    for point in &request.cache_points {
+        let spot = match *point {
             completion::CachePoint::Tools => Some(Spot::Tools),
             completion::CachePoint::System => Some(Spot::System),
-            completion::CachePoint::Messages(turns) => after
-                .get(*turns)
-                .map(|wired| wired.checked_sub(1).map_or(Spot::System, Spot::Message)),
-        })
-        .collect();
+            completion::CachePoint::Messages(turns) => ending(turns),
+            completion::CachePoint::Within { message, items } => {
+                let Some(&(at, turn)) = turns.get(message) else {
+                    continue;
+                };
+                let blocks = match turn {
+                    Message::User { content } => {
+                        let mut blocks = 0;
+                        for part in content.iter().take(items) {
+                            blocks += usize::from(user_part(part, &ids)?.is_some());
+                        }
+                        blocks
+                    }
+                    Message::Assistant(turn) => turn
+                        .content
+                        .iter()
+                        .take(items)
+                        .filter_map(|block| assistant_part(block, wire, &ids))
+                        .count(),
+                    Message::System { .. } => 0,
+                };
+                if blocks == 0 {
+                    ending(message)
+                } else {
+                    Some(Spot::Message(at, blocks))
+                }
+            }
+        };
+        points.extend(spot);
+    }
     // MiniMax honours a cache through block markers the manual placement
     // writes.
     let placed = input.cache().is_some() && wire.provider.dialect.name == super::wire::MINIMAX.name;
@@ -694,8 +727,16 @@ enum Spot {
     Tools,
     /// The last system block.
     System,
-    /// The last markable block of the wire message at this index.
-    Message(usize),
+    /// The last markable block among the first blocks, as many as the
+    /// second number, of the wire message at the first.
+    Message(usize, usize),
+}
+
+impl Spot {
+    /// The last markable block of the wire message at `at`.
+    fn last(at: usize) -> Self {
+        Self::Message(at, usize::MAX)
+    }
 }
 
 /// The block a cache point at `spot` marks, if the request has one there.
@@ -710,11 +751,12 @@ fn spot_block<'a>(
             .iter_mut()
             .rfind(|tool| tool.get("defer_loading") != Some(&Value::Bool(true))),
         Spot::System => system.last_mut(),
-        Spot::Message(at) => messages
+        Spot::Message(at, blocks) => messages
             .get_mut(at)?
             .get_mut("content")?
             .as_array_mut()?
             .iter_mut()
+            .take(blocks)
             .rev()
             .find(|block| takes_marker(block)),
     };

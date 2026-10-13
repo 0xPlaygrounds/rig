@@ -2318,3 +2318,77 @@ fn repeated_missing_and_deferred_cache_points_mark_nothing_more() {
     assert!(last_message_has_cache_control(&value));
     assert_eq!(value.to_string().matches("cache_control").count(), 1);
 }
+
+/// A message cache point ends the same messages after the history is
+/// adapted: a point after a reply's results marks the last result, not the
+/// steering text the wire joins it with, and a turn dropped before the
+/// point does not push it past the end.
+#[test]
+fn a_message_cache_point_follows_its_messages_through_adapting() {
+    let lookup = || message::ToolName::new("lookup").expect("tool name");
+    let body = |chat_history: Vec<message::Message>, turns: usize| {
+        let mut request =
+            completion_request_with_history(chat_history, None).tools(vec![generic_tool("lookup")]);
+        request.cache_points = vec![completion::CachePoint::Messages(turns)];
+        request_body(Params {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            cache: None,
+            static_prefix_cache_ttl: None,
+        })
+        .unwrap()
+    };
+    let marks = |value: &Value| -> Vec<Vec<bool>> {
+        value["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| {
+                message["content"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|block| block.get("cache_control").is_some())
+                    .collect()
+            })
+            .collect()
+    };
+
+    let value = body(
+        vec![
+            message::Message::user("Look it up."),
+            message::Message::Assistant(message::AssistantMessage::new(vec![
+                message::AssistantContent::tool_call("toolu_1", lookup(), json!({})),
+            ])),
+            message::Message::tool_result(message::CallId::from_wire("toolu_1"), lookup(), "ok"),
+            message::Message::user("Also check the docs."),
+        ],
+        3,
+    );
+    assert_eq!(
+        marks(&value),
+        [vec![false], vec![false], vec![true, false]],
+        "{value:#}"
+    );
+
+    let failed = message::AssistantMessage {
+        stop: Some(message::StopReason::Error("refused".into())),
+        ..message::AssistantMessage::new(vec![message::AssistantContent::text("x")])
+    };
+    let value = body(
+        vec![
+            message::Message::user("a"),
+            message::Message::Assistant(failed),
+            message::Message::user("b"),
+            message::Message::assistant("c"),
+            message::Message::user("d"),
+        ],
+        4,
+    );
+    assert_eq!(
+        marks(&value),
+        [vec![false, false], vec![true], vec![false]],
+        "{value:#}"
+    );
+}

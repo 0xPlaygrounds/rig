@@ -667,6 +667,116 @@ pub(crate) fn adapt_for(
     }
 }
 
+/// `points`, which name `written` (a request's history before its
+/// `documents` join it), as they fall in `adapted`, what [`adapt_for`] made
+/// of it with `request`. A message point becomes the longest part of
+/// `adapted` that the adaption of its prefix alone begins with: the point
+/// never covers what follows the prefix, however the adaption dropped,
+/// added or joined messages around it. A point past the end of `written`
+/// goes.
+pub(crate) fn cache_points(
+    points: &[crate::completion::CachePoint],
+    written: &[Message],
+    documents: Option<&Message>,
+    adapted: &[Message],
+    target: &dyn ReplayTarget,
+    request: &Request<'_>,
+) -> Vec<crate::completion::CachePoint> {
+    use crate::completion::CachePoint;
+    let prefix_of = |turns: usize, items: Option<usize>| -> Option<Vec<Message>> {
+        let mut prefix = Vec::new();
+        let mut counted = 0;
+        for message in written {
+            if counted == turns {
+                break;
+            }
+            if matches!(message, Message::System { .. }) {
+                prefix.push(message.clone());
+                continue;
+            }
+            counted += 1;
+            let mut message = message.clone();
+            if counted == turns
+                && let Some(items) = items
+            {
+                match &mut message {
+                    Message::User { content } => content.truncate(items),
+                    Message::Assistant(turn) => turn.content.truncate(items),
+                    Message::System { .. } => {}
+                }
+            }
+            prefix.push(message);
+        }
+        (counted == turns).then_some(prefix)
+    };
+    points
+        .iter()
+        .filter_map(|point| {
+            let prefix = match *point {
+                CachePoint::Tools | CachePoint::System | CachePoint::Messages(0) => {
+                    return Some(*point);
+                }
+                CachePoint::Messages(turns) => prefix_of(turns, None),
+                CachePoint::Within { message, items } => message
+                    .checked_add(1)
+                    .and_then(|turns| prefix_of(turns, Some(items))),
+            };
+            let mut prefix = prefix?;
+            if let Some(documents) = documents {
+                crate::completion::request::insert_after_leading_system(
+                    &mut prefix,
+                    documents.clone(),
+                );
+            }
+            Some(shared_prefix(adapted, &adapt_for(&prefix, target, request)))
+        })
+        .collect()
+}
+
+/// Where `prefix` stops being the start of `history`, both adapted, as a
+/// cache point over `history`. System messages are not counted.
+fn shared_prefix(history: &[Message], prefix: &[Message]) -> crate::completion::CachePoint {
+    use crate::completion::CachePoint;
+    fn turns(history: &[Message]) -> impl Iterator<Item = &Message> {
+        history
+            .iter()
+            .filter(|message| !matches!(message, Message::System { .. }))
+    }
+    fn lead<T: PartialEq>(whole: &[T], part: &[T]) -> (usize, usize, usize) {
+        let shared = whole
+            .iter()
+            .zip(part)
+            .take_while(|(whole, part)| whole == part)
+            .count();
+        (shared, whole.len(), part.len())
+    }
+    let mut message = 0;
+    for (whole, part) in turns(history).zip(turns(prefix)) {
+        let (shared, whole, part) = match (whole, part) {
+            (Message::User { content: whole }, Message::User { content: part }) => {
+                lead(whole, part)
+            }
+            (Message::Assistant(whole), Message::Assistant(part)) => {
+                lead(&whole.content, &part.content)
+            }
+            _ => (0, 1, 1),
+        };
+        if shared == whole && shared == part {
+            message += 1;
+            continue;
+        }
+        return if shared == 0 {
+            CachePoint::Messages(message)
+        } else {
+            CachePoint::Within {
+                message,
+                items: shared,
+            }
+        };
+    }
+    CachePoint::Messages(message)
+}
+
 /// `history` with its calls and results as text, for a request that
 /// declares no tools. Keys are sorted, so the text is the same however the
 /// provider ordered the arguments.

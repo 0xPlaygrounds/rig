@@ -1241,7 +1241,18 @@ pub enum CachePoint {
     System,
     /// After the first `n` user and assistant messages. System messages
     /// are not counted, wherever they sit; `Messages(0)` is [`Self::System`].
+    /// The point names the request's messages as written: adapting them
+    /// for a wire, which drops some and joins adjacent user messages, moves
+    /// the point with them, inside a joined message when it ends there.
     Messages(usize),
+    /// After the first `items` content items of the user or assistant
+    /// message at `message`, counted as [`Self::Messages`] counts them.
+    Within {
+        /// The message, from 0, system messages not counted.
+        message: usize,
+        /// How many of its content items the prefix holds.
+        items: usize,
+    },
 }
 
 impl CompletionRequest {
@@ -1354,7 +1365,7 @@ impl CompletionRequest {
 /// message already there takes the documents at its front instead, so the
 /// history keeps alternating roles. Telemetry and the sent request must
 /// agree on this placement.
-fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
+pub(crate) fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
     let insert_at = chat_history
         .iter()
         .position(|message| !matches!(message, Message::System { .. }))
