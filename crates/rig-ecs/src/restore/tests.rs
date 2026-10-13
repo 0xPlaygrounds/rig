@@ -790,3 +790,60 @@ fn a_turn_a_crash_cut_short_carries_on_where_it_began() {
     let began = &app.world().resource::<Began>().0;
     assert_eq!(began.first().copied(), go.map(|go| (0, go)), "{began:?}");
 }
+
+/// The holds a gate put on restored calls while it asked someone.
+#[derive(Resource, Default)]
+struct Asking(Vec<Entity>);
+
+/// On a call [`ask`] asked about.
+#[derive(Component)]
+struct Asked;
+
+/// Holds each restored call a crash interrupted while it asks, once.
+fn ask(
+    calls: Query<Entity, (With<Interrupted>, Without<Outcome>, Without<Asked>)>,
+    mut asking: ResMut<Asking>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        commands.entity(call).insert(Asked);
+        asking.0.push(commands.spawn(HoldOf(call)).id());
+    }
+}
+
+#[test]
+fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
+    let store = crashed_mid_reply();
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Wait)
+            .init_resource::<Asking>()
+            .add_systems(AgentPass, ask.in_set(Stage::Gate));
+    });
+    for _ in 0..5 {
+        app.update();
+    }
+    let world = app.world_mut();
+    let mut answered = world.query_filtered::<(), (With<Interrupted>, With<Outcome>)>();
+    assert_eq!(
+        answered.iter(world).count(),
+        0,
+        "nothing is answered while held"
+    );
+    assert!(world.resource::<Ended>().0.is_empty());
+    let holds = std::mem::take(&mut world.resource_mut::<Asking>().0);
+    assert_eq!(holds.len(), 2);
+    for hold in holds {
+        world.despawn(hold);
+    }
+    let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended));
+    let said = said(&mut app);
+    assert!(
+        said.contains("touched") && said.contains(INTERRUPTED),
+        "{said}"
+    );
+}

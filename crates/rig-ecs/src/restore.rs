@@ -13,8 +13,9 @@
 //! mark replaced by its result when it settles while its reply still runs;
 //! the mark goes when the reply's results are in. A restored call with a
 //! mark is [`Interrupted`]: no gate that holds or asks sees it, a plugin
-//! answers it in Gate, or lets it run again by removing `Interrupted` in
-//! Prepare, and the kernel answers it after every gate otherwise. The
+//! answers it in Gate, holds it to answer later, or lets it run again by
+//! removing `Interrupted` in Prepare, and the kernel answers it after
+//! every gate, once nothing holds it, otherwise. The
 //! restore commits no answer; it only removes the marks of calls that have
 //! a result. A plugin re-arms its own obligations from observers of the
 //! saved components the restore inserts (`On<Insert<MyWait>>`, before
@@ -66,7 +67,7 @@ use super::effects::Effects;
 use super::journal::{
     Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
 };
-use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started};
+use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled, Started};
 use super::tools::ToolRequest;
 use super::turn::TurnCall;
 
@@ -174,9 +175,11 @@ pub(crate) fn commit_results(
 /// [`Started`](Self::Started) with an error saying a restart interrupted
 /// it and [`Settled`](Self::Settled) with its result, unless a plugin
 /// decided it first, in Gate, or removed this, in Prepare, to let it run
-/// again as ordinary work every gate sees. Not
-/// [`Undecided`](super::stage::Undecided): no gate that holds or asks
-/// sees it.
+/// again as ordinary work every gate sees. A plugin that must ask someone
+/// first holds it ([`HoldOf`](super::stage::HoldOf)) and answers it later;
+/// the kernel answers it once no hold is left and no plugin decided it.
+/// Not [`Undecided`](super::stage::Undecided): no gate that holds or asks
+/// for ordinary work sees it.
 ///
 /// ```
 /// use rig_ecs::prelude::*;
@@ -202,8 +205,8 @@ pub enum Interrupted {
     Settled(ToolResult),
 }
 
-/// Answers each restored call still [`Interrupted`] and undecided, once
-/// every gate ran, as `rig-ecs`.
+/// Answers each restored call still [`Interrupted`], undecided and unheld,
+/// once every gate ran, as `rig-ecs`.
 pub(crate) fn answer_interrupted(
     mut calls: Query<
         (&Interrupted, &mut Decision),
@@ -212,6 +215,7 @@ pub(crate) fn answer_interrupted(
             Without<Outcome>,
             Without<Started>,
             Without<Settled>,
+            Without<Holds>,
         ),
     >,
 ) {
