@@ -11,10 +11,9 @@ use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
-use rig_ecs::agent::Conversation;
-use rig_ecs::agent::Partial;
+use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
 use rig_ecs::prelude::{Aside, AsideId, Author, Entry, Halt, MessageId};
-use rig_ecs::stage::{HoldOf, Started};
+use rig_ecs::stage::{HoldOf, Started, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::StreamDelta;
 use rig_harness::note::Note;
@@ -724,4 +723,53 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
             .of(effect)
             .is_empty()
     );
+}
+
+/// An app with what a [`TranscriptLayout`] reads and no kernel, so the
+/// effects a test spawns stay as spawned; and an agent in it.
+fn layout_app() -> (App, Entity) {
+    let mut app = App::new();
+    app.init_resource::<CallFacts>()
+        .init_resource::<StreamingCalls>()
+        .init_resource::<TranscriptView>()
+        .init_resource::<rig_ecs::effects::Effects>()
+        .add_observer(super::note_call_facts);
+    let agent = app
+        .world_mut()
+        .spawn((
+            Name::new("main"),
+            AgentId("main".to_owned()),
+            Conversation::default(),
+        ))
+        .id();
+    (app, agent)
+}
+
+#[test]
+fn a_race_draws_the_reply_of_its_member_still_running() {
+    let (mut app, agent) = layout_app();
+    let world = app.world_mut();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let streaming = |text: &str| Partial {
+        text: text.to_owned(),
+        reasoning: String::new(),
+    };
+    // Losers older and newer than it: a superseded reply is never drawn.
+    let first = world.spawn((CallOf(turn), streaming("first loser's"))).id();
+    let winner = world.spawn((CallOf(turn), streaming("the winner's"))).id();
+    world.spawn((
+        CallOf(turn),
+        streaming("second loser's"),
+        SupersededBy(winner),
+    ));
+    world.entity_mut(first).insert(SupersededBy(winner));
+    world.flush();
+    let rows = laid_out(&mut app, agent, Expanded::AsShown);
+    let rows: Vec<&str> = rows
+        .iter()
+        .flat_map(DrawnTranscript::rows)
+        .map(|row| row.text.as_str())
+        .collect();
+    assert!(rows.contains(&"the winner's"), "{rows:?}");
+    assert!(!rows.iter().any(|row| row.contains("loser")), "{rows:?}");
 }

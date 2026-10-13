@@ -5,7 +5,7 @@ use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
-use super::{Spending, TurnSpending};
+use super::{Spending, TurnSpending, Window};
 
 pub(super) fn add(app: &mut App) {
     app.add_systems(
@@ -25,17 +25,27 @@ const CONTEXT: StatusItem = StatusItem::new("context", Side::Right, 40, 5);
 
 /// Each agent's meter, once a model call of it finished: its uncached
 /// input and output tokens, cache reads, cost, then the context against
-/// the model's window, yellow past 70% and red past 90%. `/usage` details
-/// the cache writes and reasoning.
+/// the window of the model its last reply came from ([`Window`]), yellow
+/// past 70% and red past 90%. `/usage` details the cache writes and
+/// reasoning.
 fn show_meter(
     mut agents: Query<
-        (&Spending, &LastUsage, Option<&Connection>, &mut StatusItems),
-        Or<(Changed<Spending>, Changed<LastUsage>, Changed<Connection>)>,
+        (
+            (&Spending, &LastUsage),
+            (Option<&Connection>, Option<&Window>),
+            &mut StatusItems,
+        ),
+        Or<(
+            Changed<Spending>,
+            Changed<LastUsage>,
+            Changed<Connection>,
+            Changed<Window>,
+        )>,
     >,
 ) {
-    for (Spending { total: spent, .. }, last, connection, mut items) in &mut agents {
+    for ((Spending { total: spent, .. }, last), (connection, window), mut items) in &mut agents {
         let shown = spent.calls > 0;
-        let window = connection.and_then(|connection| connection.spec.context_window);
+        let window = Window::of(window, connection);
         let context = last.context().map(|tokens| ContextUse { tokens, window });
         let tokens = format!(
             "↑{} ↓{}",

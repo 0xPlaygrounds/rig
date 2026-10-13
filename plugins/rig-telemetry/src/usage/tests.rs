@@ -1,7 +1,8 @@
+use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 use rig_core::completion::{CompletionRequest, Message};
-use rig_core::test_utils::MockCompletionModel;
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
@@ -77,4 +78,49 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
     drop(app);
     let (restarted, _wakes) = start(&store);
     assert_eq!(restarted.world().resource::<SessionSpending>().0, session);
+}
+
+/// Sends each turn call to its connection instead of the agent's model, as
+/// a router or a race does.
+#[derive(Resource)]
+struct RouteTo(Connection);
+
+fn route(mut calls: Query<&mut ModelRequest, (With<TurnCall>, Added<Admitted>)>, to: Res<RouteTo>) {
+    for mut call in &mut calls {
+        call.connection = Some(to.0.clone());
+    }
+}
+
+#[test]
+fn the_context_is_against_the_window_of_the_model_a_call_went_to() {
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("hi"),
+        MockStreamEvent::final_response_with_total_tokens(500),
+    ]]);
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    let Some(connection) = connect(&model) else {
+        return;
+    };
+    let routed = Connection {
+        spec: Arc::new((*connection.spec).clone().with_context_window(2_000)),
+        handler: connection.handler.clone(),
+    };
+    let reference = routed.spec.reference();
+    app.insert_resource(RouteTo(routed))
+        .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
+    let world = app.world_mut();
+    let agent = world.spawn((Agent, connection)).id();
+    world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    let world = app.world_mut();
+    let spent = world.get::<Spending>(agent).cloned().unwrap_or_default();
+    assert_eq!(spent.models.keys().collect::<Vec<_>>(), [&reference]);
+    notices(world);
+    world.trigger(RunCommand::new(agent, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(shown.contains("Context: 500/2.0k (25%) tokens."), "{shown}");
 }

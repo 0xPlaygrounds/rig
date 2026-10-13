@@ -38,7 +38,7 @@ use super::wrap::wrap_all;
 use rig_core::message::{CallId, ToolCall};
 use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
-use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Started};
+use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Started, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 use rig_harness::note::Note;
 use rig_harness::prelude::{CallOutput, ToolProgress};
@@ -373,7 +373,9 @@ pub struct TranscriptLayout<'w, 's> {
     agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
     pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
     turns: Query<'w, 's, &'static Calls>,
-    partials: Query<'w, 's, &'static Partial>,
+    /// The replies streaming in that nothing superseded, such as a race's
+    /// running members.
+    partials: Query<'w, 's, &'static Partial, Without<SupersededBy>>,
     accepted: Query<
         'w,
         's,
@@ -434,9 +436,13 @@ impl TranscriptLayout<'_, '_> {
         let (id, conversation) = self.agents.get(entity).ok()?;
         let turn = self.active.get(entity).ok();
         let calls = turn.and_then(|turn| self.turns.get(turn.turn()).ok());
+        // The newest of the turn's replies streaming in that nothing
+        // superseded: in a race, the member still running.
         let partial = calls.and_then(|calls| {
-            let mut streams = calls.iter();
-            streams.find_map(|call| Some((call, self.partials.get(call).ok()?)))
+            let streams = calls.iter();
+            let mut streams =
+                streams.filter_map(|call| Some((call, self.partials.get(call).ok()?)));
+            streams.next_back()
         });
         let streaming = partial.map(|(call, _)| self.streaming.of(call));
         let streaming = streaming.unwrap_or_default().iter();
