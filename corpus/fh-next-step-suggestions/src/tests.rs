@@ -58,7 +58,7 @@ fn start(
         .add_observer(count_asks)
         .init_resource::<Ended>()
         .add_observer(log_ended);
-    collect::<Recorded>(&mut app);
+    collect::<EffectRecorded>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -194,10 +194,10 @@ fn a_message_sent_first_cancels_the_suggesting_call() {
     app.world_mut().trigger(typed);
     let cancelled = |world: &World| {
         world
-            .resource::<Collected<Recorded>>()
+            .resource::<Collected<EffectRecorded>>()
             .0
             .iter()
-            .any(|Recorded(record)| {
+            .any(|EffectRecorded(record)| {
                 record.purpose.as_deref() == Some(NAME)
                     && record.disposition == Disposition::Cancelled
             })

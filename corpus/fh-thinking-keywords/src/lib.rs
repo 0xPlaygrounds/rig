@@ -220,7 +220,7 @@ fn mark_messages(
     mut commands: Commands,
 ) {
     for (message, incoming) in &messages {
-        if incoming.origin.kind != OriginKind::User {
+        if incoming.author.kind != AuthorKind::User {
             continue;
         }
         if let Some((keyword, level)) = config.find(&incoming.text) {

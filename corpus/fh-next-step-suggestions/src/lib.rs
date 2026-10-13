@@ -209,7 +209,7 @@ fn on_message(
     mut commands: Commands,
 ) {
     if let Ok((message, &ForAgent(agent))) = messages.get(added.entity)
-        && message.origin.kind == OriginKind::User
+        && message.author.kind == AuthorKind::User
     {
         clear(agent, &calls, &mut commands);
     }

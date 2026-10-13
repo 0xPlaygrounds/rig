@@ -435,7 +435,7 @@ fn attach(
     mut adding: Adding,
 ) {
     for (message, mut typed, &ForAgent(agent), effect) in &mut typed {
-        if typed.origin.kind != OriginKind::User || typed.command().is_some() {
+        if typed.author.kind != AuthorKind::User || typed.command().is_some() {
             continue;
         }
         // The input's pastes go with the message it sends, and the next
