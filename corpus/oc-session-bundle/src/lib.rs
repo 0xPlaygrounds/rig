@@ -566,12 +566,14 @@ fn write_session(
 
 /// Records where the session started, on its first start.
 fn record_origin(
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     root: Res<ProjectRoot>,
     processes: Option<Res<Processes>>,
     mut origin: ResMut<BundleOrigin>,
 ) {
-    if first.is_none() || !origin.project_root.is_empty() {
+    if !started.is_some_and(|started| started.0 == StartReason::New)
+        || !origin.project_root.is_empty()
+    {
         return;
     }
     let launcher = processes.map_or_else(Launcher::default, |processes| processes.launcher());

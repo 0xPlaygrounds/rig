@@ -79,7 +79,10 @@ impl Plugin for BookmarksPlugin {
             )
             .add_command("bookmarks", "List the bookmarks and jump to one", list)
             .add_entry_renderer(ORIGIN, marker)
-            .add_systems(Startup, inherit.run_if(resource_exists::<FirstStart>))
+            .add_systems(
+                Startup,
+                inherit.run_if(resource_exists_and_equals(AppStart(StartReason::New))),
+            )
             .add_systems(
                 Update,
                 (

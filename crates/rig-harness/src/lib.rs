@@ -140,13 +140,13 @@ pub mod prelude {
     pub use crate::commands::{
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
     };
-    pub use crate::harness_protocol::Home;
+    pub use crate::harness_protocol::{Home, StartReason};
     pub use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded, KeepRunning};
     pub use crate::host::cli::{AppCliExt, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        DeleteSession, FirstStart, ForkSession, ForkSessions, LogEvents, Logged, Scratch,
+        AppStart, DeleteSession, ForkSession, ForkSessions, LogEvents, Logged, Scratch,
         SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
         first_typed, rewrite_stopped, typed,
     };

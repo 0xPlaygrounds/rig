@@ -43,11 +43,14 @@ pub mod env {
     /// The launcher's [`RunDir`](super::RunDir), where the agent says it
     /// started.
     pub const RUN: &str = "RIG_RUN";
+    /// Why the launcher started the agent: a
+    /// [`StartReason`](super::StartReason), as text.
+    pub const START: &str = "RIG_START";
     /// What the launcher tells the agent it runs, and only that agent: a
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: [&str; 4] = [SESSION, NOTICE, BUILD_FAILURE, RUN];
+    pub const AGENT_ONLY: [&str; 5] = [SESSION, NOTICE, BUILD_FAILURE, RUN, START];
     /// Set by the launcher to a file's path: the agent builds its app,
     /// writes what its plugins add there ([`Described`](super::Described))
     /// and exits without running a frame.
@@ -146,6 +149,53 @@ impl FromStr for SessionId {
 impl fmt::Display for SessionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+/// Why the agent process started, which the launcher passes in
+/// [`env::START`]. A switch to another session (`/new`, `/resume`) starts
+/// it as `New` or `Resumed`; a crash is no reason, since the launcher
+/// never restarts a crashed agent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum StartReason {
+    /// The session's first start: a new session, `/new`, or a fork's
+    /// first start.
+    New,
+    /// A session that ran before: `rig --resume`, or `/resume` switching
+    /// to it.
+    Resumed,
+    /// The same session again after `/reload` or a plugin's reload exit.
+    Reloaded,
+    /// The same session again on the previous build, after the launcher
+    /// rolled back a new build that stopped during startup.
+    Restarted,
+}
+
+impl StartReason {
+    /// Its text in [`env::START`].
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::New => "new",
+            Self::Resumed => "resumed",
+            Self::Reloaded => "reloaded",
+            Self::Restarted => "restarted",
+        }
+    }
+
+    /// The reason in [`env::START`], or `None` when it is unset or not one.
+    pub fn from_env() -> Option<Self> {
+        std::env::var(env::START).ok()?.parse().ok()
+    }
+}
+
+impl FromStr for StartReason {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        [Self::New, Self::Resumed, Self::Reloaded, Self::Restarted]
+            .into_iter()
+            .find(|reason| reason.as_str() == text)
+            .ok_or_else(|| format!("`{text}` is not a start reason"))
     }
 }
 

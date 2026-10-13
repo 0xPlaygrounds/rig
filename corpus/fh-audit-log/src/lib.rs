@@ -467,13 +467,14 @@ fn record_answer(
 
 /// Writes that the session started, or started again.
 fn record_start(
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     mut context: Context,
     mut notices: MessageWriter<Notice>,
 ) {
-    let event = match first {
-        Some(_) => Event::SessionStart,
-        None => Event::SessionResume,
+    let event = if started.is_some_and(|started| started.0 == StartReason::New) {
+        Event::SessionStart
+    } else {
+        Event::SessionResume
     };
     let project = context.log.project.as_ref().map(|root| root.display());
     let entry = Entry {

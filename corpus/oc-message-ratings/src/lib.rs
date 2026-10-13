@@ -587,11 +587,12 @@ fn across_project(agents: &Query<(Entity, &AgentId, &Conversation)>, project: &P
 /// fork copied: the copy stops at a point in time, so a reply rated or
 /// rated again after it would lose its rating otherwise.
 fn carry_into_fork(
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     project: Project,
     mut agents: Query<(&AgentId, &mut Conversation)>,
 ) {
-    let (Some(_), Some(store)) = (first, &project.store) else {
+    let first = started.is_some_and(|started| started.0 == StartReason::New);
+    let (true, Some(store)) = (first, &project.store) else {
         return;
     };
     let parent = ForkedFrom::read(&*store.0);

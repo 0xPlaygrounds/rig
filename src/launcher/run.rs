@@ -11,6 +11,7 @@
 //! [`SessionDir::switch`] file and exit with the reload code; the launcher
 //! then runs that session instead, in its own directory. A session left
 //! without a message, by a clean quit or a switch, leaves no directory.
+//! Each start tells the agent why it started ([`StartReason`]).
 //!
 //! The command line is read once the agent is built, against what its
 //! plugins add ([`Described::invocation`]), and the agent gets it in its
@@ -31,8 +32,8 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
 use rig::harness_protocol::{
-    Described, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SecretInfo, SessionDir, SessionId, env,
-    secret_variable,
+    Described, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SecretInfo, SessionDir, SessionId,
+    StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, Staging, child};
@@ -214,6 +215,7 @@ fn launch(
     // The session the agent switched away from to start this one, which a
     // refused start goes back to.
     let mut switched_from: Option<SessionId> = None;
+    let mut reason = claimed.reason;
     loop {
         let left = switched_from.take();
         let session = claimed.id.clone();
@@ -243,6 +245,7 @@ fn launch(
             .env(env::SESSION, session.as_str())
             .env(env::LAUNCHER, &launcher)
             .env(env::RUN, run.path())
+            .env(env::START, reason.as_str())
             .env_remove(env::NOTICE)
             .env_remove(env::BUILD_FAILURE)
             .envs(&answers);
@@ -284,8 +287,13 @@ fn launch(
         if reload && !headless {
             if let Some(target) = take_switch(&directory)? {
                 (claimed, notice) = switch(home, claimed, target)?;
-                switched_from = (claimed.id != session).then_some(session);
             }
+            reason = if claimed.id == session {
+                StartReason::Reloaded
+            } else {
+                claimed.reason
+            };
+            switched_from = (claimed.id != session).then_some(session);
             kept_screen = true;
             continue;
         }
@@ -301,6 +309,7 @@ fn launch(
             };
             let (previous, _) = switch(home, claimed, back)?;
             claimed = previous;
+            reason = claimed.reason;
             if claimed.id != session {
                 // Told in the session it went back to, so nothing is kept.
                 absent(fs::remove_file(run.log()))?;
@@ -352,6 +361,7 @@ fn launch(
         }
         kept_screen = false;
         notice = Some(message);
+        reason = StartReason::Restarted;
     }
 }
 
@@ -415,6 +425,8 @@ fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Opti
 /// The session this launcher runs, held locked while it lives.
 struct Claimed {
     id: SessionId,
+    /// Why its first start starts it: `New` or `Resumed`.
+    reason: StartReason,
     /// The directory the session runs in, when known and still there.
     directory: Option<PathBuf>,
     _lock: File,
@@ -459,20 +471,25 @@ impl Claimed {
 /// locked, and the line the agent shows about it. Call it holding
 /// [`home::lock`].
 fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Option<String>)> {
-    let (id, lock, notice) = match start {
+    let (id, lock, notice, reason) = match start {
         Start::Resume(id) => {
             if !home.session(&id).is_saved() {
                 return Err(format!("session {id} has no saved conversation").into());
             }
             let lock = home::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is open in another rig"))?;
-            (id, lock, Some("Resumed the session.".to_owned()))
+            (
+                id,
+                lock,
+                Some("Resumed the session.".to_owned()),
+                StartReason::Resumed,
+            )
         }
         Start::New => {
             let (id, _) = home.new_session()?;
             let lock = home::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is already running"))?;
-            (id, lock, None)
+            (id, lock, None, StartReason::New)
         }
     };
     let session = home.session(&id);
@@ -488,6 +505,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
     Ok((
         Claimed {
             id,
+            reason,
             directory,
             _lock: lock,
         },

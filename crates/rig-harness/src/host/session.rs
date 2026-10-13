@@ -11,9 +11,9 @@
 //! names the session it came from ([`ForkedFrom`]). A rewrite of this
 //! session (`RewriteSession`) reaches its scratch files too, and
 //! [`rewrite_stopped`] rewrites a session no rig runs, scratch included.
-//! The first app a
-//! session runs, a fork's first included, has [`FirstStart`]; what the
-//! user typed in a message is [`typed`].
+//! Why this app
+//! started, such as its session's first start or a `/reload`, is
+//! [`AppStart`]; what the user typed in a message is [`typed`].
 
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions};
@@ -33,7 +33,7 @@ use bevy_log::tracing_subscriber::{Registry, fmt};
 use bevy_log::{BoxedFmtLayer, BoxedLayer, error, warn};
 use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
-use rig::harness_protocol::{Home, SessionDir, SessionId};
+use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
 use rig_core::completion::Message;
 use rig_core::conversation::{Author, Conversation, MessageId};
@@ -251,19 +251,26 @@ fn session_paths(world: &mut World) -> SessionPaths {
         .clone()
 }
 
-/// This app is its session's first start: no app of the session ran a
-/// whole frame before. A fork's first app has it, a `/reload` of a session
-/// started earlier does not; "a fork's first start" is [`ForkedFrom`]
-/// with it. Inserted when the session plugin is built.
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct FirstStart;
+/// Why this app started, from the launcher ([`StartReason`]), inserted
+/// when the session plugin is built unless the app has one. `New` exactly
+/// when no app of the session ran a whole frame before, whatever the
+/// launcher said: a fork's first app is `New`, and "a fork's first start"
+/// is [`ForkedFrom`] with it. Without a launcher, any other start is
+/// `Resumed`.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AppStart(pub StartReason);
+
+/// Until the end of its first frame: this app is its session's first, and
+/// marks the session started then. A refused run does not.
+#[derive(Resource)]
+struct Unmarked;
 
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, the default [`SessionStores`] and [`Scratch`], the
 /// [`SystemTimings`] (which stay empty without the log), opens the
 /// [`SessionStore`] once every plugin is built and then inserts the
 /// [`PluginData`], routes panics to the log,
-/// tells a first start ([`FirstStart`]), and forks and deletes sessions,
+/// says why the app started ([`AppStart`]), and forks and deletes sessions,
 /// finishing at startup the deletes a crash cut short.
 pub struct SessionPlugin;
 
@@ -276,12 +283,20 @@ impl Plugin for SessionPlugin {
         if !app.world().contains_resource::<Scratch>() {
             app.insert_resource(Scratch(Some(paths.path().to_owned())));
         }
-        if !paths.started().exists() {
-            app.insert_resource(FirstStart).add_systems(
+        let first = !paths.started().exists();
+        if !app.world().contains_resource::<AppStart>() {
+            let reason = match StartReason::from_env() {
+                _ if first => StartReason::New,
+                None | Some(StartReason::New) => StartReason::Resumed,
+                Some(reason) => reason,
+            };
+            app.insert_resource(AppStart(reason));
+        }
+        if first {
+            app.insert_resource(Unmarked).add_systems(
                 Last,
                 mark_started
-                    .run_if(run_once)
-                    .run_if(resource_exists::<FirstStart>)
+                    .run_if(resource_exists::<Unmarked>)
                     .before(discard_sessionless),
             );
         }
@@ -393,11 +408,12 @@ pub(crate) fn leave_session(world: &mut World) {
     let elsewhere = world.get_resource::<LauncherRun>().map(|run| run.0.log());
     move_text_log(world, elsewhere);
     world.insert_resource(Scratch(None));
-    world.remove_resource::<FirstStart>();
+    world.remove_resource::<Unmarked>();
 }
 
 /// Marks the session started at the end of its first app's first frame.
-fn mark_started(paths: Res<SessionPaths>) {
+fn mark_started(paths: Res<SessionPaths>, mut commands: Commands) {
+    commands.remove_resource::<Unmarked>();
     if let Err(failure) = fs::write(paths.started(), b"") {
         error!("could not mark the session started: {failure}");
     }

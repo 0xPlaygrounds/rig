@@ -192,13 +192,13 @@ fn idle_wait(config: &RecapConfig) -> WakeAt {
 
 /// A run of a session started before, not after `/reload`, is a resume.
 fn recap_on_resume(
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     mut reloading: ResMut<Reloading>,
     mut commands: Commands,
 ) {
     if reloading.0 {
         reloading.0 = false;
-    } else if first.is_none() {
+    } else if !started.is_some_and(|started| started.0 == StartReason::New) {
         commands.trigger(WantRecap { forced: false });
     }
 }

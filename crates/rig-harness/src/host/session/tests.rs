@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Home, SessionDir, SessionId};
+use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
@@ -16,7 +16,7 @@ use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{DirStore, Files, Strings, load, save};
 
 use super::{
-    DeleteSession, FirstStart, ForkSession, ForkSessions, ForkedFrom, Scratch, SessionDeleteFailed,
+    AppStart, DeleteSession, ForkSession, ForkSessions, ForkedFrom, Scratch, SessionDeleteFailed,
     SessionDeleted, SessionForked, SessionPaths, SessionPlugin, SessionStores, first_typed,
     log_layer, rewrite_stopped, typed,
 };
@@ -412,7 +412,7 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
 }
 
 #[test]
-fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
+fn a_new_session_and_a_fork_start_new_and_a_second_start_resumes() {
     let root = std::env::temp_dir().join(format!("rig-first-{}", std::process::id()));
     let home = Home::at(&root);
     let id: SessionId = "1700000000-3"
@@ -433,16 +433,22 @@ fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
         app.update();
         app
     };
+    let reason = |app: &App| {
+        app.world()
+            .get_resource::<AppStart>()
+            .map(|started| started.0)
+    };
     let mut first = start(&session);
-    assert!(first.world().contains_resource::<FirstStart>());
-    assert!(!start(&session).world().contains_resource::<FirstStart>());
+    assert_eq!(reason(&first), Some(StartReason::New));
+    // A started session is resumed, whatever else, without a launcher.
+    assert_eq!(reason(&start(&session)), Some(StartReason::Resumed));
     first.world_mut().trigger(ForkSession::default());
     first.update();
     let fork = first.world().resource::<Seen>().forked.first().cloned();
     assert!(fork.is_some(), "the session was forked");
     if let Some(fork) = fork {
         let fork = start(&home.session(&fork.to));
-        assert!(fork.world().contains_resource::<FirstStart>());
+        assert_eq!(reason(&fork), Some(StartReason::New));
     }
     drop(std::panic::take_hook());
     std::fs::remove_dir_all(&root).ok();

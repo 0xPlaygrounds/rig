@@ -321,7 +321,7 @@ fn how(parent: &ForkedFrom) -> String {
 /// input line, showing its agent.
 fn arrive(
     store: Option<Res<SessionStore>>,
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     agents: PrimaryQuery,
     input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
@@ -331,7 +331,8 @@ fn arrive(
     };
     let label = format!("{} of {}", how(&parent), parent.session);
     commands.spawn(ResumeLabel::new("family", label));
-    let (Some(_), Some((agent, _)), Some(text)) = (first, parent.before, parent.text) else {
+    let first = started.is_some_and(|started| started.0 == StartReason::New);
+    let (true, Some((agent, _)), Some(text)) = (first, parent.before, parent.text) else {
         return;
     };
     let agent = agents.iter().find(|(_, id, _)| id.0 == agent);
