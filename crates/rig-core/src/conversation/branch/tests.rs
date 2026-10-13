@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::super::{Aside, AsideId, Author, Conversation, MessageKey, Recorded};
+use super::super::{Aside, AsideId, Author, Conversation, Halt, MessageKey, Recorded};
 use super::{BRANCH, Branch, BranchError};
 use crate::completion::Message;
 use crate::message::{AssistantContent, CallId, ToolName};
@@ -105,4 +105,42 @@ fn a_branch_is_refused_where_it_would_not_fit() {
     assert_eq!(aside.map(|aside| aside.kind.as_str()), Some(BRANCH));
     let branch = aside.and_then(Branch::of);
     assert_eq!(branch.map(|branch| branch.entries.len()), Some(2));
+}
+
+/// Switching from a stopped line with nothing after the point to an empty
+/// branch that was not halted clears the halt and keeps the stopped line;
+/// switching back brings the halt back.
+#[test]
+fn switching_between_empty_continuations_carries_the_halt_both_ways() {
+    let by = Author::plugin("tree");
+    let mut conversation = Conversation::from_messages([
+        Message::user("Name a colour."),
+        Message::assistant("Red."),
+        Message::user("Another?"),
+    ]);
+    assert!(conversation.halt(Halt::Stopped));
+    let last = conversation.id(2);
+    let empty = Branch {
+        title: "empty".into(),
+        ..Branch::default()
+    };
+    let empty = conversation.add_aside(Aside::new(BRANCH, by.clone(), json!(empty)).after(last));
+    let mut log = Vec::new();
+
+    assert!(
+        conversation
+            .switch_branch(empty, "stopped", by.clone())
+            .is_ok()
+    );
+    assert_eq!(conversation.halted(), None);
+    assert_eq!(titles(&conversation), ["stopped"]);
+
+    let stopped = conversation.branches().next().map(|(id, _, _)| id);
+    let stopped = stopped.unwrap_or_default();
+    assert!(conversation.switch_branch(stopped, "empty", by).is_ok());
+    assert_eq!(conversation.halted(), Some(Halt::Stopped));
+    assert_eq!(titles(&conversation), ["empty"]);
+
+    log.extend(conversation.take_unsaved());
+    assert_eq!(fold(&log), conversation);
 }

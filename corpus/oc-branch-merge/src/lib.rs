@@ -265,13 +265,8 @@ fn go_to(conversation: &mut Conversation, title: &str) -> Result<(), String> {
         let aside = conversation.aside(id).cloned();
         let aside = aside.ok_or(format!("Branch {title} moved."))?;
         let branch = Branch::of(&aside).ok_or(format!("Branch {title} moved."))?;
-        // Nothing after its point: the branch left is kept as an empty one.
-        let empty = conversation.aside_position(&aside) >= conversation.messages().len();
         let spliced = conversation.switch_branch(id, current.clone(), by.clone());
         spliced.map_err(|failure| failure.to_string())?;
-        if empty {
-            keep_empty(conversation, current, aside.after);
-        }
         current = branch.title;
     }
     set_active_name(conversation, title);

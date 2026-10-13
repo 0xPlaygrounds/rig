@@ -95,10 +95,10 @@ impl Conversation {
     }
 
     /// Makes branch `id` the active continuation: the entries after its
-    /// point, with the saved asides that follow them, are kept as a branch
-    /// titled `keep_as` (when there are any), and the branch's entries come
-    /// back with their ids and made-times ([`restore`](Self::restore)), its
-    /// asides with theirs. Each change is made by `by`. What the restore
+    /// point, with the saved asides that follow them and the halt, are kept
+    /// as a branch titled `keep_as` (even with no entries), and the branch's
+    /// entries come back with their ids and made-times
+    /// ([`restore`](Self::restore)), its asides with theirs and its halt. Each change is made by `by`. What the restore
     /// changed.
     ///
     /// ```
@@ -134,26 +134,17 @@ impl Conversation {
         let branch = Branch::of(aside).ok_or(BranchError::NotABranch(id))?;
         let (point, at) = (aside.after, self.aside_position(aside));
         self.forget_aside(id, &by);
-        let kept = match at < self.messages.len() {
-            true => Some(self.stash(at, keep_as.into(), &by)?),
-            false => None,
-        };
+        let kept = self.stash(at, keep_as.into(), &by)?;
         let spliced = self.restore(at.., branch.entries, by.clone());
         for (id, aside) in branch.asides {
             let aside = Some(aside);
             self.record(Change::Aside { id, aside }, Some(by.clone()));
         }
-        if branch.halted.is_some() {
-            self.record(
-                Change::Halt {
-                    halt: branch.halted,
-                },
-                Some(by.clone()),
-            );
+        if self.halted != branch.halted {
+            let halt = branch.halted;
+            self.record(Change::Halt { halt }, Some(by.clone()));
         }
-        if let Some(kept) = kept {
-            self.add_aside(Aside::new(BRANCH, by, kept).after(point));
-        }
+        self.add_aside(Aside::new(BRANCH, by, kept).after(point));
         Ok(spliced)
     }
 
