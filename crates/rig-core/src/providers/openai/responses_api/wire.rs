@@ -258,6 +258,8 @@ impl crate::completion::ReplayTarget for Responses {
             assistant_images: false,
             tool_result_images: images,
             tools: !(model.starts_with("o1-mini") || model.starts_with("o1-preview")),
+            // A reasoning item replays only as the provider made it.
+            foreign_reasoning: false,
         }
     }
 

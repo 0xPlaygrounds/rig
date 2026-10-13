@@ -153,6 +153,7 @@ impl Operation for Completion {
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),
             stored,
+            foreign_reasoning: request.foreign_reasoning,
             // A conversation the provider stores holds its own tools, so a
             // continuation that declares none still calls them.
             tools: stored || target.declares_tools(&request),

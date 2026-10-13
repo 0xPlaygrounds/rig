@@ -548,6 +548,7 @@ impl crate::completion::ReplayTarget for NativeChat {
             assistant_images: false,
             tool_result_images: false,
             tools: true,
+            foreign_reasoning: false,
         }
     }
 

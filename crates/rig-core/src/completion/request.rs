@@ -1235,6 +1235,13 @@ pub struct CompletionRequest {
     /// [`FinishReason::ContentFilter`] still fails the turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub accept_unknown_finish_reasons: bool,
+    /// Send other models' reasoning in the history as reasoning where the
+    /// target reads it ([`Accepts::foreign_reasoning`]), instead of as plain
+    /// text, the default (pi's rule). Defaults to `false`.
+    ///
+    /// [`Accepts::foreign_reasoning`]: crate::completion::Accepts::foreign_reasoning
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub foreign_reasoning: bool,
     /// Portable generation options. Precedence, lowest first: the mapped
     /// options, then [`Self::provider_options`], then `additional_params`.
     #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
@@ -1480,6 +1487,7 @@ impl CompletionRequest {
             output_schema: None,
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
+            foreign_reasoning: false,
             options: GenerationOptions::default(),
             provider_options: ProviderOptions::default(),
             cache_points: Vec::new(),

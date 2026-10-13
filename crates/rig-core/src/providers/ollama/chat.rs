@@ -464,11 +464,13 @@ impl ReplayTarget for Chat {
     }
 
     /// Images in user messages, and none in assistant turns or tool results,
-    /// which the adapter moves to a user message.
+    /// which the adapter moves to a user message. Another model's reasoning
+    /// goes in `thinking`, as the model's own does.
     fn accepts(&self, _model: &str) -> Accepts {
         Accepts {
             assistant_images: false,
             tool_result_images: false,
+            foreign_reasoning: true,
             ..Accepts::ALL
         }
     }
