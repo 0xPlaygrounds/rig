@@ -57,6 +57,7 @@
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
 pub mod ask;
+pub mod checkpoint;
 pub mod clock;
 pub mod commands;
 pub mod describe;
@@ -128,6 +129,7 @@ pub mod prelude {
     pub use bevy_app::OnAppExitSystems;
 
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
+    pub use crate::checkpoint::{Checkpoints, TurnCheckpoint};
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
@@ -166,8 +168,9 @@ pub mod prelude {
 /// fronts ([`host`]), slash commands ([`commands`]), why the app exits,
 /// wall-clock wakes ([`clock`]),
 /// file watches ([`watch`]), questions for the user ([`ask`]), pickers
-/// with the agent the user looks at ([`pick`]) and previews of what a tool
-/// call would leave on disk ([`preview`]).
+/// with the agent the user looks at ([`pick`]), previews of what a tool
+/// call would leave on disk ([`preview`]) and what every call that may
+/// write anywhere changed ([`checkpoint`]).
 /// Everything else is a plugin `plugins.toml` lists, which can leave it
 /// out.
 pub struct RigHarnessPlugins;
@@ -188,6 +191,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
             .add(preview::PreviewPlugin)
+            .add(checkpoint::CheckpointPlugin)
     }
 }
 
