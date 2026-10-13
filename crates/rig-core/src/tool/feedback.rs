@@ -88,14 +88,26 @@ pub fn not_executed(call: &ToolCall) -> UserContent {
 /// schema does not declare, or do not [`validate`](crate::tool::validate)
 /// against it (up to five of the problems are named). `None` when they fit
 /// as far as the validator checks; the tool checks the rest.
+///
+/// A schema that declares `properties` is read as naming every argument,
+/// stricter than JSON Schema, so a model that guesses an argument name hears
+/// the real ones: unless it allows more (`additionalProperties` other than
+/// `false`, or `patternProperties`), an undeclared argument is refused. A
+/// schema that declares no `properties`, such as `{}` or
+/// `{"type": "object"}`, accepts any argument.
 pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Option<String> {
     let name = call.function.name.as_str();
     if let Some(raw) = &call.function.invalid_arguments {
         return Some(invalid_arguments_feedback(name, raw));
     }
+    let allows_more = parameters
+        .get("additionalProperties")
+        .is_some_and(|more| more != &serde_json::Value::Bool(false))
+        || parameters.get("patternProperties").is_some();
     let declared = parameters
         .get("properties")
-        .and_then(serde_json::Value::as_object);
+        .and_then(serde_json::Value::as_object)
+        .filter(|_| !allows_more);
     fn quoted<'a>(names: impl Iterator<Item = &'a String>) -> String {
         names
             .map(|arg| format!("`{arg}`"))
@@ -106,13 +118,13 @@ pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Opt
         call.function
             .arguments
             .keys()
-            .filter(|arg| !declared.is_some_and(|declared| declared.contains_key(arg.as_str()))),
+            .filter(|arg| declared.is_some_and(|declared| !declared.contains_key(arg.as_str()))),
     );
-    if !unknown.is_empty() {
-        let known = declared
-            .map(|declared| quoted(declared.keys()))
-            .filter(|known| !known.is_empty())
-            .unwrap_or_else(|| "none".to_owned());
+    if let Some(declared) = declared.filter(|_| !unknown.is_empty()) {
+        let mut known = quoted(declared.keys());
+        if known.is_empty() {
+            known = "none".to_owned();
+        }
         return Some(format!(
             "`{name}` has no argument {unknown}. Its arguments are: {known}. Call it again with \
              only those."

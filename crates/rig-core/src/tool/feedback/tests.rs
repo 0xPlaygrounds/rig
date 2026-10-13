@@ -79,3 +79,23 @@ fn arguments_that_are_not_an_object_are_refused_before_the_schema() {
         Some(invalid_arguments_feedback("add", "[1, 2]"))
     );
 }
+
+#[test]
+fn a_schema_that_names_no_arguments_or_allows_more_accepts_any_argument() {
+    let mut call = tool_call("c1");
+    call.function = ToolFunction::new(
+        crate::message::ToolName::new("open").expect("tool name"),
+        serde_json::json!({"path": "x"}),
+    );
+    for open in [
+        serde_json::json!({}),
+        serde_json::json!({"type": "object"}),
+        serde_json::json!({"type": "object", "properties": {}, "additionalProperties": true}),
+        serde_json::json!({"properties": {"a": {}}, "additionalProperties": {"type": "string"}}),
+        serde_json::json!({"properties": {"a": {}}, "patternProperties": {"^p": {}}}),
+    ] {
+        assert_eq!(arguments_refusal(&open, &call), None, "{open}");
+    }
+    let closed = serde_json::json!({"properties": {}, "additionalProperties": false});
+    assert!(arguments_refusal(&closed, &call).is_some());
+}
