@@ -291,9 +291,7 @@ fn open(
     for (_, _, mut conversation) in &mut agents {
         clear_notes(&mut conversation, HISTORY_ORIGIN);
     }
-    let found = agents
-        .iter_mut()
-        .find(|(_, id, _)| id.0 == bookmark.agent);
+    let found = agents.iter_mut().find(|(_, id, _)| id.0 == bookmark.agent);
     let Some((agent, id, mut conversation)) = found else {
         notices.write(Notice::error(
             None,
@@ -304,15 +302,16 @@ fn open(
     let item = if conversation.index_of(bookmark.message).is_some() {
         TranscriptItem::Message(bookmark.message)
     } else {
-        let history =
-            store.and_then(|store| saved_history(&*store.0, &id.0, &conversation, bookmark.message));
+        let history = store
+            .and_then(|store| saved_history(&*store.0, &id.0, &conversation, bookmark.message));
         let Some(history) = history else {
             let why = format!("The saved history of `{}` cannot be read.", bookmark.label);
             notices.write(Notice::error(agent, why));
             return;
         };
         let title = format!("Bookmark `{}`, before it was condensed", bookmark.label);
-        let note = Note::new(title, history).aside(Author::plugin(HISTORY_ORIGIN), Some(bookmark.message));
+        let note =
+            Note::new(title, history).aside(Author::plugin(HISTORY_ORIGIN), Some(bookmark.message));
         TranscriptItem::Note(conversation.add_aside(note.unsaved()))
     };
     if let Some(mut view) = view {
