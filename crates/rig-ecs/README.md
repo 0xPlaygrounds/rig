@@ -88,7 +88,9 @@ What it holds, by module:
   the owners of other state (the effect log, the listing, scratch files).
   A component that says
   `#[reflect(Component, Saved)]`, or a resource that says
-  `#[reflect(Resource, Saved)]`, is logged and restored by reflection; one
+  `#[reflect(Resource, Saved)]`, is logged and restored by reflection,
+  under its type path (Bevy's `#[type_path]` makes it stable, as the
+  model's is `rig::model`, so a program reads it without Bevy); one
   reflected opaquely with serde (`#[reflect(opaque, Component, Saved,
   Clone, Serialize, Deserialize)]`) is saved through serde, the way to
   save rig-core data such as a `MessageId`. The store (`SessionStore`) is

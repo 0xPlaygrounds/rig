@@ -6,8 +6,8 @@
 //! take the root's lock, a `/reload` build and its trial are per session,
 //! and the ready file is per launcher.
 //!
-//! `rig` starts a new session, and `rig --resume <id>` an earlier one, in
-//! the directory it ran in. The agent's `/new` and `/resume` leave a
+//! `rig` starts a new session, and `rig --resume <id or name>` an earlier
+//! one, in the directory it ran in. The agent's `/new` and `/resume` leave a
 //! [`SessionDir::switch`] file and exit with the reload code; the launcher
 //! then runs that session instead, in its own directory. A session left
 //! without a message, by a clean quit or a switch, leaves no directory.

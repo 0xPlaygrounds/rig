@@ -11,7 +11,7 @@ types, such as the terminal view's panels from `rig_tui`.
 - [Model requests](#model-requests), [what a model streams](#what-a-model-streams) and [how a turn ends](#how-a-turn-ends)
 - [Effects of a plugin's own](#effects-of-a-plugins-own) and [subagents](#subagents), with [extending `task`](#extending-task)
 - [The effect log](#the-effect-log-reading-redacting-replaying): reading, redacting, replaying; [settings](#settings)
-- [Saved state](#saved-state-counting-every-tool-call), [changing history](#changing-history), [time](#time), [the workspace, files and child processes](#the-workspace-files-and-child-processes), [sessions: their store, secrets and exiting](#sessions-their-store-secrets-and-exiting)
+- [Saved state](#saved-state-counting-every-tool-call), [changing history](#changing-history) and [rewriting saved history](#rewriting-saved-history-a-redaction), [time](#time), [the workspace, files and child processes](#the-workspace-files-and-child-processes), [sessions: their store, secrets and exiting](#sessions-their-store-secrets-and-exiting)
 - [Adding to another plugin's lists](#adding-to-another-plugins-lists): `/model`, `/resume`, `/context`, `/agents`, `/usage`, `--print`; spending and budgets
 - [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added), and [testing a plugin](#testing-a-plugin)
 - [Fronts, options and commands](#fronts-options-and-commands), with [commands of your own](#commands-of-your-own); [the transcript](#the-transcript-notes-looks-and-scrolling), [the status line](#the-status-line), [a terminal panel](#what-agents-do-and-say-in-a-terminal-panel), [keys and the input](#keys-and-the-input-in-the-terminal-view), [a window](#a-window)
@@ -61,7 +61,8 @@ types are in its crate, such as the terminal view's in `rig_tui` (with
 `rig_tui::ratatui` and `rig_tui::crossterm`). What every
 plugin shares lives in rig-harness, never in another plugin; what hosts
 without Bevy need too, in the libraries: rig-core's `redact`, schema check
-and `conversation`, rig-memory's saving, rig-tools' tools and workspace.
+and `conversation`, rig-memory's saving, rewriting and forking, rig-tools'
+tools and workspace.
 
 Every one of these types is reflected, so the running agent lists them
 with the `inspect` tool of the optional `rig-inspect` plugin: ask it
@@ -255,15 +256,10 @@ use rig_harness::rig_core::redact;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RedactSystems;
 
-#[derive(Default)]
-pub struct RedactPlugin;
-
-impl Plugin for RedactPlugin {
-    fn build(&self, app: &mut App) {
-        // After attachments and the default prompt, before compaction.
-        app.configure_sets(AgentPass, RedactSystems.in_set(PrepareSystems::Edit))
-            .add_systems(AgentPass, redact_messages.in_set(RedactSystems));
-    }
+fn build(app: &mut App) {
+    // After attachments and the default prompt, before compaction.
+    app.configure_sets(AgentPass, RedactSystems.in_set(PrepareSystems::Edit))
+        .add_systems(AgentPass, redact_messages.in_set(RedactSystems));
 }
 
 /// Takes API keys out of each message as it comes in, attached files
@@ -310,20 +306,15 @@ use rig_harness::rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-#[derive(Default)]
-pub struct WordCountPlugin;
-
-impl Plugin for WordCountPlugin {
-    fn build(&self, app: &mut App) {
-        let options = ToolOptions {
-            rules: &["Use `word_count` to count a file's words."],
-            footprint: Some(Touches::Reads(Scope::Anything)),
-        };
-        let here = WordCount { workspace: Arc::new(Local), base: None, confine: false };
-        app.add_tool_per_call(here, options, false, |at| {
-            WordCount { workspace: at.workspace, base: Some(at.base), confine: at.confine }
-        });
-    }
+fn build(app: &mut App) {
+    let options = ToolOptions {
+        rules: &["Use `word_count` to count a file's words."],
+        footprint: Some(Touches::Reads(Scope::Anything)),
+    };
+    let here = WordCount { workspace: Arc::new(Local), base: None, confine: false };
+    app.add_tool_per_call(here, options, false, |at| {
+        WordCount { workspace: at.workspace, base: Some(at.base), confine: at.confine }
+    });
 }
 
 /// Reads in `workspace`, a relative path from `base`.
@@ -426,8 +417,9 @@ call](#the-workspace-files-and-child-processes) that may write) or
 **What a call would change**, before it runs: a gate puts `Preview` on it,
 the harness holds it, runs its tool on an overlay of the workspace that
 keeps every write from the disk, and puts `Previewed(Ok(changes))` on it,
-`Undecided` again: each `FileChange` with its diff, a deletion's too, and
-the `FileState` (`bytes`, `lines`, `hash`) of each side. A tool not
+`Undecided` again: each `FileChange`, a deletion's too, with its hunks, the
+text before and so the text after (`after_text()`), and the `FileState`
+(`bytes`, `lines`, `hash`) of each side. A tool not
 [registered per call](#a-tool), or that starts a process (`shell`), gets
 `Previewed(Err(..))`: a command's writes cannot be kept from the disk.
 
@@ -583,13 +575,8 @@ Enter answers `Chosen::Items` (each command runs, in list order) or
 ```rust,no_run
 use rig_harness::prelude::*;
 
-#[derive(Default)]
-pub struct ApproveCommitsPlugin;
-
-impl Plugin for ApproveCommitsPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(AgentPass, (answered, ask).chain().in_set(Stage::Gate));
-    }
+fn build(app: &mut App) {
+    app.add_systems(AgentPass, (answered, ask).chain().in_set(Stage::Gate));
 }
 
 /// On a call the user allowed.
@@ -654,13 +641,8 @@ that starts with `/`; a plugin that takes some over orders its Gate system
 ```rust,no_run
 use rig_harness::prelude::*;
 
-#[derive(Default)]
-pub struct RemindPlugin;
-
-impl Plugin for RemindPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_command("remind", "Remind the agent of something after its turn", remind);
-    }
+fn build(app: &mut App) {
+    app.add_command("remind", "Remind the agent of something after its turn", remind);
 }
 
 /// `/remind <text>`.
@@ -718,22 +700,12 @@ attachments or what a plugin delivered, is `typed(&conversation, at)`
 ```rust,no_run
 use rig_harness::prelude::*;
 
-#[derive(Default)]
-pub struct ShortcutsPlugin;
-
-impl Plugin for ShortcutsPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(
-            AgentPass,
-            (
-                review_on_reviewer.in_set(PrepareSystems::Edit),
-                // Before the harness's systems that decide messages too.
-                keep_to_self.in_set(Stage::Gate).before(CommandSystems),
-            ),
-        )
+fn build(app: &mut App) {
+    // Before the harness's systems that decide messages too.
+    let gate = keep_to_self.in_set(Stage::Gate).before(CommandSystems);
+    app.add_systems(AgentPass, (review_on_reviewer.in_set(PrepareSystems::Edit), gate))
         .add_command("review", "Asks for a review, on the reviewing model", review)
         .add_observer(mark_review_turn);
-    }
 }
 
 /// On a message `/review` sent, and on the turn it went into.
@@ -878,19 +850,9 @@ use rig_harness::rig_ecs::effects::Handler;
 /// The model a turn falls back to when its own gave up.
 const FALLBACK: &str = "deepseek/deepseek-flash";
 
-#[derive(Default)]
-pub struct ModelRequestsPlugin;
-
-impl Plugin for ModelRequestsPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(
-            AgentPass,
-            (
-                (example_first, tools_as_text).in_set(PrepareSystems::Edit),
-                fall_back.in_set(ReviewSystems::Act),
-            ),
-        );
-    }
+fn build(app: &mut App) {
+    let edits = (example_first, tools_as_text).in_set(PrepareSystems::Edit);
+    app.add_systems(AgentPass, (edits, fall_back.in_set(ReviewSystems::Act)));
 }
 
 /// Every turn's request starts with a worked example the conversation never has.
@@ -962,13 +924,8 @@ before the reply ends, runs `.before(AgentLoop)` or calls `Wake::wake`.
 ```rust,no_run
 use rig_harness::prelude::*;
 
-#[derive(Default)]
-pub struct StreamTapPlugin;
-
-impl Plugin for StreamTapPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(PostUpdate, print_text).add_observer(time_to_first);
-    }
+fn build(app: &mut App) {
+    app.add_systems(PostUpdate, print_text).add_observer(time_to_first);
 }
 
 /// Prints every model call's answer text as it comes.
@@ -1029,14 +986,9 @@ use rig_harness::rig_core::completion::{CompletionResponse, Usage};
 use rig_harness::rig_core::effect;
 use rig_harness::rig_core::message::{AssistantContent, Origin as Made, Text};
 
-#[derive(Default)]
-pub struct TurnEndsPlugin;
-
-impl Plugin for TurnEndsPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(AgentPass, end_with.in_set(Stage::Gate))
-            .add_systems(AgentPass, check_the_tests.in_set(Stage::Review));
-    }
+fn build(app: &mut App) {
+    app.add_systems(AgentPass, end_with.in_set(Stage::Gate))
+        .add_systems(AgentPass, check_the_tests.in_set(Stage::Review));
 }
 
 /// On a turn whose answer is known: the text it ends with.
@@ -1156,10 +1108,10 @@ agent, every setting the request leaves out taken from the parent (its
 - `SpawnSubagent::task(title, brief)` works on a task and reports to its
   parent, as `task` starts it.
 - `SpawnSubagent::helper(title)` works for the plugin, which talks to it:
-  it has a `Helper(title)`, reports to no one, and `message` cannot reach
-  it; `.brief(text)` sends it a first message. With `.once()` it retires
-  when its first turn ends, whose answer an `On<Add<Settled>>` observer
-  reads.
+  it has a `Helper` and an `AgentTitle`, reports to no one, and `message`
+  cannot reach it; `.brief(text)` sends it a first message. With `.once()`
+  it retires when its first turn ends, whose answer an `On<Add<Settled>>`
+  observer reads.
 
 ## Extending `task`
 
@@ -1240,11 +1192,12 @@ and turn. It holds what was written by the end of the last frame: to count
 as a run goes, keep [saved state](#saved-state-counting-every-tool-call).
 
 **Redacting.** A record holds what its effect really carried (tool output,
-diffs, the request as sent). A plugin keeps a secret out of the log by
-changing the records in place with `MessageMutator<EffectRecorded>` in
-`Last` `.after(StopTurns).before(WriteJournal)`, so it sees a stop on
-exit's records too. rig-core's `redact` finds keys and tokens by their
-shapes: `redact::json` in a record, `redact::text` in a line.
+file changes with the text before, the request as sent). A plugin changes
+records before they are written, in place, with `MessageMutator<EffectRecorded>`
+in `Last` `.after(StopTurns).before(WriteJournal)` (a stop on exit's too),
+and [rewrites](#rewriting-saved-history-a-redaction) those written.
+rig-core's `redact` finds keys and tokens by their shapes: `redact::json`
+in a record, `redact::text` in a line.
 
 **Replaying.** A replayer answers effects from a recorded session's log
 before they start: a model call with an adapter placed outermost, every
@@ -1318,17 +1271,12 @@ pub struct Budget {
     pub max_calls: Option<usize>,
 }
 
-#[derive(Default)]
-pub struct BudgetPlugin;
-
-impl Plugin for BudgetPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_setting::<Budget>("budget")
-            .add_flag(Flag::new("budget", "Stop a turn after N tool calls").value("N"));
-        let invoked = app.world().get_resource::<Invoked>();
-        if let Some(n) = invoked.and_then(|it| it.flag_value("budget")?.parse().ok()) {
-            app.insert_resource(Budget { max_calls: Some(n) });
-        }
+fn build(app: &mut App) {
+    app.add_setting::<Budget>("budget")
+        .add_flag(Flag::new("budget", "Stop a turn after N tool calls").value("N"));
+    let invoked = app.world().get_resource::<Invoked>();
+    if let Some(n) = invoked.and_then(|it| it.flag_value("budget")?.parse().ok()) {
+        app.insert_resource(Budget { max_calls: Some(n) });
     }
 }
 ```
@@ -1359,15 +1307,10 @@ use rig_harness::rig_core::message::Message;
 #[reflect(Component, Saved)]
 struct ToolCounts(HashMap<String, u32>);
 
-#[derive(Default)]
-pub struct ToolCountsPlugin;
-
-impl Plugin for ToolCountsPlugin {
-    fn build(&self, app: &mut App) {
-        app.register_required_components::<Agent, ToolCounts>()
-            .add_observer(count)
-            .add_observer(count_the_past);
-    }
+fn build(app: &mut App) {
+    app.register_required_components::<Agent, ToolCounts>()
+        .add_observer(count)
+        .add_observer(count_the_past);
 }
 
 /// Counts the calls already in an agent's conversation when it gets its
@@ -1407,11 +1350,26 @@ some: a cut is `from..` with nothing, a summary the range it stands for
 with one message, an edit in place `entry(i)` passed back changed. Each
 message is its own entry with a `MessageId` (`id(i)`) that stays across
 edits and restores (`index_of(id)`; `start_of(id)` is where a span that
-began at `id` begins now). A splice that reaches the end clears the halt.
+began at `id` begins now), and the time it was made (`EntryRef::made`):
+`key(i)`, a `MessageKey` of both, is the same for its copy in a fork
+(`index_of_key`). A splice that reaches the end clears the halt.
 A message that is not the user's own or the model's has an `Author`
 (`Author::plugin(name)`, `agent(..)`, `rig()` for rig's own such as the
 `STOPPED` note, or the user `titled`): `Entry::new(message).by(author)`.
 Every splice names its author, so the log says who rewrote what.
+
+**Putting entries back.** A splice gives an entry from elsewhere a new
+id; `restore(range, entries, by)` puts back entries this conversation
+held (taken out with `entry(i)`: a summary's originals, an edit undone)
+with their ids, made-times and asides. `set_entries(entries, by)` makes
+it hold a whole list, such as a transcript edited as text, as one
+restore of what differs; `normalize(by)` merges adjacent assistant
+entries and repairs tool-call pairing, a merged entry keeping the
+first's id and author and its asides following it. **Branches** are
+other continuations kept as asides (`BRANCH`), so they are saved,
+forked and rewritten with it: `branch_off(at, title, by)` sets entries
+`at..` aside, `switch_branch(id, keep_as, by)` brings a branch back with
+its ids and keeps the current tail, `branches()` lists them.
 
 **Asides** never reach a model: an `Aside { kind, after, author, value }`
 follows the entry `after` and is saved, restored and forked with the
@@ -1436,16 +1394,21 @@ rig-memory's `CompactionPolicy` in rig-compaction's `Compaction`, cuts by
 `Cut::Budget` or a plugin's `Cut::With`; `plan(..)` plans a summary call
 under a plugin's own policy, and `On<Insert<Summarized>>` sees a new one.
 
-**The session format** is rig-memory's (`rig-session/1`), read and written
-without an app: `Session::read(&*store)` gives each agent's conversation,
-saved values and `Stamp`s, and `session.save(&*store)` appends what
-changed; `load`/`save` keep one conversation, `history`/`as_of` show how a
-log got where it is, `fork(from, to, before)` copies a session as it was
-before a message. A session not read whole is refused
-(`Session::read_lenient` reads what it can). An importer opens
-`home.new_session()` with `SessionStores::open`, makes each edit at the
-source's time (`conversation.dated(at_ms, |c| ..)`), saves, and lists it
-in `/resume` with rig-sessions' `write_meta(&*store, ..)`.
+**The session format** is rig-memory's (`rig-session/2`), read and written
+without an app: `Session::read(&*store)` gives each agent's conversation
+and saved values, and `session.save(&*store)` appends what changed;
+`load`/`save` keep one conversation, `history`/`as_of` show how a log got
+where it is. `fork(from, to, before, &with)` copies a session as it was
+before a message, each value through a `Rewrite` (`&Keep` for none), and
+the copied messages' asides as they are now. A session not read whole, or
+saved by an older rig, is refused unchanged (`Session::read_lenient` reads
+what it can). rig's own saved values have stable keys a program reads
+without Bevy: `SavedAgent::model()` and `title()` (`ModelChoice`,
+`AgentTitle`), and `session.main_agent()` is the one the user talks to.
+An importer opens `home.new_session()` with `SessionStores::open`, makes
+each edit at the source's time (`conversation.dated(at_ms, |c| ..)`),
+saves, and lists it in `/resume` with rig-memory's
+`SessionMeta { title, .. }.write(&*store)`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1476,6 +1439,57 @@ fn rewrites(mut committed: MessageReader<Committed>, mut notices: MessageWriter<
 }
 ```
 
+## Rewriting saved history: a redaction
+
+Records are appended while the session runs. Nothing is rewritten except
+through rig-memory: a `RewriteSession { by, with, asker }` maps every
+saved record in place, keeping each record's place and stamp, and the
+agents' conversations and saved values become the rewritten ones. `with`
+is a `Rewrite`: `Strings` maps every string (a redaction, a path remap),
+`rig_memory::Messages` only messages, or its own hooks per message,
+aside, saved value, text and file. It runs at the end of the frame,
+blocking it, over every agent's log, the store's files (`meta.json`, the
+effect log, plugins' files), the scratch files and the session's name; a saved
+value that changed is inserted again (`On<Insert<T>>` sees it), and
+`SessionRewritten` says what changed, or why nothing did. It cannot reach
+what a model was sent, a running turn's request, or a copy a plugin keeps
+(a `Conversation` copied before and put back is saved whole again).
+Another session, stopped, is `rewrite_stopped(&stores, &paths, &dir, by,
+&with)`; a program without an app calls `rig_memory::rewrite(&store, by,
+&with)` on one that does not `runs_elsewhere()`.
+
+```rust,no_run
+use std::sync::Arc;
+
+use rig_harness::prelude::*;
+
+fn build(app: &mut App) {
+    app.add_command("redact", "Take a text out of everything saved: /redact <text>", redact)
+        .add_systems(Update, redacted);
+}
+
+/// `/redact <text>`: every saved copy of it becomes `[REDACTED]`.
+fn redact(In(args): In<CommandArgs>, mut commands: Commands) {
+    let secret = args.args;
+    let with = Strings(move |text: &mut String| {
+        let hit = !secret.is_empty() && text.contains(&secret);
+        if hit {
+            *text = text.replace(&secret, "[REDACTED]");
+        }
+        hit
+    });
+    commands.trigger(RewriteSession { by: Author::plugin("redact"), with: Arc::new(with), asker: None });
+}
+
+/// Says how it went.
+fn redacted(mut done: MessageReader<SessionRewritten>, mut notices: MessageWriter<Notice>) {
+    for SessionRewritten { result, .. } in done.read() {
+        let text = result.as_ref().map_or_else(String::clone, |it| format!("{} logs rewritten", it.logs.len()));
+        notices.write(Notice::info(None, text));
+    }
+}
+```
+
 # Time
 
 Time is Bevy's `Time`. `.run_if(on_real_timer(Duration))` runs a system
@@ -1493,14 +1507,9 @@ use rig_harness::prelude::*;
 /// How often a running turn says it is still running.
 const EVERY: Duration = Duration::from_secs(60);
 
-#[derive(Default)]
-pub struct StillWorkingPlugin;
-
-impl Plugin for StillWorkingPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_observer(keep_awake)
-            .add_systems(Update, still_working.run_if(on_real_timer(EVERY)));
-    }
+fn build(app: &mut App) {
+    app.add_observer(keep_awake)
+        .add_systems(Update, still_working.run_if(on_real_timer(EVERY)));
 }
 
 /// A turn keeps the loop awake while it runs; the `KeepAwake` goes with
@@ -1540,11 +1549,14 @@ tool resolves paths with `workspace.place(base, confine, path)`, and
 
 **What a call changed.** The file tools publish the files they write as
 `FilesChanged`, each change with the `FileState` of the file before
-(`before`) and after it (`after`). The harness wraps each call that may
-write anywhere (`Writes(Anything)`: `shell`, a tool that does not say) in
-rig-tools' `Checkpointed`, which snapshots its agent's directory just
-before and after it runs and publishes the difference so; the turn's
-`TurnCheckpoint::first()` is the files before its first such call, and
+(`before`) and after it (`after`), its `hunks` (`unified()` as a diff,
+`changed_lines()`) and, for a text file it read whole, `before_text`
+(`after_text()` applies the hunks to it). The harness wraps each call that
+may write anywhere (`Writes(Anything)`: `shell`, a tool that does not say)
+in rig-tools' `Checkpointed`, which snapshots its agent's directory just
+before and after it runs and publishes the difference so; the call's
+`CallCheckpoint::before()` is its snapshot before, the turn's
+`TurnCheckpoint::first()` the files before its first such call, and
 `Snapshot::content` reads a file as it was. In a git work tree on this
 machine a snapshot is a tree written with a private index and objects in
 the session's `Scratch`, never in the user's `.git`; elsewhere a scan,
@@ -1695,13 +1707,16 @@ a second effect, which a holder may take as "stop waiting".
 
 `FirstStart` is a resource only in a session's first app (a fork's too),
 not after `/reload` or `/resume`. `ForkSession { before, asker }` copies
-this session into a new one (`SessionForked` names it and the `asker`; the
-copy names its parent and where it was cut, `ForkedFrom::of(&*store)`),
-and `DeleteSession(id)` removes another, its store wherever kept, finished
-by the next start if a crash cut it short (`SessionDeleted`, else
-`SessionDeleteFailed { id, why }`).
-rig-sessions' `NameSession { session, name }` names a session in
-`/resume`.
+this session into a new one in `Last`'s `ForkSessions`, after
+`WriteJournal`, so a file written `.before` it is in the copy
+(`SessionForked` names it and the `asker`; the copy names its parent and
+where it was cut, `ForkedFrom::read(&*store)`), and `DeleteSession(id)`
+removes another, its store wherever kept, finished by the next start if a
+crash cut it short (`SessionDeleted`, else `SessionDeleteFailed`). A
+session's name is a plain file in its directory (`SessionDir::name`,
+readable without its store), which rig-sessions' `/name` and
+`NameSession { session, name }` write, and `rig --resume <name>`,
+`/resume <name>` and `Home::find` look up.
 
 ```rust,no_run
 use std::io;
@@ -1713,17 +1728,12 @@ use rig_harness::rig_memory::DirStore;
 
 /// Keeps every session's files on the disk mounted at `/vault`, and
 /// spilled output and pasted images nowhere.
-#[derive(Default)]
-pub struct VaultPlugin;
-
-impl Plugin for VaultPlugin {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(Scratch(None))
-            .insert_resource(SessionStores::new(|dir: &SessionDir| {
-                let id = dir.id().ok_or_else(|| io::Error::other("not a session of RIG_HOME"))?;
-                Ok(Arc::new(DirStore::open(format!("/vault/{id}"))?) as Arc<dyn Store>)
-            }));
-    }
+fn build(app: &mut App) {
+    app.insert_resource(Scratch(None))
+        .insert_resource(SessionStores::new(|dir: &SessionDir| {
+            let id = dir.id().ok_or_else(|| io::Error::other("not a session of RIG_HOME"))?;
+            Ok(Arc::new(DirStore::open(format!("/vault/{id}"))?) as Arc<dyn Store>)
+        }));
 }
 ```
 
@@ -1816,19 +1826,14 @@ const CAP: f64 = 5.0;
 
 /// Refuses the turns' model calls once the session spent `CAP`, and says
 /// what is left in `/usage` and after a `--print` answer.
-#[derive(Default)]
-pub struct BudgetPlugin;
-
-impl Plugin for BudgetPlugin {
-    fn build(&self, app: &mut App) {
-        app.world_mut()
-            .spawn((UsageRow::new("budget", ""), PrintSection::new("budget", "")));
-        app.add_systems(AgentPass, refuse_over_budget.in_set(Stage::Gate))
-            .add_systems(
-                Update,
-                show_budget.run_if(resource_exists_and_changed::<SessionSpending>),
-            );
-    }
+fn build(app: &mut App) {
+    app.world_mut()
+        .spawn((UsageRow::new("budget", ""), PrintSection::new("budget", "")));
+    app.add_systems(AgentPass, refuse_over_budget.in_set(Stage::Gate))
+        .add_systems(
+            Update,
+            show_budget.run_if(resource_exists_and_changed::<SessionSpending>),
+        );
 }
 
 fn refuse_over_budget(
@@ -2047,7 +2052,7 @@ fn stats(home: Res<RigHome>, mut commands: Commands) {
     let sessions = std::fs::read_dir(home.0.sessions()).into_iter().flatten().flatten();
     let ids = sessions.filter_map(|dir| dir.file_name().to_str()?.parse::<SessionId>().ok());
     // What a session spent, with `stores: Res<SessionStores>`: `stores.open(&home.0.session(id))
-    //     .ok().and_then(|s| rig_sessions::Meta::of(&*s)?.labels.get("spent").cloned())`
+    //     .ok().and_then(|s| rig_memory::SessionMeta::read(&*s)?.labels.get("spent").cloned())`
     println!("{} saved sessions", ids.filter(|id| home.0.session(id).is_saved()).count());
     commands.trigger(Exit(ExitReason::Quit));
 }
@@ -2156,13 +2161,8 @@ use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 /// After the status; gone before the reasoning setting.
 const MESSAGES: StatusItem = StatusItem::new("messages", Side::Left, 55, 10);
 
-#[derive(Default)]
-pub struct MessagesItemPlugin;
-
-impl Plugin for MessagesItemPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(PostUpdate, (show.in_set(StatusSystems::Show), no_cost.in_set(StatusSystems::Edit)));
-    }
+fn build(app: &mut App) {
+    app.add_systems(PostUpdate, (show.in_set(StatusSystems::Show), no_cost.in_set(StatusSystems::Edit)));
 }
 
 fn show(mut agents: Query<(&Conversation, &mut StatusItems), Changed<Conversation>>) {

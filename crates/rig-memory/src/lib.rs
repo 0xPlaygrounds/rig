@@ -42,7 +42,8 @@
 //!    [`save`] of it gives [`LoadError::Changed`], and the caller reads it
 //!    again.
 //! 4. Another process must not rewrite a running session; rig-memory cannot
-//!    tell, so a program checks first that nothing runs it.
+//!    tell, so a program checks first that nothing runs it (for a rig
+//!    session, its `SessionDir::runs_elsewhere`).
 //! 5. Values a host keeps in memory are the host's to read again from
 //!    [`Rewritten`] (rig's kernel does it for conversations and saved
 //!    values).

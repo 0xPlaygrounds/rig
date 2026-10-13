@@ -17,7 +17,8 @@ not `cat`", and annotations saying what it does to the world. Beside the text
 the model reads, `read` and `search` publish the files they read (`FilesRead`),
 `search` what it found (`SearchHits`), `list` what it showed (`FilesListed`),
 `write`, `edit`, `delete` and `move` the files they changed with each change's
-diff and the hashes of the content before and after (`FilesChanged`), all by
+hunks, the text before and the hashes of the content before and after
+(`FilesChanged`), all by
 resolved absolute path, `shell` how the command ended (`ExitStatus`), and
 `shell`, `read` and `list` where they cut their output (`OutputCut`). The file
 tools take an optional `base` directory for relative paths and can be
@@ -34,7 +35,8 @@ second elsewhere). The crate also has what the tools are built from: `overlay`
 (a workspace that keeps writes from the disk and lists them, to preview a call),
 `checkpoint` (a snapshot of the files under a root, ignored paths named in
 `Taking::also` included, what changed since an earlier one and each file's
-content then, and `Checkpointed`, a handler that reports what any call changed;
+content then, and `Checkpointed`, a handler that reports what any call changed
+and keeps the snapshot it took before;
 in a git work tree the snapshot is a tree written with a private index and
 object directory, never the repository's own, elsewhere a scan keeping content
 under `Taking::keep`), `clipboard` (the system

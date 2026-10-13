@@ -18,8 +18,10 @@ changed plugins and restarts in the same session. The
   loop that sleeps until there is work or a wall-clock `WakeAt`;
   `RigHarnessPlugins` adds the session (its rig-memory store, opened by
   the replaceable `SessionStores`, which refuses a session an older rig
-  saved without changing it, the plain `Scratch` files, forking and
-  deleting sessions), the kernel, the launcher protocol with how the agent
+  saved without changing it, the plain `Scratch` files, forking
+  (`ForkSessions`), rewriting a stopped session (`rewrite_stopped`; the
+  running one is the kernel's `RewriteSession`, which also maps its scratch
+  files and name) and deleting sessions), the kernel, the launcher protocol with how the agent
   was started (`Invoked`: its arguments, the plugins' own options and
   command, and whether stdin is a terminal), the secrets plugins ask the
   launcher for (`Secrets`), and how it exits (`Exit`: an effect a plugin
@@ -34,10 +36,12 @@ changed plugins and restarts in the same session. The
   `Picker`, one choice or several), plugins' notes in an agent's
   transcript (`Note` asides), tools built for each call's place in the
   workspace (`add_tool_per_call`), what a call would change before it
-  runs (`Preview`, each side's size and lines), what any call that may
-  write anywhere changed (its `FilesChanged`, from snapshots just before
-  and after it, ignored paths named in `CheckpointAlso` included;
-  `[checkpoints]`), settings a project may override where a plugin lets it
+  runs (`Preview`, each change's hunks and text before, each side's size
+  and lines), what any call that may write anywhere changed (its
+  `FilesChanged`, from snapshots just before and after it, the one before
+  kept on the call as its `CallCheckpoint`, ignored paths named in
+  `CheckpointAlso` included; `[checkpoints]`), an agent's saved title
+  (`AgentTitle`), settings a project may override where a plugin lets it
   (`add_project_setting`), a
   running call's progress and live output (`ToolProgress`, `CallOutput`),
   following an effect to the successor that took it over
