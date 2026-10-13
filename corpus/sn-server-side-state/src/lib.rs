@@ -203,7 +203,7 @@ fn chain_calls(
     vendors: Res<StatefulVendors>,
 ) {
     for change in committed.read() {
-        let Change::Splice { with, .. } = &change.change.change else {
+        let Change::Splice { .. } = &change.change.change else {
             continue;
         };
         let Ok(mut chain) = chains.get_mut(change.agent) else {
@@ -212,11 +212,7 @@ fn chain_calls(
         if chain.link.is_none() {
             continue;
         }
-        let summary = rig_compaction::summary_author();
-        let condensed = with
-            .iter()
-            .any(|entry| entry.author.as_ref() == Some(&summary));
-        let note = if condensed {
+        let note = if rig_compaction::summary_in(&change.change.change).is_some() {
             "conversation condensed"
         } else {
             "conversation edited"

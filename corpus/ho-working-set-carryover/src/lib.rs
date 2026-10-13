@@ -3,7 +3,7 @@
 //! tool calls publish ([`FilesRead`], [`FilesChanged`], [`ExitStatus`]).
 //! Whenever a compaction splices a summary into an agent's conversation
 //! (a [`Committed`] splice that took messages out and put in an entry by
-//! [`summary_author`], from rig-compaction or `/compact`), a "Working set"
+//! [`summary_author`](rig_compaction::summary_author), from rig-compaction or `/compact`), a "Working set"
 //! entry goes into the conversation right after the summary, and into the
 //! request already built from it, so it goes with the next request and a
 //! resumed session has it. The tracking is saved with the
@@ -13,7 +13,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
-use rig_compaction::summary_author;
+use rig_compaction::summary_in;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead};
 use serde::{Deserialize, Serialize};
@@ -211,7 +211,7 @@ fn carry_over(
 ) {
     let compactions: Vec<(Entity, MessageId)> = committed
         .read()
-        .filter_map(|Committed { agent, change }| Some((*agent, summary_of(&change.change)?)))
+        .filter_map(|Committed { agent, change }| Some((*agent, summary_in(&change.change)?)))
         .collect();
     for (agent, summary) in compactions {
         let Ok((mut conversation, mut set)) = agents.get_mut(agent) else {
@@ -238,23 +238,6 @@ fn carry_over(
         }
         set.read.clear();
     }
-}
-
-/// The summary a compaction's splice put in: an entry by
-/// [`summary_author`] in a splice that took messages out. Clearing old
-/// tool outputs, also by that author, keeps every message, so it is none.
-fn summary_of(change: &Change) -> Option<MessageId> {
-    let Change::Splice { removed, with, .. } = change else {
-        return None;
-    };
-    let kept = |id: &MessageId| with.iter().any(|entry| entry.id == Some(*id));
-    if removed.iter().all(kept) {
-        return None;
-    }
-    let summary = summary_author();
-    with.iter()
-        .find(|entry| entry.author.as_ref() == Some(&summary))
-        .and_then(|entry| entry.id)
 }
 
 /// The working set message: changed files that exist with their line

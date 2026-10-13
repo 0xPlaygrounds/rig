@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::summary_author;
+use rig_harness::rig_memory::summary_in;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -316,27 +316,13 @@ fn forget_compacted(
     mut loaded: Query<&mut LoadedInTurn>,
 ) {
     for Committed { agent, change } in committed.read() {
-        if compacted(&change.change)
+        if summary_in(&change.change).is_some()
             && let Ok(turn) = agents.get(*agent)
             && let Ok(mut loaded) = loaded.get_mut(turn.turn())
         {
             loaded.0.clear();
         }
     }
-}
-
-/// Whether `change` is a splice that took messages out and put a
-/// compaction's summary in their place.
-fn compacted(change: &Change) -> bool {
-    let Change::Splice { removed, with, .. } = change else {
-        return false;
-    };
-    let kept: HashSet<MessageId> = with.iter().filter_map(|entry| entry.id).collect();
-    let summary = summary_author();
-    removed.iter().any(|id| !kept.contains(id))
-        && with
-            .iter()
-            .any(|entry| entry.author.as_ref() == Some(&summary))
 }
 
 /// `load_skill`'s arguments.

@@ -10,6 +10,7 @@ use serde_json::json;
 use bevy_ecs::system::RunSystemOnce;
 
 use super::*;
+use rig_harness::rig_memory::summary_author;
 
 /// An app on `store` with the file tools and the plugin, its agent talking
 /// to `model`, after its first frame.

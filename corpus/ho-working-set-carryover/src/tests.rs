@@ -10,6 +10,7 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
+use rig_compaction::summary_author;
 
 /// The spec's pattern: a command starting with `echo test` tests.
 const SETTINGS: &str = "[working_set]\ntest_pattern = '^echo test'\n";
