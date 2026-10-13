@@ -5,9 +5,10 @@
 //! self-contained HTML page or JSON; `rig --export=<session>` (with
 //! `--export-format`, `--export-to` and `--export-thinking`) does the same
 //! from the command line and exits. Either reads the *saved* session with
-//! rig-memory's `Session::read`, which neither restores nor writes it, so a
-//! session that is not running exports the same way as this one; each
-//! model call's usage and cost comes from the session's effect log.
+//! rig-memory's `Session::read_lenient`, which neither restores nor writes
+//! it, so a session that is not running exports the same way as this one,
+//! and a log that cannot be read is named and left out; each model call's
+//! usage and cost comes from the session's effect log.
 
 use std::any::TypeId;
 use std::collections::BTreeMap;
@@ -73,6 +74,9 @@ pub struct Export {
     pub started_ms: Option<u64>,
     /// Its agents, in the order their logs were started.
     pub agents: Vec<ExportedAgent>,
+    /// The logs that could not be read, each with why: the export holds
+    /// the rest.
+    pub left_out: Vec<String>,
 }
 
 /// One agent of an [`Export`].
@@ -259,8 +263,12 @@ fn load(
     name: String,
     registry: &TypeRegistry,
 ) -> Result<Export, String> {
-    let saved =
-        Session::read(store).map_err(|failure| format!("reading the session: {failure}"))?;
+    let (saved, unreadable) = Session::read_lenient(store)
+        .map_err(|failure| format!("reading the session: {failure}"))?;
+    let left_out = unreadable
+        .into_iter()
+        .map(|log| format!("{} ({})", log.log, log.error))
+        .collect();
     let records = store
         .read_file(SESSION_EFFECT_LOG)
         .ok()
@@ -292,6 +300,7 @@ fn load(
         id,
         name,
         agents,
+        left_out,
     })
 }
 

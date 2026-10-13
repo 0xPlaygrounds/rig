@@ -293,8 +293,14 @@ impl Index {
             let saved = match read_json::<Saved>(&file).filter(|saved| saved.stamp == stamp) {
                 Some(saved) => saved,
                 None => {
-                    let docs = match Session::read(&*store) {
-                        Ok(read) => docs(&read),
+                    let docs = match Session::read_lenient(&*store) {
+                        Ok((read, left_out)) => {
+                            for log in left_out {
+                                let path = session.path().display();
+                                unreadable.push(format!("{path}: {} ({})", log.log, log.error));
+                            }
+                            docs(&read)
+                        }
                         Err(why) => {
                             unreadable.push(format!("{} ({why})", session.path().display()));
                             Vec::new()
@@ -314,7 +320,7 @@ impl Index {
         forget_gone(&dir, &seen);
         if !unreadable.is_empty() {
             warn!(
-                "recall: skipped {} unreadable session files: {}",
+                "recall: skipped {} unreadable sessions or logs: {}",
                 unreadable.len(),
                 unreadable.join(", ")
             );

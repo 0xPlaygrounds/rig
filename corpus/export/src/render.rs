@@ -21,7 +21,8 @@ use super::{Export, ExportedAgent, ModelCall};
 ///
 /// ```json
 /// { "format": "rig-export/2",
-///   "session": { "id": "…", "name": "…", "started_ms": 1760000000000 },
+///   "session": { "id": "…", "name": "…", "started_ms": 1760000000000,
+///                "left_out": ["a log that could not be read (why)"] },
 ///   "models": ["vendor/model"],
 ///   "agents": [{
 ///     "id": "…", "parent": "…" | null,
@@ -132,6 +133,9 @@ fn walk_session(sink: &mut dyn Sink, session: &Export) {
     }
     if let Some(started) = session.started_ms {
         rows.push(("Started", utc(started / 1000)));
+    }
+    if !session.left_out.is_empty() {
+        rows.push(("Left out", session.left_out.join("; ")));
     }
     sink.header(&session.name, &rows);
     let mut walked = HashSet::new();
@@ -340,7 +344,10 @@ fn to_json(session: &Export) -> Value {
         .collect();
     json!({
         "format": JSON_FORMAT,
-        "session": { "id": session.id, "name": session.name, "started_ms": session.started_ms },
+        "session": {
+            "id": session.id, "name": session.name, "started_ms": session.started_ms,
+            "left_out": session.left_out,
+        },
         "models": models(session),
         "agents": agents,
     })
