@@ -810,7 +810,7 @@ impl ModelStarts<'_, '_> {
         let spec = &connection.spec;
         let request = &mut model.request;
         if send && let Some(history) = model.history.take() {
-            request.chat_history = history.messages().to_vec();
+            request.chat_history = history.into_messages();
         }
         if !spec.tools {
             request.tools.clear();

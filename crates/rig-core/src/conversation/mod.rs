@@ -417,6 +417,12 @@ impl Conversation {
         &self.messages
     }
 
+    /// The messages, oldest first, taken out of the conversation: what a
+    /// request sends, without a copy.
+    pub fn into_messages(self) -> Vec<Message> {
+        self.messages
+    }
+
     /// The entries, oldest first.
     pub fn entries(&self) -> impl DoubleEndedIterator<Item = EntryRef<'_>> + ExactSizeIterator {
         let entries = self.messages.iter().zip(&self.meta).enumerate();
