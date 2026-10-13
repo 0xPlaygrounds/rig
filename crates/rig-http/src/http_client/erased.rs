@@ -155,18 +155,40 @@ impl DynHttpClient {
         Ok(())
     }
 
-    /// Run the response hooks in attachment order.
-    async fn apply_response_middleware(
+    /// Run the response hooks in attachment order on the transport's reply:
+    /// a response, or an error that kept a non-success reply's status and
+    /// headers. A hook's error fails a response with that error; an error
+    /// reply stops at a failing hook and still fails with its own error.
+    async fn observe<B>(
         &self,
         method: &http::Method,
         uri: &http::Uri,
-        status: http::StatusCode,
-        headers: &http::HeaderMap,
-    ) -> Result<()> {
-        for mw in &self.middleware {
-            mw.after_response(method, uri, status, headers).await?;
+        reply: Result<Response<B>>,
+    ) -> Result<Response<B>> {
+        let error = match reply {
+            Ok(response) => {
+                for mw in &self.middleware {
+                    mw.after_response(method, uri, response.status(), response.headers())
+                        .await?;
+                }
+                return Ok(response);
+            }
+            Err(error) => error,
+        };
+        if let (Some(status), Some(headers)) =
+            (error.non_success_status(), error.non_success_headers())
+        {
+            for mw in &self.middleware {
+                if mw
+                    .after_response(method, uri, status, headers)
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
         }
-        Ok(())
+        Err(error)
     }
 }
 
@@ -192,12 +214,11 @@ impl HttpClientExt for DynHttpClient {
         async move {
             let body = this.apply_request_middleware(&mut parts, body).await?;
             let (method, uri) = (parts.method.clone(), parts.uri.clone());
-            let response = this
+            let reply = this
                 .inner
                 .send_bytes(Request::from_parts(parts, body))
-                .await?;
-            this.apply_response_middleware(&method, &uri, response.status(), response.headers())
-                .await?;
+                .await;
+            let response = this.observe(&method, &uri, reply).await?;
             Ok(convert_body::<U>(response))
         }
     }
@@ -215,12 +236,11 @@ impl HttpClientExt for DynHttpClient {
         async move {
             this.apply_header_middleware(&mut parts).await?;
             let (method, uri) = (parts.method.clone(), parts.uri.clone());
-            let response = this
+            let reply = this
                 .inner
                 .send_multipart_bytes(Request::from_parts(parts, body))
-                .await?;
-            this.apply_response_middleware(&method, &uri, response.status(), response.headers())
-                .await?;
+                .await;
+            let response = this.observe(&method, &uri, reply).await?;
             Ok(convert_body::<U>(response))
         }
     }
@@ -236,13 +256,11 @@ impl HttpClientExt for DynHttpClient {
         async move {
             let body = self.apply_request_middleware(&mut parts, body).await?;
             let (method, uri) = (parts.method.clone(), parts.uri.clone());
-            let response = self
+            let reply = self
                 .inner
                 .send_streaming_bytes(Request::from_parts(parts, body))
-                .await?;
-            self.apply_response_middleware(&method, &uri, response.status(), response.headers())
-                .await?;
-            Ok(response)
+                .await;
+            self.observe(&method, &uri, reply).await
         }
     }
 }

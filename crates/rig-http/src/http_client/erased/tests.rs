@@ -275,6 +275,52 @@ mod middleware {
         drop(response);
     }
 
+    /// Records each reply's status and `retry-after` header.
+    struct SeeReplies(Arc<Mutex<Vec<String>>>);
+
+    impl HttpMiddleware for SeeReplies {
+        fn after_response<'a>(
+            &'a self,
+            _method: &'a Method,
+            _uri: &'a Uri,
+            status: StatusCode,
+            headers: &'a HeaderMap,
+        ) -> WasmBoxedFuture<'a, Result<()>> {
+            Box::pin(async move {
+                let wait = headers
+                    .get(http::header::RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("-");
+                self.0
+                    .lock()
+                    .expect("seen")
+                    .push(format!("{}:{wait}", status.as_u16()));
+                Ok(())
+            })
+        }
+    }
+
+    #[test]
+    fn an_error_reply_reaches_the_response_hooks_and_still_fails_the_request() {
+        let mut headers = HeaderMap::new();
+        headers.insert(http::header::RETRY_AFTER, HeaderValue::from_static("7"));
+        let inner =
+            RecordingHttpClient::with_error_headers(StatusCode::TOO_MANY_REQUESTS, "slow", headers);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let erased = DynHttpClient::new(inner)
+            .with_middleware(SeeReplies(seen.clone()))
+            .with_middleware(FailAt("response"));
+        let Err(err) = block_on(erased.send::<_, Bytes>(request("hello"))) else {
+            panic!("an error reply fails the request")
+        };
+        assert_eq!(seen.lock().expect("seen").as_slice(), ["429:7"]);
+        assert_eq!(
+            err.non_success_body(),
+            Some("slow"),
+            "the reply's own error"
+        );
+    }
+
     #[test]
     fn erasing_preserves_middleware_and_ptr_eq_ignores_it() {
         let log = Arc::new(Mutex::new(Vec::new()));

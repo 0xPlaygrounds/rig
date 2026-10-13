@@ -19,12 +19,13 @@ use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 ///
 /// Methods default to no-ops. All header hooks run in attachment order, then
 /// all body hooks run in that order with the final headers and preceding body
-/// replacements. Response hooks run in attachment order after the transport
-/// returns a response, before streaming-body consumption. A transport that
-/// returns an error for an error status, as `rig-reqwest` does, skips them
-/// for that reply. Multipart requests skip body hooks.
+/// replacements. Response hooks run in attachment order on every reply,
+/// before streaming-body consumption: a response, or a non-success reply a
+/// transport turned into an error that keeps its status and headers, as
+/// `rig-reqwest` does. Multipart requests skip body hooks.
 ///
 /// Any hook error fails the request; request-side errors abort before sending.
+/// An error reply fails with its own error whatever its hooks return.
 /// Response hooks cannot modify responses. Hooks run on the request future and
 /// must not block.
 pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
@@ -57,9 +58,10 @@ pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
         Box::pin(async move { Ok(body) })
     }
 
-    /// Observe the response status and headers as soon as they arrive.
-    /// Not invoked when the transport fails the request, which includes a
-    /// non-success status on a transport that reports one as an error.
+    /// Observe the response status and headers as soon as they arrive,
+    /// including a non-success reply's (such as a 429's rate-limit headers)
+    /// on a transport that reports it as an error. Not invoked when the
+    /// request failed with no reply.
     ///
     /// For streaming responses this runs before any of the body stream is
     /// consumed. Observe-only: the response cannot be modified, but returning
