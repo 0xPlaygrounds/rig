@@ -1,26 +1,24 @@
 //! `/perf`: which plugin is slowing the agent down, and what it was doing.
 //!
-//! What it can measure, from the stack's public data:
+//! What it measures, from the stack's public data:
 //!
 //! - **Holding up a turn.** A plugin that makes a turn wait holds an effect
 //!   (`HoldOf`): a request before it goes out, a tool call before it
 //!   starts, a result before it reaches the model, or the turn's end. Each
 //!   hold's life is timed and charged to the plugin that spawned it
-//!   (`ProvidedBy`, which a plugin puts on what it spawns while the app
-//!   runs), with what it held ("before request #2, turn 3"). A question
-//!   for the user (`Ask`) is the user's time, not a plugin's.
+//!   (`ProvidedBy`), with what it held ("before request #2, turn 3"). A
+//!   question for the user (`Ask`) is the user's time, not a plugin's.
 //! - **Background work.** A plugin's own effect (`EffectRequest`) is timed
 //!   from its start to its answer: as holding up the turn when it is a call
 //!   of one (`CallOf`), else as background work.
+//! - **Its systems and observers.** The harness times every system and
+//!   observer run ([`SystemTimings`], with its `trace` feature, which this
+//!   crate turns on), summed per plugin package. A frame's runs hold up the
+//!   user's turn while one runs (the agent loop and the plugins share the
+//!   frame), else they are background work.
 //! - **Interface stalls.** A frame whose work takes over 50 ms kept the
-//!   terminal from drawing and from reacting to keys. With the `tui`
-//!   feature, each key binding's handler is timed and charged to the plugin
-//!   that bound it; a stall it caused names it, any other is unattributed.
-//!
-//! What it cannot measure: the time inside another plugin's stage systems
-//! and observers. Bevy times no system without its `trace` feature, the
-//! harness owns the log's tracing layers, and systems are not attributed to
-//! plugins, so such work shows only as an unattributed stall.
+//!   terminal from drawing and from reacting to keys. It names the plugin
+//!   whose systems took most of it, with the keys the frame handled.
 //!
 //! A plugin that holds up one turn longer than `[perf] threshold_ms` of
 //! `settings.toml` (1000 by default) is named in a notice, once a session.
@@ -32,6 +30,7 @@ use std::fmt::Write as _;
 use std::time::Instant;
 
 use rig_harness::prelude::*;
+use rig_harness::timings::Timing;
 use serde::{Deserialize, Serialize};
 
 /// A frame whose work takes longer than this is an interface stall.
@@ -42,10 +41,6 @@ const STALLS_KEPT: usize = 256;
 
 /// Who did what nothing names a plugin for.
 pub const UNATTRIBUTED: &str = "unattributed";
-
-/// What `/perf` says it cannot see.
-const NOT_MEASURED: &str = "Not measured: time inside other plugins' stage systems and \
-                            observers, which shows only as an unattributed stall.";
 
 /// The `[perf]` table of `settings.toml`: `threshold_ms = 1000`.
 #[derive(Resource, Deserialize, Clone, Debug)]
@@ -69,7 +64,8 @@ pub struct PluginPerf {
     pub held_up_ms: u64,
     /// How long its work that held nothing up took, in milliseconds.
     pub background_ms: u64,
-    /// How many times it was measured: holds, effects and key presses.
+    /// How many times it was called: holds, effects, system and observer
+    /// runs.
     pub calls: u64,
     /// Its slowest single call.
     pub slowest: Option<Slowest>,
@@ -89,9 +85,9 @@ pub struct Slowest {
 pub struct Stall {
     /// How long the frame took, in milliseconds.
     pub ms: u64,
-    /// The plugin that was running, else [`UNATTRIBUTED`].
+    /// The plugin whose systems took most of it, else [`UNATTRIBUTED`].
     pub plugin: String,
-    /// What it was handling, when known.
+    /// The keys the frame handled, if any.
     pub handling: Option<String>,
 }
 
@@ -107,8 +103,17 @@ pub struct PerfReport {
     pub stalls: Vec<Stall>,
 }
 
+/// One plugin's measurements, to the nanosecond.
+#[derive(Clone, Default)]
+struct Tally {
+    held_up: Duration,
+    background: Duration,
+    calls: u64,
+    slowest: Option<(Duration, String)>,
+}
+
 /// Measurements by plugin name.
-type Table = BTreeMap<String, PluginPerf>;
+type Table = BTreeMap<String, Tally>;
 
 /// The measurements, kept in memory only.
 #[derive(Resource, Default)]
@@ -122,10 +127,12 @@ pub struct Perf {
     noticed: HashSet<String>,
     /// The holds that hold now, and the plugin effects that run.
     open: HashMap<Entity, Open>,
+    /// The system timings per package at the end of the last frame.
+    systems: BTreeMap<String, Timing>,
     /// When this frame's work began.
     frame: Option<Instant>,
-    /// The key handlers that ran this frame.
-    handled: Vec<Handled>,
+    /// The keys this frame handled.
+    keys: Vec<String>,
 }
 
 /// A hold, or a plugin's effect, being timed.
@@ -136,20 +143,13 @@ struct Open {
     turn: Option<Entity>,
 }
 
-/// A key handler that ran this frame.
-struct Handled {
-    plugin: String,
-    handling: String,
-    took: Duration,
-}
-
 impl Perf {
     /// The measurements as `/perf --json` prints them.
     pub fn report(&self) -> PerfReport {
         let last_turn = self.last_turn.and_then(|turn| self.turns.get(&turn));
         PerfReport {
-            last_turn: last_turn.cloned().unwrap_or_default(),
-            session: self.session.clone(),
+            last_turn: last_turn.map(perfs).unwrap_or_default(),
+            session: perfs(&self.session),
             stalls: self.stalls.clone(),
         }
     }
@@ -161,39 +161,76 @@ impl Perf {
         self.stalls.clear();
     }
 
-    /// Charges `took` to `plugin`, holding up `turn` if any, and returns
-    /// how long `plugin` held up that turn in all.
+    /// Charges `calls` taking `took`, the slowest `slowest`, to `plugin`,
+    /// holding up `turn` if any, and returns how long `plugin` held up
+    /// that turn in all.
     fn record(
         &mut self,
         plugin: &str,
-        took: Duration,
-        handling: &str,
+        (took, calls): (Duration, u64),
+        slowest: Option<(Duration, &str)>,
         turn: Option<Entity>,
-    ) -> Option<u64> {
-        let ms = millis(took);
+    ) -> Option<Duration> {
         let held_up = turn.is_some();
         let session = self.session.entry(plugin.to_owned()).or_default();
-        session.add(ms, held_up, handling);
+        session.add(took, calls, held_up, slowest);
         let turn = self.turns.entry(turn?).or_default();
         let in_turn = turn.entry(plugin.to_owned()).or_default();
-        in_turn.add(ms, held_up, handling);
-        Some(in_turn.held_up_ms)
+        in_turn.add(took, calls, held_up, slowest);
+        Some(in_turn.held_up)
+    }
+
+    /// The text of a notice naming `plugin` for holding up a turn by
+    /// `held_up` in all, the first time it goes over the threshold.
+    fn over(&mut self, plugin: &str, held_up: Duration, threshold_ms: u64) -> Option<String> {
+        let ms = millis(held_up);
+        if ms <= threshold_ms || plugin == UNATTRIBUTED || !self.noticed.insert(plugin.to_owned()) {
+            return None;
+        }
+        Some(format!(
+            "{plugin} held up this turn by {ms} ms (over {threshold_ms} ms); /perf shows what it \
+             was doing."
+        ))
     }
 }
 
-impl PluginPerf {
-    fn add(&mut self, ms: u64, held_up: bool, handling: &str) {
+impl Tally {
+    fn add(
+        &mut self,
+        took: Duration,
+        calls: u64,
+        held_up: bool,
+        slowest: Option<(Duration, &str)>,
+    ) {
         if held_up {
-            self.held_up_ms += ms;
+            self.held_up += took;
         } else {
-            self.background_ms += ms;
+            self.background += took;
         }
-        self.calls += 1;
-        if self.slowest.as_ref().is_none_or(|slowest| ms > slowest.ms) {
-            let handling = handling.to_owned();
-            self.slowest = Some(Slowest { ms, handling });
+        self.calls += calls;
+        if let Some((took, handling)) = slowest
+            && self.slowest.as_ref().is_none_or(|(most, _)| took > *most)
+        {
+            self.slowest = Some((took, handling.to_owned()));
         }
     }
+}
+
+/// `table` in whole milliseconds.
+fn perfs(table: &Table) -> BTreeMap<String, PluginPerf> {
+    let perf = |tally: &Tally| PluginPerf {
+        held_up_ms: millis(tally.held_up),
+        background_ms: millis(tally.background),
+        calls: tally.calls,
+        slowest: tally.slowest.as_ref().map(|(took, handling)| Slowest {
+            ms: millis(*took),
+            handling: handling.clone(),
+        }),
+    };
+    table
+        .iter()
+        .map(|(plugin, tally)| (plugin.clone(), perf(tally)))
+        .collect()
 }
 
 impl PerfReport {
@@ -207,11 +244,8 @@ impl PerfReport {
             by_plugin.entry(&stall.plugin).or_default().push(stall);
         }
         let over = STALL.as_millis();
-        if by_plugin.is_empty() {
-            writeln!(text, "Interface stalls (over {over} ms): none").ok();
-        } else {
-            writeln!(text, "Interface stalls (over {over} ms):").ok();
-        }
+        let none = if by_plugin.is_empty() { " none" } else { "" };
+        writeln!(text, "Interface stalls (over {over} ms):{none}").ok();
         for (plugin, stalls) in by_plugin {
             let longest = stalls.iter().max_by_key(|stall| stall.ms);
             let ms = longest.map_or(0, |stall| stall.ms);
@@ -225,13 +259,12 @@ impl PerfReport {
             )
             .ok();
         }
-        text.push_str(NOT_MEASURED);
         text
     }
 }
 
 /// Appends `plugins`, slowest first, under `title`.
-fn table(text: &mut String, title: &str, plugins: &Table) {
+fn table(text: &mut String, title: &str, plugins: &BTreeMap<String, PluginPerf>) {
     if plugins.is_empty() {
         writeln!(text, "{title}: nothing measured").ok();
         return;
@@ -277,6 +310,7 @@ impl Plugin for PluginProfilerPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<PerfSettings>("perf")
             .init_resource::<Perf>()
+            .init_resource::<SystemTimings>()
             .add_command(
                 "perf",
                 "Which plugin slows the agent down: /perf [--json | reset]",
@@ -291,7 +325,7 @@ impl Plugin for PluginProfilerPlugin {
             .add_observer(effect_answered)
             .add_observer(effect_gone);
         #[cfg(feature = "tui")]
-        app.add_observer(key_pressed);
+        app.add_systems(PreUpdate, keys_seen.in_set(rig_tui::InputSystems::Filter));
     }
 }
 
@@ -388,9 +422,8 @@ fn hold_added(
     if let Some(index) = turn_index {
         write!(handling, ", turn {}", index + 1).ok();
     }
-    let started = Instant::now();
     let open = Open {
-        started,
+        started: Instant::now(),
         handling,
         turn: turn_entity,
     };
@@ -413,21 +446,13 @@ fn hold_removed(
     };
     let plugin = plugin_name(holds.get(removed.entity).ok().flatten(), &names);
     let took = open.started.elapsed();
-    let in_turn = perf.record(&plugin, took, &open.handling, open.turn);
-    let Some(held_up_ms) = in_turn else {
+    let slowest = Some((took, open.handling.as_str()));
+    let Some(held_up) = perf.record(&plugin, (took, 1), slowest, open.turn) else {
         return;
     };
-    let threshold = settings.threshold_ms;
-    if held_up_ms > threshold && plugin != UNATTRIBUTED && perf.noticed.insert(plugin.clone()) {
-        let agent = open
-            .turn
-            .and_then(|turn| agents.get(turn).ok())
-            .map(|agent| agent.0);
-        let text = format!(
-            "{plugin} held up this turn by {held_up_ms} ms (over {threshold} ms); /perf shows \
-             what it was doing."
-        );
-        notices.write(Notice::warn(agent, text));
+    if let Some(text) = perf.over(&plugin, held_up, settings.threshold_ms) {
+        let agent = open.turn.and_then(|turn| agents.get(turn).ok());
+        notices.write(Notice::warn(agent.map(|agent| agent.0), text));
     }
 }
 
@@ -462,7 +487,9 @@ fn effect_answered(
         return;
     };
     let plugin = plugin_name(by, &names);
-    perf.record(&plugin, open.started.elapsed(), &open.handling, open.turn);
+    let took = open.started.elapsed();
+    let slowest = Some((took, open.handling.as_str()));
+    perf.record(&plugin, (took, 1), slowest, open.turn);
 }
 
 /// Forgets a plugin effect that went unanswered.
@@ -473,30 +500,78 @@ fn effect_gone(gone: On<Remove<EffectRequest>>, mut perf: ResMut<Perf>) {
 /// Marks when this frame's work began.
 fn frame_began(mut perf: ResMut<Perf>) {
     perf.frame = Some(Instant::now());
-    perf.handled.clear();
+    perf.keys.clear();
 }
 
-/// Keeps a frame whose work took too long as a stall, naming the key
-/// handler that took most of it, if one did.
-fn frame_ended(mut perf: ResMut<Perf>) {
-    let Some(began) = perf.frame.take() else {
+/// Notes the keys the terminal view handles this frame.
+#[cfg(feature = "tui")]
+fn keys_seen(events: Res<rig_tui::TerminalEvents>, mut perf: ResMut<Perf>) {
+    use rig_tui::crossterm::event::Event;
+    for item in &events.0 {
+        if let rig_tui::KeyInput::Event(Event::Key(key)) = item {
+            let press = rig_tui::KeyPress::of(key);
+            perf.keys.push(format!("key {press}"));
+        }
+    }
+}
+
+/// Charges each plugin package's system and observer runs this frame to
+/// its plugin, holding up the user's last turn while it runs, and keeps a
+/// frame that took too long as a stall, naming the plugin that took most
+/// of it.
+fn frame_ended(
+    timings: Res<SystemTimings>,
+    plugins: Query<(&Name, &PluginSource)>,
+    turns: Query<(&Turn, &TurnOf)>,
+    settings: Res<PerfSettings>,
+    mut perf: ResMut<Perf>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let now = timings.by_plugin(plugins.iter().map(|(_, source)| source));
+    let before = std::mem::replace(&mut perf.systems, now.clone());
+    let turn = perf
+        .last_turn
+        .and_then(|turn| Some((turn, turns.get(turn).ok()?)));
+    let keys = perf.keys.join(", ");
+    let handling = match turn {
+        _ if !keys.is_empty() => format!("a system, handling {keys}"),
+        Some((_, (turn, _))) => format!("a system, turn {}", turn.index + 1),
+        None => "a system, between turns".to_owned(),
+    };
+    let mut most: Option<(Duration, String)> = None;
+    for (package, timing) in &now {
+        let Some(plugin) = plugin_of(package, &plugins) else {
+            continue;
+        };
+        let was = before.get(package).copied().unwrap_or_default();
+        let took = timing.total.saturating_sub(was.total);
+        let runs = timing.runs.saturating_sub(was.runs);
+        if runs == 0 {
+            continue;
+        }
+        let slowest = (timing.max > was.max).then_some((timing.max, handling.as_str()));
+        let held = perf.record(&plugin, (took, runs), slowest, turn.map(|(turn, _)| turn));
+        if let Some(held_up) = held
+            && let Some(text) = perf.over(&plugin, held_up, settings.threshold_ms)
+        {
+            notices.write(Notice::warn(turn.map(|(_, (_, agent))| agent.0), text));
+        }
+        if most.as_ref().is_none_or(|(most, _)| took > *most) {
+            most = Some((took, plugin));
+        }
+    }
+    let Some(took) = perf.frame.take().map(|began| began.elapsed()) else {
         return;
     };
-    let took = began.elapsed();
-    let handled = std::mem::take(&mut perf.handled);
     if took <= STALL {
         return;
     }
-    let culprit = handled
-        .into_iter()
-        .filter(|handled| handled.took > STALL)
-        .max_by_key(|handled| handled.took);
-    let (plugin, handling) = culprit.map_or((UNATTRIBUTED.to_owned(), None), |handled| {
-        (handled.plugin, Some(handled.handling))
-    });
-    let ms = millis(took);
+    let plugin = most
+        .filter(|(took, _)| *took > STALL)
+        .map_or_else(|| UNATTRIBUTED.to_owned(), |(_, plugin)| plugin);
+    let handling = (!keys.is_empty()).then_some(keys);
     perf.stalls.push(Stall {
-        ms,
+        ms: millis(took),
         plugin,
         handling,
     });
@@ -505,33 +580,14 @@ fn frame_ended(mut perf: ResMut<Perf>) {
     }
 }
 
-/// Times a key binding's handler: this observer runs before the binding's
-/// own (Bevy runs an event's global observers before its target's), and
-/// the command it queues runs after every observer of the press.
-#[cfg(feature = "tui")]
-fn key_pressed(
-    pressed: On<rig_tui::KeyPressed>,
-    bindings: Query<(&rig_tui::KeyBinding, Option<&ProvidedBy>)>,
-    names: Query<&Name>,
-    mut commands: Commands,
-) {
-    let Ok((binding, by)) = bindings.get(pressed.entity) else {
-        return;
-    };
-    let plugin = plugin_name(by, &names);
-    let handling = format!("key {}", binding.keys);
-    let started = Instant::now();
-    commands.queue(move |world: &mut World| {
-        let took = started.elapsed();
-        if let Some(mut perf) = world.get_resource_mut::<Perf>() {
-            perf.record(&plugin, took, &handling, None);
-            perf.handled.push(Handled {
-                plugin,
-                handling,
-                took,
-            });
-        }
-    });
+/// The plugin a package of [`SystemTimings::by_plugin`] is: its one
+/// plugin's name, else the package; none for a package no plugin comes
+/// from, such as `bevy_ecs` or the harness's own crates.
+fn plugin_of(package: &str, plugins: &Query<(&Name, &PluginSource)>) -> Option<String> {
+    let mut named = plugins.iter().filter(|(_, source)| source.krate == package);
+    let (name, _) = named.next()?;
+    let one = named.next().is_none();
+    Some(if one { name.as_str() } else { package }.to_owned())
 }
 
 #[cfg(all(test, feature = "tui"))]
