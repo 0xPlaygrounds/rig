@@ -21,11 +21,11 @@ use std::time::UNIX_EPOCH;
 
 use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_cassette::journal::{JournalStore, JsonlDirStore};
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_core::tool::ToolOutput;
+use rig_harness::rig_memory::DirStore;
 use rig_sessions::Meta;
 use rig_tools::attach::attached_file;
 use rig_tools::fs::{read_json, write_json};
@@ -293,13 +293,8 @@ impl Index {
             let saved = match read_json::<Saved>(&file).filter(|saved| saved.stamp == stamp) {
                 Some(saved) => saved,
                 None => {
-                    let docs = match read_session(&*store) {
-                        Ok(read) => {
-                            unreadable.extend(read.unreadable.iter().map(|(agent, why)| {
-                                format!("{}/{agent}.jsonl ({why})", session.path().display())
-                            }));
-                            docs(&read)
-                        }
+                    let docs = match Session::read(&*store) {
+                        Ok(read) => docs(&read),
                         Err(why) => {
                             unreadable.push(format!("{} ({why})", session.path().display()));
                             Vec::new()
@@ -427,13 +422,17 @@ fn forget_gone(dir: &Path, seen: &HashSet<String>) {
     }
 }
 
-/// The session's agent logs' count, size and newest change: the logs its
-/// store lists, each `<agent>.jsonl` in its directory.
+/// The session's logs' count, size and newest change: the logs its store
+/// lists, each `logs/<log>.jsonl` in its directory.
 fn stamp(session: &Path) -> Stamp {
     let mut stamp = Stamp::default();
-    let agents = JsonlDirStore::new(session).agents().unwrap_or_default();
-    for agent in agents {
-        let Ok(metadata) = fs::metadata(session.join(format!("{agent}.jsonl"))) else {
+    let store = DirStore::open(session);
+    let logs = store
+        .and_then(|store| Ok(store.logs()?))
+        .unwrap_or_default();
+    for log in logs {
+        let file = session.join("logs").join(format!("{log}.jsonl"));
+        let Ok(metadata) = fs::metadata(file) else {
             continue;
         };
         let modified = metadata
@@ -451,7 +450,7 @@ fn stamp(session: &Path) -> Stamp {
 
 /// The session's name, date and directory, from its listing cache in
 /// `store`.
-fn info(session: &SessionDir, store: &dyn JournalStore, id: &str, stamp: Stamp) -> Info {
+fn info(session: &SessionDir, store: &dyn Files, id: &str, stamp: Stamp) -> Info {
     let meta = Meta::of(store);
     let name = meta.as_ref().and_then(|meta| {
         let typed = Some(meta.title.typed.clone()).filter(|typed| !typed.is_empty());
@@ -478,7 +477,7 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 
 /// Every message of every agent of `session`, as text: what `read`
 /// returned for a `.env`-like file, and such a file attached, left out.
-fn docs(session: &SavedSession) -> Vec<Doc> {
+fn docs(session: &Session) -> Vec<Doc> {
     let mut docs = Vec::new();
     for agent in &session.agents {
         let mut secret_reads = HashSet::new();
@@ -850,7 +849,7 @@ fn attach(
 ) {
     let mut attached = HashSet::new();
     for (mut message, &ForAgent(agent)) in &mut messages {
-        if message.origin.kind != OriginKind::User
+        if message.author.kind != AuthorKind::User
             || message.command().is_some()
             || attached.contains(&agent)
         {
