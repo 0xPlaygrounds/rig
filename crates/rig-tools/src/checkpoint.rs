@@ -25,9 +25,9 @@ use crate::{MAX_FILE_BYTES, blocking};
 /// The files under a root at one moment, to diff against a later one.
 ///
 /// Taken one of two ways, and compared only with one taken the same way:
-/// - in a git work tree on this machine, as a git tree written with a
-///   private index and object directory, so the user's repository is
-///   never written to;
+/// - in a git work tree on this machine that does not ignore the root, as
+///   a git tree written with a private index and object directory, so the
+///   user's repository is never written to;
 /// - elsewhere, as a scan of what [`Workspace::files`] lists, with each
 ///   file's size, change time and hash.
 ///
@@ -91,12 +91,13 @@ impl Seen {
 /// Takes a [`Snapshot`] of `root` in `workspace` as it is now.
 ///
 /// With [`Taking::keep`], a local `workspace` ([`host`](Workspace::host) is
-/// `None`) and `root` in a git work tree, it is a git tree: the private
-/// index makes each later snapshot cost what changed. Otherwise, or when
-/// `earlier` was a scan, it scans, hashing only the files whose size or
-/// change time differ from `earlier`'s (every file when there is none, or
-/// the workspace cannot tell the time), and with `keep` writes the content
-/// of each file it hashed to `keep`, once per hash.
+/// `None`) and `root` in a git work tree that does not ignore it, it is a
+/// git tree: the private index makes each later snapshot cost what
+/// changed. Otherwise, or when `earlier` was a scan, it scans, hashing
+/// only the files whose size or change time differ from `earlier`'s (every
+/// file when there is none, or the workspace cannot tell the time), and
+/// with `keep` writes the content of each file it hashed to `keep`, once
+/// per hash.
 ///
 /// Blocking: run it off a thread that must not wait ([`blocking`]).
 ///
@@ -334,33 +335,47 @@ struct Git {
 
 impl Git {
     /// The git work tree `root` is in, with a private directory under
-    /// `keep`; `None` when it is in none or git cannot be run.
+    /// `keep`; `None` when it is in none, the work tree ignores it (such as
+    /// a project under an enclosing repository's `target`), or git cannot
+    /// be run.
     fn find(root: &Path, keep: &Path) -> Option<Self> {
-        let output = Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args([
-                "rev-parse",
-                "--show-toplevel",
-                "--absolute-git-dir",
-                "--git-path",
-                "objects",
-            ])
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
-            .env_remove("GIT_OBJECT_DIRECTORY")
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()
-            .filter(|output| output.status.success())?;
+        let git = |args: &[&OsStr]| {
+            Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_INDEX_FILE")
+                .env_remove("GIT_OBJECT_DIRECTORY")
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .output()
+                .ok()
+        };
+        let output = git(&[
+            "rev-parse",
+            "--show-toplevel",
+            "--absolute-git-dir",
+            "--git-path",
+            "objects",
+        ]
+        .map(OsStr::new))
+        .filter(|output| output.status.success())?;
         let text = String::from_utf8(output.stdout).ok()?;
         let mut lines = text.lines();
         let (top, dir, objects) = (lines.next()?, lines.next()?, lines.next()?);
         let top = PathBuf::from(top);
         let canonical = std::fs::canonicalize(root).ok()?;
         let below = canonical.strip_prefix(&top).ok()?.to_path_buf();
+        // `git add` refuses an ignored root, even with `--ignore-errors`.
+        let check = ["check-ignore", "-q", "--"].map(OsStr::new);
+        if !below.as_os_str().is_empty()
+            && git(&[check.as_slice(), &[canonical.as_os_str()]].concat())
+                .is_some_and(|output| output.status.success())
+        {
+            return None;
+        }
         let keep = private(keep, &top);
         Some(Self {
             objects: canonical.join(objects),
@@ -538,8 +553,9 @@ fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange
 /// index stays warm, but never takes it as its "before". `first`, shared
 /// the same way, keeps the first "before" taken, the files as they were
 /// before the first of those calls, so the host can tell what all of them
-/// changed or restore a file. Snapshots run on a thread of their own. A
-/// call that streams its answer is served as it is, with nothing published.
+/// changed or restore a file. Snapshots run on a thread of their own; one
+/// that fails is logged, and the call publishes nothing. A call that
+/// streams its answer is served as it is, with nothing published.
 #[derive(Clone, Debug)]
 pub struct Checkpointed {
     /// The handler that serves the call.
@@ -565,13 +581,17 @@ impl Checkpointed {
             self.root.clone(),
             self.taking.clone(),
         );
-        blocking(move || {
+        let taken = blocking(move || {
             let now = snapshot(&*workspace, &root, &taking, earlier.as_ref())
                 .map_err(|error| rig_core::tool::ToolExecutionError::other(error.to_string()))?;
             Ok((earlier, now))
         })
-        .await
-        .ok()
+        .await;
+        taken
+            .inspect_err(|error| {
+                tracing::warn!(root = %self.root.display(), "no checkpoint of the call: {error}");
+            })
+            .ok()
     }
 }
 
@@ -604,7 +624,12 @@ impl Serve for Checkpointed {
         let Some((Some(before), after)) = self.take(before).await else {
             return reply;
         };
-        let changes = after.changes_since(&before).unwrap_or_default();
+        let changes = after
+            .changes_since(&before)
+            .inspect_err(|error| {
+                tracing::warn!(root = %self.root.display(), "no changes of the call: {error}");
+            })
+            .unwrap_or_default();
         *self.newest.lock().unwrap_or_else(PoisonError::into_inner) = Some(after);
         if let Some(published) = published {
             let own = published

@@ -296,3 +296,49 @@ fn a_git_snapshot_counts_ignored_paths_it_is_told_to() {
     std::fs::remove_dir_all(repo).ok();
     std::fs::remove_dir_all(keep).ok();
 }
+
+/// A project in a directory an enclosing git repository ignores, such as
+/// its `target`, is in no work tree of that repository: it is scanned,
+/// and a created and a modified file are both changes.
+#[test]
+fn a_root_an_enclosing_repository_ignores_is_scanned() {
+    let repo = scratch("checkpoint-ignored-root");
+    let keep = scratch("checkpoint-ignored-root-keep");
+    std::fs::write(repo.join(".gitignore"), "target/\n").ok();
+    assert!(git_in(&repo, &["init", "-q"]));
+    let root = repo.join("target").join("project");
+    std::fs::create_dir_all(&root).ok();
+    std::fs::write(root.join("a.txt"), "one\n").ok();
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        also: Vec::new(),
+    };
+    let first = snapshot(&Local, &root, &taking, None);
+    assert!(first.is_ok(), "{first:?}");
+    let Ok(first) = first else { return };
+    std::fs::write(root.join("a.txt"), "one\ntwo\n").ok();
+    std::fs::write(root.join("b.txt"), "new\n").ok();
+    let second = snapshot(&Local, &root, &taking, Some(&first));
+    let changes = second.and_then(|second| second.changes_since(&first));
+    assert!(changes.is_ok(), "{changes:?}");
+    let mut changes: Vec<_> = changes
+        .unwrap_or_default()
+        .into_iter()
+        .map(|change| (change.path, change.kind))
+        .collect();
+    changes.sort_by(|a, b| a.0.cmp(&b.0));
+    let path = |name: &str| root.join(name).to_string_lossy().into_owned();
+    assert_eq!(
+        changes,
+        [
+            (path("a.txt"), ChangeKind::Modified),
+            (path("b.txt"), ChangeKind::Created),
+        ]
+    );
+    assert_eq!(
+        first.content(&root.join("a.txt")).and_then(Result::ok),
+        Some(b"one\n".to_vec())
+    );
+    std::fs::remove_dir_all(repo).ok();
+    std::fs::remove_dir_all(keep).ok();
+}
