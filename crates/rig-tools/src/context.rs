@@ -53,7 +53,8 @@ impl Instructions {
     /// Reads the instruction files of the `general` directories on this
     /// machine, such as the user's own, then of each directory of
     /// `workspace` from the root down to `cwd`. A file reached twice is read
-    /// once; empty files are left out.
+    /// once; empty files are left out, but not one the limits cut to
+    /// nothing.
     ///
     /// Reads `workspace`: on a thread that must not wait, call it only for
     /// a local one ([`Workspace::host`] is `None`).
@@ -106,7 +107,8 @@ impl Instructions {
                 Ok(contents) => {
                     let contents = Prefix::of(contents, cap);
                     budget = budget.saturating_sub(contents.text.len());
-                    if !contents.text.trim().is_empty() {
+                    // A file cut to nothing is kept, so the prompt names it.
+                    if contents.cut() || !contents.text.trim().is_empty() {
                         files.push(InstructionFile { path, contents });
                     }
                 }
