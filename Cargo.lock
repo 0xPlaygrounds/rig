@@ -5910,7 +5910,6 @@ name = "corpus-oc-dataset-cli"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "rig-cassette",
  "rig-coding-tools",
  "rig-core",
