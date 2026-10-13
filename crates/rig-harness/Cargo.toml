@@ -22,8 +22,6 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
-# The clock a file watch waits on between looks.
-futures-timer = { workspace = true }
 # `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
 # The launcher protocol (`rig::harness_protocol`), shared with the `rig` binary.

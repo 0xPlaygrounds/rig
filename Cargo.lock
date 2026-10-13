@@ -16179,7 +16179,6 @@ dependencies = [
  "bevy_tasks",
  "crossbeam-channel",
  "ctrlc",
- "futures-timer",
  "rig",
  "rig-activity",
  "rig-basics",
