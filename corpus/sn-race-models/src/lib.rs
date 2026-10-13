@@ -16,9 +16,10 @@
 //! member's error. A winner that fails mid-stream is superseded by a turn
 //! call to the next member alone ("restarting on …"), so the stored reply
 //! is that member's whole reply. The context window is the answering
-//! member's, as rig-telemetry reads it from where the call was sent. What a
-//! cancelled member was sent is counted in the
-//! spending at its model's price, its input tokens estimated, and `/race`
+//! member's, as rig-telemetry reads it from where the call was sent. A
+//! member cancelled after it was sent, or a winner that failed mid-stream,
+//! carries a [`CallUsage`] estimate (its input tokens at its model's list
+//! price), which rig-telemetry counts like a reply's usage, and `/race`
 //! shows each race model's wins, median time to first content and
 //! cancelled spend.
 
@@ -35,7 +36,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_ecs::effects::Handler;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
 use rig_models::ModelItem;
-use rig_telemetry::{SessionSpending, Spending, TurnSpending};
+use rig_telemetry::CallUsage;
 use serde::{Deserialize, Serialize};
 
 /// The file under `RIG_HOME`.
@@ -296,18 +297,18 @@ type Routed<'a> = (
 /// Routes each call admitted for a race model to a member: a racer to its
 /// own, a new turn call to the first member while a sibling call of the
 /// same turn goes to each other member, and any other call, such as a
-/// summary, to the first. Each gets its member's own cache setting; Start fits the
-/// rest of the request to it.
+/// summary, to the first. Start fills the member's default options and fits
+/// the rest of the request to it.
 fn route(
     mut calls: Query<Routed, (Added<Admitted>, ModelCalls)>,
-    agents: Query<(&Connection, &Effort)>,
+    agents: Query<&Connection>,
     races: Res<RaceModels>,
     models: Res<Models>,
     mut commands: Commands,
 ) {
     for (call, mut request, effect, agent, of, racer, turn_call) in &mut calls {
         let own = agent.and_then(|agent| agents.get(agent.0).ok());
-        let target = request.connection.as_ref().or(own.map(|(to, _)| to));
+        let target = request.connection.as_ref().or(own);
         let Some(race) = target
             .filter(|to| to.spec.provider.vendor() == VENDOR)
             .map(|to| to.spec.clone())
@@ -356,8 +357,6 @@ fn route(
             spec: race,
             handler: Handler(unavailable(reference, why)),
         });
-        let effort = own.and_then(|(_, effort)| effort.0);
-        request.request.options.cache = connection.spec.default_options(effort).cache;
         request.connection = Some(connection);
     }
 }
@@ -378,15 +377,39 @@ fn claim_at_once(_: On<Add<Streamed>>, mut commands: Commands) {
     commands.run_system_cached(claim);
 }
 
+/// What a call that settled without a reply was sent, if it was sent:
+/// its input tokens estimated, at its model's list price.
+fn estimate(request: &ModelRequest, sent: Option<&SentTo>) -> Option<CallUsage> {
+    let SentTo(connection) = sent?;
+    let counter = HeuristicTokenCounter::default();
+    let tokens = (request.request.chat_history.iter())
+        .map(|message| counter.count(message))
+        .sum::<usize>();
+    let tokens = u64::try_from(tokens).unwrap_or(u64::MAX);
+    let mut usage = Usage::new();
+    usage.input_tokens = Some(tokens);
+    usage.output_tokens = Some(0);
+    usage.total_tokens = Some(tokens);
+    usage.cost = (connection.spec.pricing.as_ref()).and_then(|pricing| pricing.cost(&usage));
+    Some(CallUsage(usage))
+}
+
+/// A racer as [`claim`] finds it.
+type Claimant<'a> = (
+    &'a Racer,
+    &'a CallOf,
+    Option<&'a Streamed>,
+    Option<&'a Started>,
+    &'a ModelRequest,
+    Option<&'a SentTo>,
+);
+
 /// The first racer of a race to stream content wins: it supersedes the
-/// others, which the kernel then cancels and never commits, and its time
-/// to first content is kept.
+/// others, each with what it was sent as its usage, which the kernel then
+/// cancels and never commits, and its time to first content is kept.
 fn claim(
     mut deltas: MessageReader<StreamDelta>,
-    racers: Query<
-        (&Racer, &CallOf, Option<&Streamed>, Option<&Started>),
-        (With<TurnCall>, Without<Settled>, Without<SupersededBy>),
-    >,
+    racers: Query<Claimant, (With<TurnCall>, Without<Settled>, Without<SupersededBy>)>,
     mut turns: Query<(&mut Racing, &Calls)>,
     mut stats: ResMut<RaceStats>,
     mut commands: Commands,
@@ -395,7 +418,7 @@ fn claim(
         if !is_content(&delta.event) {
             continue;
         }
-        let Ok((racer, &CallOf(turn), streamed, started)) = racers.get(delta.effect) else {
+        let Ok((racer, &CallOf(turn), streamed, started, ..)) = racers.get(delta.effect) else {
             continue;
         };
         let Ok((mut racing, calls)) = turns.get_mut(turn) else {
@@ -405,11 +428,18 @@ fn claim(
             continue;
         }
         racing.winner = Some(racer.member);
-        let losers = calls.iter().filter(|&call| {
-            call != delta.effect && racers.get(call).is_ok_and(|(other, ..)| !other.solo)
-        });
-        for loser in losers {
-            commands.entity(loser).insert(SupersededBy(delta.effect));
+        for loser in calls.iter().filter(|&call| call != delta.effect) {
+            let Ok((other, _, _, _, request, sent)) = racers.get(loser) else {
+                continue;
+            };
+            if other.solo {
+                continue;
+            }
+            let mut loser = commands.entity(loser);
+            if let Some(usage) = estimate(request, sent) {
+                loser.insert(usage);
+            }
+            loser.insert(SupersededBy(delta.effect));
         }
         if let (Some(streamed), Some(started), Some(member)) =
             (streamed, started, racing.members.get(racer.member))
@@ -518,7 +548,10 @@ fn list_errors(
 /// not fail, alone, which takes its partial reply off the screen.
 fn drop_out(
     failed: Query<
-        (Entity, &Racer, &CallOf, &Outcome, &Effect, &ForAgent),
+        (
+            (Entity, &Racer, &CallOf, &Outcome, &Effect, &ForAgent),
+            (&ModelRequest, Option<&SentTo>),
+        ),
         (
             Unreviewed,
             With<TurnCall>,
@@ -532,7 +565,7 @@ fn drop_out(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, racer, of, outcome, effect, &ForAgent(agent)) in &failed {
+    for ((call, racer, of, outcome, effect, &ForAgent(agent)), (request, sent)) in &failed {
         let Err(report) = &outcome.0 else {
             continue;
         };
@@ -544,6 +577,9 @@ fn drop_out(
         };
         commands.entity(call).insert(DroppedOut);
         if racing.winner == Some(racer.member) {
+            if let Some(usage) = estimate(request, sent) {
+                commands.entity(call).insert(usage);
+            }
             let dropped = |member: usize| racing.failures.iter().any(|(it, _)| *it == member);
             let count = racing.members.len();
             let next = (1..count)
@@ -585,30 +621,21 @@ fn drop_out(
 }
 
 /// Counts each racer that settled: a reply in the conversation is a win
-/// for its member; a racer cancelled because another answered first is
-/// counted as spending what it was sent, its input tokens estimated and
-/// priced at its model's list price.
+/// for its member; a racer cancelled because another answered first adds
+/// what it was sent to the race's cancelled spend.
 fn tally(
     settled: On<Add<Settled>>,
     calls: Query<(
         &Racer,
         &CallOf,
         Option<&Outcome>,
-        Option<&SentTo>,
-        &ModelRequest,
-        &Effect,
-        Option<&ForAgent>,
+        Option<&CallUsage>,
         Has<SupersededBy>,
     )>,
     turns: Query<&Racing>,
-    mut spent: Query<&mut Spending>,
-    mut turn_spent: Query<&mut TurnSpending>,
-    session: Option<ResMut<SessionSpending>>,
     mut stats: ResMut<RaceStats>,
 ) {
-    let Ok((racer, &CallOf(turn), outcome, sent, request, effect, agent, superseded)) =
-        calls.get(settled.entity)
-    else {
+    let Ok((racer, &CallOf(turn), outcome, used, superseded)) = calls.get(settled.entity) else {
         return;
     };
     let Ok(racing) = turns.get(turn) else {
@@ -618,41 +645,16 @@ fn tally(
         return;
     };
     let tally = stats.0.entry(racing.model.clone()).or_default();
-    if outcome.and_then(Outcome::completion).is_some() && !superseded {
-        tally.members.entry(member.clone()).or_default().wins += 1;
-        return;
-    }
-    let (Some(SentTo(connection)), None, true) = (sent, outcome, superseded) else {
-        return;
-    };
-    let counter = HeuristicTokenCounter::default();
-    let messages = request.request.chat_history.iter();
-    let tokens = messages
-        .map(|message| counter.count(message))
-        .sum::<usize>();
-    let tokens = u64::try_from(tokens).unwrap_or(u64::MAX);
-    let mut usage = Usage::new();
-    usage.input_tokens = Some(tokens);
-    usage.output_tokens = Some(0);
-    usage.total_tokens = Some(tokens);
-    usage.cost = connection
-        .spec
-        .pricing
-        .as_ref()
-        .and_then(|pricing| pricing.cost(&usage));
-    tally.cancelled += 1;
-    tally.cancelled_tokens += tokens;
-    tally.cancelled_cost += usage.cost.map_or(0.0, |cost| cost.total);
-    let model = connection.spec.reference();
-    let purpose = effect.purpose.as_deref();
-    if let Some(mut spending) = agent.and_then(|agent| spent.get_mut(agent.0).ok()) {
-        spending.record(Some(&model), purpose, &usage);
-    }
-    if let Ok(mut turn_spending) = turn_spent.get_mut(turn) {
-        turn_spending.0.record(&usage);
-    }
-    if let Some(mut session) = session {
-        session.0.record(Some(&model), purpose, &usage);
+    match (outcome, used, superseded) {
+        (Some(outcome), _, false) if outcome.completion().is_some() => {
+            tally.members.entry(member.clone()).or_default().wins += 1;
+        }
+        (None, Some(CallUsage(usage)), true) => {
+            tally.cancelled += 1;
+            tally.cancelled_tokens += usage.input_tokens.unwrap_or_default();
+            tally.cancelled_cost += usage.cost.map_or(0.0, |cost| cost.total);
+        }
+        _ => {}
     }
 }
 

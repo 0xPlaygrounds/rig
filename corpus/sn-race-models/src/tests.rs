@@ -16,7 +16,7 @@ use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, calls, log_ended, reply, run_until};
-use rig_telemetry::UsagePlugin;
+use rig_telemetry::{SessionSpending, UsagePlugin};
 
 use super::*;
 
@@ -377,6 +377,14 @@ fn a_winner_that_fails_mid_stream_is_replaced_by_the_other_member_alone() {
             .iter()
             .any(|text| text == &format!("restarting on {A}")),
         "{notices:?}"
+    );
+    // B's cut-off reply and A's cancelled request are paid for too.
+    let session = &app.world().resource::<SessionSpending>().0;
+    let calls_to = |model: &str| session.models.get(model).map(|spent| spent.calls);
+    assert_eq!(
+        (calls_to(A), calls_to(B)),
+        (Some(2), Some(1)),
+        "{session:?}"
     );
     assert!(matches!(
         app.world().resource::<Ended>().0.last(),

@@ -18,7 +18,7 @@ rig-harness = { path = "../../crates/rig-harness" }
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
 # `/model race-fast`.
 rig-models = { path = "../../plugins/rig-models", default-features = false }
-# What a cancelled member is counted as spending.
+# `CallUsage`: what a cancelled member was sent, counted as spending.
 rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 # `race.toml` (already in the lock file through rig-harness).
