@@ -16,11 +16,11 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, CallHandler, CallOutput, Commands,
-    Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs, MessageWriter,
-    Name, Notice, On, OriginKind, Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace,
-    Query, Res, Resource, Running, Scratch, Spill, SystemSet, Tool, ToolCalls, ToolOptions,
-    ToolRequest, Wake, WorkDir, blocking,
+    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, AuthorKind, CallHandler, CallOutput,
+    Commands, Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs,
+    MessageWriter, Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot,
+    ProjectWorkspace, Query, Res, Resource, Running, Scratch, Spill, SystemSet, Tool, ToolCalls,
+    ToolOptions, ToolRequest, Wake, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::serve::ErasedHandler;
@@ -413,7 +413,7 @@ fn attach(
     mut commands: Commands,
 ) {
     for (message, mut typed, &ForAgent(agent)) in &mut typed {
-        if typed.origin.kind != OriginKind::User || typed.command().is_some() {
+        if typed.author.kind != AuthorKind::User || typed.command().is_some() {
             continue;
         }
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
