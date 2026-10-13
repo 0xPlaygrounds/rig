@@ -6045,7 +6045,6 @@ name = "corpus-oc-opaque-reasoning"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
