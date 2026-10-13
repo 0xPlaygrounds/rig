@@ -400,6 +400,14 @@ pub struct KeyPressed {
 #[reflect(Resource, Clone, Debug, Default, PartialEq)]
 pub struct KeyFocus(pub Option<Entity>);
 
+/// Gives the keys back to the input as soon as the panel that has them
+/// stops being one, or goes.
+pub(crate) fn release_focus(removed: On<Remove<crate::TuiPanel>>, mut focus: ResMut<KeyFocus>) {
+    if focus.0 == Some(removed.entity) {
+        focus.0 = None;
+    }
+}
+
 /// Binds keys on an [`App`].
 pub trait AppKeyBindingsExt {
     /// Spawns `binding` with `on_press`, an observer of the [`KeyPressed`]

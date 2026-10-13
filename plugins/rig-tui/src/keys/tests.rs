@@ -128,6 +128,8 @@ fn a_focused_panel_takes_its_keys_and_esc_gives_them_back() {
     // The keys come back to the input when the panel goes, too.
     app.world_mut().resource_mut::<KeyFocus>().0 = Some(panel);
     app.world_mut().entity_mut(panel).remove::<TuiPanel>();
+    // At once, so nothing drawn before the next key says a panel has them.
+    assert_eq!(app.world().resource::<KeyFocus>().0, None);
     press(&mut app, "y");
     assert_eq!(typed(&app), "xy");
     // Only a panel takes the keys.

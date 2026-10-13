@@ -274,6 +274,7 @@ pub fn add_view(app: &mut App) {
                 .after(bevy_app::OnAppExitSystems)
                 .run_if(resource_exists::<terminal::Tui>),
         )
+        .add_observer(keys::release_focus)
         .add_observer(view::on_focus)
         .add_observer(view::on_scroll_to)
         .add_observer(transcript::note_agent_name);
