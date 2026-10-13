@@ -8,14 +8,17 @@
 //! ```` ```call <tool> <id> ```` blocks of JSON arguments; reasoning, images
 //! and other parts are placeholder lines that keep the original part.
 //!
-//! On save the file is parsed and applied as one logged splice of the
-//! conversation: text edits, deleted sections, changed call arguments.
+//! On save the file is parsed, normalized (`pairing::normalize`, which
+//! merges the model's turns left side by side and keeps ids) and saved as
+//! one change of the conversation (`set_entries`): text edits, deleted
+//! sections, changed call arguments.
 //! A call and its result go together: deleting one side asks whether to
 //! delete both or reopen the editor. A parse error reopens the editor with
 //! the error on top; quitting without saving changes nothing.
 //! `/edit-history undo` restores the version before the last edit, read
-//! back from the session's log, keeping the turns that came after it.
-//! Neither runs while the agent's turn does.
+//! back from the session's log, its entries put back with their ids
+//! (`restore`), keeping the turns that came after it. Neither runs while
+//! the agent's turn does, nor without the terminal view.
 
 #[cfg(test)]
 mod tests;
@@ -26,10 +29,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::conversation::{Conversation as History, pairing};
+use rig_harness::rig_core::conversation::Conversation as History;
+use rig_harness::rig_core::conversation::pairing::{self, PairingError};
 use rig_harness::rig_core::message::{Message, Text, ToolResult as ResultPart, ToolResultContent};
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_memory::Record;
+use rig_harness::rig_memory::{LoadError, Record};
 use rig_tui::{RunInTerminal, TerminalExit};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -70,6 +74,11 @@ pub struct EditHistorySettings {
 #[derive(Default)]
 pub struct TranscriptInEditorPlugin;
 
+/// There when the terminal view is the run's front: only it runs the
+/// editor (`RunInTerminal`), so without it the command refuses.
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct EditorTerminal;
+
 impl Plugin for TranscriptInEditorPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<EditHistorySettings>("edit-history")
@@ -85,6 +94,12 @@ impl Plugin for TranscriptInEditorPlugin {
                     dialog_answered.after(AgentLoop),
                 ),
             );
+    }
+
+    fn finish(&self, app: &mut App) {
+        if app.runs_front(rig_tui::FRONT) {
+            app.init_resource::<EditorTerminal>();
+        }
     }
 }
 
@@ -668,63 +683,50 @@ fn build(original: &[Entry], sections: &[Section], edited: &[Section]) -> Result
 }
 
 /// The entries of the edited conversation, both sides of each orphaned
-/// call taken out when `delete_both`; refused when it pairs calls worse
-/// than the original.
+/// call taken out when `delete_both`, normalized: the model's turns left
+/// side by side are one, keeping the first's id and author. Refused when
+/// that needs more than merging turns and the original paired its calls.
 fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<Entry>, String> {
-    let mut entries: Vec<Entry> = Vec::new();
+    let orphan = |id: String| delete_both && built.orphans.contains(&id);
+    let mut entries = Vec::new();
     for (entry, message) in original.iter().zip(&built.messages) {
         let Some(mut message) = message.clone() else {
             continue;
         };
-        if delete_both {
-            let orphan = |id: String| built.orphans.contains(&id);
-            match &mut message {
-                Message::Assistant(turn) => turn.content.retain(
-                    |block| !matches!(block, AssistantContent::ToolCall(call) if orphan(call.id.to_string())),
-                ),
-                Message::User { content } => content.retain(
-                    |part| !matches!(part, UserContent::ToolResult(result) if orphan(result.call.to_string())),
-                ),
-                Message::System { .. } => {}
+        let empty = match &mut message {
+            Message::Assistant(turn) => {
+                turn.content.retain(|block| {
+                    !matches!(block, AssistantContent::ToolCall(call) if orphan(call.id.to_string()))
+                });
+                turn.content.is_empty()
             }
-        }
-        let keep = match &message {
-            Message::Assistant(turn) => turn.content.iter().any(AssistantContent::is_answer),
-            Message::User { content } => !content.is_empty(),
-            Message::System { content } => !content.trim().is_empty(),
+            Message::User { content } => {
+                content.retain(|part| {
+                    !matches!(part, UserContent::ToolResult(result) if orphan(result.call.to_string()))
+                });
+                content.is_empty()
+            }
+            Message::System { content } => content.trim().is_empty(),
         };
-        if !keep {
-            continue;
+        if !empty {
+            entries.push(Entry {
+                message,
+                ..entry.clone()
+            });
         }
-        // Two of the model's messages left side by side are one turn.
-        if let (
-            Some(Entry {
-                message: Message::Assistant(last),
-                ..
-            }),
-            Message::Assistant(turn),
-        ) = (entries.last_mut(), &mut message)
-        {
-            if last.origin != turn.origin {
-                last.origin = None;
-            }
-            last.content.append(&mut turn.content);
-            last.stop = turn.stop.take();
-            continue;
-        }
-        entries.push(Entry {
-            message,
-            ..entry.clone()
-        });
     }
-    let messages: Vec<Message> = entries.iter().map(|entry| entry.message.clone()).collect();
+    let normalized = pairing::normalize(entries);
+    let worse = normalized
+        .repairs
+        .iter()
+        .find(|repair| !matches!(repair, PairingError::ConsecutiveAssistant { .. }));
     let before: Vec<Message> = original.iter().map(|entry| entry.message.clone()).collect();
-    if let (Err(why), Ok(())) = (pairing::validate(&messages), pairing::validate(&before)) {
+    if let (Some(why), Ok(())) = (worse, pairing::validate(&before)) {
         return Err(format!(
             "the edited conversation does not pair its tool calls: {why}"
         ));
     }
-    Ok(entries)
+    Ok(normalized.entries)
 }
 
 /// Every entry of `conversation`.
@@ -734,79 +736,56 @@ fn entries_of(conversation: &History) -> Vec<Entry> {
         .collect()
 }
 
-/// Makes `conversation` hold `entries`, splicing only what differs, by
-/// `by`; whether anything changed.
-fn apply(conversation: &mut History, entries: &[Entry], by: &str) -> bool {
-    let current = entries_of(conversation);
-    let prefix = current
-        .iter()
-        .zip(entries)
-        .take_while(|(a, b)| a == b)
-        .count();
-    let suffix = current
-        .iter()
-        .rev()
-        .zip(entries.iter().rev())
-        .take_while(|(a, b)| a == b)
-        .count()
-        .min(current.len() - prefix)
-        .min(entries.len() - prefix);
-    if prefix == current.len() && prefix == entries.len() {
-        return false;
-    }
-    let with = entries
-        .get(prefix..entries.len() - suffix)
-        .unwrap_or_default();
-    let halted = conversation.halted();
-    conversation.splice(
-        prefix..current.len() - suffix,
-        with.to_vec(),
-        Author::plugin(by),
-    );
+/// Makes `conversation` hold `entries`, as one change by `by`; whether
+/// anything changed.
+fn apply(conversation: &mut History, entries: Vec<Entry>, by: &str) -> bool {
+    let (revision, halted) = (conversation.revision(), conversation.halted());
+    conversation.set_entries(entries, Author::plugin(by));
     // A user message left last waits for the next one, as before the edit.
     conversation.halt(halted.unwrap_or(Halt::Kept));
-    true
+    conversation.revision() != revision
 }
 
 /// The conversation before the last edit not undone, read from the log
 /// `log`, with the messages added after the edit; and how many those are.
+/// An edit already reverted otherwise is passed over.
 fn undone(
     store: &dyn Store,
     log: &str,
     conversation: &History,
 ) -> Result<(Vec<Entry>, usize), String> {
-    let records =
-        history(store, log).map_err(|why| format!("could not read the session log: {why}"))?;
+    let unreadable = |why: LoadError| format!("could not read the session log: {why}");
     let mut edits = Vec::new();
-    for (stamp, record) in &records {
+    for (stamp, record) in history(store, log).map_err(unreadable)? {
         let Record::Change(Recorded { by: Some(by), .. }) = record else {
             continue;
         };
-        if *by == Author::plugin(PLUGIN) {
+        if by == Author::plugin(PLUGIN) {
             edits.push(stamp.n);
-        } else if *by == Author::plugin(UNDO) {
+        } else if by == Author::plugin(UNDO) {
             edits.pop();
         }
     }
-    let Some(&n) = edits.last() else {
-        return Err("no edit to undo".to_owned());
-    };
-    let read =
-        |n| as_of(store, log, n).map_err(|why| format!("could not read the session log: {why}"));
-    let before = read(n)?;
-    let after = read(n + 1)?;
-    let edited: HashSet<MessageId> = entries_of(&after)
-        .into_iter()
-        .filter_map(|entry| entry.id)
-        .collect();
-    let since: Vec<Entry> = entries_of(conversation)
-        .into_iter()
-        .filter(|entry| entry.id.is_some_and(|id| !edited.contains(&id)))
-        .collect();
-    let added = since.len();
-    let mut entries = entries_of(&before);
-    entries.extend(since);
-    Ok((entries, added))
+    let current = entries_of(conversation);
+    for n in edits.into_iter().rev() {
+        let edited: HashSet<MessageId> = as_of(store, log, n + 1)
+            .map_err(unreadable)?
+            .entries()
+            .map(|entry| entry.id)
+            .collect();
+        let since: Vec<Entry> = current
+            .iter()
+            .filter(|entry| entry.id.is_some_and(|id| !edited.contains(&id)))
+            .cloned()
+            .collect();
+        let added = since.len();
+        let mut entries = entries_of(&as_of(store, log, n).map_err(unreadable)?);
+        entries.extend(since);
+        if entries != current {
+            return Ok((entries, added));
+        }
+    }
+    Err("no edit to undo".to_owned())
 }
 
 // The command and the editor.
@@ -872,10 +851,11 @@ fn edit_history(
     mut agents: Query<(&mut Conversation, Has<ActiveTurn>, Option<&AgentId>)>,
     editing: Query<&Editing>,
     choosing: Query<&Choosing>,
-    (settings, scratch, store): (
+    (settings, scratch, store, terminal): (
         Res<EditHistorySettings>,
         Option<Res<Scratch>>,
         Option<Res<SessionStore>>,
+        Option<Res<EditorTerminal>>,
     ),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -887,6 +867,9 @@ fn edit_history(
     let mut refuse = |why: &str| {
         notices.write(Notice::error(agent, format!("/edit-history: {why}")));
     };
+    if terminal.is_none() {
+        return refuse("only the terminal view runs the editor.");
+    }
     if busy {
         return refuse("the agent's turn is running; wait for it to end or interrupt it.");
     }
@@ -904,7 +887,7 @@ fn edit_history(
             match undone(&*store.0, &id.0, &conversation) {
                 Err(why) => refuse(&why),
                 Ok((entries, added)) => {
-                    apply(&mut conversation, &entries, UNDO);
+                    apply(&mut conversation, entries, UNDO);
                     let kept = match added {
                         0 => String::new(),
                         n => format!(" The {n} messages since were kept."),
@@ -934,9 +917,9 @@ fn edit_history(
             .collect(),
         _ => return refuse("could not write this conversation as text."),
     };
-    let dir = scratch
-        .and_then(|it| it.0.clone())
-        .unwrap_or_else(std::env::temp_dir);
+    let Some(dir) = scratch.and_then(|it| it.0.clone()) else {
+        return refuse("there is no session directory to write the file in.");
+    };
     let name = id.map_or_else(|| agent.index().to_string(), |id| id.0.clone());
     let path = dir.join(format!("edit-history-{name}.md"));
     if let Err(why) = std::fs::create_dir_all(&dir) {
@@ -987,10 +970,10 @@ fn commit(
         Err(why) => reopen(editing.clone(), text, &why, settings, commands, notices),
         Ok(entries) => {
             std::fs::remove_file(&editing.path).ok();
-            let text = if apply(&mut conversation, &entries, PLUGIN) {
+            let count = entries.len();
+            let text = if apply(&mut conversation, entries, PLUGIN) {
                 format!(
-                    "Edited the conversation: {} messages, {} before. /edit-history undo restores it.",
-                    entries.len(),
+                    "Edited the conversation: {count} messages, {} before. /edit-history undo restores it.",
                     editing.original.len()
                 )
             } else {
