@@ -1,7 +1,6 @@
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Pricing, Transport};
 use rig_core::completion::Message;
 use rig_core::effect::{EffectKind, HandlerDescriptor, family};
@@ -10,6 +9,7 @@ use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, calls, log_ended, reply, run_until};
 use rig_telemetry::UsagePlugin;
 

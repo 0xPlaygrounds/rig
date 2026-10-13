@@ -380,7 +380,7 @@ fn arm_keys(
 
 /// A message the user sent leaves the input in the start mode.
 fn after_send(deliver: On<Deliver>, mut vim: ResMut<Vim>, input: Res<TuiInput>) {
-    if deliver.message.origin.kind == OriginKind::User && input.is_empty() {
+    if deliver.message.author.kind == AuthorKind::User && input.is_empty() {
         let start = vim.start;
         if vim.mode() != start {
             vim.editor.reset(start);

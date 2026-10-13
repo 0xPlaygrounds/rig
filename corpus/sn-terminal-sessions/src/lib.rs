@@ -569,7 +569,7 @@ fn tell_ended(
     mut agents: Query<&mut TerminalNames>,
 ) {
     for (mut message, &ForAgent(agent)) in &mut messages {
-        if message.origin.kind != OriginKind::User {
+        if message.author.kind != AuthorKind::User {
             continue;
         }
         let Ok(mut names) = agents.get_mut(agent) else {

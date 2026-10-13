@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 
 use super::*;
 use rig_harness_test_support::{advance, app_on, connect, first_agent, reply, run_until};

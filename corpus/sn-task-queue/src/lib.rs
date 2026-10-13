@@ -462,8 +462,8 @@ fn start_next(
 
 /// Task `task`'s prompt, for its agent, as the user's words.
 fn brief(agent: Entity, task: &Task) -> Deliver {
-    let origin = Origin::user().titled(title(task.number));
-    Deliver::new(agent, task.prompt.clone(), DeliveryMode::Queue).with_origin(origin)
+    let author = Author::user().titled(title(task.number));
+    Deliver::new(agent, task.prompt.clone(), DeliveryMode::Queue).with_author(author)
 }
 
 /// A task's agent was spawned, or refused: it gets its prompt, unless the

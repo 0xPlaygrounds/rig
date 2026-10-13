@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, ShellTool, WriteTool};
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_subagents::SubagentsPlugin;
 use rig_tools::ReadArgs;
 use serde_json::json;
@@ -148,12 +148,12 @@ fn vendored_instructions_are_fenced_and_taint_the_turn_until_the_user_writes() {
     assert_eq!(quarantine.and_then(|q| q.taint), None);
 
     // The saved record keeps the result as read, and the mark.
-    let saved = read_session(&store).unwrap_or_default();
+    let saved = Session::read(&store).unwrap_or_default();
     let first = saved.agents.first();
     let messages = first.map(|agent| agent.conversation.messages());
     let shown = ReadArgs::new("vendor/lib/README.md").show(VENDORED);
     assert_eq!(result_in(messages.unwrap_or_default(), "r1"), shown);
-    let marks = first.map(|agent| format!("{:?}", agent.saved));
+    let marks = first.map(|agent| format!("{:?}", agent.state));
     assert!(marks.is_some_and(|marks| marks.contains("vendor/lib/README.md")));
     drop(app);
 

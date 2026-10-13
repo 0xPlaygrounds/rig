@@ -410,10 +410,10 @@ fn on_delivered(
     let Ok((message, &ForAgent(to))) = messages.get(delivered.entity) else {
         return;
     };
-    let taint = match message.origin.kind {
-        OriginKind::User => None,
-        OriginKind::Agent => {
-            let from = message.origin.from.as_deref();
+    let taint = match message.author.kind {
+        AuthorKind::User => None,
+        AuthorKind::Agent => {
+            let from = message.author.from.as_deref();
             let sender = agents.iter().find(|(id, _)| Some(id.0.as_str()) == from);
             let Some(taint) = sender.and_then(|(_, sender)| sender.taint.clone()) else {
                 return;
@@ -423,7 +423,7 @@ fn on_delivered(
                 snippet: taint.snippet,
             })
         }
-        OriginKind::Plugin(_) => return,
+        AuthorKind::Plugin(_) | AuthorKind::Rig => return,
     };
     if let Ok((_, mut quarantine)) = agents.get_mut(to)
         && quarantine.taint != taint

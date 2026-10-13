@@ -1,9 +1,9 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::clock::ClockPlugin;
 use rig_harness::load;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, connect, first_agent, log_ended, reply, run_until,
 };

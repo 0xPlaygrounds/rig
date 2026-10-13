@@ -321,9 +321,9 @@ fn start_turn(
     while !watching.queue.is_empty() {
         let file = watching.queue.remove(0);
         if let Some((job, text)) = job(workspace, &root.0, file) {
-            let origin = Origin::user().titled("AI comments");
+            let author = Author::user().titled("AI comments");
             let message = Incoming::new(text, DeliveryMode::Queue)
-                .with_origin(origin)
+                .with_author(author)
                 .literal();
             commands.spawn((message, ForAgent(agent), job));
             return;

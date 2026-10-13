@@ -1,11 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, first_agent, log_ended, reply, run_until, scripted_models,
 };
