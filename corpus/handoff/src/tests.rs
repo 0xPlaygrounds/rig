@@ -135,3 +135,36 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
         "{named:?}"
     );
 }
+
+/// Starts an agent handed off from `from`, once, as `take_brief` does in
+/// the agent loop.
+fn hand_off_once(
+    mut done: Local<bool>,
+    from: Query<&AgentId, With<Agent>>,
+    mut commands: Commands,
+) {
+    let Some(agent) = from.iter().next().filter(|_| !*done).cloned() else {
+        return;
+    };
+    *done = true;
+    let goal = "next".to_owned();
+    commands.spawn((Agent, HandedOffFrom { agent, goal }));
+}
+
+#[test]
+fn a_successor_started_in_the_agent_loop_is_shown_that_frame() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = start(&store);
+    app.add_systems(AgentPass, hand_off_once.in_set(Stage::Commit));
+    // Anything with an effect runs the loop.
+    app.world_mut().spawn(Effect::default());
+    app.update();
+
+    let world = app.world_mut();
+    let successor = world
+        .query_filtered::<Entity, With<HandedOffFrom>>()
+        .single(world)
+        .ok();
+    assert!(successor.is_some());
+    assert_eq!(world.resource::<Shown>().0, successor);
+}

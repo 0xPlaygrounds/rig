@@ -53,7 +53,7 @@ impl Plugin for HandoffPlugin {
                 "Start a fresh agent from a brief for the next goal; --now sends it unedited",
                 handoff,
             )
-            .add_systems(Update, show_successor)
+            .add_systems(Update, show_successor.after(AgentLoop))
             .add_observer(take_brief)
             .add_observer(follow_successor::<Briefing>)
             .add_observer(name_successor);
