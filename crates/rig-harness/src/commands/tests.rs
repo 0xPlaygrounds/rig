@@ -81,7 +81,7 @@ fn a_users_slash_line_runs_as_a_command_unless_taken_over_sent_literally_or_not_
         Deliver::new(agent, "/echo typed", DeliveryMode::Queue),
         note("/secret x"),
         note("/echo sent").literal(),
-        note("/echo reported").with_origin(Origin::plugin("p")),
+        note("/echo reported").with_author(Author::plugin("p")),
     ] {
         app.world_mut().trigger(typed);
     }

@@ -67,10 +67,10 @@ fn is_checkout(path: &Path) -> bool {
 /// must share them: one copy of each in the agent's dependency graph.
 pub const CORE_CRATES: [&str; 7] = [
     "rig",
-    "rig-cassette",
     "rig-core",
     "rig-ecs",
     "rig-harness",
+    "rig-memory",
     "rig-reqwest",
     "rig-tools",
 ];

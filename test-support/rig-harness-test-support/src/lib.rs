@@ -12,7 +12,6 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use bevy_time::TimeUpdateStrategy;
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::effect::EffectId;
 use rig_core::message::{Message as ChatMessage, ToolFunction, ToolName};
@@ -30,6 +29,8 @@ use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness::host::session::{SessionPaths, SessionPlugin};
 use rig_harness::services::RigHome;
 use rig_harness::settings::Settings;
+/// The store a test keeps its session in ([`app_on`]).
+pub use rig_memory::MemoryStore;
 
 /// How long a test waits for its agents.
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -85,27 +86,22 @@ pub fn first_agent(world: &mut World) -> Option<Entity> {
     agents.iter(world).next()
 }
 
-/// Adds `message` to the conversation of `agent` as `Commit::message`
-/// does, such as an earlier exchange a test starts from.
+/// Adds `message` to the conversation of `agent`, such as an earlier
+/// exchange a test starts from.
 ///
 /// # Errors
 ///
-/// When the system that commits it cannot run.
+/// When `agent` has no conversation.
 pub fn commit_message(
     world: &mut World,
     agent: Entity,
     message: ChatMessage,
 ) -> Result<(), String> {
-    let add = |In((agent, message)): In<(Entity, ChatMessage)>,
-               mut agents: Query<&mut Conversation>,
-               mut commit: Commit| {
-        if let Ok(mut conversation) = agents.get_mut(agent) {
-            commit.message(agent, &mut conversation, message);
-        }
-    };
-    world
-        .run_system_cached_with(add, (agent, message))
-        .map_err(|error| error.to_string())
+    let mut conversation = world
+        .get_mut::<Conversation>(agent)
+        .ok_or_else(|| format!("{agent} has no conversation"))?;
+    conversation.push(message);
+    Ok(())
 }
 
 /// How each turn ended, in the order they ended, kept by [`log_ended`].

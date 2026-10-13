@@ -17,9 +17,10 @@ doctest = false
 bevy_ecs = { workspace = true, features = ["debug"] }
 # The clock `advance` moves on.
 bevy_time = { workspace = true }
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The questions `AnswerAsks` answers.
 rig-harness = { path = "../../crates/rig-harness" }
+# The store a test keeps its session in.
+rig-memory = { path = "../../crates/rig-memory" }
 serde_json = { workspace = true }

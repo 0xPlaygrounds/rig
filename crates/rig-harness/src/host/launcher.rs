@@ -30,14 +30,14 @@ use super::exit::{Exit, ExitReason, reason_from_exit};
 use crate::describe::{Describing, describing};
 use crate::secrets::Secrets;
 use crate::settings::Settings;
-use rig_cassette::journal::Origin;
+use rig_core::conversation::Author;
 use rig_ecs::agent::Notice;
 
 use crate::primary::{PrimaryQuery, primary};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::journal::SessionRestored;
 
-/// The plugin name in the [`Origin`] of a failed build's note.
+/// The plugin name in the [`Author`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";
 
 /// How this process was started, for the plugins that read their part of
@@ -194,7 +194,7 @@ pub fn build_failure_note(what: &str, summary: &str) -> String {
 /// reads it with the turn's next call.
 pub fn note_build_failure(commands: &mut Commands, agent: Entity, note: String) {
     let note = Deliver::new(agent, note, DeliveryMode::Note);
-    commands.trigger(note.with_origin(Origin::plugin(BUILD_ORIGIN)));
+    commands.trigger(note.with_author(Author::plugin(BUILD_ORIGIN)));
 }
 
 /// The launcher that started this agent, if one did: it sets both

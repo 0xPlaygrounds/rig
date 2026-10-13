@@ -103,26 +103,24 @@ fn a_turn_compacted_while_it_runs_still_prints_its_answer() {
         if let Some(connection) = connection(&model) {
             world.entity_mut(primary).insert(connection);
         }
-        let earlier =
-            |In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
-                if let Ok(mut conversation) = agents.get_mut(agent) {
-                    for n in 1..=2 {
-                        let question = Message::user(format!("question {n}"));
-                        commit.message(agent, &mut conversation, question);
-                        let answer = Message::assistant(format!("answer {n}"));
-                        commit.message(agent, &mut conversation, answer);
-                    }
+        let earlier = |In(agent): In<Entity>, mut agents: Query<&mut Conversation>| {
+            if let Ok(mut conversation) = agents.get_mut(agent) {
+                for n in 1..=2 {
+                    conversation.push(Message::user(format!("question {n}")));
+                    conversation.push(Message::assistant(format!("answer {n}")));
                 }
-            };
+            }
+        };
         assert!(world.run_system_cached_with(earlier, primary).is_ok());
         // A compaction as the turn starts: the conversation shrinks to a
         // summary.
         world.add_observer(
-            move |_: On<Add<TurnOf>>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
+            move |_: On<Add<TurnOf>>, mut agents: Query<&mut Conversation>| {
                 if let Ok(mut conversation) = agents.get_mut(primary) {
                     let summary = Message::user("Summary: two questions, then hi.");
-                    let summary = Entry::from(summary, Origin::plugin("compaction"));
-                    commit.splice(primary, &mut conversation, .., [summary]);
+                    let compaction = Author::plugin("compaction");
+                    let summary = Entry::new(summary).by(compaction.clone());
+                    conversation.splice(.., [summary], compaction);
                 }
             },
         );

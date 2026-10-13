@@ -49,7 +49,7 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
-use rig_cassette::journal::OriginKind;
+use rig_core::conversation::AuthorKind;
 use rig_core::effect::{Decider, EffectKind, Outcome as EffectOutcome};
 use rig_ecs::inbox::Incoming;
 use rig_ecs::stage::{
@@ -262,7 +262,7 @@ fn answer_with_text(
     >,
 ) {
     for (incoming, &ForAgent(agent), mut taken) in &mut typed {
-        let typed_by_user = incoming.origin.kind == OriginKind::User;
+        let typed_by_user = incoming.author.kind == AuthorKind::User;
         if !typed_by_user || incoming.command().is_some() || taken.is_decided() {
             continue;
         }

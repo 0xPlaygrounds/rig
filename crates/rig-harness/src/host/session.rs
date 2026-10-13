@@ -6,10 +6,11 @@
 //! plugin copies the session into a new one with [`ForkSession`] and
 //! removes another with [`DeleteSession`]; [`SessionForked`] and
 //! [`SessionDeleted`] tell every plugin, such as one keeping files of its
-//! own per session. A forked session names the session it came from
-//! ([`ForkedFrom`]). The first app a session runs, a fork's first
-//! included, has [`FirstStart`]; what the user typed in a message is
-//! [`typed`].
+//! own per session. Deleting is crash safe: a session marked deleting is
+//! hidden from listings, and the next start finishes it. A forked session
+//! names the session it came from ([`ForkedFrom`]). The first app a
+//! session runs, a fork's first included, has [`FirstStart`]; what the
+//! user typed in a message is [`typed`].
 
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions};
@@ -31,12 +32,13 @@ use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
-use rig_cassette::journal::{JournalStore, JsonlDirStore, MessageId, OriginKind, fork_session};
 use rig_core::completion::Message;
+use rig_core::conversation::{Conversation, EntryRef, MessageId};
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{AgentId, Conversation, Notice};
-use rig_ecs::journal::SessionStore;
+use rig_ecs::agent::{self, AgentId, Notice};
+use rig_ecs::journal::{SessionStore, open_session};
+use rig_memory::{DirStore, Files, LoadError, Store, fork};
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
 use serde::{Deserialize, Serialize};
@@ -66,32 +68,35 @@ impl Deref for SessionPaths {
 /// built, such as with a store that seals what it keeps:
 /// `app.insert_resource(SessionStores::new(|dir| ..))`. Once every plugin
 /// is built, the harness opens the running session's [`SessionStore`] from
-/// it, before the session is restored, unless one is there; a run whose
-/// store does not open is refused. Every store it opens marks its session
-/// saved ([`SessionDir::mark_saved`]) the first time an agent's log is
-/// written to it, so `/resume` lists the session. By default a session's
-/// files are JSON-lines files in its directory ([`JsonlDirStore`]).
+/// it, unless one is there, and reads the session before anything is
+/// written; a run whose store does not open, or whose session cannot be
+/// read, is refused, and nothing of the session is changed. Every store it
+/// opens marks its session saved ([`SessionDir::mark_saved`]) the first
+/// time a log is written to it, so `/resume` lists the session. By default
+/// a session is kept in its directory ([`DirStore`]: `logs/`, `blobs/` and
+/// `files/`), which refuses a session an older rig saved.
 #[derive(Resource, Clone)]
 pub struct SessionStores(Arc<OpenStore>);
 
 /// How [`SessionStores`] opens a store.
-type OpenStore = dyn Fn(&SessionDir) -> io::Result<Arc<dyn JournalStore>> + Send + Sync;
+type OpenStore = dyn Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync;
 
 impl SessionStores {
     /// Stores that `open` opens.
     pub fn new(
-        open: impl Fn(&SessionDir) -> io::Result<Arc<dyn JournalStore>> + Send + Sync + 'static,
+        open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync + 'static,
     ) -> Self {
         Self(Arc::new(open))
     }
 
     /// The store of the session in `dir`, which marks the session saved
-    /// once an agent's log is written to it.
+    /// once a log is written to it.
     ///
     /// # Errors
     ///
-    /// When the store cannot be opened, such as without its key.
-    pub fn open(&self, dir: &SessionDir) -> io::Result<Arc<dyn JournalStore>> {
+    /// When the store cannot be opened, such as without its key, or holds
+    /// a session an older rig saved.
+    pub fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, LoadError> {
         Ok(Arc::new(Marking {
             inner: (self.0)(dir)?,
             dir: dir.clone(),
@@ -102,36 +107,29 @@ impl SessionStores {
 
 impl Default for SessionStores {
     fn default() -> Self {
-        Self::new(|dir| {
-            let store = JsonlDirStore::new(dir.path()).with_plain(&SessionDir::PLAIN_FILES);
-            Ok(Arc::new(store))
-        })
+        Self::new(|dir| Ok(Arc::new(DirStore::open(dir.path())?)))
     }
 }
 
-/// A store that marks its session saved on the first write to an agent's
-/// log, the session's own log of saved values included.
+/// A store that marks its session saved on the first write to a log, the
+/// session's own log of saved values included.
 struct Marking {
-    inner: Arc<dyn JournalStore>,
+    inner: Arc<dyn Store>,
     dir: SessionDir,
     marked: AtomicBool,
 }
 
-impl JournalStore for Marking {
-    fn agents(&self) -> io::Result<Vec<String>> {
-        self.inner.agents()
+impl Store for Marking {
+    fn logs(&self) -> io::Result<Vec<String>> {
+        self.inner.logs()
     }
 
-    fn read(&self, agent: &str) -> io::Result<Vec<u8>> {
-        self.inner.read(agent)
+    fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.inner.read_log(name)
     }
 
-    fn truncate(&self, agent: &str, len: u64) -> io::Result<()> {
-        self.inner.truncate(agent, len)
-    }
-
-    fn append(&self, agent: &str, bytes: &[u8]) -> io::Result<()> {
-        self.inner.append(agent, bytes)?;
+    fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.inner.append_log(name, bytes)?;
         if !self.marked.load(Ordering::Relaxed) {
             match self.dir.mark_saved() {
                 Ok(()) => self.marked.store(true, Ordering::Relaxed),
@@ -139,6 +137,14 @@ impl JournalStore for Marking {
             }
         }
         Ok(())
+    }
+
+    fn truncate_log(&self, name: &str, len: u64) -> io::Result<()> {
+        self.inner.truncate_log(name, len)
+    }
+
+    fn remove_log(&self, name: &str) -> io::Result<()> {
+        self.inner.remove_log(name)
     }
 
     fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
@@ -153,10 +159,12 @@ impl JournalStore for Marking {
         self.inner.blobs()
     }
 
-    fn remove(&self, agent: &str) -> io::Result<()> {
-        self.inner.remove(agent)
+    fn destroy(&self) -> io::Result<()> {
+        self.inner.destroy()
     }
+}
 
+impl Files for Marking {
     fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         self.inner.write_file(name, bytes)
     }
@@ -242,7 +250,8 @@ pub struct FirstStart;
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, the default [`SessionStores`] and [`Scratch`], opens the
 /// [`SessionStore`] once every plugin is built, routes panics to the log,
-/// tells a first start ([`FirstStart`]), and forks and deletes sessions.
+/// tells a first start ([`FirstStart`]), and forks and deletes sessions,
+/// finishing at startup the deletes a crash cut short.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
@@ -257,7 +266,10 @@ impl Plugin for SessionPlugin {
         if !paths.started().exists() {
             app.insert_resource(FirstStart).add_systems(
                 Last,
-                mark_started.run_if(run_once).before(discard_sessionless),
+                mark_started
+                    .run_if(run_once)
+                    .run_if(resource_exists::<FirstStart>)
+                    .before(discard_sessionless),
             );
         }
         app.init_resource::<SessionStores>()
@@ -268,6 +280,10 @@ impl Plugin for SessionPlugin {
                 forks.0.push(fork.event().clone());
             })
             .add_observer(delete_session)
+            .add_systems(
+                Startup,
+                finish_deletes.run_if(not(resource_exists::<Describing>)),
+            )
             // A fork copies what the session logged up to this frame.
             .add_systems(Last, fork_sessions.after(WriteJournal))
             .add_systems(
@@ -278,32 +294,62 @@ impl Plugin for SessionPlugin {
             );
     }
 
-    /// Every plugin chose the stores and the scratch place by now: moves
-    /// the text log where [`Scratch`] says, and opens the session's store
-    /// unless a test or a nested tool put one in. A build describing itself
-    /// opens none.
+    /// Every plugin chose the stores and the scratch place by now: opens
+    /// the session's store, or the one a test or a nested tool put in, and
+    /// reads the session; only then moves the text log where [`Scratch`]
+    /// says. A session that cannot be opened or read refuses the run, and
+    /// the run writes nothing into its directory ([`leave_session`]). A
+    /// build describing itself opens none.
     fn finish(&self, app: &mut App) {
         if app.world().contains_resource::<Describing>() {
             return;
         }
-        place_text_log(app.world_mut());
-        let world = app.world();
-        if world.contains_resource::<SessionStore>() {
-            return;
-        }
-        let (Some(paths), Some(stores)) = (
-            world.get_resource::<SessionPaths>(),
-            world.get_resource::<SessionStores>(),
-        ) else {
-            return;
-        };
-        match stores.open(paths) {
-            Ok(store) => {
-                app.insert_resource(SessionStore(store));
+        match open_store(app.world_mut()) {
+            Ok(()) => {
+                let wanted = app.world().get_resource::<Scratch>().and_then(Scratch::log);
+                move_text_log(app.world_mut(), wanted);
             }
-            Err(failure) => refuse(app, format!("cannot open the session's store: {failure}")),
+            Err(failure) => {
+                leave_session(app.world_mut());
+                refuse(
+                    app,
+                    format!(
+                        "the session cannot be opened, so nothing of it was changed: {failure}"
+                    ),
+                );
+            }
         }
     }
+}
+
+/// Opens the session's store, the one in the world or else the one
+/// [`SessionStores`] opens for [`SessionPaths`], and reads the session it
+/// holds ([`open_session`]), before anything is written to it.
+fn open_store(world: &mut World) -> Result<(), LoadError> {
+    let store = match world.remove_resource::<SessionStore>() {
+        Some(SessionStore(store)) => store,
+        None => {
+            let (Some(paths), Some(stores)) = (
+                world.get_resource::<SessionPaths>(),
+                world.get_resource::<SessionStores>(),
+            ) else {
+                return Ok(());
+            };
+            stores.open(paths)?
+        }
+    };
+    open_session(world, store)
+}
+
+/// Keeps a refused run out of its session's directory: what it logged
+/// goes to the launcher's run directory, where the launcher points, or
+/// nowhere; it keeps no scratch files; and the session is not marked
+/// started.
+fn leave_session(world: &mut World) {
+    let elsewhere = world.get_resource::<LauncherRun>().map(|run| run.0.log());
+    move_text_log(world, elsewhere);
+    world.insert_resource(Scratch(None));
+    world.remove_resource::<FirstStart>();
 }
 
 /// Marks the session started at the end of its first app's first frame.
@@ -338,7 +384,8 @@ fn discard_sessionless(
 /// Copies this session into a new one: every agent's log, saved state and
 /// stored file, and the directory it works in. With `before`, an agent's
 /// id and the id of a message in its conversation, the copy is the session
-/// as it was before that message was made (see [`fork_session`]). The new session's effect log starts empty.
+/// as it was before that message was made (see [`fork`]). The new
+/// session's effect log starts empty.
 /// [`SessionForked`] names it; switching to it is
 /// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`](super::exit::ExitReason::Switch).
 #[derive(Event, Clone, Debug, Default)]
@@ -393,7 +440,7 @@ const PARENT: &str = "parent.json";
 
 impl ForkedFrom {
     /// The session the session in `store` was forked from, if it was.
-    pub fn of(store: &dyn JournalStore) -> Option<Self> {
+    pub fn of(store: &dyn Files) -> Option<Self> {
         let parent: Parent = serde_json::from_slice(&store.read_file(PARENT).ok()?).ok()?;
         Some(Self {
             session: parent.session.parse().ok()?,
@@ -403,7 +450,7 @@ impl ForkedFrom {
     }
 
     /// Writes it into the forked session's `store`.
-    fn write(&self, store: &dyn JournalStore) -> Result<(), String> {
+    fn write(&self, store: &dyn Files) -> Result<(), String> {
         let parent = Parent {
             session: self.session.to_string(),
             before: self.before.clone(),
@@ -416,12 +463,17 @@ impl ForkedFrom {
     }
 }
 
-/// Removes a saved session's directory: not this one, and not one another
-/// rig runs. [`SessionDeleted`] follows, or an error notice says why not.
+/// Removes a saved session: not this one, and not one another rig runs.
+/// The session is marked deleting first ([`SessionDir::mark_deleting`]),
+/// which hides it from listings, then everything its store holds is
+/// destroyed, wherever [`SessionStores`] keeps it, then its directory is
+/// removed. A delete a crash cut short is finished at the next start.
+/// [`SessionDeleted`] follows, or an error notice says why not.
 #[derive(Event, Clone, Debug)]
 pub struct DeleteSession(pub SessionId);
 
-/// A session removed with [`DeleteSession`].
+/// A session removed with [`DeleteSession`], or by the next start after
+/// a crash cut its delete short.
 #[derive(Message, Clone, Debug)]
 pub struct SessionDeleted(pub SessionId);
 
@@ -437,7 +489,7 @@ fn fork_sessions(
         Res<SessionStores>,
     ),
     home: Option<Res<RigHome>>,
-    agents: Query<(&AgentId, &Conversation)>,
+    agents: Query<(&AgentId, &agent::Conversation)>,
     mut forked: MessageWriter<SessionForked>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -469,24 +521,28 @@ fn fork_sessions(
     }
 }
 
-/// What the user typed in message `at` of `conversation`: its text items
-/// of the user's own, never text an agent or a plugin delivered, such as a
-/// note, nor a file attached, each trimmed, joined by a blank line; `None`
-/// when it has none.
+/// What the user typed in message `at` of `conversation`: the text items
+/// of a message of the user's own ([`EntryRef::is_users_own`]), never of
+/// one an agent or a plugin delivered, such as a note, nor a file
+/// attached, each trimmed, joined by a blank line; `None` when it has
+/// none.
 pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
-    let Some(Message::User { content }) = conversation.messages().get(at) else {
+    let entry = EntryRef {
+        index: at,
+        id: conversation.id(at)?,
+        message: conversation.messages().get(at)?,
+        author: conversation.author(at),
+    };
+    let Message::User { content } = entry.message else {
         return None;
     };
+    if !entry.is_users_own() {
+        return None;
+    }
     let typed: Vec<&str> = content
         .iter()
-        .enumerate()
-        .filter_map(|(item, content)| match content {
-            UserContent::Text(text)
-                if conversation
-                    .origin(at, item)
-                    .is_none_or(|origin| origin.kind == OriginKind::User)
-                    && attached_file(&text.text).is_none() =>
-            {
+        .filter_map(|content| match content {
+            UserContent::Text(text) if attached_file(&text.text).is_none() => {
                 Some(text.text.trim())
             }
             _ => None,
@@ -521,7 +577,7 @@ fn fork_into(
     let before = before.map(|(agent, message)| (agent.0.as_str(), *message));
     let copied = stores
         .open(&target)
-        .and_then(|copy| fork_session(&*store.0, &*copy, before).map(|()| copy))
+        .and_then(|copy| fork(&*store.0, &*copy, before).map(|()| copy))
         .map_err(|failure| failure.to_string())
         .and_then(|copy| parent.write(&*copy))
         .and_then(|()| match paths.working_directory() {
@@ -540,7 +596,7 @@ fn fork_into(
 
 fn delete_session(
     delete: On<DeleteSession>,
-    paths: Res<SessionPaths>,
+    (paths, stores): (Res<SessionPaths>, Res<SessionStores>),
     home: Option<Res<RigHome>>,
     mut deleted: MessageWriter<SessionDeleted>,
     mut notices: MessageWriter<Notice>,
@@ -554,7 +610,10 @@ fn delete_session(
     } else if session.runs_elsewhere() {
         Some("another rig runs it".to_owned())
     } else {
-        fs::remove_dir_all(session.path())
+        session
+            .mark_deleting()
+            .map_err(LoadError::from)
+            .and_then(|()| finish_delete(&session, &stores))
             .err()
             .map(|failure| failure.to_string())
     };
@@ -567,6 +626,55 @@ fn delete_session(
                 None,
                 format!("Could not delete session {}: {why}.", delete.0),
             ));
+        }
+    }
+}
+
+/// Removes the session in `session`, marked deleting: everything its store
+/// holds, then its directory. Running it again after a crash finishes it.
+/// A session an older rig saved has nothing outside its directory.
+fn finish_delete(session: &SessionDir, stores: &SessionStores) -> Result<(), LoadError> {
+    match (stores.0)(session) {
+        Ok(store) => store.destroy()?,
+        Err(LoadError::OldLayout) => {}
+        Err(failure) => return Err(failure),
+    }
+    Ok(fs::remove_dir_all(session.path())?)
+}
+
+/// Finishes the deletes a crash cut short: every session of the app's
+/// home marked deleting that no other rig runs.
+fn finish_deletes(
+    home: Option<Res<RigHome>>,
+    (paths, stores): (Res<SessionPaths>, Res<SessionStores>),
+    mut deleted: MessageWriter<SessionDeleted>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Some(home) = home else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(home.0.sessions()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let session = SessionDir::at(entry.path());
+        if !session.is_deleting() || session.path() == paths.path() || session.runs_elsewhere() {
+            continue;
+        }
+        match (finish_delete(&session, &stores), session.id()) {
+            (Ok(()), Some(id)) => {
+                deleted.write(SessionDeleted(id));
+            }
+            (Ok(()), None) => {}
+            (Err(failure), _) => {
+                notices.write(Notice::warn(
+                    None,
+                    format!(
+                        "Could not finish deleting the session in {}: {failure}.",
+                        session.path().display()
+                    ),
+                ));
+            }
         }
     }
 }
@@ -621,11 +729,10 @@ impl io::Write for LogWriter {
     }
 }
 
-/// Moves what this run wrote to the text log so far where [`Scratch`]
-/// says, or removes it for no place, and logs there from now on. What
-/// earlier runs logged stays where it was.
-fn place_text_log(world: &mut World) {
-    let wanted = world.get_resource::<Scratch>().and_then(Scratch::log);
+/// Moves what this run wrote to the text log so far to `wanted`, or
+/// removes it for no place, and logs there from now on. What earlier runs
+/// logged stays where it was.
+fn move_text_log(world: &mut World, wanted: Option<PathBuf>) {
     let Some(mut log) = world.get_resource_mut::<TextLog>() else {
         return;
     };
