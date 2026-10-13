@@ -1,10 +1,9 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
-    Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply, run_until,
-    scripted_models,
+    Collected, Ended, MemoryStore, app_on, calls, collect, first_agent, log_ended, reply,
+    run_until, scripted_models,
 };
 
 use super::*;
@@ -53,7 +52,7 @@ fn start(store: &MemoryStore, model: &MockCompletionModel) -> Option<(App, Recei
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
     let ended = app.world().resource::<Ended>().0.len();
     app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_origin(Origin::user()));
+        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
     run_until(app, wakes, |world| {
         world.resource::<Ended>().0.len() > ended
     });
@@ -65,7 +64,7 @@ fn typed(app: &mut App, agent: Entity, line: &str) -> String {
     let world = app.world_mut();
     world.resource_mut::<Collected<Notice>>().0.clear();
     world.resource_mut::<Collected<Recalled>>().0.clear();
-    let line = Deliver::new(agent, line, DeliveryMode::Queue).with_origin(Origin::user());
+    let line = Deliver::new(agent, line, DeliveryMode::Queue);
     world.trigger(line);
     app.update();
     let world = app.world();
@@ -172,7 +171,7 @@ fn stub_and_drop_edit_the_logged_conversation_and_wait_for_the_turn() {
     };
     assert_eq!(json(&messages(&app, agent)), json(&edited));
     app.world_mut()
-        .trigger(Deliver::new(agent, "Build it.", DeliveryMode::Queue).with_origin(Origin::user()));
+        .trigger(Deliver::new(agent, "Build it.", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
         world.get::<ActiveTurn>(agent).is_some() && hangs.request_count() > 0
     });
