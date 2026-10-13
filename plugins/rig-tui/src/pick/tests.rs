@@ -79,6 +79,52 @@ fn pickers_wait_their_turn_and_say_what_was_picked() {
 }
 
 #[test]
+fn tab_ticks_several_items_and_enter_picks_them_in_list_order() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<Reported>()
+        .init_resource::<Ran>()
+        .init_resource::<Answered>()
+        .add_observer(report)
+        .add_observer(record_answers)
+        .add_command(
+            "note",
+            "Notes its arguments",
+            |In(args): In<CommandArgs>, mut ran: ResMut<Ran>| {
+                ran.0.push(args.args);
+            },
+        );
+    let picker = Picker::new("Delete which files?")
+        .multiple()
+        .item("a.tmp", "note a")
+        .item("b.log", "note b")
+        .checked(true)
+        .item("c.tmp", "note c");
+    app.world_mut().spawn(picker);
+    app.update();
+    // b starts ticked: untick it, tick c, then go back up and tick a.
+    press(&mut app, "down tab tab up up tab");
+    assert_eq!(shown(&mut app).as_deref(), Some("Delete which files?"));
+    press(&mut app, "enter");
+    assert_eq!(
+        app.world().resource::<Reported>().0,
+        [Some(Chosen::Items(vec![0, 2]))]
+    );
+    assert_eq!(app.world().resource::<Ran>().0, ["a", "c"]);
+
+    // With nothing ticked, Enter answers the selected choice.
+    let checks = Ask::new("Which checks?")
+        .choice("fmt", "fmt")
+        .choice("test", "test")
+        .multiple();
+    app.world_mut().spawn((checks, ForAgent(agent)));
+    app.update();
+    press(&mut app, "down enter");
+    let answers = &app.world().resource::<Answered>().0;
+    let test = Answer::Choices(vec!["test".to_owned()]);
+    assert_eq!(answers, &[("Which checks?".to_owned(), Some(test))]);
+}
+
+#[test]
 fn a_plugin_replaces_and_closes_its_own_picker() {
     let (mut app, _) = view_app();
     app.init_resource::<Reported>().add_observer(report);
@@ -179,6 +225,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
     let item = Item {
         label: "fix the flaky picker test in the terminal view · ~/code/rigs",
         detail: Some("$0.42 · 3h ago"),
+        checked: false,
     };
     let row = item.line(40).to_string();
     assert_eq!(row.width(), 40, "{row}");
@@ -187,6 +234,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
     let short = Item {
         label: "main",
         detail: None,
+        checked: false,
     };
     assert_eq!(short.line(40).to_string(), "main");
 }

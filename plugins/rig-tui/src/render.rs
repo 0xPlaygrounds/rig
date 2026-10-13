@@ -983,11 +983,11 @@ pub(crate) fn render(
             }
             let shown = view
                 .choosing
-                .as_ref()
+                .as_mut()
                 .filter(|choosing| choosing.draft.is_none())
-                .and_then(|choosing| Some((choosing, choices.shown(choosing.entity)?)));
+                .and_then(|choosing| Some((choices.shown(choosing.entity)?, choosing)));
             match shown {
-                Some((choosing, shown)) => draw_choice(frame, choosing, &shown),
+                Some((shown, choosing)) => draw_choice(frame, choosing, &shown),
                 None if focus.0.is_some() => {}
                 None => {
                     if let Some(completion) = &view.completion {
@@ -1254,10 +1254,15 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
     )
 }
 
+/// The rows a picker's list keeps, at least, when a long body takes the
+/// rest of its box.
+const LEAST_LIST: usize = 3;
+
 /// The picker or question in a centred box over the transcript: its body,
-/// what is typed, then the rows it leaves, each with its detail at the
-/// right, and for free text, the typed answer.
-fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
+/// scrolled to `choosing.scroll` (kept within it), what is typed, then the
+/// rows it leaves, each with its detail at the right and, in a choice of
+/// several, its tick box; for free text, the typed answer.
+fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) {
     let area = frame.area();
     let width = area.width.saturating_mul(4) / 5;
     let body = wrap_all(
@@ -1274,39 +1279,59 @@ fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
         .max(5);
     let popup = area.centered(Constraint::Length(width), Constraint::Length(height));
     frame.render_widget(Clear, popup);
-    let action = if shown.free_text {
+    let inner = Block::bordered().inner(popup);
+    // The body takes what the typed line, a gap and the list's least
+    // leave, and scrolls when that is not all of it.
+    let list_least = rows.len().clamp(1, LEAST_LIST);
+    let room = usize::from(inner.height).saturating_sub(2 + list_least);
+    let body_height = body.len().min(room);
+    choosing.scroll = choosing.scroll.min(body.len() - body_height);
+    let mut keys = vec![if shown.free_text {
         "type to filter or answer"
     } else {
         "type to filter"
-    };
+    }];
+    if body_height < body.len() {
+        keys.push("Shift+↑↓ scrolls");
+    }
+    if shown.multiple {
+        keys.push("Tab ticks");
+    }
     let block = Block::bordered().title(format!(
-        " {} · {action}, Enter picks, Esc closes ",
-        shown.title
+        " {} · {}, Enter picks, Esc closes ",
+        shown.title,
+        keys.join(", ")
     ));
-    let inner = block.inner(popup);
     frame.render_widget(block, popup);
-    let body_height = u16::try_from(body.len())
-        .unwrap_or(u16::MAX)
-        .min(inner.height.saturating_sub(2) / 2);
-    let gap = u16::from(body_height > 0);
     let [body_area, _, typed, list] = Layout::vertical([
-        Constraint::Length(body_height),
-        Constraint::Length(gap),
+        Constraint::Length(u16::try_from(body_height).unwrap_or(u16::MAX)),
+        Constraint::Length(u16::from(body_height > 0)),
         Constraint::Length(1),
         Constraint::Min(1),
     ])
     .areas(inner);
-    frame.render_widget(Paragraph::new(body), body_area);
+    let scroll = u16::try_from(choosing.scroll).unwrap_or(u16::MAX);
+    frame.render_widget(Paragraph::new(body).scroll((scroll, 0)), body_area);
     frame.render_widget(Line::from(format!("› {}▏", choosing.filter)), typed);
     let width = usize::from(list.width);
     let items: Vec<Line<'static>> = rows
         .iter()
         .map(|row| match row {
-            Row::Item(index) => shown
-                .items
-                .get(*index)
-                .map(|item| item.line(width))
-                .unwrap_or_default(),
+            Row::Item(index) => {
+                let Some(item) = shown.items.get(*index) else {
+                    return Line::default();
+                };
+                if !shown.multiple {
+                    return item.line(width);
+                }
+                let tick = match choosing.ticked.contains(index) {
+                    true => "[x] ",
+                    false => "[ ] ",
+                };
+                let mut line = item.line(width.saturating_sub(tick.len()));
+                line.spans.insert(0, Span::from(tick));
+                line
+            }
             Row::Typed if choosing.filter.trim().is_empty() => {
                 Line::from("✎ or type an answer").dim()
             }

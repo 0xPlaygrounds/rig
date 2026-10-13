@@ -103,32 +103,52 @@ fn the_model_and_status_always_stay() {
     );
 }
 
-#[test]
-fn a_question_shows_its_body_choices_and_typed_answer() {
+/// The screen after drawing `shown` as `choosing` says, 120 columns by
+/// 20 rows, a line per row.
+fn drawn_choice(
+    choosing: &mut super::super::pick::Choosing,
+    shown: &super::super::pick::Listing<'_>,
+) -> String {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Position;
 
-    use super::super::pick::{Choosing, Item, Listing, Row};
-    use super::draw_choice;
+    let Ok(mut terminal) = Terminal::new(TestBackend::new(120, 20));
+    let drawn = terminal.draw(|frame| super::draw_choice(frame, choosing, shown));
+    assert!(drawn.is_ok());
+    let buffer = terminal.backend().buffer();
+    let rows = (0..buffer.area.height).map(|y| {
+        let cells = (0..buffer.area.width).filter_map(|x| buffer.cell(Position::new(x, y)));
+        cells.map(|cell| cell.symbol()).collect::<String>()
+    });
+    rows.collect::<Vec<_>>().join("\n")
+}
 
-    let shown = Listing {
+#[test]
+fn a_question_shows_its_body_choices_and_typed_answer() {
+    use super::super::pick::{Choosing, Item, Listing, Row};
+
+    let mut shown = Listing {
         title: "Allow `rm -rf build`?",
         body: "It matches `rm -rf`.\nType a reason to deny it with.",
         items: ["Deny", "Allow once", "Allow for this session"]
             .map(|label| Item {
                 label,
                 detail: None,
+                checked: false,
             })
             .into(),
         free_text: true,
+        multiple: false,
         selected: 0,
         edit: None,
     };
-    let choosing = Choosing {
+    let mut choosing = Choosing {
         entity: bevy_ecs::entity::Entity::PLACEHOLDER,
         filter: "allow".to_owned(),
         selected: 0,
+        ticked: Vec::new(),
+        scroll: 0,
         draft: None,
     };
     // What is typed filters the choices and is an answer of its own.
@@ -136,25 +156,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         shown.rows(&choosing.filter),
         [Row::Item(1), Row::Item(2), Row::Typed]
     );
-    let Ok(mut terminal) = Terminal::new(TestBackend::new(60, 20));
-    assert!(
-        terminal
-            .draw(|frame| draw_choice(frame, &choosing, &shown))
-            .is_ok()
-    );
-    let buffer = terminal.backend().buffer();
-    let screen: Vec<String> = (0..buffer.area.height)
-        .map(|y| {
-            (0..buffer.area.width)
-                .filter_map(|x| {
-                    buffer
-                        .cell(Position::new(x, y))
-                        .map(|cell| cell.symbol().to_owned())
-                })
-                .collect()
-        })
-        .collect();
-    let screen = screen.join("\n");
+    let screen = drawn_choice(&mut choosing, &shown);
     for shown in [
         "Allow `rm -rf build`?",
         "It matches `rm -rf`.",
@@ -166,6 +168,22 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         assert!(screen.contains(shown), "{shown} not in\n{screen}");
     }
     assert!(!screen.contains("Deny"), "{screen}");
+
+    // A body longer than the box scrolls, to its end at most, and leaves
+    // the list its rows.
+    let body: Vec<String> = (1..=30).map(|n| format!("body line {n}")).collect();
+    let body = body.join("\n");
+    shown.body = &body;
+    let screen = drawn_choice(&mut choosing, &shown);
+    assert!(screen.contains("Shift+↑↓ scrolls"), "{screen}");
+    assert!(screen.contains("body line 1 "), "{screen}");
+    assert!(!screen.contains("body line 30"), "{screen}");
+    choosing.scroll = 100;
+    let screen = drawn_choice(&mut choosing, &shown);
+    assert!(screen.contains("body line 30"), "{screen}");
+    assert!(!screen.contains("body line 1 "), "{screen}");
+    assert!(screen.contains("Allow for this session"), "{screen}");
+    assert_eq!(choosing.scroll, 30 - 8);
 }
 
 #[test]
