@@ -5875,10 +5875,9 @@ name = "corpus-oc-branch-merge"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
+ "bevy_tasks",
  "rig-coding-tools",
  "rig-core",
- "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
  "serde",
