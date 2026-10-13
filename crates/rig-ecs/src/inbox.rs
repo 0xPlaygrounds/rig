@@ -97,7 +97,7 @@ pub enum MessagePart {
 /// attachments in the order its author put them, by `author`, that go to
 /// the agent's model as `mode` says. An effect that moves through the
 /// stages (see the [module](self)): edit it in Prepare, take it over in
-/// Gate by deciding it ([`Decision`](super::stage::Decision)) with an
+/// Gate by deciding it ([`Decision`]) with an
 /// [`Outcome`]; once accepted, it is [`Started`] until the kernel answers
 /// it. A message with no text and no attachment is ignored.
 ///
