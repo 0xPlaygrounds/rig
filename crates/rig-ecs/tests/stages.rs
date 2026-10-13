@@ -1462,6 +1462,54 @@ fn a_held_call_holds_back_only_the_calls_that_touch_what_it_writes() {
     );
 }
 
+/// In Prepare, declares that the call `held` writes only under `/work/src`.
+fn declare_src(mut calls: Query<(Entity, &ToolRequest), Added<Admitted>>, mut commands: Commands) {
+    for (call, request) in &mut calls {
+        if request.call.id.to_string() == "held" {
+            let src = Scope::Paths(vec![PathBuf::from("/work/src/../src")]);
+            commands
+                .entity(call)
+                .insert((Footprint(Touches::Writes(src)), Declared));
+        }
+    }
+}
+
+#[test]
+fn a_footprint_a_plugin_declared_on_a_call_stands() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("held", "touch", serde_json::json!({})),
+            MockStreamEvent::tool_call(
+                "docs",
+                "read",
+                serde_json::json!({ "path": "/work/docs/a.md" }),
+            ),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        answer("done"),
+    ]);
+    app.add_tool(ReadFile).init_resource::<Gated>().add_systems(
+        AgentPass,
+        (declare_src.in_set(Stage::Prepare), gate.in_set(Stage::Gate)),
+    );
+    agent_on(&mut app, &model);
+    let held = run_until(&mut app, |world| world.resource::<Gated>().hold.is_some());
+    assert!(held, "the gate held the shell-like call");
+    // Without the declaration, `touch` writes anything and the read waits.
+    let docs = run_until(&mut app, |world| {
+        call_named(world, "docs").is_some_and(|docs| world.get::<Started>(docs).is_some())
+    });
+    let world = app.world_mut();
+    let held = call_named(world, "held").unwrap_or(Entity::PLACEHOLDER);
+    let src = Scope::Paths(vec![PathBuf::from("/work/src")]);
+    assert_eq!(
+        world.get::<Footprint>(held).map(|f| f.0.clone()),
+        Some(Touches::Writes(src))
+    );
+    assert!(docs, "the read of docs/ ran beside the held call");
+}
+
 /// The footprints Gate saw, by call id.
 #[derive(Resource, Default)]
 struct GatedFootprints(Vec<(String, Touches)>);

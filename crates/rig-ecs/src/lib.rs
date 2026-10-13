@@ -72,8 +72,8 @@ pub mod prelude {
         SupersededBy, Supersedes, ToolCalls, Undecided, Unreviewed, Waiting,
     };
     pub use crate::tools::{
-        AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,
-        WorldToolsExt,
+        AppToolsExt, CallHandler, Declared, Footprint, ToolCalled, ToolDef, ToolOptions,
+        ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
         Adapter, Adapters, Backoff, BuildFrom, ModelRequest, ModelStarts, Recovery, RetryVerdict,
