@@ -2,12 +2,13 @@ use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::serde_json::json;
 use rig_harness::rig_core::tool::ToolContext;
-use rig_harness_test_support::{Collected, ToolOutputs, collect, log_tool_outputs, start_call};
+use rig_harness_test_support::{
+    Collected, MemoryStore, ToolOutputs, app_on, collect, log_tool_outputs, run_until, start_call,
+};
 use rig_tools::process::{Launcher, Process, Spawn};
 use rig_tools::workspace::{Contents, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
@@ -30,8 +31,8 @@ fn an_agent_with_a_work_dir_reads_and_runs_commands_there() {
     let dir = exe.with_file_name(format!("work-dir-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
     std::fs::write(dir.join("note.txt"), "in the work dir").ok();
-    let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, ReadTool, ShellTool))
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.add_plugins((AgentPlugin, ReadTool, ShellTool))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
     app.finish();
@@ -46,14 +47,10 @@ fn an_agent_with_a_work_dir_reads_and_runs_commands_there() {
     for (n, (tool, args)) in calls.into_iter().enumerate() {
         start_call(world, agent, (tool, &format!("c{n}")), args);
     }
-    let started = Instant::now();
-    let output = |app: &App, call: &str| app.world().resource::<ToolOutputs>().0.get(call).cloned();
-    while output(&app, "c2").is_none() && started.elapsed() < Duration::from_secs(10) {
-        app.update();
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    let output = |world: &World, call: &str| world.resource::<ToolOutputs>().0.get(call).cloned();
+    run_until(&mut app, &wakes, |world| output(world, "c2").is_some());
     let [read, outside, pwd] =
-        ["c0", "c1", "c2"].map(|call| output(&app, call).unwrap_or_default());
+        ["c0", "c1", "c2"].map(|call| output(app.world(), call).unwrap_or_default());
     assert!(read.contains("in the work dir"), "{read}");
     assert!(
         !outside.is_empty() && !outside.contains("in the work dir"),
@@ -130,21 +127,12 @@ impl Workspace for Served {
     }
 }
 
-/// Runs frames of `app` until `done`, for at most ten seconds.
-fn run_until(app: &mut App, done: impl Fn(&World) -> bool) {
-    let started = Instant::now();
-    while !done(app.world()) && started.elapsed() < Duration::from_secs(10) {
-        app.update();
-        std::thread::sleep(Duration::from_millis(5));
-    }
-}
-
 #[test]
 fn a_call_without_a_work_dir_reads_from_the_project_root_in_the_apps_workspace() {
-    let mut app = App::new();
+    let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectWorkspace(Arc::new(Served)))
         .insert_resource(ProjectRoot("/served".into()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, ReadTool))
+        .add_plugins((AgentPlugin, ReadTool))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
     app.finish();
@@ -153,7 +141,7 @@ fn a_call_without_a_work_dir_reads_from_the_project_root_in_the_apps_workspace()
     let agent = world.spawn(Agent).id();
     start_call(world, agent, ("read", "r1"), json!({ "path": "note.txt" }));
     let read = |world: &World| world.resource::<ToolOutputs>().0.get("r1").cloned();
-    run_until(&mut app, |world| read(world).is_some());
+    run_until(&mut app, &wakes, |world| read(world).is_some());
     let read = read(app.world()).unwrap_or_default();
     assert!(read.contains("served text"), "{read}");
 }
@@ -206,10 +194,10 @@ fn an_agent_attaches_from_its_work_dir_and_is_warned_of_a_missing_path() {
 
 #[test]
 fn in_another_workspace_a_message_waits_for_its_files() {
-    let mut app = App::new();
+    let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectWorkspace(Arc::new(Served)))
         .insert_resource(ProjectRoot("/served".into()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, AttachPlugin));
+        .add_plugins((AgentPlugin, AttachPlugin));
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -227,7 +215,9 @@ fn in_another_workspace_a_message_waits_for_its_files() {
         let conversation = world.get::<Conversation>(agent);
         format!("{conversation:?}")
     };
-    run_until(&mut app, |world| said(world).contains("served text"));
+    run_until(&mut app, &wakes, |world| {
+        said(world).contains("served text")
+    });
     assert!(
         said(app.world()).contains("served text"),
         "{}",
