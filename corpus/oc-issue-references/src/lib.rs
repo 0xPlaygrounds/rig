@@ -13,18 +13,18 @@
 //! blocks are kept for the session ([`ReferenceCache`]); `/refresh #142`
 //! loads one again, and the `tracker_get` tool gives the model the same
 //! block for a reference it finds itself. Typing `#` in the terminal
-//! view's input offers the open issues by title ([`OpenIssues`]).
+//! view's input offers the open issues, listed with their titles
+//! ([`OpenIssues`]).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
+use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use reqwest::Client;
 use rig_coding_tools::AttachSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::ToolOutput;
-use rig_harness::rig_tools::process::Launcher;
 use rig_harness::services::ServicesPlugin;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -37,7 +37,8 @@ pub use complete::OpenIssues;
 
 pub use refs::{RefKind, Reference, references};
 pub use tracker::{
-    BODY_CHARS, COMMENTS, TIMEOUT, Tracker, TrackerKind, TrackerSettings, failure_note, remote,
+    BODY_CHARS, COMMENTS, Place, TIMEOUT, Tracker, TrackerKind, TrackerSettings, failure_note,
+    remote,
 };
 
 /// Who decides the `tracker_get` calls.
@@ -98,6 +99,7 @@ impl Plugin for IssueReferencesPlugin {
         app.insert_resource(State(Arc::new(shared)))
             .init_resource::<ReferenceCache>()
             .init_resource::<ProjectRoot>()
+            .init_resource::<ProjectWorkspace>()
             .configure_sets(
                 AgentPass,
                 ReferenceSystems
@@ -131,6 +133,24 @@ struct Shared {
 
 #[derive(Resource)]
 struct State(Arc<Shared>);
+
+/// Where the project is, for the tracker's `origin` remote.
+#[derive(SystemParam)]
+struct Locate<'w> {
+    processes: Res<'w, Processes>,
+    workspace: Res<'w, ProjectWorkspace>,
+    root: Res<'w, ProjectRoot>,
+}
+
+impl Locate<'_> {
+    fn place(&self) -> Place {
+        Place {
+            launcher: self.processes.launcher(),
+            workspace: self.workspace.0.clone(),
+            root: self.root.0.clone(),
+        }
+    }
+}
 
 /// Who waits for references being loaded.
 #[derive(Clone, Copy)]
@@ -174,21 +194,13 @@ struct GetArgs {
 /// to reach it on.
 async fn connect(
     shared: &Arc<Shared>,
-    launcher: Launcher,
-    root: PathBuf,
+    place: Place,
 ) -> Result<(Tracker, Client, tokio::runtime::Handle), String> {
     let tracker = match shared.tracker.get() {
         Some(tracker) => tracker.clone(),
         None => {
             let shared = shared.clone();
-            let resolve = move || {
-                Ok(Tracker::once(
-                    &shared.tracker,
-                    &shared.settings,
-                    &launcher,
-                    &root,
-                ))
-            };
+            let resolve = move || Ok(Tracker::once(&shared.tracker, &shared.settings, &place));
             blocking(resolve)
                 .await
                 .unwrap_or_else(|failure| Err(failure.to_string()))
@@ -205,11 +217,10 @@ async fn connect(
 /// tokio runtime.
 async fn load_all(
     shared: Arc<Shared>,
-    launcher: Launcher,
-    root: PathBuf,
+    place: Place,
     references: Vec<Reference>,
 ) -> Vec<(Reference, Result<String, String>)> {
-    let (tracker, client, runtime) = match connect(&shared, launcher, root).await {
+    let (tracker, client, runtime) = match connect(&shared, place).await {
         Ok(connected) => connected,
         Err(why) => {
             return references
@@ -235,12 +246,8 @@ async fn load_all(
 }
 
 /// The tracker's open issues, for `#` completion.
-async fn load_open_issues(
-    shared: Arc<Shared>,
-    launcher: Launcher,
-    root: PathBuf,
-) -> Result<Vec<(u64, String)>, String> {
-    let (tracker, client, runtime) = connect(&shared, launcher, root).await?;
+async fn load_open_issues(shared: Arc<Shared>, place: Place) -> Result<Vec<(u64, String)>, String> {
+    let (tracker, client, runtime) = connect(&shared, place).await?;
     let task = runtime.spawn(async move {
         let load = tracker::open_issues(&client, &tracker);
         tokio::time::timeout(TIMEOUT, load)
@@ -257,7 +264,7 @@ fn start_loading(
     waiting: Waiting,
     references: Vec<Reference>,
     cache: &ReferenceCache,
-    (state, processes, root, wake): (&State, &Processes, &ProjectRoot, &Wake),
+    (state, locate, wake): (&State, &Locate, &Wake),
     commands: &mut Commands,
 ) -> Option<Entity> {
     let missing: Vec<Reference> = references
@@ -269,12 +276,7 @@ fn start_loading(
         return None;
     }
     let names: Vec<String> = missing.iter().map(ToString::to_string).collect();
-    let work = load_all(
-        state.0.clone(),
-        processes.launcher(),
-        root.0.clone(),
-        missing,
-    );
+    let work = load_all(state.0.clone(), locate.place(), missing);
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     let mut loading = commands.spawn((
         Name::new(format!("loading {}", names.join(", "))),
@@ -325,14 +327,18 @@ fn attach(
 }
 
 /// Attaches the references each user's message names as it comes in: at
-/// once when all are cached, else once loaded, holding the message.
+/// once when all are cached, else once loaded, holding the message. A
+/// message put back in the inbox on restore ([`Started`]) has them already.
 fn attach_references(
-    mut typed: Query<(Entity, &mut Incoming), (Added<Admitted>, IncomingMessages)>,
+    mut typed: Query<
+        (Entity, &mut Incoming),
+        (Added<Admitted>, IncomingMessages, Without<Started>),
+    >,
     cache: Res<ReferenceCache>,
-    services: (Res<State>, Res<Processes>, Res<ProjectRoot>, Res<Wake>),
+    services: (Res<State>, Locate, Res<Wake>),
     mut commands: Commands,
 ) {
-    let services = (&*services.0, &*services.1, &*services.2, &*services.3);
+    let services = (&*services.0, &services.1, &*services.2);
     for (message, mut typed) in &mut typed {
         if typed.author.kind != AuthorKind::User || typed.command().is_some() {
             continue;
@@ -408,11 +414,11 @@ fn answer(text: Result<String, String>) -> ToolResult {
 fn tracker_get(
     called: On<ToolCalled<GetArgs>>,
     cache: Res<ReferenceCache>,
-    services: (Res<State>, Res<Processes>, Res<ProjectRoot>, Res<Wake>),
+    services: (Res<State>, Locate, Res<Wake>),
     mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
-    let services = (&*services.0, &*services.1, &*services.2, &*services.3);
+    let services = (&*services.0, &services.1, &*services.2);
     let Some(reference) = references(&called.args.reference).into_iter().next() else {
         if let Ok(mut decision) = calls.get_mut(called.call) {
             let why = format!(
@@ -445,11 +451,11 @@ fn tracker_get(
 fn refresh(
     In(args): In<CommandArgs>,
     mut cache: ResMut<ReferenceCache>,
-    services: (Res<State>, Res<Processes>, Res<ProjectRoot>, Res<Wake>),
+    services: (Res<State>, Locate, Res<Wake>),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    let services = (&*services.0, &*services.1, &*services.2, &*services.3);
+    let services = (&*services.0, &services.1, &*services.2);
     let found = references(&args.args);
     if found.is_empty() {
         notices.write(Notice::error(

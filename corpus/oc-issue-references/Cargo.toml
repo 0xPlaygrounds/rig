@@ -19,7 +19,7 @@ reqwest = { workspace = true }
 # Ordered after the `@path` attachments, which edit the same messages.
 rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
 rig-harness = { path = "../../crates/rig-harness" }
-# `#` completion in the terminal view's input.
+# `#` completion in the terminal view's input (a `CompletionSource`).
 rig-tui = { path = "../../plugins/rig-tui" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

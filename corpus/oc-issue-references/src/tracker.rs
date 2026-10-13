@@ -1,13 +1,15 @@
 //! The tracker: which one the `origin` remote names, and loading a
 //! reference from its API as the block the model reads.
 
-use std::path::Path;
-use std::sync::OnceLock;
+use std::ffi::{OsStr, OsString};
+use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use reqwest::header::{ACCEPT, CONTENT_TYPE, USER_AGENT};
 use reqwest::{Client, RequestBuilder};
-use rig_harness::rig_tools::process::Launcher;
+use rig_harness::rig_tools::process::{Launcher, Spawn};
+use rig_harness::rig_tools::workspace::Workspace;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -48,6 +50,18 @@ pub struct TrackerSettings {
     pub host: Option<String>,
 }
 
+/// Where the project is, to ask its `origin` remote: the launcher, the
+/// project's workspace (which may not be this machine) and its root.
+#[derive(Clone)]
+pub struct Place {
+    /// Starts the `git` that names the remote.
+    pub launcher: Launcher,
+    /// Where `git` runs.
+    pub workspace: Arc<dyn Workspace>,
+    /// The project's root in it.
+    pub root: PathBuf,
+}
+
 /// The tracker references are loaded from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tracker {
@@ -65,15 +79,11 @@ pub struct Tracker {
 
 impl Tracker {
     /// The tracker `settings` name, completed from the `origin` remote of
-    /// `root` (asked through `launcher`) and the environment.
-    pub fn resolve(
-        settings: &TrackerSettings,
-        launcher: &Launcher,
-        root: &Path,
-    ) -> Result<Self, String> {
+    /// the project at `place` and the environment.
+    pub fn resolve(settings: &TrackerSettings, place: &Place) -> Result<Self, String> {
         let origin = match (&settings.repo, &settings.host) {
             (Some(repo), Some(host)) => (host.clone(), repo.clone()),
-            _ => origin(launcher, root)?,
+            _ => origin(place)?,
         };
         let (host, repo) = (
             settings.host.clone().unwrap_or(origin.0),
@@ -111,22 +121,27 @@ impl Tracker {
     pub fn once(
         cell: &OnceLock<Result<Self, String>>,
         settings: &TrackerSettings,
-        launcher: &Launcher,
-        root: &Path,
+        place: &Place,
     ) -> Result<Self, String> {
-        cell.get_or_init(|| Self::resolve(settings, launcher, root))
-            .clone()
+        cell.get_or_init(|| Self::resolve(settings, place)).clone()
     }
 }
 
-/// The host and repository of the `origin` remote of `root`.
-fn origin(launcher: &Launcher, root: &Path) -> Result<(String, String), String> {
-    let output = launcher
-        .clone()
-        .in_dir(root)
-        .command("git")
-        .args(["remote", "get-url", "origin"])
-        .output()
+/// The host and repository of the `origin` remote of the project at
+/// `place`, asked in its workspace.
+fn origin(place: &Place) -> Result<(String, String), String> {
+    let args = ["remote", "get-url", "origin"].map(OsString::from);
+    let git = OsStr::new("git");
+    let output = place
+        .workspace
+        .spawn(
+            &place.launcher,
+            Some(&place.root),
+            git,
+            &args,
+            Spawn::default(),
+        )
+        .and_then(|process| process.output(Some(TIMEOUT)))
         .map_err(|failure| format!("no tracker: git: {failure}"))?;
     let url = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     remote(&url).ok_or_else(|| format!("no tracker: origin is {url:?}"))
