@@ -79,6 +79,12 @@ where
     /// [`GenerationOptions`](crate::completion::GenerationOptions) are
     /// default is not checked against the catalog, as when it is sent.
     ///
+    /// The request's messages are not read: its system prompt and a
+    /// stand-in prompt take their place, so a check costs the same for any
+    /// history. A refusal that depends on what the messages hold, such as
+    /// Bedrock's of a cache checkpoint after a reasoning turn, is reported
+    /// when the request is sent.
+    ///
     /// # Errors
     ///
     /// [`CheckError::Unsupported`](crate::completion::CheckError::Unsupported)
@@ -93,8 +99,8 @@ where
     }
 }
 
-/// The answer of `run`, a dry run of `request`, for [`Model::check`]. The
-/// run goes on past each refusal as under
+/// The answer of `run`, a dry run of `request` without its messages, for
+/// [`Model::check`]. The run goes on past each refusal as under
 /// [`OnUnsupported::Ignore`](crate::completion::OnUnsupported::Ignore), so
 /// it meets every one; a request whose options are default stays default,
 /// so it is not checked against the catalog, as when it is sent.
@@ -103,7 +109,7 @@ pub(crate) fn check_with(
     run: impl FnOnce(crate::completion::CompletionRequest) -> Result<(), ProviderError>,
 ) -> Result<(), crate::completion::CheckError> {
     use crate::completion::{CheckError, OnUnsupported};
-    let mut request = request.clone();
+    let mut request = without_messages(request);
     if !request.options.is_default() {
         request.options.on_unsupported = Some(OnUnsupported::Ignore);
     }
@@ -111,6 +117,53 @@ pub(crate) fn check_with(
         (Err(error), _) => Err(CheckError::Invalid(error)),
         (Ok(()), refusals) if refusals.is_empty() => Ok(()),
         (Ok(()), refusals) => Err(CheckError::Unsupported(refusals)),
+    }
+}
+
+/// `request` with its leading system prompt and a stand-in prompt as its
+/// messages, everything else as it is: what [`check_with`] dry-runs.
+fn without_messages(
+    request: &crate::completion::CompletionRequest,
+) -> crate::completion::CompletionRequest {
+    use crate::completion::{CompletionRequest, Message};
+    let CompletionRequest {
+        model,
+        chat_history,
+        documents,
+        tools,
+        temperature,
+        max_tokens,
+        tool_choice,
+        additional_params,
+        output_schema,
+        record_telemetry_content,
+        accept_unknown_finish_reasons,
+        options,
+        provider_options,
+        cache_points,
+    } = request;
+    let system = chat_history
+        .first()
+        .filter(|message| matches!(message, Message::System { .. }));
+    CompletionRequest {
+        model: model.clone(),
+        chat_history: system
+            .cloned()
+            .into_iter()
+            .chain([Message::user("check")])
+            .collect(),
+        documents: documents.clone(),
+        tools: tools.clone(),
+        temperature: *temperature,
+        max_tokens: *max_tokens,
+        tool_choice: tool_choice.clone(),
+        additional_params: additional_params.clone(),
+        output_schema: output_schema.clone(),
+        record_telemetry_content: *record_telemetry_content,
+        accept_unknown_finish_reasons: *accept_unknown_finish_reasons,
+        options: options.clone(),
+        provider_options: provider_options.clone(),
+        cache_points: cache_points.clone(),
     }
 }
 
