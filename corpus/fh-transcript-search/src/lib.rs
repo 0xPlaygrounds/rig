@@ -333,7 +333,6 @@ struct Transcripts<'w, 's> {
         Or<(
             Changed<Conversation>,
             Changed<Partial>,
-            Changed<TranscriptEntry>,
             Changed<CallOutput>,
             Changed<ToolProgress>,
         )>,
@@ -342,7 +341,7 @@ struct Transcripts<'w, 's> {
 }
 
 impl Transcripts<'_, '_> {
-    /// Whether a conversation, a reply streaming in, an entry, a running
+    /// Whether a conversation (its notes too), a reply streaming in, a running
     /// call's output or the agent shown changed since the last frame; the
     /// notices and the width are the view's.
     fn changed(&self) -> bool {
