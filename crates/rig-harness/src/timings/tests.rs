@@ -7,7 +7,7 @@ use bevy_log::tracing_subscriber::layer::SubscriberExt;
 use super::{SystemTimings, TimeSystems};
 
 /// Every run of a system span is timed under the system's name; other
-/// spans are not timed.
+/// spans are not timed, and clearing forgets them all.
 #[test]
 fn each_run_of_a_system_is_timed() {
     let timings = SystemTimings::default();
@@ -25,6 +25,11 @@ fn each_run_of_a_system_is_timed() {
     assert_eq!(busy.map(|busy| busy.runs), Some(2), "{systems:?}");
     assert!(busy.is_some_and(|busy| busy.max >= Duration::from_millis(2)));
     assert_eq!(systems.len(), 1, "{systems:?}");
+    timings.clear();
+    assert!(
+        timings.systems().is_empty(),
+        "clearing forgets every timing"
+    );
 }
 
 #[cfg(feature = "trace")]
