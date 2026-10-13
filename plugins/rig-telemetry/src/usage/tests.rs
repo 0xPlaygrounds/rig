@@ -124,3 +124,43 @@ fn the_context_is_against_the_window_of_the_model_a_call_went_to() {
     let shown = notices(world).join("\n");
     assert!(shown.contains("Context: 500/2.0k (25%) tokens."), "{shown}");
 }
+
+/// A call that settled without a reply, such as a race's loser, counts what
+/// its CallUsage says, as a reply's usage counts.
+#[test]
+fn a_superseded_call_counts_its_call_usage_under_the_model_it_went_to() {
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    let Some(connection) = connect(&model) else {
+        return;
+    };
+    let reference = connection.spec.reference();
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let winner = world.spawn_empty().id();
+    let mut used = Usage::default();
+    used.input_tokens = Some(100);
+    world.spawn((
+        ModelRequest::new(CompletionRequest::new(Message::user("race"))),
+        Effect::default().with_purpose("turn"),
+        (ForAgent(agent), CallOf(turn), SentTo(connection)),
+        CallUsage(used),
+        SupersededBy(winner),
+    ));
+    let input = |spent: &UsageTotals| spent.tokens.input_tokens;
+    let spent = |world: &World| world.get::<Spending>(agent).cloned().unwrap_or_default();
+    run_until(&mut app, &wakes, |world| spent(world).total.calls == 1);
+
+    let spending = spent(app.world());
+    assert_eq!(input(&spending.total), Some(100));
+    assert_eq!(spending.models.get(&reference).and_then(input), Some(100));
+    let session = &app.world().resource::<SessionSpending>().0;
+    assert_eq!(session.models.get(&reference).and_then(input), Some(100));
+    let turn = app
+        .world()
+        .get::<TurnSpending>(turn)
+        .map(|TurnSpending(spent)| input(spent));
+    assert_eq!(turn, Some(Some(100)));
+}
