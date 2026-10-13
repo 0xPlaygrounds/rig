@@ -69,6 +69,15 @@ jobs:
       github.repository == '0xPlaygrounds/rig' &&
       (github.event_name != 'pull_request' || needs.plan.outputs.full == 'true')
     steps:
+      # This run builds every workspace test binary under all features (166
+      # corpus crates among them) and then pulls the storage suites' Docker
+      # images; on the stock runner the two together ran out of disk. The
+      # runner's preinstalled .NET, Android, GHC and CodeQL are never used.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v5
       - uses: ./.github/actions/rust-setup
         with:
