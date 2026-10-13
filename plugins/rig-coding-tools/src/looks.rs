@@ -1,7 +1,8 @@
 //! How the terminal view (rig-tui) draws the tools' calls: `read` and
 //! `search` summarize what they found, `edit` shows its change as a diff,
-//! `write` the start of the new file, `delete` and `move` the paths, and
-//! `shell` the command and the end of its output.
+//! `write` the start of the new file, `delete` and `move` the paths, `list`
+//! the start of the listing, and `shell` the command and the end of its
+//! output.
 
 use rig_harness::rig_core::tool::{FilesRead, LinesShown};
 use rig_tui::ratatui::style::{Style, Stylize};
@@ -45,6 +46,22 @@ fn span(shown: LinesShown) -> String {
         (false, 0) => format!("no lines of {}", shown.total),
         (false, _) => format!("lines {}–{last} of {}", shown.first, shown.total),
     }
+}
+
+pub(super) fn list(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+    let path = view.argument("path").unwrap_or(".").to_owned();
+    let depth = view
+        .call
+        .function
+        .arguments
+        .get("depth")
+        .and_then(|depth| depth.as_u64());
+    let depth = depth
+        .map(|depth| format!("depth {depth}"))
+        .unwrap_or_default();
+    let mut lines = vec![view.header(format!("list {path}"), depth)];
+    lines.extend(view.result_lines(view.limit(RESULT_LINES)));
+    lines
 }
 
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {

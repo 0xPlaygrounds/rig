@@ -1,7 +1,8 @@
 //! The built-in tools of [`rig_tools`], one plugin each, with their rules
 //! on when to pick them: `read` and `search` run beside each other, `edit`,
 //! `write` and `shell` alone; `delete` and `move` ([`DeleteTool`],
-//! [`MoveTool`]) are there to add, gated as writes. Every call works in the
+//! [`MoveTool`]) are there to add, gated as writes, and `list`
+//! ([`ListTool`]) as a read. Every call works in the
 //! app's [`ProjectWorkspace`], from its agent's [`WorkDir`], else from the
 //! [`ProjectRoot`]: its paths resolve from there, a command starts there,
 //! and with a `WorkDir` a path outside it is refused
@@ -24,7 +25,7 @@ use rig_harness::prelude::{
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, attachments};
-use rig_tools::{Cut, Delete, Edit, Move, Read, Search, Shell, Write};
+use rig_tools::{Cut, Delete, Edit, List, Move, Read, Search, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
 
@@ -144,6 +145,25 @@ impl Plugin for MoveTool {
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Move::NAME, looks::moved);
+    }
+}
+
+/// The `list` tool: lists a directory's files down to a depth, as `files`
+/// sees them (no ignored, hidden or `target` files), gated as a read of
+/// it. Not in the default plugins; add it where the model should list
+/// directories without `shell`.
+#[derive(Default)]
+pub struct ListTool;
+
+impl Plugin for ListTool {
+    fn build(&self, app: &mut App) {
+        app.add_tool_per_call(List::default(), options(List::RULES), false, |place| List {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
+        });
+        #[cfg(feature = "tui")]
+        app.add_tool_renderer(List::NAME, looks::list);
     }
 }
 
