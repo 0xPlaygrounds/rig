@@ -760,7 +760,10 @@ pub(crate) fn on_scroll_to(
 }
 
 /// Keeps the latest notices for display, each placed where its agent's
-/// conversation ended when it arrived.
+/// conversation ended when it arrived. One about an agent gone before it
+/// is read, such as a helper retired in the pass its model call failed,
+/// has no transcript left to be drawn in, and is not taken for one about
+/// every agent.
 pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
     agents: Query<(&AgentId, &Conversation)>,
@@ -771,11 +774,14 @@ pub(crate) fn collect_notices(
         return;
     }
     for notice in notices.read() {
-        let about = notice.agent.and_then(|agent| agents.get(agent).ok());
-        let written = notice
-            .agent
-            .or(shown.0)
-            .and_then(|agent| agents.get(agent).ok());
+        let about = match notice.agent {
+            Some(agent) => match agents.get(agent) {
+                Ok(about) => Some(about),
+                Err(_) => continue,
+            },
+            None => None,
+        };
+        let written = about.or_else(|| shown.0.and_then(|agent| agents.get(agent).ok()));
         view.keep(ShownNotice {
             agent: about.map(|(id, _)| id.clone()),
             at: written.and_then(|(id, conversation)| anchor(id, conversation)),

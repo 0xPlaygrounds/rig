@@ -139,6 +139,26 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
 }
 
 #[test]
+fn a_notice_about_an_agent_gone_before_it_is_read_is_drawn_in_no_other_transcript() {
+    use rig_core::completion::Message;
+    let (mut app, agent) = view_app();
+    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    say(&mut app, agent, Message::user("question"));
+    // A helper whose model call fails retires in the same pass.
+    let helper = app.world_mut().spawn(Agent).id();
+    app.update();
+    app.world_mut().write_message(Notice::error(
+        helper,
+        "Your last message was taken out of the conversation; send it again.",
+    ));
+    app.world_mut().despawn(helper);
+    app.update();
+    let lines = transcript(&mut app, agent);
+    assert!(line_of(&lines, "send it again").is_none(), "{lines:#?}");
+    assert!(line_of(&lines, "question").is_some(), "{lines:#?}");
+}
+
+#[test]
 fn a_notice_is_an_item_a_plugin_scrolls_to() {
     let (mut app, agent) = view_app();
     let question = |index: usize| rig_core::completion::Message::user(format!("question {index}"));
