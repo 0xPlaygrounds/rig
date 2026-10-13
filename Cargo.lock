@@ -16212,6 +16212,7 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-memory",
+ "rig-tui",
  "serde_json",
 ]
 
