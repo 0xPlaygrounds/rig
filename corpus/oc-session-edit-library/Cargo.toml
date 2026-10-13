@@ -1,0 +1,16 @@
+[package]
+name = "corpus-oc-session-edit-library"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (one-conversation fresh held-out): OC-25: 25. Standalone session editor program"
+
+[lints]
+workspace = true
+
+[dependencies]
+# A plain program on rig's library crates: no Bevy, no harness.
+rig-core = { workspace = true }
+rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

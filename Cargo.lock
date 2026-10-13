@@ -5789,6 +5789,352 @@ dependencies = [
 ]
 
 [[package]]
+name = "corpus-oc-approval-batching"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-architect-editor"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-ask-parent"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-auto-continue"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-away-recap"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-branch-merge"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-coverage-gap-nudge"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-dataset-cli"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-dependency-guard"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-git-delta-context"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-github-mention-front"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-inline-images"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-issue-references"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-line-provenance"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-message-ratings"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-opaque-reasoning"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-project-replace"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-rate-limit-status"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-retroactive-redact"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-reviewable-compaction"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-session-bundle"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-session-edit-library"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-memory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-sql-query-tool"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-steer-and-queue"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-oc-transcript-in-editor"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "corpus-otel-tracing"
 version = "0.0.0"
 dependencies = [
