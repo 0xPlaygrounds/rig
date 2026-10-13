@@ -179,19 +179,25 @@ fn new_sessions_of_one_second_take_the_next_free_id() {
 }
 
 #[test]
-fn a_session_is_saved_once_marked_and_not_for_a_log_file_alone() {
+fn a_session_is_saved_once_marked_and_not_for_a_log_file_alone_nor_while_deleting() {
     let root = std::env::temp_dir().join(format!("rig-saved-{}", std::process::id()));
     std::fs::remove_dir_all(&root).ok();
     let made = Home::at(&root).new_session();
     assert!(made.is_ok(), "{made:?}");
     let Ok((_, dir)) = made else { return };
-    std::fs::write(dir.path().join("a1.jsonl"), "").ok();
+    std::fs::create_dir_all(dir.path().join("logs")).ok();
+    std::fs::write(dir.path().join("logs/a1.jsonl"), "").ok();
     let before = dir.is_saved();
     let marked = dir.mark_saved();
     let after = dir.is_saved();
+    let deleting = dir.mark_deleting();
+    let hidden = !dir.is_saved() && dir.is_deleting();
     std::fs::remove_dir_all(&root).ok();
-    assert!(marked.is_ok(), "{marked:?}");
-    assert!(!before && after);
+    assert!(
+        marked.is_ok() && deleting.is_ok(),
+        "{marked:?} {deleting:?}"
+    );
+    assert!(!before && after && hidden);
 }
 
 #[test]
