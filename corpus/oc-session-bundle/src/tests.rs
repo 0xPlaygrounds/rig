@@ -174,7 +174,8 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     drop(app);
 
     // Project B: a clone at the same commit, without the edit, imported
-    // with `rig bundle open … --apply` in a build without the counter.
+    // with `rig bundle open … --apply` in a build without the counter and
+    // without the model the session used.
     git(
         home.root(),
         &[
@@ -200,7 +201,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         },
         terminal: false,
     })
-    .insert_resource(scripted_models([("test/model", &model)]))
+    .insert_resource(scripted_models([("test/other", &model)]))
     .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin));
     load::<SessionBundlePlugin>(&mut open, "corpus-oc-session-bundle", "");
     collect::<BundleImported>(&mut open);
@@ -230,6 +231,10 @@ fn a_bundle_moves_a_session_to_another_checkout() {
             .iter()
             .any(|line| line.starts_with("Missing plugins") && line.contains("CounterPlugin")),
         "{imported:?}"
+    );
+    assert_eq!(
+        imported.notes,
+        ["test/model is not available here: its agents use the default model."]
     );
 
     // The imported session lists the subagent, and its conversation's
@@ -262,7 +267,8 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     drop(open);
 
     // Resumed in B with the counter plugin installed again: it reads 3,
-    // and a read by the remapped absolute path succeeds.
+    // the agent has no model of its own (the default), and a read by the
+    // remapped absolute path succeeds.
     let path_b = b.join("src/lib.rs").display().to_string();
     let model = MockCompletionModel::from_stream_turns([
         calls("r1", "read", json!({ "path": path_b })),
@@ -271,6 +277,11 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     let (mut app, wakes) = start(&home, &imported.session, &b, &model, true);
     let agent = main_agent(&mut app);
     assert_eq!(app.world().get::<Counter>(agent), Some(&Counter(3)));
+    assert_eq!(app.world().get::<ModelChoice>(agent), None);
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: "test/model".to_owned(),
+    });
     turn(&mut app, &wakes, agent, "What does src/lib.rs return?");
     let outputs = &app.world().resource::<ToolOutputs>().0;
     let output = outputs.get("r1").cloned().unwrap_or_default();
