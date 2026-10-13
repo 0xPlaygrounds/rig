@@ -9,6 +9,10 @@ use rig_tui::TuiInputState;
 
 use super::*;
 
+/// What the pickers were answered with.
+#[derive(Resource, Default)]
+struct Picked(Vec<Option<Chosen>>);
+
 /// A `wait` that never ends, keeping its turn running.
 fn wait(_: On<ToolCalled<serde_json::Value>>) {}
 
@@ -52,7 +56,11 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
         .add_plugins((AgentPlugin, JournalPlugin, CommandPlugin, VimPlugin))
         .add_open_tool("wait", "Waits.", ToolOptions::default(), wait)
         .init_resource::<Ended>()
-        .add_observer(log_ended);
+        .init_resource::<Picked>()
+        .add_observer(log_ended)
+        .add_observer(|pick: On<Pick>, mut picked: ResMut<Picked>| {
+            picked.0.push(pick.chosen.clone());
+        });
     tui_view(&mut app);
     app.finish();
     app.update();
@@ -64,13 +72,13 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
     app.insert_resource(Shown(Some(agent)));
     app.update();
 
-    // Insert mode types; Esc, `0`, `dw`, `A!`, Esc, Enter sends `world!`.
+    // Insert mode types; Esc, `0`, `dw`, `A!`, Esc, Enter sends `world!`,
+    // every key in one frame.
     assert_eq!(status(&app), "-- INSERT --");
-    type_text(&mut app, "hello world");
-    press(&mut app, "esc");
-    assert_eq!(status(&app), "-- NORMAL --");
-    type_text(&mut app, "0dwA!");
-    press(&mut app, "esc enter");
+    rig_harness_test_support::press(
+        &mut app,
+        "h e l l o space w o r l d esc 0 d w A ! esc enter",
+    );
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });
@@ -115,11 +123,17 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
     assert_eq!(input(&app), "abcabc");
     assert_eq!(status(&app), "-- NORMAL --");
 
-    // An open picker takes `j`; the input and its mode stay.
-    let picker = app.world_mut().spawn(Picker::new("Pick one")).id();
-    type_text(&mut app, "jx");
+    // An open picker takes `j` and Enter: `j` filters it to `jam`, Enter
+    // picks that; the input and its mode stay.
+    let picker = Picker::new("Pick one").item("alpha", "a").item("jam", "j");
+    let picker = app.world_mut().spawn(picker).id();
+    app.update();
+    app.update();
     let picking = app.world().resource::<TuiInputState>().picking();
     assert_eq!(picking, Some(picker));
+    press(&mut app, "j enter");
+    let picked = app.world().resource::<Picked>().0.clone();
+    assert_eq!(picked, vec![Some(Chosen::Item(1))]);
     assert_eq!(input(&app), "abcabc");
     assert_eq!(status(&app), "-- NORMAL --");
     app.world_mut().despawn(picker);
@@ -154,8 +168,8 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
     app.update();
     app.update();
     assert_eq!(status(&app), "");
-    let saved = std::fs::read_to_string(home.root().join(SAVED)).unwrap_or_default();
-    assert_eq!(saved, r#"{"enabled":false}"#);
+    let saved = app.world().resource::<PluginData>().user.read_file(SAVED);
+    assert_eq!(saved.ok(), Some(br#"{"enabled":false}"#.to_vec()));
     type_text(&mut app, "x");
     assert_eq!(input(&app), "x", "typed as without the plugin");
 }

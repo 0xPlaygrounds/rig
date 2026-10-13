@@ -2,31 +2,29 @@
 //!
 //! The input starts in insert mode (`[vim] start = "normal"` in
 //! `settings.toml` changes that), where keys type as without the plugin.
-//! Esc goes to normal mode, where the printable keys and Ctrl-r are this
-//! plugin's [`KeyBinding`]s in the input's scope, run through
-//! [`editor::Editor`]: motions, counts, operators, registers, undo and a
-//! visual selection, written back into [`TuiInput`]. Because they are
-//! input-scoped bindings, a picker, a question or a panel with the keys
-//! gets them as before. Enter is the view's own key, so it sends in either
-//! mode. Esc replaces the view's Esc (which stops the agent); twice within
-//! [`DOUBLE_ESC`] in normal mode with an empty input it sends the view's
-//! own [`InputAction::Stop`]. The mode shows in the status line, and
-//! `/vim on|off` toggles it, kept in `RIG_HOME/vim.json` for every session.
+//! A filter in [`InputSystems::Filter`] reads the frame's
+//! [`TerminalEvents`] in order: Esc goes to normal mode, where it takes the
+//! keys and runs them through [`editor::Editor`] (motions, counts,
+//! operators, registers, undo and a visual selection), written back into
+//! [`TuiInput`]. While a picker, a question or a panel has the keys
+//! ([`TuiInputState`]), it leaves them alone. Enter stays the view's key,
+//! so it sends in either mode. Twice within [`DOUBLE_ESC`] in normal mode
+//! with an empty input, Esc does the view's own [`InputAction::Stop`]. The
+//! mode shows in the status line, and `/vim on|off` toggles it, kept in
+//! [`PluginData::user`] for every session.
+//!
+//! A filter sees the input as it was before the frame's keys. Once a key
+//! it lets through may have changed the input, the rest of the frame waits
+//! for the next one, from the first key the editor might take.
 
 pub mod editor;
 
-use std::path::PathBuf;
-use std::process::Stdio;
-use std::sync::Mutex;
-use std::sync::mpsc::{Receiver, Sender, channel};
-
-use bevy_ecs::query::Allow;
 use rig_harness::prelude::*;
-use rig_tui::crossterm::event::KeyCode;
+use rig_harness::rig_tools::clipboard;
+use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use rig_tui::{
-    AppKeyBindingsExt, AppStatus, CopyToClipboard, InputAction, KeyBinding, KeyInput, KeyPress,
-    KeyPressed, KeyScope, Side, StatusItem, StatusSystems, TerminalEvents, Tone, TuiInput,
-    TuiPlugin,
+    AppStatus, CopyToClipboard, InputAction, InputSystems, KeyInput, KeyScope, Sent, Side,
+    StatusItem, StatusSystems, TerminalEvents, Tone, TuiInput, TuiInputState, TuiPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -39,8 +37,8 @@ pub const DOUBLE_ESC: Duration = Duration::from_millis(500);
 /// The mode's place in the status line: after the agent's status.
 const MODE_ITEM: StatusItem = StatusItem::new("sn-vim-input", Side::Left, 55, 9);
 
-/// The file under `RIG_HOME` that keeps `/vim on|off` across sessions.
-const SAVED: &str = "vim.json";
+/// The file in [`PluginData::user`] that keeps `/vim on|off`.
+pub const SAVED: &str = "vim/saved.json";
 
 /// The `[vim]` table of `settings.toml`.
 #[derive(Resource, Deserialize, Default, Clone, Copy)]
@@ -62,7 +60,7 @@ pub enum StartMode {
     Normal,
 }
 
-/// What `RIG_HOME/vim.json` keeps.
+/// What [`SAVED`] keeps.
 #[derive(Serialize, Deserialize)]
 struct Saved {
     enabled: bool,
@@ -73,18 +71,14 @@ struct Saved {
 pub struct Vim {
     /// Whether vim keys are on (`/vim on|off`).
     pub enabled: bool,
-    /// Off while a question is answered in the input, which takes the
-    /// keys as without the plugin.
-    pub suspended: bool,
     editor: Editor,
     start: Mode,
     /// When the last Esc with nothing to cancel was pressed, on the real
     /// clock.
     last_esc: Option<Duration>,
-    /// Where `vim.json` is.
-    saved: PathBuf,
-    /// The view's own Esc binding, freed while vim keys are on.
-    view_esc: Option<Entity>,
+    /// The rest of a frame whose keys may have changed the input, for the
+    /// next frame.
+    held: Vec<KeyInput>,
 }
 
 impl Vim {
@@ -92,33 +86,14 @@ impl Vim {
     pub fn mode(&self) -> Mode {
         self.editor.mode()
     }
-
-    /// Whether the plugin's keys apply now.
-    pub fn active(&self) -> bool {
-        self.enabled && !self.suspended
-    }
 }
 
-/// On each of the plugin's key bindings: the key it gives the editor.
-#[derive(Component, Clone, Copy)]
-struct VimKey(Key);
-
-/// System-clipboard reads in flight for `"+p`: each sends the text, or
-/// `None`, and whether it goes after the cursor.
-#[derive(Resource)]
-struct ClipboardReads {
-    sender: Sender<(Option<String>, bool)>,
-    results: Mutex<Receiver<(Option<String>, bool)>>,
-}
-
-impl Default for ClipboardReads {
-    fn default() -> Self {
-        let (sender, results) = channel();
-        Self {
-            sender,
-            results: Mutex::new(results),
-        }
-    }
+/// A read of the system clipboard for `"+p` or `"+P`, which ends as a
+/// [`Done`] with its text.
+#[derive(Component)]
+struct ClipboardPaste {
+    /// After the cursor rather than before it.
+    after: bool,
 }
 
 /// Vim-style modal editing in the terminal view's input.
@@ -135,257 +110,216 @@ impl Plugin for VimPlugin {
             Some(StartMode::Normal) => Mode::Normal,
             _ => Mode::Insert,
         };
-        let saved = RigHome::of(app.world()).root().join(SAVED);
-        let enabled = std::fs::read_to_string(&saved)
-            .ok()
-            .and_then(|text| serde_json::from_str::<Saved>(&text).ok())
-            .is_none_or(|saved| saved.enabled);
         app.insert_resource(Vim {
-            enabled,
-            suspended: false,
+            enabled: true,
             editor: Editor::new(start),
             start,
             last_esc: None,
-            saved,
-            view_esc: None,
+            held: Vec::new(),
         })
-        .init_resource::<ClipboardReads>()
         .add_command("vim", "Vim keys in the input: /vim on|off", toggle)
-        .add_observer(after_send)
-        .add_systems(Startup, arm_keys)
+        .add_observer(paste_clipboard)
+        .add_systems(Startup, load)
         .add_systems(
-            Update,
+            PreUpdate,
             (
-                suspend_for_questions,
-                paste_clipboard,
-                arm_keys.run_if(resource_changed::<Vim>),
-            )
-                .chain()
-                .after(AgentLoop),
+                edit.in_set(InputSystems::Filter),
+                hold.after(InputSystems::Dispatch),
+            ),
         )
+        .add_systems(Update, after_send)
         .add_systems(
             PostUpdate,
             show_mode
                 .run_if(resource_changed::<Vim>)
                 .in_set(StatusSystems::Show),
         );
-        let keys = (' '..='~')
-            .map(|character| {
-                (
-                    KeyPress::key(KeyCode::Char(character)),
-                    Key::Char(character),
-                )
-            })
-            .chain([(KeyPress::ctrl('r'), Key::Redo)]);
-        for (press, key) in keys {
-            bind(app, press, key);
-        }
-    }
-
-    /// Frees the view's Esc, which stops the agent, for the plugin's own,
-    /// once every plugin's bindings are spawned.
-    fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        let esc = KeyPress::key(KeyCode::Esc);
-        let mut bindings = world.query::<(Entity, &KeyBinding, &InputAction)>();
-        let view_esc = bindings.iter(world).find_map(|(entity, binding, action)| {
-            let is_esc = binding.scope == KeyScope::Input && binding.keys.presses() == [esc];
-            (is_esc && *action == InputAction::Stop).then_some(entity)
-        });
-        if let Some(entity) = view_esc {
-            world.entity_mut(entity).insert(Disabled);
-        }
-        world.resource_mut::<Vim>().view_esc = view_esc;
-        bind(app, esc, Key::Esc);
     }
 }
 
-/// Binds `press` in the input to give the editor `key`.
-fn bind(app: &mut App, press: KeyPress, key: Key) {
-    let label = match key {
-        Key::Esc => "Vim: normal mode; twice, stop the agent".to_owned(),
-        Key::Redo => "Vim: redo".to_owned(),
-        Key::Char(character) => format!("Vim: {character}"),
-    };
-    let binding = KeyBinding::new(press, label).in_scope(KeyScope::Input);
-    if let Some(entity) = app.add_key_binding(binding, on_key) {
-        app.world_mut().entity_mut(entity).insert(VimKey(key));
-    }
+/// Whether `/vim off` was kept from an earlier session.
+fn load(data: Res<PluginData>, mut vim: ResMut<Vim>) {
+    let saved = data.user.read_file(SAVED).ok();
+    let saved = saved.and_then(|bytes| serde_json::from_slice::<Saved>(&bytes).ok());
+    vim.enabled = saved.is_none_or(|saved| saved.enabled);
 }
 
-/// Feeds a pressed key to the editor and writes the result into the input.
+/// What the filter does with an item of the frame.
+enum Take {
+    /// Leaves it to the view; whether it may change the input.
+    Pass { changes: bool },
+    /// Gives the editor this key.
+    Edit(Key),
+    /// Enter in normal mode: sends, closing a completion first so it does
+    /// not accept it.
+    Send,
+}
+
+/// Takes the frame's keys as the mode says, in their order.
 #[allow(clippy::too_many_arguments)]
-fn on_key(
-    pressed: On<KeyPressed>,
-    keys: Query<&VimKey>,
-    (mut vim, mut input, time): (ResMut<Vim>, ResMut<TuiInput>, Res<Time<Real>>),
-    (reads, processes, wake): (
-        Res<ClipboardReads>,
-        Option<Res<Processes>>,
-        Option<Res<Wake>>,
-    ),
-    mut copies: MessageWriter<CopyToClipboard>,
+fn edit(
     mut events: ResMut<TerminalEvents>,
+    state: Res<TuiInputState>,
+    mut vim: ResMut<Vim>,
+    mut input: ResMut<TuiInput>,
+    time: Res<Time<Real>>,
+    (processes, wake): (Option<Res<Processes>>, Res<Wake>),
+    mut copies: MessageWriter<CopyToClipboard>,
+    mut commands: Commands,
 ) {
-    let Ok(&VimKey(key)) = keys.get(pressed.entity) else {
-        return;
-    };
-    if pressed.released {
+    if !vim.enabled || events.0.is_empty() {
         return;
     }
+    let vim = &mut *vim;
     let mut buffer = Buffer {
         text: input.text().to_owned(),
         cursor: input.cursor(),
     };
-    let effect = vim.editor.key(key, &mut buffer);
+    let elsewhere = state.picking().is_some()
+        || state.answering().is_some()
+        || matches!(state.scope(), KeyScope::Panel(_));
+    let mut completion = state.completion().is_some();
+    // Whether the input and the state are still as the filter knows them.
+    let mut known = true;
+    let mut kept = Vec::with_capacity(events.0.len());
+    let mut items = std::mem::take(&mut events.0).into_iter();
+    while let Some(item) = items.next() {
+        let take = match &item {
+            KeyInput::Event(Event::Key(key)) if key.kind != KeyEventKind::Release => {
+                if !known && might_take(key, vim.mode()) {
+                    vim.held.push(item);
+                    vim.held.extend(items);
+                    break;
+                }
+                take(key, vim.mode(), elsewhere)
+            }
+            KeyInput::Event(Event::Key(_) | Event::Resize(..) | Event::Mouse(_)) => {
+                Take::Pass { changes: false }
+            }
+            KeyInput::Event(Event::FocusGained | Event::FocusLost) => Take::Pass { changes: false },
+            KeyInput::Event(Event::Paste(_)) | KeyInput::Action(_) => Take::Pass { changes: true },
+        };
+        match take {
+            Take::Pass { changes } => {
+                known &= !changes;
+                kept.push(item);
+            }
+            Take::Send => {
+                if completion {
+                    kept.push(KeyInput::Action(InputAction::Stop));
+                }
+                kept.push(item);
+                known = false;
+            }
+            Take::Edit(key) => {
+                // Esc in insert mode closes a completion as the view's does.
+                if key == Key::Esc && vim.mode() == Mode::Insert && completion {
+                    kept.push(KeyInput::Action(InputAction::Stop));
+                    completion = false;
+                }
+                match vim.editor.key(key, &mut buffer) {
+                    Some(Effect::Copy(text)) => {
+                        copies.write(CopyToClipboard(text));
+                    }
+                    Some(Effect::PasteClipboard { after }) => {
+                        let launcher = processes.as_deref().map(Processes::launcher);
+                        let launcher = launcher.unwrap_or_default();
+                        let pool =
+                            bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
+                        let read = blocking(move || Ok(clipboard::read_text(&launcher).ok()));
+                        let task = async move { read.await.ok().flatten() };
+                        commands
+                            .spawn((ClipboardPaste { after }, Running::spawn(pool, &wake, task)));
+                    }
+                    Some(Effect::BareEsc) => {
+                        let now = time.elapsed();
+                        let twice = vim
+                            .last_esc
+                            .is_some_and(|last| now.saturating_sub(last) <= DOUBLE_ESC);
+                        if twice && buffer.text.is_empty() {
+                            vim.last_esc = None;
+                            kept.push(KeyInput::Action(InputAction::Stop));
+                            known = false;
+                        } else {
+                            vim.last_esc = Some(now);
+                        }
+                    }
+                    None => {}
+                }
+            }
+        }
+    }
+    events.0 = kept;
     if buffer.text != input.text() {
         input.set(buffer.text);
     }
     if buffer.cursor != input.cursor() {
         input.set_cursor(buffer.cursor);
     }
-    match effect {
-        Some(Effect::Copy(text)) => {
-            copies.write(CopyToClipboard(text));
-        }
-        Some(Effect::PasteClipboard { after }) => {
-            let launcher = processes.map(|p| p.launcher()).unwrap_or_default();
-            let sender = reads.sender.clone();
-            let wake = wake.map(|wake| wake.clone());
-            let spawned = std::thread::Builder::new()
-                .name("vim-clipboard".to_owned())
-                .spawn(move || {
-                    sender.send((read_clipboard_text(&launcher), after)).ok();
-                    if let Some(wake) = wake {
-                        wake.wake();
-                    }
-                });
-            if spawned.is_err() {
-                reads.sender.send((None, after)).ok();
-            }
-        }
-        Some(Effect::BareEsc) => {
-            let now = time.elapsed();
-            let twice = vim
-                .last_esc
-                .is_some_and(|last| now.saturating_sub(last) <= DOUBLE_ESC);
-            if twice && input.is_empty() {
-                vim.last_esc = None;
-                events.0.push(KeyInput::Action(InputAction::Stop));
-                if let Some(wake) = wake {
-                    wake.wake();
-                }
-            } else {
-                vim.last_esc = Some(now);
-            }
-        }
-        None => {}
+}
+
+/// What the filter does with `key` in `mode`, the input's state known.
+fn take(key: &KeyEvent, mode: Mode, elsewhere: bool) -> Take {
+    let plain = key.modifiers.difference(KeyModifiers::SHIFT).is_empty();
+    match (key.code, mode) {
+        _ if elsewhere => Take::Pass { changes: true },
+        (KeyCode::Esc, _) if plain => Take::Edit(Key::Esc),
+        (_, Mode::Insert) => Take::Pass { changes: true },
+        (KeyCode::Enter, _) if plain => Take::Send,
+        (KeyCode::Char(character), _) if plain => Take::Edit(Key::Char(character)),
+        (KeyCode::Char('r'), _) if key.modifiers == KeyModifiers::CONTROL => Take::Edit(Key::Redo),
+        _ => Take::Pass { changes: true },
     }
 }
 
-/// The system clipboard's text, read by `wl-paste`, `xclip` or `pbpaste`.
-/// Blocking.
-fn read_clipboard_text(launcher: &rig_harness::rig_tools::process::Launcher) -> Option<String> {
-    let mut readers: Vec<(&str, &[&str])> = Vec::new();
-    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
-        readers.push(("wl-paste", &["--no-newline"]));
-    }
-    if std::env::var_os("DISPLAY").is_some() {
-        readers.push(("xclip", &["-selection", "clipboard", "-out"]));
-    }
-    if cfg!(target_os = "macos") {
-        readers.push(("pbpaste", &[]));
-    }
-    readers.iter().find_map(|(program, args)| {
-        let output = launcher
-            .command(program)
-            .args(*args)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
-        output
-            .status
-            .success()
-            .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
-    })
+/// Whether the editor might take `key` in `mode`, whatever the input's
+/// state: Esc in insert mode, any key in the others.
+fn might_take(key: &KeyEvent, mode: Mode) -> bool {
+    mode != Mode::Insert || key.code == KeyCode::Esc
 }
 
-/// Pastes what the clipboard reads brought back.
+/// Puts the rest of a frame back for the next one, after the keys before
+/// it changed the input.
+fn hold(mut vim: ResMut<Vim>, mut events: ResMut<TerminalEvents>, wake: Res<Wake>) {
+    if vim.held.is_empty() {
+        return;
+    }
+    events.0.append(&mut vim.held);
+    wake.wake();
+}
+
+/// Pastes what a clipboard read brought back.
 fn paste_clipboard(
-    reads: Res<ClipboardReads>,
-    mut vim: ResMut<Vim>,
-    mut input: ResMut<TuiInput>,
+    read: On<Insert<Done<Option<String>>>>,
+    reads: Query<(&ClipboardPaste, &Done<Option<String>>)>,
+    (mut vim, mut input): (ResMut<Vim>, ResMut<TuiInput>),
     shown: Option<Res<Shown>>,
     mut notices: MessageWriter<Notice>,
-) {
-    let Ok(results) = reads.results.lock() else {
-        return;
-    };
-    for (text, after) in results.try_iter() {
-        let Some(text) = text else {
-            let agent = shown.as_ref().and_then(|shown| shown.0);
-            notices.write(Notice::info(agent, "No clipboard text to paste."));
-            continue;
-        };
-        let mut buffer = Buffer {
-            text: input.text().to_owned(),
-            cursor: input.cursor(),
-        };
-        vim.editor.put_text(&mut buffer, &text, after);
-        input.set(buffer.text);
-        input.set_cursor(buffer.cursor);
-    }
-}
-
-/// Leaves the keys to a question answered in the input while one is open.
-fn suspend_for_questions(asks: Query<&Ask, Without<Outcome>>, mut vim: ResMut<Vim>) {
-    let in_input = asks
-        .iter()
-        .any(|ask| !ask.inline && (ask.initial.is_some() || ask.multiline));
-    if vim.suspended != in_input {
-        vim.suspended = in_input;
-    }
-}
-
-/// Binds the plugin's keys as the mode needs: Esc while vim keys are on,
-/// the others in normal and visual mode only, so insert mode types as the
-/// view does; the view's Esc while they are off.
-fn arm_keys(
-    vim: Res<Vim>,
-    keys: Query<(Entity, &VimKey, Has<Disabled>), Allow<Disabled>>,
-    view_keys: Query<Has<Disabled>, (With<KeyBinding>, Without<VimKey>, Allow<Disabled>)>,
     mut commands: Commands,
 ) {
-    let active = vim.active();
-    let mut arm = |entity: Entity, on: bool, disabled: bool| match (on, disabled) {
-        (true, true) => {
-            commands.entity(entity).remove::<Disabled>();
-        }
-        (false, false) => {
-            commands.entity(entity).insert(Disabled);
-        }
-        _ => {}
+    let Ok((&ClipboardPaste { after }, Done(text))) = reads.get(read.entity) else {
+        return;
     };
-    for (entity, &VimKey(key), disabled) in &keys {
-        let on = active && (key == Key::Esc || vim.mode() != Mode::Insert);
-        arm(entity, on, disabled);
-    }
-    // The view's Esc is free exactly while the plugin's is armed.
-    if let Some(view_esc) = vim.view_esc
-        && let Ok(disabled) = view_keys.get(view_esc)
-    {
-        arm(view_esc, !active, disabled);
-    }
+    commands.entity(read.entity).despawn();
+    let Some(text) = text else {
+        let agent = shown.and_then(|shown| shown.0);
+        notices.write(Notice::info(agent, "No clipboard text to paste."));
+        return;
+    };
+    let mut buffer = Buffer {
+        text: input.text().to_owned(),
+        cursor: input.cursor(),
+    };
+    vim.editor.put_text(&mut buffer, text, after);
+    input.set(buffer.text);
+    input.set_cursor(buffer.cursor);
 }
 
-/// A message the user sent leaves the input in the start mode.
-fn after_send(deliver: On<Deliver>, mut vim: ResMut<Vim>, input: Res<TuiInput>) {
-    if deliver.message.author.kind == AuthorKind::User && input.is_empty() {
+/// A message the view sent leaves the input in the start mode.
+fn after_send(mut sent: MessageReader<Sent>, mut vim: ResMut<Vim>) {
+    if sent.read().count() > 0 && vim.mode() != vim.start {
         let start = vim.start;
-        if vim.mode() != start {
-            vim.editor.reset(start);
-        }
+        vim.editor.reset(start);
     }
 }
 
@@ -396,7 +330,12 @@ fn show_mode(vim: Res<Vim>, mut status: ResMut<AppStatus>) {
 }
 
 /// `/vim on|off`, or `/vim` to switch; kept for every session.
-fn toggle(In(args): In<CommandArgs>, mut vim: ResMut<Vim>, mut notices: MessageWriter<Notice>) {
+fn toggle(
+    In(args): In<CommandArgs>,
+    mut vim: ResMut<Vim>,
+    data: Res<PluginData>,
+    mut notices: MessageWriter<Notice>,
+) {
     let enabled = match args.args.trim() {
         "on" => true,
         "off" => false,
@@ -412,8 +351,8 @@ fn toggle(In(args): In<CommandArgs>, mut vim: ResMut<Vim>, mut notices: MessageW
     vim.enabled = enabled;
     let start = vim.start;
     vim.editor.reset(start);
-    let saved = serde_json::to_string(&Saved { enabled }).unwrap_or_default();
-    if let Err(failure) = std::fs::write(&vim.saved, saved) {
+    let saved = serde_json::to_vec(&Saved { enabled }).unwrap_or_default();
+    if let Err(failure) = data.user.write_file(SAVED, &saved) {
         let why = format!("Could not keep the vim setting: {failure}.");
         notices.write(Notice::warn(args.agent, why));
     }
