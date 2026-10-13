@@ -369,14 +369,14 @@ fn spawn_requested(
         Some(task) => task.request.clone(),
         None => RequestId(format!("{SUBAGENT}-{}", effect.id())),
     };
-    let origin = match request.role {
-        Role::Task => Origin::agent(caller.clone(), Some(asked.clone())),
-        Role::Helper => Origin::agent(caller.clone(), None),
+    let author = match request.role {
+        Role::Task => Author::agent(caller.clone(), Some(asked.clone())),
+        Role::Helper => Author::agent(caller.clone(), None),
     };
     let brief = request.brief.trim();
     if !brief.is_empty() {
         let brief = Deliver::new(child.id(), brief, DeliveryMode::Queue);
-        child.insert(Brief(brief.with_origin(origin.titled(title.clone()))));
+        child.insert(Brief(brief.with_author(author.titled(title.clone()))));
     }
     match request.role {
         Role::Task => {
@@ -469,11 +469,11 @@ fn retire_once(
     settled: On<Add<Settled>>,
     turns: Query<&ForAgent, With<Turn>>,
     once: Query<(), With<Once>>,
-    mut commit: Commit,
+    mut commands: Commands,
 ) {
     if let Ok(&ForAgent(agent)) = turns.get(settled.entity)
         && once.contains(agent)
     {
-        commit.retire(agent);
+        commands.trigger(Retire { entity: agent });
     }
 }

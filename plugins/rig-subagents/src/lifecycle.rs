@@ -77,12 +77,12 @@ impl Agents<'_, '_> {
     }
 
     /// Output of `agent`, titled with its task when it has one.
-    pub(super) fn origin(&self, agent: Entity) -> Option<Origin> {
+    pub(super) fn author(&self, agent: Entity) -> Option<Author> {
         let agent = self.agents.get(agent).ok()?;
-        let origin = Origin::agent(agent.id.clone(), None);
+        let author = Author::agent(agent.id.clone(), None);
         Some(match agent.subtask {
-            Some(subtask) => origin.titled(subtask.0.clone()),
-            None => origin,
+            Some(subtask) => author.titled(subtask.0.clone()),
+            None => author,
         })
     }
 
@@ -152,7 +152,7 @@ impl Agents<'_, '_> {
         mut requests: Vec<Request>,
         text: &str,
     ) -> Vec<Entity> {
-        let from = self.origin(agent).unwrap_or_default();
+        let from = self.author(agent).unwrap_or_default();
         let mut reported = Vec::new();
         while let Some(asker) = requests.first().map(|first| first.asker.clone()) {
             let asked: Vec<Request> = requests.extract_if(.., |r| r.asker == asker).collect();
@@ -169,11 +169,11 @@ impl Agents<'_, '_> {
             } else {
                 DeliveryMode::Queue
             };
-            let mut origin = from.clone();
-            origin.request = Some(last.id.clone());
+            let mut author = from.clone();
+            author.request = Some(last.id.clone());
             let parent = self.agents.get(asker).ok().and_then(|a| a.effect_parent);
             self.commands.spawn((
-                Incoming::new(text, mode).with_origin(origin),
+                Incoming::new(text, mode).with_author(author),
                 ForAgent(asker),
                 Effect::child_of(parent.map(|parent| parent.0)),
                 Report,
@@ -306,7 +306,7 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
     let Ok((message, &ForAgent(to), _)) = agents.inboxes.get(accepted.entity) else {
         return;
     };
-    let Some(from) = message.origin.from.clone().map(AgentId) else {
+    let Some(from) = message.author.from.clone().map(AgentId) else {
         return;
     };
     let from = &from;

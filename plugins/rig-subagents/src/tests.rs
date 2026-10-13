@@ -2,7 +2,6 @@ use std::cell::Cell;
 use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::Message;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -12,7 +11,7 @@ use serde_json::json;
 
 use super::*;
 use rig_harness_test_support::{
-    app_on, calls, commit_message, connect, reply, run_until, start_call,
+    MemoryStore, app_on, calls, commit_message, connect, reply, run_until, start_call,
 };
 
 /// Each message delivered: the agent it went to, the request it names, its
@@ -55,7 +54,7 @@ impl Session {
                     let Ok((message, &ForAgent(to))) = messages.get(sent.entity) else {
                         return;
                     };
-                    let request = message.origin.request.clone().map(|request| request.0);
+                    let request = message.author.request.clone().map(|request| request.0);
                     let text = message.text.clone();
                     let entry = (to, request.unwrap_or_default(), message.mode, text);
                     delivered.0.push(entry);
@@ -346,16 +345,18 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
     // The spawn is an effect of its own, nested under the call, recorded
     // with the request as it started and the agent's id.
     let id = world.get::<AgentId>(child).map(|id| id.0.clone());
-    let records = world.resource::<Messages<Recorded>>();
+    let records = world.resource::<Messages<EffectRecorded>>();
     let spawn = records
         .iter_current_update_messages()
-        .find_map(|Recorded(record)| match (&record.kind, &record.outcome) {
-            (
-                rig_core::effect::EffectKind::Custom { kind, payload },
-                Ok(rig_core::effect::Outcome::Custom { payload: answer }),
-            ) if &**kind == SUBAGENT => Some((payload.clone(), answer.clone(), record.parent)),
-            _ => None,
-        });
+        .find_map(
+            |EffectRecorded(record)| match (&record.kind, &record.outcome) {
+                (
+                    rig_core::effect::EffectKind::Custom { kind, payload },
+                    Ok(rig_core::effect::Outcome::Custom { payload: answer }),
+                ) if &**kind == SUBAGENT => Some((payload.clone(), answer.clone(), record.parent)),
+                _ => None,
+            },
+        );
     let (request, answer, parent) = spawn.unwrap_or_default();
     assert_eq!(request.get("tools"), Some(&json!(["look"])));
     assert_eq!(
