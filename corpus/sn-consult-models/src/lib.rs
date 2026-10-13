@@ -11,11 +11,12 @@
 //! step limit shows as `model: failed (why)` while the others still answer.
 //!
 //! The consultants' requests are effects under the `consult` call, so the
-//! session's effect log keeps their work under it, and with the default
-//! `tui` feature the call's renderer draws the calls the view finds under
-//! it ([`ToolCallView::children`](rig_tui::ToolCallView::children)). Their model calls are
-//! ordinary model calls, so they count toward the session's spending per
-//! model (rig-telemetry), which also gives each consultant's cost.
+//! session's effect log keeps their work under it. With the default `tui`
+//! feature the call's renderer draws each consultant's model and tool calls
+//! nested under it ([`ToolCallView::children`](rig_tui::ToolCallView::children)),
+//! live and after a resume. Their model calls are ordinary model calls, so
+//! they count toward the session's spending per model (rig-telemetry),
+//! which also gives each consultant's cost.
 //! Interrupting the asking agent, or the call ending any other way, retires
 //! every consultant still at work, briefed or not.
 //!
@@ -493,9 +494,7 @@ fn link_agent(
     };
     seat.agent = Some(agent);
     seat.running = true;
-    commands
-        .entity(agent)
-        .insert((Name::new(seat.model.clone()), SlotOf { consultation, slot }));
+    commands.entity(agent).insert(SlotOf { consultation, slot });
 }
 
 /// A consultant whose request was refused has failed.

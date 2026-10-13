@@ -17,8 +17,8 @@ pub(crate) fn consult(view: &ToolCallView) -> Vec<Line<'static>> {
     lines
 }
 
-/// One of the consultants' calls: a model call names its model, a tool
-/// call its consultant, tool and arguments, and how it ended.
+/// One of the consultants' calls: a model call names its model, and the
+/// tool calls under it their tool and arguments, and how they ended.
 fn child(child: &ChildCall) -> Line<'static> {
     let indent = "  ".repeat(child.depth + 1);
     let what = match &child.call {
@@ -29,8 +29,7 @@ fn child(child: &ChildCall) -> Line<'static> {
                 arguments.truncate(at);
                 arguments.push('…');
             }
-            let agent = child.agent.as_deref().unwrap_or_default();
-            format!("{agent}: {} {arguments}", child.name)
+            format!("{} {arguments}", child.name)
         }
         None => child.name.clone(),
     };
