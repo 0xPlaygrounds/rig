@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::io::{self, ErrorKind};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
@@ -27,12 +27,14 @@ use crate::{MAX_FILE_BYTES, blocking};
 /// Taken one of two ways, and compared only with one taken the same way:
 /// - in a git work tree on this machine, as a git tree written with a
 ///   private index and object directory, so the user's repository is
-///   never written to, and the content of each file is kept;
+///   never written to;
 /// - elsewhere, as a scan of what [`Workspace::files`] lists, with each
-///   file's size, change time and hash, and no content.
+///   file's size, change time and hash.
 ///
-/// Either way, the files git or `files` leaves out (ignored, hidden,
-/// `target`) are not in it.
+/// Either way, the content of each file up to [`MAX_FILE_BYTES`] is kept
+/// when the snapshot was taken with somewhere to keep it ([`Taking::keep`]).
+/// The files git or `files` leaves out (ignored, hidden, `target`) are not
+/// in it, unless named in [`Taking::also`].
 #[derive(Clone, Debug)]
 pub struct Snapshot(Taken);
 
@@ -41,8 +43,25 @@ pub struct Snapshot(Taken);
 enum Taken {
     /// A git tree in a private object directory.
     Git { git: Git, tree: String },
-    /// Each file's [`Seen`], by path.
-    Scan(BTreeMap<PathBuf, Seen>),
+    /// Each file's [`Seen`], by path, and the directory its content is
+    /// kept in, by hash, when it is.
+    Scan {
+        files: BTreeMap<PathBuf, Seen>,
+        blobs: Option<PathBuf>,
+    },
+}
+
+/// How to take a [`Snapshot`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Taking {
+    /// A directory on this machine for a git snapshot's private index and
+    /// objects, and for a scan's kept content, under `checkpoints/`;
+    /// `None`: scan, and keep no content.
+    pub keep: Option<PathBuf>,
+    /// Paths counted whole although ignore rules, hidden names or `target`
+    /// would leave them out, such as `dist` or `.env`: relative to the root,
+    /// or absolute under it.
+    pub also: Vec<PathBuf>,
 }
 
 /// What a scan saw of one file.
@@ -71,13 +90,13 @@ impl Seen {
 
 /// Takes a [`Snapshot`] of `root` in `workspace` as it is now.
 ///
-/// With `keep`, a directory on this machine for the private index and
-/// objects, a local `workspace` ([`host`](Workspace::host) is `None`) and
-/// `root` in a git work tree, it is a git tree: the private index makes
-/// each later snapshot cost what changed. Otherwise, or when `earlier` was
-/// a scan, it scans, hashing only the files whose size or change time
-/// differ from `earlier`'s (every file when there is none, or the workspace
-/// cannot tell the time).
+/// With [`Taking::keep`], a local `workspace` ([`host`](Workspace::host) is
+/// `None`) and `root` in a git work tree, it is a git tree: the private
+/// index makes each later snapshot cost what changed. Otherwise, or when
+/// `earlier` was a scan, it scans, hashing only the files whose size or
+/// change time differ from `earlier`'s (every file when there is none, or
+/// the workspace cannot tell the time), and with `keep` writes the content
+/// of each file it hashed to `keep`, once per hash.
 ///
 /// Blocking: run it off a thread that must not wait ([`blocking`]).
 ///
@@ -88,37 +107,75 @@ impl Seen {
 pub fn snapshot(
     workspace: &dyn Workspace,
     root: &Path,
-    keep: Option<&Path>,
+    taking: &Taking,
     earlier: Option<&Snapshot>,
 ) -> io::Result<Snapshot> {
+    let keep = taking.keep.as_deref();
     let git = match earlier.map(|it| &it.0) {
         Some(Taken::Git { git, .. }) => Some(git.clone()),
-        Some(Taken::Scan(_)) => None,
+        Some(Taken::Scan { .. }) => None,
         None => keep
             .filter(|_| workspace.host().is_none())
             .and_then(|keep| Git::find(root, keep)),
     };
+    let also: Vec<PathBuf> = taking
+        .also
+        .iter()
+        .map(|path| root.join(path))
+        .filter(|path| {
+            path.starts_with(root) && !path.components().any(|part| part == Component::ParentDir)
+        })
+        .collect();
     match git {
         Some(git) => {
-            let tree = git.write_tree()?;
+            let tree = git.write_tree(&also)?;
             Ok(Snapshot(Taken::Git { git, tree }))
         }
         None => {
             let before = match earlier.map(|it| &it.0) {
-                Some(Taken::Scan(files)) => Some(files),
+                Some(Taken::Scan { files, .. }) => Some(files),
                 _ => None,
             };
-            scan(workspace, root, before).map(|files| Snapshot(Taken::Scan(files)))
+            let blobs = keep.map(|keep| private(keep, root).join("blobs"));
+            let files = scan(workspace, root, &also, before, blobs.as_deref())?;
+            Ok(Snapshot(Taken::Scan { files, blobs }))
         }
     }
 }
 
+/// The private directory under `keep` for the snapshots of `dir`.
+fn private(keep: &Path, dir: &Path) -> PathBuf {
+    let name = content_hash(dir.as_os_str().as_encoded_bytes()).0;
+    keep.join("checkpoints")
+        .join(name.get(..16).unwrap_or(&name))
+}
+
+/// Removes the content scans kept under `keep` ([`Taking::keep`]): no
+/// [`Snapshot`] outlives the process that took it, so a host calls this
+/// when it starts, before taking any. Git's private objects are left, as
+/// they hold only what changed.
+///
+/// # Errors
+///
+/// When a directory there cannot be removed.
+pub fn forget_kept(keep: &Path) -> io::Result<()> {
+    let Ok(dirs) = std::fs::read_dir(keep.join("checkpoints")) else {
+        return Ok(());
+    };
+    for dir in dirs.flatten() {
+        match std::fs::remove_dir_all(dir.path().join("blobs")) {
+            Err(error) if error.kind() != ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 impl Snapshot {
     /// What changed from `earlier` to this snapshot, in path order: files
-    /// created, modified and deleted, with the hashes of their bytes before
-    /// and after. A git snapshot also gives each change's diff and line
-    /// counts; a scan, which keeps no content, gives a modified file's
-    /// hashes only.
+    /// created, modified and deleted, with the [`FileState`] of each side.
+    /// A snapshot that kept content also gives each change's diff and line
+    /// counts; a scan that kept none gives a modified file's states only.
     ///
     /// # Errors
     ///
@@ -128,7 +185,9 @@ impl Snapshot {
             (Taken::Git { tree: before, .. }, Taken::Git { git, tree }) => {
                 git.changes(before, tree)
             }
-            (Taken::Scan(before), Taken::Scan(after)) => Ok(scan_changes(before, after)),
+            (Taken::Scan { files: before, .. }, Taken::Scan { files, blobs }) => {
+                Ok(scan_changes(before, files, blobs.as_deref()))
+            }
             _ => Err(io::Error::new(
                 ErrorKind::InvalidInput,
                 "the two snapshots were taken different ways",
@@ -137,24 +196,45 @@ impl Snapshot {
     }
 
     /// The bytes the file `path` held when this snapshot was taken, when it
-    /// kept them (a git snapshot); `None` for a scan.
+    /// kept content ([`Taking::keep`]); `None` for a scan that kept none.
     pub fn content(&self, path: &Path) -> Option<io::Result<Vec<u8>>> {
         match &self.0 {
             Taken::Git { git, tree } => Some(git.content(tree, path)),
-            Taken::Scan(_) => None,
+            Taken::Scan { files, blobs } => {
+                let blobs = blobs.as_deref()?;
+                Some(match files.get(path).map(|seen| &seen.hash) {
+                    Some(Some(hash)) => std::fs::read(blobs.join(&hash.0)),
+                    Some(None) => Err(io::Error::new(
+                        ErrorKind::FileTooLarge,
+                        "the file was too large to keep",
+                    )),
+                    None => Err(ErrorKind::NotFound.into()),
+                })
+            }
         }
     }
 }
 
-/// The files under `root` with what a scan sees of them, reusing
-/// `earlier`'s hash of a file whose size and change time are the same.
+/// The files under `root`, and every file under each of `also`, with what
+/// a scan sees of them, reusing `earlier`'s hash of a file whose size and
+/// change time are the same; with `blobs`, the content of each file it
+/// read is kept there, by hash.
 fn scan(
     workspace: &dyn Workspace,
     root: &Path,
+    also: &[PathBuf],
     earlier: Option<&BTreeMap<PathBuf, Seen>>,
+    blobs: Option<&Path>,
 ) -> io::Result<BTreeMap<PathBuf, Seen>> {
+    if let Some(blobs) = blobs {
+        std::fs::create_dir_all(blobs)?;
+    }
+    let mut listed = workspace.files(root, None, false)?;
+    for path in also {
+        listed.extend(workspace.files(path, None, true).unwrap_or_default());
+    }
     let mut seen = BTreeMap::new();
-    for path in workspace.files(root, None, false)? {
+    for path in listed {
         let Ok(Stat::File { size, modified, .. }) = workspace.stat(&path) else {
             continue;
         };
@@ -168,10 +248,17 @@ fn scan(
                     .then(|| workspace.read(&path, MAX_FILE_BYTES).ok())
                     .flatten()
                     .map(|contents| contents.bytes);
+                let hash = bytes.as_deref().map(content_hash);
+                if let (Some(blobs), Some(bytes), Some(hash)) = (blobs, &bytes, &hash) {
+                    let blob = blobs.join(&hash.0);
+                    if !blob.exists() {
+                        crate::fs::write_atomic(&blob, bytes).ok();
+                    }
+                }
                 Seen {
                     size,
                     modified,
-                    hash: bytes.as_deref().map(content_hash),
+                    hash,
                     lines: bytes.map_or(0, |bytes| String::from_utf8_lossy(&bytes).lines().count()),
                 }
             }
@@ -181,10 +268,12 @@ fn scan(
     Ok(seen)
 }
 
-/// What changed from the scan `before` to the scan `after`.
+/// What changed from the scan `before` to the scan `after`; with `blobs`,
+/// where both kept their content, each change with its diff.
 fn scan_changes(
     before: &BTreeMap<PathBuf, Seen>,
     after: &BTreeMap<PathBuf, Seen>,
+    blobs: Option<&Path>,
 ) -> Vec<FileChange> {
     let paths: BTreeSet<&PathBuf> = before.keys().chain(after.keys()).collect();
     paths
@@ -192,15 +281,31 @@ fn scan_changes(
         .filter_map(|path| {
             let shown = path.to_string_lossy();
             let (was, now) = (before.get(path), after.get(path));
-            let mut change = match (was, now) {
-                (None, Some(now)) => FileChange::created(shown, now.lines),
-                (Some(was), None) => FileChange::deleted(shown, was.lines),
+            match (was, now) {
                 (Some(was), Some(now)) if was.hash.is_some() && was.hash == now.hash => {
                     return None;
                 }
                 (Some(was), Some(now)) if was.hash.is_none() && was == now => return None,
-                (Some(_), Some(_)) => FileChange::modified(shown, 0, 0),
                 (None, None) => return None,
+                _ => {}
+            }
+            let kept = |seen: Option<&Seen>| match (blobs, seen) {
+                (_, None) => Some(None),
+                (
+                    Some(blobs),
+                    Some(Seen {
+                        hash: Some(hash), ..
+                    }),
+                ) => std::fs::read(blobs.join(&hash.0)).ok().map(Some),
+                _ => None,
+            };
+            if let (Some(was_bytes), Some(now_bytes)) = (kept(was), kept(now)) {
+                return Some(change(&shown, was_bytes.as_deref(), now_bytes.as_deref()));
+            }
+            let mut change = match (was, now) {
+                (None, Some(now)) => FileChange::created(shown, now.lines),
+                (Some(was), None) => FileChange::deleted(shown, was.lines),
+                _ => FileChange::modified(shown, 0, 0),
             };
             change.before = was.map(Seen::state);
             change.after = now.map(Seen::state);
@@ -256,10 +361,7 @@ impl Git {
         let top = PathBuf::from(top);
         let canonical = std::fs::canonicalize(root).ok()?;
         let below = canonical.strip_prefix(&top).ok()?.to_path_buf();
-        let name = content_hash(top.as_os_str().as_encoded_bytes()).0;
-        let keep = keep
-            .join("checkpoints")
-            .join(name.get(..16).unwrap_or(&name));
+        let keep = private(keep, &top);
         Some(Self {
             objects: canonical.join(objects),
             root: root.to_path_buf(),
@@ -310,8 +412,9 @@ impl Git {
         }
     }
 
-    /// Adds the root's files to the private index and writes its tree.
-    fn write_tree(&self) -> io::Result<String> {
+    /// Adds the root's files, and every file under each of `also` that is
+    /// there, to the private index and writes its tree.
+    fn write_tree(&self, also: &[PathBuf]) -> io::Result<String> {
         std::fs::create_dir_all(self.keep.join("objects"))?;
         let below = match self.below.as_os_str().is_empty() {
             true => OsStr::new("."),
@@ -319,6 +422,16 @@ impl Git {
         };
         let add = ["add", "--all", "--ignore-errors", "--"].map(OsStr::new);
         self.run(&[add.as_slice(), &[below]].concat())?;
+        let also: Vec<PathBuf> = also
+            .iter()
+            .filter(|path| path.exists())
+            .filter_map(|path| Some(self.below.join(path.strip_prefix(&self.root).ok()?)))
+            .collect();
+        if !also.is_empty() {
+            let force = ["add", "--all", "--force", "--ignore-errors", "--"].map(OsStr::new);
+            let also = also.iter().map(|path| path.as_os_str());
+            self.run(&force.into_iter().chain(also).collect::<Vec<_>>())?;
+        }
         let tree = self.run(&[OsStr::new("write-tree")])?;
         Ok(String::from_utf8_lossy(&tree).trim().to_owned())
     }
@@ -430,9 +543,8 @@ pub struct Checkpointed {
     pub workspace: Arc<dyn Workspace>,
     /// The directory whose files are compared.
     pub root: PathBuf,
-    /// A directory on this machine for a git snapshot's private index and
-    /// objects; `None` always scans.
-    pub keep: Option<PathBuf>,
+    /// How each snapshot is taken.
+    pub taking: Taking,
     /// The snapshot after the last call, if it still holds.
     pub last: Arc<Mutex<Option<Snapshot>>>,
     /// The snapshot before the first call, once one was taken.
@@ -442,10 +554,13 @@ pub struct Checkpointed {
 impl Checkpointed {
     /// A snapshot now, against `earlier`, off this thread.
     async fn take(&self, earlier: Option<Snapshot>) -> Option<(Option<Snapshot>, Snapshot)> {
-        let (workspace, root, keep) =
-            (self.workspace.clone(), self.root.clone(), self.keep.clone());
+        let (workspace, root, taking) = (
+            self.workspace.clone(),
+            self.root.clone(),
+            self.taking.clone(),
+        );
         blocking(move || {
-            let now = snapshot(&*workspace, &root, keep.as_deref(), earlier.as_ref())
+            let now = snapshot(&*workspace, &root, &taking, earlier.as_ref())
                 .map_err(|error| rig_core::tool::ToolExecutionError::other(error.to_string()))?;
             Ok((earlier, now))
         })

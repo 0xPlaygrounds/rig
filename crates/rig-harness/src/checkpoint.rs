@@ -43,7 +43,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use bevy_app::{App, Plugin};
+use bevy_app::{App, Plugin, Startup};
 use bevy_ecs::prelude::*;
 use rig_core::serve::ErasedHandler;
 use rig_core::tool::{Scope, Touches};
@@ -52,7 +52,7 @@ use rig_ecs::prelude::{
     AgentPass, CallHandler, CallOf, Footprint, ForAgent, GateSystems, Settled, Stage, ToolCalls,
     ToolRequest, Undecided,
 };
-use rig_tools::checkpoint::{Checkpointed, Snapshot};
+use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
 
 use crate::host::session::Scratch;
@@ -138,7 +138,18 @@ impl Plugin for CheckpointPlugin {
                     .before(Stage::Start)
                     .run_if(|checkpoints: Res<Checkpoints>| checkpoints.enabled),
             )
+            .add_systems(Startup, forget_kept)
             .add_observer(forget_last);
+    }
+}
+
+/// Removes the content earlier runs' scans kept in the session scratch,
+/// before any call is checkpointed: no snapshot outlives its run.
+fn forget_kept(scratch: Option<Res<Scratch>>) {
+    if let Some(dir) = scratch.as_ref().and_then(|scratch| scratch.0.as_deref())
+        && let Err(error) = rig_tools::checkpoint::forget_kept(dir)
+    {
+        bevy_log::warn!("could not remove the content earlier checkpoints kept: {error}");
     }
 }
 
@@ -191,7 +202,10 @@ fn checkpoint(
             inner: handler.0.0.clone(),
             workspace: workspace.0.clone(),
             root,
-            keep: scratch.as_ref().and_then(|scratch| scratch.0.clone()),
+            taking: Taking {
+                keep: scratch.as_ref().and_then(|scratch| scratch.0.clone()),
+                also: Vec::new(),
+            },
             last: shared.last,
             first: shared.first,
         };

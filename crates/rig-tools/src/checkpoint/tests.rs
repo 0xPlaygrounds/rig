@@ -7,7 +7,7 @@ use rig_core::serve::adapters::ToolAdapter;
 use rig_core::serve::{ErasedHandler, serve_inline_with};
 use rig_core::tool::{ChangeKind, FilesChanged, PublishedContext, content_hash};
 
-use super::{Checkpointed, snapshot};
+use super::{Checkpointed, Taking, forget_kept, snapshot};
 use crate::Shell;
 use crate::process::Launcher;
 use crate::workspace::{Local, Workspace};
@@ -75,11 +75,15 @@ fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
     assert!(git(&["add", "a.txt"]) && git(&["commit", "-qm", "first"]));
     let objects = tree(&repo.join(".git"));
 
-    let first = snapshot(&Local, &repo, Some(&keep), None);
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        also: Vec::new(),
+    };
+    let first = snapshot(&Local, &repo, &taking, None);
     assert!(first.is_ok(), "{first:?}");
     let Ok(first) = first else { return };
     std::fs::write(repo.join("a.txt"), "one\ntwo\n").ok();
-    let second = snapshot(&Local, &repo, Some(&keep), Some(&first));
+    let second = snapshot(&Local, &repo, &taking, Some(&first));
     let changes = second.and_then(|second| second.changes_since(&first));
     let changes: Vec<_> = changes
         .unwrap_or_default()
@@ -134,7 +138,7 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
         inner: ErasedHandler::new(ToolAdapter::new(shell)),
         workspace,
         root: dir.clone(),
-        keep: None,
+        taking: Taking::default(),
         last: last.clone(),
         first: first.clone(),
     });
@@ -197,11 +201,15 @@ fn a_git_snapshot_names_files_under_the_root_as_given() {
     assert!(git_in(&repo, &["init", "-q"]));
     assert!(std::os::unix::fs::symlink(repo.join("src"), &link).is_ok());
 
-    let first = snapshot(&Local, &link, Some(&keep), None);
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        also: Vec::new(),
+    };
+    let first = snapshot(&Local, &link, &taking, None);
     assert!(first.is_ok(), "{first:?}");
     let Ok(first) = first else { return };
     std::fs::write(link.join("a.txt"), "two\n").ok();
-    let second = snapshot(&Local, &link, Some(&keep), Some(&first));
+    let second = snapshot(&Local, &link, &taking, Some(&first));
     let changes = second.and_then(|second| second.changes_since(&first));
     let paths: Vec<_> = changes
         .unwrap_or_default()
@@ -216,4 +224,75 @@ fn a_git_snapshot_names_files_under_the_root_as_given() {
     std::fs::remove_dir_all(repo).ok();
     std::fs::remove_dir_all(keep).ok();
     link.parent().map(std::fs::remove_dir_all);
+}
+
+/// Outside git, a snapshot taken with somewhere to keep content reads a
+/// file back as it was, and diffs it against a later one; once the kept
+/// content is forgotten, it cannot.
+#[test]
+fn a_scan_keeps_content_when_it_may() {
+    let dir = scratch("checkpoint-scan-kept");
+    let keep = scratch("checkpoint-scan-keep");
+    std::fs::write(dir.join("a.txt"), "one\n").ok();
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        also: Vec::new(),
+    };
+    let first = snapshot(&Local, &dir, &taking, None);
+    assert!(first.is_ok(), "{first:?}");
+    let Ok(first) = first else { return };
+    std::fs::write(dir.join("a.txt"), "one\ntwo\n").ok();
+    let second = snapshot(&Local, &dir, &taking, Some(&first));
+    let changes = second.and_then(|second| second.changes_since(&first));
+    let diffs: Vec<_> = changes
+        .unwrap_or_default()
+        .into_iter()
+        .map(|change| (change.kind, change.added, change.diff.is_some()))
+        .collect();
+    assert_eq!(diffs, [(ChangeKind::Modified, 1, true)]);
+    let a = dir.join("a.txt");
+    assert_eq!(
+        first.content(&a).and_then(Result::ok),
+        Some(b"one\n".to_vec())
+    );
+    assert!(forget_kept(&keep).is_ok());
+    assert!(first.content(&a).is_some_and(|read| read.is_err()));
+    let unkept = snapshot(&Local, &dir, &Taking::default(), None);
+    assert!(unkept.is_ok_and(|unkept| unkept.content(&a).is_none()));
+    std::fs::remove_dir_all(dir).ok();
+    std::fs::remove_dir_all(keep).ok();
+}
+
+/// A path named in `also` counts although `.gitignore` leaves it out: a
+/// file created there is a change, and is none without it.
+#[test]
+fn a_git_snapshot_counts_ignored_paths_it_is_told_to() {
+    let repo = scratch("checkpoint-also");
+    let keep = scratch("checkpoint-also-keep");
+    std::fs::write(repo.join(".gitignore"), "dist/\n").ok();
+    std::fs::create_dir_all(repo.join("dist")).ok();
+    assert!(git_in(&repo, &["init", "-q"]));
+    let created = |also: Vec<PathBuf>, name: &str| {
+        let taking = Taking {
+            keep: Some(keep.join(name)),
+            also,
+        };
+        let first = snapshot(&Local, &repo, &taking, None).ok()?;
+        std::fs::write(repo.join("dist").join(name), "built\n").ok()?;
+        let second = snapshot(&Local, &repo, &taking, Some(&first)).ok()?;
+        let changes = second.changes_since(&first).ok()?;
+        Some(
+            changes
+                .into_iter()
+                .map(|change| change.kind)
+                .collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(created(Vec::new(), "plain.js"), Some(Vec::new()));
+    assert_eq!(
+        created(vec![PathBuf::from("dist")], "also.js"),
+        Some(vec![ChangeKind::Created])
+    );
+    std::fs::remove_dir_all(repo).ok();
+    std::fs::remove_dir_all(keep).ok();
 }
