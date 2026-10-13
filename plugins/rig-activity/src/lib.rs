@@ -144,8 +144,9 @@ pub struct FedMessage {
     pub to: Entity,
     /// The agent it came from, when an agent sent it.
     pub from: Option<Entity>,
-    /// Where it came from.
-    pub origin: Origin,
+    /// Who wrote it.
+    #[reflect(ignore)]
+    pub author: Author,
     /// Its first [`FEED_CHARS`] characters.
     pub text: String,
 }
@@ -161,7 +162,7 @@ fn feed_deliveries(
     let Ok((message, &ForAgent(to))) = messages.get(accepted.entity) else {
         return;
     };
-    let from = message.origin.from.as_ref().and_then(|from| {
+    let from = message.author.from.as_ref().and_then(|from| {
         agents
             .iter()
             .find_map(|(entity, id)| (id.0 == *from).then_some(entity))
@@ -172,7 +173,7 @@ fn feed_deliveries(
     feed.entries.push_back(FedMessage {
         to,
         from,
-        origin: message.origin.clone(),
+        author: message.author.clone(),
         text: message.text.chars().take(FEED_CHARS).collect(),
     });
 }
