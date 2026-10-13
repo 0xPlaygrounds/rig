@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_core::tool::ToolOutput;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_in, app_on, calls, collect, commit_message, connect, first_agent,
     log_ended, reply, run_until, scratch_home, scripted_models,

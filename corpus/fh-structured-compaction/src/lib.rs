@@ -21,7 +21,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use rig_compaction::{
-    Compaction, CompactionPlugin, Summarized, Summarizing, Until, plan, summary_origin,
+    Compaction, CompactionPlugin, Summarized, Summarizing, plan, summarized_prefix,
 };
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
@@ -229,12 +229,10 @@ fn structure(
     for (call, mut model, mut summarizing, &ForAgent(agent), structured) in &mut calls {
         match structured {
             None => {
-                let cut = match summarizing.until {
-                    Until::Before(kept) => agents.get(agent).ok().and_then(|(conversation, ..)| {
-                        Some((conversation, conversation.index_of(kept)?))
-                    }),
-                    Until::All => None,
-                };
+                let cut = summarizing.upto.and_then(|kept| {
+                    let (conversation, ..) = agents.get(agent).ok()?;
+                    Some((conversation, conversation.index_of(kept)?))
+                });
                 let count = config.keep_user_messages.saturating_sub(1);
                 let verbatim = cut.map(|(conversation, cut)| last_typed(conversation, cut, count));
                 let verbatim = verbatim.unwrap_or_default();
@@ -311,11 +309,11 @@ fn check(
 
 /// Once rig-compaction put an accepted structured summary in the
 /// conversation (it inserts [`Summarized`] after its splice), puts the
-/// user's kept messages right after it, as they were typed.
+/// user's kept messages right after it, each its own message, as they were
+/// typed.
 fn keep_verbatim(
     summarized: On<Insert<Summarized>>,
     mut agents: Query<(&mut Conversation, &KeepVerbatim)>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     let agent = summarized.entity;
@@ -324,32 +322,15 @@ fn keep_verbatim(
     };
     let texts = texts.clone();
     commands.entity(agent).remove::<KeepVerbatim>();
-    let summary = summary_origin();
-    let found = (0..conversation.messages().len()).find_map(|at| {
-        let entry = conversation.entry(at)?;
-        let &(item, _) = entry
-            .origins
-            .iter()
-            .find(|(_, origin)| *origin == summary)?;
-        Some((at, item + 1, entry))
-    });
-    let Some((at, after, mut entry)) = found else {
-        return;
-    };
-    let Message::User { content } = &mut entry.message else {
-        return;
-    };
-    if after > content.len() {
+    let after = summarized_prefix(&conversation);
+    if after == 0 {
         return;
     }
-    let added = texts.len();
-    content.splice(after..after, texts.into_iter().map(UserContent::text));
-    for (item, _) in &mut entry.origins {
-        if *item >= after {
-            *item += added;
-        }
-    }
-    commit.splice(agent, &mut conversation, at..=at, [entry]);
+    let kept = texts
+        .into_iter()
+        .map(|text| Entry::new(Message::user(text)));
+    let by = Author::plugin("fh-structured-compaction");
+    conversation.splice(after..after, kept, by);
 }
 
 #[cfg(feature = "tui")]
