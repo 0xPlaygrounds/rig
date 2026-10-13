@@ -291,8 +291,9 @@ fn an_unavailable_handler_answers_every_effect_with_its_reason() {
 }
 
 /// A model's handler says which options of a completion its model would
-/// leave out, through every wrapper a host puts around it, and sends
-/// nothing to say so; a tool call has nothing to leave out.
+/// leave out, through every wrapper a host puts around it (layers, stream
+/// maps, sharing, erasing again), and sends nothing to say so; a tool call
+/// has nothing to leave out.
 #[test]
 fn a_model_handler_names_what_its_model_leaves_out() {
     struct Pass;
@@ -327,6 +328,8 @@ fn a_model_handler_names_what_its_model_leaves_out() {
     ))
     .layered(Pass)
     .map_stream("same", |_| |relayed| vec![relayed]);
+    // Shared and erased again, as a host registers one handler twice.
+    let handler = ErasedHandler::new(Arc::new(ErasedHandler::new(handler)));
     let kind = EffectKind::Completion {
         request: crate::completion::CompletionRequest::new("hi")
             .temperature(0.2)
