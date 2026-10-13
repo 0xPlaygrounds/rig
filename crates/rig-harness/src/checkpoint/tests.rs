@@ -2,31 +2,45 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use rig_core::test_utils::MockCompletionModel;
-use rig_core::tool::{ChangeKind, FilesChanged};
+use rig_core::tool::{ChangeKind, FileChange, FilesChanged};
 use rig_harness_test_support::{MemoryStore, app_on, calls, connect, reply, run_until};
+use rig_tools::checkpoint::{Taking, snapshot};
 use rig_tools::process::Launcher;
+use rig_tools::workspace::Local;
 use rig_tools::{Shell, Write};
 
-use super::CheckpointPlugin;
+use super::{CallCheckpoint, CheckpointPlugin};
 use crate::per_call::AppPerCallExt;
 use crate::prelude::*;
 
-/// The files each settled call reported changed, by call id.
+/// The files each settled call reported changed, and those changed since
+/// its own checkpoint's "before" when it settled, by call id.
 #[derive(Resource, Default)]
-struct Changed(HashMap<String, Vec<(String, ChangeKind)>>);
+struct Changed {
+    reported: HashMap<String, Vec<(String, ChangeKind)>>,
+    since_before: HashMap<String, Vec<(String, ChangeKind)>>,
+}
 
 fn note_changes(
     settled: On<Add<Settled>>,
-    calls: Query<(&ToolRequest, Option<&Published>)>,
+    calls: Query<(&ToolRequest, Option<&Published>, Option<&CallCheckpoint>)>,
     mut changed: ResMut<Changed>,
+    root: Res<ProjectRoot>,
 ) {
-    let Ok((request, published)) = calls.get(settled.entity) else {
+    let Ok((request, published, checkpoint)) = calls.get(settled.entity) else {
         return;
     };
+    let named = |changes: Vec<FileChange>| changes.into_iter().map(|it| (it.path, it.kind));
+    let id = request.call.id.to_string();
+    if let Some(before) = checkpoint.and_then(CallCheckpoint::before) {
+        let now = snapshot(&Local, &root.0, &Taking::default(), None);
+        let since = now.and_then(|now| now.changes_since(&before));
+        let since = named(since.unwrap_or_default()).collect();
+        changed.since_before.insert(id.clone(), since);
+    }
     let changes = published.and_then(|published| published.0.get::<FilesChanged>().ok().flatten());
-    let changes = changes.map(|it| it.0).unwrap_or_default();
-    let changes = changes.into_iter().map(|it| (it.path, it.kind)).collect();
-    changed.0.insert(request.call.id.to_string(), changes);
+    let changes = named(changes.map(|it| it.0).unwrap_or_default()).collect();
+    changed.reported.insert(id, changes);
 }
 
 /// A directory of the test's own beside its binary, emptied.
@@ -54,7 +68,8 @@ fn user_saves(settled: On<Add<Settled>>, calls: Query<&ToolRequest>, dir: Res<Us
 
 /// In one turn, each `shell` call reports the files it made, and neither
 /// the file a `write` call made between them, which reports its own, nor
-/// one the user saved between them: each call takes its own "before".
+/// one the user saved between them: each call takes its own "before", and
+/// keeps it on the call for a plugin to compare with.
 #[test]
 fn each_shell_call_of_a_turn_reports_what_it_changed() {
     let dir = scratch("checkpoint-turn");
@@ -112,15 +127,21 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
     let agent = world.spawn((Agent, connection)).id();
     world.trigger(Deliver::new(agent, "make files", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
-        world.resource::<Changed>().0.contains_key("s3")
+        world.resource::<Changed>().reported.contains_key("s3")
     });
-    let changed = &app.world().resource::<Changed>().0;
+    let Changed {
+        reported: changed,
+        since_before,
+    } = app.world().resource::<Changed>();
     let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
     let created = |name: &str| vec![(path(name), ChangeKind::Created)];
     assert_eq!(changed.get("s1"), Some(&created("a.txt")), "{changed:?}");
     assert_eq!(changed.get("w1"), Some(&created("b.txt")), "{changed:?}");
     assert_eq!(changed.get("s2"), Some(&created("c.txt")), "{changed:?}");
     assert_eq!(changed.get("s3"), Some(&created("d.txt")), "{changed:?}");
+    assert_eq!(since_before.get("s2"), Some(&created("c.txt")));
+    assert_eq!(since_before.get("s3"), Some(&created("d.txt")));
+    assert_eq!(since_before.get("w1"), None, "a write is not checkpointed");
     std::fs::remove_dir_all(&dir).ok();
 }
 

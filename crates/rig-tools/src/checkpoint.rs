@@ -591,9 +591,12 @@ fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange
 /// index stays warm, but never takes it as its "before". `first`, shared
 /// the same way, keeps the first "before" taken, the files as they were
 /// before the first of those calls, so the host can tell what all of them
-/// changed or restore a file. Snapshots run on a thread of their own; one
-/// that fails is logged, and the call publishes nothing. A call that
-/// streams its answer is served as it is, with nothing published.
+/// changed or restore a file. `before`, this call's own, keeps the
+/// snapshot taken just before it ran, so the host can tell what it alone
+/// changed later on or read a file as it found it. Snapshots run on a
+/// thread of their own; one that fails is logged, and the call publishes
+/// nothing. A call that streams its answer is served as it is, with
+/// nothing published.
 #[derive(Clone, Debug)]
 pub struct Checkpointed {
     /// The handler that serves the call.
@@ -609,6 +612,8 @@ pub struct Checkpointed {
     pub newest: Arc<Mutex<Option<Snapshot>>>,
     /// The snapshot before the first call, once one was taken.
     pub first: Arc<Mutex<Option<Snapshot>>>,
+    /// The snapshot taken just before this call ran, once taken.
+    pub before: Arc<Mutex<Option<Snapshot>>>,
 }
 
 impl Checkpointed {
@@ -654,6 +659,7 @@ impl Serve for Checkpointed {
                 .unwrap_or_else(PoisonError::into_inner)
                 .get_or_insert_with(|| before.clone());
             *self.newest.lock().unwrap_or_else(PoisonError::into_inner) = Some(before.clone());
+            *self.before.lock().unwrap_or_else(PoisonError::into_inner) = Some(before.clone());
         }
         let reply = self.inner.handle(kind, dispatch).await;
         if !matches!(reply, Reply::Outcome(_)) {

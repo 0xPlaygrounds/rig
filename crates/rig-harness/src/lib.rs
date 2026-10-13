@@ -133,7 +133,9 @@ pub mod prelude {
 
     pub use crate::agent_title::AgentTitle;
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
-    pub use crate::checkpoint::{CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint};
+    pub use crate::checkpoint::{
+        CallCheckpoint, CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint,
+    };
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,

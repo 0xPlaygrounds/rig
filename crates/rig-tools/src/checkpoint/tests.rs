@@ -147,6 +147,7 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
     let workspace: Arc<dyn Workspace> = Arc::new(Local);
     let newest = Arc::new(Mutex::new(None));
     let first = Arc::new(Mutex::new(None));
+    let before = Arc::new(Mutex::new(None));
     let handler = ErasedHandler::new(Checkpointed {
         inner: ErasedHandler::new(ToolAdapter::new(shell)),
         workspace,
@@ -154,6 +155,7 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
         taking: Taking::default(),
         newest: newest.clone(),
         first: first.clone(),
+        before: before.clone(),
     });
     let published = PublishedContext::new();
     let kind = EffectKind::ToolCall {
@@ -217,13 +219,15 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
             ),
         ]
     );
-    // The first "before" is kept, and against the last "after" it shows
-    // the call's three changes.
+    // The call's own "before" and the first one are kept, and against the
+    // last "after" each shows the call's three changes.
     let kept = |snapshot: &Mutex<Option<_>>| snapshot.lock().ok().and_then(|it| it.clone());
-    let since = kept(&newest)
-        .zip(kept(&first))
-        .and_then(|(last, first)| last.changes_since(&first).ok());
-    assert_eq!(since.map(|changes| changes.len()), Some(3));
+    for before in [&first, &before] {
+        let since = kept(&newest)
+            .zip(kept(before))
+            .and_then(|(last, before)| last.changes_since(&before).ok());
+        assert_eq!(since.map(|changes| changes.len()), Some(3));
+    }
     std::fs::remove_dir_all(dir).ok();
 }
 
