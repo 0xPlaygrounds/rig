@@ -110,7 +110,7 @@ fn prune(home: &Home, words: &[&str]) -> (Option<ExitReason>, PruneReport) {
 fn history(home: &Home, id: &SessionId) -> Vec<Message> {
     let saved = SessionStores::default()
         .open(&home.session(id))
-        .and_then(|store| read_session(&*store))
+        .and_then(|store| Session::read(&*store))
         .unwrap_or_default();
     let main = saved
         .agents

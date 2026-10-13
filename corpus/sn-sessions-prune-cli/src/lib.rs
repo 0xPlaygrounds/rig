@@ -315,8 +315,8 @@ fn found(home: &Home, stores: &SessionStores, current: Option<&Path>) -> Vec<Fou
                 return None;
             }
             let store = stores.open(&dir).ok();
-            let meta = store.as_deref().and_then(Meta::of);
-            let parent = store.as_deref().and_then(ForkedFrom::of);
+            let meta = store.as_deref().and_then(|store| Meta::of(store));
+            let parent = store.as_deref().and_then(|store| ForkedFrom::of(store));
             let updated = match &meta {
                 Some(meta) => meta.updated,
                 None => millis(fs::metadata(dir.path()).ok()?.modified().ok()?),
@@ -516,22 +516,12 @@ fn delete(home: &Home, stores: &SessionStores, id: &str) -> Result<(), String> {
     let store = stores.open(&dir).ok();
     let doomed = home.sessions().join(format!("{DELETING}{id}"));
     fs::rename(dir.path(), &doomed).map_err(|failure| failure.to_string())?;
+    // What the store keeps outside the directory goes too; a store in the
+    // directory finds nothing there any more.
     if let Some(store) = store {
-        empty(&*store);
+        store.destroy().ok();
     }
     fs::remove_dir_all(&doomed).map_err(|failure| failure.to_string())
-}
-
-/// Removes what the store of a renamed session keeps outside its
-/// directory: its logs and files. A store in the directory finds nothing
-/// there any more.
-fn empty(store: &dyn JournalStore) {
-    for agent in store.agents().unwrap_or_default() {
-        store.remove(&agent).ok();
-    }
-    for file in store.files().unwrap_or_default() {
-        store.remove_file(&file).ok();
-    }
 }
 
 /// Removes what an interrupted prune left.

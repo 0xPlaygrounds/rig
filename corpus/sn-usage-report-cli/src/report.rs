@@ -6,8 +6,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use rig_cassette::effect_log::{EffectLog, jsonl};
-use rig_cassette::journal::EFFECT_LOG;
+use rig_cassette::effect_log::EffectLog;
+use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_core::catalog::Catalog;
 use rig_core::completion::Usage;
 use rig_core::effect::{Disposition, EffectKind, EffectRecord, FamilyDescriptor, Outcome};
@@ -115,7 +115,7 @@ impl Report {
                 Ok(None) => continue,
                 Err(why) => {
                     warnings.push(format!(
-                        "skipped session {id}: its {EFFECT_LOG} cannot be read: {why}"
+                        "skipped session {id}: its {SESSION_EFFECT_LOG} cannot be read: {why}"
                     ));
                     continue;
                 }
@@ -297,8 +297,8 @@ fn saved_sessions(home: &Home) -> Vec<(SessionId, SessionDir)> {
 /// The session's effect log, or `None` when it has none. A line being
 /// written as it is read, by a session that is open, is left for later.
 fn read_log(stores: &SessionStores, dir: &SessionDir) -> io::Result<Option<EffectLog>> {
-    let store = stores.open(dir)?;
-    let mut bytes = match store.read_file(EFFECT_LOG) {
+    let store = stores.open(dir).map_err(io::Error::other)?;
+    let mut bytes = match store.read_file(SESSION_EFFECT_LOG) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),
