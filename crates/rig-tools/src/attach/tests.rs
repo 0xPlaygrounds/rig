@@ -50,3 +50,21 @@ fn references_resolve_from_the_base_and_missing_paths_are_reported() {
     assert_eq!(attached.missing, ["missing/x.rs", "gone.rs"]);
     assert!(attached.notes.is_empty(), "{:?}", attached.notes);
 }
+
+/// A file with no extension, such as a `Makefile`, is attached when it is
+/// there; the same word with no file there stays text.
+#[test]
+fn an_extensionless_file_that_is_there_is_attached() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-attach-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("Makefile"), "all:\n").ok();
+    let attached = attachments("run @Makefile, ask @reviewer", &dir, &Local);
+    let labels: Vec<&str> = attached
+        .files
+        .iter()
+        .map(|(label, _)| label.as_str())
+        .collect();
+    assert_eq!(labels, ["Makefile"]);
+    assert!(attached.missing.is_empty(), "{:?}", attached.missing);
+    std::fs::remove_dir_all(dir).ok();
+}

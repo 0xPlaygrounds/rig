@@ -52,13 +52,13 @@ pub struct Attached {
 }
 
 /// The files `text` names with `@path`, each once, resolved from `base` in
-/// `workspace` and read from it. A token is a path reference when it holds a
-/// `/` or ends in a dot and one to four letters or digits (`@notes.md`,
-/// `@src/lib.rs`); one with no file there is [missing](Attached::missing).
-/// Any other `@word`, such as `@alice` or `@alice.smith`, stays text. A
-/// token's trailing punctuation is not part of its path. A leading `~/` is
-/// the user's home on this machine; in another workspace it is not
-/// attached, with a note.
+/// `workspace` and read from it. Every `@` token that names a file there is
+/// attached, whatever its shape (`@notes.md`, `@src/lib.rs`, `@Makefile`,
+/// `@.env`); one with no file there is [missing](Attached::missing) when it
+/// [looks like a path](is_path_reference), and otherwise stays text, such
+/// as `@alice` or `@alice.smith`. A token's trailing punctuation is not
+/// part of its path. A leading `~/` is the user's home on this machine; in
+/// another workspace it is not attached, with a note.
 ///
 /// Reads `workspace`: on a thread that must not wait, call it only for a
 /// local one ([`Workspace::host`] is `None`).
@@ -107,9 +107,12 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
     attached
 }
 
-/// Whether `reference`, an `@` token without its `@`, names a path: it
-/// holds a `/`, or ends in a dot and one to four letters or digits. Any
-/// other `@` token (a mention, an address) is left as text.
+/// Whether `reference`, an `@` token without its `@`, looks like a path by
+/// its shape alone: it holds a `/`, or ends in a dot and one to four
+/// letters or digits. [`attachments`] reports such a token as missing when
+/// no file is there; any other token (a mention, an address, or a file
+/// with no extension) is attached only when its file is there, and is
+/// otherwise left as text.
 ///
 /// ```
 /// use rig_tools::attach::is_path_reference;
