@@ -180,8 +180,7 @@ fn slow_notices(app: &App) -> Vec<String> {
         .collect()
 }
 
-/// The package the test plugins come from. Systems are told apart only by
-/// the package they are in, so each test says one plugin comes from it.
+/// The package the test plugins come from.
 const HERE: &str = "corpus-sn-plugin-profiler";
 
 #[test]
@@ -218,7 +217,8 @@ fn names_the_plugin_that_holds_up_turns() {
     let session = report(&mut app, agent).session;
     let slowpoke = session.get("slowpoke").cloned().unwrap_or_default();
     assert!(slowpoke.held_up_ms >= 1200, "{slowpoke:?}");
-    assert_eq!(slowpoke.calls, 4, "{slowpoke:?}");
+    // Its four holds, and the runs of its own systems.
+    assert!(slowpoke.calls > 4, "{slowpoke:?}");
     let slowest = slowpoke.slowest.unwrap_or(Slowest {
         ms: 0,
         handling: String::new(),

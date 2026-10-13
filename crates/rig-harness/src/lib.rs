@@ -80,7 +80,7 @@ pub mod watch;
 pub mod workspace;
 
 pub use describe::run;
-pub use load::{PluginEntity, PluginSource, ProvidedBy, Provides, load};
+pub use load::{PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, load};
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
 /// that reads it.
@@ -156,11 +156,12 @@ pub mod prelude {
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};
-    pub use crate::timings::SystemTimings;
+    pub use crate::timings::{PluginTimings, SystemTimings};
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
-        HeadlessPlugins, PluginEntity, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
+        HeadlessPlugins, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides,
+        RigHarnessPlugins,
     };
     pub use rig_tools::{Spill, blocking};
 }

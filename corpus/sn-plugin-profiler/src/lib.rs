@@ -13,7 +13,7 @@
 //!   of one (`CallOf`), else as background work.
 //! - **Its systems and observers.** The harness times every system and
 //!   observer run ([`SystemTimings`], with its `trace` feature, which this
-//!   crate turns on), summed per plugin package. A frame's runs hold up the
+//!   crate turns on), summed per plugin ([`PluginTimings`]). A frame's runs hold up the
 //!   user's turn while one runs (the agent loop and the plugins share the
 //!   frame), else they are background work.
 //! - **Interface stalls.** A frame whose work takes over 50 ms kept the
@@ -518,19 +518,27 @@ fn keys_seen(events: Res<rig_tui::TerminalEvents>, mut perf: ResMut<Perf>) {
     }
 }
 
-/// Charges each plugin package's system and observer runs this frame to
-/// its plugin, holding up the user's last turn while it runs, and keeps a
+/// Charges each plugin's system and observer runs this frame to it, holding up the user's last turn while it runs, and keeps a
 /// frame that took too long as a stall, naming the plugin that took most
 /// of it.
 fn frame_ended(
-    timings: Res<SystemTimings>,
-    plugins: Query<(&Name, &PluginSource)>,
+    timings: PluginTimings,
+    plugins: Query<&Name, With<PluginSource>>,
     turns: Query<(&Turn, &TurnOf)>,
     settings: Res<PerfSettings>,
     mut perf: ResMut<Perf>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let now = timings.by_plugin(plugins.iter().map(|(_, source)| source));
+    let mut now = BTreeMap::<String, Timing>::new();
+    for ((plugin, _), timing) in timings.totals() {
+        let Some(name) = plugin.and_then(|plugin| plugins.get(plugin).ok()) else {
+            continue;
+        };
+        let total = now.entry(name.as_str().to_owned()).or_default();
+        total.runs += timing.runs;
+        total.total += timing.total;
+        total.max = total.max.max(timing.max);
+    }
     let before = std::mem::replace(&mut perf.systems, now.clone());
     let turn = perf
         .last_turn
@@ -542,11 +550,9 @@ fn frame_ended(
         None => "a system, between turns".to_owned(),
     };
     let mut most: Option<(Duration, String)> = None;
-    for (package, timing) in &now {
-        let Some(plugin) = plugin_of(package, &plugins) else {
-            continue;
-        };
-        let was = before.get(package).copied().unwrap_or_default();
+    for (plugin, timing) in &now {
+        let plugin = plugin.clone();
+        let was = before.get(&plugin).copied().unwrap_or_default();
         let took = timing.total.saturating_sub(was.total);
         let runs = timing.runs.saturating_sub(was.runs);
         if runs == 0 {
@@ -581,16 +587,6 @@ fn frame_ended(
     if perf.stalls.len() > STALLS_KEPT {
         perf.stalls.remove(0);
     }
-}
-
-/// The plugin a package of [`SystemTimings::by_plugin`] is: its one
-/// plugin's name, else the package; none for a package no plugin comes
-/// from, such as `bevy_ecs` or the harness's own crates.
-fn plugin_of(package: &str, plugins: &Query<(&Name, &PluginSource)>) -> Option<String> {
-    let mut named = plugins.iter().filter(|(_, source)| source.krate == package);
-    let (name, _) = named.next()?;
-    let one = named.next().is_none();
-    Some(if one { name.as_str() } else { package }.to_owned())
 }
 
 #[cfg(all(test, feature = "tui"))]

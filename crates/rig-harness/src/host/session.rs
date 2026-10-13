@@ -48,7 +48,7 @@ use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
 use crate::plugin_data::PluginData;
 use crate::services::{ProjectRoot, RigHome};
-use crate::timings::{SystemTimings, TimeSystems};
+use crate::timings::{self, SystemTimings, TimeSystems};
 use crate::workspace::ProjectWorkspace;
 
 /// The session's directory. Its files are kept through the session's
@@ -290,6 +290,7 @@ impl Plugin for SessionPlugin {
                 Startup,
                 finish_deletes.run_if(not(resource_exists::<Describing>)),
             )
+            .add_systems(First, timings::next_frame)
             // A fork copies what the session logged up to this frame.
             .add_systems(Last, fork_sessions.after(WriteJournal))
             .add_systems(
