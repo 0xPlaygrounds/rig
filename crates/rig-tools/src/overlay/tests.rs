@@ -65,8 +65,8 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
                 change.kind,
                 change.added,
                 change.removed,
-                change.before,
-                change.after,
+                change.before.and_then(|it| it.hash),
+                change.after.and_then(|it| it.hash),
             )
         })
         .collect();
@@ -85,5 +85,39 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
     );
     let files = overlay.files(&dir, Some("*.rs")).unwrap_or_default();
     assert_eq!(files, [dir.join("a.rs"), dir.join("new/b.rs")]);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A previewed change says how large each side of the file is, and a
+/// deletion carries its diff, so a guard need not read the file again.
+#[test]
+fn an_overlay_change_gives_each_side_and_a_deletions_diff() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-overlay-states-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).ok();
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    std::fs::write(dir.join("old.rs"), "a\nb\nc\n").ok();
+    let overlay = Overlay::new(Arc::new(Local));
+    assert!(overlay.remove(&dir.join("old.rs")).is_ok());
+    assert!(overlay.write(&dir.join("new.rs"), b"0123456789").is_ok());
+    let changes = overlay.changes();
+    let kinds: Vec<_> = changes.iter().map(|change| change.kind).collect();
+    assert_eq!(kinds, [ChangeKind::Deleted, ChangeKind::Created]);
+    let deleted = changes.first();
+    let lines = deleted.and_then(|it| it.before.as_ref()?.lines);
+    assert_eq!(lines, Some(3));
+    let diff = deleted
+        .and_then(|it| it.diff.as_deref())
+        .unwrap_or_default();
+    let removed = diff
+        .lines()
+        .filter(|line| line.starts_with('-') && !line.starts_with("---"));
+    assert_eq!(removed.count(), 3);
+    let created = changes.get(1);
+    assert_eq!(
+        created.and_then(|it| Some(it.after.as_ref()?.bytes)),
+        Some(10)
+    );
+    assert!(dir.join("old.rs").exists());
     std::fs::remove_dir_all(dir).ok();
 }

@@ -15,7 +15,7 @@ use rig_core::completion::UnsupportedOption;
 use rig_core::effect::{EffectKind, HandlerDescriptor};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::tool::{
-    ContentHash, FileChange, FilesChanged, PublishedContext, Touches, content_hash,
+    ContentHash, FileChange, FileState, FilesChanged, PublishedContext, Touches, content_hash,
 };
 
 use crate::fs::Previous;
@@ -56,6 +56,17 @@ struct Seen {
     hash: Option<ContentHash>,
     /// Its lines.
     lines: usize,
+}
+
+impl Seen {
+    /// The file as a change's side.
+    fn state(&self) -> FileState {
+        FileState {
+            bytes: self.size,
+            lines: self.hash.is_some().then_some(self.lines),
+            hash: self.hash.clone(),
+        }
+    }
 }
 
 /// Takes a [`Snapshot`] of `root` in `workspace` as it is now.
@@ -180,7 +191,8 @@ fn scan_changes(
         .into_iter()
         .filter_map(|path| {
             let shown = path.to_string_lossy();
-            let change = match (before.get(path), after.get(path)) {
+            let (was, now) = (before.get(path), after.get(path));
+            let mut change = match (was, now) {
                 (None, Some(now)) => FileChange::created(shown, now.lines),
                 (Some(was), None) => FileChange::deleted(shown, was.lines),
                 (Some(was), Some(now)) if was.hash.is_some() && was.hash == now.hash => {
@@ -190,27 +202,11 @@ fn scan_changes(
                 (Some(_), Some(_)) => FileChange::modified(shown, 0, 0),
                 (None, None) => return None,
             };
-            let was = before.get(path).and_then(|was| was.hash.clone());
-            let now = after.get(path).and_then(|now| now.hash.clone());
-            Some(with_hashes(change, was, now))
+            change.before = was.map(Seen::state);
+            change.after = now.map(Seen::state);
+            Some(change)
         })
         .collect()
-}
-
-/// `change` with the hashes of the bytes before and after it, those known.
-fn with_hashes(
-    change: FileChange,
-    before: Option<ContentHash>,
-    after: Option<ContentHash>,
-) -> FileChange {
-    let change = match before {
-        Some(hash) => change.with_before(hash),
-        None => change,
-    };
-    match after {
-        Some(hash) => change.with_after(hash),
-        None => change,
-    }
 }
 
 /// A git work tree, reached with a private index and object directory: the
@@ -378,26 +374,19 @@ impl Git {
 fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange {
     let small =
         |bytes: Option<&[u8]>| bytes.is_none_or(|bytes| bytes.len() as u64 <= MAX_FILE_BYTES);
-    let previous = before.map(|bytes| Previous::of(Some(bytes)));
-    match after {
-        None => {
-            let lines = previous.as_ref().map_or(0, |it| it.text.lines().count());
-            with_hashes(
-                FileChange::deleted(path, lines),
-                before.map(content_hash),
-                None,
-            )
-        }
-        Some(after) if small(before) && small(Some(after)) => {
-            Previous::change(previous.as_ref(), path, &String::from_utf8_lossy(after))
-                .with_after(content_hash(after))
-        }
-        Some(after) => with_hashes(
-            FileChange::modified(path, 0, 0),
-            before.map(content_hash),
-            Some(content_hash(after)),
-        ),
+    if small(before) && small(after) {
+        return Previous::change(before.map(Previous::of).as_ref(), path, after);
     }
+    let (was, now) = (before.map(FileState::of), after.map(FileState::of));
+    let lines = |state: &Option<FileState>| state.as_ref().and_then(|it| it.lines).unwrap_or(0);
+    let mut change = match (&was, &now) {
+        (_, None) => FileChange::deleted(path, lines(&was)),
+        (None, Some(_)) => FileChange::created(path, lines(&now)),
+        (Some(_), Some(_)) => FileChange::modified(path, 0, 0),
+    };
+    change.before = was;
+    change.after = now;
+    change
 }
 
 /// A handler that takes a [`Snapshot`] before and after its inner handler

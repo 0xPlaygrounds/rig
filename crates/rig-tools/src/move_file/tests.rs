@@ -39,7 +39,10 @@ fn a_move_replaces_an_existing_file_only_when_told_to() {
         .map(|changed| changed.0)
         .unwrap_or_default()
         .into_iter()
-        .map(|change| (change.kind, change.added, change.removed, change.after))
+        .map(|change| {
+            let after = change.after.and_then(|it| it.hash);
+            (change.kind, change.added, change.removed, after)
+        })
         .collect();
     assert_eq!(
         changes,

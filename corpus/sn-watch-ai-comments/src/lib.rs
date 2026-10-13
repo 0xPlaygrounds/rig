@@ -432,7 +432,7 @@ fn note_writes(
         return;
     };
     for change in changed.0 {
-        if let Some(after) = change.after {
+        if let Some(after) = change.after.and_then(|it| it.hash) {
             watching.written.insert(PathBuf::from(change.path), after);
         }
     }

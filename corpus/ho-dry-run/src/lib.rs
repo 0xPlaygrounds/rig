@@ -269,7 +269,7 @@ fn written(
     let args = parse::<WriteArgs>(arguments)?;
     let path = place(dir, &args.path)?;
     let before = overlay.current(&path).ok();
-    let diff = file_change(&path, before.as_deref(), &args.content).diff;
+    let diff = file_change(&path, before.as_deref(), Some(&args.content)).diff;
     let change = Change {
         path,
         content: args.content,

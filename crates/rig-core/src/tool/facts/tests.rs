@@ -9,8 +9,12 @@ fn published_facts_read_back_with_a_stable_shape() {
         FileChange::created("new.rs", 4),
         FileChange::modified("lib.rs", 2, 1)
             .with_diff("@@ -1 +1,2 @@\n-a\n+b\n+c\n")
-            .with_before(ContentHash("beef".to_owned()))
-            .with_after(ContentHash("c0ffee".to_owned())),
+            .with_before(FileState {
+                bytes: 2,
+                lines: Some(1),
+                hash: Some(ContentHash("beef".to_owned())),
+            })
+            .with_after(FileState::unread(4)),
         FileChange::deleted("old.rs", 9),
     ]);
     let read = FilesRead(vec![
@@ -58,7 +62,8 @@ fn published_facts_read_back_with_a_stable_shape() {
             "files_changed": [
                 {"path": "new.rs", "kind": "created", "added": 4, "removed": 0},
                 {"path": "lib.rs", "kind": "modified", "added": 2, "removed": 1,
-                 "diff": "@@ -1 +1,2 @@\n-a\n+b\n+c\n", "before": "beef", "after": "c0ffee"},
+                 "diff": "@@ -1 +1,2 @@\n-a\n+b\n+c\n", "before": {"bytes": 2, "lines": 1, "hash": "beef"},
+                 "after": {"bytes": 4}},
                 {"path": "old.rs", "kind": "deleted", "added": 0, "removed": 9},
             ],
         }))

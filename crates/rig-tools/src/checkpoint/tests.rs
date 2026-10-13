@@ -86,8 +86,8 @@ fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
                 change.path,
                 change.kind,
                 change.added,
-                change.before,
-                change.after,
+                change.before.and_then(|it| it.hash),
+                change.after.and_then(|it| it.hash),
                 change.diff.is_some(),
             )
         })
@@ -150,7 +150,13 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
     let changed: Vec<_> = changed
         .0
         .into_iter()
-        .map(|change| (change.path, change.kind, change.before))
+        .map(|change| {
+            (
+                change.path,
+                change.kind,
+                change.before.and_then(|it| it.hash),
+            )
+        })
         .collect();
     let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
     assert_eq!(

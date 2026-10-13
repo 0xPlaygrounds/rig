@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::tool::{ChangeKind, FileChange};
+use rig_harness::rig_core::tool::{ChangeKind, FileChange, FileState};
 use rig_tools::MAX_FILE_BYTES;
 use rig_tools::fs::file_change;
 use rig_tools::process::{Launcher, Spawn};
@@ -273,7 +273,7 @@ fn measure(workspace: &dyn Workspace, launcher: &Launcher, change: FileChange) -
     // A deletion's preview carries no diff: the lines it loses are the file.
     let diff = match change.diff {
         Some(diff) => diff,
-        None if deleted => file_change(&change.path, text.as_deref(), "")
+        None if deleted => file_change(&change.path, text.as_deref(), Some(""))
             .diff
             .unwrap_or_default(),
         None => String::new(),
@@ -301,10 +301,13 @@ fn measure(workspace: &dyn Workspace, launcher: &Launcher, change: FileChange) -
 /// allowed for the session, and a deletion whose content another change
 /// of the call keeps, as a move's source.
 fn at_stake(changes: &[FileChange], allowed: &AllowedFiles) -> Vec<FileChange> {
+    let hash = |state: &Option<FileState>| state.as_ref().and_then(|it| it.hash.clone());
     let moved = |change: &FileChange| {
         change.kind == ChangeKind::Deleted
-            && change.before.is_some()
-            && changes.iter().any(|other| other.after == change.before)
+            && hash(&change.before).is_some()
+            && changes
+                .iter()
+                .any(|other| hash(&other.after) == hash(&change.before))
     };
     changes
         .iter()

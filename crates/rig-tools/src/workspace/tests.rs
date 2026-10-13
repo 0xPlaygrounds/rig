@@ -131,7 +131,11 @@ fn changes(context: &ToolContext) -> Vec<(String, ChangeKind)> {
 /// The content each changed file held before the call, by its hash.
 fn befores(context: &ToolContext) -> Vec<Option<ContentHash>> {
     let changed: FilesChanged = context.result().ok().flatten().unwrap_or_default();
-    changed.0.into_iter().map(|change| change.before).collect()
+    changed
+        .0
+        .into_iter()
+        .map(|change| change.before.and_then(|it| it.hash))
+        .collect()
 }
 
 /// Every file tool acts on its workspace, here files in memory: what one

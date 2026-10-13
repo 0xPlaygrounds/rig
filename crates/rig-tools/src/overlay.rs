@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use ignore::overrides::OverrideBuilder;
 use rig_core::tool::{FileChange, content_hash};
 
-use crate::MAX_FILE_BYTES;
 use crate::fs::Previous;
 use crate::process::{Launcher, Process, Spawn};
 use crate::workspace::{Contents, Stat, Workspace, is_hidden};
@@ -77,42 +76,33 @@ impl Overlay {
 
     /// What the writes kept here would do to the files of the workspace
     /// under it, in the order each file was first touched: created,
-    /// modified (with its diff) or deleted, with the hashes of the bytes
-    /// before and after. A file written back as it was, or created and
-    /// removed again, is no change.
+    /// modified or deleted, with its diff and the [`FileState`] of each
+    /// side (the [`FileState::unread`] size of a file too large to read). A
+    /// file written back as it was, or created and removed again, is no
+    /// change.
+    ///
+    /// [`FileState`]: rig_core::tool::FileState
+    /// [`FileState::unread`]: rig_core::tool::FileState::unread
     pub fn changes(&self) -> Vec<FileChange> {
         let kept = self.kept().clone();
         kept.into_iter()
             .filter_map(|(path, after)| {
-                let shown = path.to_string_lossy();
                 let before = match self.inner.stat(&path) {
-                    Ok(Stat::File { size, .. }) => Some(
-                        (size <= MAX_FILE_BYTES)
-                            .then(|| self.inner.read(&path, MAX_FILE_BYTES).ok())
-                            .flatten()
-                            .map(|contents| contents.bytes),
-                    ),
+                    Ok(Stat::File { .. }) => self.inner.previous(&path),
                     _ => None,
                 };
-                match (before, after) {
+                let unchanged = |before: &Previous, after: &[u8]| {
+                    let hash = before.state.as_ref().and_then(|it| it.hash.as_ref());
+                    hash.is_some_and(|hash| *hash == content_hash(after))
+                };
+                match (&before, &after) {
                     (None, None) => None,
-                    (Some(before), Some(after)) if before.as_deref() == Some(&after) => None,
-                    (before, Some(after)) => {
-                        let previous = before.map(|bytes| Previous::of(bytes.as_deref()));
-                        let text = String::from_utf8_lossy(&after);
-                        Some(
-                            Previous::change(previous.as_ref(), &shown, &text)
-                                .with_after(content_hash(&after)),
-                        )
-                    }
-                    (Some(before), None) => {
-                        let previous = Previous::of(before.as_deref());
-                        let deleted = FileChange::deleted(shown, previous.text.lines().count());
-                        Some(match previous.hash {
-                            Some(hash) => deleted.with_before(hash),
-                            None => deleted,
-                        })
-                    }
+                    (Some(before), Some(after)) if unchanged(before, after) => None,
+                    _ => Some(Previous::change(
+                        before.as_ref(),
+                        &path.to_string_lossy(),
+                        after.as_deref(),
+                    )),
                 }
             })
             .collect()

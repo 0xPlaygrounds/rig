@@ -5,13 +5,13 @@ use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FileChange, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
+    FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::blocking;
-use crate::fs::io_error;
+use crate::fs::{Previous, io_error};
 use crate::workspace::{Local, Stat, Workspace};
 
 /// Deletes a file; a directory is refused. Publishes the file it deleted
@@ -119,11 +119,7 @@ impl Tool for Delete {
             workspace
                 .remove(&resolved)
                 .map_err(|error| io_error(&path, error))?;
-            let deleted = FileChange::deleted(path, previous.text.lines().count());
-            Ok(match previous.hash {
-                Some(hash) => deleted.with_before(hash),
-                None => deleted,
-            })
+            Ok(Previous::change(Some(&previous), &path, None))
         })
         .await?;
         context.insert_result(FilesChanged(vec![change]))?;

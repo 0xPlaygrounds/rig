@@ -3,7 +3,8 @@
 //! ([`FilesChanged`]), how a process it ran ended ([`ExitStatus`]) and
 //! whether its output was cut to fit ([`OutputCut`]). A
 //! file's [`ContentHash`] says which content the tool saw or left, so a
-//! host can tell whether a file changed since without reading it again.
+//! host can tell whether a file changed since without reading it again; a
+//! change's [`FileState`]s also give each side's size and lines.
 //! They are [`ContextValue`]s a tool publishes with
 //! [`ToolContext::insert_result`](super::ToolContext::insert_result), so
 //! they reach the host in the call's [`ToolResultContext`](super::ToolResultContext)
@@ -162,14 +163,59 @@ pub struct FileChange {
     /// The change as a unified diff, when the tool made one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff: Option<String>,
-    /// The hash of the bytes the file held before the change, when the
-    /// tool or a checkpoint around it knows them; `None` for a created file.
+    /// The file before the change, when the tool or a checkpoint around it
+    /// knows it; `None` for a created file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub before: Option<ContentHash>,
-    /// The hash of the bytes the tool left in the file, when it knows them;
-    /// `None` for a deleted file.
+    pub before: Option<FileState>,
+    /// The file the change left, when the tool knows it; `None` for a
+    /// deleted file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub after: Option<ContentHash>,
+    pub after: Option<FileState>,
+}
+
+/// A file on one side of a [`FileChange`]: as it was before the change, or
+/// as the change left it.
+///
+/// ```
+/// use rig_core::tool::{FileState, content_hash};
+///
+/// let state = FileState::of(b"one\ntwo");
+/// assert_eq!((state.bytes, state.lines), (7, Some(2)));
+/// assert_eq!(state.hash, Some(content_hash(b"one\ntwo")));
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FileState {
+    /// Its size in bytes.
+    pub bytes: u64,
+    /// Its lines, as [`str::lines`] counts them, when it was read (not
+    /// when it was too large to read).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<usize>,
+    /// The hash of its bytes, when it was read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<ContentHash>,
+}
+
+impl FileState {
+    /// A file that held `bytes`, read whole.
+    pub fn of(bytes: &[u8]) -> Self {
+        let breaks = bytes.iter().filter(|byte| **byte == b'\n').count();
+        let unended = !bytes.is_empty() && !bytes.ends_with(b"\n");
+        Self {
+            bytes: bytes.len() as u64,
+            lines: Some(breaks + usize::from(unended)),
+            hash: Some(content_hash(bytes)),
+        }
+    }
+
+    /// A file of `bytes` bytes that was not read, such as one too large to.
+    pub fn unread(bytes: u64) -> Self {
+        Self {
+            bytes,
+            lines: None,
+            hash: None,
+        }
+    }
 }
 
 impl FileChange {
@@ -219,16 +265,16 @@ impl FileChange {
         self
     }
 
-    /// This change, made to the content `before` names.
+    /// This change, made to the file `before`.
     #[must_use]
-    pub fn with_before(mut self, before: ContentHash) -> Self {
+    pub fn with_before(mut self, before: FileState) -> Self {
         self.before = Some(before);
         self
     }
 
-    /// This change, leaving the content `after` names.
+    /// This change, leaving the file `after`.
     #[must_use]
-    pub fn with_after(mut self, after: ContentHash) -> Self {
+    pub fn with_after(mut self, after: FileState) -> Self {
         self.after = Some(after);
         self
     }

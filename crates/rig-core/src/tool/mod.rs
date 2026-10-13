@@ -28,8 +28,8 @@ pub use contextual::{
     DynamicTool, ErasedTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name,
 };
 pub use facts::{
-    ChangeKind, ContentHash, ExitStatus, FileChange, FileRead, FilesChanged, FilesRead, KeptEnd,
-    LinesShown, OutputCut, content_hash,
+    ChangeKind, ContentHash, ExitStatus, FileChange, FileRead, FileState, FilesChanged, FilesRead,
+    KeptEnd, LinesShown, OutputCut, content_hash,
 };
 pub use footprint::{Scope, Touches};
 pub use managed::{ManagedToolSink, ManagedToolToken};

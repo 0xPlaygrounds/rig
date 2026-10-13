@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FileChange, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
-    content_hash,
+    FileChange, FileState, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches,
+    args_schema,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -299,9 +299,9 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
     }
     let encoded = file.encode(&edited);
     Ok(Applied {
-        change: file_change(path, Some(text), &edited)
-            .with_before(content_hash(whole.as_bytes()))
-            .with_after(content_hash(encoded.as_bytes())),
+        change: file_change(path, Some(text), Some(&edited))
+            .with_before(FileState::of(whole.as_bytes()))
+            .with_after(FileState::of(encoded.as_bytes())),
         text: encoded,
         replaced: splices.len(),
         notes,

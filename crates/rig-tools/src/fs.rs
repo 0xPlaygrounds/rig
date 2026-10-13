@@ -8,7 +8,7 @@ use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rig_core::tool::{ContentHash, FileChange, ToolExecutionError, content_hash};
+use rig_core::tool::{FileChange, FileState, ToolExecutionError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -213,30 +213,38 @@ fn local() -> &'static dyn Workspace {
     &Local
 }
 
-/// What turning `before` (`None`: there was no file) into `after` did to the
-/// file at `path`: its lines added and removed, counted by a line diff, and
-/// that diff, unified with 3 lines of context: the fact a tool that writes
+/// What turning `before` into `after` did to the file at `path` (`None`:
+/// there was no file before, or there is none after): its lines added and
+/// removed, counted by a line diff, that diff, unified with 3 lines of
+/// context, and the [`FileState`] of each text: the fact a tool that writes
 /// files publishes ([`FilesChanged`](rig_core::tool::FilesChanged)).
 ///
 /// ```
 /// use rig_core::tool::ChangeKind;
 /// use rig_tools::fs::file_change;
 ///
-/// let created = file_change("a.rs", None, "one\ntwo\n");
+/// let created = file_change("a.rs", None, Some("one\ntwo\n"));
 /// assert_eq!((created.kind, created.added, created.removed), (ChangeKind::Created, 2, 0));
-/// let changed = file_change("a.rs", Some("one\ntwo\n"), "one\n2\nthree\n");
+/// let changed = file_change("a.rs", Some("one\ntwo\n"), Some("one\n2\nthree\n"));
 /// assert_eq!((changed.kind, changed.added, changed.removed), (ChangeKind::Modified, 2, 1));
 /// assert_eq!(
 ///     changed.diff.as_deref(),
 ///     Some("--- a.rs\n+++ a.rs\n@@ -1,2 +1,3 @@\n one\n-two\n+2\n+three\n")
 /// );
+/// assert_eq!(changed.before.and_then(|before| before.lines), Some(2));
+/// let deleted = file_change("a.rs", Some("one\n"), None);
+/// assert_eq!((deleted.kind, deleted.removed), (ChangeKind::Deleted, 1));
+/// assert_eq!(deleted.diff.as_deref(), Some("--- a.rs\n+++ /dev/null\n@@ -1 +0,0 @@\n-one\n"));
 /// ```
-pub fn file_change(path: &str, before: Option<&str>, after: &str) -> FileChange {
-    let diff = similar::TextDiff::from_lines(before.unwrap_or_default(), after);
+pub fn file_change(path: &str, before: Option<&str>, after: Option<&str>) -> FileChange {
+    let diff = similar::TextDiff::from_lines(before.unwrap_or_default(), after.unwrap_or_default());
     let unified = diff
         .unified_diff()
         .context_radius(3)
-        .header(before.map_or("/dev/null", |_| path), path)
+        .header(
+            before.map_or("/dev/null", |_| path),
+            after.map_or("/dev/null", |_| path),
+        )
         .to_string();
     let (mut added, mut removed) = (0, 0);
     for change in diff.iter_all_changes() {
@@ -246,39 +254,53 @@ pub fn file_change(path: &str, before: Option<&str>, after: &str) -> FileChange 
             similar::ChangeTag::Equal => {}
         }
     }
-    match before {
-        None => FileChange::created(path, added),
-        Some(_) => FileChange::modified(path, added, removed),
-    }
-    .with_diff(unified)
+    let mut change = match (before, after) {
+        (_, None) => FileChange::deleted(path, removed),
+        (None, Some(_)) => FileChange::created(path, added),
+        (Some(_), Some(_)) => FileChange::modified(path, added, removed),
+    };
+    change.diff = (!unified.is_empty()).then_some(unified);
+    change.before = before.map(|text| FileState::of(text.as_bytes()));
+    change.after = after.map(|text| FileState::of(text.as_bytes()));
+    change
 }
 
 /// What a file held before a tool changed it.
 #[derive(Default)]
 pub(crate) struct Previous {
-    /// Its text, any bytes that are not UTF-8 replaced, to diff.
+    /// Its text, any bytes that are not UTF-8 replaced, to diff; empty when
+    /// it was not read.
     pub(crate) text: String,
-    /// The hash of its bytes, when they were read.
-    pub(crate) hash: Option<ContentHash>,
+    /// The file, when it is a regular file.
+    pub(crate) state: Option<FileState>,
 }
 
 impl Previous {
-    /// A file that held `bytes`, or could not be read.
-    pub(crate) fn of(bytes: Option<&[u8]>) -> Self {
+    /// A file that held `bytes`.
+    pub(crate) fn of(bytes: &[u8]) -> Self {
         Self {
-            text: String::from_utf8_lossy(bytes.unwrap_or_default()).into_owned(),
-            hash: bytes.map(content_hash),
+            text: String::from_utf8_lossy(bytes).into_owned(),
+            state: Some(FileState::of(bytes)),
         }
     }
 
-    /// The change from this content (`None`: no file) to `after`: a
-    /// [`file_change`] that names the content it was made to.
-    pub(crate) fn change(this: Option<&Self>, path: &str, after: &str) -> FileChange {
-        let change = file_change(path, this.map(|it| it.text.as_str()), after);
-        match this.and_then(|it| it.hash.clone()) {
-            Some(hash) => change.with_before(hash),
-            None => change,
+    /// A file of `size` bytes that was not read.
+    pub(crate) fn unread(size: u64) -> Self {
+        Self {
+            text: String::new(),
+            state: Some(FileState::unread(size)),
         }
+    }
+
+    /// The change from this file (`None`: none) to `after` (`None`: removed):
+    /// a [`file_change`] with this file's own state, and that of the bytes
+    /// `after` holds.
+    pub(crate) fn change(this: Option<&Self>, path: &str, after: Option<&[u8]>) -> FileChange {
+        let text = after.map(String::from_utf8_lossy);
+        let mut change = file_change(path, this.map(|it| it.text.as_str()), text.as_deref());
+        change.before = this.and_then(|it| it.state.clone());
+        change.after = after.map(FileState::of);
+        change
     }
 }
 

@@ -116,7 +116,7 @@ fn remember(
             let changed = published.0.get::<FilesChanged>().ok().flatten();
             let changed = changed.unwrap_or_default().0.into_iter();
             changed
-                .map(|FileChange { path, after, .. }| (path, after))
+                .map(|FileChange { path, after, .. }| (path, after.and_then(|it| it.hash)))
                 .collect()
         }
         _ => return,

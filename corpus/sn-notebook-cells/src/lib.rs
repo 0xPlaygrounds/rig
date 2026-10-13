@@ -288,8 +288,7 @@ impl Tool for NotebookEdit {
             workspace
                 .write(&path, after.as_bytes())
                 .map_err(|error| io_error(&shown, error))?;
-            let change = file_change(&shown, before.as_deref(), &after)
-                .with_after(content_hash(after.as_bytes()));
+            let change = file_change(&shown, before.as_deref(), Some(&after));
             Ok((format!("{done} ({}).", args.path), change))
         })
         .await?;

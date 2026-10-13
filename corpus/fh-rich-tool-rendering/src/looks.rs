@@ -80,7 +80,7 @@ fn diffs(view: &ToolCallView<'_>, path: &str) -> Vec<String> {
         let text = value.get(key).and_then(Value::as_str).unwrap_or_default();
         format!("{}\n", text.trim_end_matches('\n'))
     };
-    let made = |before: Option<&str>, after: &str| file_change(path, before, after).diff;
+    let made = |before: Option<&str>, after: &str| file_change(path, before, Some(after)).diff;
     match arguments.get("edits").and_then(Value::as_array) {
         Some(edits) => edits
             .iter()

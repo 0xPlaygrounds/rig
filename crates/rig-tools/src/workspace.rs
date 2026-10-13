@@ -210,15 +210,17 @@ impl dyn Workspace {
     }
 
     /// What the file `path` holds before a tool changes it: `None` when
-    /// there is none; empty, with no hash, when it is too large, or no
-    /// regular file, to diff.
+    /// there is none; empty, with only its size, when it is too large to
+    /// read; empty, with no state, when it is no regular file.
     pub(crate) fn previous(&self, path: &Path) -> Option<Previous> {
         match self.stat(path) {
             Ok(Stat::Missing) => None,
-            Ok(Stat::File { size, .. }) if size <= MAX_FILE_BYTES => {
-                let bytes = self.read(path, MAX_FILE_BYTES).ok().map(|it| it.bytes);
-                Some(Previous::of(bytes.as_deref()))
-            }
+            Ok(Stat::File { size, .. }) => Some(
+                (size <= MAX_FILE_BYTES)
+                    .then(|| self.read(path, MAX_FILE_BYTES).ok())
+                    .flatten()
+                    .map_or_else(|| Previous::unread(size), |it| Previous::of(&it.bytes)),
+            ),
             _ => Some(Previous::default()),
         }
     }
