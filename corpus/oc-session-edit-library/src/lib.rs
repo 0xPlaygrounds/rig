@@ -11,11 +11,14 @@
 //! session-edit <session> export --markdown <file>
 //! ```
 //!
-//! `<session>` is a session's directory, its id in the default session
-//! store (`$RIG_HOME/sessions`), or its name there. An edit is saved as a
-//! new session (`--as`, the default), forked with rig-memory's [`fork`]
-//! and listed for `rig --resume <id>`, or in place (`--in-place`), after a
-//! copy of the session's directory to `<dir>.bak`.
+//! `<session>` is a session's directory, or its id or name in the default
+//! session store (`$RIG_HOME/sessions`, found with [`Home::find`]). An
+//! edit is saved as a new session (`--as`, the default), forked with
+//! rig-memory's [`fork`], or in place (`--in-place`), after a copy of the
+//! session's directory to `<dir>.bak`. A shrink rewrites every saved copy
+//! of each result ([`rewrite`], or the fork's transform), so the edited
+//! session's history no longer holds what was cut; a drop is a recorded
+//! splice of the main conversation.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -23,11 +26,12 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use rig::harness_protocol::{Home, SessionDir, SessionId};
+use rig::harness_protocol::{Home, SessionDir};
 use rig_core::conversation::{Author, Conversation, Entry, pairing};
 use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
 use rig_memory::{
-    DirStore, Keep, LoadError, Repair, SavedAgent, Session, SessionMeta, fork, now_ms,
+    DirStore, ForkedFrom, Keep, LoadError, Messages, Repair, Rewrite, SavedAgent, Session,
+    SessionMeta, fork, now_ms, rewrite,
 };
 use serde_json::Value;
 
@@ -92,10 +96,15 @@ enum Target {
 /// What the program was asked.
 enum Command {
     List,
+    Export(PathBuf),
+    Edit(Edit),
+}
+
+/// A change of the session.
+enum Edit {
     Shrink(usize),
     Drop(usize, usize),
     Rename(String),
-    Export(PathBuf),
 }
 
 /// Runs `session-edit` with `args` (without the program's name) against
@@ -136,15 +145,12 @@ pub fn run(args: &[String], home: &Home, out: &mut dyn Write) -> Result<(), Erro
     }
     let command = match (command.as_str(), words.as_slice()) {
         ("list", []) => Command::List,
-        ("shrink", []) => Command::Shrink(over.ok_or("shrink needs --over <chars>")?),
+        ("shrink", []) => Command::Edit(Edit::Shrink(over.ok_or("shrink needs --over <chars>")?)),
         ("drop", [range]) => {
             let (from, to) = parse_range(range)?;
-            Command::Drop(from, to)
+            Command::Edit(Edit::Drop(from, to))
         }
-        ("rename", [name]) => {
-            target = target.or_else(|| Some(Target::As(Some((*name).to_owned()))));
-            Command::Rename((*name).to_owned())
-        }
+        ("rename", [name]) => Command::Edit(Edit::Rename((*name).to_owned())),
         ("export", []) => Command::Export(markdown.ok_or("export needs --markdown <file>")?),
         _ => return Err(USAGE.into()),
     };
@@ -157,17 +163,9 @@ pub fn run(args: &[String], home: &Home, out: &mut dyn Write) -> Result<(), Erro
                 .map_err(|why| format!("cannot write {}: {why}", file.display()))?;
             write(out, &format!("exported to {}", file.display()))
         }
-        edit => {
+        Command::Edit(edit) => {
             let target = target.unwrap_or(Target::As(None));
-            let report = save(home, opened, target, |session, named| match &edit {
-                Command::Shrink(over) => Ok(shrink_all(session, *over)),
-                Command::Drop(from, to) => drop_range(main_of(session)?, *from, *to),
-                Command::Rename(name) => {
-                    *named = Some(name.clone());
-                    Ok(vec![format!("named the session {name}")])
-                }
-                Command::List | Command::Export(_) => Ok(Vec::new()),
-            })?;
+            let report = save(home, opened, target, &edit)?;
             write(out, &report.join("\n"))
         }
     }
@@ -204,35 +202,20 @@ impl Opened {
     }
 }
 
-/// The session `arg` names: a directory, an id under `home`, or the name
-/// of one session under `home`.
+/// The session `arg` names: a directory, or the id or name of a saved
+/// session under `home`.
 fn locate(home: &Home, arg: &str) -> Result<SessionDir, Error> {
     let path = Path::new(arg);
     if path.is_dir() {
         return Ok(SessionDir::at(path));
     }
-    if let Ok(id) = arg.parse::<SessionId>()
-        && home.session(&id).path().is_dir()
-    {
-        return Ok(home.session(&id));
-    }
-    let entries = fs::read_dir(home.sessions()).into_iter().flatten();
-    let named: Vec<SessionDir> = entries
-        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
-        .map(|id: SessionId| home.session(&id))
-        .filter(|dir| dir.name().as_deref() == Some(arg))
-        .collect();
-    match named.as_slice() {
-        [dir] => Ok(dir.clone()),
-        [] => Err(Error(format!(
-            "no session {arg}: it is no directory, nor the id or name of a session in {}",
+    let id = home.find(arg).map_err(|why| {
+        format!(
+            "no session {arg}: it is no directory, and {why} in {}",
             home.sessions().display()
-        ))),
-        many => Err(Error(format!(
-            "{} sessions are named {arg}; give its id",
-            many.len()
-        ))),
-    }
+        )
+    })?;
+    Ok(home.session(&id))
 }
 
 /// Reads the session in `dir` whole, strictly: a session cut short, in
@@ -395,12 +378,17 @@ fn result_size(content: &[ToolResultContent]) -> usize {
         .sum()
 }
 
-/// Shrinks every tool result over `over` characters in every agent's
-/// conversation; what it did.
-fn shrink_all(session: &mut Session, over: usize) -> Vec<String> {
+/// What a shrink of every tool result over `over` characters will do to
+/// each agent's conversation as it is now.
+fn shrink_report(session: &Session, over: usize) -> Vec<String> {
     let mut report = Vec::new();
-    for agent in &mut session.agents {
-        let (results, lines) = shrink(&mut agent.conversation, over);
+    for agent in &session.agents {
+        let (results, lines) = agent
+            .conversation
+            .messages()
+            .iter()
+            .map(|message| shrink(&mut message.clone(), over))
+            .fold((0, 0), |(results, lines), (r, l)| (results + r, lines + l));
         if results > 0 {
             let whose = match agent.parent {
                 None => "the conversation".to_owned(),
@@ -420,40 +408,39 @@ fn shrink_all(session: &mut Session, over: usize) -> Vec<String> {
     report
 }
 
-/// Replaces each text of each tool result over `over` characters with its
-/// first and last [`KEEP_LINES`] lines and a marker, as one change; the
-/// results shrunk and the lines removed.
-fn shrink(conversation: &mut Conversation, over: usize) -> (usize, usize) {
+/// The shrink as a rewrite of every message a session keeps, in every
+/// record of every log.
+fn shrinker(over: usize) -> impl Rewrite {
+    Messages(move |message: &mut Message| shrink(message, over).0 > 0)
+}
+
+/// Replaces each text of each tool result of `message` over `over`
+/// characters with its first and last [`KEEP_LINES`] lines and a marker;
+/// the results shrunk and the lines removed.
+fn shrink(message: &mut Message, over: usize) -> (usize, usize) {
     let (mut results, mut lines) = (0, 0);
-    conversation.edit_each(Author::plugin(AUTHOR), |entry| {
-        let Message::User { content } = entry.message else {
-            return None;
+    let Message::User { content } = message else {
+        return (results, lines);
+    };
+    for part in content {
+        let UserContent::ToolResult(result) = part else {
+            continue;
         };
-        let mut changed = false;
-        let content = content
-            .iter()
-            .map(|part| match part {
-                UserContent::ToolResult(result) if result_size(&result.content) > over => {
-                    let mut result = result.clone();
-                    let mut cut_any = false;
-                    for item in &mut result.content {
-                        if let ToolResultContent::Text(text) = item
-                            && let Some((short, removed)) = cut_lines(&text.text)
-                        {
-                            text.text = short;
-                            lines += removed;
-                            cut_any = true;
-                        }
-                    }
-                    results += usize::from(cut_any);
-                    changed |= cut_any;
-                    UserContent::ToolResult(result)
-                }
-                part => part.clone(),
-            })
-            .collect();
-        changed.then_some(Message::User { content })
-    });
+        if result_size(&result.content) <= over {
+            continue;
+        }
+        let mut cut_any = false;
+        for item in &mut result.content {
+            if let ToolResultContent::Text(text) = item
+                && let Some((short, removed)) = cut_lines(&text.text)
+            {
+                text.text = short;
+                lines += removed;
+                cut_any = true;
+            }
+        }
+        results += usize::from(cut_any);
+    }
     (results, lines)
 }
 
@@ -613,14 +600,9 @@ fn drop_range(
     Ok(report)
 }
 
-/// Saves the edit `edit` of `opened` to `target`; what it did, then where
-/// it went. Nothing is written when the edit is refused.
-fn save(
-    home: &Home,
-    opened: Opened,
-    target: Target,
-    edit: impl Fn(&mut Session, &mut Option<String>) -> Result<Vec<String>, Error>,
-) -> Result<Vec<String>, Error> {
+/// Saves `edit` of `opened` to `target`; what it did, then where it
+/// went. Nothing is written when the edit is refused.
+fn save(home: &Home, opened: Opened, target: Target, edit: &Edit) -> Result<Vec<String>, Error> {
     let shown = opened.shown();
     let Opened {
         dir,
@@ -628,6 +610,12 @@ fn save(
         mut session,
         meta,
     } = opened;
+    // Done on the session as read first, so a refused edit writes nothing.
+    let mut report = match edit {
+        Edit::Shrink(over) => shrink_report(&session, *over),
+        Edit::Drop(from, to) => drop_range(main_of(&mut session)?, *from, *to)?,
+        Edit::Rename(name) => vec![format!("named the session {name}")],
+    };
     match target {
         Target::InPlace => {
             if dir.runs_elsewhere() {
@@ -635,52 +623,67 @@ fn save(
                     "rig is running this session; quit it before editing it in place".into(),
                 );
             }
-            let mut named = dir.name();
-            let mut report = edit(&mut session, &mut named)?;
             let backup = backup(dir.path())?;
-            session.save(&store)?;
+            match edit {
+                Edit::Shrink(over) => {
+                    rewrite(&store, Author::plugin(AUTHOR), &shrinker(*over))?;
+                }
+                Edit::Drop(..) => session.save(&store)?,
+                Edit::Rename(name) => dir.set_name(Some(name))?,
+            }
             write_meta(&store, meta)?;
-            dir.set_name(named.as_deref())?;
             report.push(format!(
                 "saved in place; the session as it was is in {}",
                 backup.display()
             ));
-            Ok(report)
         }
         Target::As(name) => {
-            let name = name.unwrap_or_else(|| {
-                let base = shown.or_else(|| dir.id().map(|id| id.to_string()));
-                format!("{} (edited)", base.unwrap_or_else(|| "session".to_owned()))
-            });
+            let name = match edit {
+                Edit::Rename(renamed) => renamed.clone(),
+                _ => name.unwrap_or_else(|| {
+                    let base = shown.or_else(|| dir.id().map(|id| id.to_string()));
+                    format!("{} (edited)", base.unwrap_or_else(|| "session".to_owned()))
+                }),
+            };
             let (id, new) = home.new_session()?;
             let made = (|| {
                 let to = DirStore::open(new.path())?;
-                fork(&store, &to, None, &Keep)?;
+                match edit {
+                    Edit::Shrink(over) => fork(&store, &to, None, &shrinker(*over))?,
+                    _ => fork(&store, &to, None, &Keep)?,
+                };
+                if let Edit::Drop(from, until) = edit {
+                    let mut copy = Session::read(&to)?;
+                    drop_range(main_of(&mut copy)?, *from, *until)?;
+                    copy.save(&to)?;
+                }
+                if let Some(parent) = dir.id() {
+                    let session = parent.to_string();
+                    let forked = ForkedFrom {
+                        session,
+                        before: None,
+                        text: None,
+                    };
+                    forked.write(&to)?;
+                }
                 if let Ok(directory) = fs::read(dir.directory()) {
                     fs::write(new.directory(), directory)?;
                 }
-                let mut session = Session::read(&to)?;
-                let mut named = Some(name.clone());
-                let report = edit(&mut session, &mut named)?;
-                session.save(&to)?;
                 write_meta(&to, meta)?;
-                new.set_name(named.as_deref())?;
+                new.set_name(Some(&name))?;
                 new.mark_saved()?;
-                Ok::<_, Error>(report)
+                Ok::<_, Error>(())
             })();
-            let mut report = match made {
-                Ok(report) => report,
-                Err(why) => {
-                    fs::remove_dir_all(new.path()).ok();
-                    return Err(why);
-                }
-            };
+            if let Err(why) = made {
+                fs::remove_dir_all(new.path()).ok();
+                return Err(why);
+            }
             report.push(format!(
                 "saved as session {id} ({name}); resume it with: rig --resume {id}"
             ));
-            Ok(report)
         }
     }
+    Ok(report)
 }
 
 /// Keeps `meta` as the session's listing, updated now.
