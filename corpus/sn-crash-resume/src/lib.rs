@@ -1,20 +1,21 @@
 //! Recovers a turn a crash cut short.
 //!
 //! The kernel keeps what a running turn's calls did: a call that may
-//! change something is marked on the conversation before it starts and the
-//! mark carries its result once it settles, and a restart carries every
-//! call left without a result on as [`Restored`] work, the marked ones
-//! [`Interrupted`]. What the kernel does not keep is the text a model call
-//! streamed and where the turn began; this plugin keeps those in its
-//! session data, `crash-resume/<agent>.json`, the text at least every
-//! second. A turn that ends removes the file.
+//! change something is marked on the conversation before it starts, any
+//! call that settles while its reply runs is marked with its result, and a
+//! restart carries every call left without a result on as [`Restored`]
+//! work, the marked ones [`Interrupted`], in the same turn. What the
+//! kernel does not keep is the text a model call streamed; this plugin
+//! keeps it in its session data, `crash-resume/<agent>.json`, at least
+//! every second. A turn that ends removes the file.
 //!
 //! On resume, each agent with restored work is [`Recovering`]: its
 //! restored calls and model call are held, the "Interrupted turn" note goes
 //! in its transcript, and the user is asked:
 //!
 //! - **Continue**: each call gets its result, else "may or may not have
-//!   completed" (started) or "not run (interrupted)" (never started); the
+//!   completed" (started) or "not run (interrupted)" (not run: it never
+//!   started, or it only reads and changed nothing); the
 //!   partial text of a model call the crash cut is kept, marked incomplete;
 //!   the turn carries on;
 //! - **Discard**: the turn is stopped and the conversation goes back to
@@ -57,8 +58,6 @@ const TEXT_EVERY: Duration = Duration::from_secs(1);
 /// What the kernel does not keep of a running turn, as saved.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Progress {
-    /// The message the turn began at.
-    pub first_message: Option<MessageId>,
     /// The text its running model call streamed so far.
     pub text: String,
     /// The conversation's last message when that text was streamed: the
@@ -88,27 +87,17 @@ pub enum Recover {
     Leave,
 }
 
-/// How far a restored call got before the crash.
-#[derive(Clone, Debug)]
-pub enum CallState {
-    /// It settled with this result.
-    Finished(ToolResult),
-    /// It started and has no result.
-    Unknown,
-    /// It never started, or it only reads: the kernel marks only calls
-    /// that may change something.
-    NotStarted,
-}
-
 /// On an agent whose last turn a crash cut short, until it is recovered.
 #[derive(Component, Debug)]
 pub struct Recovering {
-    /// The message the turn began at, when it was saved.
-    pub first_message: Option<MessageId>,
+    /// The message the turn began at.
+    pub first_message: MessageId,
     /// The partial text of the model call the crash cut short.
     pub text: Option<String>,
-    /// The restored calls, held, with how far each got.
-    pub calls: Vec<(Entity, ToolCall, CallState)>,
+    /// What the turn did, as shown.
+    pub body: String,
+    /// The restored calls, held.
+    pub calls: Vec<Entity>,
     /// The transcript note, an unsaved aside of the agent's conversation.
     pub entry: Option<AsideId>,
     turn: Entity,
@@ -176,22 +165,13 @@ fn save(data: Option<&PluginData>, id: &AgentId, progress: Option<&Progress>) {
 /// [`recover`].
 fn turn_started(
     added: On<Add<TurnOf>>,
-    turns: Query<(&TurnOf, &Turn), Without<Restored>>,
-    ids: Query<&AgentId>,
-    data: Option<Res<PluginData>>,
+    turns: Query<&TurnOf, Without<Restored>>,
     mut commands: Commands,
 ) {
-    let Ok((&TurnOf(agent), turn)) = turns.get(added.entity) else {
+    let Ok(&TurnOf(agent)) = turns.get(added.entity) else {
         return;
     };
-    let progress = Progress {
-        first_message: Some(turn.first_message),
-        ..Progress::default()
-    };
-    if let Ok(id) = ids.get(agent) {
-        save(data.as_deref(), id, Some(&progress));
-    }
-    commands.entity(agent).try_insert(Tracked(progress));
+    commands.entity(agent).try_insert(Tracked::default());
     commands
         .entity(added.entity)
         .try_insert(KeepAwake(TEXT_EVERY));
@@ -244,13 +224,13 @@ fn recover(
         Option<&SpawnedBy>,
         Option<&Name>,
     )>,
-    turns: Query<(Entity, &TurnOf, &Calls), With<Restored>>,
+    turns: Query<(Entity, &TurnOf, &Turn, &Calls), With<Restored>>,
     calls: Query<(Option<&ToolRequest>, Option<&Interrupted>, Has<TurnCall>)>,
     data: Option<Res<PluginData>>,
     mut commands: Commands,
 ) {
     let mut found: HashMap<Entity, Recovering> = HashMap::new();
-    for (turn, &TurnOf(agent), of) in &turns {
+    for (turn, &TurnOf(agent), &Turn { first_message, .. }, of) in &turns {
         let Ok((id, conversation, ..)) = agents.get(agent) else {
             continue;
         };
@@ -259,8 +239,9 @@ fn recover(
             .and_then(|data| read_progress(&*data.session, id))
             .unwrap_or_default();
         let mut recovering = Recovering {
-            first_message: progress.first_message,
+            first_message,
             text: None,
+            body: String::new(),
             calls: Vec::new(),
             entry: None,
             turn,
@@ -271,30 +252,33 @@ fn recover(
             left: false,
             stopping: false,
         };
+        let mut lines = Vec::new();
         for effect in of.iter() {
             let Ok((request, interrupted, model_call)) = calls.get(effect) else {
                 continue;
             };
             if let Some(request) = request {
-                let state = match interrupted {
-                    Some(Interrupted::Settled(result)) => CallState::Finished(result.clone()),
-                    Some(Interrupted::Started) => CallState::Unknown,
-                    None => CallState::NotStarted,
-                };
-                recovering.calls.push((effect, request.call.clone(), state));
-                // Answered by this plugin, once the user chose.
-                commands.entity(effect).remove::<Interrupted>();
+                recovering.calls.push(effect);
+                lines.push(describe(&request.call, interrupted));
             } else if model_call {
                 recovering.model_call = Some(effect);
                 let last = conversation.entries().next_back().map(|entry| entry.id);
                 let cut = !progress.text.trim().is_empty() && progress.after == last;
                 recovering.text = cut.then(|| progress.text.trim_end().to_owned());
             }
+            // Held, Interrupted or not, until the user chose.
             let name = Name::new("waiting for the interrupted turn's recovery");
             let hold = commands.spawn((name, HoldOf(effect))).id();
             recovering.holds.push(hold);
         }
-        commands.entity(agent).try_insert(Tracked(progress.clone()));
+        if let Some(text) = &recovering.text {
+            lines.insert(0, format!("Partial reply (incomplete): {text}"));
+        }
+        if lines.is_empty() {
+            lines.push("The model had not answered yet.".to_owned());
+        }
+        recovering.body = lines.join("\n");
+        commands.entity(agent).try_insert(Tracked::default());
         found.insert(agent, recovering);
     }
     let mut notes = Vec::new();
@@ -305,14 +289,14 @@ fn recover(
         if parent.is_some_and(|parent| found.contains_key(&parent.0)) {
             continue;
         }
-        let mut text = describe(recovering);
+        let mut text = recovering.body.clone();
         for (&child, nested) in &found {
             let Ok((_, _, Some(of), name)) = agents.get(child) else {
                 continue;
             };
             if of.0 == agent {
                 let name = name.map_or("subagent", Name::as_str);
-                let lines = describe(nested).replace('\n', "\n    ");
+                let lines = nested.body.replace('\n', "\n    ");
                 text.push_str(&format!(
                     "\n  {name}, interrupted inside its call:\n    {lines}"
                 ));
@@ -334,27 +318,19 @@ fn recover(
     }
 }
 
-/// What an interrupted turn did, for the transcript and the question.
-fn describe(recovering: &Recovering) -> String {
-    let mut lines = Vec::new();
-    if let Some(text) = &recovering.text {
-        lines.push(format!("Partial reply (incomplete): {text}"));
+/// How far a restored call got, for the transcript and the question. An
+/// unmarked call never started, or only reads and had not finished: either
+/// way it changed nothing and has no result.
+fn describe(call: &ToolCall, interrupted: Option<&Interrupted>) -> String {
+    let args = serde_json::to_string(&call.function.arguments).unwrap_or_default();
+    let what = format!("{} {args}", call.function.name.as_str());
+    match interrupted {
+        Some(Interrupted::Settled(result)) => {
+            format!("finished: {what}\n  result: {}", result.output().render())
+        }
+        Some(Interrupted::Started) => format!("unknown outcome: may have run: {what}"),
+        None => format!("not run: {what}"),
     }
-    for (_, call, state) in &recovering.calls {
-        let args = serde_json::to_string(&call.function.arguments).unwrap_or_default();
-        let what = format!("{} {args}", call.function.name.as_str());
-        lines.push(match state {
-            CallState::Finished(result) => {
-                format!("finished: {what}\n  result: {}", result.output().render())
-            }
-            CallState::Unknown => format!("unknown outcome: may have run: {what}"),
-            CallState::NotStarted => format!("never started, or only reads: {what}"),
-        });
-    }
-    if lines.is_empty() {
-        lines.push("The model had not answered yet.".to_owned());
-    }
-    lines.join("\n")
 }
 
 /// Reads each answer to a question about an interrupted turn.
@@ -382,7 +358,7 @@ fn take_answers(
 /// The question about an interrupted turn.
 fn new_ask(agent: Entity, recovering: &Recovering) -> impl Bundle {
     let ask = Ask::new(TITLE)
-        .body(describe(recovering))
+        .body(recovering.body.clone())
         .choice("continue", "Continue")
         .choice("discard", "Discard")
         .choice("leave", "Leave");
@@ -451,7 +427,7 @@ fn resolve(
         Has<ActiveTurn>,
     )>,
     holds: Query<(Entity, &CrashHold)>,
-    mut decisions: Query<&mut Decision, (With<Restored>, With<Holds>)>,
+    mut decisions: Query<(&mut Decision, Option<&Interrupted>), (With<Restored>, With<Holds>)>,
     mut input: Option<ResMut<TuiInput>>,
     data: Option<Res<PluginData>>,
     mut commands: Commands,
@@ -503,11 +479,8 @@ fn resolve(
                     &mut commands,
                 );
                 // The turn carries on: keep its streamed text from here.
-                let progress = Progress {
-                    first_message: recovering.first_message,
-                    ..Progress::default()
-                };
-                save(data.as_deref(), id, Some(&progress));
+                save(data.as_deref(), id, None);
+                commands.entity(agent).try_insert(Tracked::default());
                 commands
                     .entity(recovering.turn)
                     .try_insert(KeepAwake(TEXT_EVERY));
@@ -515,14 +488,11 @@ fn resolve(
             }
             Recover::Discard => {
                 let first = recovering.first_message;
-                let at = first.map_or(conversation.messages().len(), |id| {
-                    conversation.start_of(id)
-                });
+                let at = conversation.start_of(first);
                 // The user's own message is among the entries the turn
                 // answers: results and notes come before it.
-                let typed = first
-                    .into_iter()
-                    .flat_map(|id| conversation.asked(id))
+                let typed = conversation
+                    .asked(first)
                     .find_map(|entry| typed(&conversation, entry.index));
                 conversation.splice(at.., [], Author::plugin(ORIGIN));
                 if let (None, Some(text), Some(input)) = (parent, typed, input.as_mut()) {
@@ -554,20 +524,19 @@ fn carry_on(
     agent: Entity,
     recovering: &Recovering,
     conversation: &mut Conversation,
-    decisions: &mut Query<&mut Decision, (With<Restored>, With<Holds>)>,
+    decisions: &mut Query<(&mut Decision, Option<&Interrupted>), (With<Restored>, With<Holds>)>,
     commands: &mut Commands,
 ) {
-    let by = || Decider::plugin(ORIGIN);
-    for (call, _, state) in &recovering.calls {
-        let Ok(mut decision) = decisions.get_mut(*call) else {
+    for &call in &recovering.calls {
+        let Ok((mut decision, interrupted)) = decisions.get_mut(call) else {
             continue;
         };
-        let answer = match state {
-            CallState::Finished(result) => result.clone(),
-            CallState::Unknown => ToolResult::failed(ToolExecutionError::other(UNKNOWN)),
-            CallState::NotStarted => ToolResult::failed(ToolExecutionError::other(NOT_RUN)),
+        let answer = match interrupted {
+            Some(Interrupted::Settled(result)) => result.clone(),
+            Some(Interrupted::Started) => ToolResult::failed(ToolExecutionError::other(UNKNOWN)),
+            None => ToolResult::failed(ToolExecutionError::other(NOT_RUN)),
         };
-        decision.decide(by(), answer);
+        decision.decide(Decider::plugin(ORIGIN), answer);
     }
     if let (Some(text), Some(held)) = (&recovering.text, recovering.model_call) {
         let author = Author::plugin(ORIGIN);

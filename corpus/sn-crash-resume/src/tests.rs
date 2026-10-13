@@ -16,7 +16,7 @@ use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness_test_support::{
     Collected, answer_open, app_in, collect, connect, first_agent, reply, run_until, scratch_home,
 };
-use rig_tools::Shell;
+use rig_tools::{Read, Shell};
 use rig_tui::TuiInput;
 
 use super::{CrashResumePlugin, Progress, Recovering, TITLE, read_progress};
@@ -27,6 +27,7 @@ fn app(home: &Home, session: &SessionId) -> (App, std::sync::mpsc::Receiver<()>)
     let (mut app, wakes) = app_in(home, session);
     app.add_plugins((AgentPlugin, JournalPlugin, AskPlugin, CrashResumePlugin))
         .add_tool(Shell::default())
+        .add_tool(Read::default())
         .init_resource::<TuiInput>();
     app.world_mut().spawn(Answerer::default());
     collect::<Notice>(&mut app);
@@ -120,26 +121,31 @@ fn request(model: &MockCompletionModel, n: usize) -> String {
     serde_json::to_string(&history).unwrap_or_default()
 }
 
-/// Two `shell` calls: the first finishes, the second runs when the app is
-/// killed. On resume the entry shows one finished call and one of unknown
-/// outcome; Continue sends the real first result and an error for the
-/// second.
+/// A `read` and two `shell` calls: the `read` and the first `shell`
+/// finish, the second `shell` runs when the app is killed. On resume the
+/// entry shows the two finished calls with their results and one of
+/// unknown outcome; Continue sends the real results and an error for the
+/// second `shell`.
 #[test]
 fn a_killed_turn_continues_with_real_and_unknown_results() {
     let home = scratch_home("crash-resume-calls");
     let session = SessionId::generate();
     let file = home.root().join("a.txt");
     let echo = format!("echo a > {}", file.display());
+    let notes = home.root().join("notes.txt");
+    let read = serde_json::json!({ "path": notes.display().to_string() });
     let model = MockCompletionModel::from_stream_turns([
         vec![
-            MockStreamEvent::tool_call("c1", "shell", serde_json::json!({ "command": echo })),
-            MockStreamEvent::tool_call("c2", "shell", serde_json::json!({ "command": "sleep 30" })),
+            MockStreamEvent::tool_call("c1", "read", read),
+            MockStreamEvent::tool_call("c2", "shell", serde_json::json!({ "command": echo })),
+            MockStreamEvent::tool_call("c3", "shell", serde_json::json!({ "command": "sleep 30" })),
             MockStreamEvent::final_response_with_default_usage(),
         ],
         reply("Carrying on."),
     ]);
 
     let (mut first, wakes) = app(&home, &session);
+    assert!(std::fs::write(&notes, "read before the crash\n").is_ok());
     use_model(first.world_mut(), &model, None);
     let agent = first_agent(first.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     first
@@ -152,7 +158,7 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
         let mut calls: Vec<(bool, bool)> =
             calls.map_or_else(Vec::new, |mut calls| calls.iter(world).collect());
         calls.sort_unstable();
-        Path::new(&file).exists() && calls == [(true, false), (true, true)]
+        Path::new(&file).exists() && calls == [(true, false), (true, true), (true, true)]
     };
     run_until(&mut first, &wakes, second_running);
     assert!(second_running(first.world()));
@@ -171,6 +177,10 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
         shown.contains("unknown outcome: may have run: shell"),
         "{shown}"
     );
+    assert!(
+        shown.contains("finished: read") && shown.contains("read before the crash"),
+        "{shown}"
+    );
     assert_eq!(
         model.requests().len(),
         1,
@@ -187,6 +197,8 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
     let sent = request(&model, 1);
     assert!(sent.contains("[exit code 0]"), "{sent}");
     assert!(sent.contains("may or may not have completed"), "{sent}");
+    assert!(sent.contains("read before the crash"), "{sent}");
+    assert!(!sent.contains(super::NOT_RUN), "{sent}");
     assert!(!sent.contains("interrupted by a restart"), "{sent}");
 }
 
