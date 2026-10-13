@@ -14,11 +14,10 @@
 //! named files (its `Footprint`) is about to run, the first time the turn
 //! touches each file. A call that may write anywhere, such as `shell`,
 //! reports what it changed (its checkpoint's `FilesChanged`): a file it is
-//! the first to change was missing before (created) or is read from the
-//! turn's checkpoint taken before its first such call (`TurnCheckpoint`).
-//! A checkpoint keeps file content only as a git tree, so outside a git
-//! work tree on this machine a file such a call modified is not checked. A
-//! subagent's calls count for the agent at the root of its spawns, whose
+//! the first to change was missing before (created) or is read, as the
+//! call settles, from the turn's checkpoint taken before its first such
+//! call (`TurnCheckpoint`), which keeps content in the session's scratch.
+//! A subagent's calls count for the agent at the root of its spawns, whose
 //! turn ends with them. `/leftovers off|on` switches it for the session,
 //! saved with it.
 //!
@@ -41,7 +40,6 @@ use std::path::{Path, PathBuf};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
-use rig_harness::rig_tools::checkpoint::Snapshot;
 use rig_harness::rig_tools::workspace::Workspace;
 use serde::Deserialize;
 
@@ -91,10 +89,11 @@ pub struct LeftoverSwitch {
 }
 
 /// On each agent: the content, before its running turn, of each file the
-/// turn (its subagents' too) is about to change or changed.
+/// turn (its subagents' too) is about to change or changed; `None` for a
+/// file that was not there or not text.
 #[derive(Component, Default, Debug)]
 pub struct TurnFiles {
-    before: BTreeMap<PathBuf, Before>,
+    before: BTreeMap<PathBuf, Option<String>>,
     reading: BTreeSet<PathBuf>,
     nudged: bool,
 }
@@ -102,19 +101,9 @@ pub struct TurnFiles {
 impl TurnFiles {
     /// The files the running turn is about to change or changed, each
     /// with its content before the turn.
-    pub fn before(&self) -> &BTreeMap<PathBuf, Before> {
+    pub fn before(&self) -> &BTreeMap<PathBuf, Option<String>> {
         &self.before
     }
-}
-
-/// A file's content before the turn.
-#[derive(Clone, Debug)]
-pub enum Before {
-    /// Read before the turn first wrote it; `None` for a file that was not
-    /// there or not text.
-    Read(Option<String>),
-    /// In the turn's checkpoint, when it kept the file's content.
-    Kept(Snapshot),
 }
 
 /// A line a turn added that looks like leftover debug code.
@@ -259,7 +248,11 @@ fn read(workspace: &dyn Workspace, path: &Path) -> Option<String> {
 
 /// Checks each of `before`'s files as it is now against its content
 /// before, with the built-in patterns and the project's.
-fn scan(workspace: &dyn Workspace, project: &Path, before: &BTreeMap<PathBuf, Before>) -> Scan {
+fn scan(
+    workspace: &dyn Workspace,
+    project: &Path,
+    before: &BTreeMap<PathBuf, Option<String>>,
+) -> Scan {
     let config = project.join(CONFIG);
     let (patterns, problem) = match read(workspace, &config) {
         None => (Patterns::default(), None),
@@ -273,13 +266,6 @@ fn scan(workspace: &dyn Workspace, project: &Path, before: &BTreeMap<PathBuf, Be
     };
     let mut found = Vec::new();
     for (path, was) in before {
-        let was = match was {
-            Before::Read(text) => text.clone(),
-            Before::Kept(snapshot) => match snapshot.content(path) {
-                Some(Ok(bytes)) => Some(String::from_utf8_lossy(&bytes).into_owned()),
-                _ => continue,
-            },
-        };
         let Some(now) = read(workspace, path) else {
             continue;
         };
@@ -349,7 +335,7 @@ fn snapshot(
             }
             if workspace.0.host().is_none() {
                 let text = read(&*workspace.0, path);
-                files.before.insert(path.clone(), Before::Read(text));
+                files.before.insert(path.clone(), text);
                 continue;
             }
             files.reading.insert(path.clone());
@@ -381,16 +367,16 @@ fn snapshot_read(
     };
     if let Ok(mut files) = agents.get_mut(snapshot.agent) {
         files.reading.remove(&snapshot.path);
-        let text = Before::Read(snapshot.text.clone());
+        let text = snapshot.text.clone();
         files.before.entry(snapshot.path.clone()).or_insert(text);
     }
     commands.entity(read.entity).despawn();
 }
 
-/// Keeps where to find the content before the turn of each file a call
-/// that may write anywhere is the first of the turn to change: none for a
-/// file it created, else the turn's checkpoint from before its first such
-/// call.
+/// Keeps the content before the turn of each file a call that may write
+/// anywhere is the first of the turn to change: none for a file it
+/// created, else the file as the turn's checkpoint from before its first
+/// such call kept it, a read of the session's scratch on this machine.
 fn checkpointed(
     settled: On<Add<Settled>>,
     calls: Query<(&Footprint, &Published, &ForAgent, &CallOf), With<ToolRequest>>,
@@ -418,15 +404,20 @@ fn checkpointed(
     };
     let first = turns.get(turn).ok().and_then(TurnCheckpoint::first);
     for change in changes {
+        let path = PathBuf::from(change.path);
+        if files.before.contains_key(&path) {
+            continue;
+        }
         let was = match (change.kind, &first) {
-            (ChangeKind::Created, _) => Before::Read(None),
-            (ChangeKind::Modified, Some(first)) => Before::Kept(first.clone()),
+            (ChangeKind::Created, _) => None,
+            // Not kept: larger than a checkpoint keeps, or no scratch.
+            (ChangeKind::Modified, Some(first)) => match first.content(&path) {
+                Some(Ok(bytes)) => Some(String::from_utf8_lossy(&bytes).into_owned()),
+                _ => continue,
+            },
             _ => continue,
         };
-        files
-            .before
-            .entry(PathBuf::from(change.path))
-            .or_insert(was);
+        files.before.insert(path, was);
     }
 }
 
