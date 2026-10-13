@@ -38,8 +38,23 @@ fn scratch(name: &str) -> PathBuf {
     dir.canonicalize().unwrap_or(dir)
 }
 
-/// In one turn, each `shell` call reports the files it made, and not the
-/// file a `write` call made between them, which reports its own.
+/// The project directory, where the user saves a file when the first
+/// `shell` call settles.
+#[derive(Resource)]
+struct UserSaves(PathBuf);
+
+fn user_saves(settled: On<Add<Settled>>, calls: Query<&ToolRequest>, dir: Res<UserSaves>) {
+    if calls
+        .get(settled.entity)
+        .is_ok_and(|request| request.call.id.to_string() == "s1")
+    {
+        std::fs::write(dir.0.join("user.txt"), "mine\n").ok();
+    }
+}
+
+/// In one turn, each `shell` call reports the files it made, and neither
+/// the file a `write` call made between them, which reports its own, nor
+/// one the user saved between them: each call takes its own "before".
 #[test]
 fn each_shell_call_of_a_turn_reports_what_it_changed() {
     let dir = scratch("checkpoint-turn");
@@ -50,14 +65,19 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
             serde_json::json!({ "command": "printf one > a.txt" }),
         ),
         calls(
+            "s2",
+            "shell",
+            serde_json::json!({ "command": "printf two > c.txt" }),
+        ),
+        calls(
             "w1",
             "write",
             serde_json::json!({ "path": "b.txt", "content": "b\n" }),
         ),
         calls(
-            "s2",
+            "s3",
             "shell",
-            serde_json::json!({ "command": "printf two > c.txt" }),
+            serde_json::json!({ "command": "printf three > d.txt" }),
         ),
         reply("done"),
     ]);
@@ -80,7 +100,9 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
             }
         })
         .init_resource::<Changed>()
-        .add_observer(note_changes);
+        .insert_resource(UserSaves(dir.clone()))
+        .add_observer(note_changes)
+        .add_observer(user_saves);
     app.finish();
     app.update();
     let Some(connection) = connect(&model) else {
@@ -90,7 +112,7 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
     let agent = world.spawn((Agent, connection)).id();
     world.trigger(Deliver::new(agent, "make files", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
-        world.resource::<Changed>().0.contains_key("s2")
+        world.resource::<Changed>().0.contains_key("s3")
     });
     let changed = &app.world().resource::<Changed>().0;
     let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
@@ -98,5 +120,6 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
     assert_eq!(changed.get("s1"), Some(&created("a.txt")), "{changed:?}");
     assert_eq!(changed.get("w1"), Some(&created("b.txt")), "{changed:?}");
     assert_eq!(changed.get("s2"), Some(&created("c.txt")), "{changed:?}");
+    assert_eq!(changed.get("s3"), Some(&created("d.txt")), "{changed:?}");
     std::fs::remove_dir_all(&dir).ok();
 }

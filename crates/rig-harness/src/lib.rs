@@ -131,7 +131,7 @@ pub mod prelude {
     pub use bevy_app::OnAppExitSystems;
 
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
-    pub use crate::checkpoint::{Checkpoints, TurnCheckpoint};
+    pub use crate::checkpoint::{CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint};
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,

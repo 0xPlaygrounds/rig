@@ -132,14 +132,14 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
         ..Shell::default()
     };
     let workspace: Arc<dyn Workspace> = Arc::new(Local);
-    let last = Arc::new(Mutex::new(None));
+    let newest = Arc::new(Mutex::new(None));
     let first = Arc::new(Mutex::new(None));
     let handler = ErasedHandler::new(Checkpointed {
         inner: ErasedHandler::new(ToolAdapter::new(shell)),
         workspace,
         root: dir.clone(),
         taking: Taking::default(),
-        last: last.clone(),
+        newest: newest.clone(),
         first: first.clone(),
     });
     let published = PublishedContext::new();
@@ -180,7 +180,7 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
     // The first "before" is kept, and against the last "after" it shows
     // the call's two changes.
     let kept = |snapshot: &Mutex<Option<_>>| snapshot.lock().ok().and_then(|it| it.clone());
-    let since = kept(&last)
+    let since = kept(&newest)
         .zip(kept(&first))
         .and_then(|(last, first)| last.changes_since(&first).ok());
     assert_eq!(since.map(|changes| changes.len()), Some(2));

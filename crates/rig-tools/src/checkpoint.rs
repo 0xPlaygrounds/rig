@@ -522,19 +522,24 @@ fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange
     change
 }
 
-/// A handler that takes a [`Snapshot`] before and after its inner handler
-/// serves a call, and publishes what changed as [`FilesChanged`] beside the
-/// call's answer, unless the call published its own: so a call of any tool
-/// that may write anything, such as `shell`, reports what it changed.
+/// A handler that takes a [`Snapshot`] just before and just after its
+/// inner handler serves a call, and publishes what changed as
+/// [`FilesChanged`] beside the call's answer, unless the call published its
+/// own: so a call of any tool that may write anything, such as `shell`,
+/// reports what it changed.
 ///
-/// `last` is the snapshot after the previous call, shared between the
-/// calls one host checkpoints, and taken as this call's "before" when it is
-/// there: a host clears it when something it does not see may have
-/// changed the files since. `first`, shared the same way, keeps the first
-/// "before" taken, the files as they were before the first of those calls,
-/// so the host can tell what all of them changed or restore a file.
-/// Snapshots run on a thread of their own. A call that streams its answer
-/// is served as it is, with nothing published.
+/// What it reports is what changed while the call ran, by whatever wrote
+/// it: a process outside the call that wrote in that time, such as the
+/// user's editor, is in it. A change made between two calls is in neither.
+///
+/// `newest`, shared between the calls one host checkpoints, is the newest
+/// snapshot any of them took: each call hands it to [`snapshot`] as
+/// `earlier`, so a scan hashes again only what changed and git's private
+/// index stays warm, but never takes it as its "before". `first`, shared
+/// the same way, keeps the first "before" taken, the files as they were
+/// before the first of those calls, so the host can tell what all of them
+/// changed or restore a file. Snapshots run on a thread of their own. A
+/// call that streams its answer is served as it is, with nothing published.
 #[derive(Clone, Debug)]
 pub struct Checkpointed {
     /// The handler that serves the call.
@@ -545,8 +550,9 @@ pub struct Checkpointed {
     pub root: PathBuf,
     /// How each snapshot is taken.
     pub taking: Taking,
-    /// The snapshot after the last call, if it still holds.
-    pub last: Arc<Mutex<Option<Snapshot>>>,
+    /// The newest snapshot taken by any call it shares this with: only
+    /// reused as `earlier`, never as a "before".
+    pub newest: Arc<Mutex<Option<Snapshot>>>,
     /// The snapshot before the first call, once one was taken.
     pub first: Arc<Mutex<Option<Snapshot>>>,
 }
@@ -578,20 +584,18 @@ impl Serve for Checkpointed {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let published = dispatch.scope::<PublishedContext>();
-        let last = self
-            .last
+        let newest = self
+            .newest
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .take();
-        let before = match last {
-            Some(last) => Some(last),
-            None => self.take(None).await.map(|(_, now)| now),
-        };
+            .clone();
+        let before = self.take(newest).await.map(|(_, now)| now);
         if let Some(before) = &before {
             self.first
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .get_or_insert_with(|| before.clone());
+            *self.newest.lock().unwrap_or_else(PoisonError::into_inner) = Some(before.clone());
         }
         let reply = self.inner.handle(kind, dispatch).await;
         if !matches!(reply, Reply::Outcome(_)) {
@@ -601,7 +605,7 @@ impl Serve for Checkpointed {
             return reply;
         };
         let changes = after.changes_since(&before).unwrap_or_default();
-        *self.last.lock().unwrap_or_else(PoisonError::into_inner) = Some(after);
+        *self.newest.lock().unwrap_or_else(PoisonError::into_inner) = Some(after);
         if let Some(published) = published {
             let own = published
                 .result_context()
