@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::watch::WatchPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, collect, connect, first_agent, log_ended, reply, run_until,
 };
@@ -33,7 +33,7 @@ fn project() -> Option<PathBuf> {
 
 /// Says `text` to `agent` and runs frames until turn `turns` ended.
 fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str, turns: usize) {
-    let said = Deliver::new(agent, text, DeliveryMode::Queue).with_origin(Origin::user());
+    let said = Deliver::new(agent, text, DeliveryMode::Queue).with_author(Author::user());
     app.world_mut().trigger(said);
     run_until(app, wakes, |world| {
         world.resource::<Ended>().0.len() >= turns

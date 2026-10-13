@@ -1,9 +1,9 @@
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, calls, connect, first_agent, reply, run_until};
 use schemars::JsonSchema;
 
@@ -124,12 +124,11 @@ fn said(world: &World, agent: Entity, text: &str) -> bool {
                     let message::Message::User { content } = message else {
                         return false;
                     };
-                    content.iter().enumerate().any(|(item, content)| {
-                        matches!(content, UserContent::Text(said) if said.text == text)
-                            && conversation
-                                .origin(at, item)
-                                .is_some_and(|origin| origin.title.as_deref() == Some("U1"))
-                    })
+                    content.iter().any(
+                        |content| matches!(content, UserContent::Text(said) if said.text == text),
+                    ) && conversation
+                        .author(at)
+                        .is_some_and(|author| author.title.as_deref() == Some("U1"))
                 })
         })
 }

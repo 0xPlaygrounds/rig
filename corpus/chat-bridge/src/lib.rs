@@ -263,11 +263,11 @@ fn receive(
             continue;
         }
         // A question that takes text is answered by this line, by the
-        // harness, before it reaches the model. The origin keeps who
+        // harness, before it reaches the model. The author keeps who
         // wrote it.
-        let origin = Origin::user().titled(message.user);
+        let author = Author::user().titled(message.user);
         let deliver = Deliver::new(agent, message.text, DeliveryMode::Queue);
-        commands.trigger(deliver.with_origin(origin).literal());
+        commands.trigger(deliver.with_author(author).literal());
     }
 }
 

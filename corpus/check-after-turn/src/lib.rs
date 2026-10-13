@@ -363,7 +363,7 @@ fn check_done(
         ran.output.trim_end()
     );
     let deliver = Deliver::new(agent, message, DeliveryMode::Queue);
-    commands.trigger(deliver.with_origin(Origin::plugin(CHECK).titled(name.clone())));
+    commands.trigger(deliver.with_author(Author::plugin(CHECK).titled(name.clone())));
 }
 
 /// A message the user sends starts over: the checks running stop, and the
@@ -378,7 +378,7 @@ fn cancel_on_user(
     let Ok((message, &ForAgent(agent))) = messages.get(started.entity) else {
         return;
     };
-    if message.origin.kind != OriginKind::User || message.command().is_some() {
+    if message.author.kind != AuthorKind::User || message.command().is_some() {
         return;
     }
     stop(agent, &runs, &mut commands);

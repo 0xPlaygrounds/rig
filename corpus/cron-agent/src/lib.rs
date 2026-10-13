@@ -467,9 +467,9 @@ fn report(
                 .final_answer()
                 .unwrap_or_else(|| "(no answer)".to_owned());
             notices.write(Notice::info(owner, format!("{job}: {answer}")));
-            let origin = Origin::agent(from.clone(), None).titled(job);
+            let author = Author::agent(from.clone(), None).titled(job);
             let note = Deliver::new(owner, answer, DeliveryMode::Note);
-            commands.trigger(note.with_origin(origin));
+            commands.trigger(note.with_author(author));
         }
         TurnOutcome::Failed(why) => {
             notices.write(Notice::error(owner, format!("{job} failed: {why}")));

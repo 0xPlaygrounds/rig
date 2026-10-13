@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use rig_cassette::journal::MemoryStore;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
 use rig_models::ModelsPlugin;
 use rig_telemetry::{Spending, UsagePlugin};

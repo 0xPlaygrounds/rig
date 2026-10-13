@@ -445,7 +445,7 @@ fn step(
     };
     let from = |debate: &Debate, role: Role| {
         let id = debate.agent(role).and_then(|agent| ids.get(agent).ok());
-        Origin::agent(id.cloned().unwrap_or_default(), None).titled(role.title())
+        Author::agent(id.cloned().unwrap_or_default(), None).titled(role.title())
     };
     if role == Role::Judge {
         if !debate.argued() {
@@ -453,7 +453,7 @@ fn step(
         }
         let text = format!("Debate verdict on \"{}\":\n\n{answer}", debate.question);
         let note = Deliver::new(host, text, DeliveryMode::Note);
-        commands.trigger(note.with_origin(from(&debate, role)));
+        commands.trigger(note.with_author(from(&debate, role)));
         notices.write(Notice::info(
             host,
             format!(
@@ -496,12 +496,12 @@ fn step(
         for (to, text, by) in replies {
             if let Some(to) = debate.agent(to) {
                 let reply = Deliver::new(to, text, DeliveryMode::Queue);
-                commands.trigger(reply.with_origin(from(&debate, by)));
+                commands.trigger(reply.with_author(from(&debate, by)));
             }
         }
     } else if let Some(judge) = debate.agent(Role::Judge) {
         let brief = Deliver::new(judge, debate.transcript(), DeliveryMode::Queue);
-        commands.trigger(brief.with_origin(Origin::plugin("debate")));
+        commands.trigger(brief.with_author(Author::plugin("debate")));
     }
 }
 

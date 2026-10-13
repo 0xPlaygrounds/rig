@@ -280,7 +280,7 @@ fn classify(
     let Ok((message, &ForAgent(agent), &DeliveredIn(turn))) = messages.get(delivered.entity) else {
         return;
     };
-    if message.origin.kind != OriginKind::User {
+    if message.author.kind != AuthorKind::User {
         return;
     }
     let (Ok(turn), Ok(conversation)) = (turns.get(turn), conversations.get(agent)) else {

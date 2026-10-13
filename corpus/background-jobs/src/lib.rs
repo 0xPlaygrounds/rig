@@ -547,8 +547,8 @@ fn on_exit(
     } else {
         DeliveryMode::Note
     };
-    let origin = Origin::plugin("background-jobs");
-    commands.trigger(Deliver::new(agent, text, mode).with_origin(origin));
+    let author = Author::plugin("background-jobs");
+    commands.trigger(Deliver::new(agent, text, mode).with_author(author));
 }
 
 /// When a restored agent gets its saved jobs, waits again for those still
