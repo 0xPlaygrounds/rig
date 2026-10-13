@@ -16,6 +16,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// the staged build.
 pub const RELOAD_EXIT_CODE: u8 = 75;
 
+/// The version of rig: of this crate, the launcher and the harness they
+/// build together. It stamps generated projects, so a new launcher
+/// regenerates and rebuilds the agent; a plugin reads it to say which rig
+/// wrote something.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// The one Bevy version of the agent and of every plugin: a Bevy plugin
 /// only works with the exact Bevy version of its app.
 pub const BEVY_VERSION: &str = "0.20.0";
