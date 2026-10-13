@@ -56,6 +56,11 @@ fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
                 "user.email=t@t",
                 "-c",
                 "commit.gpgsign=false",
+                // No background `git maintenance` after the commit: its
+                // `objects/maintenance.lock` would come and go while the
+                // test compares `.git`.
+                "-c",
+                "maintenance.auto=false",
             ])
             .args(args)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
