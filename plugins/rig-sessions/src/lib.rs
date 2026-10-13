@@ -43,8 +43,6 @@ mod tui;
 
 /// Most characters of a session's title.
 const TITLE_CHARS: usize = 60;
-/// Most sessions `/resume` lists.
-const LISTED: usize = 200;
 /// The file of a session's store that holds its [`Meta`]
 /// (`files/meta.json` in its directory).
 const META: &str = "meta.json";
@@ -254,7 +252,6 @@ pub fn list(home: &Home, stores: &SessionStores, current: &Path) -> Vec<SessionE
         })
         .collect();
     sessions.sort_by_key(|session| Reverse(session.saved));
-    sessions.truncate(LISTED);
     sessions
 }
 
