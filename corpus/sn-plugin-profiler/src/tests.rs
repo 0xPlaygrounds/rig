@@ -2,10 +2,11 @@ use std::sync::mpsc::{Receiver, channel};
 
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::clock::ClockPlugin;
+use rig_harness::harness_protocol::SessionId;
 use rig_harness::load;
-use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    Collected, Ended, app_on, calls, collect, connect, first_agent, log_ended, reply, run_until,
+    Collected, Ended, app_in, calls, collect, connect, first_agent, log_ended, reply, run_until,
+    scratch_home,
 };
 use rig_harness_test_support::{press, tui_view};
 use rig_tui::{AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed};
@@ -119,10 +120,10 @@ fn read(called: On<ToolCalled<ReadArgs>>, mut calls: Query<&mut Decision, ToolCa
 }
 
 /// An app whose log times every system and observer run, as the agent's
-/// does, with the profiler, `plugins` (each with the package it is said to
-/// come from), and the terminal view.
-fn start(plugins: impl FnOnce(&mut App)) -> (App, Receiver<()>) {
-    let (mut app, _) = app_on(&MemoryStore::default());
+/// does, with the session service (which ends each frame's timings), the
+/// profiler, `plugins`, and the terminal view, in the home `home`.
+fn start(home: &str, plugins: impl FnOnce(&mut App)) -> (App, Receiver<()>) {
+    let (mut app, _) = app_in(&scratch_home(home), &SessionId::generate());
     app.add_plugins(HeadlessPlugins.build().disable::<TaskPoolPlugin>());
     // The loop's wakes, in place of the headless runner's.
     let (sender, wakes) = channel();
@@ -196,8 +197,9 @@ fn names_the_plugin_that_holds_up_turns() {
         reads("r4"),
         reply("four"),
     ]);
-    let (mut app, wakes) = start(|app| {
-        load::<Slowpoke>(app, "slowpoke", "test");
+    let (mut app, wakes) = start("perf-holds", |app| {
+        // Two plugins of one package, told apart.
+        load::<Slowpoke>(app, HERE, "test");
         load::<Idle>(app, HERE, "test");
     });
     let (agent, connection) = (first_agent(app.world_mut()), connect(&model));
@@ -217,8 +219,9 @@ fn names_the_plugin_that_holds_up_turns() {
     let session = report(&mut app, agent).session;
     let slowpoke = session.get("slowpoke").cloned().unwrap_or_default();
     assert!(slowpoke.held_up_ms >= 1200, "{slowpoke:?}");
-    // Its four holds, and the runs of its own systems.
-    assert!(slowpoke.calls > 4, "{slowpoke:?}");
+    // Its four holds; its systems ran besides.
+    assert_eq!(slowpoke.calls, 4, "{slowpoke:?}");
+    assert!(slowpoke.runs > 0, "{slowpoke:?}");
     let slowest = slowpoke.slowest.unwrap_or(Slowest {
         ms: 0,
         handling: String::new(),
@@ -228,9 +231,10 @@ fn names_the_plugin_that_holds_up_turns() {
         slowest.handling.starts_with("before request #"),
         "{slowest:?}"
     );
-    // `idle`'s observer ran, timed by the harness, and held up little.
+    // Only `idle`'s own observer runs are charged to it, and held up little.
     let idle = session.get("idle").cloned().unwrap_or_default();
-    assert!(idle.calls > 0 && idle.held_up_ms < 50, "{session:?}");
+    assert!(idle.runs >= 2 && idle.calls == 0, "{session:?}");
+    assert!(idle.held_up_ms < 50, "{session:?}");
     assert!(slow_notices(&app).is_empty(), "600 ms a turn is under 1 s");
 
     // Over 500 ms in a turn is named once a session.
@@ -253,9 +257,11 @@ fn names_the_plugin_that_holds_up_turns() {
 
 #[test]
 fn names_the_plugin_whose_key_handler_stalls_the_interface() {
-    let (mut app, _) = start(|app| load::<Keyhog>(app, HERE, "test"));
+    let (mut app, _) = start("perf-stall", |app| load::<Keyhog>(app, HERE, "test"));
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     press(&mut app, "ctrl+k");
+    // The harness hands over a frame's runs in the next one.
+    app.update();
     let stalls = report(&mut app, agent).stalls;
     let stall = stalls.iter().find(|stall| stall.plugin == "keyhog");
     assert!(stall.is_some_and(|stall| stall.ms >= 150), "{stalls:?}");

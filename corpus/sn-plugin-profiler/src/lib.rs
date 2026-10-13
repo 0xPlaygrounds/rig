@@ -12,13 +12,17 @@
 //!   from its start to its answer: as holding up the turn when it is a call
 //!   of one (`CallOf`), else as background work.
 //! - **Its systems and observers.** The harness times every system and
-//!   observer run ([`SystemTimings`], with its `trace` feature, which this
-//!   crate turns on), summed per plugin ([`PluginTimings`]). A frame's runs hold up the
-//!   user's turn while one runs (the agent loop and the plugins share the
-//!   frame), else they are background work.
+//!   observer run with the plugin that added it and the schedule it ran in
+//!   ([`PluginTimings`], with rig-harness's `trace` feature, which this
+//!   crate turns on). A run in `AgentPass` (a stage system, or an observer
+//!   its commands set off) is work an agent's pass waited on: it holds up
+//!   the user's turn while one runs. Any other run is background work.
 //! - **Interface stalls.** A frame whose work takes over 50 ms kept the
 //!   terminal from drawing and from reacting to keys. It names the plugin
-//!   whose systems took most of it, with the keys the frame handled.
+//!   whose runs took most of it, with the keys the frame handled.
+//!
+//! The harness hands over a frame's runs in the next frame, so system time
+//! and stalls are charged one frame late, with what the frame was doing.
 //!
 //! A plugin that holds up one turn longer than `[perf] threshold_ms` of
 //! `settings.toml` (1000 by default) is named in a notice, once a session.
@@ -27,10 +31,11 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
+use std::mem;
 use std::time::Instant;
 
 use rig_harness::prelude::*;
-use rig_harness::timings::Timing;
+use rig_harness::timings::SystemRun;
 use serde::{Deserialize, Serialize};
 
 /// A frame whose work takes longer than this is an interface stall.
@@ -64,9 +69,10 @@ pub struct PluginPerf {
     pub held_up_ms: u64,
     /// How long its work that held nothing up took, in milliseconds.
     pub background_ms: u64,
-    /// How many times it was called: holds, effects, system and observer
-    /// runs.
+    /// How many times it was called: its holds and its effects.
     pub calls: u64,
+    /// How many times its systems and observers ran.
+    pub runs: u64,
     /// Its slowest single call.
     pub slowest: Option<Slowest>,
 }
@@ -109,6 +115,7 @@ struct Tally {
     held_up: Duration,
     background: Duration,
     calls: u64,
+    runs: u64,
     slowest: Option<(Duration, String)>,
 }
 
@@ -127,12 +134,22 @@ pub struct Perf {
     noticed: HashSet<String>,
     /// The holds that hold now, and the plugin effects that run.
     open: HashMap<Entity, Open>,
-    /// The system timings per package at the end of the last frame.
-    systems: BTreeMap<String, Timing>,
     /// When this frame's work began.
-    frame: Option<Instant>,
+    began: Option<Instant>,
     /// The keys this frame handled.
     keys: Vec<String>,
+    /// The last frame, whose runs the harness hands over in this one.
+    last_frame: Option<Frame>,
+}
+
+/// What a frame was doing, kept until its runs are handed over.
+struct Frame {
+    /// How long its work took.
+    took: Option<Duration>,
+    /// The keys it handled.
+    keys: Vec<String>,
+    /// The user's turn that ran in it, with the turn's number and agent.
+    turn: Option<(Entity, u64, Entity)>,
 }
 
 /// A hold, or a plugin's effect, being timed.
@@ -161,22 +178,16 @@ impl Perf {
         self.stalls.clear();
     }
 
-    /// Charges `calls` taking `took`, the slowest `slowest`, to `plugin`,
-    /// holding up `turn` if any, and returns how long `plugin` held up
-    /// that turn in all.
-    fn record(
-        &mut self,
-        plugin: &str,
-        (took, calls): (Duration, u64),
-        slowest: Option<(Duration, &str)>,
-        turn: Option<Entity>,
-    ) -> Option<Duration> {
-        let held_up = turn.is_some();
-        let session = self.session.entry(plugin.to_owned()).or_default();
-        session.add(took, calls, held_up, slowest);
+    /// Charges `tally` to `plugin`, in `turn` if any, and returns how long
+    /// `plugin` held up that turn in all.
+    fn record(&mut self, plugin: &str, tally: &Tally, turn: Option<Entity>) -> Option<Duration> {
+        self.session
+            .entry(plugin.to_owned())
+            .or_default()
+            .add(tally);
         let turn = self.turns.entry(turn?).or_default();
         let in_turn = turn.entry(plugin.to_owned()).or_default();
-        in_turn.add(took, calls, held_up, slowest);
+        in_turn.add(tally);
         Some(in_turn.held_up)
     }
 
@@ -195,23 +206,32 @@ impl Perf {
 }
 
 impl Tally {
-    fn add(
-        &mut self,
-        took: Duration,
-        calls: u64,
-        held_up: bool,
-        slowest: Option<(Duration, &str)>,
-    ) {
-        if held_up {
-            self.held_up += took;
+    /// One call taking `took`, handling `handling`, holding up a turn or
+    /// not.
+    fn call(took: Duration, handling: String, held_up: bool) -> Self {
+        let slowest = Some((took, handling));
+        let mut tally = Self {
+            calls: 1,
+            slowest,
+            ..Self::default()
+        };
+        *if held_up {
+            &mut tally.held_up
         } else {
-            self.background += took;
-        }
-        self.calls += calls;
-        if let Some((took, handling)) = slowest
-            && self.slowest.as_ref().is_none_or(|(most, _)| took > *most)
+            &mut tally.background
+        } = took;
+        tally
+    }
+
+    fn add(&mut self, other: &Self) {
+        self.held_up += other.held_up;
+        self.background += other.background;
+        self.calls += other.calls;
+        self.runs += other.runs;
+        if let Some((took, _)) = &other.slowest
+            && self.slowest.as_ref().is_none_or(|(most, _)| took > most)
         {
-            self.slowest = Some((took, handling.to_owned()));
+            self.slowest.clone_from(&other.slowest);
         }
     }
 }
@@ -222,6 +242,7 @@ fn perfs(table: &Table) -> BTreeMap<String, PluginPerf> {
         held_up_ms: millis(tally.held_up),
         background_ms: millis(tally.background),
         calls: tally.calls,
+        runs: tally.runs,
         slowest: tally.slowest.as_ref().map(|(took, handling)| Slowest {
             ms: millis(*took),
             handling: handling.clone(),
@@ -277,6 +298,7 @@ fn table(text: &mut String, title: &str, plugins: &BTreeMap<String, PluginPerf>)
             held_up_ms,
             background_ms,
             calls,
+            runs,
             slowest,
         } = perf;
         let slowest = slowest.as_ref().map_or(String::new(), |slowest| {
@@ -285,7 +307,7 @@ fn table(text: &mut String, title: &str, plugins: &BTreeMap<String, PluginPerf>)
         writeln!(
             text,
             "  {plugin}: held up {held_up_ms} ms, background {background_ms} ms, {calls} \
-             calls{slowest}"
+             calls, {runs} runs{slowest}"
         )
         .ok();
     }
@@ -310,7 +332,6 @@ impl Plugin for PluginProfilerPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<PerfSettings>("perf")
             .init_resource::<Perf>()
-            .init_resource::<SystemTimings>()
             .add_command(
                 "perf",
                 "Which plugin slows the agent down: /perf [--json | reset]",
@@ -448,9 +469,8 @@ fn hold_removed(
         return;
     };
     let plugin = plugin_name(holds.get(removed.entity).ok().flatten(), &names);
-    let took = open.started.elapsed();
-    let slowest = Some((took, open.handling.as_str()));
-    let Some(held_up) = perf.record(&plugin, (took, 1), slowest, open.turn) else {
+    let tally = Tally::call(open.started.elapsed(), open.handling, open.turn.is_some());
+    let Some(held_up) = perf.record(&plugin, &tally, open.turn) else {
         return;
     };
     if let Some(text) = perf.over(&plugin, held_up, settings.threshold_ms) {
@@ -490,9 +510,8 @@ fn effect_answered(
         return;
     };
     let plugin = plugin_name(by, &names);
-    let took = open.started.elapsed();
-    let slowest = Some((took, open.handling.as_str()));
-    perf.record(&plugin, (took, 1), slowest, open.turn);
+    let tally = Tally::call(open.started.elapsed(), open.handling, open.turn.is_some());
+    perf.record(&plugin, &tally, open.turn);
 }
 
 /// Forgets a plugin effect that went unanswered.
@@ -502,8 +521,7 @@ fn effect_gone(gone: On<Remove<EffectRequest>>, mut perf: ResMut<Perf>) {
 
 /// Marks when this frame's work began.
 fn frame_began(mut perf: ResMut<Perf>) {
-    perf.frame = Some(Instant::now());
-    perf.keys.clear();
+    perf.began = Some(Instant::now());
 }
 
 /// Notes the keys the terminal view handles this frame.
@@ -518,9 +536,11 @@ fn keys_seen(events: Res<rig_tui::TerminalEvents>, mut perf: ResMut<Perf>) {
     }
 }
 
-/// Charges each plugin's system and observer runs this frame to it, holding up the user's last turn while it runs, and keeps a
-/// frame that took too long as a stall, naming the plugin that took most
-/// of it.
+/// Keeps what this frame did, and charges the last frame's system and
+/// observer runs, which the harness hands over now, to their plugins: a
+/// run in `AgentPass` while the user's turn ran held it up. Keeps the last
+/// frame as a stall if it took too long, naming the plugin whose runs took
+/// most of it.
 fn frame_ended(
     timings: PluginTimings,
     plugins: Query<&Name, With<PluginSource>>,
@@ -529,64 +549,80 @@ fn frame_ended(
     mut perf: ResMut<Perf>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let mut now = BTreeMap::<String, Timing>::new();
-    for ((plugin, _), timing) in timings.totals() {
-        let Some(name) = plugin.and_then(|plugin| plugins.get(plugin).ok()) else {
+    let turn = perf.last_turn.and_then(|turn| {
+        let (Turn { index, .. }, &TurnOf(agent)) = turns.get(turn).ok()?;
+        Some((turn, index + 1, agent))
+    });
+    let this = Frame {
+        took: perf.began.take().map(|began| began.elapsed()),
+        keys: mem::take(&mut perf.keys),
+        turn,
+    };
+    let Some(frame) = perf.last_frame.replace(this) else {
+        return;
+    };
+    let pass = format!("{AgentPass:?}");
+    let mut charged = BTreeMap::<&str, (Tally, Option<SystemRun>)>::new();
+    let runs = timings.last_frame();
+    for run in &runs {
+        let Some(plugin) = run.plugin.and_then(|plugin| plugins.get(plugin).ok()) else {
             continue;
         };
-        let total = now.entry(name.as_str().to_owned()).or_default();
-        total.runs += timing.runs;
-        total.total += timing.total;
-        total.max = total.max.max(timing.max);
-    }
-    let before = std::mem::replace(&mut perf.systems, now.clone());
-    let turn = perf
-        .last_turn
-        .and_then(|turn| Some((turn, turns.get(turn).ok()?)));
-    let keys = perf.keys.join(", ");
-    let handling = match turn {
-        _ if !keys.is_empty() => format!("a system, handling {keys}"),
-        Some((_, (turn, _))) => format!("a system, turn {}", turn.index + 1),
-        None => "a system, between turns".to_owned(),
-    };
-    let mut most: Option<(Duration, String)> = None;
-    for (plugin, timing) in &now {
-        let plugin = plugin.clone();
-        let was = before.get(&plugin).copied().unwrap_or_default();
-        let took = timing.total.saturating_sub(was.total);
-        let runs = timing.runs.saturating_sub(was.runs);
-        if runs == 0 {
-            continue;
+        let (tally, longest) = charged.entry(plugin.as_str()).or_default();
+        if frame.turn.is_some() && run.schedule.as_deref() == Some(pass.as_str()) {
+            tally.held_up += run.took;
+        } else {
+            tally.background += run.took;
         }
-        let slowest = (timing.max > was.max).then_some((timing.max, handling.as_str()));
-        let held = perf.record(&plugin, (took, runs), slowest, turn.map(|(turn, _)| turn));
-        if let Some(held_up) = held
-            && let Some(text) = perf.over(&plugin, held_up, settings.threshold_ms)
+        tally.runs += 1;
+        if longest
+            .as_ref()
+            .is_none_or(|longest| run.took > longest.took)
         {
-            notices.write(Notice::warn(turn.map(|(_, (_, agent))| agent.0), text));
+            *longest = Some(run.clone());
         }
-        if most.as_ref().is_none_or(|(most, _)| took > *most) {
+    }
+    let keys = frame.keys.join(", ");
+    let mut most: Option<(Duration, &str)> = None;
+    for (plugin, (mut tally, longest)) in charged {
+        tally.slowest = longest.map(|run| (run.took, handling(&run, &keys, frame.turn)));
+        let turn = frame.turn.map(|(turn, ..)| turn);
+        let held = perf.record(plugin, &tally, turn);
+        if let Some(held_up) = held
+            && let Some(text) = perf.over(plugin, held_up, settings.threshold_ms)
+        {
+            notices.write(Notice::warn(frame.turn.map(|(.., agent)| agent), text));
+        }
+        let took = tally.held_up + tally.background;
+        if most.is_none_or(|(most, _)| took > most) {
             most = Some((took, plugin));
         }
     }
-    let Some(took) = perf.frame.take().map(|began| began.elapsed()) else {
+    let Some(took) = frame.took.filter(|&took| took > STALL) else {
         return;
     };
-    if took <= STALL {
-        return;
-    }
-    let plugin = most
-        .filter(|(took, _)| *took > STALL)
-        .map_or_else(|| UNATTRIBUTED.to_owned(), |(_, plugin)| plugin);
-    let handling = (!keys.is_empty()).then_some(keys);
+    let plugin = most.filter(|&(took, _)| took > STALL);
     perf.stalls.push(Stall {
         ms: millis(took),
-        plugin,
-        handling,
+        plugin: plugin.map_or(UNATTRIBUTED, |(_, plugin)| plugin).to_owned(),
+        handling: (!keys.is_empty()).then_some(keys),
     });
     if perf.stalls.len() > STALLS_KEPT {
         perf.stalls.remove(0);
     }
+}
+
+/// What a system or observer run was handling: the system, its schedule,
+/// and the frame's keys or turn.
+fn handling(run: &SystemRun, keys: &str, turn: Option<(Entity, u64, Entity)>) -> String {
+    let schedule = run.schedule.as_deref().unwrap_or("no schedule");
+    let mut handling = format!("{} in {schedule}", run.system);
+    if !keys.is_empty() {
+        write!(handling, ", handling {keys}").ok();
+    } else if let Some((_, number, _)) = turn {
+        write!(handling, ", turn {number}").ok();
+    }
+    handling
 }
 
 #[cfg(all(test, feature = "tui"))]
