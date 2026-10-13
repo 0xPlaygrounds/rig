@@ -85,6 +85,14 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     assert_eq!(from.as_ref(), world.get::<AgentId>(a));
     assert_eq!(world.get::<ModelChoice>(b), Some(&choice));
     assert_eq!(world.resource::<Shown>().0, Some(b), "B is shown");
+    // B's first message is the brief, by A, about the goal.
+    let author = world
+        .get::<Conversation>(b)
+        .and_then(|conversation| conversation.author(0).cloned());
+    let by_a = world
+        .get::<AgentId>(a)
+        .map(|a| Author::agent(a.0.clone(), None));
+    assert_eq!(author, by_a.map(|by_a| by_a.titled("implement API")));
     let b_id = world.get::<AgentId>(b).cloned();
 
     let requests = model.requests();
