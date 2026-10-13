@@ -1,16 +1,13 @@
 //! Stray file cleanup: the files an agent's tools created while it worked on
 //! a prompt, offered for deletion when its turn ends.
 //!
-//! - A file tool's new file is one it published as created
-//!   ([`FilesChanged`], [`ChangeKind::Created`]). A call that may change
-//!   anything (a `Writes(Anything)` footprint, such as `shell`) is held
-//!   while git lists the untracked files before it runs, and its answer
-//!   while git lists them again; what is new in between is the call's.
-//!   Ignored files count only when they match a `watch_ignored` pathspec.
-//!   The harness's checkpoint of such a call is not used in a git work
-//!   tree: it skips ignored files, and it starts from the state the turn's
-//!   last such call left, so a file made between two calls would count as
-//!   the second one's. Outside git, the checkpoint's created files count.
+//! - A call's new files are the ones it published as created
+//!   ([`FilesChanged`], [`ChangeKind::Created`]): a file tool names what it
+//!   wrote, and the harness's checkpoint of a call that may write anywhere
+//!   (such as `shell`) names the files that appeared while it ran, each
+//!   call from a snapshot taken just before it, so a file made between two
+//!   calls is in neither. Ignored files count only under a `watch_ignored`
+//!   path, which the plugin adds to every checkpoint ([`CheckpointAlso`]).
 //!   A subagent's files count for the agent at the top of its tree.
 //! - When a top-level agent's turn would end, the end is held while the
 //!   files still there are measured. Where someone can answer, a
@@ -21,7 +18,8 @@
 //!   them, **Keep all** (or closing either picker) leaves them. A run nobody
 //!   answers, such as `--print`, deletes nothing and prints the list after
 //!   the answer.
-//! - The agent's next message carries a note naming the files deleted.
+//! - The user's next message to the agent carries a note naming the files
+//!   deleted.
 //! - `/restore-strays` lists the recent batches; `/restore-strays <batch>`
 //!   puts one back.
 //!
@@ -30,11 +28,10 @@
 //! ```toml
 //! [stray]
 //! scratch = ["tmp*", "scratch*", "*.log", "*.bak", "*.orig"]
-//! watch_ignored = ["*.log"]
+//! watch_ignored = ["out.log", "dist"]
 //! ```
 
 use std::collections::BTreeSet;
-use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -43,7 +40,6 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
 use rig_print::PrintSection;
-use rig_tools::process::{Launcher, Spawn};
 use rig_tools::workspace::{Stat, Workspace};
 use serde::{Deserialize, Serialize};
 
@@ -59,9 +55,6 @@ const INDEX: &str = ".rig/trash/index.json";
 /// How many batches `/restore-strays` lists.
 const RECENT: usize = 10;
 
-/// How long a git listing may take.
-const GIT_TIMEOUT: Duration = Duration::from_secs(30);
-
 /// The picker's title.
 pub const TITLE: &str = "Files created this turn";
 
@@ -74,8 +67,9 @@ pub const RESTORE_TITLE: &str = "Restore deleted strays";
 pub struct StraySettings {
     /// File-name globs selected at first in the picker.
     pub scratch: Vec<String>,
-    /// Git pathspec globs of ignored files that still count as created.
-    pub watch_ignored: Vec<String>,
+    /// Paths, relative to the project, under which ignored files still
+    /// count as created.
+    pub watch_ignored: Vec<PathBuf>,
 }
 
 impl Default for StraySettings {
@@ -142,17 +136,23 @@ pub struct StrayFilesPlugin;
 
 impl Plugin for StrayFilesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_setting::<StraySettings>("stray")
-            .init_resource::<ProjectRoot>()
+        app.add_setting::<StraySettings>("stray");
+        let watched = app.world().get_resource::<StraySettings>();
+        let watched = watched
+            .map(|it| it.watch_ignored.clone())
+            .unwrap_or_default();
+        app.world_mut()
+            .get_resource_or_init::<CheckpointAlso>()
+            .0
+            .extend(watched);
+        app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
-            .init_resource::<Processes>()
             .register_required_components::<Agent, Strays>()
             .configure_sets(AgentPass, StraySystems.in_set(PrepareSystems::Edit))
             .add_systems(
                 AgentPass,
                 (
-                    list_before.in_set(GateSystems::After),
-                    (list_after, end_of_turn).in_set(Stage::Review),
+                    end_of_turn.in_set(Stage::Review),
                     tell_deleted.in_set(StraySystems),
                 ),
             )
@@ -162,7 +162,6 @@ impl Plugin for StrayFilesPlugin {
                 restore,
             )
             .add_observer(files_written)
-            .add_observer(listed)
             .add_observer(measured)
             .add_observer(ticked)
             .add_observer(act)
@@ -176,30 +175,6 @@ impl Plugin for StrayFilesPlugin {
 /// The `--print` section listing the files.
 #[derive(Component)]
 struct StraySection;
-
-/// On a call whose untracked files were listed before it ran: them, or
-/// `None` outside a git repository.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct Before(Option<BTreeSet<PathBuf>>);
-
-/// On a call whose untracked files are listed again after it ran.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct Diffing;
-
-/// A hold on a call while git lists the untracked files.
-#[derive(Component)]
-struct Listing {
-    call: Entity,
-    /// The agent the files count for.
-    agent: Entity,
-    after: bool,
-}
-
-/// What a listing found.
-#[derive(Default)]
-struct Untracked(Option<BTreeSet<PathBuf>>);
 
 /// A hold on a turn's end while its files are measured.
 #[derive(Component)]
@@ -248,8 +223,6 @@ struct Batch {
 struct Work<'w> {
     workspace: Res<'w, ProjectWorkspace>,
     root: Res<'w, ProjectRoot>,
-    processes: Res<'w, Processes>,
-    settings: Res<'w, StraySettings>,
     wake: Res<'w, Wake>,
 }
 
@@ -267,13 +240,6 @@ impl Work<'_> {
             blocking.await.unwrap_or_default()
         })
     }
-
-    /// Lists the untracked files under `dir`.
-    fn untracked(&self, dir: PathBuf) -> Running {
-        let launcher = self.processes.launcher();
-        let ignored = self.settings.watch_ignored.clone();
-        self.run(move |workspace, _| Untracked(untracked(workspace, &launcher, &dir, &ignored)))
-    }
 }
 
 /// The agent at the top of `agent`'s tree.
@@ -284,100 +250,16 @@ fn top(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
     agent
 }
 
-/// Holds each call that may change anything, about to run, while git lists
-/// the untracked files before it.
-fn list_before(
-    calls: Query<
-        (Entity, &Footprint, &ForAgent, &Decision),
-        (Undecided, ToolCalls, Without<Before>),
-    >,
-    dirs: Query<&WorkDir>,
-    parents: Query<&SpawnedBy>,
-    work: Work,
-    mut commands: Commands,
-) {
-    for (call, footprint, &ForAgent(agent), decision) in &calls {
-        if decision.is_decided() || footprint.0 != Touches::Writes(Scope::Anything) {
-            continue;
-        }
-        let dir = dirs.get(agent).map_or(&work.root.0, |dir| &dir.0).clone();
-        let listing = Listing {
-            call,
-            agent: top(agent, &parents),
-            after: false,
-        };
-        let name = Name::new("listing untracked files");
-        commands.spawn((name, HoldOf(call), listing, work.untracked(dir)));
-    }
-}
-
-/// Holds the answer of each call listed before it ran while git lists the
-/// untracked files again.
-fn list_after(
-    calls: Query<(Entity, &Before, &ForAgent), (Unreviewed, ToolCalls, Without<Diffing>)>,
-    dirs: Query<&WorkDir>,
-    parents: Query<&SpawnedBy>,
-    work: Work,
-    mut commands: Commands,
-) {
-    for (call, Before(before), &ForAgent(agent)) in &calls {
-        commands.entity(call).insert(Diffing);
-        if before.is_none() {
-            continue;
-        }
-        let dir = dirs.get(agent).map_or(&work.root.0, |dir| &dir.0).clone();
-        let listing = Listing {
-            call,
-            agent: top(agent, &parents),
-            after: true,
-        };
-        let name = Name::new("listing new files");
-        commands.spawn((name, HoldOf(call), listing, work.untracked(dir)));
-    }
-}
-
-/// Keeps a listing on its call, or what is new since the one before, and
-/// lets the call go.
-fn listed(
-    done: On<Insert<Done<Untracked>>>,
-    listings: Query<(&Listing, &Done<Untracked>)>,
-    calls: Query<&Before>,
-    mut agents: Query<&mut Strays>,
-    mut commands: Commands,
-) {
-    let Ok((listing, Done(Untracked(files)))) = listings.get(done.entity) else {
-        return;
-    };
-    if !listing.after {
-        commands
-            .entity(listing.call)
-            .try_insert(Before(files.clone()));
-    } else if let (Ok(Before(Some(before))), Some(after), Ok(mut strays)) = (
-        calls.get(listing.call),
-        files,
-        agents.get_mut(listing.agent),
-    ) {
-        strays.created.extend(after.difference(before).cloned());
-    }
-    commands.entity(done.entity).despawn();
-}
-
-/// Keeps the files a tool call published as created, unless git listed
-/// them around the call: the harness's checkpoint of a `Writes(Anything)`
-/// call starts from the state the turn's last such call left, so it would
-/// count a file someone made between two calls as the second one's.
+/// Keeps the files a tool call published as created.
 fn files_written(
     settled: On<Add<Settled>>,
-    calls: Query<(&Published, &ForAgent, Option<&Before>), With<ToolRequest>>,
+    calls: Query<(&Published, &ForAgent), With<ToolRequest>>,
     parents: Query<&SpawnedBy>,
     mut agents: Query<&mut Strays>,
 ) {
-    let Ok((published, &ForAgent(agent), before)) = calls.get(settled.entity) else {
+    let Ok((published, &ForAgent(agent))) = calls.get(settled.entity) else {
         return;
     };
-    if matches!(before, Some(Before(Some(_)))) {
-        return;
-    }
     let Ok(Some(FilesChanged(changes))) = published.0.get::<FilesChanged>() else {
         return;
     };
@@ -535,14 +417,14 @@ fn reported(
     commands.entity(done.entity).despawn();
 }
 
-/// Adds a note naming the files the user deleted to the agent's next
-/// message.
+/// Adds a note naming the files the user deleted to the next message the
+/// user writes to the agent.
 fn tell_deleted(
     mut messages: Query<(&mut Incoming, &ForAgent), (Added<Admitted>, IncomingMessages)>,
     mut agents: Query<&mut Strays>,
 ) {
     for (mut message, &ForAgent(agent)) in &mut messages {
-        if message.command().is_some() {
+        if message.author.kind != AuthorKind::User || message.command().is_some() {
             continue;
         }
         let Ok(mut strays) = agents.get_mut(agent) else {
@@ -614,56 +496,6 @@ fn batches_listed(
         });
     }
     commands.spawn(picker);
-}
-
-/// The untracked files under `dir`, absolute, with the ignored ones that
-/// match `watch_ignored`; `None` when git cannot list them.
-fn untracked(
-    workspace: &dyn Workspace,
-    launcher: &Launcher,
-    dir: &Path,
-    watch_ignored: &[String],
-) -> Option<BTreeSet<PathBuf>> {
-    let mut files = git_files(workspace, launcher, dir, &[])?;
-    if !watch_ignored.is_empty() {
-        let mut args = vec!["--ignored".to_owned(), "--".to_owned()];
-        args.extend(watch_ignored.iter().map(|glob| format!(":(glob){glob}")));
-        files.extend(git_files(workspace, launcher, dir, &args)?);
-    }
-    Some(files)
-}
-
-/// `git ls-files --others` in `dir` with `extra`, as absolute paths.
-fn git_files(
-    workspace: &dyn Workspace,
-    launcher: &Launcher,
-    dir: &Path,
-    extra: &[String],
-) -> Option<BTreeSet<PathBuf>> {
-    let mut args: Vec<OsString> = ["ls-files", "--others", "--exclude-standard", "-z"]
-        .map(OsString::from)
-        .into();
-    args.extend(extra.iter().map(OsString::from));
-    let process = workspace
-        .spawn(
-            launcher,
-            Some(dir),
-            OsStr::new("git"),
-            &args,
-            Spawn::default(),
-        )
-        .ok()?;
-    let output = process.output(Some(GIT_TIMEOUT)).ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let paths = output.stdout.split(|&byte| byte == 0);
-    Some(
-        paths
-            .filter(|path| !path.is_empty())
-            .map(|path| workspace.canonical(&dir.join(&*String::from_utf8_lossy(path))))
-            .collect(),
-    )
 }
 
 /// `path` under the project `root`, as the user knows it.
