@@ -11,12 +11,20 @@ workspace = true
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
+# The pool a check of a call runs on.
+bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Reads `deps.toml`, `Cargo.toml` and `pyproject.toml`; the version
+# rig-harness reads `settings.toml` with, already in Cargo.lock.
+toml = "1"
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The real `shell`, `edit` tools whose calls the plugin gates.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
