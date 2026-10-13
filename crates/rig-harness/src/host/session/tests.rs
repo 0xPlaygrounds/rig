@@ -21,6 +21,7 @@ use super::{
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::launcher::LauncherRun;
+use crate::plugin_data::PluginData;
 use crate::services::RigHome;
 
 /// What the session plugin said, frame after frame.
@@ -250,8 +251,13 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
     app.update();
     app.update();
     let stored = app.world().contains_resource::<SessionStore>();
+    let data = app.world().contains_resource::<PluginData>();
     drop((app, layer));
     assert!(!stored, "the refused session has no store");
+    assert!(
+        data,
+        "a refused run has plugin data, its session's in memory"
+    );
     assert_eq!(snapshot(session.path()), before);
     let refusal = fs::read_to_string(run.refusal()).unwrap_or_default();
     assert!(refusal.contains("older version of rig"), "{refusal}");

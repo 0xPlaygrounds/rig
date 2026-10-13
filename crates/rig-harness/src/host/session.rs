@@ -46,8 +46,10 @@ use serde::{Deserialize, Serialize};
 use super::cli::Cli;
 use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
-use crate::services::RigHome;
+use crate::plugin_data::PluginData;
+use crate::services::{ProjectRoot, RigHome};
 use crate::timings::{SystemTimings, TimeSystems};
+use crate::workspace::ProjectWorkspace;
 
 /// The session's directory. Its files are kept through the session's
 /// store ([`SessionStores`]): a plugin keeps its own files of the session
@@ -251,7 +253,8 @@ pub struct FirstStart;
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, the default [`SessionStores`] and [`Scratch`], the
 /// [`SystemTimings`] (which stay empty without the log), opens the
-/// [`SessionStore`] once every plugin is built, routes panics to the log,
+/// [`SessionStore`] once every plugin is built and then inserts the
+/// [`PluginData`], routes panics to the log,
 /// tells a first start ([`FirstStart`]), and forks and deletes sessions,
 /// finishing at startup the deletes a crash cut short.
 pub struct SessionPlugin;
@@ -304,24 +307,45 @@ impl Plugin for SessionPlugin {
     /// the run writes nothing into its directory (`leave_session`). A
     /// build describing itself opens none.
     fn finish(&self, app: &mut App) {
-        if app.world().contains_resource::<Describing>() {
-            return;
-        }
-        match open_store(app.world_mut()) {
-            Ok(()) => {
-                let wanted = app.world().get_resource::<Scratch>().and_then(Scratch::log);
-                move_text_log(app.world_mut(), wanted);
+        if !app.world().contains_resource::<Describing>() {
+            match open_store(app.world_mut()) {
+                Ok(()) => {
+                    let wanted = app.world().get_resource::<Scratch>().and_then(Scratch::log);
+                    move_text_log(app.world_mut(), wanted);
+                }
+                Err(failure) => {
+                    refuse(
+                        app,
+                        format!(
+                            "the session cannot be opened, so nothing of it was changed: {failure}"
+                        ),
+                    );
+                }
             }
-            Err(failure) => {
-                refuse(
-                    app,
-                    format!(
-                        "the session cannot be opened, so nothing of it was changed: {failure}"
-                    ),
-                );
-            }
         }
+        insert_plugin_data(app.world_mut());
     }
+}
+
+/// Inserts the [`PluginData`] of this run, unless the app has one: in the
+/// session's store when it opened, for the [`ProjectRoot`] in the
+/// [`ProjectWorkspace`].
+fn insert_plugin_data(world: &mut World) {
+    if world.contains_resource::<PluginData>() {
+        return;
+    }
+    let home = RigHome::of(world);
+    let session = world
+        .get_resource::<SessionStore>()
+        .map(|store| -> Arc<dyn Files> { store.0.clone() });
+    let root = world
+        .get_resource::<ProjectRoot>()
+        .cloned()
+        .unwrap_or_default();
+    let workspace = world.get_resource::<ProjectWorkspace>();
+    let host = workspace.and_then(|workspace| workspace.0.host());
+    let data = PluginData::new(&home, session, &root.0, host);
+    world.insert_resource(data);
 }
 
 /// Opens the session's store, the one in the world or else the one

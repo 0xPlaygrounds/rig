@@ -67,6 +67,7 @@ mod load;
 pub mod note;
 pub mod per_call;
 pub mod pick;
+pub mod plugin_data;
 pub mod preview;
 pub mod primary;
 pub mod progress;
@@ -147,6 +148,7 @@ pub mod prelude {
     pub use crate::note::Note;
     pub use crate::per_call::{AppPerCallExt, Place};
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
+    pub use crate::plugin_data::PluginData;
     pub use crate::preview::{Preview, Previewed};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::{CallOutput, ToolProgress};

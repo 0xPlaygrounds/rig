@@ -281,6 +281,17 @@ impl Home {
         self.root.join("history.jsonl")
     }
 
+    /// `data/`, where plugins keep files across sessions and projects.
+    pub fn data(&self) -> PathBuf {
+        self.root.join("data")
+    }
+
+    /// `projects/`, where plugins keep files per project, one directory
+    /// for each project the agent worked in.
+    pub fn projects(&self) -> PathBuf {
+        self.root.join("projects")
+    }
+
     /// The directory holding every running launcher's [`RunDir`].
     pub fn runs(&self) -> PathBuf {
         self.root.join("run")
