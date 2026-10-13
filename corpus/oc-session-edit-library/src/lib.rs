@@ -517,8 +517,9 @@ fn is_empty(message: &Message) -> bool {
 
 /// Removes messages `from..=to` of `conversation`, and every call whose
 /// result they held and every result of a call they held, wherever it
-/// is, as one change; what it removed. Refused, changing nothing, when
-/// the range is outside the conversation or the rest would not pair.
+/// is, as one change ([`Conversation::set_entries`], so the entries kept
+/// keep their ids); what it removed. Refused, changing nothing, when the
+/// range is outside the conversation or the rest would not pair.
 fn drop_range(
     conversation: &mut Conversation,
     from: usize,
@@ -535,23 +536,18 @@ fn drop_range(
     let dropped = messages.get(from..=to).unwrap_or_default();
     let calls: HashSet<CallId> = dropped.iter().flat_map(call_ids).collect();
     let mut report = Vec::new();
-    let mut touched: Option<(usize, usize)> = None;
-    let mut after: Vec<Option<Entry>> = Vec::with_capacity(len);
-    for (at, message) in messages.iter().enumerate() {
-        let entry = conversation.entry(at);
-        let change = if (from..=to).contains(&at) {
-            let tools = tool_names(message).join(", ");
+    let mut kept = Vec::with_capacity(len);
+    for (at, entry) in (0..len).filter_map(|at| Some((at, conversation.entry(at)?))) {
+        if (from..=to).contains(&at) {
+            let tools = tool_names(&entry.message).join(", ");
             let tools = if tools.is_empty() {
                 tools
             } else {
                 format!(" of {tools}")
             };
-            report.push(format!(
-                "removed message {at} ({}{tools})",
-                role_of(message)
-            ));
-            Some(None)
-        } else if let Some((stripped, taken)) = strip(message, &calls) {
+            let role = role_of(&entry.message);
+            report.push(format!("removed message {at} ({role}{tools})"));
+        } else if let Some((stripped, taken)) = strip(&entry.message, &calls) {
             report.extend(
                 taken
                     .iter()
@@ -559,44 +555,23 @@ fn drop_range(
             );
             if is_empty(&stripped) {
                 report.push(format!("removed message {at}, which held nothing else"));
-                Some(None)
             } else {
-                Some(entry.clone().map(|entry| Entry {
+                kept.push(Entry {
                     message: stripped,
                     ..entry
-                }))
+                });
             }
         } else {
-            None
-        };
-        match change {
-            Some(replaced) => {
-                touched = Some(touched.map_or((at, at), |(first, _)| (first, at)));
-                after.push(replaced);
-            }
-            None => after.push(entry),
+            kept.push(entry);
         }
     }
-    let Some((first, last)) = touched else {
-        return Ok(report);
-    };
-    let rest: Vec<Message> = after
-        .iter()
-        .flatten()
-        .map(|entry| entry.message.clone())
-        .collect();
+    let rest: Vec<Message> = kept.iter().map(|entry| entry.message.clone()).collect();
     pairing::validate(&rest).map_err(|why| {
         format!(
             "dropping {from}..{to} would leave the conversation broken ({why}); drop a wider range"
         )
     })?;
-    let with: Vec<Entry> = after
-        .into_iter()
-        .skip(first)
-        .take(last + 1 - first)
-        .flatten()
-        .collect();
-    conversation.splice(first..=last, with, Author::plugin(AUTHOR));
+    conversation.set_entries(kept, Author::plugin(AUTHOR));
     Ok(report)
 }
 
