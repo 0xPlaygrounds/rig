@@ -263,6 +263,32 @@ impl EntryRef<'_> {
             .is_none_or(|author| author.kind == AuthorKind::User && author.title.is_none());
         typed && users
     }
+
+    /// Whether it asks something of the model: a user message with text
+    /// or attachments, not only tool results, that is not rig's own (the
+    /// [`STOPPED`] note). The user's, an agent's or a plugin's.
+    pub fn is_request(&self) -> bool {
+        let asks = match self.message {
+            Message::User { content } => content
+                .iter()
+                .any(|item| !matches!(item, UserContent::ToolResult(_))),
+            _ => false,
+        };
+        asks && self
+            .author
+            .is_none_or(|author| author.kind != AuthorKind::Rig)
+    }
+
+    /// Whether it is the [`STOPPED`] note rig puts between a request the
+    /// user stopped and what came next.
+    pub fn is_stopped_note(&self) -> bool {
+        let by_rig = self
+            .author
+            .is_some_and(|author| author.kind == AuthorKind::Rig);
+        by_rig
+            && matches!(self.message, Message::User { content }
+                if matches!(content.as_slice(), [UserContent::Text(text)] if text.text == STOPPED))
+    }
 }
 
 /// The text of the entry that goes between a request the user stopped and
@@ -450,6 +476,23 @@ impl Conversation {
         let first = self.messages.len().saturating_sub(trailing);
         let answered = (trailing > 0).then(|| self.id(first)).flatten();
         answered.unwrap_or(MessageId(self.next_id))
+    }
+
+    /// The entries a turn that began at `start` (its
+    /// [`turn_start`](Self::turn_start)) answers: the user messages in a
+    /// row from where it begins now ([`start_of`](Self::start_of)). After a
+    /// stopped turn they begin with that turn's tool results and the
+    /// [`STOPPED`] note, before what was sent next.
+    pub fn asked(&self, start: MessageId) -> impl Iterator<Item = EntryRef<'_>> {
+        let entries = self.entries().skip(self.start_of(start));
+        entries.take_while(|entry| matches!(entry.message, Message::User { .. }))
+    }
+
+    /// The message that asked for the turn that began at `start`: the
+    /// first of the entries it answers ([`asked`](Self::asked)) that is a
+    /// request ([`EntryRef::is_request`]).
+    pub fn request(&self, start: MessageId) -> Option<EntryRef<'_>> {
+        self.asked(start).find(EntryRef::is_request)
     }
 
     /// Why the user's last message is left unanswered, if it was halted.

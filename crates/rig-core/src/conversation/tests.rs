@@ -226,3 +226,33 @@ fn a_stopped_request_gets_its_note_and_halts_clear() {
     assert_eq!(conversation.halted(), None);
     assert!(conversation.awaits_model());
 }
+
+/// The turn after a stopped one answers the stopped reply's results and
+/// rig's note before the user's message: the request is the user's.
+#[test]
+fn a_turn_after_a_stop_is_asked_by_the_users_message() {
+    use crate::message::{AssistantContent, AssistantMessage, CallId, ToolName};
+    let shell = || ToolName::new("shell").expect("tool name");
+    let mut conversation = Conversation::from_messages([
+        Message::user("fix it"),
+        Message::Assistant(AssistantMessage::new(vec![AssistantContent::tool_call(
+            "call-1",
+            shell(),
+            serde_json::json!({}),
+        )])),
+        Message::tool_result(CallId::from_wire("call-1"), shell(), "interrupted"),
+    ]);
+    assert!(conversation.halt(Halt::Stopped));
+    let asked = conversation.push(Message::user("never mind"));
+    let start = conversation.turn_start();
+
+    let notes: Vec<bool> = conversation
+        .asked(start)
+        .map(|entry| entry.is_stopped_note())
+        .collect();
+    assert_eq!(notes, [false, true, false]);
+    assert_eq!(
+        conversation.request(start).map(|entry| entry.id),
+        Some(asked)
+    );
+}
