@@ -91,9 +91,9 @@ impl ArgCompletion {
     }
 }
 
-/// What is being completed.
+/// What a [`Completion`] completes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Kind {
+pub enum CompletionKind {
     /// A command name after a leading `/`.
     Command,
     /// The argument at this position (from 0) of the command at the
@@ -112,15 +112,21 @@ pub struct Candidate {
     pub detail: String,
 }
 
-/// The open completion list.
-pub(crate) struct Completion {
-    pub(crate) kind: Kind,
-    /// The byte offset of the `/` or `@` in the input.
-    pub(crate) start: usize,
-    /// The text typed after it.
-    query: String,
-    pub(crate) items: Vec<Candidate>,
-    pub(crate) selected: usize,
+/// The open completion list of the input, as
+/// [`TuiInputState::completion`](crate::TuiInputState::completion) gives it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Completion {
+    /// What it completes.
+    pub kind: CompletionKind,
+    /// The byte offset in the input of the token it completes: its `/` or
+    /// `@`, or an argument's first character.
+    pub start: usize,
+    /// The text typed after the `/` or `@`, or the argument typed.
+    pub query: String,
+    /// What it lists, best first.
+    pub items: Vec<Candidate>,
+    /// The position of the item Tab and Enter put in, among `items`.
+    pub selected: usize,
     /// Whether the items came from a finished walk.
     complete: bool,
 }
@@ -150,7 +156,7 @@ impl Completion {
     }
 }
 
-impl Kind {
+impl CompletionKind {
     /// What the token starts with.
     pub(crate) fn marker(self) -> &'static str {
         match self {
@@ -237,7 +243,7 @@ fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
 
 /// The `/command`, argument or `@path` token that ends at the cursor, if
 /// any; an argument's with the command's name and its position.
-fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
+fn token(text: &str, cursor: usize) -> Option<(CompletionKind, usize, &str, &str)> {
     let before = text.get(..cursor)?;
     let start = before
         .char_indices()
@@ -247,10 +253,10 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
     if let Some(query) = word.strip_prefix('/')
         && start == 0
     {
-        return Some((Kind::Command, start, query, ""));
+        return Some((CompletionKind::Command, start, query, ""));
     }
     if let Some(query) = word.strip_prefix('@') {
-        return Some((Kind::Path, start, query, ""));
+        return Some((CompletionKind::Path, start, query, ""));
     }
     let command = text.strip_prefix('/')?.split_whitespace().next()?;
     let position = before
@@ -258,7 +264,7 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
         .split_whitespace()
         .count()
         .checked_sub(1)?;
-    Some((Kind::Arg(position), start, word, command))
+    Some((CompletionKind::Arg(position), start, word, command))
 }
 
 /// What completion lists: the slash commands, and the candidates plugins
@@ -306,7 +312,7 @@ pub(crate) fn update(
         return;
     }
     view.dismissed = None;
-    if kind == Kind::Path {
+    if kind == CompletionKind::Path {
         index.refresh(wake, sources.project());
     }
     let complete = index.walking.is_none();
@@ -314,12 +320,12 @@ pub(crate) fn update(
         && open.kind == kind
         && open.start == start
         && open.query == query
-        && (kind != Kind::Path || open.complete == complete)
+        && (kind != CompletionKind::Path || open.complete == complete)
     {
         return;
     }
     let items = match kind {
-        Kind::Command => {
+        CompletionKind::Command => {
             let mut ranked: Vec<(usize, &str, &SlashCommand)> = sources
                 .commands
                 .iter()
@@ -337,7 +343,7 @@ pub(crate) fn update(
                 })
                 .collect()
         }
-        Kind::Arg(position) => {
+        CompletionKind::Arg(position) => {
             let candidates = sources
                 .arguments
                 .iter()
@@ -349,7 +355,7 @@ pub(crate) fn update(
             ranked.sort_by_key(|(at, _)| *at);
             ranked.into_iter().map(|(_, item)| item.clone()).collect()
         }
-        Kind::Path => path_items(&index.paths, query),
+        CompletionKind::Path => path_items(&index.paths, query),
     };
     let query = query.to_owned();
     view.completion = (!items.is_empty()).then_some(Completion {

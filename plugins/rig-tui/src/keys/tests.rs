@@ -155,7 +155,7 @@ fn a_held_key_is_heard_once_and_again_when_let_go() {
 }
 
 #[test]
-fn a_plugins_binding_and_message_do_built_in_actions() {
+fn a_plugins_binding_and_action_do_built_in_actions() {
     let (mut app, _) = view_app();
     let down = KeyBinding::new(KeyPress::ctrl('o'), "Down");
     app.world_mut().spawn((down, InputAction::Down));
@@ -171,6 +171,11 @@ fn a_plugins_binding_and_message_do_built_in_actions() {
     // With a completion open, Down selects its next item.
     type_text(&mut app, "/model a/");
     assert_eq!(selected(&app), Some(0));
+    // A filter sees it in the next frame, as the frame's keys start.
+    app.update();
+    let state = app.world().resource::<crate::TuiInputState>();
+    let listed = state.completion().map(|open| (open.kind, open.items.len()));
+    assert_eq!(listed, Some((crate::CompletionKind::Arg(0), 2)));
     press(&mut app, "ctrl+o");
     assert_eq!(selected(&app), Some(1));
     // Without one, it moves the cursor a line down.
@@ -179,8 +184,8 @@ fn a_plugins_binding_and_message_do_built_in_actions() {
     app.update();
     press(&mut app, "ctrl+o");
     assert_eq!(app.world().resource::<TuiInput>().cursor(), 4);
-    // Sent as a message, it is done too.
-    app.world_mut().write_message(InputAction::LineStart);
+    // Put among the keys, it is done too.
+    crate::tests::push(&mut app, crate::KeyInput::Action(InputAction::LineStart));
     app.update();
     assert_eq!(app.world().resource::<TuiInput>().cursor(), 3);
 }

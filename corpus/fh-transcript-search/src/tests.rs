@@ -66,8 +66,8 @@ fn search(app: &mut App, agent: Entity, keys: impl IntoIterator<Item = KeyCode>)
 fn press(app: &mut App, keys: impl IntoIterator<Item = KeyCode>) {
     for code in keys {
         let key = KeyEvent::new(code, KeyModifiers::NONE);
-        app.world_mut()
-            .write_message(TerminalEvent(Event::Key(key)));
+        let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+        events.0.push(KeyInput::Event(Event::Key(key)));
     }
     app.update();
 }

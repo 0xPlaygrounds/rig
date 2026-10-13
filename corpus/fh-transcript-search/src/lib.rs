@@ -30,10 +30,10 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Highlight, ItemRow, KeyBinding,
-    KeyFocus, KeyPress, KeyPressed, LineSpan, PanelCanvas, Placement, RequestRedraw, ScrollTo,
-    TerminalEvent, TranscriptItem, TranscriptLayout, TranscriptView, TuiPanel, TuiPlugin,
-    TuiSystems,
+    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Highlight, InputSystems, ItemRow,
+    KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, LineSpan, PanelCanvas, Placement,
+    RequestRedraw, ScrollTo, TerminalEvents, TranscriptItem, TranscriptLayout, TranscriptView,
+    TuiPanel, TuiPlugin, TuiSystems,
 };
 
 /// Whose transcript is searched.
@@ -296,7 +296,7 @@ impl Plugin for TranscriptSearchPlugin {
             KeyBinding::new(KeyPress::ctrl('f'), "Search the transcript"),
             open,
         );
-        app.add_systems(Update, type_in_bar)
+        app.add_systems(PreUpdate, type_in_bar.in_set(InputSystems::Filter))
             .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
     }
 }
@@ -369,10 +369,10 @@ impl Transcripts<'_, '_> {
 
 /// Types into the open bar, in order, then searches again when the query
 /// or what it searches changed, and shows the match in the transcript. It
-/// closes when it loses the keys, as on an Esc. The keys of the frame it
-/// opened in were the input's.
+/// closes when it loses the keys, as on an Esc. A filter of the frame's
+/// keys: the keys of the frame it opened in were the input's.
 fn type_in_bar(
-    mut events: MessageReader<TerminalEvent>,
+    events: Res<TerminalEvents>,
     mut bars: Query<(Entity, &mut TranscriptSearch, Ref<TuiPanel>)>,
     focus: Res<KeyFocus>,
     transcripts: Transcripts,
@@ -381,18 +381,17 @@ fn type_in_bar(
     mut commands: Commands,
 ) {
     let Ok((bar, mut search, opened)) = bars.single_mut() else {
-        events.clear();
         return;
     };
-    if opened.is_added() {
-        events.clear();
-    }
     if focus.0 != Some(bar) && !opened.is_added() {
         close(bar, &mut search, &mut view, &mut commands);
         return;
     }
     let (mut closing, mut typed) = (false, false);
-    for TerminalEvent(event) in events.read() {
+    for item in &events.0 {
+        let KeyInput::Event(event) = item else {
+            continue;
+        };
         match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => {
                 let shift = key.modifiers.contains(KeyModifiers::SHIFT);

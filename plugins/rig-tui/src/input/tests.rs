@@ -100,8 +100,8 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
 
 #[test]
 fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
-    use crate::tests::{typed, view_app};
-    use crate::{KeyFocus, Placement, TerminalEvent, TuiPanel};
+    use crate::tests::{push, typed, view_app};
+    use crate::{KeyFocus, KeyInput, Placement, TuiPanel};
     use crossterm::event::Event;
     use ratatui::layout::Constraint;
 
@@ -110,8 +110,7 @@ fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
     let panel = app.world_mut().spawn(panel).id();
     app.world_mut().resource_mut::<KeyFocus>().0 = Some(panel);
     let paste = |app: &mut App| {
-        let paste = TerminalEvent(Event::Paste("cargo test".to_owned()));
-        app.world_mut().write_message(paste);
+        push(app, KeyInput::Event(Event::Paste("cargo test".to_owned())));
         app.update();
     };
     paste(&mut app);
@@ -120,4 +119,88 @@ fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
     app.world_mut().resource_mut::<KeyFocus>().0 = None;
     paste(&mut app);
     assert_eq!(typed(&app), "cargo test");
+}
+
+/// Keys a modal filter turned into actions, as vim's normal mode would.
+fn normal_mode(mut events: ResMut<crate::TerminalEvents>) {
+    use crate::{InputAction, KeyInput, KeyPress};
+    use crossterm::event::{Event, KeyCode};
+    let key = |item: &KeyInput| match item {
+        KeyInput::Event(Event::Key(key)) => Some(KeyPress::of(key).code),
+        _ => None,
+    };
+    let mut out = Vec::new();
+    let mut items = std::mem::take(&mut events.0).into_iter().peekable();
+    while let Some(item) = items.next() {
+        match key(&item) {
+            Some(KeyCode::Esc) => {}
+            Some(KeyCode::Char('0')) => out.push(KeyInput::Action(InputAction::LineStart)),
+            Some(KeyCode::Char('d')) if items.peek().and_then(key) == Some(KeyCode::Char('w')) => {
+                items.next();
+                out.push(KeyInput::Action(InputAction::DeleteWordAfter));
+            }
+            _ => out.push(item),
+        }
+    }
+    events.0 = out;
+}
+
+#[test]
+fn a_filter_turns_the_frames_keys_into_actions_in_their_order() {
+    use crate::InputSystems;
+    use crate::tests::{press, type_text, typed, view_app};
+
+    let (mut app, _) = view_app();
+    type_text(&mut app, "hello world");
+    app.add_systems(PreUpdate, normal_mode.in_set(InputSystems::Filter));
+    // One frame: Esc is dropped, `0` goes to the start, `dw` deletes the
+    // word; nothing is typed, and an Esc that reached the view would have
+    // interrupted the agent instead.
+    press(&mut app, "esc 0 d w");
+    assert_eq!(typed(&app), " world");
+    // Keys it leaves alone are the view's as before.
+    press(&mut app, "x");
+    assert_eq!(typed(&app), "x world");
+}
+
+/// The searches `/` opened.
+#[derive(Resource, Default)]
+struct Searches(usize);
+
+/// `/` on an empty input opens a search instead of a slash command.
+fn slash_searches(
+    mut events: ResMut<crate::TerminalEvents>,
+    input: Res<TuiInput>,
+    mut searches: ResMut<Searches>,
+) {
+    use crate::KeyInput;
+    use crossterm::event::{Event, KeyCode};
+    let slash = |item: &KeyInput| matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'));
+    if input.is_empty() && events.0.first().is_some_and(slash) {
+        events.0.remove(0);
+        searches.0 += 1;
+    }
+}
+
+#[test]
+fn a_plugin_takes_slash_on_an_empty_input_and_leaves_it_typed_elsewhere() {
+    use crate::InputSystems;
+    use crate::tests::{press, typed, view_app};
+
+    let (mut app, _) = view_app();
+    app.init_resource::<Searches>()
+        .add_systems(PreUpdate, slash_searches.in_set(InputSystems::Filter));
+    press(&mut app, "/");
+    assert_eq!(
+        (app.world().resource::<Searches>().0, typed(&app)),
+        (1, String::new())
+    );
+    // A key a frame, as a person types: past the start, `/` is typed.
+    for key in ["a", "/", "b"] {
+        press(&mut app, key);
+    }
+    assert_eq!(
+        (app.world().resource::<Searches>().0, typed(&app)),
+        (1, "a/b".to_owned())
+    );
 }

@@ -35,10 +35,12 @@
 //! status line's items ([`StatusItems`], [`AppStatus`]); and the
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well, each doing an
-//! [`InputAction`], which a plugin may also send), the keys for a
+//! [`InputAction`], which a plugin may also put among the keys), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
-//! candidates for a command's argument ([`ArgCompletion`]), the terminal's
-//! events ([`TerminalEvent`]) and focus ([`TerminalFocus`]), its own escape
+//! candidates for a command's argument ([`ArgCompletion`]), the frame's
+//! keys before any binding sees them ([`TerminalEvents`], filtered in
+//! [`InputSystems::Filter`], with [`TuiInputState`] saying what the input
+//! does with them), the terminal's focus ([`TerminalFocus`]), its own escape
 //! codes ([`TerminalWrite`], [`CopyToClipboard`]), a program run with the
 //! terminal ([`RunInTerminal`]), the clipboard's image
 //! ([`read_clipboard_image`]), and a choice for the user, a
@@ -78,11 +80,11 @@ use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 
 pub use clipboard::read_clipboard_image;
-pub use complete::{ArgCompletion, Candidate};
+pub use complete::{ArgCompletion, Candidate, Completion, CompletionKind};
 pub use crossterm;
 pub use editor::TuiInput;
 pub use history::{HistorySystems, PromptHistory};
-pub use input::TerminalEvent;
+pub use input::{InputSystems, KeyInput, TerminalEvents, TuiInputState};
 pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
     run_command,
@@ -126,11 +128,21 @@ impl Plugin for TuiPlugin {
             .init_resource::<TuiInput>()
             .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
+            .init_resource::<TerminalEvents>()
+            .init_resource::<TuiInputState>()
             .add_message::<RequestRedraw>()
-            .add_message::<TerminalEvent>()
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()
-            .add_message::<InputAction>()
+            .configure_sets(
+                PreUpdate,
+                (InputSystems::Filter, InputSystems::Dispatch).chain(),
+            )
+            .add_systems(
+                PreUpdate,
+                input::clear_events
+                    .in_set(InputSystems::Dispatch)
+                    .run_if(not(resource_exists::<view::TuiView>)),
+            )
             .configure_sets(
                 PostUpdate,
                 (
@@ -189,13 +201,16 @@ pub fn add_view(app: &mut App) {
         .add_systems(
             PreUpdate,
             (
-                input::receive_events.run_if(resource_exists::<input::TerminalInput>),
-                input::read_input,
-                terminal::track_focus,
-                complete::receive_paths,
-                clipboard::receive_images,
-            )
-                .chain(),
+                (
+                    input::receive_events.run_if(resource_exists::<input::TerminalInput>),
+                    complete::receive_paths,
+                    clipboard::receive_images,
+                    input::note_state,
+                )
+                    .chain()
+                    .before(InputSystems::Filter),
+                input::read_input.in_set(InputSystems::Dispatch),
+            ),
         )
         .add_systems(
             Update,

@@ -1,7 +1,7 @@
 //! The palette in the terminal view. Ctrl-P opens a box over the screen
 //! that takes the keys ([`KeyFocus`]), leaving the draft in the input as
 //! it is. What is typed is its filter, read in order from the
-//! [`TerminalEvent`]s, and the rows are ranked afresh from what exists
+//! [`TerminalEvents`], and the rows are ranked afresh from what exists
 //! each time it changes. Up and Down (or Tab) select, Enter picks, and Esc
 //! (or Ctrl-P again) closes it.
 
@@ -11,8 +11,9 @@ use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::{Block, List, ListItem, ListState, StatefulWidget};
 use rig_tui::{
-    AppKeyBindingsExt, Focus, KeyBinding, KeyFocus, KeyPress, KeyPressed, PanelCanvas, Placement,
-    RequestRedraw, TerminalEvent, TuiInput, TuiPanel, TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, Focus, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
+    PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiInput, TuiPanel, TuiPlugin,
+    TuiSystems,
 };
 
 use super::*;
@@ -44,8 +45,9 @@ impl Palette {
     }
 }
 
-/// The palette's systems, in `Update` before the agent loop, so a command
-/// it picks runs in the same frame.
+/// The palette's systems, among the terminal view's input filters
+/// ([`InputSystems::Filter`]), so a command it picks runs in the same
+/// frame.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PaletteSystems;
 
@@ -59,8 +61,8 @@ pub(super) fn add(app: &mut App) {
         toggle,
     );
     app.add_observer(activate)
-        .configure_sets(Update, PaletteSystems.before(AgentLoop))
-        .add_systems(Update, type_in_palette.in_set(PaletteSystems))
+        .configure_sets(PreUpdate, PaletteSystems.in_set(InputSystems::Filter))
+        .add_systems(PreUpdate, type_in_palette.in_set(PaletteSystems))
         .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
 }
 
@@ -98,27 +100,25 @@ fn toggle(
 /// for the agent shown. It closes when it loses the keys, as on an Esc it
 /// does not bind. The keys of the frame it opened in were the input's.
 fn type_in_palette(
-    mut events: MessageReader<TerminalEvent>,
-    mut open: Query<(Entity, &mut Palette, Ref<TuiPanel>)>,
+    events: Res<TerminalEvents>,
+    mut open: Query<(Entity, &mut Palette), With<TuiPanel>>,
     (focus, shown): (Res<KeyFocus>, Res<Shown>),
     sources: PaletteSources,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
-    let Ok((panel, mut palette, opened)) = open.single_mut() else {
-        events.clear();
+    let Ok((panel, mut palette)) = open.single_mut() else {
         return;
     };
     if focus.0 != Some(panel) {
         commands.entity(panel).despawn();
         return;
     }
-    if opened.is_added() {
-        events.clear();
-        return;
-    }
     let last = |palette: &Palette| palette.rows.len().saturating_sub(1);
-    for TerminalEvent(event) in events.read() {
+    for item in &events.0 {
+        let KeyInput::Event(event) = item else {
+            continue;
+        };
         match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                 KeyCode::Enter => {

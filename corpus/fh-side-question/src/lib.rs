@@ -36,8 +36,9 @@ use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::{Block, Paragraph, Wrap};
 use rig_tui::{
-    AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, PanelCanvas,
-    Placement, RequestRedraw, TerminalEvent, TuiInput, TuiPanel, TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
+    KeyScope, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiInput, TuiPanel, TuiPlugin,
+    TuiSystems,
 };
 use serde::Deserialize;
 
@@ -190,12 +191,10 @@ impl Plugin for SideQuestionPlugin {
             .add_observer(seed_side_agent)
             .add_observer(side_purpose)
             .add_observer(answered)
+            .add_systems(PreUpdate, type_follow_up.in_set(InputSystems::Filter))
             .add_systems(
                 Update,
-                (
-                    type_follow_up.before(AgentLoop),
-                    discard_restored.run_if(resource_added::<SessionRestored>),
-                ),
+                discard_restored.run_if(resource_added::<SessionRestored>),
             )
             .add_systems(PostUpdate, (redraw, draw.in_set(TuiSystems::Draw)));
     }
@@ -433,16 +432,18 @@ fn send_to_agent(
 /// Types into the panel while it has the keys: characters, pastes and
 /// Backspace edit the draft, and Enter asks it as a follow-up.
 fn type_follow_up(
-    mut events: MessageReader<TerminalEvent>,
+    events: Res<TerminalEvents>,
     focus: Res<KeyFocus>,
     mut chat: ResMut<SideChat>,
     mut commands: Commands,
 ) {
     let Some(main) = chat.main.filter(|_| focus.0 == Some(chat.panel)) else {
-        events.clear();
         return;
     };
-    for TerminalEvent(event) in events.read() {
+    for item in &events.0 {
+        let KeyInput::Event(event) = item else {
+            continue;
+        };
         match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                 KeyCode::Enter => {

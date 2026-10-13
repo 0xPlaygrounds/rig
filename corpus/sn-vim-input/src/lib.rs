@@ -24,8 +24,9 @@ use bevy_ecs::query::Allow;
 use rig_harness::prelude::*;
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::{
-    AppKeyBindingsExt, AppStatus, CopyToClipboard, InputAction, KeyBinding, KeyPress, KeyPressed,
-    KeyScope, Side, StatusItem, StatusSystems, Tone, TuiInput, TuiPlugin,
+    AppKeyBindingsExt, AppStatus, CopyToClipboard, InputAction, KeyBinding, KeyInput, KeyPress,
+    KeyPressed, KeyScope, Side, StatusItem, StatusSystems, TerminalEvents, Tone, TuiInput,
+    TuiPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -224,7 +225,7 @@ fn on_key(
         Option<Res<Wake>>,
     ),
     mut copies: MessageWriter<CopyToClipboard>,
-    mut actions: MessageWriter<InputAction>,
+    mut events: ResMut<TerminalEvents>,
 ) {
     let Ok(&VimKey(key)) = keys.get(pressed.entity) else {
         return;
@@ -270,7 +271,7 @@ fn on_key(
                 .is_some_and(|last| now.saturating_sub(last) <= DOUBLE_ESC);
             if twice && input.is_empty() {
                 vim.last_esc = None;
-                actions.write(InputAction::Stop);
+                events.0.push(KeyInput::Action(InputAction::Stop));
                 if let Some(wake) = wake {
                     wake.wake();
                 }

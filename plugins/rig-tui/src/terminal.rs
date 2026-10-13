@@ -15,7 +15,7 @@ use base64::engine::general_purpose::STANDARD;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossterm::event::{
-    DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange, Event,
+    DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange,
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
@@ -26,7 +26,7 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 
-use super::input::{TerminalEvent, TerminalInput};
+use super::input::TerminalInput;
 use super::keys::KeyBinding;
 use super::panel::TuiScreen;
 use super::view::TuiView;
@@ -242,20 +242,6 @@ pub(crate) fn keep_screen_on_reload(reason: Option<Res<ExitReason>>, tui: Option
         && matches!(*reason, ExitReason::Reload | ExitReason::Switch(_))
     {
         tui.keep_screen = true;
-    }
-}
-
-/// Keeps [`TerminalFocus`] as the terminal reports it.
-pub(crate) fn track_focus(
-    mut events: MessageReader<TerminalEvent>,
-    mut focus: ResMut<TerminalFocus>,
-) {
-    for TerminalEvent(event) in events.read() {
-        match event {
-            Event::FocusGained => focus.set_if_neq(TerminalFocus(Some(true))),
-            Event::FocusLost => focus.set_if_neq(TerminalFocus(Some(false))),
-            _ => false,
-        };
     }
 }
 

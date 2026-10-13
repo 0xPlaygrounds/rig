@@ -11,7 +11,11 @@
 //! the input's own: it shadows the input's binding of the same keys, such
 //! as the view's `ctrl+e` (the end of the line) for an editor key, while
 //! no panel has the keys. Bevy's `Disabled` on a binding frees its keys;
-//! do it in `Plugin::finish`, once every plugin's `build` ran.
+//! do it in `Plugin::finish`, once every plugin's `build` ran. A plugin
+//! that wants keys before every binding, or only in some states, such as a
+//! modal editor or `/` on an empty input, takes them from the
+//! [`TerminalEvents`](crate::TerminalEvents) in
+//! [`InputSystems::Filter`](crate::InputSystems::Filter) instead.
 //!
 //! A plugin's pressed binding triggers [`KeyPressed`] on its entity,
 //! which the observer given with it handles, unless the entity has an
@@ -431,7 +435,10 @@ pub fn run_command(
 /// A built-in action of the input. On a [`KeyBinding`]'s entity it is what
 /// the binding does, in order with the other keys of the frame, instead of
 /// triggering [`KeyPressed`]: the view's own keys are such bindings, and a
-/// plugin rebinds one by spawning its own.
+/// plugin rebinds one by spawning its own. Pushed onto the
+/// [`TerminalEvents`](crate::TerminalEvents) as
+/// [`KeyInput::Action`](crate::KeyInput::Action), it is done where it
+/// stands among the keys.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
@@ -442,9 +449,7 @@ pub fn run_command(
 ///     app.world_mut().spawn((KeyBinding::new(KeyPress::ctrl('k'), "Up"), InputAction::Up));
 /// }
 /// ```
-///
-/// Sent as a message, it is done after the keys of the frame it is read in.
-#[derive(Component, Message, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputAction {
     /// Empties the input.
     Clear,

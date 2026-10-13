@@ -9,7 +9,8 @@ use rig_tui::ratatui::style::{Style, Stylize as _};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    KeyFocus, PanelCanvas, Placement, RequestRedraw, TerminalEvent, TuiPanel, TuiSystems,
+    InputSystems, KeyFocus, KeyInput, PanelCanvas, Placement, RequestRedraw, TerminalEvents,
+    TuiPanel, TuiSystems,
 };
 
 use crate::{Output, Terminal, keys};
@@ -23,9 +24,9 @@ pub struct TerminalsPanel {
 
 pub(crate) fn add(app: &mut App) {
     app.add_message::<RequestRedraw>()
-        .add_message::<TerminalEvent>()
+        .init_resource::<TerminalEvents>()
         .add_systems(Startup, spawn)
-        .add_systems(PreUpdate, type_keys)
+        .add_systems(PreUpdate, type_keys.in_set(InputSystems::Filter))
         .add_systems(
             PostUpdate,
             (place.in_set(TuiSystems::Prepare), draw.in_set(TuiSystems::Draw)),
@@ -125,7 +126,7 @@ fn draw(
 /// While the panel has the keys, what the user types goes to the terminal
 /// shown, and its agent is told the next time it looks.
 fn type_keys(
-    mut events: MessageReader<TerminalEvent>,
+    events: Res<TerminalEvents>,
     focus: Option<Res<KeyFocus>>,
     panels: Query<&TerminalsPanel>,
     terminals: Query<&Terminal>,
@@ -136,10 +137,12 @@ fn type_keys(
         .and_then(|panel| panel.shown)
         .and_then(|shown| terminals.get(shown).ok());
     let Some(terminal) = shown else {
-        events.clear();
         return;
     };
-    for TerminalEvent(event) in events.read() {
+    for item in &events.0 {
+        let KeyInput::Event(event) = item else {
+            continue;
+        };
         let bytes = match event {
             // Esc gives the keys back to the input.
             Event::Key(key) if key.code == KeyCode::Esc => continue,
