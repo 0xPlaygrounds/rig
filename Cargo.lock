@@ -4466,7 +4466,6 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "corpus-few-shot-examples",
- "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
