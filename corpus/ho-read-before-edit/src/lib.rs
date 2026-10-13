@@ -10,11 +10,12 @@
 //! refused, and the model reads why. A conversation compacted into a
 //! summary forgets what its agent read.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FileChange, FilesChanged, FilesRead, content_hash};
+use rig_harness::rig_memory::summary_author;
 use rig_tools::{Edit, Read, Write};
 
 /// The content hash of each file the agent last read or wrote itself, by
@@ -130,32 +131,24 @@ fn remember(
 
 /// Forgets what an agent read once its conversation is compacted into a
 /// summary: its model no longer holds the files' content.
-fn forget(
-    mut committed: MessageReader<Committed>,
-    mut agents: Query<(&Conversation, &mut ReadFiles)>,
-) {
-    for change in committed.read() {
-        if let Committed::Splice {
-            agent,
-            removed,
-            changed,
-        } = change
-            && let Ok((conversation, mut read)) = agents.get_mut(*agent)
-            && !removed.is_empty()
-            && changed.iter().any(|id| summary(conversation, *id))
+fn forget(mut committed: MessageReader<Committed>, mut agents: Query<&mut ReadFiles>) {
+    let summary = summary_author();
+    for Committed { agent, change } in committed.read() {
+        let Change::Splice { removed, with, .. } = &change.change else {
+            continue;
+        };
+        let kept: HashSet<MessageId> = with.iter().filter_map(|entry| entry.id).collect();
+        let cut = removed.iter().any(|id| !kept.contains(id));
+        let summarized = with
+            .iter()
+            .any(|entry| entry.author.as_ref() == Some(&summary));
+        if cut
+            && summarized
+            && let Ok(mut read) = agents.get_mut(*agent)
         {
             read.0.clear();
         }
     }
-}
-
-/// Whether the message `id` of `conversation` holds a compaction's summary.
-fn summary(conversation: &Conversation, id: MessageId) -> bool {
-    let summary = Origin::plugin("compaction");
-    let entry = conversation
-        .index_of(id)
-        .and_then(|at| conversation.entry(at));
-    entry.is_some_and(|entry| entry.origins.iter().any(|(_, origin)| *origin == summary))
 }
 
 #[cfg(test)]
