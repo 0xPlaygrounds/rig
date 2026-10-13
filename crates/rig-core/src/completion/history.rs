@@ -690,20 +690,14 @@ pub(crate) fn cache_points(
             if counted == turns {
                 break;
             }
-            if matches!(message, Message::System { .. }) {
-                prefix.push(message.clone());
-                continue;
-            }
-            counted += 1;
             let mut message = message.clone();
-            if counted == turns
-                && let Some(items) = items
-            {
-                match &mut message {
-                    Message::User { content } => content.truncate(items),
-                    Message::Assistant(turn) => turn.content.truncate(items),
-                    Message::System { .. } => {}
-                }
+            if !matches!(message, Message::System { .. }) {
+                counted += 1;
+            }
+            match (&mut message, items.filter(|_| counted == turns)) {
+                (Message::User { content }, Some(items)) => content.truncate(items),
+                (Message::Assistant(turn), Some(items)) => turn.content.truncate(items),
+                _ => {}
             }
             prefix.push(message);
         }
