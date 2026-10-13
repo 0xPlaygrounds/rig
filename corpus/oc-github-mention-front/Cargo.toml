@@ -12,11 +12,19 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# What the run says in the CI log.
+bevy_log = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The pool the GitHub calls and git run from.
+bevy_tasks = { workspace = true }
+# The GitHub REST API, on the harness's tokio runtime.
+rig-reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+schemars = { workspace = true }
