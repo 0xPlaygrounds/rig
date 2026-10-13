@@ -23,9 +23,8 @@ use std::path::{Path, PathBuf};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Section;
 use rig_harness::rig_core::effect::EffectId;
-use rig_harness::rig_core::message::UserContent;
 use rig_harness::rig_core::tool::{ExitStatus, FileChange, FilesChanged};
-use rig_harness::rig_tools::attach::{Attached, attachments};
+use rig_harness::rig_tools::workspace::{Stat, Workspace};
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -104,13 +103,17 @@ struct Implementing {
 #[derive(Component)]
 struct EditorFor(Entity);
 
+/// A listed file as the architect named it, and its text; `None` when
+/// there is no file there yet.
+type Listed = (String, Option<String>);
+
 /// The listed files read off the main thread, on an entity that is a
 /// child of the `implement` call.
 #[derive(Component)]
-struct Briefed(Result<Attached, ToolExecutionError>);
+struct Briefed(Result<Vec<Listed>, ToolExecutionError>);
 
-impl From<Result<Attached, ToolExecutionError>> for Briefed {
-    fn from(read: Result<Attached, ToolExecutionError>) -> Self {
+impl From<Result<Vec<Listed>, ToolExecutionError>> for Briefed {
+    fn from(read: Result<Vec<Listed>, ToolExecutionError>) -> Self {
         Self(read)
     }
 }
@@ -359,14 +362,8 @@ fn implement(
         changes: Vec::new(),
         checks: Vec::new(),
     });
-    let named: Vec<String> = called
-        .args
-        .files
-        .iter()
-        .map(|file| format!("@{file}"))
-        .collect();
-    let (named, workspace) = (named.join(" "), workspace.0.clone());
-    let read = blocking(move || Ok(attachments(&named, &base, &*workspace)));
+    let (files, workspace) = (called.args.files.clone(), workspace.0.clone());
+    let read = blocking(move || read_listed(&*workspace, &base, files));
     let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     commands.spawn((
         Name::new("reading the files for the editor"),
@@ -380,6 +377,28 @@ fn implement(
     ));
 }
 
+/// Each listed file's text, `None` for one not there yet; a file that is
+/// there but cannot be read as text fails the whole read.
+fn read_listed(
+    workspace: &dyn Workspace,
+    base: &Path,
+    files: Vec<String>,
+) -> Result<Vec<Listed>, ToolExecutionError> {
+    let mut listed: Vec<Listed> = Vec::new();
+    for file in files {
+        if listed.iter().any(|(known, _)| *known == file) {
+            continue;
+        }
+        let path = workspace.resolve(Some(base), &file);
+        let text = match workspace.stat(&path) {
+            Ok(Stat::Missing) => None,
+            _ => Some(workspace.read_text(&path)?),
+        };
+        listed.push((file, text));
+    }
+    Ok(listed)
+}
+
 /// Once the listed files are read, asks for the editor: a one-job helper
 /// on the editor model with the file tools, recorded under the call.
 fn brief_editor(
@@ -391,13 +410,13 @@ fn brief_editor(
     mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
-    let Ok((briefing, Briefed(attached), of)) = briefings.get(read.entity) else {
+    let Ok((briefing, Briefed(listed), of)) = briefings.get(read.entity) else {
         return;
     };
     let call = of.parent();
     commands.entity(read.entity).despawn();
-    let attached = match attached {
-        Ok(attached) => attached,
+    let listed = match listed {
+        Ok(listed) => listed,
         Err(why) => {
             if let Ok(mut decision) = calls.get_mut(call) {
                 let why = format!("the listed files could not be read: {why}");
@@ -417,7 +436,7 @@ fn brief_editor(
         model: settings.editor.clone(),
         tools: Some(editor_tools),
         ..SpawnSubagent::helper("editor")
-            .brief(brief(&briefing.description, attached))
+            .brief(brief(&briefing.description, listed))
             .system_prompt(EDITOR_PROMPT)
             .once()
     };
@@ -429,20 +448,15 @@ fn brief_editor(
     ));
 }
 
-/// The editor's first message: the change, then each listed file's text.
-fn brief(description: &str, attached: &Attached) -> String {
+/// The editor's first message: the change, then each listed file's text
+/// as it is.
+fn brief(description: &str, listed: &[Listed]) -> String {
     let mut brief = format!("The change to apply:\n\n{description}");
-    for (_, content) in &attached.files {
-        if let UserContent::Text(text) = content {
-            brief.push_str("\n\n");
-            brief.push_str(&text.text);
+    for (file, text) in listed {
+        match text {
+            Some(text) => brief.push_str(&format!("\n\n<file path=\"{file}\">\n{text}\n</file>")),
+            None => brief.push_str(&format!("\n\n{file} does not exist yet.")),
         }
-    }
-    for missing in &attached.missing {
-        brief.push_str(&format!("\n\n{missing} does not exist yet."));
-    }
-    for note in &attached.notes {
-        brief.push_str(&format!("\n\n{note}"));
     }
     brief
 }

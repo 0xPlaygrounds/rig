@@ -1,12 +1,12 @@
 use rig_coding_tools::{EditTool, ReadTool, SearchTool, ShellTool, WriteTool};
 use rig_core::completion::CompletionRequest;
 use rig_core::effect::EffectKind;
-use rig_core::test_utils::MockCompletionModel;
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, reply,
     run_until, scripted_models,
 };
-use rig_telemetry::UsagePlugin;
+use rig_telemetry::{SessionSpending, UsagePlugin};
 use serde_json::json;
 
 use super::*;
@@ -29,6 +29,15 @@ fn tool_names(request: Option<&CompletionRequest>) -> Vec<String> {
     names.map(|tool| tool.name.as_str().to_owned()).collect()
 }
 
+/// `turns`, each reporting `tokens` used.
+fn using(tokens: u64, turns: Vec<Vec<MockStreamEvent>>) -> MockCompletionModel {
+    MockCompletionModel::from_stream_turns(turns.into_iter().map(|mut turn| {
+        turn.pop();
+        turn.push(MockStreamEvent::final_response_with_total_tokens(tokens));
+        turn
+    }))
+}
+
 fn output(app: &App, id: &str) -> String {
     let outputs = &app.world().resource::<ToolOutputs>().0;
     outputs.get(id).cloned().unwrap_or_default()
@@ -43,34 +52,42 @@ fn the_architect_plans_and_the_editor_edits() {
     let dir = scratch();
     let lib = dir.join("lib.rs");
     std::fs::write(&lib, "pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n").ok();
+    std::fs::write(dir.join("Makefile"), "test:\n\tcargo test\n").ok();
     let implement = |id: &str, description: &str| {
+        let files = ["lib.rs", "Makefile", "new.rs"];
         calls(
             id,
             IMPLEMENT,
-            json!({ "description": description, "files": ["lib.rs"] }),
+            json!({ "description": description, "files": files }),
         )
     };
-    let architect = MockCompletionModel::from_stream_turns([
-        calls("r1", "read", json!({ "path": "lib.rs" })),
-        implement("i1", "rename add to sum"),
-        reply("done"),
-        implement("i2", "first"),
-        implement("i3", "second"),
-        implement("i4", "third"),
-        implement("i5", "fourth"),
-        reply("out of rounds"),
-    ]);
+    let architect = using(
+        100,
+        vec![
+            calls("r1", "read", json!({ "path": "lib.rs" })),
+            implement("i1", "rename add to sum"),
+            reply("done"),
+            implement("i2", "first"),
+            implement("i3", "second"),
+            implement("i4", "third"),
+            implement("i5", "fourth"),
+            reply("out of rounds"),
+        ],
+    );
     let edit = json!({
         "path": "lib.rs",
         "edits": [{ "old_text": "pub fn add(", "new_text": "pub fn sum(" }],
     });
-    let editor = MockCompletionModel::from_stream_turns([
-        calls("e1", "edit", edit),
-        reply("applied"),
-        reply("nothing to do"),
-        reply("nothing to do"),
-        reply("nothing to do"),
-    ]);
+    let editor = using(
+        10,
+        vec![
+            calls("e1", "edit", edit),
+            reply("applied"),
+            reply("nothing to do"),
+            reply("nothing to do"),
+            reply("nothing to do"),
+        ],
+    );
     let main = MockCompletionModel::from_stream_turns([reply("back to normal")]);
     let models = [
         ("test/main", &main),
@@ -117,10 +134,13 @@ fn the_architect_plans_and_the_editor_edits() {
     for denied in ["edit", "write", "shell"] {
         assert!(!tools.contains(&denied.to_owned()), "{tools:?}");
     }
-    // The editor got the description and the file, not the user's words.
+    // The editor got the description and the files as they are, an
+    // extensionless one too, not the user's words.
     let first = format!("{:?}", editor.requests().first().map(|r| &r.chat_history));
     assert!(first.contains("rename add to sum"), "{first}");
     assert!(first.contains("pub fn add(a: i32"), "{first}");
+    assert!(first.contains("\\tcargo test"), "{first}");
+    assert!(first.contains("new.rs does not exist yet"), "{first}");
     assert!(!first.contains("ARCHITECT-ONLY-WORDS"), "{first}");
     assert!(!tool_names(editor.requests().first()).contains(&IMPLEMENT.to_owned()));
     let written = std::fs::read_to_string(&lib).unwrap_or_default();
@@ -157,7 +177,15 @@ fn the_architect_plans_and_the_editor_edits() {
     assert!(limited.contains("round limit"), "{limited}");
     assert_eq!(editor.request_count(), 5);
 
-    // `/usage` lists each model with its own count.
+    // Each model's usage is counted apart, and `/usage` lists both.
+    let spent = &app.world().resource::<SessionSpending>().0.models;
+    let tokens = |model: &str| {
+        spent
+            .get(model)
+            .map(|it| (it.calls, it.tokens.total_tokens))
+    };
+    assert_eq!(tokens("test/architect"), Some((8, Some(800))));
+    assert_eq!(tokens("test/editor"), Some((5, Some(50))));
     app.world_mut()
         .trigger(RunCommand::new(agent, "usage".to_owned()));
     app.update();
@@ -167,14 +195,11 @@ fn the_architect_plans_and_the_editor_edits() {
         .rev()
         .find(|notice| notice.text.contains("Per model"));
     let usage = usage.map(|notice| notice.text.clone()).unwrap_or_default();
-    assert!(
-        usage.contains("test/architect:") && usage.contains("8 calls"),
-        "{usage}"
-    );
-    assert!(
-        usage.contains("test/editor:") && usage.contains("5 calls"),
-        "{usage}"
-    );
+    let line = |model: &str| usage.lines().find(|line| line.trim().starts_with(model));
+    let architect_line = line("test/architect:").unwrap_or_default();
+    assert!(architect_line.contains("8 calls"), "{usage}");
+    let editor_line = line("test/editor:").unwrap_or_default();
+    assert!(editor_line.contains("5 calls"), "{usage}");
 
     // Out of architect mode, the agent's own model and tools are back.
     app.world_mut()
