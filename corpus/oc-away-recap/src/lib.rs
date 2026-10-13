@@ -1,29 +1,31 @@
 //! OC-07: Welcome-back recap (one-conversation fresh held-out spec).
 //!
-//! When a session is resumed, or the user starts typing after it sat idle
-//! longer than `[recap] idle`, and the main agent's conversation has at
-//! least three turns, a model call of the plugin's own (on `[recap] model`,
-//! else the agent's model) reads the newest messages within a token budget
-//! and writes a short recap: the goal, what was done, what is pending. It
-//! is shown as an unsaved note after the newest message, just above the
-//! input, which no model reads and the log never keeps; Esc on an empty
-//! input, or the next turn, takes it away. The latest recap is kept with
-//! the session ([`LatestRecap`]) for `/recap`, which shows it again and
-//! asks for a fresh one.
+//! When a session is resumed ([`AppStart`] says [`StartReason::Resumed`]),
+//! or the user starts typing after it sat idle longer than `[recap] idle`,
+//! and the main agent's conversation has at least three turns, a model
+//! call of the plugin's own (on `[recap] model`, else the agent's model)
+//! reads the newest messages within a token budget and writes a short
+//! recap: the goal, what was done, what is pending. It is shown in a panel
+//! of the terminal view just above the input, never in the conversation,
+//! so no model reads it and the log never keeps it; Esc on an empty input,
+//! or the user's next message, takes it away. The latest recap is kept
+//! with the session ([`LatestRecap`]) for `/recap`, which shows it again
+//! and asks for a fresh one.
 //!
-//! The call runs beside the work: a turn that starts first (the user sent
-//! a message) discards it, and one that fails or takes longer than
-//! `[recap] timeout` shows nothing and leaves one line in the log.
+//! The call runs beside the work: a message the user sends first discards
+//! it, and one that fails or takes longer than `[recap] timeout` shows
+//! nothing and leaves one line in the log.
 
 use bevy_log::warn;
 use rig_harness::prelude::*;
 use rig_harness::rig_memory::window::{TokenBudget, view};
 use rig_harness::rig_memory::{Summarizer, SummaryLimits, SummaryPrompts};
-use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind};
-use rig_tui::ratatui::style::Style;
-use rig_tui::ratatui::text::Line;
+use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use rig_tui::ratatui::layout::Constraint;
+use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    AppToolRenderersExt, InputSystems, KeyInput, TerminalEvents, TuiInput, TuiInputState, TuiKeys,
+    InputSystems, KeyInput, PanelCanvas, Placement, TerminalEvents, TuiInput, TuiInputState,
+    TuiKeys, TuiPanel, TuiSystems,
 };
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -31,11 +33,10 @@ use std::borrow::Cow;
 #[cfg(test)]
 mod tests;
 
-/// The plugin's name: its settings' table, its notes' author and its
-/// calls' purpose.
+/// The plugin's name: its settings' table and its calls' purpose.
 pub const NAME: &str = "recap";
 
-/// The title of the recap's note.
+/// The title of the recap's card.
 pub const TITLE: &str = "Welcome back (Esc dismisses)";
 
 /// The fewest turns a conversation has before it is recapped unasked.
@@ -64,7 +65,7 @@ const PROMPTS: SummaryPrompts = SummaryPrompts {
     ),
 };
 
-/// Adds the recap, its `/recap` command and its look in the terminal view.
+/// Adds the recap, its `/recap` command and its card in the terminal view.
 #[derive(Default)]
 pub struct AwayRecapPlugin;
 
@@ -75,8 +76,6 @@ impl Plugin for AwayRecapPlugin {
         }
         app.add_setting::<RecapConfig>(NAME)
             .init_resource::<LatestRecap>()
-            .init_resource::<Reloading>()
-            .init_resource::<Card>()
             .add_command(
                 "recap",
                 "Show the latest recap again and write a fresh one",
@@ -93,22 +92,14 @@ impl Plugin for AwayRecapPlugin {
                 ),
             )
             .add_systems(TuiKeys, watch_keys.in_set(InputSystems::Filter))
+            .add_systems(PostUpdate, draw_card.in_set(TuiSystems::Draw))
             .add_observer(want_recap)
             .add_observer(take_recap)
             .add_observer(time_out)
-            .add_observer(discard_on_turn)
+            .add_observer(discard_on_send)
             .add_observer(show_card)
             .add_observer(dismiss_card)
-            .add_observer(note_reload)
-            .add_observer(follow_successor::<RecapCall>)
-            .add_entry_renderer(NAME, |entry| {
-                let mut lines = vec![Line::styled(
-                    format!("↺ {}", entry.title),
-                    Style::new().cyan().bold(),
-                )];
-                lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
-                lines
-            });
+            .add_observer(follow_successor::<RecapCall>);
     }
 }
 
@@ -119,7 +110,7 @@ pub struct RecapConfig {
     /// The catalog model (`vendor/model`) that writes recaps; none uses the
     /// agent's own.
     pub model: Option<String>,
-    /// Seconds without activity after which the user's next keystroke asks
+    /// Seconds without activity after which the user's next typed key asks
     /// for a recap.
     pub idle: u64,
     /// Seconds a recap may take before it is given up.
@@ -144,24 +135,17 @@ impl Default for RecapConfig {
 #[reflect(Resource, Saved, Default)]
 pub struct LatestRecap(pub Option<String>);
 
-/// Whether the run ended for `/reload`, kept with the session, so the run
-/// after it is not taken for a resume.
-#[derive(Resource, Reflect, Clone, Debug, Default)]
-#[reflect(Resource, Saved, Default)]
-struct Reloading(bool);
-
 /// On the plugin's recap call, and on whichever call takes it over.
 #[derive(Component, Debug)]
 pub struct RecapCall;
 
+/// The recap shown: a panel of the terminal view above the input.
+#[derive(Component, Debug)]
+pub struct RecapCard(pub String);
+
 /// On the wall-clock wait that runs out once the session sat idle.
 #[derive(Component, Debug)]
 struct IdleClock;
-
-/// The recap shown: the agent whose transcript holds its note, and the
-/// note.
-#[derive(Resource, Debug, Default)]
-struct Card(Option<(Entity, AsideId)>);
 
 /// Asks for a recap of the main agent's conversation; `forced` also for
 /// a short one.
@@ -170,12 +154,9 @@ struct WantRecap {
     forced: bool,
 }
 
-/// Shows `text` as the recap of `agent`.
+/// Shows `0` as the recap.
 #[derive(Event, Clone, Debug)]
-struct ShowRecap {
-    agent: Entity,
-    text: String,
-}
+struct ShowRecap(String);
 
 /// Takes the recap shown away.
 #[derive(Event, Clone, Copy, Debug)]
@@ -190,27 +171,10 @@ fn idle_wait(config: &RecapConfig) -> WakeAt {
     WakeAt::after(Duration::from_secs(config.idle))
 }
 
-/// A run of a session started before, not after `/reload`, is a resume.
-fn recap_on_resume(
-    started: Option<Res<AppStart>>,
-    mut reloading: ResMut<Reloading>,
-    mut commands: Commands,
-) {
-    if reloading.0 {
-        reloading.0 = false;
-    } else if !started.is_some_and(|started| started.0 == StartReason::New) {
+/// Recaps a resumed session once its conversation is restored.
+fn recap_on_resume(started: Option<Res<AppStart>>, mut commands: Commands) {
+    if started.is_some_and(|started| started.0 == StartReason::Resumed) {
         commands.trigger(WantRecap { forced: false });
-    }
-}
-
-/// Notes that this run ends for `/reload`.
-fn note_reload(
-    _: On<Add<ExitRequest>>,
-    reason: Option<Res<ExitReason>>,
-    mut reloading: ResMut<Reloading>,
-) {
-    if reason.is_some_and(|reason| *reason == ExitReason::Reload) {
-        reloading.0 = true;
     }
 }
 
@@ -232,15 +196,13 @@ fn note_activity(
 }
 
 /// Each key pressed: Esc on an empty input takes the recap shown away; a
-/// key after the idle clock ran out asks for a recap. Every key puts the
-/// clock off.
-#[allow(clippy::too_many_arguments)]
+/// typed character after the idle clock ran out asks for a recap. Any key
+/// before then puts the clock off.
 fn watch_keys(
     mut events: ResMut<TerminalEvents>,
     (input, state): (Res<TuiInput>, Res<TuiInputState>),
     clocks: Query<(Entity, Has<Due>), With<IdleClock>>,
-    card: Res<Card>,
-    active: Query<(), With<ActiveTurn>>,
+    cards: Query<Entity, With<RecapCard>>,
     config: Res<RecapConfig>,
     mut commands: Commands,
 ) {
@@ -251,36 +213,34 @@ fn watch_keys(
         return;
     }
     let quiet = input.is_empty() && state.completion().is_none() && state.picking().is_none();
-    if key.code == KeyCode::Esc
-        && quiet
-        && let Some((agent, _)) = card.0
-        && !active.contains(agent)
-    {
+    if key.code == KeyCode::Esc && quiet && !cards.is_empty() {
         events.0.remove(0);
         commands.trigger(DismissRecap);
         return;
     }
+    let typing = matches!(key.code, KeyCode::Char(_))
+        && !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
     for (clock, due) in &clocks {
-        if due {
+        if due && typing {
             commands.trigger(WantRecap { forced: false });
         }
-        commands.entity(clock).insert(idle_wait(&config));
+        if !due || typing {
+            commands.entity(clock).insert(idle_wait(&config));
+        }
     }
 }
 
 /// `/recap`: the latest recap at once, and a fresh one when it comes.
 fn recap_command(
-    In(args): In<CommandArgs>,
+    In(_): In<CommandArgs>,
     latest: Res<LatestRecap>,
     pending: Query<Entity, (With<RecapCall>, Without<Settled>)>,
     mut commands: Commands,
 ) {
     if let Some(text) = &latest.0 {
-        let text = text.clone();
-        commands.trigger(ShowRecap {
-            agent: args.agent,
-            text,
-        });
+        commands.trigger(ShowRecap(text.clone()));
     }
     for call in &pending {
         commands.entity(call).despawn();
@@ -290,7 +250,6 @@ fn recap_command(
 
 /// Starts a recap call for the main agent, unless one runs or its
 /// conversation is too short.
-#[allow(clippy::too_many_arguments)]
 fn want_recap(
     want: On<WantRecap>,
     agents: PrimaryQuery,
@@ -325,18 +284,15 @@ fn want_recap(
             .cloned()
             .ok_or_else(|| "the agent has no model".to_owned()),
     };
-    let connection = match connection {
-        Ok(connection) => connection,
-        Err(why) => {
-            warn!("recap: not written: {why}");
-            return;
-        }
-    };
     let newest = view(
         conversation.messages(),
         &TokenBudget::new(config.budget_tokens),
     );
-    let request = match summarizer().request(newest, "", "", &connection.spec) {
+    let request = connection.and_then(|connection| {
+        let request = summarizer().request(newest, "", "", &connection.spec);
+        Ok((request.map_err(|why| why.to_string())?, connection))
+    });
+    let (request, connection) = match request {
         Ok(request) => request,
         Err(why) => {
             warn!("recap: not written: {why}");
@@ -369,11 +325,11 @@ fn summarizer() -> Summarizer {
 /// the log.
 fn take_recap(
     settled: On<Add<Settled>>,
-    calls: Query<(&Outcome, &ForAgent), (With<RecapCall>, Without<SupersededBy>)>,
+    calls: Query<&Outcome, (With<RecapCall>, Without<SupersededBy>)>,
     mut latest: ResMut<LatestRecap>,
     mut commands: Commands,
 ) {
-    let Ok((outcome, &ForAgent(agent))) = calls.get(settled.entity) else {
+    let Ok(outcome) = calls.get(settled.entity) else {
         return;
     };
     let text = match (&outcome.0, outcome.completion()) {
@@ -385,10 +341,9 @@ fn take_recap(
     };
     match text {
         Ok(text) => {
-            let text: Vec<&str> = text.lines().take(MAX_LINES).collect();
-            let text = text.join("\n");
+            let text = text.lines().take(MAX_LINES).collect::<Vec<_>>().join("\n");
             latest.0 = Some(text.clone());
-            commands.trigger(ShowRecap { agent, text });
+            commands.trigger(ShowRecap(text));
         }
         Err(why) => warn!("recap: not written: {why}"),
     }
@@ -407,19 +362,17 @@ fn time_out(
     }
 }
 
-/// A turn of the main agent starting, as the user sends a message,
-/// discards the recap on its way and takes the one shown away.
-fn discard_on_turn(
-    turn: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
+/// A message the user sends the main agent discards the recap on its way
+/// and takes the one shown away.
+fn discard_on_send(
+    deliver: On<Deliver>,
     agents: PrimaryQuery,
     pending: Query<Entity, (With<RecapCall>, Without<Settled>)>,
     mut commands: Commands,
 ) {
-    let Ok(&TurnOf(agent)) = turns.get(turn.entity) else {
-        return;
-    };
-    if Some(agent) != primary(&agents) {
+    let message = &deliver.message;
+    let users = message.author.kind == AuthorKind::User && message.command().is_none();
+    if !users || Some(deliver.entity) != primary(&agents) {
         return;
     }
     for call in &pending {
@@ -428,37 +381,33 @@ fn discard_on_turn(
     commands.trigger(DismissRecap);
 }
 
-/// Shows the recap as an unsaved note after the agent's newest message,
-/// in place of the one shown.
-fn show_card(
-    show: On<ShowRecap>,
-    mut conversations: Query<&mut Conversation>,
-    mut card: ResMut<Card>,
-) {
-    if let Some((agent, aside)) = card.0.take()
-        && let Ok(mut conversation) = conversations.get_mut(agent)
-    {
-        conversation.remove_aside(aside);
+/// Shows the recap in a panel above the input, in place of the one shown.
+fn show_card(show: On<ShowRecap>, cards: Query<Entity, With<RecapCard>>, mut commands: Commands) {
+    for card in &cards {
+        commands.entity(card).despawn();
     }
-    let Ok(mut conversation) = conversations.get_mut(show.agent) else {
-        return;
-    };
-    let newest = conversation.messages().len().checked_sub(1);
-    let after = newest.and_then(|at| conversation.id(at));
-    let note = Note::new(TITLE, show.text.clone()).aside(Author::plugin(NAME), after);
-    let aside = conversation.add_aside(note.unsaved());
-    card.0 = Some((show.agent, aside));
+    let rows = u16::try_from(show.0.lines().count().saturating_add(2)).unwrap_or(u16::MAX);
+    commands.spawn((
+        Name::new("recap: card"),
+        RecapCard(show.0.clone()),
+        TuiPanel::new(Placement::Bottom(Constraint::Length(rows))),
+    ));
 }
 
 /// Takes the recap shown away.
 fn dismiss_card(
     _: On<DismissRecap>,
-    mut conversations: Query<&mut Conversation>,
-    mut card: ResMut<Card>,
+    cards: Query<Entity, With<RecapCard>>,
+    mut commands: Commands,
 ) {
-    if let Some((agent, aside)) = card.0.take()
-        && let Ok(mut conversation) = conversations.get_mut(agent)
-    {
-        conversation.remove_aside(aside);
+    for card in &cards {
+        commands.entity(card).despawn();
+    }
+}
+
+/// Draws the recap's card.
+fn draw_card(mut cards: Query<(&RecapCard, &mut PanelCanvas)>) {
+    for (card, mut canvas) in &mut cards {
+        canvas.render(Paragraph::new(card.0.as_str()).block(Block::bordered().title(TITLE)));
     }
 }
