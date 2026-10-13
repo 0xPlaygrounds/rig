@@ -82,7 +82,7 @@ use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 pub use complete::{ArgCompletion, Candidate, Completion, CompletionKind};
 pub use crossterm;
 pub use editor::TuiInput;
-pub use history::{HistorySystems, PromptHistory};
+pub use history::{HistorySystems, PromptHistory, Sent};
 pub use input::{InputSystems, KeyInput, TerminalEvents, TuiInputState};
 pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
@@ -130,6 +130,7 @@ impl Plugin for TuiPlugin {
             .init_resource::<TerminalEvents>()
             .init_resource::<TuiInputState>()
             .add_message::<RequestRedraw>()
+            .add_message::<Sent>()
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()
             .configure_sets(
@@ -190,8 +191,7 @@ impl Plugin for TuiPlugin {
 pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
-    app.add_message::<history::Sent>()
-        .add_message::<rig_harness::watch::FileChanges>()
+    app.add_message::<rig_harness::watch::FileChanges>()
         .init_resource::<RigHome>()
         .init_resource::<Shown>()
         .init_resource::<view::TuiView>()

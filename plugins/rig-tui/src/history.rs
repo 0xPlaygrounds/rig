@@ -1,6 +1,7 @@
 //! The prompt history: the prompts Up and Down browse, kept in a file
 //! across sessions. It is the [`PromptHistory`] resource, which a plugin
-//! fills, filters or stops saving, such as to keep secrets out of it.
+//! fills, filters or stops saving, such as to keep secrets out of it; a
+//! [`Sent`] adds a prompt to it.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -64,9 +65,12 @@ pub enum HistorySystems {
     Save,
 }
 
-/// A prompt the input sent.
-#[derive(Message, Clone, Debug)]
-pub(crate) struct Sent(pub(crate) String);
+/// A prompt sent, which [`HistorySystems::Record`] adds to the
+/// [`PromptHistory`] unless it repeats the last one: the input writes one
+/// for each prompt it sends, and a plugin writes one for a prompt it sent
+/// for the user, such as from a panel of its own.
+#[derive(Message, Clone, Debug, PartialEq, Eq)]
+pub struct Sent(pub String);
 
 /// Adds each prompt sent to the history, unless it repeats the last one.
 pub(crate) fn record(mut sent: MessageReader<Sent>, mut history: ResMut<PromptHistory>) {
