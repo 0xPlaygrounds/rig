@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 mod tests;
 
 /// The plugin's name: its settings' table, its model calls' purpose and
-/// the origin of what it tells agents.
+/// the author of what it tells agents.
 const NAME: &str = "auto-commit";
 
 /// The most of a commit's diff the message model reads.
@@ -411,7 +411,7 @@ fn undo(
                  back as they were before it. Read them again before you change them."
             );
             let note = Deliver::new(agent, text, DeliveryMode::Note);
-            commands.trigger(note.with_origin(Origin::plugin(NAME)));
+            commands.trigger(note.with_author(Author::plugin(NAME)));
         }
         Err(why) => {
             notices.write(Notice::error(agent, format!("Cannot undo: {why}")));
@@ -441,25 +441,30 @@ fn toggle(
     notices.write(Notice::info(args.agent, format!("Auto-commit is {says}.")));
 }
 
-/// The first line of the request a turn answers, the conversation's
-/// message `at`, after the header naming who sent it when that was not
-/// the user.
+/// The first line of the request a turn answers, the user messages from
+/// the conversation's entry `at` on, each after the header naming who sent
+/// it when that was not the user.
 fn request(conversation: &Conversation, at: usize) -> String {
-    let Some(Message::User { content }) = conversation.messages().get(at) else {
-        return "changes".to_owned();
-    };
-    let found = content.iter().enumerate().find_map(|(item, content)| {
-        let UserContent::Text(text) = content else {
-            return None;
-        };
-        let origin = conversation.origin(at, item);
-        let skip = usize::from(origin.and_then(Origin::header).is_some());
-        text.text
-            .lines()
-            .skip(skip)
-            .map(str::trim)
-            .find(|line| !line.is_empty())
-    });
+    let found = conversation
+        .entries()
+        .skip(at)
+        .map_while(|entry| match entry.message {
+            Message::User { content } => Some((entry, content)),
+            _ => None,
+        })
+        .find_map(|(entry, content)| {
+            let skip = usize::from(entry.author.and_then(Author::header).is_some());
+            content.iter().find_map(|content| {
+                let UserContent::Text(text) = content else {
+                    return None;
+                };
+                text.text
+                    .lines()
+                    .skip(skip)
+                    .map(str::trim)
+                    .find(|line| !line.is_empty())
+            })
+        });
     found.unwrap_or("changes").to_owned()
 }
 

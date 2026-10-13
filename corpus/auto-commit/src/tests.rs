@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
+use rig_harness_test_support::MemoryStore;
 
 use super::*;
 use rig_harness_test_support::{
