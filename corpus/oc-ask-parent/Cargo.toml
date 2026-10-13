@@ -13,6 +13,10 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# `SpawnSubagent`, and the task titles that name subagents.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+# The tools' parameters, derived from their arguments types.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
