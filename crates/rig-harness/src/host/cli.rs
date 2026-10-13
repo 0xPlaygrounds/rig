@@ -26,7 +26,7 @@
 //! interactive run that no front takes says so and exits. A front whose
 //! runs leave nothing to resume, such as one replaying a recording, is
 //! [`Front::sessionless`]: a run it takes removes its session's directory
-//! when it ends.
+//! when it ends, and a run of a resumed session is refused.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -64,9 +64,10 @@ use std::fmt::Write as _;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::RESERVED_COMMANDS;
+use rig::harness_protocol::{RESERVED_COMMANDS, StartReason};
 
 use super::launcher::Invoked;
+use super::session::AppStart;
 use crate::describe::Describing;
 use crate::secrets::Secret;
 
@@ -139,7 +140,8 @@ pub struct Front {
     /// The command that gives it the run, whatever the terminal.
     pub command: Option<Command>,
     /// Whether its runs keep no session: a run it takes removes its
-    /// session's directory when it ends.
+    /// session's directory when it ends, and a resumed session's run is
+    /// refused.
     pub sessionless: bool,
 }
 
@@ -246,7 +248,8 @@ pub(crate) fn flags(world: &mut World) -> Vec<Flag> {
 
 /// Why the command line does not fit this build: an option no plugin
 /// declared, a value where none goes or none where one does, an unknown
-/// command, or two fronts given the run.
+/// command, two fronts given the run, or a front that keeps no session
+/// given a resumed one.
 fn refusal_of(world: &mut World, invoked: &Invoked) -> Option<String> {
     let flags = flags(world);
     for (name, value) in &invoked.args.flags {
@@ -269,11 +272,18 @@ fn refusal_of(world: &mut World, invoked: &Invoked) -> Option<String> {
             _ => {}
         }
     }
+    let resumed = world
+        .get_resource::<AppStart>()
+        .is_some_and(|start| start.0 == StartReason::Resumed);
     match world
         .get_resource::<Cli>()
         .and_then(|cli| cli.chosen.as_ref())
     {
         Some(Err(why)) => Some(why.clone()),
+        Some(Ok(Some(front))) if front.sessionless && resumed => Some(format!(
+            "the front `{}` keeps no session, so it cannot resume one",
+            front.name
+        )),
         _ => None,
     }
 }

@@ -411,6 +411,38 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// A front whose runs keep no session never takes a resumed one, such as
+/// `rig -r X --export Y`: its run is refused and the session stays. A
+/// `/reload` of its own run is no resume.
+#[test]
+fn a_sessionless_front_refuses_a_resumed_session_and_keeps_it() {
+    let home = scratch_home("rig-sessionless-resumed");
+    let run = |reason: StartReason| {
+        let id: SessionId = "1700000000-9".parse().ok()?;
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        fs::write(session.started(), b"").ok();
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .insert_resource(AppStart(reason))
+            .add_plugins(SessionPlugin)
+            .add_front(Front::new("export").headless().sessionless());
+        let refusal = crate::host::cli::refusal(&mut app);
+        app.world_mut().write_message(AppExit::Success);
+        app.update();
+        Some((refusal, session.path().exists()))
+    };
+    let resumed = run(StartReason::Resumed);
+    let reloaded = run(StartReason::Reloaded);
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+    let why = "the front `export` keeps no session, so it cannot resume one";
+    assert_eq!(resumed, Some((Some(why.to_owned()), true)));
+    assert_eq!(reloaded, Some((None, false)));
+}
+
 #[test]
 fn a_new_session_and_a_fork_start_new_and_a_second_start_resumes() {
     let root = std::env::temp_dir().join(format!("rig-first-{}", std::process::id()));

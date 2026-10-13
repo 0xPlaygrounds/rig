@@ -420,16 +420,18 @@ fn mark_started(paths: Res<SessionPaths>, mut commands: Commands) {
 }
 
 /// Removes the session's directory when a sessionless front's run ends,
-/// however, once everything was written there. A run that failed first
-/// moves its text log into the launcher's run directory, where the
-/// launcher's failure message points.
+/// however, once everything was written there; never a resumed session's,
+/// which such a front refuses. A run that failed first moves its text log
+/// into the launcher's run directory, where the launcher's failure message
+/// points.
 fn discard_sessionless(
     mut exits: MessageReader<AppExit>,
-    cli: Option<Res<Cli>>,
+    (cli, start): (Option<Res<Cli>>, Option<Res<AppStart>>),
     paths: Res<SessionPaths>,
     (run, scratch): (Option<Res<LauncherRun>>, Option<Res<Scratch>>),
 ) {
-    if !cli.is_some_and(|cli| cli.sessionless()) {
+    let resumed = start.is_some_and(|start| start.0 == StartReason::Resumed);
+    if resumed || !cli.is_some_and(|cli| cli.sessionless()) {
         return;
     }
     if !exits.read().all(AppExit::is_success)
