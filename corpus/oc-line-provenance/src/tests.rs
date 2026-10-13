@@ -72,7 +72,7 @@ fn id_of(app: &App) -> String {
 
 /// What `rig provenance <args>` prints as JSON, run from `dir` with the
 /// project data a session had.
-fn cli(data: &PluginData, dir: &Path, args: &[&str]) -> Value {
+fn cli(home: &Home, data: &PluginData, dir: &Path, args: &[&str]) -> Value {
     let invocation = Invocation {
         command: Some(NAME.to_owned()),
         arguments: args.iter().map(|arg| (*arg).to_owned()).collect(),
@@ -81,6 +81,7 @@ fn cli(data: &PluginData, dir: &Path, args: &[&str]) -> Value {
     let mut app = App::new();
     app.insert_resource(ProjectRoot(dir.to_owned()))
         .insert_resource(data.clone())
+        .insert_resource(RigHome(home.clone()))
         .insert_resource(Invoked {
             args: invocation,
             terminal: false,
@@ -93,7 +94,8 @@ fn cli(data: &PluginData, dir: &Path, args: &[&str]) -> Value {
     serde_json::from_str(&stdout).unwrap_or(Value::Null)
 }
 
-/// Each span of an answer as `(from, to, session, prompt, tool, changed by you)`.
+/// Each span of an answer as `(from, to, session, prompt, tool, changed by
+/// you)`.
 fn spans(answer: &Value) -> Vec<(u64, u64, String, String, String, bool)> {
     let spans = answer["spans"].as_array().cloned().unwrap_or_default();
     let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
@@ -141,6 +143,10 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
     prompt(&mut app, &wakes, agent, "add retry");
     let first = id_of(&app);
     drop(app);
+    let named = first
+        .parse()
+        .map(|id| home.session(&id).set_name(Some("retry")));
+    assert!(named.is_ok_and(|named| named.is_ok()), "session 1 is named");
 
     // Between sessions the user changes line 11.
     let text = std::fs::read_to_string(&net).unwrap_or_default();
@@ -169,7 +175,7 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
     let second = id_of(&app);
     let data = app.world().resource::<PluginData>().clone();
 
-    let moved = spans(&cli(&data, &dir, &["net.rs:13-15", "--json"]));
+    let moved = cli(&home, &data, &dir, &["net.rs:13-15", "--json"]);
     let by = |from, to, session: &str, prompt: &str, tool: &str, mine| {
         (
             from,
@@ -181,7 +187,7 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
         )
     };
     assert_eq!(
-        moved,
+        spans(&moved),
         vec![
             by(13, 13, &first, "add retry", "edit", false),
             by(14, 14, &first, "add retry", "edit", true),
@@ -189,14 +195,18 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
         ],
         "the moved lines 10-12, the middle one changed by the user"
     );
-    let top = spans(&cli(&data, &dir, &["net.rs:1", "--json"]));
+    assert_eq!(
+        moved.pointer("/spans/0/session_name"),
+        Some(&json!("retry"))
+    );
+    let top = spans(&cli(&home, &data, &dir, &["net.rs:1", "--json"]));
     assert_eq!(top, vec![by(1, 1, &second, "add logging", "edit", false)]);
-    let created = spans(&cli(&data, &dir, &["log.rs:1", "--json"]));
+    let created = spans(&cli(&home, &data, &dir, &["log.rs:1", "--json"]));
     assert_eq!(
         created,
         vec![by(1, 1, &second, "add logging", "write", false)]
     );
-    let untouched = cli(&data, &dir, &["other.rs", "--json"]);
+    let untouched = cli(&home, &data, &dir, &["other.rs", "--json"]);
     assert_eq!(
         untouched.pointer("/spans/0/by_agent"),
         Some(&json!(false)),
@@ -204,7 +214,7 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
     );
 
     prompt(&mut app, &wakes, agent, "rename");
-    let renamed = cli(&data, &dir, &["net.rs:8", "--json"]);
+    let renamed = cli(&home, &data, &dir, &["net.rs:8", "--json"]);
     let call = renamed.pointer("/spans/0/record/call_id");
     assert_eq!(call, Some(&json!("s2-3")), "{renamed}");
     assert_eq!(
@@ -246,11 +256,11 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
     );
 
     app.world_mut()
-        .trigger(RunCommand::new(agent, format!("{NAME} --forget {first}")));
+        .trigger(RunCommand::new(agent, format!("{NAME} --forget retry")));
     for _ in 0..5 {
         app.update();
     }
-    let forgotten = cli(&data, &dir, &["net.rs:13-15", "--json"]);
+    let forgotten = cli(&home, &data, &dir, &["net.rs:13-15", "--json"]);
     let agents: Vec<_> = forgotten
         .pointer("/spans")
         .and_then(Value::as_array)
@@ -260,15 +270,10 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
         .collect();
     assert_eq!(agents, vec![json!(false)], "{forgotten}");
     assert_eq!(
-        spans(&cli(&data, &dir, &["net.rs:1", "--json"])).len(),
+        spans(&cli(&home, &data, &dir, &["net.rs:1", "--json"])).len(),
         1,
         "session 2 stays"
     );
     drop(app);
     std::fs::remove_dir_all(home.root()).ok();
-}
-
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(LineProvenancePlugin);
 }

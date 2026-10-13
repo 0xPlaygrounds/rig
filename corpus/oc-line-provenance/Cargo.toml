@@ -9,16 +9,13 @@ description = "Plugin corpus (one-conversation fresh held-out): OC-21: 21. Which
 workspace = true
 
 [dependencies]
-# Named by the Bevy derives.
+# Named by the `SystemParam` and `Resource` derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 # Why a change could not be recorded.
 bevy_log = { workspace = true }
 # A record's day, in the user's time zone; already in Cargo.lock.
 chrono = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The session's name set with `/name`.
-rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # Line diffs that carry each line's origin forward, as rig-tools' `edit` diffs.
@@ -27,5 +24,4 @@ similar = { workspace = true }
 [dev-dependencies]
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
-rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
