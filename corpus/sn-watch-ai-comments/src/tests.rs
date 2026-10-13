@@ -132,6 +132,13 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     run_until(&mut app, &wakes, |world| {
         world.resource::<Watching>().primed
     });
+    // The watch keeps a `--print` run going.
+    let kept = app
+        .world_mut()
+        .query::<&KeepRunning>()
+        .iter(app.world())
+        .count();
+    assert_eq!(kept, 1);
 
     // `AI!`: one turn, given the trigger and the context comment.
     let a = file("a.py");

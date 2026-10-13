@@ -7,12 +7,14 @@
 //! what `.gitignore` leaves out. A save that settled for [`SETTLE`] and holds
 //! a trigger queues its file once (its newest content wins), and the queue
 //! runs one turn per file whenever the agent is idle. A file left as one of
-//! rig's tools wrote it, or as this plugin cleaned it, never triggers. A
+//! rig's tools wrote it (their [`FilesChanged`], which a `shell` call
+//! publishes too), or as this plugin cleaned it, never triggers. A
 //! question's turn is question only: its calls that may change anything are
 //! refused. When a turn answers, its file's trigger comments and the context
 //! comments it was given are taken out of the files. The status line says
-//! `watching` and how many files wait. `rig --watch --print` runs until
-//! interrupted and prints each answer.
+//! `watching` and how many files wait. The watch keeps a headless run going
+//! ([`KeepRunning`]), so `rig --watch --print` runs until interrupted and
+//! rig-print prints each answer.
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -99,13 +101,6 @@ impl Plugin for WatchAiCommentsPlugin {
             .add_observer(mark_turn)
             .add_observer(clean_up);
     }
-
-    fn finish(&self, app: &mut App) {
-        let watching = app.world().resource::<Watching>().on;
-        if watching && app.runs_front(rig_print::FRONT) {
-            app.insert_resource(Printing).add_observer(hold_exit);
-        }
-    }
 }
 
 /// Where watching stands.
@@ -117,6 +112,8 @@ struct Watching {
     watch: Option<Entity>,
     /// Whether the watch listed the files there when armed.
     primed: bool,
+    /// The files the watch reported, which may hold AI comments.
+    files: BTreeSet<PathBuf>,
     /// The files saved since the last settled save.
     saved: BTreeSet<PathBuf>,
     /// The entity whose [`WakeAt`] ends the settling.
@@ -126,14 +123,6 @@ struct Watching {
     /// What rig's tools and this plugin last left in each file.
     written: HashMap<PathBuf, ContentHash>,
 }
-
-/// On the entity that watches the project.
-#[derive(Component)]
-struct ProjectWatch;
-
-/// On the entity whose [`WakeAt`] ends a save's settling.
-#[derive(Component)]
-struct Settling;
 
 /// A turn's work, on the message that asks for it, then on its turn.
 #[derive(Component, Clone, Debug)]
@@ -149,15 +138,6 @@ struct Job {
 /// On a turn this plugin started.
 #[derive(Component, Clone, Debug)]
 struct JobTurn(Job);
-
-/// In a `--watch --print` run: answers go to stdout and only a signal
-/// ends the run.
-#[derive(Resource)]
-struct Printing;
-
-/// On a hold that keeps a `--print` run watching.
-#[derive(Component)]
-struct ExitHold;
 
 /// `/watch on`, `/watch off`, or `/watch` to say whether it watches.
 fn watch(
@@ -194,25 +174,15 @@ fn watch(
     ));
 }
 
-/// Arms the watch of the project once watching is on, on this machine.
-fn arm(
-    mut watching: ResMut<Watching>,
-    workspace: Res<ProjectWorkspace>,
-    root: Res<ProjectRoot>,
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
-) {
+/// Arms the watch of the project once watching is on; it keeps a headless
+/// run going while it is armed.
+fn arm(mut watching: ResMut<Watching>, root: Res<ProjectRoot>, mut commands: Commands) {
     if !watching.on || watching.watch.is_some() {
         return;
     }
-    if let Some(host) = workspace.0.host() {
-        watching.on = false;
-        let why = format!("/watch watches this machine's files; the project is on {host}.");
-        notices.write(Notice::error(None, why));
-        return;
-    }
+    let name = Name::new("watching for AI comments");
     let watch = commands
-        .spawn((ProjectWatch, FileWatch::tree(&root.0)))
+        .spawn((name, FileWatch::tree(&root.0), KeepRunning))
         .id();
     watching.watch = Some(watch);
     watching.primed = false;
@@ -229,6 +199,7 @@ fn take_changes(
         if Some(change.watch) != watching.watch {
             continue;
         }
+        watching.files.extend(change.paths.iter().cloned());
         // The first look lists what was there before watching.
         if !watching.primed {
             watching.primed = true;
@@ -245,19 +216,17 @@ fn take_changes(
         Some(settling) => {
             commands.entity(settling).insert(settle);
         }
-        None => watching.settling = Some(commands.spawn((Settling, settle)).id()),
+        None => watching.settling = Some(commands.spawn(settle).id()),
     }
 }
 
 /// Once the saves settled and no tool that may write them runs, queues each
-/// saved file the project keeps that holds a trigger, unless rig left it
-/// so.
+/// saved file that holds a trigger, unless rig left it so.
 fn read_saves(
-    settled: Query<(), (With<Settling>, With<Due>)>,
+    settled: Query<(), With<Due>>,
     running: Query<&Footprint, (ToolCalls, With<Started>, Without<Outcome>)>,
     mut watching: ResMut<Watching>,
     workspace: Res<ProjectWorkspace>,
-    root: Res<ProjectRoot>,
     mut commands: Commands,
 ) {
     let Some(settling) = watching
@@ -279,11 +248,7 @@ fn read_saves(
     commands.entity(settling).despawn();
     watching.settling = None;
     let workspace = &*workspace.0;
-    let kept = project_files(workspace, &root.0);
     for path in std::mem::take(&mut watching.saved) {
-        if !kept.contains(&path) {
-            continue;
-        }
         let Some(text) = read(workspace, &path) else {
             continue;
         };
@@ -320,7 +285,7 @@ fn start_turn(
     let workspace = &*workspace.0;
     while !watching.queue.is_empty() {
         let file = watching.queue.remove(0);
-        if let Some((job, text)) = job(workspace, &root.0, file) {
+        if let Some((job, text)) = job(workspace, &root.0, &watching.files, file) {
             let author = Author::user().titled("AI comments");
             let message = Incoming::new(text, DeliveryMode::Queue)
                 .with_author(author)
@@ -331,15 +296,20 @@ fn start_turn(
     }
 }
 
-/// The turn for `file`'s triggers and the message that asks for it, unless
-/// it holds none any more.
-fn job(workspace: &dyn Workspace, root: &Path, file: PathBuf) -> Option<(Job, String)> {
-    let found: Vec<(PathBuf, String, Vec<Comment>)> = project_files(workspace, root)
-        .into_iter()
+/// The turn for `file`'s triggers and the message that asks for it, with
+/// the AI comments of the watched `files`, unless it holds none any more.
+fn job(
+    workspace: &dyn Workspace,
+    root: &Path,
+    files: &BTreeSet<PathBuf>,
+    file: PathBuf,
+) -> Option<(Job, String)> {
+    let found: Vec<(PathBuf, String, Vec<Comment>)> = files
+        .iter()
         .filter_map(|path| {
-            let text = read(workspace, &path)?;
-            let found = comments(&path, &text);
-            (!found.is_empty()).then_some((path, text, found))
+            let text = read(workspace, path)?;
+            let found = comments(path, &text);
+            (!found.is_empty()).then_some((path.clone(), text, found))
         })
         .collect();
     let triggers: Vec<&Comment> = found
@@ -456,23 +426,17 @@ fn note_writes(
 }
 
 /// Once a job's turn answered, takes its file's triggers and its context
-/// comments out of the files, and prints the answer in a `--print` run.
+/// comments out of the files.
 fn clean_up(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &JobTurn)>,
     mut watching: ResMut<Watching>,
     workspace: Res<ProjectWorkspace>,
-    printing: Option<Res<Printing>>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((TurnOutcome::Answered(answer), JobTurn(job))) = turns.get(settled.entity) else {
+    let Ok((TurnOutcome::Answered(_), JobTurn(job))) = turns.get(settled.entity) else {
         return;
     };
-    if printing.is_some()
-        && let Some(answer) = answer.final_answer()
-    {
-        println!("{answer}");
-    }
     let workspace = &*workspace.0;
     let files: BTreeSet<&PathBuf> = std::iter::once(&job.file)
         .chain(job.context.iter().map(|(path, _)| path))
@@ -508,26 +472,6 @@ fn clean_up(
     }
 }
 
-/// Keeps a `--watch --print` run going until a signal asks it to stop.
-fn hold_exit(
-    added: On<Add<ExitRequest>>,
-    exits: Query<&ExitRequest>,
-    holds: Query<Entity, With<ExitHold>>,
-    mut commands: Commands,
-) {
-    let Ok(ExitRequest(reason)) = exits.get(added.entity) else {
-        return;
-    };
-    if *reason == ExitReason::Signal {
-        for hold in &holds {
-            commands.entity(hold).despawn();
-        }
-    } else {
-        let name = Name::new("watching for AI comments until interrupted");
-        commands.spawn((name, ExitHold, HoldOf(added.entity)));
-    }
-}
-
 /// `watching` and how many files wait, on the status line.
 fn show(watching: Res<Watching>, mut status: ResMut<AppStatus>) {
     let text = match (watching.on, watching.queue.len()) {
@@ -536,15 +480,6 @@ fn show(watching: Res<Watching>, mut status: ResMut<AppStatus>) {
         (true, queued) => format!("watching · {queued} queued"),
     };
     status.0.show(ITEM.says(text, Tone::Dim));
-}
-
-/// The files of the project the watch covers: what `.gitignore` keeps.
-fn project_files(workspace: &dyn Workspace, root: &Path) -> BTreeSet<PathBuf> {
-    workspace
-        .files(root, None)
-        .unwrap_or_default()
-        .into_iter()
-        .collect()
 }
 
 /// The text of `path`, unless it is too large or no text.
