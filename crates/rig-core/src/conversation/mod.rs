@@ -703,6 +703,32 @@ impl Conversation {
         Ok(())
     }
 
+    /// Makes the edits of `edit` as made at `at`, in milliseconds since the
+    /// Unix epoch, such as messages imported at the times their source
+    /// logged them: their records carry that time, which a writer keeps,
+    /// instead of the time they are saved. An edit dated inside, by a
+    /// nested call, keeps its own time.
+    ///
+    /// ```
+    /// use rig_core::conversation::Conversation;
+    /// use rig_core::message::Message;
+    ///
+    /// let mut conversation = Conversation::new();
+    /// conversation.dated(1_790_848_800_000, |conversation| {
+    ///     conversation.push(Message::user("Imported"))
+    /// });
+    /// let at = conversation.unsaved().first().and_then(|recorded| recorded.at);
+    /// assert_eq!(at, Some(1_790_848_800_000));
+    /// ```
+    pub fn dated<R>(&mut self, at: u64, edit: impl FnOnce(&mut Self) -> R) -> R {
+        let from = self.unsaved.len();
+        let made = edit(self);
+        for recorded in self.unsaved.iter_mut().skip(from) {
+            recorded.at.get_or_insert(at);
+        }
+        made
+    }
+
     /// The changes made that nobody has saved yet, oldest first.
     pub fn unsaved(&self) -> &[Recorded] {
         &self.unsaved
