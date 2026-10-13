@@ -2093,10 +2093,53 @@ fn a_hold_on_a_proposed_end_goes_when_the_turn_carries_on() {
     assert_eq!(answer.as_deref(), Some("third"), "{:?}", ended(&app));
 }
 
+#[test]
+fn a_messages_parts_go_to_the_model_in_its_authors_order() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("a cat")]);
+    let world = app.world_mut();
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    let agent = agents.iter(world).next().unwrap_or(Entity::PLACEHOLDER);
+    let spec = Catalog::builtin().resolve("anthropic/claude-fable-5");
+    let Ok(spec) = spec.map(|spec| spec.shared()) else {
+        return;
+    };
+    assert!(spec.input.image);
+    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+    let handler = Handler(ErasedHandler::new(handler));
+    world.entity_mut(agent).insert(Connection { spec, handler });
+    let image = UserContent::image_base64("iVBORw0KGgo=", None, None);
+    let mut message =
+        Incoming::new("look", DeliveryMode::Steer).with_author(Author::plugin("eyes"));
+    let picture = Attachment {
+        label: "cat.png".to_owned(),
+        content: image.clone(),
+    };
+    message.parts.push(MessagePart::Attachment(picture));
+    world.spawn((message, ForAgent(agent)));
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|c| c.messages().len() == 2)
+    });
+    assert!(done, "{:?}", notices(&app));
+    let conversation = app.world().get::<Conversation>(agent);
+    let first = conversation.and_then(|c| c.entries().next());
+    let header = Author::plugin("eyes").header().unwrap_or_default();
+    let said = UserContent::text(format!("{header}\nlook"));
+    assert!(
+        matches!(first, Some(entry)
+            if entry.author == Some(&Author::plugin("eyes"))
+                && matches!(entry.message, Message::User { content }
+                    if content.iter().eq([&said, &image]))),
+        "{first:?}"
+    );
+}
+
 /// Takes over the user's messages that start with `!`, as a shell would.
 fn run_in_shell(mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>) {
     for (typed, mut decision) in &mut typed {
-        if typed.author.kind == AuthorKind::User && typed.text.starts_with('!') {
+        if typed.author.kind == AuthorKind::User && typed.text().starts_with('!') {
             decision.decide(Decider::plugin("test"), Outcome::custom("ran in a shell"));
         }
     }

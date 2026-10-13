@@ -879,13 +879,13 @@ fn prompt_submit(
                     format!("A hook rejected the prompt: {why}"),
                 ));
             }
-            for context in &verdict.context {
-                let content = UserContent::text(context.clone());
-                message.attachments.push(Attachment {
+            let context = verdict.context.iter().map(|context| {
+                MessagePart::Attachment(Attachment {
                     label: "hook".to_owned(),
-                    content,
-                });
-            }
+                    content: UserContent::text(context.clone()),
+                })
+            });
+            message.parts.splice(0..0, context);
             commands.entity(entity).remove::<Verdict>();
             continue;
         }
@@ -897,7 +897,7 @@ fn prompt_submit(
             continue;
         };
         let mut payload = runner.payload(Event::PromptSubmit, agents.get(agent).ok());
-        payload.insert("prompt".into(), message.text.clone().into());
+        payload.insert("prompt".into(), message.text().to_owned().into());
         let target = (Event::PromptSubmit, entity, agent);
         hooks.spawn(
             &mut commands,

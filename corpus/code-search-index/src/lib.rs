@@ -694,7 +694,7 @@ fn look_up(
         return;
     }
     for (message, incoming, decision) in &messages {
-        let key = incoming.text.trim();
+        let key = incoming.text().trim();
         if incoming.author.kind != AuthorKind::User
             || decision.is_decided()
             || incoming.command().is_some()

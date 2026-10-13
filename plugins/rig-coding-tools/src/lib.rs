@@ -18,7 +18,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
     Added, Admitted, AgentPass, App, AppToolsExt, Attachment, AuthorKind, CallHandler, CallOutput,
     Commands, Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs,
-    MessageWriter, Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot,
+    MessagePart, MessageWriter, Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot,
     ProjectWorkspace, Query, Res, Resource, Running, Scratch, Spill, SystemSet, Tool, ToolCalls,
     ToolOptions, ToolRequest, Wake, WorkDir, blocking,
 };
@@ -418,11 +418,11 @@ fn attach(
         }
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
         if workspace.0.host().is_none() {
-            let attached = attachments(&typed.text, &base, &*workspace.0);
+            let attached = attachments(typed.text(), &base, &*workspace.0);
             add_attached(&mut typed, agent, attached, &mut notices);
             continue;
         }
-        let (text, workspace) = (typed.text.clone(), workspace.0.clone());
+        let (text, workspace) = (typed.text().to_owned(), workspace.0.clone());
         let read = blocking(move || Ok(attachments(&text, &base, &*workspace)));
         let pool = IoTaskPool::get_or_init(TaskPool::default);
         commands.spawn((
@@ -470,11 +470,12 @@ fn add_attached(
     for missing in attached.missing {
         notices.write(Notice::warn(agent, format!("@{missing}: no such file")));
     }
+    // Before the text, which names them.
     let attachments = attached
         .files
         .into_iter()
-        .map(|(label, content)| Attachment { label, content });
-    typed.attachments.extend(attachments);
+        .map(|(label, content)| MessagePart::Attachment(Attachment { label, content }));
+    typed.parts.splice(0..0, attachments);
 }
 
 #[cfg(test)]

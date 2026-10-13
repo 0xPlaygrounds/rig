@@ -53,7 +53,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
              messages: Query<&Incoming>,
              mut delivered: ResMut<Delivered>| {
                 if let Ok(message) = messages.get(accepted.entity) {
-                    delivered.0.push(message.text.clone());
+                    delivered.0.push(message.text().to_owned());
                 }
             },
         )

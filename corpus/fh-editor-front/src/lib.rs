@@ -590,7 +590,8 @@ fn receive(
                         "The user's selection, {label}:\n{}",
                         selection.text
                     ));
-                    incoming.attachments.push(Attachment { label, content });
+                    let selection = Attachment { label, content };
+                    incoming.parts.insert(0, MessagePart::Attachment(selection));
                 }
                 commands.spawn((incoming, ForAgent(agent)));
             }

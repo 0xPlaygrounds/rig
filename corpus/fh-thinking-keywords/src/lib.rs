@@ -223,7 +223,7 @@ fn mark_messages(
         if incoming.author.kind != AuthorKind::User {
             continue;
         }
-        if let Some((keyword, level)) = config.find(&incoming.text) {
+        if let Some((keyword, level)) = config.find(incoming.text()) {
             let keyword = keyword.to_owned();
             commands
                 .entity(message)

@@ -862,10 +862,11 @@ fn attach(
             continue;
         }
         if let Ok(PendingRecall(excerpt)) = pending.get(agent) {
-            message.attachments.push(Attachment {
+            let attachment = Attachment {
                 label: "recalled session excerpt".to_owned(),
                 content: UserContent::text(excerpt.clone()),
-            });
+            };
+            message.parts.insert(0, MessagePart::Attachment(attachment));
             attached.insert(agent);
             commands.entity(agent).remove::<PendingRecall>();
         }

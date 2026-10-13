@@ -55,7 +55,7 @@ impl Session {
                         return;
                     };
                     let request = message.author.request.clone().map(|request| request.0);
-                    let text = message.text.clone();
+                    let text = message.text().to_owned();
                     let entry = (to, request.unwrap_or_default(), message.mode, text);
                     delivered.0.push(entry);
                 },
@@ -551,7 +551,7 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
     };
     let mark = |mut reports: Query<&mut Incoming, (With<Report>, Added<Admitted>)>| {
         for mut report in &mut reports {
-            report.text.insert_str(0, "[report] ");
+            report.text_mut().insert_str(0, "[report] ");
         }
     };
     session.app.add_systems(

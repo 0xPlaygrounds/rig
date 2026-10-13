@@ -276,7 +276,7 @@ fn answer_with_text(
         let Some(Ok((.., mut decision))) = open.map(|ask| asks.get_mut(ask)) else {
             continue;
         };
-        let answer = Answer::Text(incoming.text.clone()).outcome();
+        let answer = Answer::Text(incoming.text().to_owned()).outcome();
         decision.decide(Decider::Person, answer);
         taken.decide(Decider::plugin("rig-harness"), Outcome::custom("answer"));
     }

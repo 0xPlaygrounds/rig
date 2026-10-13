@@ -493,10 +493,11 @@ fn attach_notes(
         let Some(note) = verify.waiting.remove(&agent) else {
             continue;
         };
-        typed.attachments.push(Attachment {
+        let attachment = Attachment {
             label: VERIFY.to_owned(),
             content: UserContent::text(note.text.clone()),
-        });
+        };
+        typed.parts.insert(0, MessagePart::Attachment(attachment));
         commands.entity(entity).insert(Carries(note));
     }
 }

@@ -441,7 +441,7 @@ fn attach(
         // The input's pastes go with the message it sends, and the next
         // message's are numbered from 1 again.
         let pastes = std::mem::take(&mut pasted.0);
-        let attached = pasted_images(&typed.text)
+        let attached = pasted_images(typed.text())
             .into_iter()
             .filter_map(|number| {
                 let image = pastes.get(number.checked_sub(1)?)?;
@@ -456,11 +456,11 @@ fn attach(
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
         let max_bytes = adding.config.max_bytes;
         if workspace.0.host().is_none() {
-            let found = read_mentions(&typed.text, &base, &*workspace.0, max_bytes);
+            let found = read_mentions(typed.text(), &base, &*workspace.0, max_bytes);
             adding.add(message, effect, agent, &mut typed, found);
             continue;
         }
-        let (text, workspace) = (typed.text.clone(), workspace.0.clone());
+        let (text, workspace) = (typed.text().to_owned(), workspace.0.clone());
         let read = blocking(move || Ok(read_mentions(&text, &base, &*workspace, max_bytes)));
         let pool = IoTaskPool::get_or_init(TaskPool::default);
         adding.commands.spawn((
@@ -524,6 +524,7 @@ impl Adding<'_, '_> {
             .agents
             .get(agent)
             .is_ok_and(|connection| connection.spec.input.image);
+        let mut attached = Vec::new();
         for (label, content) in found.attached {
             let content = match content {
                 UserContent::Image(_) if !sees_images => {
@@ -531,8 +532,9 @@ impl Adding<'_, '_> {
                 }
                 content => content,
             };
-            typed.attachments.push(Attachment { label, content });
+            attached.push(MessagePart::Attachment(Attachment { label, content }));
         }
+        typed.parts.splice(0..0, attached);
         if !found.read.is_empty() {
             let mut published = ToolContext::new();
             if published.insert_result(FilesRead(found.read)).is_ok() {
@@ -647,10 +649,10 @@ fn take_descriptions(
                 format!("[{label}: {UNSEEN}]")
             }
         };
-        let slot = incoming
-            .attachments
-            .iter_mut()
-            .find(|attachment| attachment.label == *label);
+        let slot = incoming.parts.iter_mut().find_map(|part| match part {
+            MessagePart::Attachment(attachment) if attachment.label == *label => Some(attachment),
+            _ => None,
+        });
         if let Some(slot) = slot {
             slot.content = UserContent::text(text);
         }

@@ -248,7 +248,7 @@ fn on_user_message(
         return;
     };
     reviews.done = 0;
-    message.text.trim().clone_into(&mut reviews.request);
+    message.text().trim().clone_into(&mut reviews.request);
     for (review, _) in open.iter().filter(|(_, of)| of.0 == agent) {
         commands.entity(review).try_despawn();
         notices.write(Notice::info(agent, "Review cancelled by your message."));

@@ -300,13 +300,16 @@ fn redact_messages(
         if message.command().is_some() {
             continue;
         }
-        let mut text = message.text.clone();
-        if secrets.vault().redact(&mut text, "a message") {
-            message.text = text;
-        }
-        for attachment in &mut message.attachments {
-            let source = format!("the attachment {}", attachment.label);
-            secrets.redact_data(&mut attachment.content, &source);
+        for part in &mut message.parts {
+            match part {
+                MessagePart::Text(text) => {
+                    secrets.vault().redact(text, "a message");
+                }
+                MessagePart::Attachment(attachment) => {
+                    let source = format!("the attachment {}", attachment.label);
+                    secrets.redact_data(&mut attachment.content, &source);
+                }
+            }
         }
     }
 }

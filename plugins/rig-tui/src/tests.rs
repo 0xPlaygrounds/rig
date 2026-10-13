@@ -41,7 +41,7 @@ pub(crate) fn view_app() -> (App, Entity) {
              messages: Query<&Incoming>,
              mut delivered: ResMut<Delivered>| {
                 if let Ok(message) = messages.get(accepted.entity) {
-                    delivered.0.push(message.text.clone());
+                    delivered.0.push(message.text().to_owned());
                 }
             },
         );

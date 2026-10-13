@@ -174,7 +174,7 @@ fn feed_deliveries(
         to,
         from,
         author: message.author.clone(),
-        text: message.text.chars().take(FEED_CHARS).collect(),
+        text: message.text().chars().take(FEED_CHARS).collect(),
     });
 }
 

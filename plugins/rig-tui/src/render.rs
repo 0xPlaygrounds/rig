@@ -1328,7 +1328,7 @@ fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
             DeliveryMode::Queue => "after this turn",
             DeliveryMode::Note => "noted",
         };
-        let text = &message.text;
+        let text = message.text();
         let first = text.lines().next().unwrap_or_default();
         let more = if text.lines().nth(1).is_some() {
             " …"

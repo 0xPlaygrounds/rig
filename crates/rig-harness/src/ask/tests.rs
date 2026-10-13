@@ -110,7 +110,7 @@ fn the_users_next_line_answers_a_question_that_takes_text() {
         .filter(|(_, outcome)| {
             matches!(&outcome.0, Ok(EffectOutcome::Custom { payload }) if payload == "answer")
         })
-        .map(|(incoming, _)| incoming.text.clone())
+        .map(|(incoming, _)| incoming.text().to_owned())
         .collect();
     assert_eq!(answered, ["it deletes the cache"]);
 }

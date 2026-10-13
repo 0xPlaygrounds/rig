@@ -292,8 +292,8 @@ fn record(
     // The view recorded what it sent as it is; [`offer`] puts this
     // project's history back in its place, kept or not.
     history.set_changed();
-    if history.keeps(&message.text)
-        && let Err(why) = history.append(&message.text)
+    if history.keeps(message.text())
+        && let Err(why) = history.append(message.text())
     {
         let why = format!("Could not save the prompt history: {why}");
         notices.write(Notice::error(None, why));

@@ -295,7 +295,7 @@ fn classify(
             turn: turn.index,
         },
         previous,
-        message: message.text.trim().to_owned(),
+        message: message.text().trim().to_owned(),
     };
     Files::of(&workspace, &root).work(commands.spawn(reading), &wake, |files| Ok(files.known()));
 }

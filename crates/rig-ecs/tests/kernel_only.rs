@@ -524,8 +524,8 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     let (mut app, _) = kernel(&MemoryStore::default());
     let edit = |mut typed: Query<&mut Incoming, Added<Admitted>>| {
         for mut typed in &mut typed {
-            if typed.author.kind == AuthorKind::User && typed.text == "hi" {
-                typed.text = "hello".to_owned();
+            if typed.author.kind == AuthorKind::User && typed.text() == "hi" {
+                *typed.text_mut() = "hello".to_owned();
             }
         }
     };
@@ -533,7 +533,7 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     let take_over =
         |mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>| {
             for (typed, mut decision) in &mut typed {
-                if typed.author.kind == AuthorKind::User && typed.text.starts_with('!') {
+                if typed.author.kind == AuthorKind::User && typed.text().starts_with('!') {
                     decision.decide(Decider::plugin("test"), Outcome::custom("shell"));
                 }
             }

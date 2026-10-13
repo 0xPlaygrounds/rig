@@ -401,7 +401,7 @@ fn delivered(
             "type": "delivery",
             "agent": events.name(agent),
             "author": message.author,
-            "text": message.text,
+            "text": message.text(),
         });
         events.send(&event);
     }

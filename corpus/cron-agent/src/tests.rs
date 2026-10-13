@@ -34,7 +34,7 @@ fn session(
              messages: Query<(&Incoming, &ForAgent)>,
              mut seen: ResMut<Seen>| {
                 if let Ok((message, &ForAgent(to))) = messages.get(sent.entity) {
-                    let entry = (to, message.mode, message.text.clone());
+                    let entry = (to, message.mode, message.text().to_owned());
                     seen.delivered.push(entry);
                 }
             },

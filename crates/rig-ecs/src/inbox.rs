@@ -67,10 +67,11 @@ pub enum DeliveryMode {
     Note,
 }
 
-/// Content read by a message's sender that goes before its text, such as
-/// an image file the user named. An image goes only to a model that reads
-/// images; another model gets the text alone, and the user is told.
-#[derive(Clone, Debug)]
+/// Content read by a message's sender, such as an image file the user
+/// named. An image goes only to a model that reads images; another model
+/// gets the rest of the message, and the user is told.
+#[derive(Reflect, Clone, Debug)]
+#[reflect(opaque, Clone, Debug)]
 pub struct Attachment {
     /// How the user knows it, such as its path.
     pub label: String,
@@ -78,13 +79,35 @@ pub struct Attachment {
     pub content: UserContent,
 }
 
-/// A message to the agent it is [`ForAgent`]: `text`, by `author`, that
-/// goes to the agent's model as `mode` says, after its `attachments`. An
-/// effect that moves through the stages (see the [module](self)): edit it
-/// in Prepare, take it over in Gate by deciding it
-/// ([`Decision`](super::stage::Decision)) with an [`Outcome`];
-/// once accepted, it is [`Started`] until the kernel answers it. Empty
-/// text is ignored.
+/// One piece of a message ([`Incoming::parts`]).
+#[derive(Reflect, Clone, Debug)]
+#[reflect(Clone, Debug)]
+pub enum MessagePart {
+    /// Text.
+    Text(String),
+    /// Content the sender read, such as an image.
+    Attachment(Attachment),
+}
+
+/// A message to the agent it is [`ForAgent`]: its `parts`, text and
+/// attachments in the order its author put them, by `author`, that go to
+/// the agent's model as `mode` says. An effect that moves through the
+/// stages (see the [module](self)): edit it in Prepare, take it over in
+/// Gate by deciding it ([`Decision`](super::stage::Decision)) with an
+/// [`Outcome`]; once accepted, it is [`Started`] until the kernel answers
+/// it. A message with no text and no attachment is ignored.
+///
+/// ```
+/// use rig_ecs::prelude::*;
+/// use rig_ecs::prelude::message::{ImageMediaType, UserContent};
+///
+/// let mut message = Incoming::new("What is in this picture?", DeliveryMode::Steer);
+/// let image = UserContent::image_base64("iVBORw0KGgo=", Some(ImageMediaType::PNG), None);
+/// let picture = Attachment { label: "cat.png".into(), content: image };
+/// message.parts.push(MessagePart::Attachment(picture)); // after the text
+/// message.text_mut().push_str(" Be brief.");
+/// assert_eq!(message.text(), "What is in this picture? Be brief.");
+/// ```
 ///
 /// Spawning `(Incoming, ForAgent(agent))`, with any components of the
 /// sender's own, sends it: it is recorded under the effect the agent's
@@ -96,16 +119,13 @@ pub struct Attachment {
 #[reflect(Component, Clone, Debug)]
 #[require(Effect, Name = Name::new("message"))]
 pub struct Incoming {
-    /// The text.
-    pub text: String,
+    /// What it says, in its author's order.
+    pub parts: Vec<MessagePart>,
     /// Who wrote it.
     #[reflect(ignore)]
     pub author: Author,
     /// When it goes to a busy agent's model.
     pub mode: DeliveryMode,
-    /// What goes before the text.
-    #[reflect(ignore)]
-    pub attachments: Vec<Attachment>,
     /// Whether the user's text goes to the model as it is even when it
     /// starts with `/`, such as a refused command sent again.
     pub literal: bool,
@@ -116,12 +136,47 @@ impl Incoming {
     /// [`with_author`](Self::with_author) names who wrote it.
     pub fn new(text: impl Into<String>, mode: DeliveryMode) -> Self {
         Self {
-            text: text.into(),
+            parts: vec![MessagePart::Text(text.into())],
             author: Author::user(),
             mode,
-            attachments: Vec::new(),
             literal: false,
         }
+    }
+
+    /// Its first text part, empty when it has none.
+    pub fn text(&self) -> &str {
+        self.parts
+            .iter()
+            .find_map(|part| match part {
+                MessagePart::Text(text) => Some(text.as_str()),
+                MessagePart::Attachment(_) => None,
+            })
+            .unwrap_or_default()
+    }
+
+    /// Its first text part, added after the other parts when it has none.
+    pub fn text_mut(&mut self) -> &mut String {
+        let first = self
+            .parts
+            .iter()
+            .position(|part| matches!(part, MessagePart::Text(_)));
+        let (at, part) = match first {
+            Some(at) => (at, self.parts.remove(at)),
+            None => (self.parts.len(), MessagePart::Text(String::new())),
+        };
+        match self.parts.insert_mut(at, part) {
+            MessagePart::Text(text) => text,
+            // Never: the part put back is a text.
+            MessagePart::Attachment(attachment) => &mut attachment.label,
+        }
+    }
+
+    /// Whether it has no text and no attachment, which the kernel ignores.
+    fn is_empty(&self) -> bool {
+        self.parts.iter().all(|part| match part {
+            MessagePart::Text(text) => text.trim().is_empty(),
+            MessagePart::Attachment(_) => false,
+        })
     }
 
     /// This message, by `author`.
@@ -144,7 +199,7 @@ impl Incoming {
     /// starts with `/`, unless it is [`literal`](Self::literal).
     pub fn command(&self) -> Option<&str> {
         let user = self.author.kind == AuthorKind::User && !self.literal;
-        user.then(|| self.text.trim_start().strip_prefix('/'))
+        user.then(|| self.text().trim_start().strip_prefix('/'))
             .flatten()
     }
 }
@@ -279,7 +334,7 @@ pub(crate) fn accept(
             commands.entity(entity).try_insert_if_new(Outcome(Err(why)));
             continue;
         };
-        if message.text.trim().is_empty() {
+        if message.is_empty() {
             commands.entity(entity).try_insert_if_new(handled("empty"));
             continue;
         }
@@ -460,7 +515,7 @@ pub(crate) fn recall_on_turn_end(
     }
     let typed: Vec<&str> = typed
         .iter()
-        .map(|(_, message)| message.text.trim())
+        .map(|(_, message)| message.text().trim())
         .collect();
     recalled.write(Recalled {
         agent,
@@ -469,8 +524,8 @@ pub(crate) fn recall_on_turn_end(
     });
 }
 
-/// What a message's record says of it, its kind's payload: its text,
-/// author and mode, without its attachments. The record's kind is the
+/// What a message's record says of it, its kind's payload: its text
+/// parts, joined, author and mode, without its attachments. The record's kind is the
 /// custom kind `message`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageRecord {
@@ -500,7 +555,7 @@ impl MessageRecord {
 /// The record's handler key and kind of a message.
 pub(crate) fn message_kind(message: &Incoming) -> (HandlerKey, EffectKind) {
     let record = MessageRecord {
-        text: message.text.clone(),
+        text: texts(&message.parts).collect::<Vec<_>>().join("\n"),
         author: message.author.clone(),
         mode: message.mode,
     };
@@ -532,12 +587,20 @@ pub(crate) fn deliver<'a>(
     }
 }
 
+/// The text parts of `parts`, in order.
+fn texts(parts: &[MessagePart]) -> impl Iterator<Item = &str> {
+    parts.iter().filter_map(|part| match part {
+        MessagePart::Text(text) => Some(text.as_str()),
+        MessagePart::Attachment(_) => None,
+    })
+}
+
 /// Pushes each of `messages` to `conversation`, that of `agent`, whose
-/// model is `spec`, as a user message of its own by its author: its
-/// attachments the model takes, then its text, trimmed, headed by its
-/// author's line when it is not the user's own. The author is kept, and
-/// logged, unless it is the plain user, so a user's message with a title
-/// keeps it.
+/// model is `spec`, as a user message of its own by its author: its parts
+/// in order, each attachment the model takes and each text trimmed, the
+/// first text headed by its author's line when it is not the user's own.
+/// The author is kept, and logged, unless it is the plain user, so a
+/// user's message with a title keeps it.
 pub(crate) fn pending<'a>(
     agent: Entity,
     spec: Option<&ModelSpec>,
@@ -546,13 +609,30 @@ pub(crate) fn pending<'a>(
     notices: &mut MessageWriter<Notice>,
 ) {
     for message in messages {
-        let mut content = Vec::with_capacity(message.attachments.len() + 1);
-        for Attachment {
-            label,
-            content: item,
-        } in &message.attachments
-        {
-            let refused = match (item, spec) {
+        let mut header = message.author.header();
+        let mut content = Vec::with_capacity(message.parts.len());
+        let mut refused = Vec::new();
+        for part in &message.parts {
+            let attachment = match part {
+                MessagePart::Text(text) => {
+                    let text = text.trim();
+                    let text = match header.take() {
+                        Some(header) if text.is_empty() => header,
+                        Some(header) => format!("{header}\n{text}"),
+                        None => text.to_owned(),
+                    };
+                    if !text.is_empty() {
+                        content.push(UserContent::text(text));
+                    }
+                    continue;
+                }
+                MessagePart::Attachment(attachment) => attachment,
+            };
+            let Attachment {
+                label,
+                content: item,
+            } = attachment;
+            let why = match (item, spec) {
                 (UserContent::Image(_), Some(spec)) if !spec.input.image => Some(format!(
                     "{} does not read images, so {label} is sent as its name only.",
                     spec.display_name
@@ -562,19 +642,22 @@ pub(crate) fn pending<'a>(
                 )),
                 _ => None,
             };
-            match refused {
+            match why {
                 Some(note) => {
                     notices.write(Notice::info(agent, note));
+                    refused.push(label.as_str());
                 }
                 None => content.push(item.clone()),
             }
         }
-        let text = message.text.trim();
-        let text = match message.author.header() {
-            None => text.to_owned(),
-            Some(header) => format!("{header}\n{text}"),
-        };
-        content.push(UserContent::text(text));
+        // A message of attachments alone keeps its header first, and the
+        // names of those the model cannot read when nothing else is left.
+        if content.is_empty() {
+            content.extend(refused.into_iter().map(UserContent::text));
+        }
+        if let Some(header) = header {
+            content.insert(0, UserContent::text(header));
+        }
         let entry = Entry::new(Message::User { content });
         let entry = match message.author == Author::user() {
             true => entry,

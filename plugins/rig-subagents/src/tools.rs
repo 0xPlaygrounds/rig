@@ -196,7 +196,7 @@ fn send_briefs(
             let names: Vec<String> = siblings.iter().map(|(_, peer)| named(*peer)).collect();
             if !names.is_empty() {
                 let peers = format!("\n\nYour peers, by id: {}.", names.join(", "));
-                brief.message.text.push_str(&peers);
+                brief.message.text_mut().push_str(&peers);
             }
             for (sibling, _) in siblings.iter().filter(|(_, (.., briefing))| !briefing) {
                 let text = format!("A new peer works beside you: {}.", named(me));

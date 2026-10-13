@@ -547,10 +547,11 @@ fn tell_deleted(
             "The user deleted these files you created, moving them to {TRASH}: {names}. \
              They are no longer in the project; do not refer to them."
         );
-        message.attachments.push(Attachment {
+        let attachment = Attachment {
             label: "deleted stray files".to_owned(),
             content: UserContent::text(note),
-        });
+        };
+        message.parts.insert(0, MessagePart::Attachment(attachment));
     }
 }
 

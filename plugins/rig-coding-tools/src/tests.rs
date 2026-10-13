@@ -153,10 +153,11 @@ fn a_call_without_a_work_dir_reads_from_the_project_root_in_the_apps_workspace()
 struct Labels(Vec<String>);
 
 fn read_labels(messages: Query<&Incoming, Added<Admitted>>, mut labels: ResMut<Labels>) {
-    let attached = messages.iter().flat_map(|message| &message.attachments);
-    labels
-        .0
-        .extend(attached.map(|attached| attached.label.clone()));
+    let attached = messages.iter().flat_map(|message| &message.parts);
+    labels.0.extend(attached.filter_map(|part| match part {
+        MessagePart::Attachment(attached) => Some(attached.label.clone()),
+        MessagePart::Text(_) => None,
+    }));
 }
 
 #[test]

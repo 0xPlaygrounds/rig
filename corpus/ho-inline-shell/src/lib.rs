@@ -181,7 +181,7 @@ fn expand(
         if !typed || incoming.literal || incoming.command().is_some() {
             continue;
         }
-        let pieces = pieces(&incoming.text);
+        let pieces = pieces(incoming.text());
         let shells: Vec<(usize, String)> = pieces
             .iter()
             .enumerate()
@@ -192,8 +192,8 @@ fn expand(
             .collect();
         if shells.is_empty() {
             let text = compose(&pieces, &HashMap::new());
-            if text != incoming.text {
-                incoming.text = text;
+            if text != incoming.text() {
+                *incoming.text_mut() = text;
             }
             continue;
         }
