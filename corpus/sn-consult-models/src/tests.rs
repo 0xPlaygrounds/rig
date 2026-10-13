@@ -217,7 +217,7 @@ fn consultants_read_only_answer_side_by_side_and_a_failure_shows() {
     // the terminal's own front turns on).
     let past = app.world().resource::<EffectLog>().read();
     assert!(past.is_ok(), "{past:?}");
-    let past = PastEffects(past.unwrap_or_default());
+    let past = PastEffects::new(past.unwrap_or_default());
     app.world_mut().write_message(past);
     app.update();
     let rows = transcript(&mut app, agent);

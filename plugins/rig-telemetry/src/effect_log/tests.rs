@@ -90,9 +90,6 @@ fn a_resumed_session_sends_its_log_to_the_terminal_view() {
         !world.resource::<Collected<PastEffects>>().0.is_empty()
     });
     let sent = &app.world().resource::<Collected<PastEffects>>().0;
-    let ids: Vec<Vec<u64>> = sent
-        .iter()
-        .map(|PastEffects(records)| records.iter().map(|record| record.id.as_u64()).collect())
-        .collect();
-    assert_eq!(ids, [[1, 2]]);
+    let counts: Vec<usize> = sent.iter().map(PastEffects::len).collect();
+    assert_eq!(counts, [2]);
 }

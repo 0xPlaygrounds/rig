@@ -833,6 +833,51 @@ pub fn read_from(lines: impl BufRead) -> io::Result<EffectLog> {
     })
 }
 
+/// Reads the records of a JSON-lines log as [`read_from`] does, but with
+/// every completion request's history and tools left empty: for a reader
+/// of what the effects were and how they ended, such as a call tree, not
+/// of what each model call was sent. It rebuilds no continued request, so
+/// it reads in time linear in the log's size, where [`read_from`] rebuilds
+/// every request whole; and it does not check a continuation against the
+/// request it continues.
+///
+/// # Errors
+///
+/// When `lines` cannot be read, or holds a line that is neither a header
+/// nor a record.
+pub fn read_outcomes_from(lines: impl BufRead) -> io::Result<Vec<EffectRecord>> {
+    let mut records = Vec::new();
+    for line in lines.lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut record: Value = serde_json::from_str(&line)?;
+        if record.get("header").is_some() {
+            continue;
+        }
+        if record.get("after").is_some() {
+            let DeltaLine {
+                id, record: held, ..
+            } = serde_json::from_value::<DeltaLine<Value>>(record)?;
+            record = held;
+            if let Some(fields) = record.as_object_mut() {
+                fields.insert("id".to_owned(), serde_json::to_value(id)?);
+            }
+        }
+        if record.pointer("/kind/effect").and_then(Value::as_str) == Some("completion")
+            && let Some(request) = record
+                .pointer_mut("/kind/request")
+                .and_then(Value::as_object_mut)
+        {
+            request.insert("chat_history".to_owned(), Value::Array(Vec::new()));
+            request.insert("tools".to_owned(), Value::Array(Vec::new()));
+        }
+        records.push(serde_json::from_value(record)?);
+    }
+    Ok(records)
+}
+
 /// Folds a later header into the merged one.
 fn merge(into: &mut LogHeader, header: LogHeader) {
     for handler in header.handlers {

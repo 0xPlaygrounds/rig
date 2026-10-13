@@ -23,14 +23,13 @@ use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
-use super::renderers::{
-    CallState, ChildCall, EntryRenderer, ToolCallView, ToolRenderer, UNNAMED_HOLD,
-};
+use super::renderers::{CallState, EntryRenderer, ToolCallView, ToolRenderer, UNNAMED_HOLD};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{
-    Below, CallFacts, CallTree, EntryRenderers, Inside, Look, Marks, Part, Renderers, ShownNote,
-    StreamingCalls, Transcript, call_lines, entry_lines, live_call, notice_lines, plain_lines,
+    Below, CallFacts, CallTree, ChildCalls, EntryRenderers, Inside, Look, Marks, Part, Renderers,
+    ShownNote, StreamingCalls, Transcript, call_lines, entry_lines, live_call, notice_lines,
+    plain_lines,
 };
 use super::view::{
     Continuation, DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot,
@@ -329,7 +328,7 @@ pub(crate) struct ShownAgent<'a> {
     /// The notes in its conversation, in the order put.
     pub(crate) notes: Vec<ShownNote<'a>>,
     /// The calls under each of its tool calls that started any.
-    pub(crate) children: BTreeMap<CallId, Vec<ChildCall>>,
+    pub(crate) children: ChildCalls,
 }
 
 /// An effect not settled yet, a tool or model call or any other, as
@@ -491,7 +490,7 @@ impl TranscriptLayout<'_, '_> {
                     Some(ShownNote { id, aside, note })
                 })
                 .collect(),
-            children: self.facts.calls().of_agent(&self.live_calls(), &id.0),
+            children: self.facts.children(&self.live_calls(), &id.0),
         })
     }
 
@@ -511,7 +510,7 @@ impl TranscriptLayout<'_, '_> {
             let name = agent.and_then(|agent| self.names.get(agent).ok());
             let state = state.unwrap_or(CallState::Waiting);
             let child = live_call(requests, (name, outcome), state);
-            live.add(effect.parent, effect.id(), child);
+            live.add(effect.parent, effect.id(), child, None);
             let id = agent.and_then(|agent| self.agents.get(agent).ok());
             if let (Some(request), Some((id, _))) = (requests.0, id) {
                 live.tool_call(effect.id(), &id.0, request.call.id.clone());

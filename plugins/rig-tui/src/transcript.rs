@@ -11,7 +11,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use bevy_ecs::prelude::*;
@@ -58,41 +58,209 @@ pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
 /// comes from the kernel's effect records.
 #[derive(Resource, Default)]
 pub(crate) struct CallFacts {
+    /// This run's effects, noted as they settle.
+    run: Settled,
+    /// The effects before this run, as [`PastEffects`] brought them.
+    past: Arc<Settled>,
+    /// Each agent's name by its id, as last named: a record names its
+    /// agent by id, and a helper may be gone by the time it is drawn.
+    names: HashMap<String, String>,
+    /// How many times what it knows changed, so a look tells a change by
+    /// this alone.
+    changes: u64,
+    /// The calls under each tool call of an agent that started any, by the
+    /// agent's id, as the settled effects say: worked out when first asked
+    /// for after a change, not every frame.
+    children: Mutex<HashMap<String, Arc<CallsUnder>>>,
+}
+
+/// The calls under each tool call that started any, by its call id.
+pub(crate) type CallsUnder = BTreeMap<CallId, Vec<ChildCall>>;
+
+impl CallFacts {
+    /// What `call` published and how long it ran, as far as known.
+    fn of(&self, call: &CallId) -> (Option<&ToolResultContext>, Option<Duration>) {
+        let facts = self.run.facts.get(call);
+        let facts = facts.or_else(|| self.past.facts.get(call));
+        facts.map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
+    }
+
+    /// Notes the effect `record` settled in this run.
+    fn note(&mut self, record: &EffectRecord) {
+        if self.run.note(record) {
+            self.changed();
+        }
+    }
+
+    /// Takes over the effects before this run; a later batch replaces it.
+    fn take_past(&mut self, past: Arc<Settled>) {
+        self.past = past;
+        self.changed();
+    }
+
+    /// Notes that the agent with the id `agent` is called `name`; whether
+    /// that is new.
+    pub(crate) fn name(&mut self, agent: &str, name: &str) -> bool {
+        if self.names.get(agent).is_some_and(|known| known == name) {
+            return false;
+        }
+        self.names.insert(agent.to_owned(), name.to_owned());
+        self.changed();
+        true
+    }
+
+    /// Notes a change: what was worked out from before it is gone.
+    fn changed(&mut self) {
+        self.changes = self.changes.wrapping_add(1);
+        self.children
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+    }
+
+    /// The calls under each tool call of the agent with the id `agent`
+    /// that started any, as the settled effects and the `live` ones (not
+    /// settled) say: each call after the one that started it, in the order
+    /// they were made, through any effect between that is no call. What
+    /// the settled effects say is worked out once per change; over it, the
+    /// tool calls a live effect is under, which change as it runs.
+    pub(crate) fn children(&self, live: &CallTree, agent: &str) -> ChildCalls {
+        let settled = self.settled_children(agent);
+        let trees = [&self.past.calls, &self.run.calls, live];
+        // Every live effect, and every effect it is under.
+        let mut above = HashSet::new();
+        for &effect in live.parents.keys() {
+            let mut at = Some(effect);
+            while let Some(effect) = at.filter(|&effect| above.insert(effect)) {
+                at = trees
+                    .iter()
+                    .find_map(|tree| tree.parents.get(&effect).copied());
+            }
+        }
+        let mut live = CallsUnder::new();
+        for parent in above {
+            let starts_any = trees.iter().any(|tree| tree.children.contains_key(&parent));
+            match tool_call(&trees, parent) {
+                Some((of, call)) if **of == *agent && starts_any && !live.contains_key(call) => {
+                    live.insert(call.clone(), self.below(&trees, parent));
+                }
+                _ => {}
+            }
+        }
+        ChildCalls { settled, live }
+    }
+
+    /// What [`Self::children`] works out from the settled effects alone.
+    fn settled_children(&self, agent: &str) -> Arc<CallsUnder> {
+        let mut known = self.children.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(found) = known.get(agent) {
+            return Arc::clone(found);
+        }
+        let trees = [&self.past.calls, &self.run.calls];
+        let mut found = CallsUnder::new();
+        for parent in trees.iter().flat_map(|tree| tree.children.keys()) {
+            match tool_call(&trees, *parent) {
+                Some((of, call)) if **of == *agent && !found.contains_key(call) => {
+                    found.insert(call.clone(), self.below(&trees, *parent));
+                }
+                _ => {}
+            }
+        }
+        let found = Arc::new(found);
+        known.insert(agent.to_owned(), Arc::clone(&found));
+        found
+    }
+
+    /// The calls under `parent`, as `trees` say.
+    fn below(&self, trees: &[&CallTree], parent: EffectId) -> Vec<ChildCall> {
+        let mut out = Vec::new();
+        self.add_below(trees, parent, 0, &mut HashSet::from([parent]), &mut out);
+        out
+    }
+
+    /// Adds the calls under `parent`, `depth` below the tool call, to
+    /// `out`, each followed by those under it; an effect that is no call
+    /// adds those under it at its own depth. `seen` guards against an
+    /// effect named as its own ancestor, and an effect two trees hold
+    /// counts once.
+    fn add_below(
+        &self,
+        trees: &[&CallTree],
+        parent: EffectId,
+        depth: usize,
+        seen: &mut HashSet<EffectId>,
+        out: &mut Vec<ChildCall>,
+    ) {
+        let children = trees.iter().filter_map(|tree| tree.children.get(&parent));
+        let mut children: Vec<&Child> = children.flatten().collect();
+        children.sort_by_key(|child| child.id);
+        for child in children {
+            if !seen.insert(child.id) {
+                continue;
+            }
+            let Some(call) = &child.call else {
+                self.add_below(trees, child.id, depth, seen, out);
+                continue;
+            };
+            let name = child
+                .agent
+                .as_deref()
+                .and_then(|agent| self.names.get(agent));
+            out.push(ChildCall {
+                depth,
+                agent: name.cloned().or_else(|| call.agent.clone()),
+                ..call.clone()
+            });
+            self.add_below(trees, child.id, depth + 1, seen, out);
+        }
+    }
+}
+
+/// The agent (by id) and call id of the tool call effect `id` is, as the
+/// first of `trees` that knows says.
+fn tool_call<'a>(trees: &[&'a CallTree], id: EffectId) -> Option<&'a (Arc<str>, CallId)> {
+    trees.iter().find_map(|tree| tree.tool_calls.get(&id))
+}
+
+/// The calls under each tool call of an agent that started any, as
+/// [`CallFacts::children`] works them out: the settled effects' and, over
+/// them, those of the tool calls a live effect is under.
+#[derive(Default)]
+pub(crate) struct ChildCalls {
+    settled: Arc<CallsUnder>,
+    live: CallsUnder,
+}
+
+impl ChildCalls {
+    /// The calls under the tool call `call`, if it started any.
+    pub(crate) fn get(&self, call: &CallId) -> Option<&Vec<ChildCall>> {
+        self.live.get(call).or_else(|| self.settled.get(call))
+    }
+}
+
+/// Effects that settled, as the view keeps them: what each tool call
+/// published and how long it ran, by call id, and which calls each
+/// effect started.
+#[derive(Default)]
+pub(crate) struct Settled {
     facts: HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>,
     calls: CallTree,
     /// The tool calls of each model call's reply that no tool call's
     /// record claimed yet, by the model call: how a record, which names a
     /// call's tool and arguments but not its id, finds which call it is.
     replies: HashMap<EffectId, Vec<ToolCall>>,
-    /// Each agent's name by its id, as last named: a record names its
-    /// agent by id, and a helper may be gone by the time it is read.
-    names: HashMap<String, String>,
 }
 
-impl CallFacts {
-    /// What `call` published and how long it ran, as far as known.
-    fn of(&self, call: &CallId) -> (Option<&ToolResultContext>, Option<Duration>) {
-        self.facts
-            .get(call)
-            .map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
-    }
-
-    /// The settled effects, by the effects that started them.
-    pub(crate) fn calls(&self) -> &CallTree {
-        &self.calls
-    }
-
+impl Settled {
     /// Notes the effect `record` settled: under the effect that started
     /// it, as a call or as an effect calls go through; and, for a tool
-    /// call, what it published and how long it ran. A record read twice,
-    /// such as one this run wrote before the past ones came, counts once.
-    fn note(&mut self, record: &EffectRecord) {
+    /// call, what it published and how long it ran. A record read twice
+    /// counts once: whether it is new.
+    fn note(&mut self, record: &EffectRecord) -> bool {
         if !self.calls.known.insert(record.id) {
-            return;
+            return false;
         }
         let outcome = record.reviewed.as_ref().unwrap_or(&record.outcome);
-        let agent = record.scope.as_deref();
-        let name = agent.and_then(|agent| self.names.get(agent)).cloned();
         let child = match &record.kind {
             EffectKind::Completion { .. } => {
                 let reply = match outcome {
@@ -115,7 +283,7 @@ impl CallFacts {
                     depth: 0,
                     call: None,
                     name: model.unwrap_or("model").to_owned(),
-                    agent: name,
+                    agent: None,
                     state: CallState::Done,
                     failed,
                     line,
@@ -123,10 +291,8 @@ impl CallFacts {
             }
             EffectKind::ToolCall { name: tool, args } => {
                 let call = self.claim(record, tool, args);
-                if let (Some(call), Some(agent)) = (&call, agent) {
-                    self.calls
-                        .tool_calls
-                        .insert(record.id, (agent.to_owned(), call.id.clone()));
+                if let (Some(call), Some(agent)) = (&call, &record.scope) {
+                    self.calls.tool_call(record.id, agent, call.id.clone());
                     let took = record.finished_ms.zip(record.started_ms);
                     let took =
                         took.map(|(end, start)| Duration::from_millis(end.saturating_sub(start)));
@@ -138,7 +304,7 @@ impl CallFacts {
                     depth: 0,
                     call,
                     name: tool.clone(),
-                    agent: name,
+                    agent: None,
                     state: CallState::Done,
                     failed,
                     line,
@@ -146,7 +312,9 @@ impl CallFacts {
             }
             _ => None,
         };
-        self.calls.add(record.parent, record.id, child);
+        let agent = record.scope.clone();
+        self.calls.add(record.parent, record.id, child, agent);
+        true
     }
 
     /// The call of its parent model call's reply a tool call's `record`
@@ -178,91 +346,53 @@ impl CallFacts {
         let id = CallId::from_wire(format!("effect-{}", record.id));
         Some(ToolCall::new(id, ToolFunction::new(name, args)))
     }
-
-    /// Notes that the agent with the id `agent` is called `name`.
-    pub(crate) fn name(&mut self, agent: &str, name: &str) {
-        self.names.insert(agent.to_owned(), name.to_owned());
-    }
 }
 
 /// Effects by the effect that started them (its `parent`), each with its
-/// own effect id and, for a tool or model call, the call; and each tool
-/// call's agent (by id) and call id, by its effect.
+/// own effect id and, for a tool or model call, the call; the effect each
+/// one was started by; and each tool call's agent (by id) and call id, by
+/// its effect.
 #[derive(Default)]
 pub(crate) struct CallTree {
-    children: HashMap<EffectId, Vec<(EffectId, Option<ChildCall>)>>,
-    tool_calls: HashMap<EffectId, (String, CallId)>,
+    children: HashMap<EffectId, Vec<Child>>,
+    parents: HashMap<EffectId, EffectId>,
+    tool_calls: HashMap<EffectId, (Arc<str>, CallId)>,
     /// Every effect noted, so none is noted twice.
     known: HashSet<EffectId>,
 }
 
+/// An effect under the one that started it.
+struct Child {
+    id: EffectId,
+    /// The call it is; `None` when calls only go through it.
+    call: Option<ChildCall>,
+    /// The id of the agent it is for, whose name is looked up when it is
+    /// drawn; `None` when the call names its agent itself.
+    agent: Option<Arc<str>>,
+}
+
 impl CallTree {
-    /// Notes the effect `id` as one `parent` started: `child` when it is a
-    /// call, `None` when calls only go through it.
-    pub(crate) fn add(&mut self, parent: Option<EffectId>, id: EffectId, child: Option<ChildCall>) {
+    /// Notes the effect `id` as one `parent` started: `call` when it is a
+    /// call, `None` when calls only go through it; for the agent with the
+    /// id `agent`, when the call does not name it.
+    pub(crate) fn add(
+        &mut self,
+        parent: Option<EffectId>,
+        id: EffectId,
+        call: Option<ChildCall>,
+        agent: Option<Arc<str>>,
+    ) {
         if let Some(parent) = parent {
-            self.children.entry(parent).or_default().push((id, child));
+            self.parents.insert(id, parent);
+            let child = Child { id, call, agent };
+            self.children.entry(parent).or_default().push(child);
         }
     }
 
     /// Notes that effect `id` is the tool call `call` of the agent with
     /// the id `agent`.
     pub(crate) fn tool_call(&mut self, id: EffectId, agent: &str, call: CallId) {
-        self.tool_calls.insert(id, (agent.to_owned(), call));
-    }
-
-    /// The calls under each tool call of the agent with the id `agent`
-    /// that started any, as these effects (settled) and `live` ones (not
-    /// settled) say: each call after the one that started it, in the order
-    /// they were made, through any effect between that is no call.
-    pub(crate) fn of_agent(&self, live: &Self, agent: &str) -> BTreeMap<CallId, Vec<ChildCall>> {
-        let parents = self.children.keys().chain(live.children.keys());
-        let tool_call = |id| self.tool_calls.get(id).or_else(|| live.tool_calls.get(id));
-        let calls = parents.filter_map(|parent| Some((parent, tool_call(parent)?)));
-        let calls = calls.filter(|(_, (of, _))| of == agent);
-        let mut found = BTreeMap::new();
-        for (&parent, (_, call)) in calls {
-            if found.contains_key(call) {
-                continue;
-            }
-            let mut children = Vec::new();
-            let mut seen = HashSet::from([parent]);
-            self.below(live, parent, 0, &mut seen, &mut children);
-            found.insert(call.clone(), children);
-        }
-        found
-    }
-
-    /// Adds the calls under `parent`, `depth` below the tool call, to
-    /// `out`, each followed by those under it; an effect that is no call
-    /// adds those under it at its own depth. `seen` guards against an
-    /// effect named as its own ancestor.
-    fn below(
-        &self,
-        live: &Self,
-        parent: EffectId,
-        depth: usize,
-        seen: &mut HashSet<EffectId>,
-        out: &mut Vec<ChildCall>,
-    ) {
-        let settled = self.children.get(&parent).into_iter().flatten();
-        let running = live.children.get(&parent).into_iter().flatten();
-        let mut children: Vec<&(EffectId, Option<ChildCall>)> = settled.chain(running).collect();
-        children.sort_by_key(|(id, _)| *id);
-        for (id, child) in children {
-            if !seen.insert(*id) {
-                continue;
-            }
-            let Some(child) = child else {
-                self.below(live, *id, depth, seen, out);
-                continue;
-            };
-            out.push(ChildCall {
-                depth,
-                ..child.clone()
-            });
-            self.below(live, *id, depth + 1, seen, out);
-        }
+        self.tool_calls.insert(id, (Arc::from(agent), call));
     }
 }
 
@@ -320,12 +450,38 @@ pub(crate) fn live_call(
 /// Effects that settled before this run, such as a resumed session's, for
 /// [`ToolCallView::children`] and each call's facts: read as the kernel's
 /// [`EffectRecorded`] records are. rig-telemetry sends the session's
-/// effect log once it was restored.
-#[derive(Message, Clone, Debug)]
-pub struct PastEffects(pub Vec<EffectRecord>);
+/// effect log once it was restored. [`PastEffects::new`] does all the work
+/// per record, so make it where the records are read, off the main thread
+/// for a long log: the view only takes it over. A later one replaces it.
+#[derive(Message, Clone)]
+pub struct PastEffects(Arc<Settled>);
 
-/// Notes every effect that settled since the last frame, and those
-/// [`PastEffects`] brought.
+impl PastEffects {
+    /// The effects `records` settled, in the order they settled.
+    #[must_use]
+    pub fn new(records: impl IntoIterator<Item = EffectRecord>) -> Self {
+        let mut settled = Settled::default();
+        for record in records {
+            settled.note(&record);
+        }
+        Self(Arc::new(settled))
+    }
+
+    /// How many effects it holds.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.calls.known.len()
+    }
+
+    /// Whether it holds no effect.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.calls.known.is_empty()
+    }
+}
+
+/// Notes every effect that settled since the last frame, and takes over
+/// those [`PastEffects`] brought.
 pub(crate) fn note_effects(
     mut recorded: MessageReader<EffectRecorded>,
     mut past: MessageReader<PastEffects>,
@@ -334,8 +490,10 @@ pub(crate) fn note_effects(
     if recorded.is_empty() && past.is_empty() {
         return;
     }
-    let past = past.read().flat_map(|PastEffects(records)| records);
-    for record in past.chain(recorded.read().map(|EffectRecorded(record)| record)) {
+    for PastEffects(settled) in past.read() {
+        facts.take_past(Arc::clone(settled));
+    }
+    for EffectRecorded(record) in recorded.read() {
         facts.note(record);
     }
 }
@@ -346,11 +504,12 @@ pub(crate) fn note_agent_name(
     agents: Query<(&AgentId, &Name)>,
     mut facts: ResMut<CallFacts>,
 ) {
-    if let Ok((id, name)) = agents.get(named.entity) {
-        // Nothing drawn changes until a record names the agent.
-        facts
+    if let Ok((id, name)) = agents.get(named.entity)
+        && facts
             .bypass_change_detection()
-            .name(id.0.as_str(), name.as_str());
+            .name(id.0.as_str(), name.as_str())
+    {
+        facts.set_changed();
     }
 }
 
@@ -445,7 +604,7 @@ pub(crate) struct Look<'a> {
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
     /// The calls under each tool call that started any.
-    pub(crate) children: &'a BTreeMap<CallId, Vec<ChildCall>>,
+    pub(crate) children: &'a ChildCalls,
 }
 
 /// What is drawn inside a message, before one of its items.
@@ -597,10 +756,9 @@ impl Look<'_> {
             .iter()
             .map(|item| unordered(&|h| item.hash(h)));
         expanded.fold(0u64, u64::wrapping_add).hash(&mut hasher);
-        let facts = self.facts.facts.iter();
-        let facts = facts.map(|(call, (_, took))| unordered(&|h| (call, took).hash(h)));
-        facts.fold(0u64, u64::wrapping_add).hash(&mut hasher);
-        for (call, children) in self.children {
+        // The settled calls' facts and children change only with it.
+        self.facts.changes.hash(&mut hasher);
+        for (call, children) in &self.children.live {
             call.hash(&mut hasher);
             hash_children(Some(children), &mut hasher);
         }

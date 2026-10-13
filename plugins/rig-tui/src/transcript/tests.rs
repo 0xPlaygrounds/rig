@@ -26,7 +26,8 @@ use rig_harness::prelude::{App, Last, Update};
 use serde_json::json;
 
 use super::{
-    Below, CallFacts, EntryRenderers, Look, Part, Renderers, Scroll, StreamingCalls, Transcript,
+    Below, CallFacts, ChildCalls, EntryRenderers, Look, Part, Renderers, Scroll, StreamingCalls,
+    Transcript,
 };
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
@@ -117,7 +118,7 @@ fn drawn(
         whole: false,
         note_cut: false,
         facts: &facts,
-        children: &BTreeMap::new(),
+        children: &ChildCalls::default(),
     };
     // The conversation is the same each time.
     transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
@@ -891,7 +892,7 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
         world.entity_mut(agent).insert(id);
     }
     world.spawn((Name::new("helper"), AgentId("helper".to_owned())));
-    world.write_message(PastEffects(records));
+    world.write_message(PastEffects::new(records));
     say(&mut resumed, agent, asked);
     assert_eq!(consult_rows(&mut resumed, agent), expected);
 }

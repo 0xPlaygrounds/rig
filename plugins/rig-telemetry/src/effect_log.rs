@@ -61,26 +61,29 @@ impl Plugin for EffectLogPlugin {
     }
 }
 
-/// The records [`read_past`] read off the main thread.
+/// The past effects [`read_past`] read and worked out off the main thread,
+/// until [`send_past`] takes them.
 #[cfg(feature = "tui")]
 #[derive(Component)]
-struct PastRead(io::Result<Vec<EffectRecord>>);
+struct PastRead(Option<io::Result<rig_tui::PastEffects>>);
 
 #[cfg(feature = "tui")]
-impl From<io::Result<Vec<EffectRecord>>> for PastRead {
-    fn from(read: io::Result<Vec<EffectRecord>>) -> Self {
-        Self(read)
+impl From<io::Result<rig_tui::PastEffects>> for PastRead {
+    fn from(read: io::Result<rig_tui::PastEffects>) -> Self {
+        Self(Some(read))
     }
 }
 
 /// Reads the log of the session just restored off the main thread, once,
 /// for the terminal view's call tree ([`rig_tui::PastEffects`]): a resumed
 /// session's calls show what they started and published, as this run's do.
+/// The task reads only what the tree needs, no request's history, and does
+/// all the work per record, so the main thread only hands the result over.
 #[cfg(feature = "tui")]
 fn read_past(log: Res<EffectLog>, wake: Res<Wake>, mut commands: Commands) {
     let log = log.clone();
     let pool = IoTaskPool::get_or_init(TaskPool::default);
-    let read = async move { log.read() };
+    let read = async move { log.read_outcomes().map(rig_tui::PastEffects::new) };
     commands.spawn((
         Name::new("effect log: past effects"),
         Running::spawn_into::<PastRead, _>(pool, &wake, read),
@@ -97,13 +100,16 @@ fn send_past(
     mut past: MessageWriter<rig_tui::PastEffects>,
     mut commands: Commands,
 ) {
-    if let Ok(mut read) = reads.get_mut(read.entity) {
-        match std::mem::replace(&mut read.0, Ok(Vec::new())) {
-            Ok(records) => {
-                past.write(rig_tui::PastEffects(records));
-            }
-            Err(failure) => error!("reading the effect log failed: {failure}"),
+    match reads
+        .get_mut(read.entity)
+        .ok()
+        .and_then(|mut read| read.0.take())
+    {
+        Some(Ok(effects)) => {
+            past.write(effects);
         }
+        Some(Err(failure)) => error!("reading the effect log failed: {failure}"),
+        None => {}
     }
     commands.entity(read.entity).despawn();
 }
@@ -119,11 +125,25 @@ pub struct EffectLog {
 
 impl EffectLog {
     /// Every record written so far, in the order written; none before the
-    /// first. It reads the whole file: off the main thread, such as in a
-    /// task, for a long session.
+    /// first. It reads the whole file and rebuilds every model call's
+    /// request: off the main thread, such as in a task, for a long session.
     pub fn read(&self) -> io::Result<Vec<EffectRecord>> {
+        let bytes = self.bytes()?;
+        Ok(jsonl::read_from(bytes.as_slice())?.records)
+    }
+
+    /// Every record written so far, as [`read`](Self::read) gives them but
+    /// with each model call's request history and tools left empty
+    /// ([`jsonl::read_outcomes_from`]): what each effect was and how it
+    /// ended, read in time linear in the log's size.
+    pub fn read_outcomes(&self) -> io::Result<Vec<EffectRecord>> {
+        jsonl::read_outcomes_from(self.bytes()?.as_slice())
+    }
+
+    /// The log's bytes; none before the first record.
+    fn bytes(&self) -> io::Result<Vec<u8>> {
         match self.store.read_file(SESSION_EFFECT_LOG) {
-            Ok(bytes) => Ok(jsonl::read_from(bytes.as_slice())?.records),
+            Ok(bytes) => Ok(bytes),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
             Err(error) => Err(error),
         }
