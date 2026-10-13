@@ -293,13 +293,25 @@ fn a_new_message_kills_the_running_command() {
 }
 
 #[test]
-fn diffs_carry_tracked_lines() {
-    let diff = "--- a\n+++ b\n@@ -1,4 +1,5 @@\n one\n-two\n+TWO\n+2b\n three\n four\n@@ -9,2 +10,3 @@\n nine\n+ten\n end\n";
-    let before = BTreeSet::from([1, 2, 3, 6, 9, 10]);
-    let after = through_diff(&before, diff);
-    // 1 stays, 2 goes, 3 and 6 move down one, 9 one and 10 two; 2, 3 and
-    // 11 are added.
-    assert_eq!(after, BTreeSet::from([1, 2, 3, 4, 7, 10, 11, 12]));
+fn tracked_lines_move_through_changes() {
+    let before: String = (1..=14).map(|n| format!("{n}\n")).collect();
+    let after = before
+        .replacen("2\n", "TWO\n", 1)
+        .replacen("10\n", "new\n10\n", 1);
+    let change = file_change("a.rs", Some(&before), Some(&after));
+    assert_eq!(change.hunks.len(), 2, "{}", change.unified());
+    let earlier = Changed {
+        text: Some(before),
+        lines: BTreeSet::from([1, 2, 3, 9, 10, 14]),
+    };
+    // 2 was rewritten; 10 and 14 move down one past the added line.
+    assert_eq!(
+        earlier.now("a.rs", Some(&after)),
+        BTreeSet::from([1, 3, 9, 11, 15])
+    );
+    assert_eq!(change.changed_lines().collect::<Vec<_>>(), [2, 10]);
+    assert!(runnable("*ptr = x;") && runnable("--n;"));
+    assert!(!runnable(" * a doc line") && !runnable("-- a SQL comment") && !runnable("};"));
 }
 
 #[test]

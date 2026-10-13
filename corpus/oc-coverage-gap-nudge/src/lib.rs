@@ -13,14 +13,14 @@
 //! timeout_secs = 300         # 5 minutes by default
 //! ```
 //!
-//! The lines the agent changed are read from the unified diff each of its
-//! calls published (`FilesChanged`), carried through its later edits of
-//! the same file, so a line the user changed is never one of them. Those
-//! the report counts as instrumented but never run (blank lines, comments
-//! and braces aside) start one follow-up turn that lists them with their
-//! code and asks for tests; a failing test run lists the failures instead.
-//! An agent busy when the result comes gets it with the user's next
-//! message. After `max_rounds` follow-ups, a notice says what remains
+//! The lines the agent changed are the lines each of its calls added or
+//! rewrote (`FileChange::changed_lines`), carried through its later edits
+//! of the same file and through anyone else's edits in between, so a line
+//! the user changed is never one of them. Those the report counts as
+//! instrumented but never run (blank lines, comments and braces aside)
+//! start one follow-up turn that lists them with their code and asks for
+//! tests; a failing test run lists the failures instead. A result that
+//! comes with a user's message on its way goes with that message. After `max_rounds` follow-ups, a notice says what remains
 //! uncovered. A new turn or an interrupt kills a running command.
 //! `/coverage` shows the last result.
 
@@ -32,7 +32,10 @@ use std::sync::Arc;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use glob::Pattern;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::tool::{FilesChanged, Scope, ToolExecutionError, Touches};
+use rig_harness::rig_core::tool::{
+    FileChange, FilesChanged, HunkLine, Scope, ToolExecutionError, Touches,
+};
+use rig_harness::rig_tools::fs::file_change;
 use rig_harness::rig_tools::process::{KillOnDrop, Spawn};
 use rig_harness::rig_tools::workspace::Workspace;
 use serde::Deserialize;
@@ -154,7 +157,7 @@ pub struct Coverage {
     /// What the last run found.
     pub last: Option<Checked>,
     /// The lines its tools changed that wait for a check, by file.
-    tracked: BTreeMap<String, BTreeSet<usize>>,
+    tracked: Tracked,
     /// Follow-ups sent for the change being checked.
     rounds: u32,
     /// A follow-up that goes with the user's next message.
@@ -169,15 +172,43 @@ struct CoverageRun(Entity);
 #[derive(Component)]
 struct FollowUp;
 
+/// The changed lines of each file, by the path the tools named.
+type Tracked = BTreeMap<String, Changed>;
+
+/// The lines an agent's tools changed in one file, and the file's text as
+/// they left it.
+#[derive(Clone, Debug, Default)]
+struct Changed {
+    text: Option<String>,
+    lines: BTreeSet<usize>,
+}
+
+impl Changed {
+    /// Its lines in the file `now`, moved through whatever changed the
+    /// file since the agent's tools did.
+    fn now(&self, path: &str, now: Option<&str>) -> BTreeSet<usize> {
+        match (self.text.as_deref(), now) {
+            (Some(then), Some(now)) if then != now => {
+                let between = file_change(path, Some(then), Some(now));
+                let lines = self.lines.iter();
+                lines.filter_map(|&line| moved(&between, line)).collect()
+            }
+            _ => self.lines.clone(),
+        }
+    }
+}
+
 /// What a run's task hands back.
 struct Ran {
     found: Checked,
     max_rounds: u32,
+    /// The uncovered lines, by file, as the files are now.
+    left: Tracked,
 }
 
 /// Each settled tool call of an agent that names what it writes moves the
-/// agent's tracked lines through its diffs and adds the lines it wrote. A
-/// call that may write anything (`shell`) is left out: what a snapshot
+/// agent's tracked lines through its changes and adds the lines it wrote.
+/// A call that may write anything (`shell`) is left out: what a snapshot
 /// around it saw changed may be the user's.
 fn track_changes(
     settled: On<Add<Settled>>,
@@ -197,94 +228,48 @@ fn track_changes(
     if anything || !outcome.tool_result().is_success() {
         return;
     }
-    for change in changes {
-        match &change.after {
-            None => {
-                state.tracked.remove(&change.path);
-            }
-            Some(_) if !change.hunks.is_empty() => {
-                let lines = state.tracked.remove(&change.path).unwrap_or_default();
-                let moved = through_diff(&lines, &change.unified());
-                if !moved.is_empty() {
-                    state.tracked.insert(change.path.clone(), moved);
+    for change in &changes {
+        let earlier = state.tracked.remove(&change.path).unwrap_or_default();
+        // Deleted, or changed in a way the tool could not diff.
+        if change.after.is_none() || change.hunks.is_empty() {
+            continue;
+        }
+        let before = earlier.now(&change.path, change.before_text.as_deref());
+        let carried = before.into_iter().filter_map(|line| moved(change, line));
+        let changed = Changed {
+            text: change.after_text(),
+            lines: carried.chain(change.changed_lines()).collect(),
+        };
+        state.tracked.insert(change.path.clone(), changed);
+    }
+}
+
+/// Where `line` of the file before `change` is after it; `None` when the
+/// change removed or rewrote it.
+fn moved(change: &FileChange, line: usize) -> Option<usize> {
+    // Line `old` before the change is line `new` after it.
+    let (mut old, mut new) = (1, 1);
+    for hunk in &change.hunks {
+        if line < hunk.old.start {
+            break;
+        }
+        let end = hunk.old.start + hunk.old.count;
+        if line < end {
+            let (mut at_old, mut at_new) = (hunk.old.start, hunk.new.start);
+            for each in &hunk.lines {
+                match each {
+                    HunkLine::Same(_) if at_old == line => return Some(at_new),
+                    HunkLine::Removed(_) if at_old == line => return None,
+                    HunkLine::Same(_) => (at_old, at_new) = (at_old + 1, at_new + 1),
+                    HunkLine::Removed(_) => at_old += 1,
+                    HunkLine::Added(_) => at_new += 1,
                 }
             }
-            Some(_) => {}
-        }
-    }
-}
-
-/// `lines` of a file before `diff`, a unified diff of it, as numbered
-/// after it (a removed line goes), with the lines it added.
-fn through_diff(lines: &BTreeSet<usize>, diff: &str) -> BTreeSet<usize> {
-    let mut mapped = HashMap::new();
-    let mut removed = BTreeSet::new();
-    let mut added = BTreeSet::new();
-    // Each hunk's last old line, and how far it moves the lines after it.
-    let mut shifts: Vec<(usize, i64)> = Vec::new();
-    let (mut old, mut new) = (0, 0);
-    for line in diff.lines() {
-        if let Some(header) = line.strip_prefix("@@ ") {
-            let Some((old_start, old_len, new_start, new_len)) = hunk(header) else {
-                continue;
-            };
-            let last = match old_len {
-                0 => old_start,
-                len => old_start + len - 1,
-            };
-            shifts.push((last, new_len as i64 - old_len as i64));
-            (old, new) = (old_start, new_start);
-            continue;
-        }
-        if shifts.is_empty() {
-            continue;
-        }
-        match line.chars().next() {
-            Some(' ') => {
-                mapped.insert(old, new);
-                (old, new) = (old + 1, new + 1);
-            }
-            Some('-') => {
-                removed.insert(old);
-                old += 1;
-            }
-            Some('+') => {
-                added.insert(new);
-                new += 1;
-            }
-            _ => {}
-        }
-    }
-    let moved = lines.iter().filter_map(|&line| {
-        if let Some(&to) = mapped.get(&line) {
-            return Some(to);
-        }
-        if removed.contains(&line) {
             return None;
         }
-        let shift: i64 = shifts
-            .iter()
-            .filter(|(last, _)| line > *last)
-            .map(|(_, by)| by)
-            .sum();
-        usize::try_from(line as i64 + shift).ok()
-    });
-    moved.chain(added).collect()
-}
-
-/// `-a,b +c,d @@`: the old start and length, the new start and length.
-fn hunk(header: &str) -> Option<(usize, usize, usize, usize)> {
-    let mut parts = header.split_whitespace();
-    let range = |part: Option<&str>, sign: char| {
-        let (start, len) = match part?.strip_prefix(sign)?.split_once(',') {
-            Some((start, len)) => (start.parse().ok()?, len.parse().ok()?),
-            None => (part?.strip_prefix(sign)?.parse().ok()?, 1),
-        };
-        Some((start, len))
-    };
-    let (old_start, old_len) = range(parts.next(), '-')?;
-    let (new_start, new_len) = range(parts.next(), '+')?;
-    Some((old_start, old_len, new_start, new_len))
+        (old, new) = (end, hunk.new.start + hunk.new.count);
+    }
+    line.checked_sub(old).map(|after| new + after)
 }
 
 /// A follow-up's message, or the user's message that carries one, marks
@@ -352,11 +337,11 @@ struct Job {
     root: PathBuf,
     /// The session's local scratch directory, where the report goes.
     scratch: Option<PathBuf>,
-    tracked: BTreeMap<String, BTreeSet<usize>>,
+    tracked: Tracked,
 }
 
 /// The changed lines of each source file, by tracked path and shown path.
-type Sources = Vec<(String, String, BTreeSet<usize>)>;
+type Sources = Vec<(String, String, Changed)>;
 
 impl Job {
     /// Reads `coverage.toml`, runs the command (killed with its group if
@@ -391,20 +376,34 @@ impl Job {
             Ok(output) => output,
             Err(error) => return ran(Checked::Failed(error.to_string()), max_rounds),
         };
-        if !output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout).into_owned();
-            return ran(Checked::TestsFailed(failures(&text)), max_rounds);
+        let text = String::from_utf8_lossy(&output.stdout);
+        match output.status.code() {
+            Some(0) => {}
+            // What `sh` says of a command it could not find or run.
+            Some(126 | 127) => {
+                let why = format!("the command could not run: {}", text.trim());
+                return ran(Checked::Failed(why), max_rounds);
+            }
+            _ => return ran(Checked::TestsFailed(failures(&text)), max_rounds),
         }
         let found = blocking(move || Ok(compare(&*workspace, &out, config.format, sources))).await;
-        ran(
-            found.unwrap_or_else(|error| Checked::Failed(error.to_string())),
-            max_rounds,
-        )
+        match found {
+            Ok((found, left)) => Ran {
+                found,
+                max_rounds,
+                left,
+            },
+            Err(error) => ran(Checked::Failed(error.to_string()), max_rounds),
+        }
     }
 }
 
 fn ran(found: Checked, max_rounds: u32) -> Ran {
-    Ran { found, max_rounds }
+    Ran {
+        found,
+        max_rounds,
+        left: Tracked::new(),
+    }
 }
 
 /// A started run: its settings, the lines it checks, its report's path
@@ -423,7 +422,7 @@ fn start(
     launcher: &rig_harness::rig_tools::process::Launcher,
     root: &Path,
     scratch: Option<PathBuf>,
-    tracked: BTreeMap<String, BTreeSet<usize>>,
+    tracked: Tracked,
 ) -> Result<Option<Started>, String> {
     let Ok(text) = workspace.read_text(&root.join("coverage.toml")) else {
         return Ok(None);
@@ -505,28 +504,33 @@ fn failures(output: &str) -> Vec<String> {
 }
 
 /// Reads the report and finds the checked lines it counts as instrumented
-/// but never run, leaving out lines that cannot run.
+/// but never run, leaving out lines that cannot run; with them as tracked
+/// lines of the files as they are now.
 fn compare(
     workspace: &dyn Workspace,
     out: &Path,
     format: ReportFormat,
     sources: Sources,
-) -> Checked {
+) -> (Checked, Tracked) {
+    let mut left = Tracked::new();
     let Ok(report) = workspace.read_text(out) else {
-        return Checked::Failed(format!("the command wrote no report at {}", out.display()));
+        let why = format!("the command wrote no report at {}", out.display());
+        return (Checked::Failed(why), left);
     };
     let hits = match format {
         ReportFormat::Lcov => lcov(&report),
         ReportFormat::Cobertura => cobertura(&report),
     };
     let mut gaps = Vec::new();
-    for (path, shown, lines) in sources {
+    for (path, shown, changed) in sources {
         let Some(file) = hits.iter().find(|(name, _)| same_file(name, &path, &shown)) else {
             // Not in the report: nothing of it was instrumented.
             continue;
         };
-        let code = workspace.read_text(Path::new(&path)).unwrap_or_default();
-        let code: Vec<&str> = code.lines().collect();
+        let text = workspace.read_text(Path::new(&path)).ok();
+        let lines = changed.now(&path, text.as_deref());
+        let text = text.unwrap_or_default();
+        let code: Vec<&str> = text.lines().collect();
         let missed: Vec<(usize, String)> = lines
             .into_iter()
             .filter(|line| file.1.get(line) == Some(&0))
@@ -536,6 +540,9 @@ fn compare(
             })
             .collect();
         if !missed.is_empty() {
+            let lines = missed.iter().map(|(line, _)| *line).collect();
+            let text = Some(text.clone());
+            left.insert(path.clone(), Changed { text, lines });
             gaps.push(Gap {
                 path,
                 shown,
@@ -544,8 +551,8 @@ fn compare(
         }
     }
     match gaps.is_empty() {
-        true => Checked::Covered,
-        false => Checked::Uncovered(gaps),
+        true => (Checked::Covered, left),
+        false => (Checked::Uncovered(gaps), left),
     }
 }
 
@@ -556,12 +563,17 @@ fn same_file(name: &str, path: &str, shown: &str) -> bool {
     !name.is_empty() && (name == path || Path::new(shown).ends_with(name))
 }
 
-/// Whether a line can run: not blank, a comment, or braces alone.
+/// Whether a line can run: not blank, a comment, or braces alone. A
+/// leading `*` or `--` is a comment only as a block comment's middle line
+/// or a SQL or Lua comment, followed by a space, so `*ptr = x;` and `--n;`
+/// can run.
 fn runnable(code: &str) -> bool {
     let code = code.trim();
-    let comment = ["//", "#", "/*", "*", "--"]
+    let comment = ["//", "#", "/*", "*/", "* ", "-- "]
         .iter()
-        .any(|it| code.starts_with(it));
+        .any(|it| code.starts_with(it))
+        || code == "*"
+        || code == "--";
     let punctuation = code.chars().all(|c| "{}()[];,".contains(c));
     !comment && !punctuation
 }
@@ -626,7 +638,7 @@ fn finished(
     done: On<Insert<Done<Ran>>>,
     runs: Query<(&CoverageRun, &Done<Ran>)>,
     mut agents: Query<(&mut Coverage, Has<ActiveTurn>)>,
-    unsent: Query<(&Incoming, &ForAgent), Without<Outcome>>,
+    on_the_way: Query<(&Incoming, &ForAgent), (Without<Admitted>, Without<Outcome>)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -643,15 +655,7 @@ fn finished(
     let more = state.rounds < ran.max_rounds;
     let note = match &ran.found {
         Checked::Uncovered(gaps) if more => {
-            state.tracked = gaps
-                .iter()
-                .map(|gap| {
-                    (
-                        gap.path.clone(),
-                        gap.lines.iter().map(|(line, _)| *line).collect(),
-                    )
-                })
-                .collect();
+            state.tracked = ran.left.clone();
             Some(uncovered_note(gaps))
         }
         Checked::TestsFailed(lines) if more => Some(failed_note(lines)),
@@ -676,7 +680,8 @@ fn finished(
         return;
     };
     state.rounds += 1;
-    let users_message = unsent.iter().any(|(message, for_agent)| {
+    // A user's message not admitted yet gets it in Prepare this frame.
+    let users_message = on_the_way.iter().any(|(message, for_agent)| {
         for_agent.0 == agent && message.author.kind == AuthorKind::User
     });
     if busy || users_message {
