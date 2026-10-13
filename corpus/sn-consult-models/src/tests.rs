@@ -2,10 +2,10 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     ToolOutputs, app_on, calls, first_agent, log_tool_outputs, reply, run_until, scripted_models,
 };

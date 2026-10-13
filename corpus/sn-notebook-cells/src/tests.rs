@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ReadTool};
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_on, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
     run_until, scratch_home,

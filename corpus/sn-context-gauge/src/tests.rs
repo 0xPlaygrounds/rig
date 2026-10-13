@@ -1,8 +1,8 @@
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Usage;
 use rig_core::providers::registry::ProviderId;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, collect, log_ended, run_until, scripted_models,
 };

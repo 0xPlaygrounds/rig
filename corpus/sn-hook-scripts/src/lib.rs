@@ -889,7 +889,7 @@ fn prompt_submit(
             commands.entity(entity).remove::<Verdict>();
             continue;
         }
-        if ran || decision.is_decided() || message.origin.kind != OriginKind::User {
+        if ran || decision.is_decided() || message.author.kind != AuthorKind::User {
             continue;
         }
         let matched = hooks.matching(Event::PromptSubmit, None);
@@ -1066,7 +1066,7 @@ fn ran(
                     // The hold stays until the message carries the turn on,
                     // which takes the proposed end and its holds away.
                     let message = Incoming::new(reason.clone(), DeliveryMode::Queue)
-                        .with_origin(Origin::plugin("hook-scripts"));
+                        .with_author(Author::plugin("hook-scripts"));
                     commands.spawn((message, ForAgent(agent)));
                     commands.entity(target).try_insert(Continued(count + 1));
                     return;

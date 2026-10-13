@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, WriteTool};
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use serde_json::json;
 
 use super::*;

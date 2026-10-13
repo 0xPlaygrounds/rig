@@ -241,7 +241,7 @@ fn on_user_message(
     let Ok((message, &ForAgent(agent))) = messages.get(started.entity) else {
         return;
     };
-    if message.origin.kind != OriginKind::User || message.command().is_some() {
+    if message.author.kind != AuthorKind::User || message.command().is_some() {
         return;
     }
     let Ok(mut reviews) = agents.get_mut(agent) else {
@@ -518,8 +518,8 @@ fn reviewer_answered(
     let text = format!(
         "Reviewer ({model}) found:\n\n{answer}\n\nAddress these findings, or say why one does not apply."
     );
-    let origin = Origin::agent(id.clone(), None).titled(REVIEW);
-    commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_origin(origin));
+    let author = Author::agent(id.clone(), None).titled(REVIEW);
+    commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_author(author));
 }
 
 /// Stops the reviewer of a review that went away while it works, as when a

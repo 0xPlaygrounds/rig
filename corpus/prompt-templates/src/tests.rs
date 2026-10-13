@@ -1,5 +1,4 @@
 use rig_basics::BasicCommandsPlugin;
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::completion::Message;
 use rig_core::operation::Completion;
@@ -8,6 +7,7 @@ use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::watch::WatchPlugin;
+use rig_harness_test_support::MemoryStore;
 
 use super::*;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
@@ -145,7 +145,7 @@ fn a_template_is_a_command_that_sends_its_expansion() {
     let titled = app
         .world()
         .get::<Conversation>(agent)
-        .and_then(|conversation| conversation.origin(0, 0)?.title.clone());
+        .and_then(|conversation| conversation.author(0)?.title.clone());
     assert_eq!(titled.as_deref(), Some("review"));
 
     // A template written while the agent runs is a command once seen, and

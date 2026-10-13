@@ -747,7 +747,7 @@ fn show(commands: &mut Commands, asker: Entity, report: String) {
         .observe(move |picked: On<Picked>, mut commands: Commands| {
             if picked.chosen == Some(Chosen::Item(0)) {
                 let note = Deliver::new(asker, report.clone(), DeliveryMode::Note);
-                commands.trigger(note.with_origin(Origin::user().titled("consult")));
+                commands.trigger(note.with_author(Author::user().titled("consult")));
             }
         });
 }

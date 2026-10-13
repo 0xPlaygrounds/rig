@@ -471,8 +471,8 @@ fn nudge(
         text.push_str(&line);
     }
     text.push_str("Remove each one, or say why it should stay.");
-    let origin = Origin::plugin(NAME).titled("leftover debug code");
-    commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_origin(origin));
+    let author = Author::plugin(NAME).titled("leftover debug code");
+    commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_author(author));
     true
 }
 

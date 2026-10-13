@@ -395,8 +395,8 @@ fn redact_results(
 
 /// Every record reaches the effect log with placeholders: the revealed
 /// arguments of a tool call, its raw result, the request as built.
-fn redact_records(mut records: MessageMutator<Recorded>, secrets: Res<Secrets>) {
-    for Recorded(record) in records.read() {
+fn redact_records(mut records: MessageMutator<EffectRecorded>, secrets: Res<Secrets>) {
+    for EffectRecorded(record) in records.read() {
         secrets.redact_data(record, "the effect log");
     }
 }

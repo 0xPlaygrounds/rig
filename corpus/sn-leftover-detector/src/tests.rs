@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::EditTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };
