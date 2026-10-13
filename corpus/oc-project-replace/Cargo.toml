@@ -12,7 +12,13 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# Off-thread work for `/replace-undo`.
+bevy_tasks = { workspace = true }
+# Finding and replacing.
+regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The tool's parameters, from its arguments type.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
