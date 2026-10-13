@@ -262,23 +262,21 @@ pub struct Turn {
     pub reply: Option<EffectId>,
 }
 
-/// How many turns the agent started, the next turn's [`Turn::index`].
-/// Saved with the session, as `null` before the first.
+/// How many turns the agent started and where the last one began, so a
+/// restart carries that turn on. Saved with the session, as `null` before
+/// the first.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-#[serde(from = "Option<u64>", into = "Option<u64>")]
-pub(crate) struct TurnsStarted(pub(crate) u64);
+#[serde(transparent)]
+pub(crate) struct TurnsStarted(pub(crate) Option<LastTurn>);
 
-impl From<TurnsStarted> for Option<u64> {
-    fn from(started: TurnsStarted) -> Self {
-        (started.0 > 0).then_some(started.0)
-    }
-}
-
-impl From<Option<u64>> for TurnsStarted {
-    fn from(started: Option<u64>) -> Self {
-        Self(started.unwrap_or_default())
-    }
+/// The agent's last turn, in [`TurnsStarted`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub(crate) struct LastTurn {
+    /// How many turns the agent started, the next turn's [`Turn::index`].
+    pub(crate) count: u64,
+    /// Its [`Turn::first_message`].
+    pub(crate) start: MessageId,
 }
 
 /// The agent's running turn. An agent with it is busy.

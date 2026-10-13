@@ -7,14 +7,14 @@ use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
 use rig_core::completion::{Message, Reasoning, Usage};
-use rig_core::conversation::{Author, Change, Entry, Halt, STOPPED};
+use rig_core::conversation::{Author, Change, Entry, Halt, MessageId, STOPPED};
 use rig_memory::{Files, MemoryStore, Store};
 use serde_json::Value;
 
 use crate::AgentPlugin;
 use crate::agent::{
-    Agent, AgentId, Conversation, Interrupt, LastUsage, Notice, SystemPrompt, ToolAccess, TurnOf,
-    TurnOutcome,
+    Agent, AgentId, Conversation, Interrupt, LastUsage, Notice, SystemPrompt, ToolAccess, Turn,
+    TurnOf, TurnOutcome,
 };
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode};
@@ -759,4 +759,34 @@ fn a_restored_turn_a_gate_stops_starts_nothing() {
         "{said}"
     );
     assert_eq!(model.request_count(), 0);
+}
+
+/// Where each restored turn began and its index, as Gate saw it.
+#[derive(Resource, Default)]
+struct Began(Vec<(u64, MessageId)>);
+
+#[test]
+fn a_turn_a_crash_cut_short_carries_on_where_it_began() {
+    let (mut app, _, _) = restart_after_crash(|app| {
+        let note = |turns: Query<&Turn, (With<Restored>, With<TurnOf>)>,
+                    mut began: ResMut<Began>| {
+            began
+                .0
+                .extend(turns.iter().map(|turn| (turn.index, turn.first_message)));
+        };
+        app.init_resource::<Began>()
+            .add_systems(AgentPass, note.in_set(Stage::Gate));
+    });
+    let agent = first_agent(&mut app);
+    let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
+    let go = conversation.and_then(|conversation| {
+        let mut entries = conversation.entries();
+        entries
+            .find(|entry| entry.message == &Message::user("go"))
+            .map(|entry| entry.id)
+    });
+    assert!(go.is_some());
+    // The same, first turn, carried on from the message that started it.
+    let began = &app.world().resource::<Began>().0;
+    assert_eq!(began.first().copied(), go.map(|go| (0, go)), "{began:?}");
 }

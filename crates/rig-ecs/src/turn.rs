@@ -56,15 +56,16 @@ use rig_memory::now_ms;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastUsage,
-    Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome, TurnsStarted,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastTurn,
+    LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+    TurnsStarted,
 };
 use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
 use super::journal::{Committed, SessionLog, save_conversation};
 use super::model::{Connection, Effort};
 use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
-use super::restore::{commit_results, mark_settled};
+use super::restore::{Restored, commit_results, mark_settled};
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
     SupersededBy, Waiting, cancel, failed_in, release,
@@ -372,9 +373,11 @@ pub(crate) fn on_retry(
 }
 
 /// Fills in a new turn's [`Turn`]: its index from its agent's count, which
-/// it bumps, and where it begins in the agent's conversation. The turn is
-/// [`ForAgent`] its agent from the start, so it is part of the agent's work
-/// and its end inserts nothing but [`Settled`].
+/// it bumps, and where it begins in the agent's conversation. A
+/// [`Restored`] turn is the agent's last turn carried on, with that turn's
+/// index and start. The turn is [`ForAgent`] its agent from the start, so
+/// it is part of the agent's work and its end inserts nothing but
+/// [`Settled`].
 pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
     let Some(&TurnOf(agent)) = world.get::<TurnOf>(context.entity) else {
         return;
@@ -383,17 +386,24 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
         .commands()
         .entity(context.entity)
         .try_insert(ForAgent(agent));
-    let first_message = world
-        .get::<Conversation>(agent)
-        .map(|conversation| conversation.turn_start())
-        .unwrap_or_default();
-    let index = match world.get_mut::<TurnsStarted>(agent) {
-        Some(mut started) => {
-            let index = started.0;
-            started.0 = index.saturating_add(1);
-            index
+    let last = world
+        .get::<TurnsStarted>(agent)
+        .and_then(|started| started.0);
+    let carried = last.filter(|_| world.get::<Restored>(context.entity).is_some());
+    let (index, first_message) = match carried {
+        Some(last) => (last.count.saturating_sub(1), last.start),
+        None => {
+            let start = world
+                .get::<Conversation>(agent)
+                .map(|conversation| conversation.turn_start())
+                .unwrap_or_default();
+            let index = last.map_or(0, |last| last.count);
+            if let Some(mut started) = world.get_mut::<TurnsStarted>(agent) {
+                let count = index.saturating_add(1);
+                started.0 = Some(LastTurn { count, start });
+            }
+            (index, start)
         }
-        None => 0,
     };
     if let Some(mut turn) = world.get_mut::<Turn>(context.entity) {
         turn.index = index;
