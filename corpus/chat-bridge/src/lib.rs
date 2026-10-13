@@ -150,6 +150,23 @@ pub struct ChatThread {
 struct Working {
     post: Option<u64>,
     counts: BTreeMap<&'static str, u32>,
+    /// The counts changed since the post last showed them.
+    stale: bool,
+}
+
+impl Working {
+    /// Posts the "working…" line, or edits it, when the counts changed
+    /// since it last showed them.
+    fn show(&mut self, thread: &ChatThread, bridge: &mut ChatBridge) {
+        if !std::mem::take(&mut self.stale) {
+            return;
+        }
+        let text = format!("working… {}", summary(&self.counts));
+        match self.post {
+            Some(id) => bridge.send(thread, id, true, text),
+            None => self.post = Some(bridge.post(thread, text)),
+        }
+    }
 }
 
 /// Bridges chat threads to agents.
@@ -342,6 +359,7 @@ fn count_tool_call(
     {
         let kind = kind(request.call.function.name.as_str());
         *working.counts.entry(kind).or_default() += 1;
+        working.stale = true;
     }
 }
 
@@ -379,19 +397,13 @@ fn show_work(
     mut bridge: ResMut<ChatBridge>,
 ) {
     for (thread, mut working) in &mut agents {
-        if working.counts.is_empty() {
-            continue;
-        }
-        let text = format!("working… {}", summary(&working.counts));
-        match working.post {
-            Some(id) => bridge.send(thread, id, true, text),
-            None => working.bypass_change_detection().post = Some(bridge.post(thread, text)),
-        }
+        working.bypass_change_detection().show(thread, &mut bridge);
     }
 }
 
 /// Posts each turn's final answer, or why it ended without one, to its
-/// agent's thread.
+/// agent's thread, after its last "working…" line, which a turn that ended
+/// in the frame its calls started would otherwise never show.
 fn post_answer(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
@@ -404,7 +416,9 @@ fn post_answer(
     let Ok((thread, mut working)) = agents.get_mut(agent) else {
         return;
     };
-    *working.bypass_change_detection() = Working::default();
+    let working = working.bypass_change_detection();
+    working.show(thread, &mut bridge);
+    *working = Working::default();
     let text = match outcome {
         TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("The turn failed: {why}"),
