@@ -298,7 +298,7 @@ impl Plugin for SessionPlugin {
     /// the session's store, or the one a test or a nested tool put in, and
     /// reads the session; only then moves the text log where [`Scratch`]
     /// says. A session that cannot be opened or read refuses the run, and
-    /// the run writes nothing into its directory ([`leave_session`]). A
+    /// the run writes nothing into its directory (`leave_session`). A
     /// build describing itself opens none.
     fn finish(&self, app: &mut App) {
         if app.world().contains_resource::<Describing>() {
