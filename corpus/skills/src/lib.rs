@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use rig_harness::prelude::*;
+use rig_harness::rig_memory::summary_author;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -311,17 +312,12 @@ fn delivered(
 /// loaded in the running turn, so they may be loaded again.
 fn forget_compacted(
     mut committed: MessageReader<Committed>,
-    agents: Query<(&Conversation, &ActiveTurn)>,
+    agents: Query<&ActiveTurn>,
     mut loaded: Query<&mut LoadedInTurn>,
 ) {
-    for change in committed.read() {
-        if let Committed::Splice {
-            agent,
-            removed,
-            changed,
-        } = change
-            && let Ok((conversation, turn)) = agents.get(*agent)
-            && compacted(conversation, removed, changed)
+    for Committed { agent, change } in committed.read() {
+        if compacted(&change.change)
+            && let Ok(turn) = agents.get(*agent)
             && let Ok(mut loaded) = loaded.get_mut(turn.turn())
         {
             loaded.0.clear();
@@ -329,14 +325,18 @@ fn forget_compacted(
     }
 }
 
-/// Whether a splice that took out messages put a compaction's summary in
-/// one of the `changed` messages of `conversation`.
-fn compacted(conversation: &Conversation, removed: &[MessageId], changed: &[MessageId]) -> bool {
-    let summary = Origin::plugin("compaction");
-    let changed = changed.iter().filter_map(|id| conversation.index_of(*id));
-    let mut entries = changed.filter_map(|at| conversation.entry(at));
-    !removed.is_empty()
-        && entries.any(|entry| entry.origins.iter().any(|(_, origin)| *origin == summary))
+/// Whether `change` is a splice that took messages out and put a
+/// compaction's summary in their place.
+fn compacted(change: &Change) -> bool {
+    let Change::Splice { removed, with, .. } = change else {
+        return false;
+    };
+    let kept: HashSet<MessageId> = with.iter().filter_map(|entry| entry.id).collect();
+    let summary = summary_author();
+    removed.iter().any(|id| !kept.contains(id))
+        && with
+            .iter()
+            .any(|entry| entry.author.as_ref() == Some(&summary))
 }
 
 /// `load_skill`'s arguments.
@@ -411,8 +411,8 @@ fn send_skill(
         }
     };
     let text = format!("{body}\n\n{}", text.trim());
-    let origin = Origin::user().titled(format!("skill {name}"));
-    let message = Incoming::new(text.trim(), args.mode).with_origin(origin);
+    let author = Author::user().titled(format!("skill {name}"));
+    let message = Incoming::new(text.trim(), args.mode).with_author(author);
     let mark = SkillMessage(name.to_owned());
     commands.spawn((message, ForAgent(args.agent), mark));
 }

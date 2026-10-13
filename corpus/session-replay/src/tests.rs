@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
+use rig_harness_test_support::MemoryStore;
 use std::borrow::Cow;
 
 use corpus_ho_exit_notes::ExitNotesPlugin;
@@ -22,7 +22,9 @@ use super::*;
 
 /// The session recorded in `dir`, read as the app's stores read it.
 fn recorded_source(dir: &std::path::Path) -> io::Result<ReplaySource> {
-    let store = SessionStores::default().open(&SessionDir::at(dir))?;
+    let store = SessionStores::default()
+        .open(&SessionDir::at(dir))
+        .map_err(io::Error::other)?;
     ReplaySource::from_store(&*store, ReplayFlags::default())
 }
 
@@ -148,7 +150,7 @@ fn record(
         })
     });
     if let (Some(agent), Some(_)) = (first_agent(app.world_mut()), quit_in) {
-        let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue).with_origin(Origin::user());
+        let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue).with_author(Author::user());
         app.world_mut().trigger(quit);
         run_until(&mut app, &wakes, |world| {
             !world.resource::<Messages<AppExit>>().is_empty()

@@ -11,21 +11,21 @@
 //! message a condensing took out opens the saved history around it, read
 //! from a copy of the session as it was before that condensing.
 
-use rig_cassette::journal::{
-    Conversation as Saved, MemoryStore, fork_session, now_ms, read_session,
-};
 use rig_harness::prelude::*;
+use rig_harness::rig_core::conversation::Conversation as Saved;
 use rig_harness::rig_core::message::{AssistantContent, Message, UserContent};
 use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_memory::MemoryStore;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{AppToolRenderersExt, EntryView, ItemRow, ScrollTo, TranscriptItem, TranscriptView};
 use serde::{Deserialize, Serialize};
 
-/// The origin of a bookmark's marker in the transcript.
+/// The author (a plugin name) of a bookmark's marker in the transcript.
 pub const ORIGIN: &str = "bookmark";
 
-/// The origin of the saved history shown for a condensed-away bookmark.
+/// The author (a plugin name) of the saved history shown for a
+/// condensed-away bookmark.
 pub const HISTORY_ORIGIN: &str = "bookmark-history";
 
 /// The file of a forked session's store that holds its parent's
@@ -43,8 +43,7 @@ const AROUND: usize = 3;
 const DEPTH: usize = 16;
 
 /// One bookmark: a message of an agent, by id.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[reflect(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bookmark {
     /// Its label, unique in the session.
     pub label: String,
@@ -58,9 +57,10 @@ pub struct Bookmark {
     pub first_line: String,
 }
 
-/// The session's bookmarks, oldest first, saved with the session.
-#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Resource, Saved, Default)]
+/// The session's bookmarks, oldest first, saved with the session (through
+/// serde: a [`MessageId`] has no reflection).
+#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct Bookmarks(pub Vec<Bookmark>);
 
 /// `/bookmark`, `/bookmarks` and the markers in the transcript.
@@ -92,17 +92,27 @@ impl Plugin for BookmarksPlugin {
     }
 }
 
-/// On a bookmark's marker entry.
-#[derive(Component)]
-struct Marker;
-
-/// On the entry showing a condensed-away bookmark's saved history.
-#[derive(Component)]
-struct History;
-
 /// On a `/bookmarks` picker: the label of each item.
 #[derive(Component)]
 struct Choices(Vec<String>);
+
+/// The notes by plugin `plugin` in `conversation`.
+fn notes_of(conversation: &Saved, plugin: &str) -> Vec<AsideId> {
+    let author = Author::plugin(plugin);
+    let notes = conversation.asides();
+    notes
+        .filter(|(_, aside)| aside.kind == Note::KIND && aside.author == author)
+        .map(|(id, _)| id)
+        .collect()
+}
+
+/// Takes the notes by plugin `plugin` out of `conversation`, marking it
+/// changed only when it held any.
+fn clear_notes(conversation: &mut Mut<Conversation>, plugin: &str) {
+    for id in notes_of(conversation, plugin) {
+        conversation.remove_aside(id);
+    }
+}
 
 /// The marker's look: a line naming the bookmark.
 fn marker(entry: &EntryView<'_>) -> Vec<Line<'static>> {
@@ -261,8 +271,7 @@ fn open(
     picked: On<Picked>,
     choices: Query<&Choices>,
     bookmarks: Res<Bookmarks>,
-    agents: Query<(Entity, &AgentId, &Conversation)>,
-    histories: Query<Entity, With<History>>,
+    mut agents: Query<(Entity, &AgentId, &mut Conversation)>,
     (store, view): (Option<Res<SessionStore>>, Option<ResMut<TranscriptView>>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -279,35 +288,35 @@ fn open(
     else {
         return;
     };
-    let Some((agent, id, conversation)) = agents.iter().find(|(_, id, _)| id.0 == bookmark.agent)
-    else {
+    for (_, _, mut conversation) in &mut agents {
+        clear_notes(&mut conversation, HISTORY_ORIGIN);
+    }
+    let found = agents
+        .iter_mut()
+        .find(|(_, id, _)| id.0 == bookmark.agent);
+    let Some((agent, id, mut conversation)) = found else {
         notices.write(Notice::error(
             None,
             format!("The agent of `{}` is gone.", bookmark.label),
         ));
         return;
     };
-    for shown in &histories {
-        commands.entity(shown).despawn();
-    }
     let item = if conversation.index_of(bookmark.message).is_some() {
         TranscriptItem::Message(bookmark.message)
     } else {
         let history =
-            store.and_then(|store| saved_history(&*store.0, &id.0, conversation, bookmark.message));
+            store.and_then(|store| saved_history(&*store.0, &id.0, &conversation, bookmark.message));
         let Some(history) = history else {
             let why = format!("The saved history of `{}` cannot be read.", bookmark.label);
             notices.write(Notice::error(agent, why));
             return;
         };
         let title = format!("Bookmark `{}`, before it was condensed", bookmark.label);
-        let mut entry =
-            TranscriptEntry::new(HISTORY_ORIGIN, Some(bookmark.message), title, history);
-        entry.saved = false;
-        TranscriptItem::Entry(commands.spawn((entry, EntryOf(agent), History)).id())
+        let note = Note::new(title, history).aside(Author::plugin(HISTORY_ORIGIN), Some(bookmark.message));
+        TranscriptItem::Note(conversation.add_aside(note.unsaved()))
     };
     if let Some(mut view) = view {
-        if matches!(item, TranscriptItem::Entry(_)) {
+        if matches!(item, TranscriptItem::Note(_)) {
             view.expanded.insert(item.clone());
         }
         view.selected = Some(item.clone());
@@ -325,7 +334,7 @@ fn open(
 /// `message` was made holds it, unless an older condensing took it out
 /// too: then the copy's oldest newer message is tried, and so on.
 fn saved_history(
-    store: &dyn JournalStore,
+    store: &dyn Store,
     agent: &str,
     now: &Saved,
     message: MessageId,
@@ -339,8 +348,8 @@ fn saved_history(
     let mut before = oldest_newer(now)?;
     for _ in 0..DEPTH {
         let copy = MemoryStore::default();
-        fork_session(store, &copy, Some((agent, before))).ok()?;
-        let session = read_session(&copy).ok()?;
+        fork(store, &copy, Some((agent, before))).ok()?;
+        let session = Session::read(&copy).ok()?;
         let then = session
             .agents
             .into_iter()
@@ -374,30 +383,17 @@ fn around(conversation: &Saved, at: usize) -> String {
     lines.join("\n\n")
 }
 
-/// Draws each bookmark as an entry after its message, in place of the
+/// Draws each bookmark as a note after its message, in place of the
 /// markers drawn before.
-fn show_markers(
-    bookmarks: Res<Bookmarks>,
-    agents: Query<(Entity, &AgentId)>,
-    markers: Query<Entity, With<Marker>>,
-    mut commands: Commands,
-) {
-    for marker in &markers {
-        commands.entity(marker).despawn();
-    }
-    for bookmark in &bookmarks.0 {
-        let Some((agent, _)) = agents.iter().find(|(_, id)| id.0 == bookmark.agent) else {
-            continue;
-        };
-        let mut entry = TranscriptEntry::new(
-            ORIGIN,
-            Some(bookmark.message),
-            &bookmark.label,
-            &bookmark.first_line,
-        );
-        // The saved resource is what is kept; the markers are drawn from it.
-        entry.saved = false;
-        commands.spawn((entry, EntryOf(agent), Marker));
+fn show_markers(bookmarks: Res<Bookmarks>, mut agents: Query<(&AgentId, &mut Conversation)>) {
+    for (id, mut conversation) in &mut agents {
+        clear_notes(&mut conversation, ORIGIN);
+        for bookmark in bookmarks.0.iter().filter(|bookmark| bookmark.agent == id.0) {
+            let note = Note::new(&bookmark.label, &bookmark.first_line);
+            let marker = note.aside(Author::plugin(ORIGIN), Some(bookmark.message));
+            // The saved resource is what is kept; the markers are drawn from it.
+            conversation.add_aside(marker.unsaved());
+        }
     }
 }
 
@@ -417,7 +413,8 @@ fn hand_to_forks(
             .map_err(std::io::Error::other)
             .and_then(|json| {
                 stores
-                    .open(&home.session(&fork.to))?
+                    .open(&home.session(&fork.to))
+                    .map_err(std::io::Error::other)?
                     .write_file(HANDED, &json)
             });
         if let Err(failure) = written {

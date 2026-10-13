@@ -32,10 +32,8 @@ use std::fmt;
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_cassette::effect_log::{
-    EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
-};
-use rig_cassette::journal::EFFECT_LOG;
+use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
+use rig_cassette::effect_log::{EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck};
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{ModelSpec, SignIn, Transport};
@@ -88,9 +86,9 @@ pub struct ReplaySource {
 
 impl ReplaySource {
     /// The session kept in `store`, read only.
-    pub fn from_store(store: &dyn JournalStore, flags: ReplayFlags) -> io::Result<Self> {
+    pub fn from_store(store: &dyn Files, flags: ReplayFlags) -> io::Result<Self> {
         Ok(Self {
-            effects: jsonl::read_from(store.read_file(EFFECT_LOG)?.as_slice())?,
+            effects: jsonl::read_from(store.read_file(SESSION_EFFECT_LOG)?.as_slice())?,
             flags,
         })
     }
@@ -104,7 +102,10 @@ impl ReplaySource {
             live_tools: invoked.flag(LIVE_TOOLS),
             original_timing: invoked.flag(SPEED),
         };
-        Self::from_store(&*stores.open(&SessionDir::at(dir))?, flags)
+        let store = stores
+            .open(&SessionDir::at(dir))
+            .map_err(io::Error::other)?;
+        Self::from_store(&*store, flags)
     }
 }
 
@@ -410,7 +411,7 @@ fn said(record: &EffectRecord) -> Option<Step> {
     let message = MessageRecord::read(&record.kind)?;
     let delivered = matches!(&record.outcome,
         Ok(effect::Outcome::Custom { payload }) if payload == "delivered");
-    (delivered && message.origin.kind == OriginKind::User).then(|| Step {
+    (delivered && message.author.kind == AuthorKind::User).then(|| Step {
         act: Act::Say(message),
         at_ms: recorded_at(record),
     })

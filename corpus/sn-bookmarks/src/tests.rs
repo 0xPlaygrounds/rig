@@ -1,7 +1,6 @@
 use std::fs;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::{Entry, Origin as ItemOrigin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
@@ -36,7 +35,7 @@ fn start(home: &Home, id: &SessionId, new: Option<&str>) -> Option<(App, Receive
 /// message's turn is run to its end.
 fn send(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) {
     let ended = app.world().resource::<Ended>().0.len();
-    let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_origin(Origin::user());
+    let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_author(Author::user());
     app.world_mut().trigger(typed);
     if line.starts_with('/') {
         app.update();
@@ -153,12 +152,18 @@ fn fork_of(home: &Home) -> Option<SessionId> {
 }
 
 /// Condenses exchange 1 of `agent` into a summary, as compaction does.
-fn condense(In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit) {
-    let summary = Message::user("Summary: read was designed.");
-    let summary = Entry::from(summary, ItemOrigin::plugin("summary"));
+fn condense(In(agent): In<Entity>, mut agents: Query<&mut Conversation>) {
+    let by = Author::plugin("summary");
+    let summary = Entry::new(Message::user("Summary: read was designed.")).by(by.clone());
     if let Ok(mut conversation) = agents.get_mut(agent) {
-        commit.splice(agent, &mut conversation, 0..2, [summary]);
+        conversation.splice(0..2, [summary], by);
     }
+}
+
+/// The note `id` of `agent`'s conversation.
+fn note(app: &App, agent: Entity, id: AsideId) -> Option<Note> {
+    let conversation = app.world().get::<Conversation>(agent)?;
+    Note::of(conversation.aside(id)?)
 }
 
 #[test]
@@ -228,13 +233,15 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
         .map(|bookmark| bookmark.message)
         .collect();
     assert_eq!(marks, [*answer_1, *answer_2]);
-    let world = app.world_mut();
-    let mut markers = world.query::<&TranscriptEntry>();
-    let mut drawn: Vec<_> = markers
-        .iter(world)
-        .filter(|entry| entry.origin == ORIGIN)
-        .map(|entry| entry.after)
-        .collect();
+    let conversation = app.world().get::<Conversation>(agent);
+    let markers = conversation.into_iter().flat_map(|conversation| {
+        let marker = Author::plugin(ORIGIN);
+        let asides = conversation.asides();
+        asides
+            .filter(move |(_, aside)| aside.author == marker && Note::of(aside).is_some())
+            .map(|(_, aside)| aside.after)
+    });
+    let mut drawn: Vec<_> = markers.collect();
     drawn.sort();
     assert_eq!(drawn, [Some(*answer_1), Some(*answer_2)]);
     // `api-design` opens exchange 1's answer.
@@ -264,7 +271,7 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
     app.update();
     let opened = open_bookmark(&mut app, &wakes, agent, "api-design");
     let history = match opened {
-        Some(TranscriptItem::Entry(entry)) => app.world().get::<TranscriptEntry>(entry).cloned(),
+        Some(TranscriptItem::Note(id)) => note(&app, agent, id),
         _ => None,
     };
     let text = history.map(|history| history.text).unwrap_or_default();
