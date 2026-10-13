@@ -1,8 +1,8 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::journal::JournalPlugin;
+use rig_harness_test_support::MemoryStore;
 
 use super::*;
 use rig_harness_test_support::{

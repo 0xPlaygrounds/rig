@@ -343,9 +343,14 @@ fn end_turn(
         return;
     };
     let span = context.span();
+    // The user's own message among those the turn answers: a stopped
+    // turn's results and the stopped note come before it.
     let asked = conversations.get(agent).ok().and_then(|conversation| {
-        let asked = conversation.start_of(turn.first_message);
-        conversation.messages().get(asked)
+        let entries = conversation.entries();
+        let mut answered = entries.skip(conversation.start_of(turn.first_message));
+        answered
+            .find(EntryRef::is_users_own)
+            .map(|entry| entry.message)
     });
     if let Some(message::Message::User { content }) = asked {
         let len: usize = content

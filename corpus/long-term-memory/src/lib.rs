@@ -400,9 +400,12 @@ fn recall(
         let Ok((state, recollection)) = turns.get(turn) else {
             continue;
         };
+        // The first message the turn answers with text: a stopped turn's
+        // results and rig's stopped note come before it.
         let asked = agents.get(agent).ok().and_then(|conversation| {
-            let asked = conversation.start_of(state.first_message);
-            conversation.messages().get(asked)
+            let entries = conversation.entries();
+            let mut answered = entries.skip(conversation.start_of(state.first_message));
+            answered.find(asks).map(|entry| entry.message)
         });
         let Some(asked @ message::Message::User { content }) = asked else {
             continue;
@@ -443,6 +446,18 @@ fn recall(
             }
         }
     }
+}
+
+/// Whether `entry` asks something: a user message with text, not rig's
+/// own.
+fn asks(entry: &EntryRef) -> bool {
+    let by_rig = entry
+        .author
+        .is_some_and(|author| author.kind == AuthorKind::Rig);
+    let message::Message::User { content } = entry.message else {
+        return false;
+    };
+    !by_rig && !text_of(content).is_empty()
 }
 
 /// The text of a message's content.
