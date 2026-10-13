@@ -8,7 +8,10 @@
 //! [`SessionDeleted`] and [`SessionDeleteFailed`] tell every plugin, such as one keeping files of its
 //! own per session. Deleting is crash safe: a session marked deleting is
 //! hidden from listings, and the next start finishes it. A forked session
-//! names the session it came from ([`ForkedFrom`]). The first app a
+//! names the session it came from ([`ForkedFrom`]). A rewrite of this
+//! session (`RewriteSession`) reaches its scratch files too, and
+//! [`rewrite_stopped`] rewrites a session no rig runs, scratch included.
+//! The first app a
 //! session runs, a fork's first included, has [`FirstStart`]; what the
 //! user typed in a message is [`typed`].
 
@@ -33,12 +36,12 @@ use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Conversation, MessageId};
+use rig_core::conversation::{Author, Conversation, MessageId};
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{self, AgentId, Notice};
-use rig_ecs::journal::{SessionStore, open_session};
-use rig_memory::{DirStore, Files, Keep, LoadError, Store, fork};
+use rig_ecs::journal::{SessionRewritten, SessionStore, open_session};
+use rig_memory::{DirStore, Files, Keep, LoadError, Rewrite, Rewritten, Store, fork, rewrite};
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
 use serde::{Deserialize, Serialize};
@@ -287,6 +290,7 @@ impl Plugin for SessionPlugin {
             .add_message::<SessionForked>()
             .add_message::<SessionDeleted>()
             .add_message::<SessionDeleteFailed>()
+            .add_message::<SessionRewritten>()
             .add_message::<Notice>()
             .add_observer(|fork: On<ForkSession>, mut forks: ResMut<Forks>| {
                 forks.0.push(fork.event().clone());
@@ -299,6 +303,12 @@ impl Plugin for SessionPlugin {
             .add_systems(First, timings::next_frame)
             .configure_sets(Last, ForkSessions.after(WriteJournal))
             .add_systems(Last, fork_sessions.in_set(ForkSessions))
+            .add_systems(
+                Last,
+                rewrite_scratch
+                    .after(WriteJournal)
+                    .run_if(on_message::<SessionRewritten>),
+            )
             .add_systems(
                 Last,
                 discard_sessionless
@@ -495,6 +505,130 @@ impl ForkedFrom {
         store
             .write_file(PARENT, &text)
             .map_err(|failure| failure.to_string())
+    }
+}
+
+/// Rewrites the saved session in `dir`, which no rig runs, through
+/// `with`, as done by `by` (rig-memory's `rewrite`): its store opened by
+/// `stores`, then its scratch files, kept in its directory (the text log
+/// and the spilled tool output). The running session, `running`, is
+/// rewritten with `RewriteSession` instead. For a plugin redacting this
+/// session's forks too:
+///
+/// ```no_run
+/// use rig_harness::harness_protocol::SessionId;
+/// use rig_harness::prelude::*;
+///
+/// fn redact_fork(
+///     fork: SessionId,
+///     (home, stores, paths): (Res<RigHome>, Res<SessionStores>, Res<SessionPaths>),
+/// ) -> Result<(), String> {
+///     let redact = Strings(|text: &mut String| {
+///         let hit = text.contains("sk-123");
+///         if hit {
+///             *text = text.replace("sk-123", "[REDACTED]");
+///         }
+///         hit
+///     });
+///     let dir = home.0.session(&fork);
+///     rewrite_stopped(&stores, &paths, &dir, Author::plugin("redact"), &redact).map(drop)
+/// }
+/// ```
+///
+/// # Errors
+///
+/// When `dir` is the running session or another rig runs it, when its
+/// store does not open or its session cannot be read (nothing written), or
+/// when a write fails.
+pub fn rewrite_stopped(
+    stores: &SessionStores,
+    running: &SessionDir,
+    dir: &SessionDir,
+    by: Author,
+    with: &dyn Rewrite,
+) -> Result<Rewritten, String> {
+    if dir.path() == running.path() {
+        return Err("it is this session, which a RewriteSession rewrites".to_owned());
+    }
+    if dir.runs_elsewhere() {
+        return Err("another rig runs it".to_owned());
+    }
+    let store = stores.open(dir).map_err(|failure| failure.to_string())?;
+    let rewritten = rewrite(&*store, by, with).map_err(|failure| failure.to_string())?;
+    let scratch = Scratch(Some(dir.path().to_owned()));
+    map_spill(&scratch, with)
+        .and_then(|()| {
+            scratch
+                .log()
+                .map_or(Ok(false), |log| map_file(&log, LOG, with))
+        })
+        .map_err(|failure| format!("rewriting its scratch files failed: {failure}"))?;
+    Ok(rewritten)
+}
+
+/// The text log's name to a [`Rewrite`].
+const LOG: &str = "agent.log";
+
+/// Maps the file at `path`, named `name` to `with`, through it: written
+/// beside and renamed over, so it is the old file or the new, whole;
+/// whether it changed. A file that is not there is left.
+fn map_file(path: &Path, name: &str, with: &dyn Rewrite) -> io::Result<bool> {
+    let mut bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(failure) => return Err(failure),
+    };
+    if !with.file(name, &mut bytes) {
+        return Ok(false);
+    }
+    let mut part = path.as_os_str().to_owned();
+    part.push(".part");
+    fs::write(&part, &bytes)?;
+    fs::rename(&part, path)?;
+    Ok(true)
+}
+
+/// Maps every file of `scratch`'s spilled tool output through `with`,
+/// each named `spill/<file>`.
+fn map_spill(scratch: &Scratch, with: &dyn Rewrite) -> io::Result<()> {
+    let Some(spill) = scratch.spill() else {
+        return Ok(());
+    };
+    let entries = match fs::read_dir(&spill.0) {
+        Ok(entries) => entries,
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(failure) => return Err(failure),
+    };
+    for entry in entries {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            let name = format!("spill/{}", entry.file_name().to_string_lossy());
+            map_file(&entry.path(), &name, with)?;
+        }
+    }
+    Ok(())
+}
+
+/// Maps this session's scratch files through each rewrite of the session:
+/// the spilled tool output, and the text log under its lock, then logged
+/// to again where it is. Pasted images are left.
+fn rewrite_scratch(
+    mut rewritten: MessageReader<SessionRewritten>,
+    scratch: Option<Res<Scratch>>,
+    log: Option<Res<TextLog>>,
+) {
+    for rewritten in rewritten
+        .read()
+        .filter(|rewritten| rewritten.result.is_ok())
+    {
+        let with = &*rewritten.with;
+        let spilled = scratch
+            .as_deref()
+            .map_or(Ok(()), |scratch| map_spill(scratch, with));
+        let logged = log.as_deref().map_or(Ok(()), |log| log.rewrite(with));
+        if let Err(failure) = spilled.and(logged) {
+            error!("rewriting the session's scratch files failed: {failure}");
+        }
     }
 }
 
@@ -766,6 +900,21 @@ struct TextLog {
     /// appends to; `None` when this run made it.
     earlier: Option<u64>,
     file: Arc<Mutex<Option<File>>>,
+}
+
+impl TextLog {
+    /// Maps the text log through `with` under its lock, so no line is
+    /// written meanwhile, and logs to the new file.
+    fn rewrite(&self, with: &dyn Rewrite) -> io::Result<()> {
+        let Some(at) = &self.at else {
+            return Ok(());
+        };
+        let mut file = self.file.lock().unwrap_or_else(PoisonError::into_inner);
+        if map_file(at, LOG, with)? {
+            *file = OpenOptions::new().append(true).open(at).ok();
+        }
+        Ok(())
+    }
 }
 
 /// Writes a line of the text log, or drops it without a file.

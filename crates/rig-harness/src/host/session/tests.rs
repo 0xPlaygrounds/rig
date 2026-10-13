@@ -10,15 +10,15 @@ use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
-use rig_ecs::journal::{JournalPlugin, SessionStore};
+use rig_ecs::journal::{JournalPlugin, RewriteSession, SessionStore};
 use rig_ecs::{AgentPlugin, WriteJournal};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::{DirStore, Files, load, save};
+use rig_memory::{DirStore, Files, Strings, load, save};
 
 use super::{
     DeleteSession, FirstStart, ForkSession, ForkSessions, ForkedFrom, Scratch, SessionDeleteFailed,
     SessionDeleted, SessionForked, SessionPaths, SessionPlugin, SessionStores, first_typed,
-    log_layer, typed,
+    log_layer, rewrite_stopped, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::launcher::LauncherRun;
@@ -663,5 +663,88 @@ fn a_fork_has_what_a_plugin_wrote_before_it_in_its_frame() {
     let noted = copy.and_then(|copy| copy.read_file("plugins/notes/frame").ok());
     assert_eq!(noted.as_deref(), Some(&b"2"[..]), "the fork's frame");
     drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Replaces `sk-123` with `[REDACTED]` wherever a session keeps it.
+fn redact() -> Strings<impl Fn(&mut String) -> bool + Send + Sync> {
+    Strings(|text: &mut String| {
+        let hit = text.contains("sk-123");
+        if hit {
+            *text = text.replace("sk-123", "[REDACTED]");
+        }
+        hit
+    })
+}
+
+/// Whether a file under `dir` holds `sk-123`, and which.
+fn secret_in(dir: &Path) -> Vec<PathBuf> {
+    let files = snapshot(dir).into_iter();
+    let holds = |bytes: &Vec<u8>| bytes.windows(6).any(|w| w == b"sk-123");
+    files
+        .filter(|(_, bytes)| bytes.as_ref().is_some_and(holds))
+        .map(|(path, _)| path)
+        .collect()
+}
+
+#[test]
+fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
+    let home = scratch_home("rig-session-rewrite-scratch");
+    let ids = ["1700000000-4", "1700000000-5"].map(|id| id.parse::<SessionId>());
+    let [Ok(id), Ok(other)] = ids else {
+        return;
+    };
+    let (session, stopped) = (home.session(&id), home.session(&other));
+    for dir in [&session, &stopped] {
+        fs::create_dir_all(dir.path().join("spill")).ok();
+        fs::write(dir.path().join("spill/shell-1.txt"), "key sk-123\n").ok();
+        let mut said = conversation::Conversation::from_messages([Message::user("sk-123")]);
+        let saved = dir_store(dir).map(|store| save(&store, "agent-1", &mut said));
+        assert!(saved.is_some_and(|saved| saved.is_ok()));
+    }
+    fs::write(stopped.log(), "it said sk-123\n").ok();
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()));
+    let layer = log_layer(&mut app);
+    let file = app.world().resource::<super::TextLog>().file.clone();
+    let write = |line: &str| {
+        std::io::Write::write_all(&mut super::LogWriter(file.clone()), line.as_bytes())
+    };
+    assert!(write("the key is sk-123\n").is_ok());
+    app.add_plugins((
+        TaskPoolPlugin::default(),
+        AgentPlugin,
+        JournalPlugin,
+        SessionPlugin,
+    ));
+    drop(std::panic::take_hook());
+    app.finish();
+    app.update();
+    app.world_mut().trigger(RewriteSession {
+        by: Author::plugin("redact"),
+        with: Arc::new(redact()),
+        asker: None,
+    });
+    app.update();
+    assert!(write("after\n").is_ok());
+    assert_eq!(secret_in(session.path()), Vec::<PathBuf>::new());
+    let log = fs::read_to_string(session.log()).unwrap_or_default();
+    assert!(log.ends_with("the key is [REDACTED]\nafter\n"), "{log}");
+
+    let stores = SessionStores::default();
+    let by = || Author::plugin("redact");
+    let this = rewrite_stopped(&stores, &session, &session, by(), &redact());
+    assert!(this.is_err(), "the running session is RewriteSession's");
+    let lock = File::create(stopped.launcher_lock()).ok();
+    assert!(lock.as_ref().is_some_and(|lock| lock.try_lock().is_ok()));
+    let elsewhere = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
+    assert_eq!(elsewhere.err().as_deref(), Some("another rig runs it"));
+    assert_eq!(secret_in(stopped.path()).len(), 3, "nothing was changed");
+    drop(lock);
+    let done = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
+    assert_eq!(done.map(|done| done.logs.len()), Ok(1));
+    assert_eq!(secret_in(stopped.path()), Vec::<PathBuf>::new());
+    drop((app, layer));
     fs::remove_dir_all(home.root()).ok();
 }

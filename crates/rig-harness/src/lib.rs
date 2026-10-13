@@ -144,7 +144,7 @@ pub mod prelude {
     pub use crate::host::session::{
         DeleteSession, FirstStart, ForkSession, ForkSessions, ForkedFrom, LogEvents, Logged,
         Scratch, SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
-        first_typed, typed,
+        first_typed, rewrite_stopped, typed,
     };
     pub use crate::note::Note;
     pub use crate::per_call::{AppPerCallExt, Place};
