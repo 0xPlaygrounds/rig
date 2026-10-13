@@ -6,9 +6,13 @@
 //! `/watch on|off`, or `rig --watch`, watches the project's files, without
 //! what `.gitignore` leaves out. A save that settled for [`SETTLE`] and holds
 //! a trigger queues its file once (its newest content wins), and the queue
-//! runs one turn per file whenever the agent is idle. A file left as one of
-//! rig's tools wrote it (their [`FilesChanged`], which a `shell` call
-//! publishes too), or as this plugin cleaned it, never triggers. A
+//! runs one turn per file whenever the agent is idle. A file left as a
+//! file tool wrote it (the [`FilesChanged`] of a call that names its
+//! paths), or as this plugin cleaned it, never triggers. A `shell` call's
+//! [`FilesChanged`] is a checkpoint: what changed while it ran, the user's
+//! saves included, not who changed it. So it is not taken as rig's; the
+//! clean-up at the turn's end, and the queued file read again before its
+//! turn starts, keep the agent's own `shell` writes from triggering. A
 //! question's turn is question only: its calls that may change anything are
 //! refused. When a turn answers, its file's trigger comments and the context
 //! comments it was given are taken out of the files. The status line says
@@ -233,8 +237,8 @@ fn take_changes(
     }
 }
 
-/// Once the saves settled and no tool that may write them runs, queues each
-/// saved file that holds a trigger, unless rig left it so.
+/// Once the saves settled and no file tool that may write them runs,
+/// queues each saved file that holds a trigger, unless rig left it so.
 fn read_saves(
     settled: Query<(), With<Due>>,
     running: Query<&Footprint, (ToolCalls, With<Started>, Without<Outcome>)>,
@@ -249,13 +253,10 @@ fn read_saves(
         return;
     };
     let saved = Scope::Paths(watching.saved.iter().cloned().collect());
-    let writing = |footprint: &Footprint| match &footprint.0 {
-        Touches::Writes(scope) => scope.overlaps(&saved),
-        Touches::Reads(_) | Touches::Independent => false,
-    };
-    // A tool may be writing them: read them once it is done.
-    if running.iter().any(writing) {
-        commands.entity(settling).insert(WakeAt::after(SETTLE));
+    // A file tool may be writing them: the settling stays due, so they are
+    // read on the frame its outcome, and so its facts, are in.
+    let writing = |scope: &Scope| scope.overlaps(&saved);
+    if running.iter().filter_map(names_writes).any(writing) {
         return;
     }
     commands.entity(settling).despawn();
@@ -419,15 +420,27 @@ fn question_only(
     }
 }
 
-/// Keeps what each tool call left in the files it changed.
+/// The paths a call says it writes, when it names them: only such a
+/// call's [`FilesChanged`] is what its tool wrote.
+fn names_writes(footprint: &Footprint) -> Option<&Scope> {
+    match &footprint.0 {
+        Touches::Writes(scope @ Scope::Paths(_)) => Some(scope),
+        _ => None,
+    }
+}
+
+/// Keeps what each file tool call left in the files it changed.
 fn note_writes(
     published: On<Add<Published>>,
-    calls: Query<&Published>,
+    calls: Query<(&Published, &Footprint)>,
     mut watching: ResMut<Watching>,
 ) {
-    let Ok(Published(facts)) = calls.get(published.entity) else {
+    let Ok((Published(facts), footprint)) = calls.get(published.entity) else {
         return;
     };
+    if names_writes(footprint).is_none() {
+        return;
+    }
     let Ok(Some(changed)) = facts.get::<FilesChanged>() else {
         return;
     };

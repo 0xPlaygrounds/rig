@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::EditTool;
+use rig_coding_tools::{EditTool, ShellTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
@@ -20,41 +20,20 @@ fn count_turns(_: On<Add<TurnOf>>, mut turns: ResMut<Turns>) {
     turns.0 += 1;
 }
 
-/// Holds every model call while closed, so a turn keeps running.
-#[derive(Resource, Default)]
-struct Gate {
-    closed: bool,
-    holds: Vec<Entity>,
-}
-
-fn hold_model_calls(
-    calls: Query<Entity, (Undecided, ModelCalls)>,
-    mut gate: ResMut<Gate>,
-    mut commands: Commands,
-) {
-    if gate.closed {
-        for call in &calls {
-            let hold = commands.spawn(HoldOf(call)).id();
-            gate.holds.push(hold);
-        }
-    }
-}
-
-/// An app with the real `edit` tool and this plugin on the project `dir`,
-/// answered by `model`, and its agent.
+/// An app with the real `edit` and checkpointed `shell` tools and this
+/// plugin on the project `dir`, answered by `model`, and its agent.
 fn start(model: &MockCompletionModel, dir: &Path) -> (App, Receiver<()>, Entity) {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((AgentPlugin, JournalPlugin, EditTool, WatchAiCommentsPlugin))
+        .add_plugins((AgentPlugin, JournalPlugin, CheckpointPlugin))
+        .add_plugins((EditTool, ShellTool, WatchAiCommentsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Turns>()
-        .add_observer(count_turns)
-        .init_resource::<Gate>()
-        .add_systems(AgentPass, hold_model_calls.in_set(Stage::Gate));
+        .add_observer(count_turns);
     collect::<FileChanges>(&mut app);
     app.finish();
     app.update();
@@ -118,11 +97,19 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     std::fs::write(file("ctx.py"), "x = 1  # AI\n").ok();
     let rename = json!([{ "old_text": "def foo()", "new_text": "def bar()" }]);
     let touch = json!([{ "old_text": "x = [1]", "new_text": "x = {1}" }]);
+    // A `shell` call that runs until the test lets it end.
+    let (ready, go) = (home.root().join("ready"), home.root().join("go"));
+    let wait = format!(
+        "touch '{}'; while [ ! -e '{}' ]; do sleep 0.05; done",
+        ready.display(),
+        go.display()
+    );
     let model = MockCompletionModel::from_stream_turns([
         calls("a1", "edit", json!({ "path": "a.py", "edits": rename })),
         reply("Renamed."),
         calls("b1", "edit", json!({ "path": "b.py", "edits": touch })),
         reply("It is slow because a list is searched."),
+        calls("s1", "shell", json!({ "command": wait })),
         reply("Hi."),
         reply("Done."),
     ]);
@@ -176,13 +163,11 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     settle(&mut app, &wakes, &c, 1);
     assert_eq!(app.world().resource::<Turns>().0, 2);
 
-    // Two saves while a turn runs: one queued turn, with the newest comment.
-    app.world_mut().resource_mut::<Gate>().closed = true;
+    // Two saves while a turn's `shell` call runs: one queued turn, with the
+    // newest comment, though the call's checkpoint lists the user's save.
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Queue));
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Gate>().holds.is_empty()
-    });
+    run_until(&mut app, &wakes, |_| ready.exists());
     let d = file("d.py");
     std::fs::write(&d, "# first AI!\n").ok();
     run_until(&mut app, &wakes, |world| {
@@ -195,11 +180,7 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
         app.world().resource::<Watching>().queue,
         std::slice::from_ref(&d)
     );
-    let holds = std::mem::take(&mut app.world_mut().resource_mut::<Gate>().holds);
-    app.world_mut().resource_mut::<Gate>().closed = false;
-    for hold in holds {
-        app.world_mut().despawn(hold);
-    }
+    std::fs::write(&go, "").ok();
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 4
     });
