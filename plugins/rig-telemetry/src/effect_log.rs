@@ -6,20 +6,30 @@
 //! names each key the records use. Ids continue after the highest one the
 //! log already holds, so a resumed session keeps adding to the same log.
 //! A plugin reads it back with the [`EffectLog`] resource, narrowed by an
-//! [`EffectFilter`].
+//! [`EffectFilter`]. With the default `tui` feature, in a run of the
+//! terminal view, a restored session's log is read back once, off the main
+//! thread, and sent to the view as `rig_tui::PastEffects`, so a resumed
+//! session's tool calls show the calls they started and what they
+//! published.
 
 use std::io;
 use std::sync::Arc;
 
 use bevy_log::error;
+#[cfg(feature = "tui")]
+use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
 use rig_cassette::effect_log::{self, LogHeader, jsonl};
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
 use rig_ecs::WriteJournal;
 use rig_ecs::effects::Effects;
+#[cfg(feature = "tui")]
+use rig_ecs::journal::SessionRestored;
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
+#[cfg(feature = "tui")]
+use rig_harness::prelude::AppCliExt;
 
 /// Records every effect into the session's effect log, in its store, once
 /// the harness opened it; without a store it records nothing.
@@ -43,7 +53,59 @@ impl Plugin for EffectLogPlugin {
             .add_systems(Startup, describe_tools)
             .add_systems(Last, write_effects.in_set(WriteJournal))
             .add_observer(describe_model);
+        #[cfg(feature = "tui")]
+        if app.runs_front(rig_tui::FRONT) {
+            app.add_systems(Update, read_past.run_if(resource_added::<SessionRestored>))
+                .add_observer(send_past);
+        }
     }
+}
+
+/// The records [`read_past`] read off the main thread.
+#[cfg(feature = "tui")]
+#[derive(Component)]
+struct PastRead(io::Result<Vec<EffectRecord>>);
+
+#[cfg(feature = "tui")]
+impl From<io::Result<Vec<EffectRecord>>> for PastRead {
+    fn from(read: io::Result<Vec<EffectRecord>>) -> Self {
+        Self(read)
+    }
+}
+
+/// Reads the log of the session just restored off the main thread, once,
+/// for the terminal view's call tree ([`rig_tui::PastEffects`]): a resumed
+/// session's calls show what they started and published, as this run's do.
+#[cfg(feature = "tui")]
+fn read_past(log: Res<EffectLog>, wake: Res<Wake>, mut commands: Commands) {
+    let log = log.clone();
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    let read = async move { log.read() };
+    commands.spawn((
+        Name::new("effect log: past effects"),
+        Running::spawn_into::<PastRead, _>(pool, &wake, read),
+    ));
+}
+
+/// Sends what [`read_past`] read to the terminal view; a log that could not
+/// be read leaves the view without the past calls' children and facts, and
+/// says so.
+#[cfg(feature = "tui")]
+fn send_past(
+    read: On<Insert<PastRead>>,
+    mut reads: Query<&mut PastRead>,
+    mut past: MessageWriter<rig_tui::PastEffects>,
+    mut commands: Commands,
+) {
+    if let Ok(mut read) = reads.get_mut(read.entity) {
+        match std::mem::replace(&mut read.0, Ok(Vec::new())) {
+            Ok(records) => {
+                past.write(rig_tui::PastEffects(records));
+            }
+            Err(failure) => error!("reading the effect log failed: {failure}"),
+        }
+    }
+    commands.entity(read.entity).despawn();
 }
 
 /// The session's effect log, to read back; there when

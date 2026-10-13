@@ -17,13 +17,15 @@ workspace = true
 default = ["tui"]
 # Each agent's meter in the terminal view's status line. An app without the
 # terminal view leaves it out with `default-features = false`.
-tui = ["dep:rig-tui"]
+tui = ["dep:rig-tui", "dep:bevy_tasks"]
 
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
+# A resumed session's effect log read off the main thread for the view.
+bevy_tasks = { workspace = true, optional = true }
 # The effect log, as JSON lines.
 rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-core = { workspace = true }
