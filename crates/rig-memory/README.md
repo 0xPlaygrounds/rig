@@ -15,7 +15,8 @@ agent framework, over rig-core's one `Conversation` type:
   and, with feature `fs`, `DirStore`; `load`/`save` for one conversation,
   `Session` for a whole session, `Writer` for a running host, `fork`,
   `history` and `as_of`. Reading is strict: a session that cannot be read
-  whole is refused, and nothing is written.
+  whole is refused, and nothing is written. `Session::read_lenient` reads
+  each log that reads and names the others, for readers such as an export.
 
 With default features the crate is pure data and builds for wasm32.
 

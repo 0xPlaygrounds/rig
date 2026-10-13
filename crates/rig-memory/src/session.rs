@@ -1,6 +1,7 @@
 //! Reading a session back, saving to it from data, forking it, and its
 //! history: [`Session::read`] folds every log, strictly, without writing
-//! anything; [`Session::save`], [`load`] and [`save`] are for programs that
+//! anything, and [`Session::read_lenient`] every log that reads;
+//! [`Session::save`], [`load`] and [`save`] are for programs that
 //! keep a conversation over time without a running [`Writer`](crate::Writer);
 //! [`fork`] copies a session as it was before one of its messages was made;
 //! [`history`] and [`as_of`] read one log's records and its conversation as
@@ -49,6 +50,15 @@ pub struct SavedAgent {
     /// The record that first made each message of the conversation, by its
     /// index: a message a splice edited keeps its first record.
     pub stamps: Vec<Stamp>,
+}
+
+/// A log [`Session::read_lenient`] could not read.
+#[derive(Debug)]
+pub struct Unreadable {
+    /// Its name: an agent's id, or [`SESSION`].
+    pub log: String,
+    /// Why it could not be read.
+    pub error: LoadError,
 }
 
 /// One record of a log, as [`history`] reads it.
@@ -346,6 +356,32 @@ impl Session {
         let folded = fold_all(store, true)?;
         let repairs = repairs(&folded);
         Ok(session_of(folded, repairs))
+    }
+
+    /// Reads each log of the session kept in `store` that reads, as
+    /// [`Self::read`] does, and sets aside each that does not, with why:
+    /// for a reader that shows what it can, such as an export or a search.
+    /// A restore reads strictly, so it never goes on from part of a
+    /// session.
+    ///
+    /// # Errors
+    ///
+    /// When the store cannot list its logs.
+    pub fn read_lenient(store: &dyn Store) -> Result<(Self, Vec<Unreadable>), LoadError> {
+        let how = Fold {
+            until: None,
+            images: true,
+        };
+        let mut folded = Vec::new();
+        let mut unreadable = Vec::new();
+        for log in store.logs()? {
+            match fold(store, &log, how) {
+                Ok(read) => folded.extend(read),
+                Err(error) => unreadable.push(Unreadable { log, error }),
+            }
+        }
+        let repairs = repairs(&folded);
+        Ok((session_of(folded, repairs), unreadable))
     }
 
     /// The agent `id`.

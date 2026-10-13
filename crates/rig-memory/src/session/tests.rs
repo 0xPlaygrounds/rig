@@ -244,7 +244,7 @@ fn a_torn_tail_is_reported_then_set_aside() {
 }
 
 #[test]
-fn a_session_it_cannot_read_whole_is_refused() {
+fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
     let store = MemoryStore::default();
     let mut conversation = Conversation::from_messages([Message::user("a"), Message::user("b")]);
     save(&store, "main", &mut conversation).expect("saved");
@@ -260,11 +260,23 @@ fn a_session_it_cannot_read_whole_is_refused() {
             b"{\"seq\":3,\"n\":3,\"t\":0,\"type\":\"halt\",\"halt\":\"kept\"}\n",
         )
         .expect("written");
+    let mut other = Conversation::from_messages([Message::user("c")]);
+    save(&store, "other", &mut other).expect("saved");
     let refused = Session::read(&store);
     assert!(
         matches!(&refused, Err(LoadError::Record { log, line: 3, .. }) if log == "main"),
         "{refused:?}"
     );
+    // Read leniently, the log that reads is kept and the other named.
+    let (session, unreadable) = Session::read_lenient(&store).expect("listed");
+    let read: Vec<&str> = session
+        .agents
+        .iter()
+        .map(|agent| agent.id.as_str())
+        .collect();
+    assert_eq!(read, ["other"]);
+    let names: Vec<&str> = unreadable.iter().map(|log| log.log.as_str()).collect();
+    assert_eq!(names, ["main"]);
     // A log from before this format names none.
     let old = MemoryStore::default();
     old.append_log(

@@ -60,7 +60,7 @@ pub use compaction::{
 #[cfg(feature = "fs")]
 pub use dir::DirStore;
 pub use format::{FORMAT, LoadError, Repair, SESSION, Stamp, now_ms};
-pub use session::{Record, SavedAgent, Session, as_of, fork, history, load, save};
+pub use session::{Record, SavedAgent, Session, Unreadable, as_of, fork, history, load, save};
 pub use store::{Files, MemoryStore, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};
 pub use writer::Writer;
