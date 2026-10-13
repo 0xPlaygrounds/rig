@@ -21,6 +21,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Outcome as Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
+use rig_harness::rig_memory::summary_author;
 use rig_tools::context::{MAX_FILE_BYTES, instruction_file};
 use rig_tools::fs::read_prefix;
 
@@ -166,18 +167,10 @@ fn file_name(key: &str) -> &str {
 
 /// A conversation compacted into a summary drops the results it
 /// summarized: the agent is given each file again on its next access.
-fn forget_compacted(
-    mut committed: MessageReader<Committed>,
-    mut agents: Query<(&Conversation, &mut NestedLoaded)>,
-) {
-    for change in committed.read() {
-        if let Committed::Splice {
-            agent,
-            removed,
-            changed,
-        } = change
-            && let Ok((conversation, mut loaded)) = agents.get_mut(*agent)
-            && compacted(conversation, removed, changed)
+fn forget_compacted(mut committed: MessageReader<Committed>, mut agents: Query<&mut NestedLoaded>) {
+    for Committed { agent, change } in committed.read() {
+        if compacted(&change.change)
+            && let Ok(mut loaded) = agents.get_mut(*agent)
             && !loaded.0.is_empty()
         {
             loaded.0.clear();
@@ -185,14 +178,18 @@ fn forget_compacted(
     }
 }
 
-/// Whether a splice that took out messages put a compaction's summary in
-/// one of the `changed` messages of `conversation`.
-fn compacted(conversation: &Conversation, removed: &[MessageId], changed: &[MessageId]) -> bool {
-    let summary = Origin::plugin("compaction");
-    let changed = changed.iter().filter_map(|id| conversation.index_of(*id));
-    let mut entries = changed.filter_map(|at| conversation.entry(at));
-    !removed.is_empty()
-        && entries.any(|entry| entry.origins.iter().any(|(_, origin)| *origin == summary))
+/// Whether `change` is a splice that took out messages and put in a
+/// compaction's summary (an entry by [`summary_author`]).
+fn compacted(change: &Change) -> bool {
+    let Change::Splice { removed, with, .. } = change else {
+        return false;
+    };
+    let kept = |id: &MessageId| with.iter().any(|entry| entry.id == Some(*id));
+    let summary = summary_author();
+    !removed.iter().all(kept)
+        && with
+            .iter()
+            .any(|entry| entry.author.as_ref() == Some(&summary))
 }
 
 /// Keeps the `/context` line current: the nested files each agent holds.
