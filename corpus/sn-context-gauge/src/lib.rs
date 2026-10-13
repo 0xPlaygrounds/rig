@@ -9,8 +9,8 @@
 //! The first time an agent goes above 90% in a session, a notice suggests
 //! condensing or handing off; that it was given is saved with the agent.
 //!
-//! The gauge takes rig-telemetry's place for the context (right, 40), so
-//! the line shows one context item, not two.
+//! The gauge replaces rig-telemetry's item named `context` (right, 40) in
+//! `StatusSystems::Edit`, so the line shows one context item, not two.
 
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
