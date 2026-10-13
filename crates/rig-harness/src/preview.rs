@@ -71,19 +71,24 @@ use rig_ecs::prelude::Undecided;
 pub struct Preview;
 
 /// What a call with [`Preview`] would leave on disk: the files it would
-/// create, modify and delete, each with its diff and the hashes of its
-/// bytes before and after; or why it cannot say, such as the tool
-/// failing, a tool not registered per call, or a command it would start.
+/// create, modify and delete, each with its diff (a deletion's too) and the
+/// [`FileState`](rig_core::tool::FileState) of each side, its size and
+/// lines; or why it cannot say, such as the tool failing, a tool not
+/// registered per call, or a command it would start, whose writes cannot be
+/// kept from the disk.
 #[derive(Component, Clone, Debug)]
 pub struct Previewed(pub Result<Vec<FileChange>, ErrorReport>);
 
 /// Previews the tool calls that ask for it ([`Preview`]), after every gate,
-/// before Start.
-pub(crate) struct PreviewPlugin;
+/// before Start. [`RigHarnessPlugins`](crate::RigHarnessPlugins) adds it; a
+/// small test app without that group adds it alone. It is not idempotent:
+/// a plugin never adds it itself.
+pub struct PreviewPlugin;
 
-/// Where [`PreviewPlugin`] holds the calls it previews, before Start.
+/// Where [`PreviewPlugin`] holds the calls it previews, after
+/// [`GateSystems::After`] and before Start.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct PreviewSystems;
+pub struct PreviewSystems;
 
 impl Plugin for PreviewPlugin {
     fn build(&self, app: &mut App) {

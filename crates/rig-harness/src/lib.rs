@@ -149,7 +149,7 @@ pub mod prelude {
     pub use crate::per_call::{AppPerCallExt, Place};
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::plugin_data::PluginData;
-    pub use crate::preview::{Preview, Previewed};
+    pub use crate::preview::{Preview, PreviewPlugin, PreviewSystems, Previewed};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
