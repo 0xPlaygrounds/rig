@@ -282,7 +282,9 @@ impl Native {
         let key = self.reasoning_blob(api)?.key;
         let (parent, field) = key.rsplit_once('/')?;
         let mut item = self.item.clone();
-        item.pointer_mut(parent)?.as_object_mut()?.remove(field)?;
+        item.pointer_mut(parent)?
+            .as_object_mut()?
+            .shift_remove(field)?;
         Some(item)
     }
 }
