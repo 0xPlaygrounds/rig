@@ -18,7 +18,7 @@ use launcher::run::{Start, last_report};
 use rig::harness_protocol::{Described, Home, INVOCATION_USAGE};
 
 const USAGE: &str = "\
-Usage: rig [-r <id>] [options] [-p prompt…] | rig [options] <command> [args…]
+Usage: rig [-r <id|name>] [options] [-p prompt…] | rig [options] <command> [args…]
        | rig build | rig plugin <command> | rig help [command]
 
   rig                    Build the agent if needed and run it in a new session.
@@ -30,8 +30,10 @@ Usage: rig [-r <id>] [options] [-p prompt…] | rig [options] <command> [args…
 
 const SESSION: &str = "
 Session:
-  -r, --resume <id>      Resume the session <id>, in the directory it ran in.
-                         In the agent, /resume lists the sessions.
+  -r, --resume <id|name>
+                         Resume the session with that id, or the one /name
+                         gave that name, in the directory it ran in. In the
+                         agent, /resume lists the sessions.
 
 Mode:
 ";
@@ -72,7 +74,7 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }
         ["help", command] => Ok(help(&home, command)),
-        _ => match resume(&args) {
+        _ => match resume(&home, &args) {
             Ok((start, rest)) => launcher::run::run(&home, start, rest),
             Err(failure) => {
                 eprintln!("rig: {failure}\nRun `rig help` for usage.");
@@ -120,15 +122,15 @@ fn help(home: &Home, command: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// The session to run, from `--resume <id>` before everything else, and
-/// the rest of the command line.
-fn resume(args: &[String]) -> Result<(Start, &[String]), String> {
+/// The session to run, from `--resume <id|name>` before everything else
+/// ([`Home::find`]), and the rest of the command line.
+fn resume<'a>(home: &Home, args: &'a [String]) -> Result<(Start, &'a [String]), String> {
     Ok(match args {
-        [flag, id, rest @ ..] if flag == "-r" || flag == "--resume" => {
-            (Start::Resume(id.parse()?), rest)
+        [flag, session, rest @ ..] if flag == "-r" || flag == "--resume" => {
+            (Start::Resume(home.find(session)?), rest)
         }
         [flag] if flag == "-r" || flag == "--resume" => {
-            return Err(format!("{flag} needs a session id"));
+            return Err(format!("{flag} needs a session id or name"));
         }
         rest => (Start::New, rest),
     })

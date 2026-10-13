@@ -163,7 +163,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     let parent = ForkedFrom::read(&forked).map(|parent| parent.session);
     assert_eq!(parent, Some(id.to_string()));
 
-    // On disk, only the plain markers the launcher reads.
+    // On disk, only the plain files the launcher reads.
     let plain = |dir: &SessionDir| -> Vec<String> {
         let mut names: Vec<String> = fs::read_dir(dir.path())
             .into_iter()
@@ -173,7 +173,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
         names.sort();
         names
     };
-    assert_eq!(plain(&dir), ["saved", "started"]);
+    assert_eq!(plain(&dir), ["name", "saved", "started"]);
     assert_eq!(plain(&copy), ["saved"]);
     assert!(dir.is_saved() && copy.is_saved());
 
@@ -304,4 +304,37 @@ fn a_rewritten_session_keeps_its_rewritten_title() {
     let title = app.world().resource::<SessionTitle>().name.clone();
     assert_eq!(title.as_deref(), Some("key [REDACTED]"));
     fs::remove_dir_all(home.root()).ok();
+}
+
+/// The exits a session asked for.
+#[derive(Resource, Default)]
+struct Exits(Vec<ExitReason>);
+
+/// A name given in one session is kept in its directory, and `/resume`
+/// in another runs the session it names.
+#[test]
+fn resume_runs_the_session_a_name_names() {
+    let home = home("resume-name");
+    let Some(mut named) = running(&home, "1-1") else {
+        return;
+    };
+    named.world_mut().resource_mut::<SessionTitle>().name = Some("Parser".to_owned());
+    named.update();
+    let Some(mut app) = running(&home, "2-2") else {
+        return;
+    };
+    app.init_resource::<Exits>()
+        .add_observer(|exit: On<Exit>, mut exits: ResMut<Exits>| exits.0.push(exit.0.clone()));
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    for args in ["resume Parser", "resume Nobody"] {
+        world.trigger(rig_harness::commands::RunCommand::new(agent, args));
+    }
+    world.flush();
+    let exits = world.resource::<Exits>().0.clone();
+    let named: Option<SessionId> = "1-1".parse().ok();
+    let kept = named.as_ref().and_then(|id| home.session(id).name());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(kept.as_deref(), Some("Parser"));
+    assert_eq!(exits, [ExitReason::Switch(named)]);
 }

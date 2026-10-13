@@ -338,6 +338,46 @@ impl Home {
             }
         }
     }
+
+    /// The saved session `name_or_id` names: the one with that id when it
+    /// parses as one and is saved, else the only saved session with that
+    /// [`SessionDir::name`].
+    ///
+    /// # Errors
+    ///
+    /// When no saved session has that id or name, or several have that
+    /// name: the error lists their ids.
+    pub fn find(&self, name_or_id: &str) -> Result<SessionId, String> {
+        let wanted = name_or_id.trim();
+        if let Ok(id) = wanted.parse::<SessionId>()
+            && self.session(&id).is_saved()
+        {
+            return Ok(id);
+        }
+        let mut named: Vec<SessionId> = std::fs::read_dir(self.sessions())
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
+            .filter(|id| {
+                let dir = self.session(id);
+                dir.is_saved() && dir.name().as_deref() == Some(wanted)
+            })
+            .collect();
+        named.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        match named.as_slice() {
+            [id] => Ok(id.clone()),
+            [] => Err(format!("`{wanted}` names no saved session")),
+            several => Err(format!(
+                "`{wanted}` names {} saved sessions: {}; resume one by its id",
+                several.len(),
+                several
+                    .iter()
+                    .map(SessionId::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        }
+    }
 }
 
 /// A launcher's own directory, outside every session, which lives while
@@ -390,7 +430,7 @@ impl RunDir {
 /// named here: the markers of a session an agent started in
 /// ([`Self::started`]), logged to ([`Self::is_saved`]) and being deleted
 /// ([`Self::is_deleting`]), the text log, the lock of the launcher running
-/// it, its working directory and the session to switch to.
+/// it, its working directory, its name and the session to switch to.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
@@ -488,6 +528,44 @@ impl SessionDir {
     /// when it resumes the session from elsewhere.
     pub fn directory(&self) -> PathBuf {
         self.0.join("directory")
+    }
+
+    /// The name the user gave the session, kept as plain text in the
+    /// file `name` beside [`Self::directory`], so the launcher finds the
+    /// session by it ([`Home::find`]) without opening its store. Like the
+    /// directory, it is readable on disk when the store seals what it
+    /// keeps.
+    pub fn name(&self) -> Option<String> {
+        let text = std::fs::read_to_string(self.name_file()).ok()?;
+        let name = text.trim();
+        (!name.is_empty()).then(|| name.to_owned())
+    }
+
+    /// Names the session, or removes its name with `None` or a blank name.
+    /// The name is written beside the file and renamed over it, so a
+    /// reader sees the old name or the new one, never a part.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written or removed.
+    pub fn set_name(&self, name: Option<&str>) -> std::io::Result<()> {
+        let file = self.name_file();
+        match name.map(str::trim).filter(|name| !name.is_empty()) {
+            Some(name) => {
+                let part = self.0.join("name.part");
+                std::fs::write(&part, name)?;
+                std::fs::rename(part, file)
+            }
+            None => match std::fs::remove_file(file) {
+                Err(failure) if failure.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                removed => removed,
+            },
+        }
+    }
+
+    /// The plain-text file of [`Self::name`].
+    fn name_file(&self) -> PathBuf {
+        self.0.join("name")
     }
 
     /// Written by the agent before it exits with [`RELOAD_EXIT_CODE`] to

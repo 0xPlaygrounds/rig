@@ -56,7 +56,7 @@ impl Plugin for SessionsPlugin {
             .add_command("new", "Start a new session; this one is kept", new)
             .add_command(
                 "resume",
-                "Pick an earlier session to resume, or /resume <id>",
+                "Pick an earlier session to resume, or /resume <id or name>",
                 resume,
             )
             .add_command(
@@ -79,6 +79,12 @@ impl Plugin for SessionsPlugin {
                 )
                     .chain()
                     .after(WriteJournal),
+            )
+            .add_systems(
+                Last,
+                write_name
+                    .after(update_meta)
+                    .run_if(resource_changed::<SessionTitle>),
             );
         #[cfg(feature = "tui")]
         tui::add(app);
@@ -167,7 +173,8 @@ impl ResumeLabel {
 #[derive(Event, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct SwitchSession {
-    /// The [`SessionId`] to resume, or `None` for a new session.
+    /// The id or name of the session to resume ([`Home::find`]), or
+    /// `None` for a new session.
     pub session: Option<String>,
 }
 
@@ -370,8 +377,8 @@ fn new(
     commands.trigger(SwitchSession { session: None });
 }
 
-/// `/resume <id>` runs that session; without arguments, the terminal view
-/// lets the user pick one.
+/// `/resume <id or name>` runs that session; without arguments, the
+/// terminal view lets the user pick one.
 fn resume(
     In(args): In<CommandArgs>,
     #[cfg(feature = "tui")] (home, stores): (Res<RigHome>, Res<SessionStores>),
@@ -415,8 +422,22 @@ fn name(
     title.name = Some(name);
 }
 
+/// Keeps the session's name in its directory ([`SessionDir::set_name`]),
+/// where `rig --resume <name>` and `/resume <name>` find it, as its
+/// [`SessionTitle`] has it.
+fn write_name(paths: Option<Res<SessionPaths>>, title: Res<SessionTitle>) {
+    let Some(paths) = paths else {
+        return;
+    };
+    if paths.name() != title.name
+        && let Err(failure) = paths.set_name(title.name.as_deref())
+    {
+        error!("could not write the session's name: {failure}");
+    }
+}
+
 /// Names the session asked for: this one's [`SessionTitle`], another's
-/// listing cache, which keeps its counts.
+/// name file and listing cache, which keeps its counts.
 fn name_session(
     named: On<NameSession>,
     paths: Option<Res<SessionPaths>>,
@@ -433,7 +454,11 @@ fn name_session(
     let written = if dir.path().is_dir() {
         stores
             .open(&dir)
-            .and_then(|store| Ok(rename(&*store, name)?))
+            .and_then(|store| {
+                Ok(dir
+                    .set_name(Some(&name))
+                    .and_then(|()| rename(&*store, name))?)
+            })
             .map_err(|failure| failure.to_string())
     } else {
         Err("there is no such session".to_owned())
@@ -492,16 +517,11 @@ fn on_switch_session(
     commands.trigger(Exit(ExitReason::Switch(target)));
 }
 
-/// `id` when it names a session with an agent log other than the running
-/// one.
-fn checked(id: &str, home: &Home, current: &SessionDir) -> Result<SessionId, String> {
-    let id: SessionId = id.trim().parse().map_err(|failure| format!("{failure}."))?;
-    let dir = home.session(&id);
-    if dir.path() == current.path() {
+/// The saved session other than the running one that `name_or_id` names.
+fn checked(name_or_id: &str, home: &Home, current: &SessionDir) -> Result<SessionId, String> {
+    let id = home.find(name_or_id).map_err(|why| format!("{why}."))?;
+    if home.session(&id).path() == current.path() {
         return Err("That is this session.".to_owned());
-    }
-    if !dir.is_saved() {
-        return Err(format!("No saved session {id}."));
     }
     Ok(id)
 }

@@ -256,3 +256,55 @@ fn a_session_whose_lock_another_file_holds_runs_elsewhere() {
     std::fs::remove_dir_all(&root).ok();
     assert!(held && !idle && running && !after);
 }
+
+/// A saved session is found by its id, or by the name in its directory
+/// when no other saved session has it; an unsaved session, a name nobody
+/// has and a name two share are refused, the last with both ids.
+#[test]
+fn a_saved_session_is_found_by_its_id_or_its_own_name() {
+    let root = std::env::temp_dir().join(format!("rig-find-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let made: Vec<_> = (0..3).filter_map(|_| home.new_session().ok()).collect();
+    let [(parser, first), (tests, second), (unsaved, third)] = made.as_slice() else {
+        std::fs::remove_dir_all(&root).ok();
+        assert_eq!(made.len(), 3, "{made:?}");
+        return;
+    };
+    let written = [
+        first.mark_saved(),
+        second.mark_saved(),
+        first.set_name(Some(" parser\n")),
+        second.set_name(Some("tests")),
+        third.set_name(Some("tests")),
+    ];
+    let name = first.name();
+    let by_id = home.find(parser.as_str());
+    let by_name = home.find("parser");
+    let only_saved = home.find(" tests ");
+    let not_saved = home.find(unsaved.as_str());
+    let nobody = home.find("nobody");
+    let marked = third.mark_saved();
+    let shared = home.find("tests");
+    let unnamed = (
+        second.set_name(None),
+        second.set_name(Some("  ")),
+        second.name(),
+    );
+    let left = home.find("tests");
+    std::fs::remove_dir_all(&root).ok();
+
+    assert!(written.iter().all(Result::is_ok) && marked.is_ok());
+    assert_eq!(name.as_deref(), Some("parser"));
+    assert_eq!((by_id, by_name), (Ok(parser.clone()), Ok(parser.clone())));
+    assert_eq!(only_saved, Ok(tests.clone()));
+    assert!(not_saved.is_err() && nobody.is_err());
+    assert!(
+        shared
+            .as_ref()
+            .is_err_and(|why| why.contains(tests.as_str()) && why.contains(unsaved.as_str())),
+        "{shared:?}"
+    );
+    assert!(unnamed.0.is_ok() && unnamed.1.is_ok() && unnamed.2.is_none());
+    assert_eq!(left, Ok(unsaved.clone()));
+}
