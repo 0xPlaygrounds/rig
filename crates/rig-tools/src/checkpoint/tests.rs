@@ -64,7 +64,8 @@ fn git_in(repo: &Path, args: &[&str]) -> bool {
 
 /// In a git work tree, a write between two snapshots is one modified file
 /// with its content before and after and its diff, the earlier snapshot
-/// still has the old bytes, and nothing in the repository's `.git` changed.
+/// still has the old bytes, a scan is never compared with it, and nothing
+/// in the repository's `.git` changed.
 #[test]
 fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
     let repo = scratch("checkpoint-git");
@@ -114,19 +115,29 @@ fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
         first.content(&repo.join("a.txt")).and_then(Result::ok),
         Some(b"one\n".to_vec())
     );
+    // A scan of the same files, taken with nowhere to keep content, is
+    // never compared with a git snapshot.
+    let scan = snapshot(&Local, &repo, &Taking::default(), None);
+    let mixed = scan.and_then(|scan| scan.changes_since(&first));
+    assert_eq!(
+        mixed.map_err(|error| error.kind()).err(),
+        Some(std::io::ErrorKind::InvalidInput)
+    );
     assert_eq!(tree(&repo.join(".git")), objects);
     std::fs::remove_dir_all(repo).ok();
     std::fs::remove_dir_all(keep).ok();
 }
 
 /// A shell call wrapped in a checkpoint publishes the files it changed,
-/// found by a scan, each with the content it had before.
+/// created and deleted, found by a scan, each with the hash of the content
+/// it had before.
 #[cfg(unix)]
 #[test]
 fn a_checkpointed_shell_call_publishes_what_it_changed() {
     let dir = scratch("checkpoint-shell");
     std::fs::write(dir.join("kept.txt"), "same\n").ok();
     std::fs::write(dir.join("a.txt"), "old\n").ok();
+    std::fs::write(dir.join("gone.txt"), "bye\n").ok();
     let shell = Shell {
         launcher: Launcher::default().in_dir(&dir),
         ..Shell::default()
@@ -145,7 +156,7 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
     let published = PublishedContext::new();
     let kind = EffectKind::ToolCall {
         name: "shell".into(),
-        args: r#"{"command":"printf new > a.txt; printf b > b.txt"}"#.into(),
+        args: r#"{"command":"printf new > a.txt; printf b > b.txt; rm gone.txt"}"#.into(),
     };
     let scopes = vec![published.clone() as Arc<dyn std::any::Any + Send + Sync>];
     let outcome = futures::executor::block_on(serve_inline_with(&handler, kind, scopes));
@@ -175,15 +186,20 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
                 Some(content_hash(b"old\n"))
             ),
             (path("b.txt"), ChangeKind::Created, None),
+            (
+                path("gone.txt"),
+                ChangeKind::Deleted,
+                Some(content_hash(b"bye\n"))
+            ),
         ]
     );
     // The first "before" is kept, and against the last "after" it shows
-    // the call's two changes.
+    // the call's three changes.
     let kept = |snapshot: &Mutex<Option<_>>| snapshot.lock().ok().and_then(|it| it.clone());
     let since = kept(&newest)
         .zip(kept(&first))
         .and_then(|(last, first)| last.changes_since(&first).ok());
-    assert_eq!(since.map(|changes| changes.len()), Some(2));
+    assert_eq!(since.map(|changes| changes.len()), Some(3));
     std::fs::remove_dir_all(dir).ok();
 }
 
