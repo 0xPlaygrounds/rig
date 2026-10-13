@@ -4,7 +4,8 @@
 //! A [`Conversation`] holds its entries (each a [`Message`] with a
 //! [`MessageId`] that survives edits and, when it is not the user's own or
 //! the model's, an [`Author`]), its [`Aside`]s, which never reach a model,
-//! and why its last user message is unanswered ([`Halt`]). Every edit is a
+//! and why its last user message is unanswered ([`Halt`]); other
+//! continuations from one of its entries are [`Branch`]es kept as asides. Every edit is a
 //! [`Change`], applied by the same code whether it is made live or read
 //! back from a log, and kept in the conversation's outbox
 //! ([`unsaved`](Conversation::unsaved)) until whoever saves it takes it.
@@ -43,11 +44,13 @@ use crate::message::{ToolCall, UserContent};
 
 mod aside;
 mod author;
+mod branch;
 mod lineage;
 pub mod pairing;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
+pub use branch::{BRANCH, Branch, BranchError};
 pub use lineage::Lineage;
 
 use pairing::{Normalized, PairingError};

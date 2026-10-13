@@ -12,7 +12,7 @@ use std::ops::ControlFlow;
 use rig_core::conversation::{AsideId, Author, Change, Conversation, MessageId, Recorded};
 use serde_json::Value;
 
-use crate::blobs::{entries_mut, load_images, load_images_with};
+use crate::blobs::{load_images, load_images_with, messages_mut};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
 use crate::writer::Book;
 use crate::{FORMAT, LoadError, Repair, Rewrote, Stamp, Store};
@@ -231,10 +231,14 @@ pub(crate) fn fold_lines(
             Body::Meta(Meta::Header(_)) => None,
             Body::Change(mut recorded) => {
                 if how.images {
-                    for entry in entries_mut(&mut recorded.change) {
-                        if let Err(failure) = load_images_with(&mut entry.message, blob) {
+                    let loaded = messages_mut(&mut recorded.change, &mut |message| {
+                        if let Err(failure) = load_images_with(message, blob) {
                             lost.push(failure.to_string());
                         }
+                        Ok(())
+                    });
+                    if let Err(failure) = loaded {
+                        lost.push(failure.to_string());
                     }
                 }
                 let set = |id| (id, (stamp, recorded.by.clone()));
@@ -577,10 +581,11 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, Record)>, Loa
     read(store, log, |stamp, body| {
         let record = match body {
             Body::Change(mut recorded) => {
-                for entry in entries_mut(&mut recorded.change) {
-                    // A lost image is read without data, as by a restore.
-                    let _ = load_images(&mut entry.message, store);
-                }
+                // A lost image is read without data, as by a restore.
+                let _ = messages_mut(&mut recorded.change, &mut |message| {
+                    let _ = load_images(message, store);
+                    Ok(())
+                });
                 Record::Change(recorded)
             }
             Body::Meta(Meta::State { key, value }) => Record::State {

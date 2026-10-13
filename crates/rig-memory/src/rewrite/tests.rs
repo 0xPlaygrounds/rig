@@ -339,3 +339,62 @@ fn a_map_that_hits_a_field_name_keeps_the_message_readable() {
     assert!(text.message(&Place::File { name: "x" }, &mut message));
     assert_eq!(message, Message::user("my [R]"));
 }
+
+/// A branch kept as an aside is saved like the rest of the conversation:
+/// its image is a blob, read back whole, and a rewrite reaches its
+/// messages and title once each, so the active branch switched back to
+/// carries the rewrite.
+#[test]
+fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
+    let store = MemoryStore::default();
+    let by = Author::plugin("tree");
+    let mut conversation = load(&store, "main").expect("loaded");
+    let shown = Message::User {
+        content: vec![
+            UserContent::text("my key is sk-1"),
+            image("cG5n", ImageMediaType::PNG),
+        ],
+    };
+    conversation.extend([Message::user("Hi."), shown.clone()]);
+    conversation.push(Message::assistant("Seen sk-1."));
+    let branch = conversation.branch_off(1, "about sk-1", by.clone());
+    assert!(branch.is_ok(), "{branch:?}");
+    conversation.push(Message::assistant("Hello."));
+    save(&store, "main", &mut conversation).expect("saved");
+
+    let saved = logs(&store).remove("main").unwrap_or_default();
+    let text = String::from_utf8_lossy(&saved);
+    assert!(text.contains("blob:") && !text.contains("cG5n"), "{text}");
+    assert_eq!(store.blobs().map(|blobs| blobs.len()).ok(), Some(1));
+    let read = load(&store, "main").expect("read");
+    let stashed = read.branches().next().map(|(_, _, branch)| branch);
+    let first = stashed.as_ref().and_then(|branch| branch.entries.first());
+    assert_eq!(first.map(|entry| &entry.message), Some(&shown));
+
+    let rewritten = rewrite(&store, Author::plugin("redact"), &redact()).expect("rewritten");
+    assert_eq!(rewritten.logs.len(), 1);
+    assert_eq!(rewritten.blobs_removed, Vec::<String>::new());
+    let mut read = load(&store, "main").expect("read");
+    let (id, _, stashed) = read.branches().next().expect("a branch");
+    assert_eq!(stashed.title, "about [R]");
+    let texts: Vec<String> = stashed
+        .entries
+        .iter()
+        .map(|entry| serde_json::to_string(&entry.message).unwrap_or_default())
+        .collect();
+    assert!(texts.iter().all(|text| !text.contains("sk-1")), "{texts:?}");
+    assert!(
+        texts.iter().any(|text| text.contains("my key is [R]")),
+        "{texts:?}"
+    );
+    assert!(
+        texts.iter().any(|text| text.contains("cG5n")),
+        "the image is back"
+    );
+
+    read.switch_branch(id, "hello", by).expect("switched");
+    let back = read.messages().get(2);
+    assert_eq!(back, Some(&Message::assistant("Seen [R].")));
+    save(&store, "main", &mut read).expect("saved");
+    assert_eq!(load(&store, "main").expect("read"), read);
+}

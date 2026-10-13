@@ -11,7 +11,7 @@ use rig_core::conversation::{
 };
 
 use crate::format::{LogLines, Meta, SESSION, write_change, write_meta};
-use crate::rewrite::{Place, Rewrite, map_log};
+use crate::rewrite::{Place, Rewrite, map_aside, map_log};
 use crate::session::{Fold, Folded, fold, fold_lines, log_lines};
 use crate::{LoadError, MemoryStore, Stamp, Store};
 
@@ -228,7 +228,7 @@ fn carried(
                     stamp: *set,
                     by: by.as_ref(),
                 };
-                with.aside(&at, &mut aside);
+                map_aside(with, &at, &mut aside);
                 if Some(&aside) == was {
                     continue;
                 }
