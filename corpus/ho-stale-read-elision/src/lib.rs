@@ -10,7 +10,7 @@
 //! stubbed.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use corpus_few_shot_examples::ExampleSystems;
 use rig_harness::prelude::*;
@@ -100,7 +100,7 @@ struct FileResult {
     /// The path as the model wrote it.
     path: String,
     /// The path as the tool resolved it, in the agent's directory.
-    file: String,
+    file: PathBuf,
     access: Access,
 }
 
@@ -131,7 +131,7 @@ fn file_result(
     };
     Some(FileResult {
         call: result.call.clone(),
-        file: resolve(dir, &path).to_string_lossy().into_owned(),
+        file: resolve(dir, &path),
         path,
         access,
     })
@@ -156,20 +156,23 @@ fn stub(earlier: &FileResult, later: &[FileResult]) -> Option<String> {
         })
 }
 
-/// Stubs the `read` results of `messages` answering a call of `eligible`
-/// that a later result supersedes, the file tools working in `dir`; what
-/// it stubbed.
-fn elide_stale(messages: &mut [Message], eligible: &HashSet<CallId>, dir: Option<&Path>) -> Elided {
+/// The stub for each `read` result of `messages` answering a call of
+/// `eligible` that a later result supersedes, the file tools working in
+/// `dir`.
+fn stubs(
+    messages: &[Message],
+    eligible: &HashSet<CallId>,
+    dir: Option<&Path>,
+) -> HashMap<CallId, String> {
     let mut arguments = HashMap::new();
     let mut results = Vec::new();
-    for message in messages.iter() {
+    for message in messages {
         match message {
             Message::Assistant(reply) => {
-                for call in reply.content.iter().filter_map(|block| match block {
-                    AssistantContent::ToolCall(call) => Some(call),
-                    _ => None,
-                }) {
-                    arguments.insert(call.id.clone(), &call.function.arguments);
+                for block in &reply.content {
+                    if let AssistantContent::ToolCall(call) = block {
+                        arguments.insert(&call.id, &call.function.arguments);
+                    }
                 }
             }
             Message::User { content } => {
@@ -184,36 +187,13 @@ fn elide_stale(messages: &mut [Message], eligible: &HashSet<CallId>, dir: Option
             Message::System { .. } => {}
         }
     }
-    let stubs: HashMap<CallId, String> = (results.iter().enumerate())
+    (results.iter().enumerate())
         .filter(|(_, earlier)| eligible.contains(&earlier.call))
         .filter_map(|(at, earlier)| {
             let stub = stub(earlier, results.get(at + 1..)?)?;
             Some((earlier.call.clone(), stub))
         })
-        .collect();
-
-    let counter = HeuristicTokenCounter::default();
-    let tokens = |result: &ToolResult| {
-        let content = vec![UserContent::ToolResult(result.clone())];
-        counter.count(&Message::User { content })
-    };
-    let mut elided = Elided::default();
-    for message in messages {
-        let Message::User { content } = message else {
-            continue;
-        };
-        for item in content {
-            if let UserContent::ToolResult(result) = item
-                && let Some(stub) = stubs.get(&result.call)
-            {
-                let before = tokens(result);
-                result.content = vec![ToolResultContent::text(stub.clone())];
-                elided.results += 1;
-                elided.tokens += before.saturating_sub(tokens(result));
-            }
-        }
-    }
-    elided
+        .collect()
 }
 
 /// The ids of the calls whose results `messages` hold.
@@ -229,8 +209,15 @@ fn answered(messages: &[Message]) -> HashSet<CallId> {
     results.collect()
 }
 
+/// About how many tokens `result` takes.
+fn tokens(result: &ToolResult) -> usize {
+    let content = vec![UserContent::ToolResult(result.clone())];
+    HeuristicTokenCounter::default().count(&Message::User { content })
+}
+
 /// Stubs each turn request's superseded reads from before the turn began,
-/// and keeps what it stubbed on the agent.
+/// each changed entry an edit by this plugin that keeps its id, and keeps
+/// what it stubbed on the agent.
 fn elide(
     mut calls: Query<
         (&mut ModelRequest, &CallOf, &ForAgent),
@@ -244,34 +231,41 @@ fn elide(
         let (Ok(turn), Ok((conversation, dir))) = (turns.get(turn), agents.get(agent)) else {
             continue;
         };
-        let first = conversation.start_of(turn.first_message);
-        let before = conversation.messages().get(..first);
-        let eligible = answered(before.unwrap_or_default());
-        let dir = dir.map(|WorkDir(dir)| dir.as_path());
         let Some(history) = &mut call.history else {
             continue;
         };
-        let mut messages = history.messages().to_vec();
-        let elided = elide_stale(&mut messages, &eligible, dir);
-        replace_changed(history, messages, Author::plugin("stale-read-elision"));
-        commands.entity(agent).try_insert(elided);
-    }
-}
-
-/// Puts each of `messages` that differs from `history`'s message at its
-/// index in its place, as an edit by `by` that keeps the entry's id.
-fn replace_changed(
-    history: &mut rig_harness::rig_core::conversation::Conversation,
-    messages: Vec<Message>,
-    by: Author,
-) {
-    for (at, message) in messages.into_iter().enumerate() {
-        if let Some(mut entry) = history.entry(at)
-            && entry.message != message
-        {
-            entry.message = message;
-            history.splice(at..=at, [entry], by.clone());
+        let first = conversation.start_of(turn.first_message);
+        let eligible = answered(conversation.messages().get(..first).unwrap_or_default());
+        let stubs = stubs(
+            history.messages(),
+            &eligible,
+            dir.map(|WorkDir(dir)| dir.as_path()),
+        );
+        let mut elided = Elided::default();
+        for at in 0..history.messages().len() {
+            let Some(mut entry) = history.entry(at) else {
+                continue;
+            };
+            let Message::User { content } = &mut entry.message else {
+                continue;
+            };
+            let mut changed = false;
+            for item in content {
+                if let UserContent::ToolResult(result) = item
+                    && let Some(stub) = stubs.get(&result.call)
+                {
+                    let before = tokens(result);
+                    result.content = vec![ToolResultContent::text(stub.clone())];
+                    elided.results += 1;
+                    elided.tokens += before.saturating_sub(tokens(result));
+                    changed = true;
+                }
+            }
+            if changed {
+                history.splice(at..=at, [entry], Author::plugin("stale-read-elision"));
+            }
         }
+        commands.entity(agent).try_insert(elided);
     }
 }
 
