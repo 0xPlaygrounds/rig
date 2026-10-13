@@ -8,11 +8,20 @@ description = "Plugin corpus (one-conversation fresh held-out): OC-08: 08. Revie
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The review's "Edit in $EDITOR" choice, which runs the editor with the
+# terminal view's terminal.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The summary's policy, its saved state and automatic compaction.
+rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
