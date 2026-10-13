@@ -1,1 +1,862 @@
-//! OC-25: 25. Standalone session editor program (one-conversation fresh held-out spec; to be implemented).
+//! `session-edit`: a plain program on rig's library crates (rig-core,
+//! rig-memory, and the std-only `RIG_HOME` layout of `rig`), with no Bevy,
+//! no harness and no plugins, that opens a saved rig session and shows,
+//! shrinks, cuts, renames or exports it.
+//!
+//! ```text
+//! session-edit <session> list
+//! session-edit <session> shrink --over 4000 [--in-place | --as <name>]
+//! session-edit <session> drop <from>..<to>  [--in-place | --as <name>]
+//! session-edit <session> rename <name>      [--in-place]
+//! session-edit <session> export --markdown <file>
+//! ```
+//!
+//! `<session>` is a session's directory, its id in the default session
+//! store (`$RIG_HOME/sessions`), or its name there. An edit is saved as a
+//! new session (`--as`, the default), forked with rig-memory's [`fork`]
+//! and listed for `rig --resume <id>`, or in place (`--in-place`), after a
+//! copy of the session's directory to `<dir>.bak`.
+
+use std::collections::HashSet;
+use std::fmt;
+use std::fs;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+
+use rig::harness_protocol::{Home, SessionDir, SessionId};
+use rig_core::conversation::{Author, Conversation, Entry, pairing};
+use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
+use rig_memory::{DirStore, Files, LoadError, Repair, SavedAgent, Session, fork, now_ms};
+use serde_json::{Map, Value};
+
+/// The saved value an agent's model is kept under: the type path of
+/// rig-ecs's `ModelChoice`, which saves it as `"vendor/model"`.
+pub const MODEL_KEY: &str = "rig_ecs::model::ModelChoice";
+
+/// The saved values rig-subagents names a spawned agent by: the type paths
+/// of its `Subtask` and `Helper`, each saved as the title.
+pub const SUBAGENT_NAME_KEYS: [&str; 2] = ["rig_subagents::Subtask", "rig_subagents::Helper"];
+
+/// The file of a session's store that rig-sessions lists it by: its name
+/// (`name`), the start of its first message (`title`), labels and when it
+/// was updated.
+pub const META: &str = "meta.json";
+
+/// The lines a shrunk tool result keeps at each end.
+pub const KEEP_LINES: usize = 20;
+
+/// Who the edits are recorded as made by.
+const AUTHOR: &str = "session-edit";
+
+/// How the program is called.
+pub const USAGE: &str = "usage: session-edit <session> list
+       session-edit <session> shrink --over <chars> [--in-place | --as <name>]
+       session-edit <session> drop <from>..<to> [--in-place | --as <name>]
+       session-edit <session> rename <name> [--in-place]
+       session-edit <session> export --markdown <file>
+<session> is a session directory, a session id or a session name.";
+
+/// Why the program stopped: said once, on stderr, with a non-zero exit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Error(pub String);
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<io::Error> for Error {
+    fn from(error: io::Error) -> Self {
+        Self(error.to_string())
+    }
+}
+
+impl From<LoadError> for Error {
+    fn from(error: LoadError) -> Self {
+        Self(error.to_string())
+    }
+}
+
+impl From<String> for Error {
+    fn from(why: String) -> Self {
+        Self(why)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(why: &str) -> Self {
+        Self(why.to_owned())
+    }
+}
+
+/// Where an edit goes.
+enum Target {
+    /// Over the session, after a copy to `<dir>.bak`.
+    InPlace,
+    /// A new session, named so, or after the session.
+    As(Option<String>),
+}
+
+/// What the program was asked.
+enum Command {
+    List,
+    Shrink(usize),
+    Drop(usize, usize),
+    Rename(String),
+    Export(PathBuf),
+}
+
+/// Runs `session-edit` with `args` (without the program's name) against
+/// the sessions of `home`, writing what it did to `out`.
+///
+/// # Errors
+///
+/// When the arguments are wrong, the session cannot be found or read
+/// whole (missing, cut short, in another format), an edit does not fit
+/// the conversation, or a write fails; nothing is written then.
+pub fn run(args: &[String], home: &Home, out: &mut dyn Write) -> Result<(), Error> {
+    let [session, command, rest @ ..] = args else {
+        return Err(USAGE.into());
+    };
+    let mut target = None;
+    let mut over = None;
+    let mut markdown = None;
+    let mut words = Vec::new();
+    let mut rest = rest.iter();
+    while let Some(arg) = rest.next() {
+        let mut value = || {
+            rest.next()
+                .ok_or_else(|| Error(format!("{arg} needs a value")))
+        };
+        match arg.as_str() {
+            "--in-place" => target = Some(Target::InPlace),
+            "--as" => target = Some(Target::As(Some(value()?.clone()))),
+            "--over" => {
+                let chars = value()?;
+                let chars = chars
+                    .parse()
+                    .map_err(|_| format!("--over {chars}: not a number"))?;
+                over = Some(chars);
+            }
+            "--markdown" => markdown = Some(PathBuf::from(value()?)),
+            _ => words.push(arg.as_str()),
+        }
+    }
+    let command = match (command.as_str(), words.as_slice()) {
+        ("list", []) => Command::List,
+        ("shrink", []) => Command::Shrink(over.ok_or("shrink needs --over <chars>")?),
+        ("drop", [range]) => {
+            let (from, to) = parse_range(range)?;
+            Command::Drop(from, to)
+        }
+        ("rename", [name]) => {
+            target = target.or_else(|| Some(Target::As(Some((*name).to_owned()))));
+            Command::Rename((*name).to_owned())
+        }
+        ("export", []) => Command::Export(markdown.ok_or("export needs --markdown <file>")?),
+        _ => return Err(USAGE.into()),
+    };
+    let opened = open(locate(home, session)?)?;
+    let write = |out: &mut dyn Write, text: &str| writeln!(out, "{text}").map_err(Error::from);
+    match command {
+        Command::List => write(out, &list(&opened)),
+        Command::Export(file) => {
+            fs::write(&file, markdown_of(&opened))
+                .map_err(|why| format!("cannot write {}: {why}", file.display()))?;
+            write(out, &format!("exported to {}", file.display()))
+        }
+        edit => {
+            let target = target.unwrap_or(Target::As(None));
+            let report = save(home, opened, target, |session, meta| match &edit {
+                Command::Shrink(over) => Ok(shrink_all(session, *over)),
+                Command::Drop(from, to) => drop_range(main_of(session)?, *from, *to),
+                Command::Rename(name) => {
+                    meta.insert("name".to_owned(), Value::String(name.clone()));
+                    Ok(vec![format!("named the session {name}")])
+                }
+                Command::List | Command::Export(_) => Ok(Vec::new()),
+            })?;
+            write(out, &report.join("\n"))
+        }
+    }
+}
+
+/// `<from>..<to>`, both kept in the range, or one index.
+fn parse_range(range: &str) -> Result<(usize, usize), Error> {
+    let number = |text: &str| {
+        text.trim()
+            .parse::<usize>()
+            .map_err(|_| Error(format!("{range}: not a range like 2..4")))
+    };
+    match range.split_once("..") {
+        Some((from, to)) => Ok((number(from)?, number(to.trim_start_matches('='))?)),
+        None => number(range).map(|at| (at, at)),
+    }
+}
+
+/// A session found and read whole.
+struct Opened {
+    dir: SessionDir,
+    store: DirStore,
+    session: Session,
+    /// Its listing ([`META`]); empty when it has none.
+    meta: Map<String, Value>,
+}
+
+/// The session `arg` names: a directory, an id under `home`, or the name
+/// of one session under `home`.
+fn locate(home: &Home, arg: &str) -> Result<SessionDir, Error> {
+    let path = Path::new(arg);
+    if path.is_dir() {
+        return Ok(SessionDir::at(path));
+    }
+    if let Ok(id) = arg.parse::<SessionId>()
+        && home.session(&id).path().is_dir()
+    {
+        return Ok(home.session(&id));
+    }
+    let entries = fs::read_dir(home.sessions()).into_iter().flatten();
+    let named: Vec<SessionDir> = entries
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
+        .map(|id: SessionId| home.session(&id))
+        .filter(|dir| {
+            let store = DirStore::open(dir.path());
+            store.is_ok_and(|store| name_of(&meta_of(&store)) == Some(arg))
+        })
+        .collect();
+    match named.as_slice() {
+        [dir] => Ok(dir.clone()),
+        [] => Err(Error(format!(
+            "no session {arg}: it is no directory, nor the id or name of a session in {}",
+            home.sessions().display()
+        ))),
+        many => Err(Error(format!(
+            "{} sessions are named {arg}; give its id",
+            many.len()
+        ))),
+    }
+}
+
+/// Reads the session in `dir` whole, strictly: a session cut short, in
+/// another format or holding no conversation is refused.
+fn open(dir: SessionDir) -> Result<Opened, Error> {
+    let shown = dir.path().display().to_string();
+    let refuse = |why: String| Error(format!("cannot read the session {shown}: {why}"));
+    if dir.is_deleting() {
+        return Err(refuse("it is being deleted".to_owned()));
+    }
+    let store = DirStore::open(dir.path()).map_err(|why| refuse(why.to_string()))?;
+    let session = Session::read(&store).map_err(|why| refuse(why.to_string()))?;
+    if let Some(torn) = session
+        .repairs
+        .iter()
+        .find(|repair| matches!(repair, Repair::TornTail { .. }))
+    {
+        return Err(refuse(format!("{torn}; the file is truncated")));
+    }
+    if session.agents.is_empty() {
+        return Err(refuse("it holds no saved conversation".to_owned()));
+    }
+    let meta = meta_of(&store);
+    Ok(Opened {
+        dir,
+        store,
+        session,
+        meta,
+    })
+}
+
+/// The listing of the session in `store`; empty when it has none.
+fn meta_of(store: &dyn Files) -> Map<String, Value> {
+    let read = store.read_file(META).ok();
+    let meta = read.and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+    match meta {
+        Some(Value::Object(meta)) => meta,
+        _ => Map::new(),
+    }
+}
+
+/// What the session is listed as: its name, else the start of its first
+/// message.
+fn name_of(meta: &Map<String, Value>) -> Option<&str> {
+    let text = |key: &str| {
+        meta.get(key)
+            .and_then(Value::as_str)
+            .filter(|t| !t.is_empty())
+    };
+    text("name").or_else(|| text("title"))
+}
+
+/// The main agent: the first the user started that is not retired.
+fn main_agent(session: &Session) -> Option<&SavedAgent> {
+    let mut roots = session.agents.iter().filter(|a| a.parent.is_none());
+    roots.find(|agent| !agent.retired)
+}
+
+/// The main agent's conversation, to change it.
+fn main_of(session: &mut Session) -> Result<&mut Conversation, Error> {
+    let id = main_agent(session).map(|agent| agent.id.clone());
+    let agent = id.and_then(|id| session.agent_mut(&id));
+    let agent = agent.ok_or("the session has no main conversation")?;
+    Ok(&mut agent.conversation)
+}
+
+/// What a spawned agent is called: its task's title, else its id.
+fn agent_name(agent: &SavedAgent) -> &str {
+    let titled = SUBAGENT_NAME_KEYS
+        .iter()
+        .find_map(|key| agent.state.get(*key));
+    titled.and_then(Value::as_str).unwrap_or(&agent.id)
+}
+
+/// The `list` output.
+fn list(opened: &Opened) -> String {
+    let session = &opened.session;
+    let main = main_agent(session);
+    let messages = main
+        .map(|agent| agent.conversation.messages())
+        .unwrap_or_default();
+    let model = main.and_then(|agent| agent.state.get(MODEL_KEY)?.as_str());
+    let mut lines = vec![
+        format!("session: {}", opened.dir.path().display()),
+        format!("name: {}", name_of(&opened.meta).unwrap_or("(unnamed)")),
+        format!("model: {}", model.unwrap_or("(unknown)")),
+        format!("messages: {}", messages.len()),
+    ];
+    for (at, message) in messages.iter().enumerate() {
+        let tools = tool_names(message);
+        let tools = if tools.is_empty() {
+            String::new()
+        } else {
+            format!("  {}", tools.join(", "))
+        };
+        let (role, size) = (role_of(message), size_of(message));
+        lines.push(format!("{at:>4}  {role:<11} {size:>8} chars{tools}"));
+    }
+    let subagents: Vec<&SavedAgent> = session
+        .agents
+        .iter()
+        .filter(|agent| agent.parent.is_some())
+        .collect();
+    if !subagents.is_empty() {
+        lines.push(format!("subagents: {}", subagents.len()));
+    }
+    for agent in subagents {
+        let count = agent.conversation.messages().len();
+        let gone = if agent.retired { ", retired" } else { "" };
+        lines.push(format!("  {}: {count} messages{gone}", agent_name(agent)));
+    }
+    lines.join("\n")
+}
+
+/// What `message` is: `user`, `assistant`, `system`, or `tool result` for
+/// a user message of tool results alone.
+fn role_of(message: &Message) -> &'static str {
+    match message {
+        Message::System { .. } => "system",
+        Message::Assistant(_) => "assistant",
+        Message::User { content }
+            if !content.is_empty()
+                && content
+                    .iter()
+                    .all(|part| matches!(part, UserContent::ToolResult(_))) =>
+        {
+            "tool result"
+        }
+        Message::User { .. } => "user",
+    }
+}
+
+/// The tools `message` calls, or whose results it holds.
+fn tool_names(message: &Message) -> Vec<String> {
+    match message {
+        Message::Assistant(turn) => turn
+            .tool_calls()
+            .map(|call| call.function.name.as_str().to_owned())
+            .collect(),
+        Message::User { content } => content
+            .iter()
+            .filter_map(|part| match part {
+                UserContent::ToolResult(result) => Some(result.name.as_str().to_owned()),
+                _ => None,
+            })
+            .collect(),
+        Message::System { .. } => Vec::new(),
+    }
+}
+
+/// The characters of what `message` says: its text, its tool calls' names
+/// and arguments, its tool results; media count none.
+fn size_of(message: &Message) -> usize {
+    let chars = |text: &str| text.chars().count();
+    match message {
+        Message::System { content } => chars(content),
+        Message::User { content } => content
+            .iter()
+            .map(|part| match part {
+                UserContent::Text(text) => chars(&text.text),
+                UserContent::ToolResult(result) => result_size(&result.content),
+                _ => 0,
+            })
+            .sum(),
+        Message::Assistant(turn) => turn
+            .content
+            .iter()
+            .map(|part| match part {
+                AssistantContent::Text(text) => chars(&text.text),
+                AssistantContent::Reasoning(reasoning) => chars(&reasoning.text),
+                AssistantContent::ToolCall(call) => {
+                    let arguments = Value::Object(call.function.arguments.clone());
+                    chars(call.function.name.as_str()) + chars(&arguments.to_string())
+                }
+                _ => 0,
+            })
+            .sum(),
+    }
+}
+
+/// The characters of a tool result's text and JSON.
+fn result_size(content: &[ToolResultContent]) -> usize {
+    content
+        .iter()
+        .map(|item| match item {
+            ToolResultContent::Text(text) => text.text.chars().count(),
+            ToolResultContent::Json { value } => value.to_string().chars().count(),
+            ToolResultContent::Image(_) => 0,
+        })
+        .sum()
+}
+
+/// Shrinks every tool result over `over` characters in every agent's
+/// conversation; what it did.
+fn shrink_all(session: &mut Session, over: usize) -> Vec<String> {
+    let mut report = Vec::new();
+    for agent in &mut session.agents {
+        let (results, lines) = shrink(&mut agent.conversation, over);
+        if results > 0 {
+            let whose = match agent.parent {
+                None => "the conversation".to_owned(),
+                Some(_) => format!("subagent {}", agent_name(agent)),
+            };
+            report.push(format!(
+                "shrank {results} tool results of {whose}, removing {lines} lines"
+            ));
+        }
+    }
+    if report.is_empty() {
+        report.push(format!(
+            "no tool result is over {over} characters and {} lines",
+            2 * KEEP_LINES
+        ));
+    }
+    report
+}
+
+/// Replaces each text of each tool result over `over` characters with its
+/// first and last [`KEEP_LINES`] lines and a marker, as one change; the
+/// results shrunk and the lines removed.
+fn shrink(conversation: &mut Conversation, over: usize) -> (usize, usize) {
+    let (mut results, mut lines) = (0, 0);
+    conversation.edit_each(Author::plugin(AUTHOR), |entry| {
+        let Message::User { content } = entry.message else {
+            return None;
+        };
+        let mut changed = false;
+        let content = content
+            .iter()
+            .map(|part| match part {
+                UserContent::ToolResult(result) if result_size(&result.content) > over => {
+                    let mut result = result.clone();
+                    let mut cut_any = false;
+                    for item in &mut result.content {
+                        if let ToolResultContent::Text(text) = item
+                            && let Some((short, removed)) = cut_lines(&text.text)
+                        {
+                            text.text = short;
+                            lines += removed;
+                            cut_any = true;
+                        }
+                    }
+                    results += usize::from(cut_any);
+                    changed |= cut_any;
+                    UserContent::ToolResult(result)
+                }
+                part => part.clone(),
+            })
+            .collect();
+        changed.then_some(Message::User { content })
+    });
+    (results, lines)
+}
+
+/// `text` as its first and last [`KEEP_LINES`] lines around a marker of
+/// how many were removed; `None` when it has no more lines than kept.
+pub fn cut_lines(text: &str) -> Option<(String, usize)> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let removed = lines.len().checked_sub(2 * KEEP_LINES).filter(|n| *n > 0)?;
+    let marker = format!("[{removed} lines removed by session-edit]");
+    let head = lines.iter().take(KEEP_LINES).copied();
+    let tail = lines.iter().skip(KEEP_LINES + removed).copied();
+    let kept: Vec<&str> = head.chain([marker.as_str()]).chain(tail).collect();
+    Some((kept.join("\n"), removed))
+}
+
+/// The ids of the calls `message` makes or answers.
+fn call_ids(message: &Message) -> Vec<CallId> {
+    match message {
+        Message::Assistant(turn) => turn.tool_calls().map(|call| call.id.clone()).collect(),
+        Message::User { content } => content
+            .iter()
+            .filter_map(|part| match part {
+                UserContent::ToolResult(result) => Some(result.call.clone()),
+                _ => None,
+            })
+            .collect(),
+        Message::System { .. } => Vec::new(),
+    }
+}
+
+/// `message` without the calls and results of `calls`, and what was taken
+/// out of it; `None` when it has none of them.
+fn strip(message: &Message, calls: &HashSet<CallId>) -> Option<(Message, Vec<String>)> {
+    let mut taken = Vec::new();
+    let stripped = match message {
+        Message::Assistant(turn) => {
+            let content = turn.content.iter().filter(|part| match part {
+                AssistantContent::ToolCall(call) if calls.contains(&call.id) => {
+                    let name = call.function.name.as_str();
+                    taken.push(format!("tool call {name} ({})", call.id.wire()));
+                    false
+                }
+                _ => true,
+            });
+            let content = content.cloned().collect();
+            Message::Assistant(turn.clone().with_content(content))
+        }
+        Message::User { content } => {
+            let content = content.iter().filter(|part| match part {
+                UserContent::ToolResult(result) if calls.contains(&result.call) => {
+                    let name = result.name.as_str();
+                    taken.push(format!("result of {name} ({})", result.call.wire()));
+                    false
+                }
+                _ => true,
+            });
+            Message::User {
+                content: content.cloned().collect(),
+            }
+        }
+        Message::System { .. } => return None,
+    };
+    (!taken.is_empty()).then_some((stripped, taken))
+}
+
+/// Whether `message` says nothing.
+fn is_empty(message: &Message) -> bool {
+    match message {
+        Message::Assistant(turn) => turn.content.is_empty(),
+        Message::User { content } => content.is_empty(),
+        Message::System { content } => content.is_empty(),
+    }
+}
+
+/// Removes messages `from..=to` of `conversation`, and every call whose
+/// result they held and every result of a call they held, wherever it
+/// is, as one change; what it removed. Refused, changing nothing, when
+/// the range is outside the conversation or the rest would not pair.
+fn drop_range(
+    conversation: &mut Conversation,
+    from: usize,
+    to: usize,
+) -> Result<Vec<String>, Error> {
+    let messages = conversation.messages();
+    let len = messages.len();
+    if from > to || to >= len {
+        return Err(Error(format!(
+            "{from}..{to} is not a range of the conversation's {len} messages (0..{})",
+            len.saturating_sub(1)
+        )));
+    }
+    let dropped = messages.get(from..=to).unwrap_or_default();
+    let calls: HashSet<CallId> = dropped.iter().flat_map(call_ids).collect();
+    let mut report = Vec::new();
+    let mut touched: Option<(usize, usize)> = None;
+    let mut after: Vec<Option<Entry>> = Vec::with_capacity(len);
+    for (at, message) in messages.iter().enumerate() {
+        let entry = conversation.entry(at);
+        let change = if (from..=to).contains(&at) {
+            let tools = tool_names(message).join(", ");
+            let tools = if tools.is_empty() {
+                tools
+            } else {
+                format!(" of {tools}")
+            };
+            report.push(format!(
+                "removed message {at} ({}{tools})",
+                role_of(message)
+            ));
+            Some(None)
+        } else if let Some((stripped, taken)) = strip(message, &calls) {
+            report.extend(
+                taken
+                    .iter()
+                    .map(|what| format!("removed {what} from message {at}")),
+            );
+            if is_empty(&stripped) {
+                report.push(format!("removed message {at}, which held nothing else"));
+                Some(None)
+            } else {
+                Some(entry.clone().map(|entry| Entry {
+                    message: stripped,
+                    ..entry
+                }))
+            }
+        } else {
+            None
+        };
+        match change {
+            Some(replaced) => {
+                touched = Some(touched.map_or((at, at), |(first, _)| (first, at)));
+                after.push(replaced);
+            }
+            None => after.push(entry),
+        }
+    }
+    let Some((first, last)) = touched else {
+        return Ok(report);
+    };
+    let rest: Vec<Message> = after
+        .iter()
+        .flatten()
+        .map(|entry| entry.message.clone())
+        .collect();
+    pairing::validate(&rest).map_err(|why| {
+        format!(
+            "dropping {from}..{to} would leave the conversation broken ({why}); drop a wider range"
+        )
+    })?;
+    let with: Vec<Entry> = after
+        .into_iter()
+        .skip(first)
+        .take(last + 1 - first)
+        .flatten()
+        .collect();
+    conversation.splice(first..=last, with, Author::plugin(AUTHOR));
+    Ok(report)
+}
+
+/// Saves the edit `edit` of `opened` to `target`; what it did, then where
+/// it went. Nothing is written when the edit is refused.
+fn save(
+    home: &Home,
+    opened: Opened,
+    target: Target,
+    edit: impl Fn(&mut Session, &mut Map<String, Value>) -> Result<Vec<String>, Error>,
+) -> Result<Vec<String>, Error> {
+    let Opened {
+        dir,
+        store,
+        mut session,
+        mut meta,
+    } = opened;
+    match target {
+        Target::InPlace => {
+            if dir.runs_elsewhere() {
+                return Err(
+                    "rig is running this session; quit it before editing it in place".into(),
+                );
+            }
+            let mut report = edit(&mut session, &mut meta)?;
+            let backup = backup(dir.path())?;
+            session.save(&store)?;
+            write_meta(&store, meta)?;
+            report.push(format!(
+                "saved in place; the session as it was is in {}",
+                backup.display()
+            ));
+            Ok(report)
+        }
+        Target::As(name) => {
+            let name = name.unwrap_or_else(|| {
+                let base = name_of(&meta).map(str::to_owned);
+                let base = base.or_else(|| dir.id().map(|id| id.to_string()));
+                format!("{} (edited)", base.unwrap_or_else(|| "session".to_owned()))
+            });
+            let (id, new) = home.new_session()?;
+            let made = (|| {
+                let to = DirStore::open(new.path())?;
+                fork(&store, &to, None)?;
+                if let Ok(directory) = fs::read(dir.directory()) {
+                    fs::write(new.directory(), directory)?;
+                }
+                let mut session = Session::read(&to)?;
+                meta.insert("name".to_owned(), Value::String(name.clone()));
+                let report = edit(&mut session, &mut meta)?;
+                session.save(&to)?;
+                write_meta(&to, meta)?;
+                new.mark_saved()?;
+                Ok::<_, Error>(report)
+            })();
+            let mut report = match made {
+                Ok(report) => report,
+                Err(why) => {
+                    fs::remove_dir_all(new.path()).ok();
+                    return Err(why);
+                }
+            };
+            report.push(format!(
+                "saved as session {id} ({name}); resume it with: rig --resume {id}"
+            ));
+            Ok(report)
+        }
+    }
+}
+
+/// Keeps `meta` as the session's listing, updated now.
+fn write_meta(store: &dyn Files, mut meta: Map<String, Value>) -> Result<(), Error> {
+    meta.insert("updated".to_owned(), Value::from(now_ms()));
+    let bytes = serde_json::to_vec_pretty(&Value::Object(meta)).map_err(io::Error::from)?;
+    store.write_file(META, &bytes)?;
+    Ok(())
+}
+
+/// Copies the directory `dir` to `<dir>.bak`, replacing an older copy;
+/// the copy's path.
+fn backup(dir: &Path) -> Result<PathBuf, Error> {
+    let mut name = dir.as_os_str().to_owned();
+    name.push(".bak");
+    let backup = PathBuf::from(name);
+    if backup.exists() {
+        fs::remove_dir_all(&backup)?;
+    }
+    copy_dir(dir, &backup).map_err(|why| {
+        format!(
+            "cannot copy {} to {}: {why}",
+            dir.display(),
+            backup.display()
+        )
+    })?;
+    Ok(backup)
+}
+
+/// Copies the directory `from`, and everything in it, to `to`.
+fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+/// The session as Markdown: a heading per message, tool calls as fenced
+/// JSON and tool results as fenced text; the main conversation, then each
+/// subagent's.
+fn markdown_of(opened: &Opened) -> String {
+    let session = &opened.session;
+    let mut text = String::new();
+    let name = name_of(&opened.meta).unwrap_or("Session");
+    let main = main_agent(session);
+    text.push_str(&format!("# {name}\n\n"));
+    if let Some(model) = main.and_then(|agent| agent.state.get(MODEL_KEY)?.as_str()) {
+        text.push_str(&format!("Model: `{model}`\n\n"));
+    }
+    if let Some(main) = main {
+        conversation_markdown(&mut text, main.conversation.messages());
+    }
+    for agent in session.agents.iter().filter(|agent| agent.parent.is_some()) {
+        text.push_str(&format!("# Subagent: {}\n\n", agent_name(agent)));
+        conversation_markdown(&mut text, agent.conversation.messages());
+    }
+    text
+}
+
+/// Appends `messages` to `text`, a heading each.
+fn conversation_markdown(text: &mut String, messages: &[Message]) {
+    for (at, message) in messages.iter().enumerate() {
+        let role = role_of(message);
+        let mut role_title = role.to_owned();
+        if let Some(first) = role_title.get_mut(..1) {
+            first.make_ascii_uppercase();
+        }
+        text.push_str(&format!("## {at} · {role_title}\n\n"));
+        match message {
+            Message::System { content } => paragraph(text, content),
+            Message::User { content } => {
+                for part in content {
+                    match part {
+                        UserContent::Text(said) => paragraph(text, &said.text),
+                        UserContent::ToolResult(result) => {
+                            let error = if result.is_error { " (failed)" } else { "" };
+                            paragraph(
+                                text,
+                                &format!("Result of `{}`{error}:", result.name.as_str()),
+                            );
+                            let body: Vec<String> = result
+                                .content
+                                .iter()
+                                .map(|item| match item {
+                                    ToolResultContent::Text(said) => said.text.clone(),
+                                    ToolResultContent::Json { value } => {
+                                        serde_json::to_string_pretty(value).unwrap_or_default()
+                                    }
+                                    ToolResultContent::Image(_) => "(image)".to_owned(),
+                                })
+                                .collect();
+                            fenced(text, "text", &body.join("\n"));
+                        }
+                        _ => paragraph(text, "*(media)*"),
+                    }
+                }
+            }
+            Message::Assistant(turn) => {
+                for part in &turn.content {
+                    match part {
+                        AssistantContent::Text(said) => paragraph(text, &said.text),
+                        AssistantContent::Reasoning(reasoning) => {
+                            paragraph(text, &format!("*Reasoning:* {}", reasoning.text));
+                        }
+                        AssistantContent::ToolCall(call) => {
+                            paragraph(
+                                text,
+                                &format!("Tool call `{}`:", call.function.name.as_str()),
+                            );
+                            let arguments = Value::Object(call.function.arguments.clone());
+                            let json = serde_json::to_string_pretty(&arguments).unwrap_or_default();
+                            fenced(text, "json", &json);
+                        }
+                        _ => paragraph(text, "*(provider item)*"),
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn paragraph(text: &mut String, said: &str) {
+    text.push_str(said);
+    text.push_str("\n\n");
+}
+
+/// Appends `body` fenced as `language`, with a fence longer than any run
+/// of backticks in it.
+fn fenced(text: &mut String, language: &str, body: &str) {
+    let longest = body
+        .split(|c| c != '`')
+        .map(str::len)
+        .max()
+        .unwrap_or_default();
+    let fence = "`".repeat(longest.max(2) + 1);
+    text.push_str(&format!("{fence}{language}\n{body}\n{fence}\n\n"));
+}
+
+#[cfg(test)]
+mod tests;
