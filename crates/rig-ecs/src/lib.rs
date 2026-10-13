@@ -125,8 +125,8 @@ pub struct WriteJournal;
 /// [`journal::Committed`]; its [`SessionLog`] logs to the app's
 /// [`journal::SessionStore`], if any, once [`journal::JournalPlugin`]
 /// restored the session from it. It adds Bevy's `TimePlugin` unless the app has it, for the
-/// clock a retried model call waits on, and then runs `First` and
-/// `PreUpdate` on Bevy's single-threaded executor. It sets no error
+/// clock a retried model call waits on, and then runs `First`, `PreUpdate`
+/// and `Last` on Bevy's single-threaded executor. It sets no error
 /// handler: that is the application's choice.
 pub struct AgentPlugin;
 
@@ -135,14 +135,17 @@ impl Plugin for AgentPlugin {
         if !app.is_plugin_added::<TimePlugin>() {
             // An app without a clock of its own is a small headless one, not
             // a game: its `First` and `PreUpdate` hold little but the clock's
-            // systems, too little for Bevy's multi-threaded executor, which
-            // would wake the task pool for them every frame.
+            // systems, and its `Last` little but the journal's, too little
+            // for Bevy's multi-threaded executor, which would wake the task
+            // pool for them every frame (a frame that saves a conversation
+            // paid more in thread handoffs than in saving).
             let single = |schedule: &mut Schedule| {
                 schedule.set_executor(SingleThreadedExecutor::new());
             };
             app.add_plugins(TimePlugin)
                 .edit_schedule(First, single)
-                .edit_schedule(PreUpdate, single);
+                .edit_schedule(PreUpdate, single)
+                .edit_schedule(Last, single);
         }
         app.init_resource::<effects::Effects>()
             .init_resource::<SessionLog>()
