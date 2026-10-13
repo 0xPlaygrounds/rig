@@ -29,7 +29,32 @@ const TRASH: &str = ".rig-trash";
 /// as files are written. Logs stay open for appending once written.
 pub struct DirStore {
     dir: PathBuf,
+    files: DirFiles,
     open: Mutex<HashMap<String, File>>,
+}
+
+/// [`Files`] kept as plain files under a directory, each name its path
+/// there, such as data kept outside any session. Folders are made as files
+/// are written, and nothing is written before.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirFiles(PathBuf);
+
+impl DirFiles {
+    /// The files under `dir`, which need not exist yet.
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        Self(dir.into())
+    }
+
+    /// The directory itself.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+
+    fn file(&self, name: &str) -> io::Result<PathBuf> {
+        check_name(name)?;
+        refuse_part(name)?;
+        Ok(self.0.join(name))
+    }
 }
 
 impl DirStore {
@@ -49,6 +74,7 @@ impl DirStore {
             return Err(LoadError::OldLayout);
         }
         Ok(Self {
+            files: DirFiles::new(dir.join(FILES)),
             dir,
             open: Mutex::new(HashMap::new()),
         })
@@ -67,12 +93,6 @@ impl DirStore {
         check_leaf(name)?;
         refuse_part(name)?;
         Ok(self.dir.join(BLOBS).join(name))
-    }
-
-    fn file(&self, name: &str) -> io::Result<PathBuf> {
-        check_name(name)?;
-        refuse_part(name)?;
-        Ok(self.dir.join(FILES).join(name))
     }
 }
 
@@ -114,7 +134,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     fs::rename(&part, path)
 }
 
-impl Files for DirStore {
+impl Files for DirFiles {
     fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
         write_atomic(&self.file(name)?, bytes)
     }
@@ -138,7 +158,7 @@ impl Files for DirStore {
 
     fn files(&self) -> io::Result<Vec<String>> {
         let mut files = Vec::new();
-        let mut dirs = vec![(self.dir.join(FILES), String::new())];
+        let mut dirs = vec![(self.0.clone(), String::new())];
         while let Some((dir, prefix)) = dirs.pop() {
             for name in names(&dir)? {
                 if name.ends_with(PART) {
@@ -154,6 +174,28 @@ impl Files for DirStore {
             }
         }
         Ok(files)
+    }
+}
+
+impl Files for DirStore {
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.files.write_file(name, bytes)
+    }
+
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.files.append_file(name, bytes)
+    }
+
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.files.read_file(name)
+    }
+
+    fn remove_file(&self, name: &str) -> io::Result<()> {
+        self.files.remove_file(name)
+    }
+
+    fn files(&self) -> io::Result<Vec<String>> {
+        self.files.files()
     }
 }
 

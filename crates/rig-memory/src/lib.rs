@@ -19,7 +19,8 @@
 //! [`fork`] copies a session as it was before one of its messages, and
 //! [`history`] and [`as_of`] read how a conversation got where it is.
 //! [`MemoryStore`] keeps a session in memory; with feature `fs`,
-//! [`DirStore`] keeps it in a directory. Reading is strict: a session it
+//! [`DirStore`] keeps it in a directory, and [`DirFiles`] keeps plain
+//! named files under one. Reading is strict: a session it
 //! cannot read whole is refused, and nothing is written.
 //!
 //! ```
@@ -58,7 +59,7 @@ pub use compaction::{
     apply_summary, summarized_prefix, summary_author, summary_in,
 };
 #[cfg(feature = "fs")]
-pub use dir::DirStore;
+pub use dir::{DirFiles, DirStore};
 pub use format::{FORMAT, LoadError, Repair, SESSION, Stamp, now_ms};
 pub use session::{Record, SavedAgent, Session, Unreadable, as_of, fork, history, load, save};
 pub use store::{Files, MemoryStore, Store, check_name};
