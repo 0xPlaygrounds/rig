@@ -408,8 +408,11 @@ fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange
 /// `last` is the snapshot after the previous call, shared between the
 /// calls one host checkpoints, and taken as this call's "before" when it is
 /// there: a host clears it when something it does not see may have
-/// changed the files since. Snapshots run on a thread of their own. A call
-/// that streams its answer is served as it is, with nothing published.
+/// changed the files since. `first`, shared the same way, keeps the first
+/// "before" taken, the files as they were before the first of those calls,
+/// so the host can tell what all of them changed or restore a file.
+/// Snapshots run on a thread of their own. A call that streams its answer
+/// is served as it is, with nothing published.
 #[derive(Clone, Debug)]
 pub struct Checkpointed {
     /// The handler that serves the call.
@@ -423,6 +426,8 @@ pub struct Checkpointed {
     pub keep: Option<PathBuf>,
     /// The snapshot after the last call, if it still holds.
     pub last: Arc<Mutex<Option<Snapshot>>>,
+    /// The snapshot before the first call, once one was taken.
+    pub first: Arc<Mutex<Option<Snapshot>>>,
 }
 
 impl Checkpointed {
@@ -458,6 +463,12 @@ impl Serve for Checkpointed {
             Some(last) => Some(last),
             None => self.take(None).await.map(|(_, now)| now),
         };
+        if let Some(before) = &before {
+            self.first
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get_or_insert_with(|| before.clone());
+        }
         let reply = self.inner.handle(kind, dispatch).await;
         if !matches!(reply, Reply::Outcome(_)) {
             return reply;

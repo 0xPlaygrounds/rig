@@ -121,12 +121,14 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
     };
     let workspace: Arc<dyn Workspace> = Arc::new(Local);
     let last = Arc::new(Mutex::new(None));
+    let first = Arc::new(Mutex::new(None));
     let handler = ErasedHandler::new(Checkpointed {
         inner: ErasedHandler::new(ToolAdapter::new(shell)),
         workspace,
         root: dir.clone(),
         keep: None,
         last: last.clone(),
+        first: first.clone(),
     });
     let published = PublishedContext::new();
     let kind = EffectKind::ToolCall {
@@ -157,6 +159,12 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
             (path("b.txt"), ChangeKind::Created, None),
         ]
     );
-    assert!(last.lock().is_ok_and(|last| last.is_some()));
+    // The first "before" is kept, and against the last "after" it shows
+    // the call's two changes.
+    let kept = |snapshot: &Mutex<Option<_>>| snapshot.lock().ok().and_then(|it| it.clone());
+    let since = kept(&last)
+        .zip(kept(&first))
+        .and_then(|(last, first)| last.changes_since(&first).ok());
+    assert_eq!(since.map(|changes| changes.len()), Some(2));
     std::fs::remove_dir_all(dir).ok();
 }
