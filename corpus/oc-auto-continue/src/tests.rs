@@ -1,0 +1,200 @@
+use std::path::PathBuf;
+
+use rig_coding_tools::WriteTool;
+use rig_core::completion::{FinishReason, Usage};
+use rig_core::message::Message as Said;
+use rig_core::operation::Finish;
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness_test_support::{
+    Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, log_ended,
+    log_tool_outputs, reply, run_until, scripted_models,
+};
+use rig_telemetry::{TurnSpending, UsagePlugin};
+use serde_json::json;
+
+use super::*;
+
+/// The end of a reply, stopped for `reason`, with `input` and `output`
+/// tokens.
+fn end(reason: FinishReason, input: u64, output: u64) -> MockStreamEvent {
+    MockStreamEvent::FinalResponse(Finish {
+        usage: Usage::new().input_tokens(input).output_tokens(output),
+        reason: Some(reason),
+        ..Finish::default()
+    })
+}
+
+/// A reply of `text` cut at the output limit.
+fn cut_text(text: &str) -> Vec<MockStreamEvent> {
+    vec![
+        MockStreamEvent::text(text),
+        end(FinishReason::Length, 100, 20),
+    ]
+}
+
+/// One turn asking `ask` of the scripted `model`, run to its end in a
+/// project at `root`.
+fn run_turn(model: &MockCompletionModel, root: PathBuf, ask: &str) -> (App, Entity) {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(scripted_models([("test/model", model)]))
+        .insert_resource(ProjectRoot(root))
+        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, UsagePlugin))
+        .add_plugins(AutoContinuePlugin)
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs)
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    collect::<Notice>(&mut app);
+    let agent = app
+        .world_mut()
+        .spawn((Agent, ModelChoice("test/model".to_owned())))
+        .id();
+    app.finish();
+    app.update();
+    app.world_mut()
+        .trigger(Deliver::new(agent, ask, DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    (app, agent)
+}
+
+/// The assistant messages of `agent`'s conversation.
+fn answers(world: &World, agent: Entity) -> Vec<AssistantMessage> {
+    let messages = world
+        .get::<Conversation>(agent)
+        .map(|it| it.messages().to_vec());
+    let messages = messages.unwrap_or_default().into_iter();
+    messages
+        .filter_map(|message| match message {
+            Said::Assistant(answer) => Some(answer),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The text blocks of `answer`, joined.
+fn text_of(answer: &AssistantMessage) -> String {
+    answer
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A scratch project directory beside the test binary.
+fn project(name: &str) -> PathBuf {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let root = exe.with_file_name(name);
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(&root).ok();
+    root
+}
+
+#[test]
+fn a_cut_reply_is_continued_and_joined_at_the_seam() {
+    let model = MockCompletionModel::from_stream_turns([
+        cut_text("The three steps are: 1. parse 2. val"),
+        vec![
+            MockStreamEvent::text("2. validate 3. emit."),
+            end(FinishReason::Stop, 130, 10),
+        ],
+    ]);
+    let (mut app, agent) = run_turn(&model, project("auto-continue-text"), "Steps?");
+
+    let requests = model.requests();
+    let second = format!("{:?}", requests.get(1));
+    assert_eq!(requests.len(), 2);
+    assert!(second.contains("1. parse 2. val"), "{second}");
+    assert!(
+        second.contains("Continue exactly where you stopped"),
+        "{second}"
+    );
+    let answers = answers(app.world(), agent);
+    let texts: Vec<String> = answers.iter().map(text_of).collect();
+    assert_eq!(
+        texts,
+        ["The three steps are: 1. parse 2. validate 3. emit."]
+    );
+    // The turn's usage is both requests'.
+    let mut spent = app.world_mut().query::<&TurnSpending>();
+    let spent: Vec<_> = spent.iter(app.world()).map(|it| it.0).collect();
+    let tokens = spent
+        .first()
+        .map(|it| (it.calls, it.tokens.input_tokens, it.tokens.output_tokens));
+    assert_eq!(tokens, Some((2, Some(230), Some(30))), "{spent:?}");
+}
+
+#[test]
+fn a_cut_write_is_never_run_and_asked_for_again() {
+    let content = "line 1\nline 2\nline 3\n";
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_name_delta("w1", "write"),
+            MockStreamEvent::tool_call_arguments_delta(
+                "w1",
+                r#"{"path": "big.txt", "content": "line 1\nli"#,
+            ),
+            end(FinishReason::Length, 100, 20),
+        ],
+        calls(
+            "w2",
+            "write",
+            json!({ "path": "big.txt", "content": content }),
+        ),
+        reply("Wrote big.txt."),
+    ]);
+    let root = project("auto-continue-write");
+    let (app, agent) = run_turn(&model, root.clone(), "Write big.txt.");
+
+    let written = std::fs::read_to_string(root.join("big.txt")).unwrap_or_default();
+    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(written, content);
+    let ran: Vec<&String> = app.world().resource::<ToolOutputs>().0.keys().collect();
+    assert_eq!(ran, ["w2"]);
+    let stored: Vec<String> = answers(app.world(), agent)
+        .iter()
+        .flat_map(|answer| answer.content.clone())
+        .filter_map(|block| match block {
+            AssistantContent::ToolCall(call) => Some(call.id.to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(stored, ["w2"]);
+    let second = format!("{:?}", model.requests().get(1));
+    assert!(second.contains("several `edit` calls"), "{second}");
+}
+
+#[test]
+fn a_reply_cut_too_often_is_kept_with_a_notice() {
+    let model = MockCompletionModel::from_stream_turns(
+        ["alpha ", "bravo ", "charlie ", "delta "].map(cut_text),
+    );
+    let (app, agent) = run_turn(&model, project("auto-continue-limit"), "Go on.");
+
+    assert_eq!(model.request_count(), 4);
+    let texts: Vec<String> = answers(app.world(), agent).iter().map(text_of).collect();
+    assert_eq!(texts, ["alpha bravo charlie delta "]);
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let told = format!("{notices:?}");
+    assert!(told.contains("kept as it is"), "{told}");
+}
+
+#[test]
+fn the_overlap_at_a_seam_is_said_once() {
+    assert_eq!(join_at_seam("a b c", "d e"), "a b cd e");
+    assert_eq!(
+        join_at_seam("ends with café", "café au lait"),
+        "ends with café au lait"
+    );
+    // Shorter than the least overlap: kept.
+    assert_eq!(join_at_seam("hello", "lo"), "hellolo");
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(AutoContinuePlugin);
+}
