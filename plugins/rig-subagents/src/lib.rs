@@ -93,11 +93,16 @@ mod tools;
 
 pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
 
-/// The plugin's stage systems, by stage.
+/// The plugin's stage systems, by stage. After a restart, once every gate
+/// had its say and before the kernel's own answers
+/// ([`GateSystems::Fallback`]), the plugin stops the restored turn of an
+/// agent that owed reports, so its requests are reported as interrupted,
+/// unless a plugin claimed any of the turn's restored work in Gate: held
+/// it, decided it, superseded it or ended the turn. A plugin that lets
+/// that work carry on does one of those, not only remove `Interrupted`.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SubagentSystems {
-    /// Refuses a request deeper than [`SubagentPolicy`] allows, and stops
-    /// the restored turn of an agent that owed reports.
+    /// Refuses a request deeper than [`SubagentPolicy`] allows.
     Gate,
 }
 pub use tools::{MESSAGE, TASK, WAIT};

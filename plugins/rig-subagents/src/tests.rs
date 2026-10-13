@@ -42,6 +42,16 @@ struct Session {
 impl Session {
     /// A session on `store`; a new parent answered by `model`, when given.
     fn new(store: &MemoryStore, model: Option<&MockCompletionModel>) -> Self {
+        Self::with(store, model, |_| {})
+    }
+
+    /// As [`Session::new`], with what `configure` adds before the first
+    /// frame.
+    fn with(
+        store: &MemoryStore,
+        model: Option<&MockCompletionModel>,
+        configure: impl FnOnce(&mut App),
+    ) -> Self {
         let (mut app, wakes) = app_on(store);
         app.insert_resource(Models(Connector::new(Catalog::default())))
             .add_plugins((AgentPlugin, JournalPlugin))
@@ -69,6 +79,7 @@ impl Session {
             let choice = ModelChoice(connection.spec.reference());
             app.world_mut().spawn((Agent, connection, choice));
         }
+        configure(&mut app);
         app.finish();
         app.update();
         let world = app.world_mut();
@@ -213,6 +224,13 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     assert!(names, "{brief}");
 }
 
+/// Holds every model call of a turn, as an approval nobody gave.
+fn hold_turn_calls(calls: Query<Entity, (Undecided, With<TurnCall>)>, mut commands: Commands) {
+    for call in &calls {
+        commands.spawn(HoldOf(call));
+    }
+}
+
 #[test]
 fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_interrupted() {
     let store = MemoryStore::default();
@@ -220,12 +238,9 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     // stops before any is sent.
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&store, Some(&model));
-    let hold = |calls: Query<Entity, (Undecided, With<TurnCall>)>, mut commands: Commands| {
-        for call in &calls {
-            commands.spawn(HoldOf(call));
-        }
-    };
-    session.app.add_systems(AgentPass, hold.in_set(Stage::Gate));
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
     let asked = Message::user("Find a name.");
     let added = commit_message(session.app.world_mut(), session.parent, asked);
     assert!(added.is_ok(), "{added:?}");
@@ -643,4 +658,37 @@ fn a_helper_for_one_job_retires_after_its_turn_and_is_not_restored() {
         .iter(world)
         .count();
     assert_eq!(agents, 1, "only the parent comes back");
+}
+
+#[test]
+fn a_restored_subagent_whose_work_a_plugin_claims_is_not_stopped() {
+    for claimed in [false, true] {
+        let store = MemoryStore::default();
+        let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+        let mut session = Session::new(&store, Some(&model));
+        session
+            .app
+            .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+        let asked = commit_message(
+            session.app.world_mut(),
+            session.parent,
+            Message::user("Go."),
+        );
+        assert!(asked.is_ok(), "{asked:?}");
+        session.task("ta");
+        session.app.update();
+        drop(session);
+
+        // A plugin that asks the person first holds the restored calls.
+        let session = Session::with(&store, None, |app| {
+            if claimed {
+                app.add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+            }
+        });
+        let reports = session.to(session.parent);
+        let interrupted = reports
+            .iter()
+            .any(|(request, _, text)| *request == "ta" && text.starts_with("Interrupted"));
+        assert_eq!(interrupted, !claimed, "{reports:?}");
+    }
 }

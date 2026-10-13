@@ -184,8 +184,9 @@ pub enum ReviewSystems {
 }
 
 /// The positions around [`Stage::Gate`], in this order: `FromRecord`,
-/// every gate (`in_set(Stage::Gate)`), then `After`. A system that fails in
-/// either closes Gate for the pass, as a gate does.
+/// every gate (`in_set(Stage::Gate)`), `After`, then `Fallback`. A system
+/// that fails in `FromRecord` or `After` closes Gate for the pass, as a
+/// gate does.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GateSystems {
     /// Decides effects from a record of an earlier run of them, such as a
@@ -206,6 +207,12 @@ pub enum GateSystems {
     /// its own; once none is, it refuses them all if one was refused or
     /// answered with an error, else releases its holds.
     After,
+    /// The kernel's own answers once every plugin had its say, such as an
+    /// [`Interrupted`] call's. A default plugin's fallback goes between
+    /// (`.after(GateSystems::After).before(GateSystems::Fallback)`), so it
+    /// sees what every plugin decided or held and the kernel has not
+    /// answered yet.
+    Fallback,
 }
 
 /// The kernel's systems that open a stage, before any of its own.
@@ -612,6 +619,7 @@ pub(crate) fn build(app: &mut App) {
                 GateSystems::FromRecord,
                 Stage::Gate,
                 GateSystems::After,
+                GateSystems::Fallback,
                 Enter(Stage::Start),
                 Stage::Start,
             )
@@ -643,6 +651,7 @@ pub(crate) fn build(app: &mut App) {
                 GateSystems::FromRecord,
                 Stage::Gate,
                 GateSystems::After,
+                GateSystems::Fallback,
                 Stage::Start,
             )
                 .distributive_run_if(moved_since_quiet),
@@ -677,10 +686,7 @@ pub(crate) fn build(app: &mut App) {
                     .after(GateSystems::FromRecord)
                     .before(Stage::Gate)
                     .run_if(moved_since_quiet),
-                answer_interrupted
-                    .after(GateSystems::After)
-                    .before(Enter(Stage::Start))
-                    .run_if(moved_since_quiet),
+                answer_interrupted.in_set(GateSystems::Fallback),
                 apply_decisions.in_set(Enter(Stage::Start)),
                 (accept, carry_on_accepted, start)
                     .chain()

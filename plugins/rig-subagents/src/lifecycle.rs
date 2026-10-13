@@ -6,8 +6,7 @@ use rig_core::completion::Message;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
-    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, SubagentSystems,
-    Subtask, answered,
+    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, Subtask, answered,
 };
 use rig_harness::prelude::*;
 
@@ -28,7 +27,12 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
-        .add_systems(AgentPass, stop_restored.in_set(SubagentSystems::Gate));
+        .add_systems(
+            AgentPass,
+            stop_restored
+                .after(GateSystems::After)
+                .before(GateSystems::Fallback),
+        );
 }
 
 /// An agent as the subagent tools see it.
@@ -330,16 +334,36 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
     }
 }
 
+/// On a restored turn [`stop_restored`] looked at.
+#[derive(Component)]
+pub(super) struct Considered;
+
 /// After a restart, a restored agent that owed reports stays idle: its
 /// restored turn is stopped before anything of it starts, and its end
-/// reports each request as interrupted.
+/// reports each request as interrupted, unless a plugin claimed any of the
+/// turn's restored work in Gate: held, decided or superseded one of its
+/// calls, or ended the turn. It looks at each restored turn once, after
+/// every gate of the pass its calls are admitted in, before the kernel's
+/// own answers.
 pub(super) fn stop_restored(
-    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
+    turns: Query<
+        (Entity, &TurnOf, &Calls),
+        (With<Restored>, Without<TurnOutcome>, Without<Considered>),
+    >,
+    calls: Query<(Has<Admitted>, Has<Holds>, Has<SupersededBy>, &Decision)>,
     open: Query<&OpenRequests>,
     mut commands: Commands,
 ) {
-    for (turn, &TurnOf(agent)) in &turns {
-        if open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
+    for (turn, &TurnOf(agent), of) in &turns {
+        let calls: Vec<_> = calls.iter_many(of.iter()).flatten().collect();
+        if !calls.iter().any(|&(admitted, ..)| admitted) {
+            continue;
+        }
+        commands.entity(turn).insert(Considered);
+        let claimed = calls
+            .iter()
+            .any(|&(_, held, superseded, decision)| held || superseded || decision.is_decided());
+        if !claimed && open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
             let stopped = TurnOutcome::Stopped(Some(RESTARTED.to_owned()));
             commands.entity(turn).insert(stopped);
         }
