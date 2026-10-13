@@ -16604,6 +16604,7 @@ dependencies = [
  "rig",
  "rig-activity",
  "rig-basics",
+ "rig-compaction",
  "rig-core",
  "rig-ecs",
  "rig-harness-test-support",
