@@ -1,0 +1,722 @@
+//! Rewriting a session's saved history in place: [`rewrite`] maps every
+//! value a session keeps (the messages, asides and saved values of each
+//! record, and every file of its store) through a [`Rewrite`], keeping
+//! each record where it is with its stamp. [`Strings`] maps every string,
+//! as a redaction or a path remap does; [`Messages`] maps only messages;
+//! [`Keep`] maps nothing.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::io;
+
+use rig_core::completion::Message;
+use rig_core::conversation::{Aside, Author, Change, Conversation, Lineage};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::blobs::{named_blobs, store_change};
+use crate::format::{Body, Header, LogLines, Meta, Rewrote, parse, write_change, write_meta};
+use crate::session::{Fold, Folded, fold_lines, log_lines};
+use crate::writer::set_aside_tail;
+use crate::{LoadError, MemoryStore, Stamp, Store, now_ms};
+
+/// Where a value being rewritten is kept.
+#[derive(Clone, Copy, Debug)]
+pub enum Place<'a> {
+    /// In a record of the log `log` (an agent's id or
+    /// [`SESSION`](crate::SESSION)), stamped `stamp`, made by `by`.
+    Record {
+        /// The log.
+        log: &'a str,
+        /// The record's stamp.
+        stamp: Stamp,
+        /// Who made the record.
+        by: Option<&'a Author>,
+    },
+    /// In memory only: an unsaved aside of `log`'s live conversation.
+    Unsaved {
+        /// The log.
+        log: &'a str,
+    },
+    /// In the store's file `name` (a JSON file, a line of a JSON-lines
+    /// file, a text file), or a host's scratch file.
+    File {
+        /// The file.
+        name: &'a str,
+    },
+}
+
+/// A change of values wherever a session keeps them. Each hook changes its
+/// argument in place and says whether it did; the defaults leave it, but
+/// for [`file`](Self::file), which reads a JSON file through
+/// [`value`](Self::value), each line of a JSON-lines file through `value`
+/// (a line that is not JSON through [`text`](Self::text)), other UTF-8
+/// through `text`, and leaves anything else. A hook cannot change what
+/// kind a record is, drop one or add one, so a rewritten log keeps its
+/// shape. Shared between owners, so it takes `&self`.
+pub trait Rewrite: Send + Sync {
+    /// A message of a push, a splice or a reset. Images are as stored:
+    /// `blob:<sha256>.<ext>` in a push or a splice, inline in a reset;
+    /// inline data put in a push or a splice is stored as a blob.
+    fn message(&self, at: &Place<'_>, message: &mut Message) -> bool {
+        let _ = (at, message);
+        false
+    }
+
+    /// An aside put or replaced, saved or (for a host's live value)
+    /// unsaved.
+    fn aside(&self, at: &Place<'_>, aside: &mut Aside) -> bool {
+        let _ = (at, aside);
+        false
+    }
+
+    /// A saved value under `key`, or a JSON value of a file (`key` is its
+    /// name). A value made `null` is removed.
+    fn value(&self, at: &Place<'_>, key: &str, value: &mut Value) -> bool {
+        let _ = (at, key, value);
+        false
+    }
+
+    /// Text of a file that is not JSON.
+    fn text(&self, at: &Place<'_>, text: &mut String) -> bool {
+        let _ = (at, text);
+        false
+    }
+
+    /// The file `name`, whole.
+    fn file(&self, name: &str, bytes: &mut Vec<u8>) -> bool {
+        map_file(self, name, bytes)
+    }
+}
+
+/// Every string, keys included, of every value: messages and asides through
+/// their serde form, saved values, text and every file. Redaction and path
+/// remapping are this. A string that is part of a message's or an aside's
+/// form, such as a field name or a tag, is left as it is where changing it
+/// would make the value unreadable.
+///
+/// ```
+/// use rig_core::conversation::Author;
+/// use rig_core::message::Message;
+/// use rig_memory::{MemoryStore, Session, Strings, load, rewrite, save};
+///
+/// let store = MemoryStore::default();
+/// let mut conversation = load(&store, "main")?;
+/// conversation.push(Message::user("my key is sk-123"));
+/// save(&store, "main", &mut conversation)?;
+/// let redact = Strings(|text: &mut String| {
+///     let hit = text.contains("sk-123");
+///     if hit {
+///         *text = text.replace("sk-123", "[REDACTED]");
+///     }
+///     hit
+/// });
+/// let rewritten = rewrite(&store, Author::plugin("redact"), &redact)?;
+/// assert_eq!(rewritten.logs.len(), 1);
+/// let main = Session::read(&store)?.agents.remove(0);
+/// assert_eq!(main.conversation.messages(), [Message::user("my key is [REDACTED]")]);
+/// # Ok::<(), rig_memory::LoadError>(())
+/// ```
+pub struct Strings<F: Fn(&mut String) -> bool + Send + Sync>(pub F);
+
+impl<F: Fn(&mut String) -> bool + Send + Sync> Rewrite for Strings<F> {
+    fn message(&self, _: &Place<'_>, message: &mut Message) -> bool {
+        map_serde(message, &self.0)
+    }
+
+    fn aside(&self, _: &Place<'_>, aside: &mut Aside) -> bool {
+        map_serde(aside, &self.0)
+    }
+
+    fn value(&self, _: &Place<'_>, _: &str, value: &mut Value) -> bool {
+        map_strings(value, &self.0)
+    }
+
+    fn text(&self, _: &Place<'_>, text: &mut String) -> bool {
+        (self.0)(text)
+    }
+}
+
+/// Only messages; files are left.
+pub struct Messages<F: Fn(&mut Message) -> bool + Send + Sync>(pub F);
+
+impl<F: Fn(&mut Message) -> bool + Send + Sync> Rewrite for Messages<F> {
+    fn message(&self, _: &Place<'_>, message: &mut Message) -> bool {
+        (self.0)(message)
+    }
+
+    fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
+        false
+    }
+}
+
+/// Nothing: a plain [`fork`](crate::fork).
+pub struct Keep;
+
+impl Rewrite for Keep {
+    fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
+        false
+    }
+}
+
+/// Maps every string (keys included) of `value` through `f`; whether any
+/// changed.
+pub fn map_strings(value: &mut Value, f: &dyn Fn(&mut String) -> bool) -> bool {
+    match value {
+        Value::String(text) => f(text),
+        Value::Array(items) => items
+            .iter_mut()
+            .fold(false, |changed, item| map_strings(item, f) | changed),
+        Value::Object(map) => {
+            let mut changed = map
+                .values_mut()
+                .fold(false, |changed, item| map_strings(item, f) | changed);
+            let renamed: Vec<(String, String)> = map
+                .keys()
+                .filter_map(|key| {
+                    let mut new = key.clone();
+                    f(&mut new).then(|| (key.clone(), new))
+                })
+                .collect();
+            if !renamed.is_empty() {
+                let renamed: HashMap<String, String> = renamed.into_iter().collect();
+                *map = std::mem::take(map)
+                    .into_iter()
+                    .map(|(key, item)| match renamed.get(&key) {
+                        Some(new) => (new.clone(), item),
+                        None => (key, item),
+                    })
+                    .collect();
+                changed = true;
+            }
+            changed
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+/// Maps every string of `item`'s serde form through `f`, keys included,
+/// and reads it back; whether it changed. When the whole map does not read
+/// back (it changed a field name or a tag), each string is mapped on its
+/// own and kept where it reads back.
+fn map_serde<T: Serialize + DeserializeOwned>(
+    item: &mut T,
+    f: &dyn Fn(&mut String) -> bool,
+) -> bool {
+    let Ok(mut value) = serde_json::to_value(&*item) else {
+        return false;
+    };
+    if !map_strings(&mut value, f) {
+        return false;
+    }
+    if let Ok(read) = T::deserialize(&value) {
+        *item = read;
+        return true;
+    }
+    let Ok(mut kept) = serde_json::to_value(&*item) else {
+        return false;
+    };
+    let mut leaves = Vec::new();
+    strings_of(&kept, &mut Vec::new(), f, &mut leaves);
+    let mut changed = false;
+    for leaf in leaves {
+        let mut trial = kept.clone();
+        if map_leaf(&mut trial, &leaf, f)
+            && let Ok(read) = T::deserialize(&trial)
+        {
+            *item = read;
+            kept = trial;
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// A step from a JSON value to one inside it.
+#[derive(Clone)]
+enum Step {
+    Index(usize),
+    Key(String),
+}
+
+/// A string of a JSON value: the value at `path`, or with `key`, the name
+/// of the last step of `path`.
+struct Leaf {
+    path: Vec<Step>,
+    key: bool,
+}
+
+/// Every string of `value` that `f` changes, each after the strings inside
+/// it, so changing one leaves the paths of the rest.
+fn strings_of(
+    value: &Value,
+    path: &mut Vec<Step>,
+    f: &dyn Fn(&mut String) -> bool,
+    leaves: &mut Vec<Leaf>,
+) {
+    let changes = |text: &str| f(&mut text.to_owned());
+    match value {
+        Value::String(text) if changes(text) => leaves.push(Leaf {
+            path: path.clone(),
+            key: false,
+        }),
+        Value::Array(items) => {
+            for (at, item) in items.iter().enumerate() {
+                path.push(Step::Index(at));
+                strings_of(item, path, f, leaves);
+                path.pop();
+            }
+        }
+        Value::Object(map) => {
+            for (key, item) in map {
+                path.push(Step::Key(key.clone()));
+                strings_of(item, path, f, leaves);
+                if changes(key) {
+                    leaves.push(Leaf {
+                        path: path.clone(),
+                        key: true,
+                    });
+                }
+                path.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Maps the string `leaf` names in `value` through `f`; whether it changed.
+fn map_leaf(value: &mut Value, leaf: &Leaf, f: &dyn Fn(&mut String) -> bool) -> bool {
+    let (last, parent) = match leaf.path.split_last() {
+        Some((last, parent)) if leaf.key => (Some(last), parent),
+        _ => (None, leaf.path.as_slice()),
+    };
+    let mut at = value;
+    for step in parent {
+        let next = match step {
+            Step::Index(index) => at.get_mut(*index),
+            Step::Key(key) => at.get_mut(key.as_str()),
+        };
+        let Some(next) = next else {
+            return false;
+        };
+        at = next;
+    }
+    match (last, at) {
+        (None, Value::String(text)) => f(text),
+        (Some(Step::Key(key)), Value::Object(map)) => {
+            let mut new = key.clone();
+            if !f(&mut new) || map.contains_key(&new) || !map.contains_key(key) {
+                return false;
+            }
+            *map = std::mem::take(map)
+                .into_iter()
+                .map(|(old, item)| match old == *key {
+                    true => (new.clone(), item),
+                    false => (old, item),
+                })
+                .collect();
+            true
+        }
+        _ => false,
+    }
+}
+
+/// The generic file pass of [`Rewrite::file`].
+fn map_file<R: Rewrite + ?Sized>(with: &R, name: &str, bytes: &mut Vec<u8>) -> bool {
+    let at = Place::File { name };
+    if let Ok(mut value) = serde_json::from_slice::<Value>(bytes) {
+        if !with.value(&at, name, &mut value) {
+            return false;
+        }
+        let pretty = bytes.trim_ascii_end().contains(&b'\n');
+        let written = match pretty {
+            true => serde_json::to_vec_pretty(&value),
+            false => serde_json::to_vec(&value),
+        };
+        let Ok(mut written) = written else {
+            return false;
+        };
+        if bytes.ends_with(b"\n") {
+            written.push(b'\n');
+        }
+        *bytes = written;
+        return true;
+    }
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let lines: Vec<(&str, &str, Option<Value>)> = text
+        .split_inclusive('\n')
+        .map(|line| {
+            let (body, end) = line
+                .strip_suffix('\n')
+                .map_or((line, ""), |body| (body, "\n"));
+            (body, end, serde_json::from_str(body).ok())
+        })
+        .collect();
+    let complete: Vec<_> = lines
+        .iter()
+        .filter(|(body, end, _)| !end.is_empty() && !body.trim().is_empty())
+        .collect();
+    let json_lines = !complete.is_empty() && complete.iter().all(|line| line.2.is_some());
+    if !json_lines {
+        let mut text = text.to_owned();
+        let changed = with.text(&at, &mut text);
+        if changed {
+            *bytes = text.into_bytes();
+        }
+        return changed;
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut changed = false;
+    for (body, end, value) in lines {
+        match value {
+            Some(mut value) => match with.value(&at, name, &mut value) {
+                true => {
+                    match serde_json::to_string(&value) {
+                        Ok(line) => out.push_str(&line),
+                        Err(_) => out.push_str(body),
+                    }
+                    changed = true;
+                }
+                false => out.push_str(body),
+            },
+            None => {
+                let mut line = body.to_owned();
+                changed |= with.text(&at, &mut line);
+                out.push_str(&line);
+            }
+        }
+        out.push_str(end);
+    }
+    if changed {
+        *bytes = out.into_bytes();
+    }
+    changed
+}
+
+/// What [`rewrite`] did.
+#[derive(Clone, Debug, Default)]
+pub struct Rewritten {
+    /// Each log a record of which changed, by name.
+    pub logs: Vec<RewrittenLog>,
+    /// The store files the rewrite changed.
+    pub files: Vec<String>,
+    /// The blobs no record named any more, removed.
+    pub blobs_removed: Vec<String>,
+}
+
+/// A log [`rewrite`] changed.
+#[derive(Clone, Debug)]
+pub struct RewrittenLog {
+    /// Its name: an agent's id, or [`SESSION`](crate::SESSION).
+    pub log: String,
+    /// How many of its records changed.
+    pub records: usize,
+    /// Its conversation as rewritten, with images, continuing the new log.
+    pub conversation: Conversation,
+    /// Its saved values as rewritten.
+    pub state: BTreeMap<String, Value>,
+    /// The saved keys whose newest value changed; one whose value was
+    /// removed is not in `state`.
+    pub changed_keys: Vec<String>,
+}
+
+/// A log's records after its header, mapped through a [`Rewrite`].
+pub(crate) struct Mapped {
+    /// Its header and the header's stamp.
+    pub header: (Stamp, Header),
+    /// Each record after the header, a line each: those unchanged as they
+    /// were, byte for byte.
+    pub body: Vec<u8>,
+    /// How many records changed.
+    pub records: usize,
+    /// Whether it holds a change of the conversation.
+    pub changes: bool,
+    /// The last record's stamp.
+    pub last: Stamp,
+}
+
+/// Maps the records of `lines`, the log `name`, through `with`: those made
+/// before the session's record `until`, or all. Images put inline in a
+/// push or a splice are stored in `blobs`. `None` when it holds no line.
+pub(crate) fn map_log(
+    name: &str,
+    lines: &LogLines,
+    until: Option<u64>,
+    with: &dyn Rewrite,
+    blobs: &dyn Store,
+) -> Result<Option<Mapped>, LoadError> {
+    let mut records = lines.iter();
+    let refuse = |line, why| LoadError::Record {
+        log: name.to_owned(),
+        line,
+        why,
+    };
+    let Some((line, _, first)) = records.next() else {
+        return Ok(None);
+    };
+    let header = match parse(first) {
+        Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
+        _ => return Err(refuse(line, "no header".to_owned())),
+    };
+    let mut mapped = Mapped {
+        last: header.0,
+        header,
+        body: Vec::new(),
+        records: 0,
+        changes: false,
+    };
+    for (line, _, bytes) in records {
+        let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
+        if until.is_some_and(|until| stamp.n >= until) {
+            break;
+        }
+        mapped.changes |= matches!(body, Body::Change(_));
+        match map_record(name, stamp, body, with, blobs).map_err(|why| refuse(line, why))? {
+            Some(record) => {
+                mapped.body.extend_from_slice(&record);
+                mapped.records += 1;
+            }
+            None => {
+                mapped.body.extend_from_slice(bytes);
+                mapped.body.push(b'\n');
+            }
+        }
+        mapped.last = stamp;
+    }
+    Ok(Some(mapped))
+}
+
+/// The record `body` of the log `log`, stamped `stamp`, mapped through
+/// `with`, as a line; `None` when it did not change.
+pub(crate) fn map_record(
+    log: &str,
+    stamp: Stamp,
+    body: Body,
+    with: &dyn Rewrite,
+    blobs: &dyn Store,
+) -> Result<Option<Vec<u8>>, String> {
+    let mut line = Vec::new();
+    match body {
+        Body::Meta(Meta::State {
+            key,
+            value: Some(mut value),
+        }) if !value.is_null() => {
+            let at = Place::Record {
+                log,
+                stamp,
+                by: None,
+            };
+            if !with.value(&at, &key, &mut value) {
+                return Ok(None);
+            }
+            let state = Meta::State {
+                key,
+                value: Some(value),
+            };
+            write_meta(&mut line, stamp, &state).map_err(|failure| failure.to_string())?;
+        }
+        Body::Meta(_) => return Ok(None),
+        Body::Change(mut recorded) => {
+            let at = Place::Record {
+                log,
+                stamp,
+                by: recorded.by.as_ref(),
+            };
+            if !map_change(&mut recorded.change, &at, with)? {
+                return Ok(None);
+            }
+            let stored = store_change(&recorded.change, blobs)
+                .map_err(|failure| format!("storing an image failed: {failure}"))?;
+            let change = stored.as_ref().unwrap_or(&recorded.change);
+            write_change(&mut line, stamp, recorded.by.as_ref(), change)
+                .map_err(|failure| failure.to_string())?;
+        }
+    }
+    Ok(Some(line))
+}
+
+/// Maps the messages and asides of `change` through `with`; whether any
+/// changed.
+pub(crate) fn map_change(
+    change: &mut Change,
+    at: &Place<'_>,
+    with: &dyn Rewrite,
+) -> Result<bool, String> {
+    Ok(match change {
+        Change::Push { entries } | Change::Splice { with: entries, .. } => {
+            entries.iter_mut().fold(false, |changed, entry| {
+                with.message(at, &mut entry.message) | changed
+            })
+        }
+        Change::Aside {
+            aside: Some(aside), ..
+        } => with.aside(at, aside),
+        Change::Reset { state } => map_state(state, at, with)?,
+        Change::Aside { aside: None, .. } | Change::Halt { .. } => false,
+    })
+}
+
+/// Maps the messages and saved asides of a reset's `state` through `with`,
+/// by its serde form; whether any changed.
+fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Result<bool, String> {
+    let fail = |failure: serde_json::Error| failure.to_string();
+    let mut value = serde_json::to_value(&*state).map_err(fail)?;
+    let mut changed = false;
+    if let Some(Value::Array(messages)) = value.get_mut("messages") {
+        for message in messages {
+            let mut typed = Message::deserialize(&*message).map_err(fail)?;
+            if with.message(at, &mut typed) {
+                *message = serde_json::to_value(&typed).map_err(fail)?;
+                changed = true;
+            }
+        }
+    }
+    if let Some(Value::Array(asides)) = value.get_mut("asides") {
+        for aside in asides.iter_mut().filter_map(|pair| pair.get_mut(1)) {
+            let mut typed = Aside::deserialize(&*aside).map_err(fail)?;
+            if with.aside(at, &mut typed) {
+                *aside = serde_json::to_value(&typed).map_err(fail)?;
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        *state = Conversation::deserialize(&value).map_err(fail)?;
+    }
+    Ok(changed)
+}
+
+/// Rewrites the session in `store` through `with`, as done by `by`, in
+/// place: every record stays where it is with its stamp, and every value
+/// in it goes through `with` (see [`Rewrite`]). Each log a record of which
+/// changed gets a fresh lineage and `{t, by}` added to its header's
+/// `rewrites`.
+///
+/// Every log is read strictly, and every changed log is encoded and
+/// folded strictly in memory, before anything is written. Then torn tails
+/// are set aside (as [`Writer::open`](crate::Writer::open) does), new
+/// blobs are stored, each changed log is replaced
+/// ([`Store::replace_log`]), every file of the store goes through
+/// [`Rewrite::file`] (each written atomically), and blobs no record names
+/// any more are removed last.
+///
+/// What a reader sees: each log is the old one or the new one, whole;
+/// across logs a reader during a rewrite may see some rewritten and some
+/// not, and each always reads. A crash midway leaves some logs and files
+/// rewritten; running the same map again finishes it. A conversation
+/// read before the rewrite no longer continues a changed log: [`save`] of
+/// it gives [`LoadError::Changed`], and the caller reads it again.
+///
+/// Not for a session a running [`Writer`](crate::Writer) logs to: that is
+/// [`Writer::rewrite`](crate::Writer::rewrite). Another process must not
+/// rewrite a running session; rig-memory cannot tell, so a program
+/// rewriting a rig session first checks that no rig runs it.
+///
+/// # Errors
+///
+/// As [`Session::read`](crate::Session::read) (an old or broken session is
+/// refused, nothing written), or when a rewritten log would not read
+/// (nothing written), or a write fails.
+///
+/// [`save`]: crate::save
+pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewritten, LoadError> {
+    let mut logs: Vec<(String, LogLines, Folded)> = Vec::new();
+    for name in store.logs()? {
+        let Some(lines) = log_lines(store, &name)? else {
+            continue;
+        };
+        if let Some(folded) = fold_lines(&name, &lines, Fold::default(), &|_| {
+            Err(io::ErrorKind::NotFound.into())
+        })? {
+            logs.push((name, lines, folded));
+        }
+    }
+    logs.sort_by(|a, b| a.0.cmp(&b.0));
+    let t = now_ms();
+    let blobs = MemoryStore::default();
+    let blob = |name: &str| blobs.blob(name).or_else(|_| store.blob(name));
+    let mut rewritten = Rewritten::default();
+    let mut replaced: Vec<Vec<u8>> = Vec::new();
+    for (name, lines, old) in &logs {
+        let Some(mapped) = map_log(name, lines, None, with, &blobs)? else {
+            continue;
+        };
+        if mapped.records == 0 {
+            continue;
+        }
+        let (stamp, mut header) = mapped.header;
+        header.lineage = Lineage::fresh();
+        header.rewrites.push(Rewrote { t, by: by.clone() });
+        let mut bytes = Vec::with_capacity(mapped.body.len() + 256);
+        write_meta(&mut bytes, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
+        bytes.extend_from_slice(&mapped.body);
+        let how = Fold {
+            until: None,
+            images: true,
+        };
+        let new = LogLines::parse(bytes);
+        let folded = fold_lines(name, &new, how, &blob)?.ok_or_else(|| LoadError::Record {
+            log: name.clone(),
+            line: 1,
+            why: "the rewritten log is empty".to_owned(),
+        })?;
+        let keys: BTreeSet<&String> = old.state.keys().chain(folded.state.keys()).collect();
+        let changed_keys = keys
+            .into_iter()
+            .filter(|key| old.state.get(*key) != folded.state.get(*key))
+            .cloned()
+            .collect();
+        rewritten.logs.push(RewrittenLog {
+            log: name.clone(),
+            records: mapped.records,
+            conversation: folded.conversation,
+            state: folded.state,
+            changed_keys,
+        });
+        replaced.push(new.prefix(u64::MAX).to_vec());
+    }
+
+    // Nothing was written so far.
+    for (name, _, old) in &logs {
+        if let Some((kept, _)) = old.torn {
+            set_aside_tail(store, name, kept)?;
+        }
+    }
+    for name in blobs.blobs()? {
+        store.put_blob(&name, &blobs.blob(&name)?)?;
+    }
+    for (log, bytes) in rewritten.logs.iter().zip(&replaced) {
+        store.replace_log(&log.log, bytes)?;
+    }
+    for name in store.files()? {
+        let mut bytes = store.read_file(&name)?;
+        if with.file(&name, &mut bytes) {
+            store.write_file(&name, &bytes)?;
+            rewritten.files.push(name);
+        }
+    }
+    rewritten.files.sort();
+    let mut named = BTreeSet::new();
+    for (name, lines, _) in &logs {
+        let log = rewritten.logs.iter().position(|log| &log.log == name);
+        let bytes = match log.and_then(|at| replaced.get(at)) {
+            Some(bytes) => bytes.as_slice(),
+            None => lines.prefix(u64::MAX),
+        };
+        named_blobs(bytes, &mut named);
+    }
+    let mut stored = store.blobs()?;
+    stored.sort();
+    for name in stored {
+        if !named.contains(&name) {
+            store.remove_blob(&name)?;
+            rewritten.blobs_removed.push(name);
+        }
+    }
+    Ok(rewritten)
+}
+
+#[cfg(test)]
+mod tests;

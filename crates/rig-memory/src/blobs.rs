@@ -60,12 +60,20 @@ pub fn store_images<'m>(message: &'m Message, store: &dyn Store) -> io::Result<C
 ///
 /// The first blob that could not be read.
 pub fn load_images(message: &mut Message, store: &dyn Store) -> io::Result<()> {
+    load_images_with(message, &|name| store.blob(name))
+}
+
+/// [`load_images`] from the blobs `blob` reads.
+pub(crate) fn load_images_with(
+    message: &mut Message,
+    blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
+) -> io::Result<()> {
     let mut gone = Ok(());
     for image in message.images_mut() {
         if let Url(url) = &image.data
             && let Some(name) = url.strip_prefix(BLOB)
         {
-            image.data = match store.blob(name) {
+            image.data = match blob(name) {
                 Ok(bytes) => Base64(STANDARD.encode(bytes)),
                 Err(failure) => {
                     gone = gone.and(Err(failure));
@@ -75,6 +83,27 @@ pub fn load_images(message: &mut Message, store: &dyn Store) -> io::Result<()> {
         }
     }
     gone
+}
+
+/// Adds the name of every blob `bytes` names (`blob:<name>`) to `named`.
+pub(crate) fn named_blobs(bytes: &[u8], named: &mut std::collections::BTreeSet<String>) {
+    let name_byte = |byte: &u8| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-');
+    let mut rest = bytes;
+    while let Some(at) = rest
+        .windows(BLOB.len())
+        .position(|window| window == BLOB.as_bytes())
+    {
+        let after = rest.get(at + BLOB.len()..).unwrap_or_default();
+        let len = after.iter().take_while(|byte| name_byte(byte)).count();
+        if let Some(name) = after
+            .get(..len)
+            .and_then(|name| std::str::from_utf8(name).ok())
+            && !name.is_empty()
+        {
+            named.insert(name.to_owned());
+        }
+        rest = after.get(len..).unwrap_or_default();
+    }
 }
 
 /// The entries a change puts in.

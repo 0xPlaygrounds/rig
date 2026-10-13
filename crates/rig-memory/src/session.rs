@@ -14,7 +14,7 @@ use std::ops::ControlFlow;
 use rig_core::conversation::{Change, Conversation, Lineage, MessageId, Recorded};
 use serde_json::Value;
 
-use crate::blobs::{entries_mut, load_images};
+use crate::blobs::{entries_mut, load_images, load_images_with};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, write_meta};
 use crate::writer::Book;
 use crate::{FORMAT, LoadError, Repair, Rewrote, Stamp, Store};
@@ -101,22 +101,36 @@ struct Read {
     header: Header,
     started: Stamp,
     last: Stamp,
-    lines: LogLines,
 }
 
-/// Reads the log `name` of `store` strictly, giving each record after the
-/// header to `each`, which may stop the reading early. `None` when there
-/// is no log, or it holds no complete line.
+/// The log `name` of `store` as stored; `None` when there is none.
+pub(crate) fn log_lines(store: &dyn Store, name: &str) -> Result<Option<LogLines>, LoadError> {
+    match store.read_log(name) {
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => Ok(None),
+        bytes => Ok(Some(LogLines::parse(bytes?))),
+    }
+}
+
+/// Reads the log `name` of `store` strictly, as [`read_lines`] does.
 fn read(
     store: &dyn Store,
     name: &str,
+    each: impl FnMut(Stamp, Body) -> Result<ControlFlow<()>, String>,
+) -> Result<Option<Read>, LoadError> {
+    match log_lines(store, name)? {
+        Some(lines) => read_lines(name, &lines, each),
+        None => Ok(None),
+    }
+}
+
+/// Reads `lines`, the log `name`, strictly, giving each record after the
+/// header to `each`, which may stop the reading early. `None` when it
+/// holds no complete line.
+fn read_lines(
+    name: &str,
+    lines: &LogLines,
     mut each: impl FnMut(Stamp, Body) -> Result<ControlFlow<()>, String>,
 ) -> Result<Option<Read>, LoadError> {
-    let bytes = match store.read_log(name) {
-        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(None),
-        bytes => bytes?,
-    };
-    let lines = LogLines::parse(bytes);
     let mut records = lines.iter();
     let Some((_, _, first)) = records.next() else {
         return Ok(None);
@@ -164,7 +178,6 @@ fn read(
         header,
         started,
         last,
-        lines,
     }))
 }
 
@@ -181,12 +194,26 @@ pub(crate) struct Fold {
 /// newest of each saved value, whether it was retired. `None` when there
 /// is no log.
 pub(crate) fn fold(store: &dyn Store, name: &str, how: Fold) -> Result<Option<Folded>, LoadError> {
+    match log_lines(store, name)? {
+        Some(lines) => fold_lines(name, &lines, how, &|blob| store.blob(blob)),
+        None => Ok(None),
+    }
+}
+
+/// Folds `lines`, the log `name`, as [`fold`] does, putting images back
+/// from the blobs `blob` reads. `None` when it holds no complete line.
+pub(crate) fn fold_lines(
+    name: &str,
+    lines: &LogLines,
+    how: Fold,
+    blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
+) -> Result<Option<Folded>, LoadError> {
     let mut conversation = Conversation::new();
     let mut made = HashMap::new();
     let mut state = BTreeMap::new();
     let mut retired = false;
     let mut lost = Vec::new();
-    let read = read(store, name, |stamp, body| {
+    let read = read_lines(name, lines, |stamp, body| {
         if how.until.is_some_and(|until| stamp.n >= until) {
             return Ok(ControlFlow::Break(()));
         }
@@ -203,7 +230,7 @@ pub(crate) fn fold(store: &dyn Store, name: &str, how: Fold) -> Result<Option<Fo
             Body::Change(mut recorded) => {
                 if how.images {
                     for entry in entries_mut(&mut recorded.change) {
-                        if let Err(failure) = load_images(&mut entry.message, store) {
+                        if let Err(failure) = load_images_with(&mut entry.message, blob) {
                             lost.push(failure.to_string());
                         }
                     }
@@ -224,7 +251,7 @@ pub(crate) fn fold(store: &dyn Store, name: &str, how: Fold) -> Result<Option<Fo
     };
     let changes = conversation.revision();
     conversation.continue_log(read.header.lineage, changes);
-    let tail = read.lines.tail().len() as u64;
+    let tail = lines.tail().len() as u64;
     Ok(Some(Folded {
         name: name.to_owned(),
         started_ms: read.started.t,
@@ -235,7 +262,7 @@ pub(crate) fn fold(store: &dyn Store, name: &str, how: Fold) -> Result<Option<Fo
         retired,
         next_seq: read.last.seq.saturating_add(1),
         next_n: read.last.n.saturating_add(1),
-        torn: (tail > 0).then(|| (read.lines.len(), tail)),
+        torn: (tail > 0).then(|| (lines.len(), tail)),
         lost,
     }))
 }

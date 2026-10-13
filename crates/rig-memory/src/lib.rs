@@ -23,6 +23,24 @@
 //! named files under one. Reading is strict: a session it
 //! cannot read whole is refused, and nothing is written.
 //!
+//! Saved history is appended to, and rewritten only through [`rewrite`]
+//! (or [`Writer::rewrite`] for a running session): a map of every value
+//! the session keeps ([`Rewrite`]; [`Strings`] for a redaction or a path
+//! remap), each record kept in its place with its stamp. What it promises:
+//! 1. In one process a rewrite and a writer's saves never interleave: they
+//!    share the writer's lock, and the rewrite writes what was queued first.
+//! 2. Each log is the old one or the new one, whole, to any reader, and
+//!    through a crash. Across logs a reader may see some rewritten and some
+//!    not; each always reads.
+//! 3. A value read before the rewrite no longer continues a changed log:
+//!    [`save`] of it gives [`LoadError::Changed`], and the caller reads it
+//!    again.
+//! 4. Another process must not rewrite a running session; rig-memory cannot
+//!    tell, so a program checks first that nothing runs it.
+//! 5. Values a host keeps in memory are the host's to read again from
+//!    [`Rewritten`] (rig's kernel does it for conversations and saved
+//!    values).
+//!
 //! ```
 //! use rig_core::message::Message;
 //! use rig_memory::window::{LastMessages, view};
@@ -46,6 +64,7 @@ mod compaction;
 #[cfg(feature = "fs")]
 mod dir;
 mod format;
+mod rewrite;
 mod session;
 mod store;
 mod tokens;
@@ -61,6 +80,9 @@ pub use compaction::{
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
 pub use format::{FORMAT, LoadError, Repair, Rewrote, SESSION, Stamp, now_ms};
+pub use rewrite::{
+    Keep, Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
+};
 pub use session::{Record, SavedAgent, Session, Unreadable, as_of, fork, history, load, save};
 pub use store::{Files, MemoryStore, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};

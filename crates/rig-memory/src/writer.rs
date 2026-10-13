@@ -5,13 +5,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_core::conversation::{Change, Conversation, Lineage, Recorded};
+use rig_core::conversation::{Author, Change, Conversation, Lineage, Recorded};
 use serde_json::Value;
 
 use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
-use crate::{LoadError, Repair, Session, Stamp, Store, now_ms};
+use crate::{LoadError, Repair, Rewrite, Rewritten, Session, Stamp, Store, now_ms, rewrite};
 
 /// One log as the writer keeps it.
 #[derive(Default)]
@@ -266,6 +266,17 @@ impl Book {
         self.meta(name, &Meta::Retired);
     }
 
+    /// Goes on after `rewritten`: each rewritten log with its new lineage
+    /// and its saved values as rewritten, its counts unchanged.
+    fn rewritten(&mut self, rewritten: &Rewritten) {
+        for rewritten in &rewritten.logs {
+            if let Some(log) = self.logs.get_mut(&rewritten.log) {
+                log.lineage = rewritten.conversation.lineage();
+                log.state.clone_from(&rewritten.state);
+            }
+        }
+    }
+
     /// Writes every queued record to `store`: each started log's records
     /// with one write, a subagent's log before its parent's, and the
     /// [`SESSION`] log once any is started. A failed write stops the
@@ -403,6 +414,43 @@ impl Writer {
         self.inner().book.retire(log);
     }
 
+    /// Rewrites the session's saved history through `with`, as done by
+    /// `by` ([`rewrite`]), under this writer's lock, so no save interleaves:
+    /// what it queued is written first; the logs and files are rewritten;
+    /// the writer then goes on with each rewritten log's lineage and saved
+    /// values, its counts unchanged, so it neither writes a reset for a
+    /// conversation reread from [`Rewritten`] nor writes a saved value the
+    /// rewrite already holds again. Once logging stopped
+    /// ([`failure`](Self::failure)), it still rewrites what the store holds
+    /// and stays stopped. A writer without a store rewrites nothing.
+    ///
+    /// The host then rereads what it keeps in memory: each agent's
+    /// conversation from [`RewrittenLog::conversation`], each saved value
+    /// in [`RewrittenLog::changed_keys`]. A log not started yet (only saved
+    /// values that do not start a log) is not in the store, so it is not
+    /// rewritten.
+    ///
+    /// # Errors
+    ///
+    /// As [`rewrite`].
+    ///
+    /// [`RewrittenLog::conversation`]: crate::RewrittenLog::conversation
+    /// [`RewrittenLog::changed_keys`]: crate::RewrittenLog::changed_keys
+    pub fn rewrite(&self, by: Author, with: &dyn Rewrite) -> Result<Rewritten, LoadError> {
+        let mut inner = self.inner();
+        let Inner { store, book } = &mut *inner;
+        let Some(store) = store else {
+            return Ok(Rewritten::default());
+        };
+        if book.failure.is_none() {
+            // A failed write stops the logging; the rewrite still runs.
+            let _ = book.flush(&**store);
+        }
+        let rewritten = rewrite(&**store, by, with)?;
+        book.rewritten(&rewritten);
+        Ok(rewritten)
+    }
+
     /// Writes every queued record: each started log's records with one
     /// write, a subagent's log before its parent's, so a parent never
     /// refers to a subagent message that is not stored, and the [`SESSION`]
@@ -421,7 +469,7 @@ impl Writer {
 /// file `recovered/<log>-<k>.part`, then replaces the log with the bytes
 /// before them; that file's name. A crash between the two leaves the tail
 /// in the log, set aside again by the next open.
-fn set_aside_tail(store: &dyn Store, log: &str, kept: u64) -> Result<String, LoadError> {
+pub(crate) fn set_aside_tail(store: &dyn Store, log: &str, kept: u64) -> Result<String, LoadError> {
     let bytes = store.read_log(log)?;
     let kept = usize::try_from(kept).unwrap_or(usize::MAX);
     let (prefix, tail) = bytes.split_at_checked(kept).unwrap_or((&bytes, &[]));
