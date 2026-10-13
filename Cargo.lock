@@ -6180,7 +6180,6 @@ dependencies = [
  "rig-harness",
  "rig-harness-test-support",
  "rig-tui",
- "serde",
  "serde_json",
 ]
 
