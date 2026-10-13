@@ -37,7 +37,8 @@ pub enum ExitReason {
     /// The launcher runs another session next: the one named, else a new
     /// one.
     Switch(Option<SessionId>),
-    /// A signal (SIGINT, SIGTERM, SIGHUP) ended the run.
+    /// A signal (SIGINT, SIGTERM, SIGHUP) ended the run, or the launcher
+    /// that started it went away.
     Signal,
     /// The run failed with this exit code.
     Failed(u8),

@@ -2,7 +2,8 @@
 //! ([`rig::harness_protocol`]): how the agent was started ([`Invoked`]),
 //! the launcher's path for rebuilds, the launcher's startup notice, the
 //! failed build it started after, and the ready file, in the launcher's
-//! run directory ([`LauncherRun`]), that tells it this build started.
+//! run directory ([`LauncherRun`]), that tells it this build started. The
+//! agent exits once that launcher is gone, killed alone or not.
 //!
 //! The fronts plugins offer and the options they take
 //! ([`cli`]) are checked against how rig was started once
@@ -18,11 +19,15 @@
 
 use std::ffi::OsString;
 use std::fmt::Write as _;
-use std::io::IsTerminal;
+use std::fs::File;
+use std::io::{ErrorKind, IsTerminal};
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::error;
+use bevy_log::{error, warn};
 use rig::harness_protocol::{Home, Invocation, RunDir, env};
 
 use super::cli;
@@ -33,6 +38,7 @@ use crate::secrets::Secrets;
 use crate::settings::Settings;
 use rig_core::conversation::Author;
 use rig_ecs::agent::Notice;
+use rig_ecs::calls::Wake;
 
 use crate::primary::{PrimaryQuery, primary};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
@@ -96,6 +102,7 @@ impl Plugin for LauncherPlugin {
             && let Some(run) = RunDir::from_env()
         {
             app.insert_resource(LauncherRun(run));
+            watch_launcher(app);
         }
         if !app.world().contains_resource::<Secrets>() {
             app.insert_resource(Secrets::from_env());
@@ -118,6 +125,73 @@ impl Plugin for LauncherPlugin {
         if let Some(refusal) = cli::refusal(app) {
             refuse(app, refusal);
         }
+    }
+}
+
+/// Exits the app, as a signal to it does, once the launcher in
+/// [`LauncherRun`] is gone. A launcher signalled alone, as `kill` and
+/// `timeout` do, leaves its agent behind, which would otherwise run on by
+/// itself, even editing files under `--watch`. A thread waits for the run's
+/// lock, which the launcher holds while it lives and the system frees when
+/// it dies however it died; the std-only launcher needs no signal handling.
+pub(crate) fn watch_launcher(app: &mut App) {
+    app.add_systems(PostStartup, start_watching)
+        .add_systems(First, exit_when_launcher_gone);
+}
+
+/// Set by the watching thread once the launcher is gone.
+#[derive(Resource)]
+struct LauncherGone(Arc<AtomicBool>);
+
+/// Starts the thread that waits for the launcher's run lock, and wakes the
+/// loop once it has it.
+fn start_watching(run: Option<Res<LauncherRun>>, wake: Option<Res<Wake>>, mut commands: Commands) {
+    let Some(run) = run else {
+        return;
+    };
+    let gone = Arc::new(AtomicBool::new(false));
+    let (lock, set, wake) = (run.0.lock(), gone.clone(), wake.map(|wake| wake.clone()));
+    let watching = std::thread::Builder::new()
+        .name("rig-launcher-watch".to_owned())
+        .spawn(move || {
+            if launcher_left(&lock) {
+                set.store(true, Ordering::Release);
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
+            }
+        });
+    match watching {
+        Ok(_) => commands.insert_resource(LauncherGone(gone)),
+        Err(failure) => warn!("the agent will not exit with its launcher: {failure}"),
+    }
+}
+
+/// Waits until the launcher that holds `lock` is gone: whether it is, or
+/// `false` when that cannot be told.
+fn launcher_left(lock: &Path) -> bool {
+    let file = match File::options().write(true).open(lock) {
+        Ok(file) => file,
+        Err(failure) if failure.kind() == ErrorKind::NotFound => return true,
+        Err(failure) => {
+            warn!("the agent will not exit with its launcher: {failure}");
+            return false;
+        }
+    };
+    file.lock()
+        .inspect_err(|failure| warn!("the agent will not exit with its launcher: {failure}"))
+        .is_ok()
+}
+
+/// Asks the app to exit once, as for a signal, when the launcher is gone.
+fn exit_when_launcher_gone(
+    gone: Option<Res<LauncherGone>>,
+    mut asked: Local<bool>,
+    mut commands: Commands,
+) {
+    if !*asked && gone.is_some_and(|gone| gone.0.load(Ordering::Acquire)) {
+        *asked = true;
+        commands.trigger(Exit(ExitReason::Signal));
     }
 }
 
