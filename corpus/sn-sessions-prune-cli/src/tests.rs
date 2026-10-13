@@ -6,7 +6,7 @@ use rig_core::message::{Message, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness::host::exit::ExitPlugin;
-use rig_harness::rig_memory::META;
+use rig_harness::rig_memory::SessionMeta;
 use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
@@ -75,16 +75,9 @@ fn age(home: &Home, id: &SessionId, days: u64) {
     let Ok(store) = SessionStores::default().open(&home.session(id)) else {
         return;
     };
-    // Only `updated` changes: the listing keeps the name `/name` gave.
-    let read = store.read_file(META).ok();
-    let mut meta: serde_json::Map<String, serde_json::Value> = read
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default();
-    let updated = millis(SystemTime::now()).saturating_sub(days * DAY);
-    meta.insert("updated".to_owned(), updated.into());
-    if let Ok(bytes) = serde_json::to_vec(&meta) {
-        store.write_file(META, &bytes).ok();
-    }
+    let mut meta = SessionMeta::read(&*store).unwrap_or_default();
+    meta.updated = millis(SystemTime::now()).saturating_sub(days * DAY);
+    meta.write(&*store).ok();
 }
 
 /// Runs `rig sessions <words>` without a terminal: how it exits and what it

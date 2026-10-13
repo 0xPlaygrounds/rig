@@ -26,13 +26,10 @@ use std::path::{Path, PathBuf};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_core::conversation::{Author, Conversation, Entry, pairing};
 use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
-use rig_memory::{DirStore, Files, Keep, LoadError, Repair, SavedAgent, Session, fork, now_ms};
-use serde_json::{Map, Value};
-
-/// The file of a session's store that rig-sessions lists it by: its name
-/// (`name`), the start of its first message (`title`), labels and when it
-/// was updated.
-pub const META: &str = "meta.json";
+use rig_memory::{
+    DirStore, Keep, LoadError, Repair, SavedAgent, Session, SessionMeta, fork, now_ms,
+};
+use serde_json::Value;
 
 /// The lines a shrunk tool result keeps at each end.
 pub const KEEP_LINES: usize = 20;
@@ -162,11 +159,11 @@ pub fn run(args: &[String], home: &Home, out: &mut dyn Write) -> Result<(), Erro
         }
         edit => {
             let target = target.unwrap_or(Target::As(None));
-            let report = save(home, opened, target, |session, meta| match &edit {
+            let report = save(home, opened, target, |session, named| match &edit {
                 Command::Shrink(over) => Ok(shrink_all(session, *over)),
                 Command::Drop(from, to) => drop_range(main_of(session)?, *from, *to),
                 Command::Rename(name) => {
-                    meta.insert("name".to_owned(), Value::String(name.clone()));
+                    *named = Some(name.clone());
                     Ok(vec![format!("named the session {name}")])
                 }
                 Command::List | Command::Export(_) => Ok(Vec::new()),
@@ -194,8 +191,17 @@ struct Opened {
     dir: SessionDir,
     store: DirStore,
     session: Session,
-    /// Its listing ([`META`]); empty when it has none.
-    meta: Map<String, Value>,
+    /// Its listing ([`SessionMeta`]); empty when it has none.
+    meta: SessionMeta,
+}
+
+impl Opened {
+    /// What the session is listed as: its name ([`SessionDir::name`]),
+    /// else the start of its first message.
+    fn shown(&self) -> Option<String> {
+        let title = Some(self.meta.title.clone()).filter(|title| !title.is_empty());
+        self.dir.name().or(title)
+    }
 }
 
 /// The session `arg` names: a directory, an id under `home`, or the name
@@ -214,10 +220,7 @@ fn locate(home: &Home, arg: &str) -> Result<SessionDir, Error> {
     let named: Vec<SessionDir> = entries
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
         .map(|id: SessionId| home.session(&id))
-        .filter(|dir| {
-            let store = DirStore::open(dir.path());
-            store.is_ok_and(|store| name_of(&meta_of(&store)) == Some(arg))
-        })
+        .filter(|dir| dir.name().as_deref() == Some(arg))
         .collect();
     match named.as_slice() {
         [dir] => Ok(dir.clone()),
@@ -252,34 +255,13 @@ fn open(dir: SessionDir) -> Result<Opened, Error> {
     if session.agents.is_empty() {
         return Err(refuse("it holds no saved conversation".to_owned()));
     }
-    let meta = meta_of(&store);
+    let meta = SessionMeta::read(&store).unwrap_or_default();
     Ok(Opened {
         dir,
         store,
         session,
         meta,
     })
-}
-
-/// The listing of the session in `store`; empty when it has none.
-fn meta_of(store: &dyn Files) -> Map<String, Value> {
-    let read = store.read_file(META).ok();
-    let meta = read.and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
-    match meta {
-        Some(Value::Object(meta)) => meta,
-        _ => Map::new(),
-    }
-}
-
-/// What the session is listed as: its name, else the start of its first
-/// message.
-fn name_of(meta: &Map<String, Value>) -> Option<&str> {
-    let text = |key: &str| {
-        meta.get(key)
-            .and_then(Value::as_str)
-            .filter(|t| !t.is_empty())
-    };
-    text("name").or_else(|| text("title"))
 }
 
 /// The main agent's conversation, to change it.
@@ -305,7 +287,7 @@ fn list(opened: &Opened) -> String {
     let model = main.and_then(SavedAgent::model);
     let mut lines = vec![
         format!("session: {}", opened.dir.path().display()),
-        format!("name: {}", name_of(&opened.meta).unwrap_or("(unnamed)")),
+        format!("name: {}", opened.shown().as_deref().unwrap_or("(unnamed)")),
         format!("model: {}", model.as_deref().unwrap_or("(unknown)")),
         format!("messages: {}", messages.len()),
     ];
@@ -637,13 +619,14 @@ fn save(
     home: &Home,
     opened: Opened,
     target: Target,
-    edit: impl Fn(&mut Session, &mut Map<String, Value>) -> Result<Vec<String>, Error>,
+    edit: impl Fn(&mut Session, &mut Option<String>) -> Result<Vec<String>, Error>,
 ) -> Result<Vec<String>, Error> {
+    let shown = opened.shown();
     let Opened {
         dir,
         store,
         mut session,
-        mut meta,
+        meta,
     } = opened;
     match target {
         Target::InPlace => {
@@ -652,10 +635,12 @@ fn save(
                     "rig is running this session; quit it before editing it in place".into(),
                 );
             }
-            let mut report = edit(&mut session, &mut meta)?;
+            let mut named = dir.name();
+            let mut report = edit(&mut session, &mut named)?;
             let backup = backup(dir.path())?;
             session.save(&store)?;
             write_meta(&store, meta)?;
+            dir.set_name(named.as_deref())?;
             report.push(format!(
                 "saved in place; the session as it was is in {}",
                 backup.display()
@@ -664,8 +649,7 @@ fn save(
         }
         Target::As(name) => {
             let name = name.unwrap_or_else(|| {
-                let base = name_of(&meta).map(str::to_owned);
-                let base = base.or_else(|| dir.id().map(|id| id.to_string()));
+                let base = shown.or_else(|| dir.id().map(|id| id.to_string()));
                 format!("{} (edited)", base.unwrap_or_else(|| "session".to_owned()))
             });
             let (id, new) = home.new_session()?;
@@ -676,10 +660,11 @@ fn save(
                     fs::write(new.directory(), directory)?;
                 }
                 let mut session = Session::read(&to)?;
-                meta.insert("name".to_owned(), Value::String(name.clone()));
-                let report = edit(&mut session, &mut meta)?;
+                let mut named = Some(name.clone());
+                let report = edit(&mut session, &mut named)?;
                 session.save(&to)?;
                 write_meta(&to, meta)?;
+                new.set_name(named.as_deref())?;
                 new.mark_saved()?;
                 Ok::<_, Error>(report)
             })();
@@ -699,10 +684,9 @@ fn save(
 }
 
 /// Keeps `meta` as the session's listing, updated now.
-fn write_meta(store: &dyn Files, mut meta: Map<String, Value>) -> Result<(), Error> {
-    meta.insert("updated".to_owned(), Value::from(now_ms()));
-    let bytes = serde_json::to_vec_pretty(&Value::Object(meta)).map_err(io::Error::from)?;
-    store.write_file(META, &bytes)?;
+fn write_meta(store: &DirStore, mut meta: SessionMeta) -> Result<(), Error> {
+    meta.updated = now_ms();
+    meta.write(store)?;
     Ok(())
 }
 
@@ -746,7 +730,7 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
 fn markdown_of(opened: &Opened) -> String {
     let session = &opened.session;
     let mut text = String::new();
-    let name = name_of(&opened.meta).unwrap_or("Session");
+    let name = opened.shown().unwrap_or_else(|| "Session".to_owned());
     let main = session.main_agent();
     text.push_str(&format!("# {name}\n\n"));
     if let Some(model) = main.and_then(SavedAgent::model) {

@@ -78,7 +78,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
         ..Session::default()
     };
     session.save(&store)?;
-    store.write_file(META, br#"{"name":"fix-auth"}"#)?;
+    dir.set_name(Some("fix-auth"))?;
     dir.mark_saved()?;
     Ok((id, messages))
 }

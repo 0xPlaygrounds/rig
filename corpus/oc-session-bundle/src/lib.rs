@@ -37,7 +37,6 @@ use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_memory::{
     FORMAT, Keep, MODEL, MemoryStore, SavedAgent, Session, SessionMeta, Store, fork, now_ms,
-    title_of,
 };
 use rig_harness::rig_tools::process::Launcher;
 use rig_sessions::SessionTitle;
@@ -553,8 +552,8 @@ fn write_session(
     }
     session.save(&*store).map_err(|f| fail(&f))?;
     let mut meta = SessionMeta::read(&*store).unwrap_or_default();
-    if meta.title.is_empty() {
-        meta.title = title_of(&manifest.name);
+    if meta.title.is_empty() && dir.name().is_none() {
+        dir.set_name(Some(&manifest.name)).map_err(|f| fail(&f))?;
     }
     meta.labels.insert(
         "bundle".to_owned(),

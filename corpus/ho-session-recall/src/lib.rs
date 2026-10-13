@@ -458,7 +458,7 @@ fn stamp(session: &Path) -> Stamp {
 /// `store`.
 fn info(session: &SessionDir, store: &dyn Files, id: &str, stamp: Stamp) -> Info {
     let meta = SessionMeta::read(store);
-    let title = SessionTitle::read(store);
+    let title = SessionTitle::read(session, store);
     let name = title.as_ref().map(SessionTitle::shown);
     let name = name.filter(|name| !name.is_empty()).map(str::to_owned);
     let directory = fs::read_to_string(session.directory())

@@ -16,7 +16,6 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -25,9 +24,8 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_reflect::prelude::*;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
-use rig_harness::rig_memory::{META, SessionMeta, title_of};
+use rig_harness::rig_memory::{SessionMeta, title_of};
 use rig_tools::ago;
-use serde::{Deserialize, Serialize};
 
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
@@ -96,7 +94,8 @@ impl Plugin for SessionsPlugin {
 #[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Resource, Clone, Debug, Default, PartialEq)]
 pub struct SessionTitle {
-    /// The name set with `/name`.
+    /// The name set with `/name`, kept in the session's directory
+    /// ([`SessionDir::name`]), where `rig --resume <name>` finds it.
     pub name: Option<String>,
     /// The start of the first message typed ([`SessionMeta::title`]);
     /// empty until a turn ended.
@@ -104,43 +103,23 @@ pub struct SessionTitle {
 }
 
 impl SessionTitle {
-    /// What the saved session kept in `store` is listed as, if it has a
-    /// listing. Generic, as [`SessionMeta::read`] is.
-    pub fn read(store: &(impl Files + ?Sized)) -> Option<Self> {
-        Listing::of(store).map(|listing| listing.title())
+    /// What the saved session in `dir`, kept in `store`, is listed as: its
+    /// name ([`SessionDir::name`]) and the title of its listing
+    /// ([`SessionMeta`]); `None` when it has neither. Generic, as
+    /// [`SessionMeta::read`] is.
+    pub fn read(dir: &SessionDir, store: &(impl Files + ?Sized)) -> Option<Self> {
+        let name = dir.name();
+        let meta = SessionMeta::read(store);
+        (name.is_some() || meta.is_some()).then(|| Self {
+            name,
+            typed: meta.map(|meta| meta.title).unwrap_or_default(),
+        })
     }
 
     /// The name, else the start of the first message typed (empty when
     /// neither is known).
     pub fn shown(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.typed)
-    }
-}
-
-/// `meta.json` as this plugin keeps it: the session's listing, and the
-/// name `/name` gave it.
-#[derive(Serialize, Deserialize, Default)]
-struct Listing {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-    #[serde(flatten)]
-    meta: SessionMeta,
-}
-
-impl Listing {
-    fn of(store: &(impl Files + ?Sized)) -> Option<Self> {
-        serde_json::from_slice(&store.read_file(META).ok()?).ok()
-    }
-
-    fn write(&self, store: &(impl Files + ?Sized)) -> io::Result<()> {
-        store.write_file(META, &serde_json::to_vec_pretty(self)?)
-    }
-
-    fn title(&self) -> SessionTitle {
-        SessionTitle {
-            name: self.name.clone(),
-            typed: self.meta.title.clone(),
-        }
     }
 }
 
@@ -178,8 +157,9 @@ pub struct SwitchSession {
     pub session: Option<String>,
 }
 
-/// Names a session: its title in `/resume`, and nothing else of its
-/// listing, such as its labels. Naming this session is `/name`'s.
+/// Names a session ([`SessionDir::set_name`]): its title in `/resume`,
+/// and nothing of its listing, such as its labels. Naming this session is
+/// `/name`'s.
 #[derive(Event, Clone, Debug)]
 pub struct NameSession {
     /// The session.
@@ -241,17 +221,16 @@ pub fn list(home: &Home, stores: &SessionStores, current: &Path) -> Vec<SessionE
                 return None;
             }
             let store = stores.open(&dir).ok();
-            let listing = store.as_deref().and_then(Listing::of);
-            let saved = match &listing {
-                Some(listing) => UNIX_EPOCH + Duration::from_millis(listing.meta.updated),
+            let meta = store.as_deref().and_then(SessionMeta::read);
+            let saved = match &meta {
+                Some(meta) => UNIX_EPOCH + Duration::from_millis(meta.updated),
                 None => fs::metadata(dir.path()).ok()?.modified().ok()?,
             };
-            let Listing { name, meta } = listing.unwrap_or_default();
             Some(SessionEntry {
                 directory: dir.working_directory(),
+                name: dir.name(),
+                meta: meta.unwrap_or_default(),
                 id,
-                name,
-                meta,
                 saved,
             })
         })
@@ -275,33 +254,45 @@ fn tilde(path: &Path) -> String {
 #[derive(Resource, Default, PartialEq)]
 struct Listed(SessionTitle, BTreeMap<String, String>);
 
-/// Reads the session's title from its listing cache.
+/// What the session in `paths`, kept in `store`, is listed as, and its
+/// listing's labels.
+fn listed(paths: &SessionPaths, store: &SessionStore) -> Option<Listed> {
+    let title = SessionTitle::read(paths, &*store.0)?;
+    let labels = SessionMeta::read(&*store.0).unwrap_or_default().labels;
+    Some(Listed(title, labels))
+}
+
+/// Reads the session's name from its directory and its title from its
+/// listing cache.
 fn restore_title(
-    store: Option<Res<SessionStore>>,
+    (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     mut title: ResMut<SessionTitle>,
-    mut listed: ResMut<Listed>,
+    mut listed_now: ResMut<Listed>,
 ) {
-    let Some(store) = store else {
+    let (Some(paths), Some(store)) = (paths, store) else {
         return;
     };
-    if let Some(listing) = Listing::of(&*store.0) {
+    if let Some(listed) = listed(&paths, &store) {
         // Not a change: nothing to write back.
-        *title.bypass_change_detection() = listing.title();
-        *listed = Listed(listing.title(), listing.meta.labels);
+        *title.bypass_change_detection() = listed.0.clone();
+        *listed_now = listed;
     }
 }
 
-/// Reads the title back after the session was rewritten
-/// ([`SessionRewritten`]): the rewrite mapped the listing cache too, so
-/// the title in memory is not written back over it.
+/// Reads the name and title back after the session was rewritten
+/// ([`SessionRewritten`]): the rewrite mapped the listing cache and the
+/// name file too, so the title in memory is not written back over them.
 fn reread_title(
-    store: Option<Res<SessionStore>>,
+    (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     mut title: ResMut<SessionTitle>,
-    mut listed: ResMut<Listed>,
+    mut listed_now: ResMut<Listed>,
 ) {
-    if let Some(listing) = store.and_then(|store| Listing::of(&*store.0)) {
-        title.set_if_neq(listing.title());
-        *listed = Listed(listing.title(), listing.meta.labels);
+    let (Some(paths), Some(store)) = (paths, store) else {
+        return;
+    };
+    if let Some(listed) = listed(&paths, &store) {
+        title.set_if_neq(listed.0.clone());
+        *listed_now = listed;
     }
 }
 
@@ -347,15 +338,12 @@ fn update_meta(
     if !changed && *listed == now {
         return;
     }
-    let listing = Listing {
-        name: now.0.name.clone(),
-        meta: SessionMeta {
-            title: now.0.typed.clone(),
-            labels: now.1.clone(),
-            updated: now_ms(),
-        },
+    let meta = SessionMeta {
+        title: now.0.typed.clone(),
+        labels: now.1.clone(),
+        updated: now_ms(),
     };
-    match listing.write(&*store.0) {
+    match meta.write(&*store.0) {
         Ok(()) => *listed = now,
         Err(failure) => error!("could not write the session's meta.json: {failure}"),
     }
@@ -437,11 +425,11 @@ fn write_name(paths: Option<Res<SessionPaths>>, title: Res<SessionTitle>) {
 }
 
 /// Names the session asked for: this one's [`SessionTitle`], another's
-/// name file and listing cache, which keeps its counts.
+/// name file ([`SessionDir::set_name`]).
 fn name_session(
     named: On<NameSession>,
     paths: Option<Res<SessionPaths>>,
-    (home, stores): (Res<RigHome>, Res<SessionStores>),
+    home: Res<RigHome>,
     mut title: ResMut<SessionTitle>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -452,13 +440,7 @@ fn name_session(
     }
     let dir = home.0.session(&named.session);
     let written = if dir.path().is_dir() {
-        stores
-            .open(&dir)
-            .and_then(|store| {
-                Ok(dir
-                    .set_name(Some(&name))
-                    .and_then(|()| rename(&*store, name))?)
-            })
+        dir.set_name(Some(&name))
             .map_err(|failure| failure.to_string())
     } else {
         Err("there is no such session".to_owned())
@@ -467,22 +449,6 @@ fn name_session(
         let why = format!("Could not name session {}: {why}.", named.session);
         notices.write(Notice::error(None, why));
     }
-}
-
-/// Names the session in `store` `name`, keeping the rest of its listing.
-fn rename(store: &dyn Files, name: String) -> io::Result<()> {
-    let listing = Listing::of(store).unwrap_or_else(|| Listing {
-        meta: SessionMeta {
-            updated: now_ms(),
-            ..SessionMeta::default()
-        },
-        ..Listing::default()
-    });
-    let listing = Listing {
-        name: Some(name),
-        ..listing
-    };
-    listing.write(store)
 }
 
 /// Exits to run the session asked for next.

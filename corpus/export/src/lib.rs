@@ -201,7 +201,7 @@ impl Sessions<'_> {
                 let store = stores
                     .open(&dir)
                     .map_err(|failure| format!("opening session {id}: {failure}"))?;
-                let name = SessionTitle::read(&*store).map(|title| title.shown().to_owned());
+                let name = SessionTitle::read(&dir, &*store).map(|title| title.shown().to_owned());
                 load(&*store, Some(&dir), name.unwrap_or_default(), &registry)?
             }
             None => {

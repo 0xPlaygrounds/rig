@@ -307,7 +307,7 @@ impl Plugin for SessionPlugin {
             .add_systems(
                 Last,
                 rewrite_scratch
-                    .after(WriteJournal)
+                    .in_set(WriteJournal)
                     .run_if(on_message::<SessionRewritten>),
             )
             .add_systems(
@@ -456,8 +456,9 @@ pub struct SessionForked {
 
 /// Rewrites the saved session in `dir`, which no rig runs, through
 /// `with`, as done by `by` (rig-memory's `rewrite`): its store opened by
-/// `stores`, then its scratch files, kept in its directory (the text log
-/// and the spilled tool output). The running session, `running`, is
+/// `stores`, then the files kept in its directory: its name
+/// ([`SessionDir::name`]), the text log and the spilled tool output. The
+/// running session, `running`, is
 /// rewritten with `RewriteSession` instead. For a plugin redacting this
 /// session's forks too:
 ///
@@ -503,7 +504,8 @@ pub fn rewrite_stopped(
     let rewritten = rewrite(&*store, by, with).map_err(|failure| failure.to_string())?;
     let scratch = Scratch(Some(dir.path().to_owned()));
     map_spill(&scratch, with)
-        .and_then(|()| {
+        .and_then(|()| map_name(dir, with))
+        .and_then(|_| {
             scratch
                 .log()
                 .map_or(Ok(false), |log| map_file(&log, LOG, with))
@@ -534,6 +536,21 @@ fn map_file(path: &Path, name: &str, with: &dyn Rewrite) -> io::Result<bool> {
     Ok(true)
 }
 
+/// Maps the session's name in `dir` ([`SessionDir::name`]) through
+/// `with`, as the text file `name`; whether it changed. A name mapped to
+/// blank is removed.
+fn map_name(dir: &SessionDir, with: &dyn Rewrite) -> io::Result<bool> {
+    let Some(name) = dir.name() else {
+        return Ok(false);
+    };
+    let mut bytes = name.into_bytes();
+    if !with.file("name", &mut bytes) {
+        return Ok(false);
+    }
+    dir.set_name(Some(&String::from_utf8_lossy(&bytes)))?;
+    Ok(true)
+}
+
 /// Maps every file of `scratch`'s spilled tool output through `with`,
 /// each named `spill/<file>`.
 fn map_spill(scratch: &Scratch, with: &dyn Rewrite) -> io::Result<()> {
@@ -555,12 +572,14 @@ fn map_spill(scratch: &Scratch, with: &dyn Rewrite) -> io::Result<()> {
     Ok(())
 }
 
-/// Maps this session's scratch files through each rewrite of the session:
-/// the spilled tool output, and the text log under its lock, then logged
-/// to again where it is. Pasted images are left.
+/// Maps the files this session keeps beside its store through each
+/// rewrite of the session, in [`WriteJournal`], so the systems after it
+/// read them mapped: its name, the spilled tool output, and the text log
+/// under its lock, then logged to again where it is. Pasted images are
+/// left.
 fn rewrite_scratch(
     mut rewritten: MessageReader<SessionRewritten>,
-    scratch: Option<Res<Scratch>>,
+    (paths, scratch): (Option<Res<SessionPaths>>, Option<Res<Scratch>>),
     log: Option<Res<TextLog>>,
 ) {
     for rewritten in rewritten
@@ -571,8 +590,11 @@ fn rewrite_scratch(
         let spilled = scratch
             .as_deref()
             .map_or(Ok(()), |scratch| map_spill(scratch, with));
+        let named = paths
+            .as_deref()
+            .map_or(Ok(false), |paths| map_name(paths, with));
         let logged = log.as_deref().map_or(Ok(()), |log| log.rewrite(with));
-        if let Err(failure) = spilled.and(logged) {
+        if let Err(failure) = spilled.and(named.map(drop)).and(logged) {
             error!("rewriting the session's scratch files failed: {failure}");
         }
     }

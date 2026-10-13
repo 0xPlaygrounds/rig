@@ -699,6 +699,7 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     for dir in [&session, &stopped] {
         fs::create_dir_all(dir.path().join("spill")).ok();
         fs::write(dir.path().join("spill/shell-1.txt"), "key sk-123\n").ok();
+        assert!(dir.set_name(Some("key sk-123")).is_ok());
         let mut said = conversation::Conversation::from_messages([Message::user("sk-123")]);
         let saved = dir_store(dir).map(|store| save(&store, "agent-1", &mut said));
         assert!(saved.is_some_and(|saved| saved.is_ok()));
@@ -730,6 +731,7 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     app.update();
     assert!(write("after\n").is_ok());
     assert_eq!(secret_in(session.path()), Vec::<PathBuf>::new());
+    assert_eq!(session.name().as_deref(), Some("key [REDACTED]"));
     let log = fs::read_to_string(session.log()).unwrap_or_default();
     assert!(log.ends_with("the key is [REDACTED]\nafter\n"), "{log}");
 
@@ -741,7 +743,7 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     assert!(lock.as_ref().is_some_and(|lock| lock.try_lock().is_ok()));
     let elsewhere = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
     assert_eq!(elsewhere.err().as_deref(), Some("another rig runs it"));
-    assert_eq!(secret_in(stopped.path()).len(), 3, "nothing was changed");
+    assert_eq!(secret_in(stopped.path()).len(), 4, "nothing was changed");
     drop(lock);
     let done = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
     assert_eq!(done.map(|done| done.logs.len()), Ok(1));

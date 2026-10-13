@@ -93,8 +93,7 @@ fn naming_another_session_changes_only_its_title() {
         name: "The parser".to_owned(),
     });
     app.update();
-    let name = SessionTitle::read(&*store).and_then(|title| title.name);
-    assert_eq!(name.as_deref(), Some("The parser"));
+    assert_eq!(dir.name().as_deref(), Some("The parser"));
     assert_eq!(SessionMeta::read(&*store), Some(before));
     assert_eq!(app.world().resource::<SessionTitle>().name, None);
     let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
@@ -155,7 +154,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
 
     let session = memory.of(dir.path());
     assert!(session.logs().is_ok_and(|logs| !logs.is_empty()));
-    let name = SessionTitle::read(&session).and_then(|title| title.name);
+    let name = SessionTitle::read(&dir, &session).and_then(|title| title.name);
     assert_eq!(name.as_deref(), Some("Parser"));
     let copy = home.session(&fork);
     let forked = memory.of(copy.path());
@@ -269,20 +268,24 @@ fn a_session_resumed_as_it_was_listed_keeps_its_listing() {
     fs::remove_dir_all(home.root()).ok();
 }
 
+/// A rewrite reaches the session's name and listing, in its directory
+/// (the harness maps the name file) and in memory.
 #[test]
 fn a_rewritten_session_keeps_its_rewritten_title() {
     const SECRET: &str = "sk-123";
     let home = home("rewrite");
-    let Some(mut app) = running(&home, "1-1") else {
-        return;
-    };
-    app.add_plugins(JournalPlugin);
+    let id = SessionId::generate();
+    let dir = home.session(&id);
+    let (mut app, _wakes) = app_in(&home, &id);
+    app.add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin));
     app.finish();
     app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let said = commit_message(app.world_mut(), agent, Message::user("Fix the parser"));
+    assert_eq!(said, Ok(()));
     app.world_mut().resource_mut::<SessionTitle>().name = Some(format!("key {SECRET}"));
     app.update();
-    let store = app.world().resource::<SessionStore>().0.clone();
-    let name = || SessionTitle::read(&*store).and_then(|title| title.name);
+    let name = || dir.name();
     assert_eq!(name(), Some(format!("key {SECRET}")));
 
     app.world_mut().trigger(RewriteSession {

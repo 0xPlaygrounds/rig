@@ -16961,8 +16961,6 @@ dependencies = [
  "rig-harness-test-support",
  "rig-tools",
  "rig-tui",
- "serde",
- "serde_json",
 ]
 
 [[package]]
