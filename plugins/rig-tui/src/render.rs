@@ -1408,7 +1408,7 @@ fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) 
     if body_height < body.len() {
         keys.push("Shift+↑↓ scrolls");
     }
-    if shown.multiple {
+    if shown.ticks {
         keys.push("Tab ticks");
     }
     let block = Block::bordered().title(format!(
@@ -1435,12 +1435,14 @@ fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) 
                 let Some(item) = shown.items.get(*index) else {
                     return Line::default();
                 };
-                if !shown.multiple {
+                if !shown.ticks {
                     return item.line(width);
                 }
-                let tick = match choosing.ticked.contains(index) {
-                    true => "[x] ",
-                    false => "[ ] ",
+                let tick = match (shown.multiple, choosing.ticked.contains(index)) {
+                    (true, true) => "[x] ",
+                    (true, false) => "[ ] ",
+                    (false, true) => "(x) ",
+                    (false, false) => "( ) ",
                 };
                 let mut line = item.line(width.saturating_sub(tick.len()));
                 line.spans.insert(0, Span::from(tick));
@@ -1449,7 +1451,10 @@ fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) 
             Row::Typed if choosing.filter.trim().is_empty() => {
                 Line::from("✎ or type an answer").dim()
             }
-            Row::Typed => Line::from(format!("✎ {}", choosing.filter.trim())),
+            Row::Typed if choosing.ticked.is_empty() => {
+                Line::from(format!("✎ {}", choosing.filter.trim()))
+            }
+            Row::Typed => Line::from(format!("✎ {} (with the ticked)", choosing.filter.trim())),
         })
         .collect();
     let mut state = ListState::default().with_selected(Some(choosing.selected));

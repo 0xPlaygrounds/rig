@@ -141,6 +141,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
             })
             .into(),
         free_text: true,
+        ticks: true,
         multiple: false,
         selected: 0,
         edit: None,

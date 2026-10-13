@@ -7,7 +7,10 @@
 //!
 //! A picker or question that takes several items shows a tick box on each:
 //! Tab ticks the selected item and moves on, and Enter answers the ticked
-//! ones, or the selected one when none is ticked. A long body above the
+//! ones, or the selected one when none is ticked. A question that takes
+//! text shows them too, so a choice goes with a note: Tab ticks a choice
+//! (one only, unless it takes several), and Enter on the typed answer
+//! answers the ticked choices with it as their note. A long body above the
 //! list scrolls with Shift+Up and Shift+Down; PageUp and PageDown page the
 //! list.
 //!
@@ -60,6 +63,8 @@ pub(crate) struct Listing<'a> {
     pub(crate) body: &'a str,
     pub(crate) items: Vec<Item<'a>>,
     pub(crate) free_text: bool,
+    /// Whether items show tick boxes, and Tab ticks them.
+    pub(crate) ticks: bool,
     /// Whether several items may be ticked.
     pub(crate) multiple: bool,
     pub(crate) selected: usize,
@@ -145,6 +150,7 @@ impl Choices<'_, '_> {
                     })
                     .collect(),
                 free_text: picker.free_text,
+                ticks: picker.multiple,
                 multiple: picker.multiple,
                 selected: picker.selected,
                 edit: None,
@@ -164,6 +170,8 @@ impl Choices<'_, '_> {
                 })
                 .collect(),
             free_text: ask.free_text,
+            // A choice may go with a note.
+            ticks: ask.multiple || (ask.free_text && !ask.choices.is_empty()),
             multiple: ask.multiple,
             selected: 0,
             // One beside the work is answered in the input once the user
@@ -277,12 +285,13 @@ pub(crate) fn choice_key(
         KeyCode::Down => choosing.selected = (choosing.selected + 1).min(last),
         KeyCode::PageUp => choosing.selected = choosing.selected.saturating_sub(PAGE),
         KeyCode::PageDown => choosing.selected = (choosing.selected + PAGE).min(last),
-        KeyCode::Tab if shown.multiple => {
+        KeyCode::Tab if shown.ticks => {
             if let Some(Row::Item(index)) = rows.get(choosing.selected) {
                 match choosing.ticked.binary_search(index) {
                     Ok(at) => {
                         choosing.ticked.remove(at);
                     }
+                    Err(_) if !shown.multiple => choosing.ticked = vec![*index],
                     Err(at) => choosing.ticked.insert(at, *index),
                 }
                 choosing.selected = (choosing.selected + 1).min(last);
@@ -295,7 +304,10 @@ pub(crate) fn choice_key(
                 }
                 Row::Item(index) => Some(Some(Chosen::item(*index))),
                 Row::Typed if choosing.filter.trim().is_empty() => None,
-                Row::Typed => Some(Some(Chosen::text(choosing.filter.trim().to_owned()))),
+                Row::Typed => {
+                    let chosen = Chosen::items(choosing.ticked.clone());
+                    Some(Some(chosen.with_text(choosing.filter.trim())))
+                }
             };
         }
         _ => {}

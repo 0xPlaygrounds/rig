@@ -215,6 +215,27 @@ fn the_view_answers_the_questions_of_every_agent() {
 }
 
 #[test]
+fn a_ticked_choice_goes_with_the_note_typed() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<Answered>().add_observer(record_answers);
+    let ask = Ask::new("Allow `rm`?")
+        .choice("deny", "Deny")
+        .choice("allow", "Allow")
+        .free_text();
+    app.world_mut().spawn((ask, ForAgent(agent)));
+    app.update();
+    // One choice only: ticking Allow unticks Deny.
+    press(&mut app, "tab tab");
+    type_text(&mut app, "just once");
+    press(&mut app, "enter");
+    let noted = Answer::choice("allow").with_text("just once");
+    assert_eq!(
+        app.world().resource::<Answered>().0,
+        [("Allow `rm`?".to_owned(), Some(noted))]
+    );
+}
+
+#[test]
 fn a_long_label_is_shortened_beside_its_whole_detail() {
     use unicode_width::UnicodeWidthStr;
 
