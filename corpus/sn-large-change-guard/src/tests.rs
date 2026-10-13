@@ -3,15 +3,9 @@ use std::sync::mpsc::Receiver;
 
 use rig_coding_tools::{EditTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::RigHarnessPlugins;
-use rig_harness::clock::ClockPlugin;
-use rig_harness::commands::CommandPlugin;
-use rig_harness::host::exit::ExitPlugin;
-use rig_harness::host::launcher::LauncherPlugin;
-use rig_harness::host::session::SessionPlugin;
-use rig_harness::pick::PickPlugin;
-use rig_harness::services::ServicesPlugin;
-use rig_harness::watch::WatchPlugin;
+use rig_harness::ask::AskPlugin;
+use rig_harness::rig_ecs::AgentPlugin;
+use rig_harness::rig_ecs::journal::JournalPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, answer_open, app_on, calls, connect, first_agent,
@@ -56,22 +50,6 @@ fn write_call(id: &str, path: &Path, content: &str) -> MockStreamEvent {
     MockStreamEvent::tool_call(id, "write", json!({ "path": path, "content": content }))
 }
 
-/// The harness's group without the services, session, launcher and
-/// front-facing plugins a test supplies itself or does without: the
-/// previews the guard asks for come only with the group.
-fn harness() -> impl PluginGroup {
-    RigHarnessPlugins
-        .build()
-        .disable::<ServicesPlugin>()
-        .disable::<SessionPlugin>()
-        .disable::<CommandPlugin>()
-        .disable::<LauncherPlugin>()
-        .disable::<ExitPlugin>()
-        .disable::<ClockPlugin>()
-        .disable::<WatchPlugin>()
-        .disable::<PickPlugin>()
-}
-
 /// An app on `store` in the project `dir` with the file tools and the
 /// guard, its agent on `model`; with `answers`, someone answers questions
 /// from that script.
@@ -83,8 +61,8 @@ fn start(
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .insert_resource(LargeChangeConfig::default())
-        .add_plugins((harness(), WriteTool, EditTool))
+        .add_plugins((AgentPlugin, JournalPlugin, AskPlugin, PreviewPlugin))
+        .add_plugins((WriteTool, EditTool))
         .add_plugins(LargeChangeGuardPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended)

@@ -14,12 +14,9 @@ bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Reading the files a preview names, git through the workspace, and the
-# line diff of a deletion.
+# Asking git through the workspace whether it tracks a deleted file.
 rig-tools = { path = "../../crates/rig-tools" }
 serde = { workspace = true, features = ["derive"] }
-# Reads `large-change.toml`; the same version rig-harness uses.
-toml = "1"
 
 [dev-dependencies]
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
