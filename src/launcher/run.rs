@@ -168,7 +168,11 @@ fn launch(
     // restart, so what the agent said before it took the terminal is gone
     // once the launcher takes the terminal back.
     let mut kept_screen = false;
+    // The session the agent switched away from to start this one, which a
+    // refused start goes back to.
+    let mut switched_from: Option<SessionId> = None;
     loop {
+        let left = switched_from.take();
         let session = claimed.id.clone();
         let trial = home.trial_for(&session);
         let directory = home.session(&session);
@@ -237,9 +241,30 @@ fn launch(
         if reload && !headless {
             if let Some(target) = take_switch(&directory)? {
                 (claimed, notice) = switch(home, claimed, target)?;
+                switched_from = (claimed.id != session).then_some(session);
             }
             kept_screen = true;
             continue;
+        }
+        if !rejected
+            && !headless
+            && let Some(left) = left
+            && let Some(refusal) = absent(fs::read_to_string(run.refusal()))?
+        {
+            let back = if home.session(&left).is_saved() {
+                Start::Resume(left)
+            } else {
+                Start::New
+            };
+            let (previous, _) = switch(home, claimed, back)?;
+            claimed = previous;
+            if claimed.id != session {
+                // Told in the session it went back to, so nothing is kept.
+                absent(fs::remove_file(run.log()))?;
+                let why = refusal.trim().trim_start_matches("rig: ");
+                notice = Some(format!("Could not switch sessions: {why}"));
+                continue;
+            }
         }
         // Only a session rolled back for someone at the terminal runs again.
         let ended = !rejected || headless || !home.good().exists();
