@@ -270,3 +270,25 @@ fn resume_picks_from_the_sessions_of_the_apps_home() {
     );
     fs::remove_dir_all(home.root()).ok();
 }
+
+/// A session resumed as it was listed is not written again, so it keeps
+/// its place in `/resume`.
+#[test]
+fn a_session_resumed_as_it_was_listed_keeps_its_listing() {
+    let home = home("resumed");
+    let Some(mut app) = running(&home, "1-1") else {
+        return;
+    };
+    let store = app.world().resource::<SessionStore>().0.clone();
+    let listed = Meta {
+        labels: BTreeMap::from([("goal".to_owned(), "Ship it".to_owned())]),
+        updated: 1000,
+        ..Meta::default()
+    };
+    assert!(write_meta(&*store, &listed).is_ok());
+    app.world_mut().spawn(ResumeLabel::new("goal", "Ship it"));
+    app.update();
+    app.update();
+    assert_eq!(Meta::of(&*store).map(|meta| meta.updated), Some(1000));
+    fs::remove_dir_all(home.root()).ok();
+}

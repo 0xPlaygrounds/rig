@@ -1,9 +1,9 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`, and
-//! [`NameSession`] for a plugin naming any session. The end
-//! of each turn rewrites the session's [`Meta`] in its store (its
-//! [`SessionTitle`], the [`ResumeLabel`]s other plugins add, cost and when
-//! it was updated), which `/resume` lists and a resumed session reads its
-//! title back from. With the default
+//! [`NameSession`] for a plugin naming any session. Each change of a
+//! conversation, title or label rewrites the session's [`Meta`] in its
+//! store (its [`SessionTitle`], the [`ResumeLabel`]s other plugins add,
+//! cost and when it was updated), which `/resume` lists and a resumed
+//! session reads its title back from. With the default
 //! `tui` feature, `/resume` without arguments is a picker and the terminal
 //! view's status line shows the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
@@ -28,8 +28,8 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
-use rig_ecs::journal::SessionStore;
+use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
+use rig_ecs::journal::{Committed, SessionStore};
 use rig_ecs::prelude::now_ms;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::prelude::{
@@ -55,6 +55,7 @@ pub struct SessionsPlugin;
 impl Plugin for SessionsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SessionTitle>()
+            .init_resource::<Listed>()
             .init_resource::<RigHome>()
             .init_resource::<SessionStores>()
             .add_command("new", "Start a new session; this one is kept", new)
@@ -73,9 +74,8 @@ impl Plugin for SessionsPlugin {
             .add_systems(PreStartup, restore_title)
             .add_systems(
                 Last,
-                update_meta.in_set(WriteJournal).run_if(
-                    any_component_removed::<ActiveTurn>
-                        .or_eager(on_message::<AppExit>)
+                update_meta.after(WriteJournal).run_if(
+                    on_message::<Committed>
                         .or_eager(resource_changed::<SessionTitle>)
                         .or_eager(labels_changed),
                 ),
@@ -264,14 +264,25 @@ fn tilde(path: &Path) -> String {
     }
 }
 
+/// What the session's listing cache holds of the title and labels, as
+/// last written or read back: a title or label set to what it already
+/// says is no change, so resuming a session leaves its place in `/resume`.
+#[derive(Resource, Default, PartialEq)]
+struct Listed(SessionTitle, BTreeMap<String, String>);
+
 /// Reads the session's title from its listing cache.
-fn restore_title(store: Option<Res<SessionStore>>, mut title: ResMut<SessionTitle>) {
+fn restore_title(
+    store: Option<Res<SessionStore>>,
+    mut title: ResMut<SessionTitle>,
+    mut listed: ResMut<Listed>,
+) {
     let Some(store) = store else {
         return;
     };
     if let Some(meta) = Meta::of(&*store.0) {
         // Not a change: nothing to write back.
-        *title.bypass_change_detection() = meta.title;
+        title.bypass_change_detection().clone_from(&meta.title);
+        *listed = Listed(meta.title, meta.labels);
     }
 }
 
@@ -283,16 +294,18 @@ fn labels_changed(
     removed.read().count() > 0 || !labels.is_empty()
 }
 
-/// Rewrites the session's listing cache, at the end of a turn, on a new
-/// name or label and on exit, once some agent logged a message; the first
+/// Rewrites the session's listing cache when a conversation changed, and
+/// on a new name or label, once some agent logged a message; the first
 /// time, the title takes the start of the first message typed.
 fn update_meta(
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
-    mut title: ResMut<SessionTitle>,
+    (mut title, mut listed): (ResMut<SessionTitle>, ResMut<Listed>),
+    mut committed: MessageReader<Committed>,
     agents: Query<(&AgentId, &Conversation, Has<SpawnedBy>), With<Agent>>,
     labels: Query<&ResumeLabel>,
     spent: Option<Res<SessionSpending>>,
 ) {
+    let changed = committed.read().count() > 0;
     let (Some(_), Some(store)) = (paths.filter(|paths| paths.is_saved()), store) else {
         return;
     };
@@ -312,16 +325,21 @@ fn update_meta(
         .filter(|label| !label.text.is_empty())
         .map(|label| (label.tag.clone(), title_of(&label.text)))
         .collect();
+    let now = Listed(title.clone(), labels);
+    if !changed && *listed == now {
+        return;
+    }
     let spent = spent.map(|spent| spent.0.total).unwrap_or_default();
     let meta = Meta {
-        title: title.clone(),
-        labels,
+        title: now.0.clone(),
+        labels: now.1.clone(),
         cost: (spent.unpriced < spent.calls).then_some(spent.cost),
         tokens: spent.total_tokens(),
         updated: now_ms(),
     };
-    if let Err(failure) = write_meta(&*store.0, &meta) {
-        error!("could not write the session's meta.json: {failure}");
+    match write_meta(&*store.0, &meta) {
+        Ok(()) => *listed = now,
+        Err(failure) => error!("could not write the session's meta.json: {failure}"),
     }
 }
 
