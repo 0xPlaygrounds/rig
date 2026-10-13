@@ -19,7 +19,7 @@ use rig_harness_test_support::{
 use rig_tools::Shell;
 use rig_tui::TuiInput;
 
-use super::{CrashResumePlugin, Interrupted, Progress, TITLE, read_progress};
+use super::{CrashResumePlugin, Progress, Recovering, TITLE, read_progress};
 
 /// An app on `session` with the plugin, `shell`, someone who answers
 /// questions and an input box, one frame run.
@@ -36,11 +36,15 @@ fn app(home: &Home, session: &SessionId) -> (App, std::sync::mpsc::Receiver<()>)
     (app, wakes)
 }
 
-/// The agent, the session's store and the agent's saved progress.
-fn progress(world: &mut World) -> Option<Progress> {
-    let agent = first_agent(world)?;
-    let id = world.get::<AgentId>(agent)?.clone();
-    read_progress(&*world.get_resource::<SessionStore>()?.0, &id)
+/// The saved progress of `agent`.
+fn progress(world: &World, agent: Entity) -> Option<Progress> {
+    let id = world.get::<AgentId>(agent)?;
+    read_progress(&*world.get_resource::<PluginData>()?.session, id)
+}
+
+/// Whether `agent` saved `text` as its streamed text.
+fn streamed(world: &World, agent: Entity, text: &str) -> bool {
+    progress(world, agent).is_some_and(|progress| progress.text == text)
 }
 
 /// The agent's model, `model`, its call number `stall` (from 0) stalling
@@ -141,28 +145,17 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
     first
         .world_mut()
         .trigger(Deliver::new(agent, "Do the work.", DeliveryMode::Steer));
+    // The first call settled, its result marked for a restart, and the
+    // second runs.
     let second_running = |world: &World| {
-        let progress = world
-            .get::<AgentId>(agent)
-            .and_then(|id| read_progress(&*world.get_resource::<SessionStore>()?.0, id));
-        Path::new(&file).exists()
-            && progress.is_some_and(|progress| {
-                let started: Vec<_> = progress
-                    .calls
-                    .iter()
-                    .map(|call| (call.started, call.output.is_some()))
-                    .collect();
-                started == [(true, true), (true, false)]
-            })
+        let calls = world.try_query_filtered::<(Has<Started>, Has<Settled>), With<ToolRequest>>();
+        let mut calls: Vec<(bool, bool)> =
+            calls.map_or_else(Vec::new, |mut calls| calls.iter(world).collect());
+        calls.sort_unstable();
+        Path::new(&file).exists() && calls == [(true, false), (true, true)]
     };
     run_until(&mut first, &wakes, second_running);
-    let saved = progress(first.world_mut()).unwrap_or_default();
-    let output = saved
-        .calls
-        .first()
-        .and_then(|call| call.output.clone())
-        .unwrap_or_default();
-    assert!(output.contains("[exit code 0]"), "{saved:?}");
+    assert!(second_running(first.world()));
     // Killed: no exit runs, nothing more is written.
     drop(first);
 
@@ -192,8 +185,7 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
     run_until(&mut second, &wakes, |_| model.requests().len() >= 2);
 
     let sent = request(&model, 1);
-    let real = serde_json::to_string(&output).unwrap_or_default();
-    assert!(sent.contains(real.trim_matches('"')), "{sent}");
+    assert!(sent.contains("[exit code 0]"), "{sent}");
     assert!(sent.contains("may or may not have completed"), "{sent}");
     assert!(!sent.contains("interrupted by a restart"), "{sent}");
 }
@@ -218,15 +210,9 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
         "Explain the plan.",
         DeliveryMode::Steer,
     ));
-    let streamed = |world: &World| {
-        world.get::<AgentId>(agent).is_some_and(|id| {
-            let store = world.get_resource::<SessionStore>();
-            let progress = store.and_then(|store| read_progress(&*store.0, id));
-            progress.is_some_and(|progress| progress.text == "Step one is done. Now")
-        })
-    };
-    run_until(&mut first, &wakes, streamed);
-    assert!(streamed(first.world()));
+    let saved = |world: &World| streamed(world, agent, "Step one is done. Now");
+    run_until(&mut first, &wakes, saved);
+    assert!(saved(first.world()));
     let store = first
         .world()
         .get_resource::<SessionStore>()
@@ -260,7 +246,7 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
     ));
     let agent = first_agent(second.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     run_until(&mut second, &wakes, |world| {
-        world.get::<Interrupted>(agent).is_none()
+        world.get::<Recovering>(agent).is_none()
     });
 
     let world = second.world();
@@ -305,15 +291,9 @@ fn a_turn_killed_in_a_later_model_call_keeps_its_results_and_text() {
     first
         .world_mut()
         .trigger(Deliver::new(agent, "Do the work.", DeliveryMode::Steer));
-    let streamed = |world: &World| {
-        world.get::<AgentId>(agent).is_some_and(|id| {
-            let store = world.get_resource::<SessionStore>();
-            let progress = store.and_then(|store| read_progress(&*store.0, id));
-            progress.is_some_and(|progress| progress.text == "Halfway through")
-        })
-    };
-    run_until(&mut first, &wakes, streamed);
-    assert!(streamed(first.world()));
+    let saved = |world: &World| streamed(world, agent, "Halfway through");
+    run_until(&mut first, &wakes, saved);
+    assert!(saved(first.world()));
     drop(first);
 
     let (mut second, wakes) = app(&home, &session);
