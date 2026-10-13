@@ -23,7 +23,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_reflect::prelude::*;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
-use rig_tools::shorten;
+use rig_tools::{ago, shorten};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{dollars_label, tokens_label};
@@ -215,7 +215,7 @@ impl SessionEntry {
     /// What it cost, or its tokens, and its age, shown whole beside the
     /// label.
     pub fn detail(&self) -> String {
-        let age = age(self.saved.elapsed().unwrap_or_default());
+        let age = ago(self.saved.elapsed().unwrap_or_default());
         match self.meta.cost {
             Some(cost) if cost > 0.0 => format!("{} · {age}", dollars_label(cost)),
             _ if self.meta.tokens > 0 => {
@@ -256,17 +256,6 @@ pub fn list(home: &Home, stores: &SessionStores, current: &Path) -> Vec<SessionE
     sessions.sort_by_key(|session| Reverse(session.saved));
     sessions.truncate(LISTED);
     sessions
-}
-
-/// How long ago, roughly: `3m ago`, `5h ago`, `2d ago`.
-fn age(elapsed: Duration) -> String {
-    let seconds = elapsed.as_secs();
-    match seconds {
-        0..60 => "just now".to_owned(),
-        60..3600 => format!("{}m ago", seconds / 60),
-        3600..86_400 => format!("{}h ago", seconds / 3600),
-        _ => format!("{}d ago", seconds / 86_400),
-    }
 }
 
 /// `path` with the home directory shown as `~`.
