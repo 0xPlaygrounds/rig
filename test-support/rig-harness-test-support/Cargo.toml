@@ -23,4 +23,6 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The store a test keeps its session in.
 rig-memory = { path = "../../crates/rig-memory" }
+# The terminal view a test drives by its keys, with no terminal.
+rig-tui = { path = "../../plugins/rig-tui" }
 serde_json = { workspace = true }

@@ -2,7 +2,8 @@
 //! in a session directory, scripted models as the catalog's DeepSeek model
 //! or under references of their own, their replies, collectors of what the
 //! app wrote, a front that answers questions from a script
-//! ([`AnswerAsks`]) or one at a time ([`answer_open`]), and the clocks
+//! ([`AnswerAsks`]) or one at a time ([`answer_open`]), the terminal view
+//! without a terminal ([`tui_view`], driven by [`press`]), and the clocks
 //! moved on.
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -330,4 +331,31 @@ fn answer_asks(
             decision.decide(Decider::Person, answer.outcome());
         }
     }
+}
+
+/// The terminal view on `app`, as in a run at the terminal but with no
+/// terminal: its input, key bindings, completion, pickers and questions,
+/// and the transcript it lays out, driven by the keys [`press`] puts in.
+/// Adds the [`TuiPlugin`](rig_tui::TuiPlugin) when the app has none.
+pub fn tui_view(app: &mut App) -> &mut App {
+    if !app.is_plugin_added::<rig_tui::TuiPlugin>() {
+        app.add_plugins(rig_tui::TuiPlugin);
+    }
+    rig_tui::add_view(app);
+    app
+}
+
+/// Presses `keys`, such as `esc 0 d w` or `ctrl+x ctrl+e`, in one frame of
+/// the terminal view ([`tui_view`]), then runs that frame.
+pub fn press(app: &mut App, keys: &str) {
+    use rig_tui::crossterm::event::{Event, KeyEvent};
+    use rig_tui::{Keys, TerminalEvent};
+
+    let parsed: Result<Keys, String> = keys.parse();
+    assert!(parsed.is_ok(), "{keys}: {parsed:?}");
+    for press in parsed.iter().flat_map(Keys::presses) {
+        let key = KeyEvent::new(press.code, press.modifiers);
+        app.world_mut().write_message(TerminalEvent(Event::Key(key)));
+    }
+    app.update();
 }

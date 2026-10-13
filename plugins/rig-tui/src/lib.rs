@@ -173,9 +173,10 @@ impl Plugin for TuiPlugin {
 }
 
 /// Everything of the view but the terminal itself, which
-/// [`terminal::open_terminal`] opens: the view's tests run it on the
-/// events they write.
-fn add_view(app: &mut App) {
+/// [`terminal::open_terminal`] opens: tests run it on the keys they put
+/// in, as `rig_harness_test_support::tui_view` does.
+#[doc(hidden)]
+pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
     app.add_message::<history::Sent>()
