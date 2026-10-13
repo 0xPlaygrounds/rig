@@ -317,3 +317,25 @@ fn a_question_beside_the_work_leaves_the_keys_to_the_input() {
     let text = Some(Answer::Text("only in Go".to_owned()));
     assert_eq!(last, Some(("Save rule “tabs”?".to_owned(), text)));
 }
+
+#[test]
+fn the_item_highlighted_is_known_by_its_place_among_all_the_items() {
+    use crate::TuiInputState;
+
+    let (mut app, _) = view_app();
+    let picker = Picker::new("Branch")
+        .item("main", "")
+        .item("jam", "")
+        .item("jet", "");
+    app.world_mut().spawn(picker);
+    // Shown in one frame, noted at the start of the next.
+    app.update();
+    app.update();
+    let selection = |app: &App| app.world().resource::<TuiInputState>().selection();
+    assert_eq!(selection(&app), Some(0));
+    press(&mut app, "down");
+    assert_eq!(selection(&app), Some(1));
+    // Typing `je` leaves `jet` alone, the third item of all.
+    type_text(&mut app, "je");
+    assert_eq!(selection(&app), Some(2));
+}

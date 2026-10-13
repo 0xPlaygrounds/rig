@@ -126,6 +126,7 @@ pub struct TuiInputState {
     completion: Option<Completion>,
     answering: Option<Entity>,
     picking: Option<Entity>,
+    selection: Option<usize>,
 }
 
 impl TuiInputState {
@@ -153,6 +154,14 @@ impl TuiInputState {
     /// key.
     pub fn picking(&self) -> Option<Entity> {
         self.picking
+    }
+
+    /// The item highlighted in the picker or question shown over the
+    /// transcript ([`picking`](Self::picking)), as an index into all of its
+    /// items, whatever typing filtered out; `None` while none is, such as
+    /// when the typed answer is.
+    pub fn selection(&self) -> Option<usize> {
+        self.selection
     }
 }
 
@@ -283,6 +292,7 @@ pub(crate) fn note_state(
     (view, transcript): (Res<TuiView>, Res<TranscriptView>),
     focus: Res<KeyFocus>,
     panels: Query<(), With<TuiPanel>>,
+    choices: Choices,
     mut state: ResMut<TuiInputState>,
 ) {
     let scope = match focus.0 {
@@ -292,10 +302,19 @@ pub(crate) fn note_state(
     };
     let choosing = view.choosing.as_ref();
     let answering = choosing.filter(|c| c.draft.is_some()).map(|c| c.entity);
-    let picking = choosing.filter(|c| c.draft.is_none()).map(|c| c.entity);
+    let picker = choosing.filter(|c| c.draft.is_none());
+    let picking = picker.map(|c| c.entity);
+    let selection = picker.and_then(|choosing| {
+        let shown = choices.shown(choosing.entity)?;
+        match shown.rows(&choosing.filter).get(choosing.selected) {
+            Some(&pick::Row::Item(index)) => Some(index),
+            _ => None,
+        }
+    });
     let same = state.scope == scope
         && state.answering == answering
         && state.picking == picking
+        && state.selection == selection
         && state.completion == view.completion;
     if !same {
         *state = TuiInputState {
@@ -303,6 +322,7 @@ pub(crate) fn note_state(
             completion: view.completion.clone(),
             answering,
             picking,
+            selection,
         };
     }
 }
