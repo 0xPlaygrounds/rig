@@ -10,12 +10,15 @@ set (`StatusItems`, `AppStatus`), each by name, so another plugin replaces or
 hides it (`StatusSystems::Edit`). Other plugins add to it without touching
 it: a `TuiPanel` beside the transcript or over the screen, drawn by their own
 system, and a renderer for their tools' calls (`AppToolRenderersExt`), which
-also sees the calls a call started (`ToolCallView::children`). They take part
+also sees the calls a call started through any effect, a resumed session's
+too (`ToolCallView::children`, `PastEffects`). They take part
 in the input as data: key bindings (`KeyBinding`, `AppKeyBindingsExt`; the
 view's own keys are bindings too), the keys for a panel (`KeyFocus`), the
 draft (`TuiInput`) and the prompt history (`PromptHistory`, `Sent`), the
-frame's keys before any binding sees them (`TerminalEvents`, filtered in
-`InputSystems::Filter`, with `TuiInputState`), a program run with the
+frame's keys before any binding sees them, one at a time (`TerminalEvents`,
+filtered in `InputSystems::Filter` of the `TuiKeys` schedule, with
+`TuiInputState`), bindings while the transcript has the keys
+(`KeyScope::Transcript`), a program run with the
 terminal (`RunInTerminal`, such as `$EDITOR`), and their own pickers
 (rig-harness's `Picker`), which the view shows. They read and steer the
 transcript (`TranscriptView`, `ScrollTo`), where a notice is drawn

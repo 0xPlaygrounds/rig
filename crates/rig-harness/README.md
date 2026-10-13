@@ -34,12 +34,15 @@ changed plugins and restarts in the same session. The
   `Picker`, one choice or several), plugins' notes in an agent's
   transcript (`Note` asides), tools built for each call's place in the
   workspace (`add_tool_per_call`), what a call would change before it
-  runs (`Preview`), what any call that may write anywhere changed (its
-  `FilesChanged`, from snapshots before and after; `[checkpoints]`), a
+  runs (`Preview`, each side's size and lines), what any call that may
+  write anywhere changed (its `FilesChanged`, from snapshots just before
+  and after it, ignored paths named in `CheckpointAlso` included;
+  `[checkpoints]`), settings a project may override where a plugin lets it
+  (`add_project_setting`), a
   running call's progress and live output (`ToolProgress`, `CallOutput`),
   following an effect to the successor that took it over
   (`follow_successor`, `resend`), and, with the `trace` feature, how long
-  each system ran (`SystemTimings`). Plugins
+  each system ran, per plugin and schedule (`PluginTimings`). Plugins
   offer fronts and one takes each run: `rig-tui` on an interactive
   terminal, `rig-print` with `-p` or with stdin piped in, or a front whose
   option or command (`rig <name> …`) was given; an interactive run no

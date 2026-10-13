@@ -32,13 +32,16 @@ reached over SSH. A workspace also watches a directory (`watch`: system events
 on this machine, filtered by the ignore rules its listing follows; looking every
 second elsewhere). The crate also has what the tools are built from: `overlay`
 (a workspace that keeps writes from the disk and lists them, to preview a call),
-`checkpoint` (a snapshot of the files under a root, what changed since an
-earlier one, and `Checkpointed`, a handler that reports what any call changed;
+`checkpoint` (a snapshot of the files under a root, ignored paths named in
+`Taking::also` included, what changed since an earlier one and each file's
+content then, and `Checkpointed`, a handler that reports what any call changed;
 in a git work tree the snapshot is a tree written with a private index and
-object directory, never the repository's own), `clipboard` (the system
+object directory, never the repository's own, elsewhere a scan keeping content
+under `Taking::keep`), `clipboard` (the system
 clipboard's text and images), `context` (the `AGENTS.md`/`CLAUDE.md`
 instruction files from the working directory up, read within `Limits`), `fs`
-(`write_atomic`, capped reads, `resolve`, `file_change`), `process` (process
+(`write_atomic`, capped reads, `resolve`, `file_change`, a deletion's diff
+too), `process` (process
 groups and the `Launcher`), `blocking`, and the text helpers `shorten` and `ago`.
 
 The tools run on the file system and processes, so the crate is native only.

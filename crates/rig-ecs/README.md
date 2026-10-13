@@ -43,7 +43,8 @@ What it holds, by module:
   who decided, rig-core's `Decider`; the first decision wins), where an
   answer from a record of an earlier run, such as a session replay's, goes
   first and an answer standing in for running it goes after every gate
-  (`GateSystems`: FromRecord, After), and reads or edits the `Outcome` in
+  (`GateSystems`: FromRecord, After, then Fallback for the kernel's own
+  answers), and reads or edits the `Outcome` in
   place in Review (`ReviewSystems`: Edit, then Act), so Bevy reports two
   unordered deciders or reviewers. Kind filters (`ToolCalls`,
   `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell Bevy which
@@ -88,13 +89,15 @@ What it holds, by module:
   any rig-memory `Store`; `open_session` reads it strictly, refusing an old
   or broken session before anything is written, and sets a torn last line
   aside (`SessionRestored::repairs`). The work a restart carries on is
-  marked `Restored` and gated like any. A tool call that may change
-  something is marked in the conversation before it starts (a `rig.call`
-  aside), so a restart can tell one that started, or settled while its
-  reply ran on, from one that never did: such a call is restored
-  `Interrupted`, which no holding gate sees, a plugin may answer in Gate
-  or let run again in Prepare, and the kernel answers after every gate
-  (an error, or the result it had). Nothing is decided before plugins run.
+  marked `Restored` and gated like any, a turn keeping its index and first
+  message. A tool call that may change something is marked in the
+  conversation before it starts (a `rig.call` aside), and any call that
+  settles while its reply runs on is marked with its result, so a restart
+  can tell those from calls that never started: such a call is restored
+  `Interrupted`, which no holding gate sees, a plugin may answer or hold
+  in Gate or let run again in Prepare, and the kernel answers it in
+  `GateSystems::Fallback` once nothing holds it (an error, or the result
+  it had). Nothing is decided before plugins run.
 
 `AgentPlugin` adds Bevy's `TimePlugin` when the app has none. The crate has
 no features and builds for `wasm32-unknown-unknown`.
