@@ -13,10 +13,18 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The shared HTTP client the configured providers send through.
+rig-reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+# The `read` tool the scripted reply calls.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+# The effect log, read back to check it holds no blob.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+# The transcript, laid out as an export reads it.
+rig-tui = { path = "../../plugins/rig-tui" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
