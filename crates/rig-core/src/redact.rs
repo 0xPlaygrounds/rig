@@ -1,10 +1,11 @@
 //! Finding and redacting secrets in text a host logs, shows or shares:
-//! API keys and access tokens by their well-known shapes, and private key
-//! blocks. Bevy or not, every host that writes model traffic, a prompt
+//! API keys and access tokens by their well-known shapes, private key
+//! blocks, and values assigned to secret-named variables. Bevy or not, every host that writes model traffic, a prompt
 //! history or a shared transcript somewhere needs the same rules.
 //!
-//! The rules match a secret by its shape, so a credential with no known
-//! shape (a password in prose, a bare hex key) is not found. A shape
+//! The rules match a secret by its shape or the name it is assigned to,
+//! so a credential with neither (a password in prose, a bare hex key) is
+//! not found. A shape
 //! matches only where a token starts: the same letters inside a word or a
 //! base64 blob are not a key.
 //!
@@ -56,6 +57,18 @@ pub enum Kind {
     /// A PEM private key block, `-----BEGIN … PRIVATE KEY-----` through its
     /// end line, or through the end of the text when it has none.
     PrivateKey,
+    /// A value assigned to a name that says it is secret, `NAME=value` or
+    /// `NAME: value`: the name in upper snake case and, or ending in,
+    /// `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `API_KEY`, `ACCESS_KEY`,
+    /// `SECRET_KEY` or `PRIVATE_KEY` (so `AWS_SECRET_ACCESS_KEY` and
+    /// `GITHUB_TOKEN`, not `MAX_TOKENS` or `TOKEN_COUNT`). The value runs
+    /// to its closing quote when quoted, else to whitespace, a quote, `,`,
+    /// `;` or `&` (the next assignment of a query string); one of at most
+    /// 7 characters, all digits, starting with `$` (a reference such as
+    /// `$GITHUB_TOKEN`), with characters other than printable ASCII (a
+    /// placeholder such as `‹SECRET_1›`), or [`REDACTED`] is not a secret.
+    /// Only the value is the secret.
+    Assigned,
 }
 
 impl Kind {
@@ -72,6 +85,7 @@ impl Kind {
             Self::StripeKey => "Stripe key",
             Self::HuggingFaceToken => "Hugging Face token",
             Self::PrivateKey => "private key",
+            Self::Assigned => "assigned secret",
         }
     }
 }
@@ -107,12 +121,14 @@ pub fn find(input: &str) -> impl Iterator<Item = Secret> + '_ {
     std::iter::from_fn(move || {
         while let Some(rest) = input.get(at..) {
             let next = rest.chars().next()?;
-            if starts_token(input, at)
-                && let Some((kind, len)) = secret_at(rest)
-            {
-                let range = at..at + len;
-                at = range.end;
-                return Some(Secret { kind, range });
+            if starts_token(input, at) {
+                let found = secret_at(rest).map(|(kind, len)| (kind, 0..len));
+                let found = found.or_else(|| Some((Kind::Assigned, assigned(rest)?)));
+                if let Some((kind, range)) = found {
+                    let range = at + range.start..at + range.end;
+                    at = range.end;
+                    return Some(Secret { kind, range });
+                }
             }
             // A token's tail starts no key, so skip to the token's end.
             at += if is_token_char(next) {
@@ -205,6 +221,67 @@ const TOKENS: &[(&str, usize, Kind)] = &[
     ("rk_test_", 16, Kind::StripeKey),
     ("hf_", 30, Kind::HuggingFaceToken),
 ];
+
+/// The names, or ends of names after a `_`, that say a variable holds a
+/// secret.
+const SECRET_NAMES: &[&str] = &[
+    "SECRET",
+    "TOKEN",
+    "PASSWORD",
+    "PASSWD",
+    "API_KEY",
+    "ACCESS_KEY",
+    "SECRET_KEY",
+    "PRIVATE_KEY",
+];
+
+/// Where the secret value assigned to the secret-named variable `rest`
+/// starts with is, in `rest`: see [`Kind::Assigned`]. `None` when the value
+/// is a key of a known shape, which the scan finds as its own kind.
+fn assigned(rest: &str) -> Option<Range<usize>> {
+    let name = rest.get(..token_len(rest))?;
+    let upper_snake = name.starts_with(|ch: char| ch.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_');
+    let secret_named = SECRET_NAMES.iter().any(|end| {
+        name.strip_suffix(end)
+            .is_some_and(|head| head.is_empty() || head.ends_with('_'))
+    });
+    if !upper_snake || !secret_named {
+        return None;
+    }
+    // A quoted name's closing quote, then `=` or `:`, spaces around it.
+    let after = rest.get(name.len()..)?;
+    let after = after.strip_prefix(['"', '\'']).unwrap_or(after);
+    let after = after.trim_start_matches([' ', '\t']);
+    let after = after.strip_prefix(['=', ':'])?;
+    let after = after.trim_start_matches([' ', '\t']);
+    let start = rest.len() - after.len();
+    let (from, value) = match after.chars().next()? {
+        quote @ ('"' | '\'') => {
+            let inner = after.get(1..)?;
+            (start + 1, inner.get(..inner.find(quote)?)?)
+        }
+        _ => (
+            start,
+            after.get(..after.find(ends_value).unwrap_or(after.len()))?,
+        ),
+    };
+    let plausible = value.len() >= 8
+        && value.chars().all(|ch| ch.is_ascii_graphic() || ch == ' ')
+        && !value.starts_with('$')
+        && !value.chars().all(|ch| ch.is_ascii_digit())
+        && value != REDACTED
+        && secret_at(value).is_none();
+    plausible.then(|| from..from + value.len())
+}
+
+/// Whether `ch` ends an unquoted assigned value: whitespace, a quote, or a
+/// separator between assignments (`,`, `;`, `&`).
+fn ends_value(ch: char) -> bool {
+    ch.is_whitespace() || matches!(ch, '"' | '\'' | '`' | ',' | ';' | '&')
+}
 
 /// Whether `tail`, the rest of a token after a key's prefix, is long
 /// enough and has a letter, so `sk-` followed by a number or a short word
