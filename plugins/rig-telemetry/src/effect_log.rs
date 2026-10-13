@@ -34,6 +34,7 @@ use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
 #[cfg(feature = "tui")]
 use rig_harness::prelude::AppCliExt;
+use rig_harness::rig_memory::Place;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 

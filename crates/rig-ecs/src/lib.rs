@@ -95,8 +95,8 @@ pub mod prelude {
         PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
     };
     pub use rig_memory::{
-        Files, Keep, Place, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings,
-        as_of, fork, history, now_ms,
+        Files, Keep, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings, as_of,
+        fork, history, now_ms,
     };
 }
 
