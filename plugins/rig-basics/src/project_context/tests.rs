@@ -14,6 +14,7 @@ use rig_tools::workspace::{Contents, Stat, Workspace};
 use rig_harness::commands::RunCommand;
 use rig_harness::harness_protocol::Home;
 use rig_harness::services::WorkDir;
+use rig_harness::settings::Settings;
 
 use super::{
     ContextEntry, DEFAULT_SYSTEM_PROMPT, PROJECT, ProjectContextPlugin, ProjectRoot,
@@ -137,6 +138,43 @@ fn a_refresh_puts_an_edited_agents_md_in_the_prompt() {
     assert!(
         text.contains("Use spaces.") && !text.contains("Use tabs."),
         "{text}"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// The user's `[context]` limits cut an instruction file, and the user is
+/// told so from the start.
+#[test]
+fn an_instruction_file_the_settings_cut_says_so() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let root = exe.with_file_name(format!("limits-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    std::fs::write(root.join("AGENTS.md"), "Use tabs, always.").ok();
+    let mut app = App::new();
+    app.insert_resource(RigHome(Home::at(root.join("home"))))
+        .insert_resource(ProjectRoot(root.clone()))
+        .insert_resource(Settings::from_toml("[context]\nfile_bytes = 8"))
+        .add_plugins((AgentPlugin, ProjectContextPlugin));
+    app.finish();
+    let world = app.world_mut();
+    let text = project_text(world);
+    assert!(
+        text.contains("Use tabs\n[Cut after 8 of its 17 bytes"),
+        "{text}"
+    );
+    let mut notices = world.resource_mut::<Messages<Notice>>();
+    let warned: Vec<String> = notices
+        .drain()
+        .filter(|notice| notice.level == NoticeLevel::Warn)
+        .map(|notice| notice.text)
+        .collect();
+    let path = root.join("AGENTS.md");
+    let cut = format!("{} is cut to 8 of its 17 bytes", path.display());
+    // The directories above the test's, the repository's included, may
+    // hold instruction files of their own.
+    assert!(
+        warned.iter().any(|text| text.starts_with(&cut)),
+        "{warned:?}"
     );
     std::fs::remove_dir_all(&root).ok();
 }

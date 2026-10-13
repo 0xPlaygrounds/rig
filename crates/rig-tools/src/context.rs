@@ -16,8 +16,10 @@ pub const MAX_FILE_BYTES: usize = 32 * 1024;
 /// ([`Limits::total_bytes`]).
 pub const MAX_TOTAL_BYTES: usize = 64 * 1024;
 
-/// How much of the instruction files is read.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// How much of the instruction files is read. It reads from settings as
+/// `file_bytes` and `total_bytes`, each its default when left out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Limits {
     /// The most of one file read; the rest is cut, and the file says so.
     pub file_bytes: usize,

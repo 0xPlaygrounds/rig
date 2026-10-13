@@ -19,7 +19,7 @@ pub mod project_context;
 mod tui;
 
 pub use project_context::{
-    ContextEntry, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin, RefreshProjectContext,
+    ContextEntry, ContextLimits, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin, RefreshProjectContext,
 };
 
 /// Registers the basic commands; with the `tui` feature, `/agents` and the

@@ -36,6 +36,8 @@ rig-harness = { path = "../../crates/rig-harness" }
 # The instruction files.
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../rig-tui", optional = true }
+# `[context]` in the user's settings.
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 # The app on a session store and the scripted model the tests run on.
