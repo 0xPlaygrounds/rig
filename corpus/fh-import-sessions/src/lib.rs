@@ -306,6 +306,7 @@ fn picker(agent: Entity) -> Picker {
             ),
             command: format!("{COMMAND} {} {}", source.name(), file.display()),
             detail: Some(source.label().to_owned()),
+            checked: false,
         });
     }
     picker

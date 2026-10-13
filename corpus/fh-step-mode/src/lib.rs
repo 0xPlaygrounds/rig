@@ -386,7 +386,7 @@ fn answered(
             // Closed: the step's question comes back.
             (HoldKind::Editing, _) => continue,
             (_, Some(Answer::Choice(choice))) => choice,
-            (_, Some(Answer::Text(_))) => continue,
+            (_, Some(Answer::Text(_) | Answer::Choices(_))) => continue,
             // Closed: the user stops the turn, as an interrupt does.
             (_, None) => {
                 edits.commands.trigger(Interrupt::new(agent));

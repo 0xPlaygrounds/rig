@@ -49,9 +49,14 @@ fn questions_are_answered_from_answer_or_refused() {
         .iter(app.world())
         .count();
     assert_eq!(answerers, 1, "plugins may ask");
-    let answers = answered(&mut app, [approval(), Ask::new("Name?").free_text()]);
+    let several = Ask::yes_no("Which?").choice("allow", "Allow").multiple();
+    let answers = answered(
+        &mut app,
+        [approval(), Ask::new("Name?").free_text(), several],
+    );
     let allowed = Some(Answer::Choice("allow".to_owned()));
-    assert_eq!(answers, [Some(allowed), Some(None)]);
+    let both = Some(Answer::Choices(vec!["yes".to_owned(), "allow".to_owned()]));
+    assert_eq!(answers, [Some(allowed), Some(None), Some(both)]);
 
     let mut app = print_run(None);
     let answerers = app

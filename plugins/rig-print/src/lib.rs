@@ -18,10 +18,11 @@
 //! [`Answerer`]: a plugin applies its own policy for a run nobody answers,
 //! such as refusing, and a question asked anyway is refused, with why on
 //! stderr. `--answer=ID[,ID…]` ([`ANSWER`]) answers each question with the
-//! first of those choices it offers instead, and refuses one that offers
-//! none. After the answer, the run prints what other plugins add as
-//! [`PrintSection`]s, such as the agent's todo list. While it runs, each
-//! change of a running call's [`ToolProgress`] goes to stderr.
+//! first of those choices it offers instead (a question that takes several
+//! with every one it offers), and refuses one that offers none. After the
+//! answer, the run prints what other plugins add as [`PrintSection`]s,
+//! such as the agent's todo list. While it runs, each change of a running
+//! call's [`ToolProgress`] goes to stderr.
 
 use std::io::{IsTerminal, Read as _};
 
@@ -121,8 +122,16 @@ fn answer(
             continue;
         }
         let offered = |id: &&String| ask.choices.iter().any(|choice| &choice.id == *id);
-        let outcome = match answers.0.iter().find(offered) {
-            Some(id) => Answer::Choice(id.clone()).outcome(),
+        let taken = ask.choices.iter().map(|choice| &choice.id);
+        let taken: Vec<String> = taken.filter(|id| answers.0.contains(id)).cloned().collect();
+        let answer = match ask.multiple {
+            true => Some(taken)
+                .filter(|taken| !taken.is_empty())
+                .map(Answer::Choices),
+            false => answers.0.iter().find(offered).cloned().map(Answer::Choice),
+        };
+        let outcome = match answer {
+            Some(answer) => answer.outcome(),
             None => {
                 let why = match answers.0.is_empty() {
                     true => format!(

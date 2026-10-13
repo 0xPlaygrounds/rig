@@ -45,6 +45,7 @@ pub(super) fn pick_session(
             label: session.label(),
             command: format!("resume {}", session.id),
             detail: Some(session.detail()),
+            checked: false,
         })
         .collect();
     if items.is_empty() {

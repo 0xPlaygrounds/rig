@@ -65,6 +65,25 @@ fn a_pick_runs_the_items_command_for_the_agent_shown_and_closes_the_picker() {
 }
 
 #[test]
+fn a_pick_of_several_items_runs_their_commands_in_list_order() {
+    let (mut app, agent) = app();
+    let world = app.world_mut();
+    let files = Picker::new("Delete which files?")
+        .multiple()
+        .item("a.tmp", "note a.tmp")
+        .checked(true)
+        .item("b.log", "note b.log")
+        .item("c.tmp", "note c.tmp");
+    let picker = world.spawn(files).id();
+    world.trigger(Pick::person(picker, Some(Chosen::Items(vec![2, 0]))));
+    app.update();
+    let seen = app.world().resource::<Seen>();
+    let ran = [(agent, "a.tmp".to_owned()), (agent, "c.tmp".to_owned())];
+    assert_eq!(seen.ran, ran);
+    assert_eq!(seen.picked, [Some(Chosen::Items(vec![2, 0]))]);
+}
+
+#[test]
 fn a_pick_answers_a_question() {
     let (mut app, agent) = app();
     let world = app.world_mut();
@@ -73,18 +92,30 @@ fn a_pick_answers_a_question() {
         .id();
     let choice = world.spawn((Ask::yes_no("Run?"), ForAgent(agent))).id();
     let closed = world.spawn((Ask::yes_no("Again?"), ForAgent(agent))).id();
+    let several = Ask::yes_no("Which?").choice("maybe", "Maybe").multiple();
+    let several = world.spawn((several, ForAgent(agent))).id();
     world.trigger(Pick::person(text, Some(Chosen::Text("because".to_owned()))));
     world.trigger(Pick::person(choice, Some(Chosen::Item(1))));
     world.trigger(Pick::person(closed, None));
+    world.trigger(Pick::person(several, Some(Chosen::Items(vec![2, 0]))));
     app.update();
     let world = app.world();
     let answer = |ask: Entity| world.get::<Outcome>(ask).map(Answer::of);
     assert_eq!(
-        [answer(text), answer(choice), answer(closed)],
+        [
+            answer(text),
+            answer(choice),
+            answer(closed),
+            answer(several)
+        ],
         [
             Some(Some(Answer::Text("because".to_owned()))),
             Some(Some(Answer::Choice("no".to_owned()))),
             Some(None),
+            Some(Some(Answer::Choices(vec![
+                "yes".to_owned(),
+                "maybe".to_owned()
+            ]))),
         ]
     );
 }

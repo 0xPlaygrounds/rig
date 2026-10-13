@@ -5,8 +5,10 @@
 //! on the one the user picked from, or closed: the harness then runs the
 //! item's command, for the picker's agent or else the agent the user is
 //! looking at ([`Shown`]), triggers [`Picked`] on
-//! it, and despawns it. A front answers an open [`Ask`] the same way: a
-//! `Pick` on it decides the answer.
+//! it, and despawns it. A picker may take several items
+//! ([`Picker::multiple`]), answered with [`Chosen::Items`]: the harness
+//! runs each one's command in list order. A front answers an open [`Ask`]
+//! the same way: a `Pick` on it decides the answer.
 //!
 //! ```no_run
 //! use rig_harness::pick::{Chosen, Picked, Picker};
@@ -20,7 +22,7 @@
 //!             Some(Chosen::Item(0)) => "main".to_owned(),
 //!             Some(Chosen::Item(_)) => "dev".to_owned(),
 //!             Some(Chosen::Text(name)) => name.clone(),
-//!             None => return,
+//!             _ => return,
 //!         };
 //!         notices.write(Notice::info(None, format!("checking out {branch}")));
 //!     });
@@ -51,10 +53,12 @@ pub struct PickItem {
     /// shortened to fit, such as a session's age or why a model cannot be
     /// used.
     pub detail: Option<String>,
+    /// Whether it is ticked at first, in a picker of several items.
+    pub checked: bool,
 }
 
-/// A filterable list for the user to choose one item from, on an entity of
-/// the plugin's. See [`pick`](crate::pick).
+/// A filterable list for the user to choose one item, or several, from, on
+/// an entity of the plugin's. See [`pick`](crate::pick).
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
 pub struct Picker {
@@ -71,6 +75,8 @@ pub struct Picker {
     /// Whether what the user types may be the answer itself
     /// ([`Chosen::Text`]), besides filtering the items.
     pub free_text: bool,
+    /// Whether the user may tick several items ([`Chosen::Items`]).
+    pub multiple: bool,
 }
 
 impl Picker {
@@ -101,7 +107,22 @@ impl Picker {
             label: label.into(),
             command: command.into(),
             detail: None,
+            checked: false,
         });
+        self
+    }
+
+    /// The same picker, its last item ticked at first, or not.
+    pub fn checked(mut self, checked: bool) -> Self {
+        if let Some(item) = self.items.last_mut() {
+            item.checked = checked;
+        }
+        self
+    }
+
+    /// The same picker, taking several items.
+    pub fn multiple(mut self) -> Self {
+        self.multiple = true;
         self
     }
 
@@ -119,8 +140,25 @@ pub enum Chosen {
     /// The item at this position of the [`Picker`]'s items, or the choice
     /// at this position of the [`Ask`]'s choices.
     Item(usize),
+    /// The items, or choices, at these positions, of a picker or question
+    /// that takes several; a front that cannot tick items answers one.
+    Items(Vec<usize>),
     /// What the user typed, where free text is taken.
     Text(String),
+}
+
+impl Chosen {
+    /// The positions chosen, in list order, each once; none for text.
+    fn positions(&self) -> Vec<usize> {
+        let mut positions = match self {
+            Self::Item(index) => vec![*index],
+            Self::Items(indices) => indices.clone(),
+            Self::Text(_) => Vec::new(),
+        };
+        positions.sort_unstable();
+        positions.dedup();
+        positions
+    }
 }
 
 /// A front triggers it on a [`Picker`] or an open [`Ask`] when the user
@@ -179,9 +217,9 @@ impl Plugin for PickPlugin {
     }
 }
 
-/// Runs a picker item's command for its agent, else the one shown, and
-/// triggers [`Picked`] before despawning the picker; answers a question,
-/// a closed one refused.
+/// Runs the chosen items' commands, in list order, for the picker's agent,
+/// else the one shown, and triggers [`Picked`] before despawning the
+/// picker; answers a question, a closed one refused.
 fn pick(
     pick: On<Pick>,
     pickers: Query<&Picker>,
@@ -191,14 +229,12 @@ fn pick(
 ) {
     let (entity, chosen) = (pick.entity, pick.chosen.clone());
     if let Ok(picker) = pickers.get(entity) {
-        let item = match &chosen {
-            Some(Chosen::Item(index)) => picker.items.get(*index),
-            _ => None,
-        };
-        if let (Some(item), Some(agent)) = (item, picker.agent.or(shown.0))
-            && !item.command.is_empty()
-        {
-            commands.trigger(RunCommand::new(agent, item.command.clone()));
+        let items = chosen.as_ref().map(Chosen::positions).unwrap_or_default();
+        let items = items.iter().filter_map(|index| picker.items.get(*index));
+        if let Some(agent) = picker.agent.or(shown.0) {
+            for item in items.filter(|item| !item.command.is_empty()) {
+                commands.trigger(RunCommand::new(agent, item.command.clone()));
+            }
         }
         commands.trigger(Picked { entity, chosen });
         commands.entity(entity).try_despawn();
@@ -208,11 +244,21 @@ fn pick(
         return;
     };
     let answer = match chosen {
-        Some(Chosen::Item(index)) => ask
-            .choices
-            .get(index)
-            .map(|choice| Answer::Choice(choice.id.clone()).outcome()),
         Some(Chosen::Text(text)) => Some(Answer::Text(text).outcome()),
+        Some(chosen) => {
+            let ids = chosen
+                .positions()
+                .into_iter()
+                .map(|index| ask.choices.get(index));
+            let ids: Option<Vec<String>> = ids.map(|c| c.map(|c| c.id.clone())).collect();
+            match (ids, ask.multiple) {
+                (Some(ids), true) => Some(Answer::Choices(ids).outcome()),
+                (Some(mut ids), false) if ids.len() == 1 => {
+                    ids.pop().map(|id| Answer::Choice(id).outcome())
+                }
+                _ => None,
+            }
+        }
         None => Some(Outcome::refused("The user closed the question.")),
     };
     if let Some(answer) = answer {

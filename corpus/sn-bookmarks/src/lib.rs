@@ -254,6 +254,7 @@ fn list(
             label: bookmark.label.clone(),
             command: String::new(),
             detail: Some(format!("{when} · {agent} · {}", bookmark.first_line)),
+            checked: false,
         });
     }
     let labels = bookmarks

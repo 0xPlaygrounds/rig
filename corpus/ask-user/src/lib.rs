@@ -153,6 +153,7 @@ fn answered(
     for (asked, outcome, &HoldOf(call)) in &asks {
         let text = match (Answer::of(outcome), &outcome.0) {
             (Some(Answer::Choice(text) | Answer::Text(text)), _) => text,
+            (Some(Answer::Choices(ids)), _) => ids.join(", "),
             (None, Err(report)) => report.message.clone(),
             (None, Ok(_)) => NO_ANSWER.to_owned(),
         };

@@ -451,6 +451,7 @@ impl StrayPicker {
                 label: format!("[{}] {}", if *on { "x" } else { " " }, file.path),
                 command: String::new(),
                 detail: Some(size(file.size)),
+                checked: false,
             });
         }
         picker.selected = at;
@@ -601,6 +602,7 @@ fn batches_listed(
             label: batch.files.join(", "),
             command: format!("{RESTORE} {}", batch.id),
             detail: Some(format!("batch {}", batch.id)),
+            checked: false,
         });
     }
     commands.spawn(picker);
