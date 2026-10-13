@@ -101,8 +101,7 @@ fn entries(conversation: &Conversation, range: Range<usize>) -> Vec<Entry> {
 }
 
 /// An edit of an agent's conversation, kept for `/drop undo`: the
-/// messages it changed, a neighbour on each side included, before and
-/// after it, and where they began.
+/// messages it replaced, those it put in, and where they began.
 #[derive(Clone, Debug)]
 struct Edit {
     at: usize,
@@ -167,35 +166,30 @@ impl Surgery<'_, '_> {
                 return;
             }
         };
-        // What the edit may change: the range and the neighbours it joins
-        // what the cut leaves side by side into.
-        let len = conversation.messages().len();
-        let start = plan.range.start.saturating_sub(1);
-        let end = plan.range.end.saturating_add(1).min(len);
-        let before = entries(&conversation, start..end);
+        let before = entries(&conversation, plan.range.clone());
+        let at = plan.range.start;
         let halted = conversation.halted();
-        conversation.splice(plan.range, plan.with, Author::plugin(PLUGIN));
+        let spliced = conversation.splice(plan.range, plan.with, Author::plugin(PLUGIN));
         // A splice of the end clears the halt; a user message left last
         // still waits for the next one rather than going to the model on a
         // restore, as the user stopped or kept it.
         conversation.halt(halted.unwrap_or(Halt::Kept));
-        let grown = conversation.messages().len();
-        let after = entries(&conversation, start..(end + grown).saturating_sub(len));
+        let after: Vec<Entry> = spliced
+            .changed
+            .iter()
+            .filter_map(|id| conversation.index_of(*id))
+            .filter_map(|at| conversation.entry(at))
+            .collect();
         if let Some(mut usage) = usage
             && let Some(context) = usage.context()
         {
-            let left = (context + estimate(&after)).saturating_sub(estimate(&before));
+            let left = context
+                .saturating_add(estimate(&after))
+                .saturating_sub(estimate(&before));
             *usage = LastUsage(Some(Usage::new().total_tokens(left)));
         }
         if plan.keep {
-            self.edits.0.insert(
-                agent,
-                Edit {
-                    at: start,
-                    before,
-                    after,
-                },
-            );
+            self.edits.0.insert(agent, Edit { at, before, after });
         } else {
             self.edits.0.remove(&agent);
         }
