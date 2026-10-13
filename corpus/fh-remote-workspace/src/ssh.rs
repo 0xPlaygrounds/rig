@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use futures::channel::mpsc::UnboundedSender;
 use ignore::overrides::OverrideBuilder;
 use rig_tools::process::{Launcher, Process, Spawn};
-use rig_tools::workspace::{Contents, Stat, Workspace};
+use rig_tools::workspace::{Contents, Listing, Stat, Workspace};
 
 use crate::{RemoteSettings, Target, quote, quote_path};
 
@@ -379,7 +379,7 @@ impl Workspace for Ssh {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
         let globs = glob
             .map(|glob| {
                 OverrideBuilder::new(root)
@@ -390,9 +390,11 @@ impl Workspace for Ssh {
                     })
             })
             .transpose()?;
-        let git = match all {
-            true => "false",
-            false => "git rev-parse --is-inside-work-tree >/dev/null 2>&1",
+        let git = match listing {
+            Listing::All => "false",
+            Listing::Visible | Listing::Hidden => {
+                "git rev-parse --is-inside-work-tree >/dev/null 2>&1"
+            }
         };
         let script = format!(
             "r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; cd \"$r\" || exit {NOT_FOUND}; \
@@ -412,12 +414,7 @@ impl Workspace for Ssh {
             .split('\0')
             .map(|name| Path::new(name.trim_start_matches("./")))
             .filter(|name| !name.as_os_str().is_empty())
-            .filter(|name| {
-                all || name.components().all(|part| {
-                    let part = part.as_os_str().as_encoded_bytes();
-                    part != b"target" && !part.starts_with(b".")
-                })
-            })
+            .filter(|name| listing.keeps(name))
             .map(|name| root.join(name))
             .filter(|path| {
                 globs

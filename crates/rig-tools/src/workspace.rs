@@ -70,13 +70,11 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     fn canonical(&self, path: &Path) -> PathBuf;
 
     /// The regular files under `root` (or `root` itself when it is a file),
-    /// in walk order, as `root` joined with their path below it: without the
-    /// files `.gitignore` leaves out, hidden ones (named with a leading `.`)
-    /// and `target` directories (with `all`, every regular file, none of
-    /// those left out), and only those matching `glob`, such as `*.rs`,
-    /// when it is given. A malformed glob is an
+    /// in walk order, as `root` joined with their path below it: those
+    /// `listing` keeps ([`Listing`]), and only those matching `glob`, such
+    /// as `*.rs`, when it is given. A malformed glob is an
     /// [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
-    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>>;
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>>;
 
     /// Starts `program` with `args` in `dir` (`None`: the launcher's own
     /// directory) under `launcher`'s policy: its wrapper and variables.
@@ -91,17 +89,61 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
 
     /// Watches `root`, a file or a directory (with `recursive`, every
     /// directory under it too), from now on: a batch of the paths created,
-    /// changed or removed each time something changed, the files
-    /// [`files`](Self::files) would list, or every file with `all`.
+    /// changed or removed each time something changed, of the files
+    /// [`files`](Self::files) would list with `listing`.
     /// Dropping the [`Watch`] stops it. To miss nothing, list the files
     /// once after the watch has started.
     ///
-    /// By default it looks at what [`files`](Self::files) lists (with
-    /// `all`) every second, on a thread of its own, comparing each file's
+    /// By default it looks at what [`files`](Self::files) lists every
+    /// second, on a thread of its own, comparing each file's
     /// size and change time (its hash when [`stat`](Self::stat) cannot tell
     /// the time). [`Local`] hears of changes from the system instead.
-    fn watch(self: Arc<Self>, root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
-        crate::watch::poll(self, root, recursive, all)
+    fn watch(self: Arc<Self>, root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
+        crate::watch::poll(self, root, recursive, listing)
+    }
+}
+
+/// Which files [`Workspace::files`] lists, and a watch reports.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Listing {
+    /// What a person browsing the project sees, as ripgrep lists it: no
+    /// file the ignore rules (`.gitignore`, `.ignore`, the git excludes)
+    /// leave out, no hidden file or directory (named with a leading `.`),
+    /// no `target` directory.
+    #[default]
+    Visible,
+    /// Every file the ignore rules keep, hidden ones such as `.github/` and
+    /// `.env.example` included; `.git` left out.
+    Hidden,
+    /// Every regular file.
+    All,
+}
+
+impl Listing {
+    /// The listing a search or listing for `glob` uses: `Visible` becomes
+    /// `Hidden` when the glob names a hidden file or directory, such as
+    /// `.github/**` or `**/.env*`, so asking for one finds it.
+    pub fn for_glob(self, glob: Option<&str>) -> Self {
+        let names_hidden = glob.is_some_and(|glob| {
+            glob.split(['/', '\\'])
+                .any(|part| part.starts_with('.') && part != "." && part != "..")
+        });
+        match self {
+            Self::Visible if names_hidden => Self::Hidden,
+            other => other,
+        }
+    }
+
+    /// Whether this listing keeps `below`, a path below the listed root, by
+    /// its names alone (the ignore rules aside): `Visible` none of whose
+    /// parts is hidden or `target`, `Hidden` none of whose parts is `.git`.
+    pub fn keeps(self, below: &Path) -> bool {
+        let mut parts = below.iter();
+        match self {
+            Self::Visible => !parts.any(|part| part == "target" || is_hidden(Path::new(part))),
+            Self::Hidden => !parts.any(|part| part == ".git"),
+            Self::All => true,
+        }
     }
 }
 
@@ -298,12 +340,12 @@ impl Workspace for Local {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
         let mut walk = WalkBuilder::new(root);
-        match all {
-            true => walk.standard_filters(false),
-            false => walk.hidden(false).filter_entry(|entry| {
-                entry.depth() == 0 || (entry.file_name() != "target" && !is_hidden(entry.path()))
+        match listing {
+            Listing::All => walk.standard_filters(false),
+            Listing::Visible | Listing::Hidden => walk.hidden(false).filter_entry(move |entry| {
+                entry.depth() == 0 || listing.keeps(Path::new(entry.file_name()))
             }),
         };
         if let Some(glob) = glob {
@@ -339,11 +381,11 @@ impl Workspace for Local {
     }
 
     /// The system's file events under `root`, filtered as
-    /// [`files`](Workspace::files) lists unless `all`, gathered into a
+    /// [`files`](Workspace::files) lists with `listing`, gathered into a
     /// batch until no event came for 50 ms. A `root` that does not exist
     /// yet is looked at every second, as the default does.
-    fn watch(self: Arc<Self>, root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
-        crate::watch::notified(root, recursive, all)
+    fn watch(self: Arc<Self>, root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
+        crate::watch::notified(root, recursive, listing)
     }
 }
 

@@ -11,8 +11,8 @@
 //! ([`ProjectWorkspace`], this machine when there is none): on this
 //! machine the system tells it of changes; another workspace may look
 //! every second ([`Workspace::watch`]). It reports the files
-//! [`Workspace::files`] lists, leaving out ignored and hidden files and
-//! `target`, unless the watch is [`all`](FileWatch::all).
+//! [`Workspace::files`] lists with the watch's [`Listing`] (by default
+//! leaving out ignored and hidden files and `target`).
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -41,7 +41,7 @@ use bevy_log::warn;
 use bevy_tasks::futures_lite::{Stream, StreamExt as _, stream};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_ecs::calls::{Done, Running, Wake};
-use rig_tools::workspace::{Watch, Workspace};
+use rig_tools::workspace::{Listing, Watch, Workspace};
 
 use crate::workspace::ProjectWorkspace;
 
@@ -55,10 +55,8 @@ pub struct FileWatch {
     pub path: PathBuf,
     /// Whether directories under it are watched too.
     pub recursive: bool,
-    /// Whether ignored and hidden files and `target` are reported too.
-    /// The first [`FileChanges`] still lists only what
-    /// [`Workspace::files`] lists.
-    pub all: bool,
+    /// Which files are reported, at first and as they change.
+    pub listing: Listing,
 }
 
 impl FileWatch {
@@ -67,7 +65,7 @@ impl FileWatch {
         Self {
             path: path.into(),
             recursive: false,
-            all: false,
+            listing: Listing::Visible,
         }
     }
 
@@ -76,14 +74,13 @@ impl FileWatch {
         Self {
             path: path.into(),
             recursive: true,
-            all: false,
+            listing: Listing::Visible,
         }
     }
 
-    /// The same watch, reporting ignored and hidden files and `target`
-    /// too.
-    pub fn all(mut self) -> Self {
-        self.all = true;
+    /// The same watch, reporting the files `listing` keeps.
+    pub fn listing(mut self, listing: Listing) -> Self {
+        self.listing = listing;
         self
     }
 }
@@ -163,7 +160,7 @@ fn looks(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<Item = 
                 // Armed before listing, so nothing made in between is missed.
                 let armed = workspace
                     .clone()
-                    .watch(&watch.path, watch.recursive, watch.all);
+                    .watch(&watch.path, watch.recursive, watch.listing);
                 let there = there(&*workspace, &watch);
                 let next = match armed {
                     Ok(armed) => Some(Look::Watching(armed)),
@@ -185,7 +182,9 @@ fn looks(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<Item = 
 /// The files `watch` covers now, in path order.
 fn there(workspace: &dyn Workspace, watch: &FileWatch) -> Vec<PathBuf> {
     let root = watch.path.as_path();
-    let mut files = workspace.files(root, None, false).unwrap_or_default();
+    let mut files = workspace
+        .files(root, None, watch.listing)
+        .unwrap_or_default();
     files.retain(|path| watch.recursive || path == root || path.parent() == Some(root));
     files.sort();
     files

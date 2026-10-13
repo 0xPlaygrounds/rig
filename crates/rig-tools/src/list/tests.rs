@@ -52,3 +52,37 @@ fn a_listing_shows_what_files_lists_down_to_its_depth() {
     assert_eq!(refused, "");
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// Hidden files are listed when asked for, or when the glob names a
+/// hidden path, and ignored files and `.git` stay out either way.
+#[test]
+fn hidden_files_are_listed_when_asked_for_or_named() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-hidden-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    for sub in [".github/workflows", ".git", "src"] {
+        std::fs::create_dir_all(dir.join(sub)).ok();
+    }
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    std::fs::write(dir.join(".gitignore"), ".env\n").ok();
+    for file in [".github/workflows/ci.yml", ".git/HEAD", ".env", "src/lib.rs"] {
+        std::fs::write(dir.join(file), "x").ok();
+    }
+    let list = List {
+        base: Some(dir.clone()),
+        ..List::default()
+    };
+    let run = |args: ListArgs| {
+        futures::executor::block_on(list.call(&mut ToolContext::new(), args)).unwrap_or_default()
+    };
+
+    assert_eq!(run(ListArgs::new(".")), "src/lib.rs\n");
+    assert_eq!(
+        run(ListArgs::new(".").hidden()),
+        ".github/workflows/ci.yml\n.gitignore\nsrc/lib.rs\n"
+    );
+    assert_eq!(
+        run(ListArgs::new(".").glob(".github/**")),
+        ".github/workflows/ci.yml\n"
+    );
+    std::fs::remove_dir_all(dir).ok();
+}

@@ -24,7 +24,7 @@ use rig_harness::commands::SlashCommand;
 use rig_harness::services::ProjectRoot;
 use rig_harness::watch::{FileChanges, FileWatch};
 use rig_harness::workspace::ProjectWorkspace;
-use rig_tools::workspace::{Local, Workspace};
+use rig_tools::workspace::{Listing, Local, Workspace};
 
 /// Items a completion lists.
 const SHOWN: usize = 50;
@@ -221,7 +221,7 @@ impl FileIndex {
 /// them, relative to it, directories ending in `/`, skipping what
 /// `.gitignore` and hidden names leave out.
 fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
-    let files = match workspace.files(root, None, false) {
+    let files = match workspace.files(root, None, Listing::Visible) {
         Ok(files) => files,
         Err(failure) => {
             warn!("could not list the project's files: {failure}");

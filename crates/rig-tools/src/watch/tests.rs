@@ -7,7 +7,7 @@ use futures::StreamExt as _;
 
 use super::Watch;
 use crate::workspace::tests::Memory;
-use crate::workspace::{Local, Workspace};
+use crate::workspace::{Listing, Local, Workspace};
 
 /// The batches `watch` sends, on a channel to wait on with a timeout.
 fn batches(watch: Watch) -> Receiver<Vec<PathBuf>> {
@@ -42,7 +42,7 @@ fn a_local_watch_reports_what_files_would_list() {
     std::fs::create_dir_all(root.join("target")).ok();
     std::fs::write(root.join(".ignore"), "*.log\n").ok();
     let root = std::fs::canonicalize(&root).unwrap_or(root);
-    let watch = Arc::new(Local).watch(&root, true, false);
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
     assert!(watch.is_ok(), "{watch:?}");
     let Ok(watch) = watch else { return };
     let batches = batches(watch);
@@ -61,7 +61,9 @@ fn the_default_watch_sees_a_same_size_edit() {
     let memory = Arc::new(Memory::default());
     let note = Path::new("/project/note.txt");
     memory.write(note, b"one").ok();
-    let watch = memory.clone().watch(Path::new("/project"), true, false);
+    let watch = memory
+        .clone()
+        .watch(Path::new("/project"), true, Listing::Visible);
     assert!(watch.is_ok(), "{watch:?}");
     let Ok(watch) = watch else { return };
     let batches = batches(watch);
@@ -84,13 +86,15 @@ fn a_watch_of_an_ignored_directory_reports_what_files_lists_there() {
     let top = std::fs::canonicalize(&top).unwrap_or(top);
     let root = top.join("generated");
     let made = root.join("made.txt");
-    let watch = Arc::new(Local).watch(&root, true, false);
+    let watch = Arc::new(Local).watch(&root, true, Listing::Visible);
     assert!(watch.is_ok(), "{watch:?}");
     let Ok(watch) = watch else { return };
     let batches = batches(watch);
     std::fs::write(&made, "x").ok();
     let seen = seen(&batches, Duration::from_secs(2));
-    let listed = Local.files(&root, None, false).unwrap_or_default();
+    let listed = Local
+        .files(&root, None, Listing::Visible)
+        .unwrap_or_default();
     std::fs::remove_dir_all(&top).ok();
     assert_eq!((listed, seen), (vec![made.clone()], vec![made]));
 }
@@ -109,7 +113,7 @@ fn the_batching_thread_ends_with_its_watch() {
         root: root.clone(),
         file: Some(file),
         recursive: false,
-        all: true,
+        listing: Listing::All,
         ignores: super::Ignores::new(&root),
     };
     let (done, ended) = std::sync::mpsc::channel();

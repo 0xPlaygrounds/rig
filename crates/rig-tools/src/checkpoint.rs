@@ -19,7 +19,7 @@ use rig_core::tool::{
 };
 
 use crate::fs::Previous;
-use crate::workspace::{Stat, Workspace};
+use crate::workspace::{Listing, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking};
 
 /// The files under a root at one moment, to diff against a later one.
@@ -242,9 +242,13 @@ fn scan(
     if let Some(blobs) = blobs {
         std::fs::create_dir_all(blobs)?;
     }
-    let mut listed = workspace.files(root, None, false)?;
+    let mut listed = workspace.files(root, None, Listing::Visible)?;
     for path in also {
-        listed.extend(workspace.files(path, None, true).unwrap_or_default());
+        listed.extend(
+            workspace
+                .files(path, None, Listing::All)
+                .unwrap_or_default(),
+        );
     }
     let mut seen = BTreeMap::new();
     for path in listed {

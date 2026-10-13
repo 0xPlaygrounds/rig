@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rig_core::tool::{ChangeKind, Tool, ToolContext, ToolExecutionError, content_hash};
 
 use super::Overlay;
-use crate::workspace::{Local, Workspace};
+use crate::workspace::{Listing, Local, Workspace};
 use crate::{Edit, EditArgs, Read, ReadArgs, Replacement, Write, WriteArgs};
 
 /// What `tool` answers to `args`.
@@ -83,7 +83,9 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
             (ChangeKind::Created, 1, 0, None, Some(content_hash(b"b\n"))),
         ]
     );
-    let files = overlay.files(&dir, Some("*.rs"), false).unwrap_or_default();
+    let files = overlay
+        .files(&dir, Some("*.rs"), Listing::Visible)
+        .unwrap_or_default();
     assert_eq!(files, [dir.join("a.rs"), dir.join("new/b.rs")]);
     std::fs::remove_dir_all(dir).ok();
 }

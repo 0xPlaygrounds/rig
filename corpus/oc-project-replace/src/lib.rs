@@ -27,7 +27,7 @@ use rig_harness::rig_core::tool::{
 };
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness::rig_tools::fs::{file_change, io_error};
-use rig_harness::rig_tools::workspace::{Stat, Workspace};
+use rig_harness::rig_tools::workspace::{Listing, Stat, Workspace};
 use rig_harness::rig_tools::{clip, workspace::Local};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -315,7 +315,7 @@ fn plan(
         .into_owned()
     };
     let files = workspace
-        .files(root, args.glob.as_deref(), false)
+        .files(root, args.glob.as_deref(), Listing::Visible)
         .map_err(|error| match error.kind() {
             std::io::ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
             _ => io_error(&root.to_string_lossy(), error),
