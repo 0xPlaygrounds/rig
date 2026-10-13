@@ -5,7 +5,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, MemoryStore, ToolOutputs, app_on, calls, log_tool_outputs,
-    pass_wall_clock, reply, run_until, scripted_models, start_call,
+    pass_wall_clock, reply, run_until, scripted_models,
 };
 use rig_subagents::{SubagentsPlugin, TASK, WAIT};
 use serde_json::json;
@@ -44,23 +44,39 @@ fn write(called: On<ToolCalled<WriteArgs>>, project: Res<Project>, mut commands:
     commands.entity(called.call).insert_if_new(output);
 }
 
-/// The model writes `wait` for its only subagent as `S`, its id unknown
-/// to a script: the id it would have read in `task`'s result.
+/// The arguments of the test's `hold` tool.
+#[derive(Deserialize, JsonSchema)]
+struct HoldArgs {}
+
+/// Keeps a subagent busy until the test decides the call ([`release`]).
+fn hold(_: On<ToolCalled<HoldArgs>>) {}
+
+/// Decides the open call `id` of `hold`.
+fn release(world: &mut World, id: &str) {
+    let mut calls = world.query::<(&ToolRequest, &mut Decision)>();
+    for (request, mut decision) in calls.iter_mut(world) {
+        if request.call.id.to_string() == id {
+            decision.decide(Decider::plugin("test"), answered("Released."));
+        }
+    }
+}
+
+/// The model writes `wait` for a subagent by its task title, its id
+/// unknown to a script: the id it would have read in `task`'s result.
 fn name_the_subagent(
     mut calls: Query<(&mut ToolRequest, &ForAgent), Added<Admitted>>,
-    families: Query<&Spawned>,
-    ids: Query<&AgentId>,
+    children: Query<(&AgentId, &AgentTitle, &SpawnedBy)>,
 ) {
     for (mut request, &ForAgent(agent)) in &mut calls {
-        let child = families
-            .get(agent)
-            .ok()
-            .and_then(|family| family.iter().next());
-        let id = child.and_then(|child| ids.get(child).ok());
-        if request.call.function.name.as_str() == WAIT
-            && let Some(id) = id
-        {
-            let args = &mut request.call.function.arguments;
+        if request.call.function.name.as_str() != WAIT {
+            continue;
+        }
+        let args = &mut request.call.function.arguments;
+        let title = args.get("agent").and_then(|agent| agent.as_str());
+        let child = children.iter().find(|&(_, task, &SpawnedBy(parent))| {
+            parent == agent && title == Some(task.0.as_str())
+        });
+        if let Some((id, ..)) = child {
             args.insert("agent".to_owned(), json!(id.short()));
         }
     }
@@ -73,6 +89,14 @@ struct Session {
     app: App,
     wakes: Receiver<()>,
     parent: Entity,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        if let Some(project) = self.app.world().get_resource::<Project>() {
+            std::fs::remove_dir_all(&project.0).ok();
+        }
+    }
 }
 
 impl Session {
@@ -95,6 +119,7 @@ impl Session {
             .add_plugins((AgentPlugin, JournalPlugin, ClockPlugin, AnswerAsks))
             .add_plugins((SubagentsPlugin, AskParentPlugin))
             .add_open_tool("write", "Write a file.", ToolOptions::default(), write)
+            .add_open_tool("hold", "Hold on.", ToolOptions::default(), hold)
             .add_systems(AgentPass, name_the_subagent.in_set(PrepareSystems::Input))
             .add_observer(log_tool_outputs);
         if fresh {
@@ -125,12 +150,6 @@ impl Session {
     fn output(&self, id: &str) -> String {
         let outputs = &self.app.world().resource::<ToolOutputs>().0;
         outputs.get(id).cloned().unwrap_or_default()
-    }
-
-    /// `parent` calls `answer_child` with `args` in call `id`, as its model
-    /// would.
-    fn answer(&mut self, id: &str, args: serde_json::Value) {
-        start_call(self.app.world_mut(), self.parent, (ANSWER_CHILD, id), args);
     }
 }
 
@@ -166,13 +185,13 @@ fn a_waiting_parent_reads_the_question_in_its_turn_and_its_answer_is_the_call_re
             task("t1", "Update the config", CHILD),
             MockStreamEvent::final_response_with_default_usage(),
         ],
-        calls("w1", WAIT, json!({ "agent": "S" })),
+        calls("w1", WAIT, json!({ "agent": "Update the config" })),
         calls(
             "c1",
             ANSWER_CHILD,
             json!({ "id": "a1", "answer": "use config/prod.toml" }),
         ),
-        calls("w2", WAIT, json!({ "agent": "S" })),
+        calls("w2", WAIT, json!({ "agent": "Update the config" })),
         reply("done"),
     ]);
     let child = MockCompletionModel::from_stream_turns([
@@ -211,38 +230,57 @@ fn a_waiting_parent_reads_the_question_in_its_turn_and_its_answer_is_the_call_re
 }
 
 #[test]
-fn each_answer_goes_to_the_subagent_that_asked_and_the_user_answers_when_asked_to() {
-    let both = vec![
-        task("t1", "Check the wrapper", CHILD),
-        task("t2", "Check the port", OTHER),
+fn a_question_ends_a_wait_for_another_subagent_and_each_answer_goes_to_its_asker() {
+    let answers = vec![
+        MockStreamEvent::tool_call("cb", ANSWER_CHILD, json!({ "id": "qb", "answer": "8080" })),
+        MockStreamEvent::tool_call("ca", ANSWER_CHILD, json!({ "id": "qa", "ask_user": true })),
         MockStreamEvent::final_response_with_default_usage(),
     ];
-    let mut turns = vec![both];
-    turns.extend((0..6).map(|_| reply("Noted.")));
+    let mut turns = vec![
+        vec![
+            task("t1", "Check the wrapper", CHILD),
+            task("t2", "Check the port", OTHER),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        calls("w1", WAIT, json!({ "agent": "Check the port" })),
+        calls("w2", WAIT, json!({ "agent": "Check the port" })),
+        answers,
+    ];
+    turns.extend((0..4).map(|_| reply("Noted.")));
     let parent = MockCompletionModel::from_stream_turns(turns);
     let wrapper = MockCompletionModel::from_stream_turns([
         ask_parent("qa", "Keep the wrapper?"),
         reply("A done."),
     ]);
-    let port =
-        MockCompletionModel::from_stream_turns([ask_parent("qb", "Which port?"), reply("B done.")]);
+    let port = MockCompletionModel::from_stream_turns([
+        calls("h1", "hold", json!({})),
+        ask_parent("qb", "Which port?"),
+        reply("B done."),
+    ]);
     let models = [(PARENT, &parent), (CHILD, &wrapper), (OTHER, &port)];
     let mut session = Session::new(&MemoryStore::default(), &models, 600);
     session
         .app
         .insert_resource(Answers::new([Answer::text("drop it")]));
-    session.ask("Check both.", |world| open(world) == 2);
+    session.ask("Check both.", |_| parent.request_count() >= 3);
 
-    // Answered in reverse order; the first question goes to the user.
-    session.answer("cb", json!({ "id": "qb", "answer": "8080" }));
-    session.answer("ca", json!({ "id": "qa", "ask_user": true }));
-    session.run(|_| wrapper.request_count() >= 2 && port.request_count() >= 2);
+    // Waiting for the port's subagent, still busy, the parent read the
+    // wrapper's question.
+    let read = read_by(&parent, 2);
+    assert!(read.contains("Keep the wrapper?"), "{read}");
+    assert!(!read.contains("Which port?"), "{read}");
+    assert!(session.output("w1").contains("asked you a question"));
+
+    // The port's subagent asks too; the parent answers it first, and passes
+    // the wrapper's question on to the user.
+    release(session.app.world_mut(), "h1");
+    session.run(|_| wrapper.request_count() >= 2 && port.request_count() >= 3);
 
     assert_eq!(session.output("qb"), "8080");
     assert_eq!(session.output("qa"), "The user answered: drop it");
     let told = session.output("ca");
     assert!(told.contains("drop it"), "{told}");
-    assert!(read_by(&port, 1).contains("8080"));
+    assert!(read_by(&port, 2).contains("8080"));
     assert!(!read_by(&wrapper, 1).contains("8080"));
 }
 
@@ -312,6 +350,17 @@ fn stopping_the_parent_cancels_the_question_and_stops_the_subagent() {
     assert!(output.contains("its parent was stopped"), "{output}");
     assert_eq!(child.request_count(), 1);
     assert_eq!(open(session.app.world()), 0);
+    // The subagent's report that it stopped waits in the parent's
+    // conversation and starts no parent turn.
+    let stopped = "its parent was stopped";
+    let requests = parent.requests().into_iter();
+    let sent = requests.map(|request| json!(request.chat_history).to_string());
+    assert!(!sent.into_iter().any(|sent| sent.contains(stopped)));
+    let world = session.app.world();
+    let kept = world
+        .get::<Conversation>(parent_agent)
+        .is_some_and(|conversation| json!(conversation.messages()).to_string().contains(stopped));
+    assert!(kept);
 }
 
 #[test]

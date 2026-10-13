@@ -7,17 +7,20 @@
 //! `HoldOf` the call), spawned by a Gate system, so the call never starts
 //! until it is answered: its answer decides the call. The parent reads the
 //! question as a message from the subagent, delivered into its running
-//! turn's next model call, or starting a turn when it is idle; a message
-//! from the subagent also ends the parent's `wait` for it (rig-subagents),
-//! so a parent waiting on its subagent reads the question at once.
+//! turn's next model call, or starting a turn when it is idle. A parent's
+//! open `wait` calls end once the question is in its inbox: rig-subagents
+//! ends a wait for the subagent that asked (a message from it), and this
+//! plugin ends its waits for any other agent ([`Awaits`]), so the question
+//! goes with the parent's next model call.
 //!
 //! After a restart the subagent's unanswered call is restored and gated
 //! again, so the question is asked again, and its hold claims the restored
 //! turn, which rig-subagents would otherwise stop. Interrupting the parent
-//! interrupts the subagents waiting on its answers.
+//! interrupts the subagents waiting on its answers, and their reports that
+//! they stopped wait for the parent's next turn instead of starting one.
 
 use rig_harness::prelude::*;
-use rig_subagents::SpawnSubagent;
+use rig_subagents::{Awaits, Report, SpawnSubagent};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -74,9 +77,10 @@ impl Default for AskParentSettings {
 /// Prepare edits that give `ask_parent` to subagents only.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AskParentSystems {
-    /// Gives a subagent spawned with a list of tools `ask_parent` too, and
+    /// Gives a subagent spawned with a list of tools `ask_parent` too,
     /// offers `ask_parent` and `answer_child` only to agents that have a
-    /// parent or subagents.
+    /// parent or subagents, and makes the report of a subagent stopped with
+    /// its parent a note.
     Prepare,
     /// Holds each `ask_parent` call with its question.
     Gate,
@@ -116,12 +120,15 @@ impl Plugin for AskParentPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (with_ask_parent, offer_where_useful).in_set(AskParentSystems::Prepare),
+                    (with_ask_parent, offer_where_useful, quiet_stop_reports)
+                        .in_set(AskParentSystems::Prepare),
                     (escalated, ask).chain().in_set(AskParentSystems::Gate),
                 ),
             )
             .add_observer(time_out)
-            .add_observer(cancel_children);
+            .add_observer(cancel_children)
+            .add_observer(question_accepted)
+            .add_observer(wait_started);
     }
 }
 
@@ -145,6 +152,15 @@ pub struct Question {
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 struct Asked;
+
+/// On a question's message to the parent: the subagent that asked.
+#[derive(Component)]
+struct QuestionFrom(Entity);
+
+/// On a subagent interrupted because its parent was, until its report.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct StoppedWithParent;
 
 /// On the user's question a parent passed a subagent's question on as: the
 /// [`Question`] and the parent's `answer_child` call, both answered with
@@ -279,8 +295,8 @@ fn ask(
             Some(task) => author.titled(task.clone()),
             None => author,
         };
-        let deliver = Deliver::new(parent, text, DeliveryMode::Steer).with_author(author);
-        commands.trigger(deliver);
+        let message = Incoming::new(text, DeliveryMode::Steer).with_author(author);
+        commands.spawn((message, ForAgent(parent), QuestionFrom(child)));
         let wait = WakeAt::after(Duration::from_secs(settings.timeout_secs));
         let name = Name::new(format!(
             "waiting for its parent's answer to `{}`",
@@ -444,10 +460,78 @@ fn cancel_children(interrupt: On<Interrupt>, questions: Query<&Question>, mut co
         .filter(|question| question.parent == parent)
     {
         let reason = Some("its parent was stopped while it waited for an answer".to_owned());
+        commands.entity(question.child).insert(StoppedWithParent);
         commands.trigger(Interrupt {
             entity: question.child,
             reason,
         });
+    }
+}
+
+/// The report of a subagent stopped with its parent goes with the
+/// parent's next turn: the user stopped the parent, so it starts none.
+fn quiet_stop_reports(
+    mut reports: Query<(&mut Incoming, &ForAgent), (Added<Admitted>, With<Report>)>,
+    stopped: Query<(Entity, &AgentId, &SpawnedBy), With<StoppedWithParent>>,
+    mut commands: Commands,
+) {
+    for (mut report, &ForAgent(to)) in &mut reports {
+        let from = report.author.from.as_deref();
+        let child = stopped
+            .iter()
+            .find(|&(_, id, &SpawnedBy(parent))| parent == to && from == Some(id.0.as_str()));
+        if let Some((child, ..)) = child {
+            report.mode = DeliveryMode::Note;
+            commands.entity(child).remove::<StoppedWithParent>();
+        }
+    }
+}
+
+/// A question accepted into its parent's inbox ends the parent's open
+/// `wait` calls for other agents, so it goes with the next model call.
+fn question_accepted(
+    accepted: On<Add<Started>>,
+    messages: Query<(&ForAgent, &QuestionFrom)>,
+    mut waits: Query<(Entity, &Awaits, &ForAgent, &mut Decision), ToolCalls>,
+    mut commands: Commands,
+) {
+    let Ok((&ForAgent(parent), &QuestionFrom(child))) = messages.get(accepted.entity) else {
+        return;
+    };
+    for (call, &Awaits(awaited), &ForAgent(waiter), mut decision) in &mut waits {
+        if waiter == parent && awaited != child {
+            end_wait(call, &mut decision, &mut commands);
+        }
+    }
+}
+
+/// A `wait` started while a question for its agent is in the agent's
+/// inbox ends at once, unless it waits for the subagent that asked
+/// (rig-subagents ends that one).
+fn wait_started(
+    added: On<Add<Awaits>>,
+    mut waits: Query<(&Awaits, &ForAgent, &mut Decision), ToolCalls>,
+    inbox: Query<(&ForAgent, &QuestionFrom), (With<Started>, Without<Outcome>)>,
+    mut commands: Commands,
+) {
+    let Ok((&Awaits(awaited), &ForAgent(waiter), mut decision)) = waits.get_mut(added.entity)
+    else {
+        return;
+    };
+    let asked = inbox
+        .iter()
+        .any(|(&ForAgent(to), &QuestionFrom(child))| to == waiter && child != awaited);
+    if asked {
+        end_wait(added.entity, &mut decision, &mut commands);
+    }
+}
+
+/// Ends the open `wait` call `call` for a subagent's question.
+fn end_wait(call: Entity, decision: &mut Decision, commands: &mut Commands) {
+    let text = "A subagent asked you a question, which follows: answer it with `answer_child`, \
+                then `wait` again if you still need to.";
+    if decision.decide(Decider::plugin(DECIDER), answered(text)) {
+        commands.entity(call).remove::<Awaits>();
     }
 }
 
