@@ -18,12 +18,12 @@ use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use http::{HeaderMap, HeaderName, HeaderValue, Method, Uri};
+use http::{HeaderMap, HeaderName, HeaderValue};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{
     Catalog, ModelFacts, ModelSpec, Pricing, Provide, ReasoningSupport, Transport,
 };
-use rig_harness::rig_core::http_client::{self, HttpMiddleware};
+use rig_harness::rig_core::http_client::{self, Exchange, HttpMiddleware};
 use rig_harness::rig_core::providers::anthropic::wire::{AnthropicConfig, compatible};
 use rig_harness::rig_core::providers::openai::wire::{Auth, Dialect, OpenAIConfig, Route};
 use rig_harness::rig_core::providers::registry::{ConnectError, ProviderConfig, ProviderId};
@@ -394,8 +394,7 @@ impl Gateway {
 impl HttpMiddleware for Gateway {
     fn before_request_headers<'a>(
         &'a self,
-        _method: &'a Method,
-        _uri: &'a Uri,
+        _exchange: Exchange<'a>,
         headers: &'a mut HeaderMap,
     ) -> WasmBoxedFuture<'a, http_client::Result<()>> {
         Box::pin(async move {

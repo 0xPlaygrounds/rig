@@ -9,10 +9,26 @@
 //! ```
 
 use bytes::Bytes;
-use http::{HeaderMap, Method, StatusCode, Uri};
+use http::{Extensions, HeaderMap, Method, StatusCode, Uri};
 
 use super::Result;
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+
+/// The request a hook runs for: its method, URI and extensions, which carry
+/// what the caller attached to it, such as the model call a request serves
+/// (rig-core's `serve::Serving`). Built by
+/// [`DynHttpClient`](super::DynHttpClient); a field added later breaks no
+/// hook.
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct Exchange<'a> {
+    /// The request's method.
+    pub method: &'a Method,
+    /// The request's URI.
+    pub uri: &'a Uri,
+    /// The request's extensions, as the transport receives them.
+    pub extensions: &'a Extensions,
+}
 
 /// Transport-boundary hooks applied by
 /// [`DynHttpClient`](super::DynHttpClient) around every request.
@@ -35,8 +51,7 @@ pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
     /// error aborts the request before it is sent.
     fn before_request_headers<'a>(
         &'a self,
-        _method: &'a Method,
-        _uri: &'a Uri,
+        _exchange: Exchange<'a>,
         _headers: &'a mut HeaderMap,
     ) -> WasmBoxedFuture<'a, Result<()>> {
         Box::pin(async { Ok(()) })
@@ -50,8 +65,7 @@ pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
     /// it is sent.
     fn before_request_body<'a>(
         &'a self,
-        _method: &'a Method,
-        _uri: &'a Uri,
+        _exchange: Exchange<'a>,
         _headers: &'a HeaderMap,
         body: Bytes,
     ) -> WasmBoxedFuture<'a, Result<Bytes>> {
@@ -68,8 +82,7 @@ pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
     /// an error fails the request with that error.
     fn after_response<'a>(
         &'a self,
-        _method: &'a Method,
-        _uri: &'a Uri,
+        _exchange: Exchange<'a>,
         _status: StatusCode,
         _headers: &'a HeaderMap,
     ) -> WasmBoxedFuture<'a, Result<()>> {

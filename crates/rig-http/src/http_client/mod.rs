@@ -19,7 +19,7 @@ pub mod middleware;
 pub mod multipart;
 use crate::wasm_compat::*;
 pub use erased::DynHttpClient;
-pub use middleware::HttpMiddleware;
+pub use middleware::{Exchange, HttpMiddleware};
 pub use multipart::MultipartForm;
 
 #[derive(Debug, thiserror::Error)]

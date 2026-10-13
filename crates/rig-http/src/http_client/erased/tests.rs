@@ -47,10 +47,10 @@ fn debug_never_prints_the_inner_transport() {
 
 mod middleware {
     use super::*;
-    use crate::http_client::middleware::HttpMiddleware;
+    use crate::http_client::middleware::{Exchange, HttpMiddleware};
     use crate::test_utils::MockStreamingClient;
     use crate::wasm_compat::WasmBoxedFuture;
-    use http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
+    use http::{HeaderMap, HeaderValue, StatusCode};
     use std::sync::{Arc, Mutex};
 
     /// Appends its tag to a header, to the body, and to a shared log —
@@ -72,8 +72,7 @@ mod middleware {
     impl HttpMiddleware for Tagger {
         fn before_request_headers<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             headers: &'a mut HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
             Box::pin(async move {
@@ -85,8 +84,7 @@ mod middleware {
 
         fn before_request_body<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             headers: &'a HeaderMap,
             body: Bytes,
         ) -> WasmBoxedFuture<'a, Result<Bytes>> {
@@ -109,8 +107,7 @@ mod middleware {
 
         fn after_response<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             status: StatusCode,
             _headers: &'a HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
@@ -169,8 +166,7 @@ mod middleware {
     impl HttpMiddleware for FailAt {
         fn before_request_headers<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             _headers: &'a mut HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
             let fail = self.0 == "headers";
@@ -188,8 +184,7 @@ mod middleware {
 
         fn after_response<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             _status: StatusCode,
             _headers: &'a HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
@@ -241,8 +236,7 @@ mod middleware {
         impl HttpMiddleware for CaptureContentType {
             fn after_response<'a>(
                 &'a self,
-                _method: &'a Method,
-                _uri: &'a Uri,
+                _exchange: Exchange<'a>,
                 status: StatusCode,
                 headers: &'a HeaderMap,
             ) -> WasmBoxedFuture<'a, Result<()>> {
@@ -281,8 +275,7 @@ mod middleware {
     impl HttpMiddleware for SeeReplies {
         fn after_response<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             status: StatusCode,
             headers: &'a HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
@@ -318,6 +311,72 @@ mod middleware {
             err.non_success_body(),
             Some("slow"),
             "the reply's own error"
+        );
+    }
+
+    /// What a caller attached to a request, such as the call it serves.
+    #[derive(Clone, Debug, PartialEq)]
+    struct Serves(u64);
+
+    /// Records the [`Serves`] each phase's exchange carries.
+    struct SeeServes(Arc<Mutex<Vec<String>>>);
+
+    impl SeeServes {
+        fn note(&self, phase: &str, exchange: Exchange<'_>) {
+            let serves = exchange.extensions.get::<Serves>().map(|serves| serves.0);
+            self.0
+                .lock()
+                .expect("seen")
+                .push(format!("{phase}:{} {serves:?}", exchange.method));
+        }
+    }
+
+    impl HttpMiddleware for SeeServes {
+        fn before_request_headers<'a>(
+            &'a self,
+            exchange: Exchange<'a>,
+            _headers: &'a mut HeaderMap,
+        ) -> WasmBoxedFuture<'a, Result<()>> {
+            self.note("headers", exchange);
+            Box::pin(async { Ok(()) })
+        }
+
+        fn before_request_body<'a>(
+            &'a self,
+            exchange: Exchange<'a>,
+            _headers: &'a HeaderMap,
+            body: Bytes,
+        ) -> WasmBoxedFuture<'a, Result<Bytes>> {
+            self.note("body", exchange);
+            Box::pin(async move { Ok(body) })
+        }
+
+        fn after_response<'a>(
+            &'a self,
+            exchange: Exchange<'a>,
+            _status: StatusCode,
+            _headers: &'a HeaderMap,
+        ) -> WasmBoxedFuture<'a, Result<()>> {
+            self.note("response", exchange);
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[test]
+    fn every_hook_reads_what_the_request_carries() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let inner = RecordingHttpClient::with_error(StatusCode::TOO_MANY_REQUESTS, "slow");
+        let erased = DynHttpClient::new(inner).with_middleware(SeeServes(seen.clone()));
+        let mut marked = request("hello");
+        marked.extensions_mut().insert(Serves(7));
+        let _ = block_on(erased.send::<_, Bytes>(marked));
+        assert_eq!(
+            seen.lock().expect("seen").as_slice(),
+            [
+                "headers:POST Some(7)",
+                "body:POST Some(7)",
+                "response:POST Some(7)"
+            ]
         );
     }
 
