@@ -6189,9 +6189,7 @@ name = "corpus-oc-transcript-in-editor"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "rig-core",
- "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
  "rig-tui",
