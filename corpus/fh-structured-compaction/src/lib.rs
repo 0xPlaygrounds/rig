@@ -208,8 +208,9 @@ fn last_typed(conversation: &Conversation, before: usize, count: usize) -> Vec<S
     texts
 }
 
-/// Sends each summary call rig-compaction admits to the configured model;
-/// the fallback gets back the agent's model, the default prompts and cut.
+/// Sends each summary call rig-compaction admits to the configured model,
+/// planned again for that model's window; the fallback gets back the
+/// agent's model, the default prompts and cut.
 fn structure(
     mut calls: Query<
         (
@@ -222,43 +223,63 @@ fn structure(
         (Added<Admitted>, ModelCalls),
     >,
     agents: Query<(&Conversation, Option<&Summarized>, Option<&Connection>)>,
-    (config, fallback, models): (Res<StructuredCompaction>, Res<Fallback>, Res<Models>),
+    (config, compaction, fallback, models): (
+        Res<StructuredCompaction>,
+        Res<Compaction>,
+        Res<Fallback>,
+        Res<Models>,
+    ),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     for (call, mut model, mut summarizing, &ForAgent(agent), structured) in &mut calls {
+        let Ok((conversation, summarized, own)) = agents.get(agent) else {
+            continue;
+        };
+        let replan = |policy: &CompactionPolicy, spec: &ModelSpec| {
+            let reason = summarizing.reason.clone();
+            plan(conversation, summarized, policy, reason, spec)
+        };
         match structured {
             None => {
-                let cut = summarizing.upto.and_then(|kept| {
-                    let (conversation, ..) = agents.get(agent).ok()?;
-                    Some((conversation, conversation.index_of(kept)?))
-                });
+                if let Some(name) = config.model.as_deref() {
+                    let connected = models.connect(name).map_err(|why| why.to_string());
+                    let routed = connected.and_then(|connection| {
+                        let planned = replan(&compaction.0, &connection.spec)?;
+                        Ok((connection, planned))
+                    });
+                    match routed {
+                        Ok((connection, planned)) => {
+                            if let Some((planned, request)) = planned {
+                                *summarizing = planned;
+                                *model = ModelRequest::new(request);
+                            }
+                            model.connection = Some(connection);
+                        }
+                        Err(why) => {
+                            let text = format!(
+                                "Cannot use the summary model {name}: {why}; using the agent's."
+                            );
+                            notices.write(Notice::warn(agent, text));
+                        }
+                    }
+                }
                 let count = config.keep_user_messages.saturating_sub(1);
-                let verbatim = cut.map(|(conversation, cut)| last_typed(conversation, cut, count));
+                let cut = summarizing
+                    .upto
+                    .and_then(|kept| conversation.index_of(kept));
+                let verbatim = cut.map(|cut| last_typed(conversation, cut, count));
                 let verbatim = verbatim.unwrap_or_default();
                 commands
                     .entity(call)
                     .insert(Structured { tries: 1, verbatim });
                 commands.entity(agent).remove::<KeepVerbatim>();
-                let Some(name) = config.model.as_deref() else {
-                    continue;
-                };
-                match models.connect(name) {
-                    Ok(connection) => model.connection = Some(connection),
-                    Err(why) => {
-                        let text = format!(
-                            "Cannot reach the summary model {name}: {why}; using the agent's."
-                        );
-                        notices.write(Notice::warn(agent, text));
-                    }
-                }
             }
             Some(structured) if structured.tries > TRIES => {
-                let Ok((conversation, summarized, Some(own))) = agents.get(agent) else {
+                let Some(own) = own else {
                     continue;
                 };
-                let reason = summarizing.reason.clone();
-                match plan(conversation, summarized, &fallback.0, reason, &own.spec) {
+                match replan(&fallback.0, &own.spec) {
                     Ok(Some((planned, request))) => {
                         *summarizing = planned;
                         *model = ModelRequest::new(request);
