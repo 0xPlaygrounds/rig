@@ -6029,7 +6029,6 @@ name = "corpus-oc-message-ratings"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "chrono",
  "rig-core",
  "rig-defaults-test-support",
