@@ -282,7 +282,12 @@ fn transcript(app: &mut App, agent: Entity) -> String {
 
 #[test]
 fn reasoning_blobs_go_back_to_their_model_alone_and_never_stale() {
-    let (Some(thinker), Some(local)) = (Fake::start(thinker()), Fake::start(local())) else {
+    let (thinker, local) = (Fake::start(thinker()), Fake::start(local()));
+    assert!(
+        thinker.is_some() && local.is_some(),
+        "the fake providers need local ports"
+    );
+    let (Some(thinker), Some(local)) = (thinker, local) else {
         return;
     };
     let settings = settings(&thinker, &local);
@@ -323,15 +328,14 @@ fn reasoning_blobs_go_back_to_their_model_alone_and_never_stale() {
     );
     assert!(thinker.last().contains(&blob));
 
-    // Another model gets the summary, never the blob. rig-core's replay
-    // sends another model's reasoning as the turn's text, not under the
-    // target's reasoning field (`reasoning_content` stays empty).
+    // Another model gets the summary as reasoning, under the field it
+    // reads reasoning back in, never the blob.
     switch(&mut app, agent, "local/plain");
     assert_eq!(ask(&mut app, &wakes, agent, "Your view?"), "Fine.");
     let other = local.last();
     assert!(!other.contains(B1[0]), "{other}");
     assert!(
-        other.contains(&format!(r#""content":"{SUMMARY}""#)),
+        other.contains(&format!(r#""reasoning_content":"{SUMMARY}""#)),
         "{other}"
     );
 

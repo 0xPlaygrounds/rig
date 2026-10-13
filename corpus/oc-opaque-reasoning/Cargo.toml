@@ -11,7 +11,6 @@ workspace = true
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # The shared HTTP client the configured providers send through.
 rig-reqwest = { workspace = true }
