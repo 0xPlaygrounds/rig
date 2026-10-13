@@ -141,7 +141,8 @@ impl Plugin for TuiPlugin {
                 PreUpdate,
                 input::clear_events
                     .in_set(InputSystems::Dispatch)
-                    .run_if(not(resource_exists::<view::TuiView>)),
+                    .run_if(not(resource_exists::<view::TuiView>))
+                    .ambiguous_with(input::read_input),
             )
             .configure_sets(
                 PostUpdate,
