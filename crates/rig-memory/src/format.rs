@@ -84,6 +84,18 @@ pub enum LoadError {
     },
 }
 
+impl From<LoadError> for io::Error {
+    /// The store's own error back; any other as
+    /// [`io::ErrorKind::InvalidData`], so `?` works in code that returns
+    /// [`io::Result`].
+    fn from(error: LoadError) -> Self {
+        match error {
+            LoadError::Io(error) => error,
+            error => io::Error::new(io::ErrorKind::InvalidData, error),
+        }
+    }
+}
+
 /// What reading a session repaired, or found it must work around.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Repair {
