@@ -9,7 +9,7 @@ use ratatui::text::Line;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
+    AssistantContent, AssistantMessage, CallId, Image, ToolCall, ToolFunction, ToolName,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_core::tool::ToolResult;
@@ -285,6 +285,16 @@ fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
         line_of(&lines, "btw: The style says so.").is_some(),
         "{lines:#?}"
     );
+}
+
+#[test]
+fn an_image_the_assistant_made_is_drawn() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("draw a cat"));
+    let reply = AssistantMessage::new(vec![AssistantContent::Image(Image::default())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let lines = on_screen(&mut app, agent, 20);
+    assert!(line_of(&lines, "[image]").is_some(), "{lines:#?}");
 }
 
 #[test]

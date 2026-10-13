@@ -1489,6 +1489,8 @@ fn message_lines(
                             cut.push(item);
                         }
                     }
+                    AssistantContent::Image(_) => lines.push(Line::from("  [image]").dim()),
+                    // A provider item with no meaning here shows nothing.
                     _ => {}
                 }
             }
