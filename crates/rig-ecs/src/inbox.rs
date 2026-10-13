@@ -145,13 +145,7 @@ impl Incoming {
 
     /// Its first text part, empty when it has none.
     pub fn text(&self) -> &str {
-        self.parts
-            .iter()
-            .find_map(|part| match part {
-                MessagePart::Text(text) => Some(text.as_str()),
-                MessagePart::Attachment(_) => None,
-            })
-            .unwrap_or_default()
+        texts(&self.parts).next().unwrap_or_default()
     }
 
     /// Its first text part, added after the other parts when it has none.
