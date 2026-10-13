@@ -34,7 +34,7 @@
 //! ```
 
 use std::collections::{HashMap, HashSet};
-use std::ops::{Bound, RangeBounds};
+use std::ops::{Bound, Range, RangeBounds};
 
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -417,8 +417,10 @@ pub struct Recorded {
 pub struct Spliced {
     /// The ids no longer in the conversation.
     pub removed: Vec<MessageId>,
-    /// The ids of the entries it put in, kept or new.
+    /// The ids of the entries it put in, kept, put back or new.
     pub changed: Vec<MessageId>,
+    /// The ids [`restore`](Conversation::restore) put back.
+    pub restored: Vec<MessageId>,
 }
 
 /// Why a recorded change could not be applied: it does not fit the
@@ -682,6 +684,86 @@ impl Conversation {
         with: impl IntoIterator<Item = Entry>,
         by: Author,
     ) -> Spliced {
+        self.replace(range, with.into_iter().collect(), by, false)
+    }
+
+    /// As [`splice`](Self::splice), and an entry of `with` whose id this
+    /// conversation made (below the next id), that no entry outside the
+    /// range holds and no earlier entry of `with` took, keeps that id and
+    /// when it was made ([`Entry::made`], else now): entries put back as
+    /// they were, such as a summary's originals, an edit undone or a branch
+    /// switched back. Asides that followed such an entry follow it again.
+    /// Only for entries this conversation held: an entry from elsewhere
+    /// that carries an id would take one that meant another message here.
+    ///
+    /// ```
+    /// use rig_core::completion::Message;
+    /// use rig_core::conversation::{Author, Conversation, Entry};
+    ///
+    /// let mut conversation = Conversation::from_messages([
+    ///     Message::user("one"),
+    ///     Message::assistant("two"),
+    /// ]);
+    /// let ids: Vec<_> = conversation.entries().map(|entry| entry.id).collect();
+    /// let originals: Vec<Entry> = (0..2).filter_map(|at| conversation.entry(at)).collect();
+    /// let summary = Entry::new(Message::user("a summary"));
+    /// conversation.splice(.., [summary], Author::plugin("compact"));
+    /// let undone = conversation.restore(.., originals, Author::plugin("undo"));
+    /// assert_eq!(undone.restored, ids);
+    /// assert!(conversation.entries().map(|entry| entry.id).eq(ids));
+    /// ```
+    pub fn restore(
+        &mut self,
+        range: impl RangeBounds<usize>,
+        with: impl IntoIterator<Item = Entry>,
+        by: Author,
+    ) -> Spliced {
+        self.replace(range, with.into_iter().collect(), by, true)
+    }
+
+    /// Makes the conversation hold `entries`, as made by `by`: one
+    /// [`restore`](Self::restore) of the range between the longest start
+    /// and end it shares with them (the same messages, ids and authors), so
+    /// entries taken from it keep their ids. Nothing when they are equal.
+    pub fn set_entries(&mut self, entries: Vec<Entry>, by: Author) -> Spliced {
+        let same = |entry: &Entry, at: usize| {
+            entry.id.is_some()
+                && entry.id == self.id(at)
+                && entry.author.as_ref() == self.author(at)
+                && Some(&entry.message) == self.messages.get(at)
+        };
+        let (len, count) = (self.messages.len(), entries.len());
+        let start = entries
+            .iter()
+            .enumerate()
+            .take_while(|(at, entry)| same(entry, *at))
+            .count();
+        let end = entries
+            .iter()
+            .rev()
+            .zip((0..len).rev())
+            .take(len.min(count).saturating_sub(start))
+            .take_while(|(entry, at)| same(entry, *at))
+            .count();
+        if start == len && start == count {
+            return Spliced::default();
+        }
+        let with = entries
+            .into_iter()
+            .skip(start)
+            .take(count.saturating_sub(start).saturating_sub(end));
+        self.restore(start..len.saturating_sub(end), with, by)
+    }
+
+    /// Replaces entries in `range` with `with`: [`splice`](Self::splice),
+    /// or with `restores`, [`restore`](Self::restore).
+    fn replace(
+        &mut self,
+        range: impl RangeBounds<usize>,
+        mut with: Vec<Entry>,
+        by: Author,
+        restores: bool,
+    ) -> Spliced {
         let len = self.messages.len();
         let to = match range.end_bound() {
             Bound::Included(&end) => end.saturating_add(1),
@@ -695,31 +777,43 @@ impl Conversation {
             Bound::Unbounded => 0,
         }
         .min(to);
-        let mut with: Vec<Entry> = with.into_iter().collect();
         if from == to && with.is_empty() {
             return Spliced::default();
         }
         let replaced = self.meta.get(from..to).unwrap_or_default();
         let removed: Vec<MessageId> = replaced.iter().map(|meta| meta.id).collect();
         let in_range: HashSet<MessageId> = removed.iter().copied().collect();
-        let mut kept = HashSet::new();
+        let mut outside = None;
+        let mut taken = HashSet::new();
+        let mut restored = Vec::new();
         let mut next = self.next_id;
         for entry in &mut with {
+            let id = entry.id.filter(|id| !taken.contains(id));
+            if let Some(id) = id.filter(|id| in_range.contains(id)) {
+                taken.insert(id);
+                entry.made = None;
+                continue;
+            }
+            let back = id.filter(|id| {
+                restores
+                    && id.0 < self.next_id
+                    && !self.outside(from..to, &mut outside).contains(id)
+            });
+            if let Some(id) = back {
+                taken.insert(id);
+                restored.push(id);
+                continue;
+            }
+            entry.id = Some(MessageId(next));
             entry.made = None;
-            let keeps = entry
-                .id
-                .filter(|id| in_range.contains(id) && kept.insert(*id));
-            entry.id = Some(keeps.unwrap_or_else(|| {
-                let id = MessageId(next);
-                next = next.saturating_add(1);
-                id
-            }));
+            next = next.saturating_add(1);
         }
         let changed = with.iter().filter_map(|entry| entry.id).collect();
-        let gone = removed.iter().filter(|id| !kept.contains(id)).copied();
+        let gone = removed.iter().filter(|id| !taken.contains(id)).copied();
         let spliced = Spliced {
             removed: gone.collect(),
             changed,
+            restored,
         };
         let change = Change::Splice {
             from,
@@ -732,6 +826,20 @@ impl Conversation {
             self.clear_halt();
         }
         spliced
+    }
+
+    /// The ids of the entries outside `range`, gathered into `outside` the
+    /// first time they are asked for.
+    fn outside<'s>(
+        &self,
+        range: Range<usize>,
+        outside: &'s mut Option<HashSet<MessageId>>,
+    ) -> &'s HashSet<MessageId> {
+        outside.get_or_insert_with(|| {
+            let before = self.meta.get(..range.start).unwrap_or_default();
+            let after = self.meta.get(range.end..).unwrap_or_default();
+            before.iter().chain(after).map(|meta| meta.id).collect()
+        })
     }
 
     /// Rewrites entries in place, as made by `by`: `edit` sees each entry,
@@ -1005,7 +1113,8 @@ impl Conversation {
         };
         match change {
             Change::Push { entries } => {
-                let next = self.new_ids(entries, &HashSet::new())?;
+                let end = self.meta.len();
+                let next = self.new_ids(entries, &HashSet::new(), end..end)?;
                 for entry in entries {
                     self.messages.push(entry.message.clone());
                     self.meta.push(meta(entry, entry.made.unwrap_or(at)));
@@ -1030,7 +1139,7 @@ impl Conversation {
                 }
                 let kept: HashMap<MessageId, u64> =
                     replaced.iter().map(|meta| (meta.id, meta.made)).collect();
-                let next = self.new_ids(with, &removed.iter().copied().collect())?;
+                let next = self.new_ids(with, &removed.iter().copied().collect(), from..to)?;
                 let metas: Vec<Meta> = with
                     .iter()
                     .map(|entry| {
@@ -1067,23 +1176,33 @@ impl Conversation {
         Ok(())
     }
 
-    /// Checks that each of `entries` has an id that is either one of
-    /// `reused`, at most once, or new: rising from the next id. The next id
-    /// after them.
-    fn new_ids(&self, entries: &[Entry], reused: &HashSet<MessageId>) -> Result<u64, ApplyError> {
+    /// Checks that each of `entries`, which replace `range`, has an id
+    /// that is, at most once, one of `reused` or an earlier id no entry
+    /// outside `range` holds (put back), or else new: rising from the next
+    /// id. The next id after them.
+    fn new_ids(
+        &self,
+        entries: &[Entry],
+        reused: &HashSet<MessageId>,
+        range: Range<usize>,
+    ) -> Result<u64, ApplyError> {
         let mut next = self.next_id;
         let mut seen = HashSet::new();
+        let mut outside = None;
         for entry in entries {
             let id = entry
                 .id
                 .ok_or_else(|| mismatch("a recorded entry without an id".to_owned()))?;
-            if reused.contains(&id) && seen.insert(id) {
+            if id.0 >= next {
+                next = id.0.saturating_add(1);
                 continue;
             }
-            if id.0 < next {
+            let fits = reused.contains(&id)
+                || (id.0 < self.next_id
+                    && !self.outside(range.clone(), &mut outside).contains(&id));
+            if !fits || !seen.insert(id) {
                 return Err(mismatch(format!("message id {} reused", id.0)));
             }
-            next = id.0.saturating_add(1);
         }
         Ok(next)
     }

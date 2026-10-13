@@ -345,3 +345,81 @@ fn made_times_fold_as_live_survive_edits_and_resets_and_stay_out_of_equality() {
     assert_eq!(later, now);
     assert_ne!(keys(&later), keys(&now));
 }
+
+/// Entries put back with `restore` keep their ids and made-times, an aside
+/// that followed one follows it again, and a fold of the outbox (read back
+/// from text) accepts them. `splice` still gives such entries new ids, and
+/// `restore` gives one to an id held outside the range. `set_entries`
+/// replaces only the range that changed.
+#[test]
+fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
+    let keys = |conversation: &Conversation| -> Vec<MessageKey> {
+        conversation.entries().map(|entry| entry.key()).collect()
+    };
+    let mut live = Conversation::new();
+    live.dated(1_000, |conversation| {
+        conversation.extend([
+            Message::user("a"),
+            Message::assistant("b"),
+            Message::user("c"),
+            Message::assistant("d"),
+        ]);
+    });
+    let before = keys(&live);
+    let note = Aside::new("note", Author::plugin("rate"), serde_json::Value::Null);
+    let note = live.add_aside(note.after(live.id(2)));
+    let originals: Vec<Entry> = (1..3).filter_map(|at| live.entry(at)).collect();
+    let summary = Entry::new(Message::user("summary"));
+    live.splice(1..3, [summary], Author::plugin("compact"));
+    assert_eq!(live.aside_position(live.aside(note).expect("the note")), 1);
+
+    let copies = live
+        .clone()
+        .splice(1..2, originals.clone(), Author::plugin("x"));
+    assert!(copies.restored.is_empty() && copies.changed.iter().all(|id| id.0 >= 5));
+    let outsider = live.entry(0).expect("entry 0");
+    let mut with = originals.clone();
+    with.push(outsider);
+    let undone = live.dated(2_000, |conversation| {
+        conversation.restore(1..2, with, Author::plugin("undo"))
+    });
+    let restored: Vec<MessageId> = originals.iter().filter_map(|entry| entry.id).collect();
+    assert_eq!(undone.restored, restored);
+    assert_eq!(undone.removed, [MessageId(4)]);
+    let mut now = keys(&live);
+    let copy = now.remove(3);
+    assert_eq!(now, before, "a, b, c and d as they were");
+    assert_eq!(
+        (copy.id, copy.made),
+        (MessageId(5), 2_000),
+        "the outsider is new"
+    );
+    assert_eq!(live.aside_position(live.aside(note).expect("the note")), 3);
+
+    let lines: Vec<String> = live
+        .unsaved()
+        .iter()
+        .map(|change| serde_json::to_string(change).expect("a change serializes"))
+        .collect();
+    let read: Vec<Recorded> = lines
+        .iter()
+        .map(|line| serde_json::from_str(line).expect("a change reads back"))
+        .collect();
+    let folded = fold(&read);
+    assert_eq!(folded, live);
+    assert_eq!(keys(&folded), keys(&live));
+
+    let mut wanted: Vec<Entry> = (0..3).filter_map(|at| live.entry(at)).collect();
+    if let Some(last) = wanted.last_mut() {
+        last.message = Message::user("c, edited");
+    }
+    let revision = live.revision();
+    let set = live.set_entries(wanted.clone(), Author::plugin("editor"));
+    assert_eq!(set.changed, [MessageId(2)]);
+    assert_eq!(set.removed, [MessageId(5), MessageId(3)]);
+    assert_eq!(live.revision(), revision + 1, "one change");
+    assert_eq!(
+        live.set_entries(wanted, Author::plugin("editor")),
+        Spliced::default()
+    );
+}
