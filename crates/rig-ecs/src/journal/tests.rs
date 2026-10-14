@@ -758,3 +758,56 @@ fn a_session_rewritten_live_keeps_no_secret_in_its_logs_conversations_or_saved_v
         .map(|m| m.label.clone());
     assert_eq!(label.as_deref(), Some("where [REDACTED] came up"));
 }
+
+/// A rewrite asked while another is applied, such as by an observer of a
+/// value the first one reread, runs in the same frame, and each report and
+/// each log's header says who rewrote.
+#[test]
+fn a_rewrite_asked_while_one_is_applied_runs_in_that_frame_by_its_own_author() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let Some(&agent) = agents(&mut app).first() else {
+        return;
+    };
+    push_message(app.world_mut(), agent, Message::user("bookmark me"));
+    let at = app.world().get::<Conversation>(agent).and_then(|c| c.id(0));
+    let Some(at) = at else {
+        return;
+    };
+    let label = "old".to_owned();
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(Bookmark { at, label });
+    app.update();
+    app.add_observer(|_: On<Insert<Bookmark>>, mut commands: Commands| {
+        commands.trigger(RewriteSession {
+            by: Author::plugin("follow-up"),
+            with: Arc::new(rig_memory::Strings(|_: &mut String| false)),
+            asker: None,
+        });
+    });
+    app.world_mut().trigger(RewriteSession {
+        by: Author::plugin("relabel"),
+        with: Arc::new(rig_memory::Strings(|text: &mut String| {
+            let hit = text == "old";
+            if hit {
+                *text = "new".to_owned();
+            }
+            hit
+        })),
+        asker: None,
+    });
+    app.update();
+    let by: Vec<Author> = rewritten(&app).into_iter().map(|done| done.by).collect();
+    assert_eq!(by, [Author::plugin("relabel"), Author::plugin("follow-up")]);
+    let session = Session::read(&store).expect("read");
+    let rewrites = session
+        .agent(&id_of(&app, agent))
+        .map(|a| a.rewrites.clone());
+    let authors: Vec<Author> = rewrites
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.by)
+        .collect();
+    assert_eq!(authors, [Author::plugin("relabel")]);
+}

@@ -359,31 +359,44 @@ pub(crate) fn rewrites_asked(rewrites: Res<Rewrites>) -> bool {
     !rewrites.0.is_empty()
 }
 
-/// Runs the rewrites asked for, as [`RewriteSession`] says.
+/// How many rounds of rewrites asked while rewrites are applied, such as by
+/// an observer of a value reread, run in one frame; the rest wait for the
+/// next.
+const REWRITE_ROUNDS: usize = 8;
+
+/// Runs the rewrites asked for, as [`RewriteSession`] says, each with its
+/// own author, and those asked meanwhile, in the same frame.
 pub(crate) fn apply_rewrites(world: &mut World) {
-    let asked = world
-        .get_resource_mut::<Rewrites>()
-        .map(|mut rewrites| std::mem::take(&mut rewrites.0))
-        .unwrap_or_default();
     let log = world
         .get_resource::<SessionLog>()
         .cloned()
         .unwrap_or_default();
-    for RewriteSession { by, with, asker } in asked {
-        let result = log.0.rewrite(by.clone(), &*with);
-        let result = result.map_err(|failure| failure.to_string());
-        if let Ok(rewritten) = &result {
-            for failure in reread(world, rewritten, &*with) {
-                let failure = format!("After rewriting the session: {failure}.");
-                world.write_message(Notice::error(None, failure));
-            }
+    for _ in 0..REWRITE_ROUNDS {
+        let asked = world
+            .get_resource_mut::<Rewrites>()
+            .map(|mut rewrites| std::mem::take(&mut rewrites.0))
+            .unwrap_or_default();
+        if asked.is_empty() {
+            return;
         }
-        world.write_message(SessionRewritten {
-            by,
-            asker,
-            with,
-            result,
-        });
+        for RewriteSession { by, with, asker } in asked {
+            let result = log.0.rewrite(by.clone(), &*with);
+            let result = result.map_err(|failure| failure.to_string());
+            if let Ok(rewritten) = &result {
+                for failure in reread(world, rewritten, &*with) {
+                    let failure = format!("After rewriting the session: {failure}.");
+                    world.write_message(Notice::error(None, failure));
+                }
+            }
+            world.write_message(SessionRewritten {
+                by,
+                asker,
+                with,
+                result,
+            });
+        }
+        // What observers of the reread values asked, such as another rewrite.
+        world.flush();
     }
 }
 
