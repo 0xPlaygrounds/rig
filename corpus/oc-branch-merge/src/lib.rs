@@ -1,12 +1,11 @@
 //! OC-10: merge findings from a side branch.
 //!
-//! Branches are the conversation's own (rig-core's `branch_off` /
-//! `switch_branch`): every inactive branch is a `rig.branch` aside holding
-//! its entries, so it is saved, forked, rewritten and exported with the
-//! conversation, and a branch switched back keeps its ids. `/branch <name>`
-//! starts a branch at the end of the active one (the one left goes on as
-//! an empty branch there), `/switch <name>` makes another branch the
-//! active one, through the branches it is kept in.
+//! Branches are the conversation's own (rig-core's `branch_off`,
+//! `switch_branch`, `branches` and `line`): every inactive branch is a
+//! `rig.branch` aside holding its entries, so it is saved, forked,
+//! rewritten and exported with the conversation, and a branch switched
+//! back keeps its ids. `/branch <name>` starts a branch at the end of the
+//! active one, `/switch <name>` makes another branch the active one.
 //!
 //! Each tool call's published `FilesChanged` is kept as an aside after the
 //! entry that made the call, so it goes with that entry's branch.
@@ -15,11 +14,12 @@
 //! [into <branch>] [--with-files]` finds the shared ancestor by message
 //! key, asks the agent's model to summarize what the other branch did
 //! after it (or after the last merge from it), shows the summary for review
-//! (Accept / Edit / Cancel) and, on Accept, appends one note "Merged from
-//! branch `<name>`" to the target branch with an aside recording the
-//! source and the last merged message's key. With `--with-files`, the
-//! files the source changed are offered with their hunks for per-file
-//! apply, each as the source's last change left it (`after_text`).
+//! (Accept / Edit / Cancel) and, on Accept, sends one note "Merged from
+//! branch `<name>`" to the agent (`DeliveryMode::Note`), followed by an
+//! aside recording the source and the last merged message's key. A note
+//! into an inactive branch is put there directly, once no turn runs. With
+//! `--with-files`, the files the source changed are offered with their
+//! hunks for per-file apply, each as the source's last change left it.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -33,9 +33,6 @@ use serde::{Deserialize, Serialize};
 
 /// The author of this plugin's messages and conversation edits.
 pub const NAME: &str = "branch-merge";
-
-/// The branch every agent starts on.
-pub const ROOT: &str = "main";
 
 /// The text every merge note starts with.
 pub const MERGED: &str = "Merged from branch";
@@ -90,9 +87,8 @@ pub struct Line {
     pub said: Vec<Said>,
     /// Where its own messages start: after the point it branched off.
     pub own: usize,
-    /// The branch asides it is kept in, outermost first; empty for the
-    /// active branch.
-    pub path: Vec<AsideId>,
+    /// Its branch aside; `None` for the active branch.
+    pub id: Option<AsideId>,
 }
 
 impl Line {
@@ -111,92 +107,48 @@ impl Line {
     }
 }
 
-/// The active branch's name.
-pub fn active_name(conversation: &Conversation) -> String {
-    conversation.branch_title().to_owned()
-}
-
 /// Every branch of `conversation`: the active one first, then each kept
-/// one.
+/// one, those kept inside others too.
 pub fn lines(conversation: &Conversation) -> Vec<Line> {
-    let active: Vec<Said> = conversation
-        .entries()
-        .map(|entry| Said {
-            key: entry.key(),
-            message: entry.message.clone(),
-        })
-        .collect();
-    let kept = conversation.branches().into_iter();
-    let kept = kept.filter(|kept| kept.inside.is_none());
-    let kept: Vec<(AsideId, usize, Branch)> = kept.map(|k| (k.id, k.at, k.branch)).collect();
-    let own = kept.iter().map(|(_, at, _)| *at).max().unwrap_or_default();
-    let mut found = Vec::new();
-    for (id, at, branch) in kept {
-        let prefix = active.get(..at).unwrap_or_default().to_vec();
-        kept_lines(&mut found, branch, prefix, vec![id]);
-    }
-    let title = active_name(conversation);
-    found.insert(
-        0,
-        Line {
-            title,
-            said: active,
-            own,
-            path: Vec::new(),
-        },
-    );
-    found
-}
-
-/// The line of the kept `branch` after `prefix`, and those of the branches
-/// it keeps.
-fn kept_lines(found: &mut Vec<Line>, branch: Branch, prefix: Vec<Said>, path: Vec<AsideId>) {
-    let own = prefix.len();
-    let mut line = Line {
-        title: branch.title,
-        said: prefix,
-        own,
-        path,
-    };
-    line.said
-        .extend(branch.entries.into_iter().filter_map(|entry| {
+    let said = |id: Option<AsideId>| -> Vec<Said> {
+        let entries = conversation.line(id).unwrap_or_default().into_iter();
+        let said = entries.filter_map(|entry| {
             let key = MessageKey {
-                made: entry.made.unwrap_or_default(),
+                made: entry.made?,
                 id: entry.id?,
             };
             let message = entry.message;
             Some(Said { key, message })
-        }));
-    for (id, aside) in &branch.asides {
-        let Some(inner) = Branch::of(aside) else {
-            continue;
-        };
-        let at = line.position(aside).unwrap_or(line.said.len());
-        let prefix = line.said.get(..at).unwrap_or_default();
-        let mut path = line.path.clone();
-        path.push(*id);
-        kept_lines(found, inner, prefix.to_vec(), path);
-    }
-    found.push(line);
+        });
+        said.collect()
+    };
+    let kept = conversation.branches();
+    let top = kept.iter().filter(|kept| kept.inside.is_none());
+    let active = Line {
+        title: conversation.branch_title().to_owned(),
+        said: said(None),
+        own: top.map(|kept| kept.at).max().unwrap_or_default(),
+        id: None,
+    };
+    let kept = kept.into_iter().map(|kept| Line {
+        said: said(Some(kept.id)),
+        title: kept.branch.title,
+        own: kept.at,
+        id: Some(kept.id),
+    });
+    std::iter::once(active).chain(kept).collect()
 }
 
 /// Every aside of `conversation` that is not a branch, those kept inside
 /// branches included.
 fn records(conversation: &Conversation) -> Vec<Aside> {
-    fn walk(found: &mut Vec<Aside>, aside: &Aside) {
-        match Branch::of(aside) {
-            Some(branch) => branch
-                .asides
-                .iter()
-                .for_each(|(_, inner)| walk(found, inner)),
-            None => found.push(aside.clone()),
-        }
-    }
-    let mut found = Vec::new();
-    conversation
-        .asides()
-        .for_each(|(_, aside)| walk(&mut found, aside));
-    found
+    let active = conversation.asides().map(|(_, aside)| aside.clone());
+    let kept = conversation.branches().into_iter();
+    let kept = kept.flat_map(|kept| kept.branch.asides.into_iter().map(|(_, aside)| aside));
+    active
+        .chain(kept)
+        .filter(|aside| Branch::of(aside).is_none())
+        .collect()
 }
 
 /// The files changed on `line` after message `from`, in order: each file
@@ -228,11 +180,11 @@ fn shared(a: &Line, b: &Line) -> usize {
         .count()
 }
 
-/// Makes `title` the active branch, through each branch it is kept in.
+/// Makes `title` the active branch.
 fn go_to(conversation: &mut Conversation, title: &str) -> Result<(), String> {
     let found = lines(conversation);
     let line = found.iter().find(|line| line.title == title);
-    let id = line.and_then(|line| line.path.last().copied());
+    let id = line.and_then(|line| line.id);
     let id = id.ok_or(format!("No branch {title}."))?;
     let spliced = conversation.switch_branch(id, Author::plugin(NAME));
     spliced.map(drop).map_err(|failure| failure.to_string())
@@ -249,11 +201,26 @@ struct Reviewing {
     step: Step,
 }
 
-/// A merge accepted while its agent's turn ran, appended when it ends.
+/// A merge into a branch that is not the active one, accepted while its
+/// agent's turn ran: appended there when the turn ends, since switching
+/// branches under a running turn would change what it reads.
 #[derive(Component, Clone, Debug)]
 struct Accepted {
     pending: Pending,
     note: String,
+}
+
+/// A merge note on its way through the agent's inbox, and the record its
+/// entry gets once it is in the conversation.
+#[derive(Component, Clone, Debug)]
+struct NoteOf(MergeRecord);
+
+/// On each entity of a merge under way, from its summary to its note:
+/// the agent and the branch merged.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+struct Merging {
+    agent: Entity,
+    source: String,
 }
 
 /// Files being applied for an agent.
@@ -285,6 +252,13 @@ struct Pending {
     files: BTreeMap<String, FileChange>,
 }
 
+impl Pending {
+    fn merging(&self) -> Merging {
+        let (agent, source) = (self.agent, self.source.clone());
+        Merging { agent, source }
+    }
+}
+
 /// Branches inside a session, `/branches`, `/branch`, `/switch` and
 /// `/merge`.
 #[derive(Default)]
@@ -296,6 +270,7 @@ impl Plugin for BranchMergePlugin {
             .add_observer(record_changes)
             .add_observer(summarized)
             .add_observer(answered)
+            .add_observer(delivered)
             .add_observer(turn_ended)
             .add_observer(applied)
             .add_command("branches", "List this conversation's branches", list)
@@ -369,7 +344,7 @@ fn list(
                 true => "none".to_owned(),
                 false => files.join(", "),
             };
-            let mark = if line.path.is_empty() { "*" } else { " " };
+            let mark = if line.id.is_none() { "*" } else { " " };
             format!(
                 "{mark} {}: {} messages{}; files: {files}",
                 line.title,
@@ -404,7 +379,7 @@ fn branch(
         ));
         return;
     }
-    let left = active_name(&conversation);
+    let left = conversation.branch_title().to_owned();
     let end = conversation.messages().len();
     if let Err(failure) = conversation.branch_off(end, name, Author::plugin(NAME)) {
         notices.write(Notice::error(args.agent, failure.to_string()));
@@ -430,7 +405,7 @@ fn switch(
         ));
         return;
     };
-    if name == active_name(&conversation) {
+    if name == conversation.branch_title() {
         return;
     }
     match go_to(&mut conversation, name) {
@@ -445,7 +420,7 @@ fn switch(
 fn merge(
     In(args): In<CommandArgs>,
     agents: Query<&Conversation>,
-    pending: Query<&Summarizing>,
+    under_way: Query<&Merging, Without<Settled>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -458,7 +433,7 @@ fn merge(
         .into_iter()
         .filter(|word| *word != "--with-files")
         .collect();
-    let active = active_name(conversation);
+    let active = conversation.branch_title().to_owned();
     let (source, target) = match words.as_slice() {
         [source] => (*source, active.as_str()),
         [source, "into", target] => (*source, *target),
@@ -480,16 +455,17 @@ fn merge(
         return;
     };
     let ancestor = shared(from, to);
+    let merging = Merging {
+        agent: args.agent,
+        source: source.to_owned(),
+    };
     let refusal = if source == target {
         Some(format!("A branch cannot be merged into itself ({source})."))
     } else if ancestor == from.said.len() {
         Some(format!(
             "{target} is a descendant of {source}: it has {source}'s messages already."
         ))
-    } else if pending
-        .iter()
-        .any(|Summarizing(it)| it.agent == args.agent && it.source == source)
-    {
+    } else if under_way.iter().any(|it| *it == merging) {
         Some(format!("A merge from {source} is under way."))
     } else {
         None
@@ -548,6 +524,7 @@ fn merge(
     commands.spawn((
         Name::new(format!("summarizing branch {source}")),
         Summarizing(pending),
+        merging,
         ModelRequest::new(request),
         Effect::child_of(None).with_purpose(NAME),
         ForAgent(args.agent),
@@ -593,7 +570,8 @@ fn summarized(
         ..pending.clone()
     };
     let step = Step::Review;
-    commands.spawn((ask, ForAgent(agent), Reviewing { pending, step }));
+    let merging = pending.merging();
+    commands.spawn((ask, ForAgent(agent), Reviewing { pending, step }, merging));
 }
 
 /// Acts on each answer to a merge question.
@@ -617,8 +595,9 @@ fn answered(
             let ask = Ask::new(format!("Edit the note from branch `{}`", pending.source))
                 .initial(pending.summary.clone())
                 .multiline();
+            let merging = pending.merging();
             let (pending, step) = (pending.clone(), Step::Edit);
-            commands.spawn((ask, ForAgent(agent), Reviewing { pending, step }));
+            commands.spawn((ask, ForAgent(agent), Reviewing { pending, step }, merging));
             return;
         }
         (
@@ -630,8 +609,15 @@ fn answered(
         (Step::Files, answer) => {
             let chosen = answer.as_ref().map(|answer| answer.choices.as_slice());
             let files = chosen.unwrap_or_default().iter();
-            let files = files.filter_map(|path| pending.files.get(path)).cloned();
-            apply_files(agent, files.collect(), &workspace, &wake, &mut commands);
+            let files: Vec<FileChange> = files
+                .filter_map(|path| pending.files.get(path))
+                .cloned()
+                .collect();
+            if files.is_empty() {
+                notices.write(Notice::info(agent, "No file applied."));
+            } else {
+                apply_files(agent, files, &workspace, &wake, &mut commands);
+            }
             return;
         }
         _ => {
@@ -646,15 +632,85 @@ fn answered(
         pending: pending.clone(),
         note,
     };
-    match busy {
-        true => {
-            commands.spawn(accepted);
-        }
-        false => append(&mut conversation, &accepted, &mut notices, &mut commands),
+    let merging = pending.merging();
+    if conversation.branch_title() == pending.target {
+        deliver(&accepted, merging, &mut commands);
+    } else if busy {
+        commands.spawn((accepted, merging));
+        return;
+    } else {
+        append_elsewhere(&mut conversation, &accepted, &mut notices);
+    }
+    if pending.with_files {
+        offer_files(pending, &mut notices, &mut commands);
     }
 }
 
-/// Appends the merges accepted while an agent's turn ran, once it ends.
+/// The note of an accepted merge, and the record it carries.
+fn note_of(Accepted { pending, note }: &Accepted) -> (String, MergeRecord) {
+    let mut text = format!("{MERGED} `{}`:\n\n{}", pending.source, note.trim());
+    if !pending.changed.is_empty() {
+        let files = pending.changed.join(", ");
+        text.push_str(&format!("\n\nFiles it changed (not applied here): {files}"));
+    }
+    let record = MergeRecord {
+        source: pending.source.clone(),
+        through: pending.through,
+    };
+    (text, record)
+}
+
+/// Who writes the note of a merge recorded as `record`: one author per
+/// merge, by which its entry is found once delivered.
+fn author_of(record: &MergeRecord) -> Author {
+    let author = Author::plugin(NAME).titled(format!("merged from {}", record.source));
+    let request = format!("merge {} through {}", record.source, record.through.made);
+    Author {
+        request: Some(RequestId(request)),
+        ..author
+    }
+}
+
+/// Sends the note of a merge into the active branch as a note to the
+/// agent: the running turn's next model call carries it, or the next
+/// turn's first.
+fn deliver(accepted: &Accepted, merging: Merging, commands: &mut Commands) {
+    let (text, record) = note_of(accepted);
+    let note = Incoming::new(text, DeliveryMode::Note).with_author(author_of(&record));
+    let agent = ForAgent(accepted.pending.agent);
+    commands.spawn((note, agent, NoteOf(record), merging));
+}
+
+/// Puts the record of each delivered merge note after its entry.
+fn delivered(
+    settled: On<Add<Settled>>,
+    notes: Query<(&NoteOf, &ForAgent)>,
+    mut agents: Query<&mut Conversation>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((NoteOf(record), &ForAgent(agent))) = notes.get(settled.entity) else {
+        return;
+    };
+    let Ok(mut conversation) = agents.get_mut(agent) else {
+        return;
+    };
+    let author = author_of(record);
+    let entry = (conversation.entries().rev())
+        .find(|entry| entry.author == Some(&author))
+        .map(|entry| entry.id);
+    let (Some(entry), Ok(value)) = (entry, serde_json::to_value(record)) else {
+        let lost = format!("The note from branch {} was not delivered.", record.source);
+        notices.write(Notice::warn(agent, lost));
+        return;
+    };
+    let aside = Aside::new(MERGE, Author::plugin(NAME), value).after(Some(entry));
+    conversation.add_aside(aside);
+    let merged = format!("Merged {}.", record.source);
+    notices.write(Notice::info(agent, merged));
+}
+
+/// Appends the merges into other branches accepted while an agent's turn
+/// ran, once it ends.
 fn turn_ended(
     ended: On<Remove<ActiveTurn>>,
     accepted: Query<(Entity, &Accepted)>,
@@ -669,52 +725,39 @@ fn turn_ended(
         .iter()
         .filter(|(_, it)| it.pending.agent == ended.entity);
     for (entity, accepted) in waiting {
-        append(&mut conversation, accepted, &mut notices, &mut commands);
+        append_elsewhere(&mut conversation, accepted, &mut notices);
+        if accepted.pending.with_files {
+            offer_files(&accepted.pending, &mut notices, &mut commands);
+        }
         commands.entity(entity).despawn();
     }
 }
 
-/// Appends the note of an accepted merge to its target branch, with its
-/// record, and offers its files when asked to.
-fn append(
+/// Appends the note of an accepted merge, with its record, to its target
+/// branch, kept while another is active: switched to, then back.
+fn append_elsewhere(
     conversation: &mut Conversation,
-    Accepted { pending, note }: &Accepted,
+    accepted: &Accepted,
     notices: &mut MessageWriter<Notice>,
-    commands: &mut Commands,
 ) {
-    let agent = pending.agent;
-    let mut text = format!("{MERGED} `{}`:\n\n{}", pending.source, note.trim());
-    if !pending.changed.is_empty() {
-        let files = pending.changed.join(", ");
-        text.push_str(&format!("\n\nFiles it changed (not applied here): {files}"));
-    }
-    let record = MergeRecord {
-        source: pending.source.clone(),
-        through: pending.through,
-    };
+    let (agent, target) = (accepted.pending.agent, &accepted.pending.target);
+    let (text, record) = note_of(accepted);
     let Ok(value) = serde_json::to_value(&record) else {
         return;
     };
-    let home = active_name(conversation);
-    let elsewhere = home != pending.target;
-    if elsewhere && let Err(why) = go_to(conversation, &pending.target) {
+    let home = conversation.branch_title().to_owned();
+    if let Err(why) = go_to(conversation, target) {
         notices.write(Notice::error(agent, why));
         return;
     }
-    let by = Author::plugin(NAME);
-    let author = by.clone().titled(format!("merged from {}", pending.source));
-    let id = conversation.push(Entry::new(Message::user(text)).by(author));
-    conversation.add_aside(Aside::new(MERGE, by, value).after(Some(id)));
-    if elsewhere && let Err(why) = go_to(conversation, &home) {
+    let entry = Entry::new(Message::user(text)).by(author_of(&record));
+    let id = conversation.push(entry);
+    conversation.add_aside(Aside::new(MERGE, Author::plugin(NAME), value).after(Some(id)));
+    if let Err(why) = go_to(conversation, &home) {
         notices.write(Notice::error(agent, why));
     }
-    notices.write(Notice::info(
-        agent,
-        format!("Merged {} into {}.", pending.source, pending.target),
-    ));
-    if pending.with_files {
-        offer_files(pending, notices, commands);
-    }
+    let merged = format!("Merged {} into {target}.", record.source);
+    notices.write(Notice::info(agent, merged));
 }
 
 /// The source branch's changed files, offered with their hunks, one

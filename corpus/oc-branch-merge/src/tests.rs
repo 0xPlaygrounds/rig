@@ -74,7 +74,7 @@ fn lines_of(app: &App, agent: Entity) -> Vec<Line> {
 fn active(app: &App, agent: Entity) -> String {
     app.world()
         .get::<Conversation>(agent)
-        .map(active_name)
+        .map(|conversation| conversation.branch_title().to_owned())
         .unwrap_or_default()
 }
 
