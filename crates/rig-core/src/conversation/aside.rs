@@ -1,8 +1,11 @@
 //! Records kept in a conversation that never reach a model.
 
+use std::fmt;
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
-use super::{Author, MessageId};
+use super::{Author, MessageId, ParseIdError, parse_id};
 
 /// Kept with the conversation, saved and forked with it, never sent to a
 /// model: a plugin's note in the transcript, the kernel's record of a call
@@ -73,3 +76,26 @@ impl Aside {
 )]
 #[serde(transparent)]
 pub struct AsideId(pub(super) u64);
+
+impl AsideId {
+    /// Its number: ids rise from 0 in the order asides were put.
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Its plain form, `a` and its number (`a4`): how commands name an aside.
+impl fmt::Display for AsideId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "a{}", self.0)
+    }
+}
+
+/// Reads its plain form, `a4`, or the number alone.
+impl FromStr for AsideId {
+    type Err = ParseIdError;
+
+    fn from_str(text: &str) -> Result<Self, ParseIdError> {
+        parse_id(text, 'a').map(Self)
+    }
+}

@@ -5,6 +5,7 @@
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use super::{Aside, AsideId, Author, Change, Conversation, Entry, Halt, MessageId, Spliced};
 
@@ -18,6 +19,12 @@ pub const ACTIVE: &str = "rig.branch.active";
 
 /// The active continuation's title until a branch names it.
 pub const MAIN: &str = "main";
+
+/// The kind of the aside holding the active line's own values (an object,
+/// `{key: value}`), which only rig-core writes: what was set on the line
+/// while it had no entry of its own. It follows no entry, so it stays with
+/// the active line, and a branch carries it as [`Branch::values`].
+pub const LINE: &str = "rig.line";
 
 /// An inactive branch, as [`Conversation::branches`] lists it.
 #[derive(Clone, Debug, PartialEq)]
@@ -51,6 +58,18 @@ pub struct Branch {
     /// Why its last user message was left unanswered, if it was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub halted: Option<Halt>,
+    /// Whether its entries are a range moved out of the line it is kept in,
+    /// rather than another continuation: they belong back where its aside is.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub moved: bool,
+    /// The line values of the continuation it keeps
+    /// ([`Conversation::line_values`]).
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub values: Map<String, Value>,
+}
+
+fn is_false(moved: &bool) -> bool {
+    !*moved
 }
 
 impl Branch {
@@ -125,11 +144,14 @@ impl Conversation {
     }
 
     /// Keeps entries `at..`, maybe none, with the saved asides that follow
-    /// them and the halt, as a branch titled as the active continuation is
-    /// ([`branch_title`](Self::branch_title)), following entry `at - 1`,
-    /// and takes them out: the conversation goes on from that entry as the
-    /// branch titled `title`. `at` may be the length: a new branch at the
-    /// end. Each change is made by `by`. The kept branch's aside.
+    /// them, the halt and the line values, as a branch titled as the active
+    /// continuation is ([`branch_title`](Self::branch_title)), following
+    /// entry `at - 1`, and takes them out: the conversation goes on from
+    /// that entry as the branch titled `title`. `at` may be the length: a
+    /// new branch at the end, which starts with a copy of the line values
+    /// (the line's state there is its state now); one at an earlier entry
+    /// starts with none. Each change is made by `by`. The kept branch's
+    /// aside.
     ///
     /// # Errors
     ///
@@ -152,9 +174,13 @@ impl Conversation {
         }
         let point = at.checked_sub(1).and_then(|at| self.id(at));
         let left = self.branch_title().to_owned();
+        let values = self.line_values().cloned().unwrap_or_default();
         let branch = self.stash(at, left, &by)?;
         let id = self.add_aside(Aside::new(BRANCH, by.clone(), branch).after(point));
         self.title_branch(title.into(), &by);
+        if at == len {
+            self.put_line_values(values, &by);
+        }
         Ok(id)
     }
 
@@ -163,7 +189,8 @@ impl Conversation {
     /// leaves is kept under its title with its saved asides and halt, even
     /// with no entries of its own, and the branch's entries come back with
     /// their ids and made-times ([`restore`](Self::restore)), its asides
-    /// with theirs, its halt and its title. Each change is made by `by`.
+    /// with theirs, its halt, its title and its line values. Each change is
+    /// made by `by`.
     /// What changed from the line left.
     ///
     /// ```
@@ -238,7 +265,57 @@ impl Conversation {
         }
         self.add_aside(Aside::new(BRANCH, by.clone(), kept).after(point));
         self.title_branch(branch.title, by);
+        self.put_line_values(branch.values, by);
         Ok(spliced)
+    }
+
+    /// The values kept with the active line itself rather than after one of
+    /// its entries, by key: what was set on it while it had no entry of its
+    /// own since it parted. `None` when it has none, as most lines.
+    pub fn line_values(&self) -> Option<&Map<String, Value>> {
+        let mut asides = self.asides.iter();
+        let line = asides.find(|(_, aside)| aside.kind == LINE);
+        line.and_then(|(_, aside)| aside.value.as_object())
+    }
+
+    /// Sets (`Some`) or removes (`None`) the active line's value `key`: one
+    /// aside of kind [`LINE`] before the first entry, replaced in place, and
+    /// none when the line has no values. Made by `by`.
+    pub fn set_line_value(&mut self, key: &str, value: Option<Value>, by: Author) {
+        let mut values = self.line_values().cloned().unwrap_or_default();
+        match value {
+            Some(value) => values.insert(key.to_owned(), value),
+            None => values.remove(key),
+        };
+        self.put_line_values(values, &by);
+    }
+
+    /// Whether a kept branch parts at the active line's end: an aside after
+    /// its last entry would be shared with that branch.
+    pub fn parts_at_end(&self) -> bool {
+        let end = self.messages.len();
+        let mut asides = self.asides.iter();
+        asides.any(|(_, aside)| aside.kind == BRANCH && self.aside_position(aside) == end)
+    }
+
+    /// Makes `values` the active line's values: one [`LINE`] aside, replaced
+    /// in place, and none when empty.
+    fn put_line_values(&mut self, values: Map<String, Value>, by: &Author) {
+        if self
+            .line_values()
+            .map_or(values.is_empty(), |now| *now == values)
+        {
+            return;
+        }
+        let known = self.asides().find(|(_, aside)| aside.kind == LINE);
+        let known = known.map(|(id, _)| id);
+        let empty = values.is_empty();
+        let aside = Aside::new(LINE, by.clone(), Value::Object(values));
+        match known {
+            Some(id) if empty => self.forget_aside(id, by),
+            Some(id) => drop(self.replace_aside(id, aside)),
+            None => drop(self.add_aside(aside)),
+        }
     }
 
     /// Titles the active continuation `title`: one [`ACTIVE`] aside,
@@ -259,7 +336,8 @@ impl Conversation {
     }
 
     /// Takes entries `at..` and the saved asides that follow them out, as
-    /// a branch titled `title`; its value.
+    /// a branch titled `title` keeping the line values, which the active
+    /// line loses; its value.
     fn stash(
         &mut self,
         at: usize,
@@ -280,12 +358,15 @@ impl Conversation {
             entries,
             asides,
             halted: self.halted,
+            moved: false,
+            values: self.line_values().cloned().unwrap_or_default(),
         };
         let value = serde_json::to_value(&branch)
             .map_err(|failure| BranchError::Value(failure.to_string()))?;
         for (id, _) in &branch.asides {
             self.forget_aside(*id, by);
         }
+        self.put_line_values(Map::new(), by);
         self.splice(at.., [], by.clone());
         Ok(value)
     }

@@ -36,7 +36,9 @@
 //! ```
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::ops::{Bound, Range, RangeBounds};
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -52,7 +54,7 @@ mod turn;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
-pub use branch::{ACTIVE, BRANCH, Branch, BranchError, Kept, MAIN};
+pub use branch::{ACTIVE, BRANCH, Branch, BranchError, Kept, LINE, MAIN};
 pub use lineage::Lineage;
 pub use turn::{TURN, TurnEnd, TurnRecord};
 
@@ -209,6 +211,40 @@ impl PartialEq for Conversation {
 )]
 #[serde(transparent)]
 pub struct MessageId(u64);
+
+impl MessageId {
+    /// Its number: ids rise from 0 in the order messages were first made.
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Its plain form, `m` and its number (`m4`): how commands name a message.
+impl fmt::Display for MessageId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "m{}", self.0)
+    }
+}
+
+/// Reads its plain form, `m4`, or the number alone.
+impl FromStr for MessageId {
+    type Err = ParseIdError;
+
+    fn from_str(text: &str) -> Result<Self, ParseIdError> {
+        parse_id(text, 'm').map(Self)
+    }
+}
+
+/// A [`MessageId`] or [`AsideId`] that could not be read from its plain form.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("{0:?} is not an id")]
+pub struct ParseIdError(pub String);
+
+/// The number of `text`, written with or without `prefix`.
+fn parse_id(text: &str, prefix: char) -> Result<u64, ParseIdError> {
+    let number = text.strip_prefix(prefix).unwrap_or(text);
+    number.parse().map_err(|_| ParseIdError(text.to_owned()))
+}
 
 /// A message's identity beyond its conversation: when it was made and its
 /// id. Equal for a message and its copy in a fork (a fork copies ids and

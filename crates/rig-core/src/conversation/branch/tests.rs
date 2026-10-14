@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::super::{Aside, AsideId, Author, Conversation, Halt, MessageKey, Recorded};
-use super::{ACTIVE, BRANCH, Branch, BranchError, MAIN};
+use super::{ACTIVE, BRANCH, Branch, BranchError, LINE, MAIN};
 use crate::completion::Message;
 use crate::message::{AssistantContent, CallId, ToolName};
 
@@ -253,6 +253,63 @@ fn a_nested_branch_is_listed_and_reached_in_one_switch() {
     assert_eq!(conversation.line(None), line);
     assert_eq!(titles(&conversation), ["c", "b"]);
     assert_eq!(conversation.line(Some(AsideId::default())), None);
+
+    log.extend(conversation.take_unsaved());
+    assert_eq!(fold(&log), conversation);
+}
+
+/// A line value set on a line with no entry of its own goes with that line:
+/// a branch at the end starts with a copy, each line keeps its own through
+/// switches both ways, and the old line's value never becomes the new one's.
+#[test]
+fn a_line_value_goes_with_its_line_through_switches() {
+    let by = Author::plugin("tree");
+    let mut conversation =
+        Conversation::from_messages([Message::user("Name a colour."), Message::assistant("Red.")]);
+    let value = |conversation: &Conversation| {
+        let values = conversation.line_values();
+        values.and_then(|values| values.get("k")).cloned()
+    };
+    conversation.set_line_value("k", Some(json!(1)), by.clone());
+    let mut log = conversation.take_unsaved();
+    assert!(!conversation.parts_at_end());
+
+    let len = conversation.messages().len();
+    let main = conversation.branch_off(len, "split", by.clone());
+    assert!(main.is_ok(), "{main:?}");
+    assert!(conversation.parts_at_end());
+    assert_eq!(
+        value(&conversation),
+        Some(json!(1)),
+        "the split starts as of its point"
+    );
+    conversation.set_line_value("k", Some(json!(2)), by.clone());
+
+    let main = conversation.branches().first().map(|kept| kept.id);
+    assert!(
+        conversation
+            .switch_branch(main.unwrap_or_default(), by.clone())
+            .is_ok()
+    );
+    assert_eq!(
+        value(&conversation),
+        Some(json!(1)),
+        "the old line kept its own"
+    );
+    let split = conversation.branches().first().map(|kept| kept.id);
+    assert!(
+        conversation
+            .switch_branch(split.unwrap_or_default(), by.clone())
+            .is_ok()
+    );
+    assert_eq!(value(&conversation), Some(json!(2)));
+
+    conversation.set_line_value("k", None, by);
+    assert_eq!(conversation.line_values(), None);
+    let lines = conversation
+        .asides()
+        .filter(|(_, aside)| aside.kind == LINE);
+    assert_eq!(lines.count(), 0, "an empty line keeps no aside");
 
     log.extend(conversation.take_unsaved());
     assert_eq!(fold(&log), conversation);
