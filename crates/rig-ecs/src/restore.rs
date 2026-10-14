@@ -44,7 +44,7 @@
 //! App::new().add_systems(AgentPass, stay_paused.in_set(Stage::Gate));
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
@@ -57,7 +57,7 @@ use rig_core::conversation::{Aside, AsideId, Author};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, UserContent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
-use rig_memory::Session;
+use rig_memory::{Session, Upgrades, Versioned};
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -302,7 +302,7 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
     for (path, value) in &state {
-        let restored = saved(path, value, &registry).and_then(|(component, value)| {
+        let restored = saved(path, &value.value, &registry).and_then(|(component, value)| {
             let mut resource = resource_entity(world, component)?;
             component.insert(&mut resource, value.as_partial_reflect(), &registry);
             Ok(())
@@ -319,7 +319,7 @@ pub(crate) fn restore_session(world: &mut World) {
         let id = AgentId(agent.id);
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
         for (path, value) in &agent.state {
-            let restored = saved(path, value, &registry).map(|(component, value)| {
+            let restored = saved(path, &value.value, &registry).map(|(component, value)| {
                 component.insert(&mut spawned, value.as_partial_reflect(), &registry);
             });
             if let Err(failure) = restored {
@@ -357,6 +357,37 @@ pub(crate) fn restore_session(world: &mut World) {
     for notice in notices {
         world.write_message(notice);
     }
+}
+
+/// How the kernel reads older versions of saved values and of plugins'
+/// asides: each type's and kind's steps, registered by its plugin (rig-harness
+/// `AppKeepsExt::saved_upgrades` and `aside_upgrades`). A value is written
+/// at its type's version here.
+#[derive(Resource, Default)]
+pub struct SavedUpgrades(pub Upgrades);
+
+/// Saved keys no build reads any more, such as a deleted type's path: their
+/// values are kept in the file, and never reported.
+#[derive(Resource, Default)]
+pub struct RetiredSaved(pub BTreeSet<String>);
+
+/// The saved values this run set aside rather than read, with why: a value
+/// no step reads (moved to a side key on its key's next write) or one a
+/// newer rig saved (its key held, never written over).
+#[derive(Resource, Default, Debug)]
+pub struct SetAside(pub Vec<SetAsideValue>);
+
+/// A saved value set aside, as [`SetAside`] lists it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SetAsideValue {
+    /// The agent it was saved with; `None` for a saved resource.
+    pub agent: Option<AgentId>,
+    /// Its key, a type path.
+    pub key: String,
+    /// The value as saved, with its version.
+    pub saved: Versioned,
+    /// Why it was not read.
+    pub why: String,
 }
 
 /// The saved component of the type path `path` from its logged `value`,

@@ -36,6 +36,8 @@ use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::WriteJournal;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
+use super::follows::ReflectFollows;
+use super::restore::{RetiredSaved, SavedUpgrades, SetAside};
 use super::restore::{resource_entity, saved, saved_type};
 
 /// Saves an agent component or a resource with the session: derive
@@ -101,7 +103,7 @@ fn log_changed<T: Component + Reflect + TypePath>(
         let key = id.map_or(SESSION, |id| id.0.as_str());
         let starts = id.is_some() && !spawned.contains(entity);
         match serde_json::to_value(value) {
-            Ok(value) => log.0.state(key, name, Some(value), starts),
+            Ok(value) => log.0.state(key, name, Some(value.into()), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
@@ -332,6 +334,8 @@ pub struct RewriteSession {
 /// files, and every plugin's copies, in memory or in files of its own.
 #[derive(Message, Clone)]
 pub struct SessionRewritten {
+    /// Who rewrote it, as [`RewriteSession`] said.
+    pub by: Author,
     /// Who asked, as [`RewriteSession`] said.
     pub asker: Option<Entity>,
     /// The map the session was rewritten through.
@@ -366,7 +370,7 @@ pub(crate) fn apply_rewrites(world: &mut World) {
         .cloned()
         .unwrap_or_default();
     for RewriteSession { by, with, asker } in asked {
-        let result = log.0.rewrite(by, &*with);
+        let result = log.0.rewrite(by.clone(), &*with);
         let result = result.map_err(|failure| failure.to_string());
         if let Ok(rewritten) = &result {
             for failure in reread(world, rewritten, &*with) {
@@ -375,6 +379,7 @@ pub(crate) fn apply_rewrites(world: &mut World) {
             }
         }
         world.write_message(SessionRewritten {
+            by,
             asker,
             with,
             result,
@@ -424,16 +429,18 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
         }
         for key in &log.changed_keys {
             let inserted = match log.state.get(key) {
-                Some(value) => saved(key, value, &registry).and_then(|(component, value)| {
-                    let mut entity = match agent {
-                        Some(agent) => world
-                            .get_entity_mut(agent)
-                            .map_err(|failure| failure.to_string())?,
-                        None => resource_entity(world, component)?,
-                    };
-                    component.insert(&mut entity, value.as_partial_reflect(), &registry);
-                    Ok(())
-                }),
+                Some(value) => {
+                    saved(key, &value.value, &registry).and_then(|(component, value)| {
+                        let mut entity = match agent {
+                            Some(agent) => world
+                                .get_entity_mut(agent)
+                                .map_err(|failure| failure.to_string())?,
+                            None => resource_entity(world, component)?,
+                        };
+                        component.insert(&mut entity, value.as_partial_reflect(), &registry);
+                        Ok(())
+                    })
+                }
                 // A value the rewrite made null is gone, from an agent.
                 None => saved_type(key, &registry).map(|(_, component)| {
                     if let Some(mut entity) =
@@ -460,11 +467,14 @@ impl Plugin for JournalPlugin {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(Last, write_logs.in_set(WriteJournal))
-            .add_observer(open_child_log);
+            .add_observer(open_child_log)
+            .init_resource::<SavedUpgrades>()
+            .init_resource::<RetiredSaved>()
+            .init_resource::<SetAside>();
     }
 
-    /// Watches every type registered as [`ReflectSaved`], once every
-    /// plugin had its say in the registry.
+    /// Watches every type registered as [`ReflectSaved`] or
+    /// [`ReflectFollows`], once every plugin had its say in the registry.
     fn finish(&self, app: &mut App) {
         let watches: Vec<fn(&mut App)> = app
             .world()
@@ -472,7 +482,11 @@ impl Plugin for JournalPlugin {
             .map(|registry| {
                 let registry = registry.read();
                 let saved = registry.iter_with_data::<ReflectSaved>();
-                saved.map(|(_, saved)| saved.watch).collect()
+                let saved = saved.map(|(_, saved)| saved.watch);
+                let follows = registry.iter_with_data::<ReflectFollows>();
+                saved
+                    .chain(follows.map(|(_, follows)| follows.watch))
+                    .collect()
             })
             .unwrap_or_default();
         for watch in watches {

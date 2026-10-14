@@ -27,6 +27,7 @@
 pub mod agent;
 pub mod calls;
 pub mod effects;
+pub mod follows;
 pub mod inbox;
 pub mod journal;
 pub mod model;
@@ -58,6 +59,7 @@ pub mod prelude {
         ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, PollCalls, Running, Wake};
+    pub use crate::follows::{FOLLOWS, ReflectFollows};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
         Recalled, Unsent,
@@ -68,7 +70,9 @@ pub mod prelude {
     };
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
-    pub use crate::restore::{Interrupted, Restored};
+    pub use crate::restore::{
+        Interrupted, Restored, RetiredSaved, SavedUpgrades, SetAside, SetAsideValue,
+    };
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,
         ForAgent, GateSystems, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
@@ -95,8 +99,8 @@ pub mod prelude {
         PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
     };
     pub use rig_memory::{
-        Files, Keep, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings, as_of,
-        fork, history, now_ms,
+        Files, Keep, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings,
+        Upgrade, Upgrades, Versioned, as_of, fork, history, now_ms,
     };
 }
 
