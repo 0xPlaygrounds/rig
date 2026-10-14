@@ -4,9 +4,11 @@
 
 use std::io;
 
-use rig_core::conversation::{AsideId, Conversation};
+use rig_core::conversation::{AsideId, Author, Conversation};
 
-use crate::{Files, ForkedFrom, LoadError, SessionMeta, Store};
+use crate::format::SESSION;
+use crate::session::{Fold, Folded, fold, log_lines, read_header};
+use crate::{Files, ForkedFrom, LoadError, SessionMeta, Store, main_order};
 
 /// What a listing shows of a saved session, from its store's files alone
 /// (no log is folded).
@@ -42,10 +44,55 @@ pub fn read_line(
     agent: Option<&str>,
     line: Option<AsideId>,
 ) -> Result<(String, Conversation), LoadError> {
-    let _ = (store, agent, line);
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "reading one line is not supported yet",
-    )
-    .into())
+    let how = Fold {
+        until: None,
+        images: true,
+    };
+    let folded = match agent {
+        Some(agent) => fold(store, agent, how)?,
+        None => main_log(store, how)?,
+    };
+    let Some(folded) = folded.filter(|folded| folded.name != SESSION) else {
+        let why = format!("the session has no agent {}", agent.unwrap_or("to talk to"));
+        return Err(io::Error::new(io::ErrorKind::NotFound, why).into());
+    };
+    let mut conversation = folded.conversation;
+    if let Some(line) = line {
+        conversation
+            .switch_branch(line, Author::rig())
+            .map_err(|why| io::Error::new(io::ErrorKind::NotFound, why.to_string()))?;
+    }
+    Ok((folded.name, conversation))
 }
+
+/// The main agent's log, folded: of the logs whose header names no parent,
+/// the first by [`main_order`] that is not retired, as
+/// [`Session::main_agent`](crate::Session::main_agent) finds it; only its
+/// candidates are folded.
+fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, LoadError> {
+    let mut candidates = Vec::new();
+    for name in store.logs()? {
+        if name == SESSION {
+            continue;
+        }
+        let Some(lines) = log_lines(store, &name)? else {
+            continue;
+        };
+        if let Some((_, _, first)) = lines.iter().next() {
+            let (_, header) = read_header(&name, first)?;
+            if header.parent.is_none() {
+                candidates.push(name);
+            }
+        }
+    }
+    candidates.sort_by(|a, b| main_order(false, a).cmp(&main_order(false, b)));
+    for name in candidates {
+        if let Some(folded) = fold(store, &name, how)?.filter(|folded| !folded.retired) {
+            return Ok(Some(folded));
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests;
