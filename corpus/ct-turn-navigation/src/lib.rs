@@ -310,9 +310,11 @@ fn note_header(
     }
     let rows = u16::from(header.0.is_some());
     let placed = TuiPanel::new(Placement::Top(Constraint::Length(rows)));
-    let moved = panels.iter_mut().fold(false, |moved, mut panel| {
-        panel.set_if_neq(placed.clone()) || moved
-    });
+    // Every panel is placed, so no short-circuiting `any`.
+    let mut moved = false;
+    for mut panel in &mut panels {
+        moved |= panel.set_if_neq(placed.clone());
+    }
     if let Some(wake) = wake.filter(|_| moved) {
         wake.wake();
     }
