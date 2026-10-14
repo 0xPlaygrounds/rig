@@ -2,7 +2,8 @@
 //! session from the shell, answered on stdout.
 //!
 //! The command is a front of its own ([`Front::on_command`]), sessionless,
-//! so a run leaves nothing behind. It finds the session by name, id, `last`
+//! so a run leaves nothing behind, and its own session is kept in memory
+//! ([`Front::session_store`]). It finds the session by name, id, `last`
 //! or path, reads it through [`SessionStores`] without writing anything
 //! ([`Material`]), and makes the run's one agent the answerer: its
 //! conversation starts with the session's active line (so compaction,
@@ -30,8 +31,10 @@ pub mod session;
 
 use std::collections::BTreeSet;
 use std::io::Write as _;
+use std::sync::Arc;
 
 use rig_harness::prelude::*;
+use rig_harness::rig_memory::{MemoryStore, Store};
 use rig_telemetry::SessionSpending;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -80,11 +83,17 @@ pub struct AskSessionPlugin;
 
 impl Plugin for AskSessionPlugin {
     fn build(&self, app: &mut App) {
-        let front = Front::new(COMMAND).sessionless().on_command(
-            COMMAND,
-            USAGE,
-            "Answer a question about a saved session on stdout, without changing it",
-        );
+        // The run's own session, which holds a copy of the asked one's
+        // line, is kept in memory and never written.
+        let in_memory = |_: &_| Ok(Arc::new(MemoryStore::default()) as Arc<dyn Store>);
+        let front = Front::new(COMMAND)
+            .sessionless()
+            .session_store(in_memory)
+            .on_command(
+                COMMAND,
+                USAGE,
+                "Answer a question about a saved session on stdout, without changing it",
+            );
         app.add_front(front)
             .add_setting::<AskSessionSettings>("ask_session");
     }
