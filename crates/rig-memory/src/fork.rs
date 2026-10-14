@@ -83,7 +83,7 @@ pub fn fork(
                 .as_ref()
                 .and_then(|(_, now)| now.made.get(&id).copied());
             let Some(made) = made else {
-                let why = format!("the log {log} made no message {id:?}");
+                let why = format!("the log `{log}` made no message {id:?}");
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, why).into());
             };
             (Some(made.n), read.map(|read| (log, read)))

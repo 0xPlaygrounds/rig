@@ -73,7 +73,7 @@ pub enum LoadError {
         found: Option<String>,
     },
     /// A record cannot be read, or its change does not apply.
-    #[error("the log {log} cannot be read at line {line}: {why}")]
+    #[error("the log `{log}` cannot be read at line {line}: {why}")]
     Record {
         /// The log.
         log: String,
@@ -84,7 +84,7 @@ pub enum LoadError {
     },
     /// The log moved on since the conversation saved to it was read: saving
     /// would lose the changes made there.
-    #[error("the log {log} changed since it was read")]
+    #[error("the log `{log}` changed since it was read")]
     Changed {
         /// The log.
         log: String,
@@ -102,12 +102,12 @@ fn refusal(log: &str, found: Option<&str>) -> String {
         (Some(found), Some(ours)) if found > ours => "a newer",
         _ => {
             let found = found.unwrap_or("(none)");
-            return format!("the log {log} is in format {found}, not {FORMAT}");
+            return format!("the log `{log}` is in format {found}, not {FORMAT}");
         }
     };
     let found = found.unwrap_or_default();
     format!(
-        "the log {log} was saved by {rig} version of rig (format {found}; this rig reads \
+        "the log `{log}` was saved by {rig} version of rig (format {found}; this rig reads \
          {FORMAT}); it is left as it is"
     )
 }
@@ -159,13 +159,13 @@ impl fmt::Display for Repair {
                 set_aside,
                 ..
             } => {
-                write!(f, "the log {log} ended in a line cut short ({cut} bytes)")?;
+                write!(f, "the log `{log}` ended in a line cut short ({cut} bytes)")?;
                 match set_aside {
                     Some(file) => write!(f, ", set aside in {file}"),
                     None => Ok(()),
                 }
             }
-            Self::LostImage { log, why } => write!(f, "an image of the log {log} is lost: {why}"),
+            Self::LostImage { log, why } => write!(f, "an image of the log `{log}` is lost: {why}"),
         }
     }
 }

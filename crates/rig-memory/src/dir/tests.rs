@@ -101,6 +101,8 @@ fn a_session_saved_in_format_1_is_refused_before_anything_is_written() {
             message.contains("older version of rig") && message.contains("rig-session/2"),
             "{message}"
         );
+        // The log's name is quoted, so `session` does not read as a word.
+        assert!(message.starts_with("the log `"), "{message}");
     };
     old(Session::read(&*store).expect_err("refused"));
     old(Writer::open(store.clone())
