@@ -191,7 +191,10 @@ fn spawns_beyond_max_concurrent_wait_for_a_slot() {
         let counts = world.iter_entities().filter_map(|e| e.get::<QueuedTasks>());
         queued.set(queued.get().max(counts.map(|q| q.0).max().unwrap_or(0)));
         let steps = world.resource::<Steps>().0.len();
-        steps == 4 && parent.request_count() >= 3
+        // Both reports reached the parent: the second may come a request
+        // after the one the first came in.
+        let read = format!("{:?}", parent.requests());
+        steps == 4 && read.contains("First done.") && read.contains("Second done.")
     });
 
     assert_eq!(queued.get(), 1);
