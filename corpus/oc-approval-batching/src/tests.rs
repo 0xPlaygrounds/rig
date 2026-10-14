@@ -3,13 +3,12 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
 use rig_coding_tools::{ReadTool, ShellTool};
-use rig_core::error::ErrorKind;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::approval::ApprovalPlugin;
 use rig_harness::ask::AskPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_on, connect, first_agent, log_ended, press, reply, run_until, tui_view,
+    Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, run_until, tui_view,
 };
 use serde_json::json;
 
@@ -131,6 +130,7 @@ fn output(app: &App, id: &str) -> String {
         .unwrap_or_default()
 }
 
+#[cfg(feature = "tui")]
 fn rows(app: &mut App) -> Vec<String> {
     let mut batches = app.world_mut().query::<&ApprovalBatch>();
     batches
@@ -139,6 +139,8 @@ fn rows(app: &mut App) -> Vec<String> {
         .collect()
 }
 
+/// The terminal view answers with the question's own keys (`tui`).
+#[cfg(feature = "tui")]
 #[test]
 fn one_question_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
     let dir = project("terminal");
@@ -167,9 +169,9 @@ fn one_question_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
     assert_eq!(app.world().resource::<Opened>().0, 1);
     assert_eq!(rows(&mut app), ["rm a.txt", "rm b.txt", "git push"]);
 
-    // In the terminal view: tick `rm a.txt` and `git push`, type a note
-    // for the denied `rm b.txt`, answer.
-    press(&mut app, "tab down tab k e e p space b enter");
+    // In the terminal view, every row starts ticked: untick `rm b.txt`
+    // with Space, type a note for it, answer.
+    rig_harness_test_support::press(&mut app, "down space k e e p space b enter");
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1
     });
@@ -201,7 +203,7 @@ fn one_question_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
             .map(|e| e.kind);
         assert_eq!(
             kind,
-            Some(ErrorKind::Cancelled),
+            Some(rig_core::error::ErrorKind::Cancelled),
             "{id}: {:?}",
             results.get(id)
         );

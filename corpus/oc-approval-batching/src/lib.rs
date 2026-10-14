@@ -7,17 +7,20 @@
 //! harness asks about each call alone ([`ApprovalSystems`]), this plugin
 //! holds every call of a reply that needs approval with a hold of its own
 //! ([`BatchHold`]) and asks one question ([`Ask`]) for all of them, one
-//! choice per call, grouped by agent, any number ticked, with a note
-//! ([`Answer`]'s text). Every front shows it. The ticked calls are
-//! [`Approved`] and run; the others are refused with "denied by user" and
-//! the note, and closing the question denies them all. Calls that need no
-//! approval are never held.
+//! choice per call, grouped by agent, each ticked at first with its full
+//! arguments as its [`Choice::more`], any number ticked, with a note
+//! ([`Answer`]'s text). Every front shows it; in the terminal view Space
+//! ticks, `a` ticks all, `n` none and `e` shows the full arguments. The
+//! ticked calls are [`Approved`] and run; the others are refused with
+//! "denied by user" and the note, and closing the question denies them
+//! all. Calls that need no approval are never held.
 //!
-//! A call of a reply the open question shows joins it (the question is
-//! asked again with it); a call of another reply waits in [`QueuedRows`]
-//! for the next one. An interrupt despawns the holds, as it does any
-//! hold, so the kernel answers the calls as cancelled, and the question
-//! closes once its last call went. With nobody to answer, the harness
+//! A call of a reply the open question shows joins it: a new question
+//! supersedes the open one, and the fronts keep the user's ticks. A call
+//! of another reply waits in [`QueuedRows`] for the next one. An
+//! interrupt despawns the holds, as it does any hold, so the kernel
+//! answers the calls as cancelled, and the question closes once its last
+//! call went. With nobody to answer, the harness
 //! refuses every call that needs approval at once; `fallback = "allow"`
 //! keeps this plugin's own rules from asking then.
 //!
@@ -35,6 +38,7 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectId;
+use rig_subagents::SubagentSystems;
 use serde::Deserialize;
 
 /// Where the rules are, in [`PluginData::user`].
@@ -168,6 +172,8 @@ pub fn summary(arguments: &serde_json::Map<String, serde_json::Value>) -> String
 pub struct BatchRow {
     /// The call.
     pub call: Entity,
+    /// Its effect's id, which names its choice.
+    pub id: EffectId,
     /// The hold on it, a [`BatchHold`].
     pub hold: Entity,
     /// The agent whose call it is.
@@ -184,8 +190,7 @@ pub struct BatchRow {
     pub arguments: String,
 }
 
-/// On the open question: the calls it asks about, its choices in order
-/// (choice `0` is the first row).
+/// On the open question: the calls it asks about, its choices in order.
 #[derive(Component, Clone, Debug, Default)]
 pub struct ApprovalBatch {
     /// The calls, grouped by agent, each reply's in the order asked for.
@@ -193,24 +198,26 @@ pub struct ApprovalBatch {
 }
 
 impl ApprovalBatch {
-    /// The question about every row: each a choice, ticked to allow it.
+    /// The question about every row: each a choice, ticked to allow it,
+    /// and ticked at first.
     fn ask(&self) -> Ask {
-        let mut body = String::new();
-        let mut agent = None;
-        for row in &self.rows {
-            if agent != Some(row.agent) {
-                agent = Some(row.agent);
-                body.push_str(&format!("{}:\n", row.agent_name));
-            }
-            body.push_str(&format!("  {} {}\n", row.tool, row.arguments));
-        }
-        body.push_str("Tick the calls to allow; a note typed goes with every denied one.");
         let title = format!("Approve {} tool calls?", self.rows.len());
+        let body = "Untick the calls to deny; a note typed goes with every denied one.";
         let ask = Ask::new(title).body(body).multiple().free_text();
-        self.rows.iter().enumerate().fold(ask, |ask, (index, row)| {
+        self.rows.iter().fold(ask, |ask, row| {
             let label = format!("{}: {}  {}", row.agent_name, row.tool, row.summary);
-            ask.choice(index.to_string(), label)
+            let choice = Choice::new(row.id.to_string(), label).checked();
+            ask.with(choice.more(&row.arguments))
         })
+    }
+
+    /// The agent whose calls they all are, when they are one agent's.
+    fn agent(&self) -> Option<Entity> {
+        let agent = self.rows.first()?.agent;
+        self.rows
+            .iter()
+            .all(|row| row.agent == agent)
+            .then_some(agent)
     }
 
     /// Whether it asks about the reply `reply` of `agent`.
@@ -231,8 +238,8 @@ pub struct QueuedRows(pub Vec<BatchRow>);
 pub struct BatchHold;
 
 /// This plugin's system that holds the calls needing approval: after
-/// every gate, before the harness asks ([`ApprovalSystems`]). The answer is
-/// carried out by a gate.
+/// every gate and the subagents' restart check, before the harness asks
+/// ([`ApprovalSystems`]). The answer is carried out by a gate.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BatchSystems;
 
@@ -248,6 +255,7 @@ impl Plugin for ApprovalBatchingPlugin {
                 AgentPass,
                 BatchSystems
                     .after(GateSystems::After)
+                    .after(SubagentSystems::StopRestored)
                     .before(ApprovalSystems),
             )
             .add_systems(Startup, load_rules)
@@ -298,10 +306,10 @@ fn want(
 }
 
 /// Holds each call that needs approval, waiting or not, and nobody decided,
-/// as a choice of the open question when it shows the call's reply (asked
-/// again), else of the next one. Asks the next question once none is open.
-/// With nobody to answer, it leaves the call to the harness, which refuses
-/// it.
+/// as a choice of the open question when it shows the call's reply (a new
+/// question supersedes it), else of the next one. Asks the next question
+/// once none is open. With nobody to answer, it leaves the call to the
+/// harness, which refuses it.
 fn gather(
     calls: Query<
         (Entity, &ToolRequest, &ForAgent, &Effect, &Decision),
@@ -335,6 +343,7 @@ fn gather(
         let arguments = &request.call.function.arguments;
         let row = BatchRow {
             call,
+            id: effect.id(),
             hold: commands.spawn((BatchHold, HoldOf(call))).id(),
             agent,
             agent_name: names.get(agent).map(Name::to_string).unwrap_or_default(),
@@ -355,23 +364,43 @@ fn gather(
         }
     }
     let next = match (grown, open.is_empty()) {
-        // A grown question is asked again, with every call.
+        // A grown question is superseded by one with every call.
         (Some(question), _) => open.get_mut(question).ok().map(|(_, mut batch)| {
-            commands.entity(question).despawn();
-            std::mem::take(&mut batch.rows)
+            commands.entity(question).remove::<ApprovalBatch>();
+            (Some(question), std::mem::take(&mut batch.rows))
         }),
-        (None, true) if !queued.0.is_empty() => Some(std::mem::take(&mut queued.0)),
+        (None, true) if !queued.0.is_empty() => Some((None, std::mem::take(&mut queued.0))),
         _ => None,
     };
-    if let Some(mut rows) = next {
-        rows.sort_by_key(|row| row.agent);
-        let batch = ApprovalBatch { rows };
-        let agent = batch.rows.first().map(|row| row.agent);
-        let mut question = commands.spawn((batch.ask(), batch));
-        if let Some(agent) = agent {
-            question.insert(ForAgent(agent));
-        }
+    let Some((old, mut rows)) = next else {
+        return;
+    };
+    rows.sort_by_key(|row| row.agent);
+    let batch = ApprovalBatch { rows };
+    let mut question = commands.spawn(batch.ask());
+    #[cfg(feature = "tui")]
+    question.insert(keys());
+    // Several agents' question is the front's, not one agent's.
+    if let Some(agent) = batch.agent() {
+        question.insert(ForAgent(agent));
     }
+    let new = question.insert(batch).id();
+    if let Some(old) = old {
+        commands.entity(old).insert(SupersededBy(new));
+    }
+}
+
+/// The question's keys in the terminal view, as the spec names them.
+#[cfg(feature = "tui")]
+fn keys() -> rig_tui::ChoiceKeys {
+    use rig_tui::ChoiceAction::{More, Tick, TickAll, TickNone};
+    use rig_tui::crossterm::event::KeyCode::Char;
+    rig_tui::ChoiceKeys(vec![
+        (Char(' '), Tick),
+        (Char('a'), TickAll),
+        (Char('n'), TickNone),
+        (Char('e'), More),
+    ])
 }
 
 /// Carries out each answer: the ticked calls are approved, the others
@@ -390,8 +419,8 @@ fn answered(
         };
         // Before the holds go, so `forget` leaves the question alone.
         commands.entity(question).remove::<ApprovalBatch>();
-        for (index, row) in batch.rows.iter().enumerate() {
-            if answer.is(&index.to_string()) {
+        for row in &batch.rows {
+            if answer.is(&row.id.to_string()) {
                 commands.entity(row.call).try_insert(Approved);
             } else if let Ok(mut decision) = calls.get_mut(row.call) {
                 decision.decide(Decider::Person, Outcome::refused(why.clone()));
