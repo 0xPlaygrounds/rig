@@ -1,15 +1,10 @@
-//! The terminal view's part: the `/resume` picker, and the session's name
-//! in the status line.
+//! The terminal view's part: the session's name in the status line.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_ecs::agent::Notice;
-use rig_harness::harness_protocol::Home;
-use rig_harness::pick::{PickItem, Picker};
-use rig_harness::prelude::{SessionPaths, SessionStores};
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 
-use super::{SessionTitle, list};
+use super::SessionTitle;
 
 /// Where the session's name is in the status line: first, and gone before
 /// what the session spends when the line is too narrow.
@@ -27,33 +22,4 @@ pub(super) fn add(app: &mut App) {
 fn show_name(title: Res<SessionTitle>, mut status: ResMut<AppStatus>) {
     let name = title.name.clone().unwrap_or_default();
     status.0.show(NAME.says(name, Tone::Cyan));
-}
-
-/// Lets the user pick an earlier session under `home` to resume.
-pub(super) fn pick_session(
-    agent: Entity,
-    (home, stores, paths): (&Home, &SessionStores, Option<&SessionPaths>),
-    notices: &mut MessageWriter<Notice>,
-    commands: &mut Commands,
-) {
-    let Some(paths) = paths else {
-        return;
-    };
-    let items: Vec<PickItem> = list(home, stores, paths.path())
-        .into_iter()
-        .map(|session| PickItem {
-            label: session.label(),
-            command: format!("resume {}", session.id),
-            detail: Some(session.detail()),
-            checked: false,
-        })
-        .collect();
-    if items.is_empty() {
-        notices.write(Notice::info(agent, "No earlier session to resume."));
-        return;
-    }
-    commands.spawn(Picker {
-        items,
-        ..Picker::new("Resume a session").for_agent(agent)
-    });
 }

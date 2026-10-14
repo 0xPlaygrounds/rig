@@ -15,7 +15,7 @@ workspace = true
 
 [features]
 default = ["tui"]
-# The `/resume` picker and the session's name in the terminal view's status
+# The session's name in the terminal view's status
 # line. An app without the terminal view leaves it out with
 # `default-features = false`.
 tui = ["dep:rig-tui"]
