@@ -12,11 +12,20 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# The tasks that stop processes off the main thread.
+bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
+[target.'cfg(unix)'.dependencies]
+# Signalling a process by pid, and the clock tick of `/proc`'s times.
+libc = { workspace = true }
+
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
+# The default `shell`, whose processes are tracked.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
