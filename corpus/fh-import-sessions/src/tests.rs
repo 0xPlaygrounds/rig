@@ -110,8 +110,7 @@ fn imports_resumes_and_reimports() {
     reported.extend(import_with(&mut app, "codex", &codex));
 
     // Two sessions, which `/resume` lists.
-    let current_dir = home.session(&current);
-    let listed = rig_sessions::list(&home, &SessionStores::default(), current_dir.path());
+    let listed = resumable(&home, &current);
     assert_eq!(listed.len(), 2, "{reported:?}");
     assert_eq!(reported.len(), 2, "{reported:?}");
     let (Some(first), Some(second)) = (reported.first(), reported.get(1)) else {
@@ -251,10 +250,7 @@ fn imports_resumes_and_reimports() {
             && again.added == 1),
         "{again:?}"
     );
-    assert_eq!(
-        rig_sessions::list(&home, &SessionStores::default(), current_dir.path()).len(),
-        2
-    );
+    assert_eq!(resumable(&home, &current).len(), 2);
     let messages = conversation_of(&home, &first.session);
     let last = messages.last().and_then(|message| match message {
         Message::User { content } => content.iter().find_map(|item| match item {
@@ -264,4 +260,13 @@ fn imports_resumes_and_reimports() {
         _ => None,
     });
     assert_eq!(last.as_deref(), Some("One more thing"));
+}
+
+/// The saved sessions of `home` that `/resume` lists from `current`.
+fn resumable(home: &Home, current: &SessionId) -> Vec<SessionEntry> {
+    home.saved_sessions()
+        .into_iter()
+        .filter(|(id, _)| id != current)
+        .filter_map(|(_, dir)| SessionEntry::read(&dir, &SessionStores::default()))
+        .collect()
 }
