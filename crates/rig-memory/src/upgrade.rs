@@ -317,6 +317,11 @@ fn no_images(_: &str) -> io::Result<Vec<u8>> {
 pub fn upgrade(store: &dyn Store) -> Result<Upgraded, LoadError> {
     let mut names = store.logs()?;
     names.sort();
+    if all_current(store, &names)? {
+        // What a crash after the last log was replaced left.
+        remove_kept_copies(store)?;
+        return Ok(Upgraded::default());
+    }
     let mut logs = Vec::new();
     for name in names {
         let Some(lines) = log_lines(store, &name)? else {
@@ -369,12 +374,15 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, LoadError> {
             refuse,
         )?;
         let new = LogLines::parse(bytes);
-        let back = fold_lines(&name, &new, Fold::default(), &no_images)?;
-        let same = back.as_ref().is_some_and(|back| {
-            back.conversation == old.conversation
-                && back.state == old.state
-                && back.retired == old.retired
-        });
+        // No step changes a record: the copy holds the same records.
+        let same = steps(version).all(|step| step.record.is_none()) || {
+            let back = fold_lines(&name, &new, Fold::default(), &no_images)?;
+            back.as_ref().is_some_and(|back| {
+                back.conversation == old.conversation
+                    && back.state == old.state
+                    && back.retired == old.retired
+            })
+        };
         if !same {
             let why = format!("in {FORMAT} it would not read back the same");
             return Err(LoadError::Record {
@@ -408,6 +416,28 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, LoadError> {
     }
     remove_kept_copies(store)?;
     Ok(upgraded)
+}
+
+/// Whether every log of `names` is in this format, by its header alone.
+fn all_current(store: &dyn Store, names: &[String]) -> Result<bool, LoadError> {
+    for name in names {
+        let bytes = match store.read_log(name) {
+            Err(failure) if failure.kind() == io::ErrorKind::NotFound => continue,
+            bytes => bytes?,
+        };
+        let first = bytes
+            .split_inclusive(|byte| *byte == b'\n')
+            .filter_map(|line| line.strip_suffix(b"\n"))
+            .find(|line| !line.is_empty());
+        let Some(first) = first else {
+            continue;
+        };
+        match read_header(name, first) {
+            Ok((.., version)) if version == VERSION => {}
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
 }
 
 /// Removes the old logs [`upgrade`] kept.
