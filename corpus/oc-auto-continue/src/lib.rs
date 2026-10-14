@@ -13,21 +13,27 @@
 //! continue (or to issue the calls the provider cut
 //! ([`CompletionResponse::unfinished_calls`]) again, a `write` in several
 //! edits). The new call's [`Partial`] starts with the text so far, so the
-//! view keeps the one reply growing. When a reply ends without the limit,
+//! view keeps the one reply growing, a dim "continued" [`TextMark`] at
+//! each seam. When a reply ends without the limit,
 //! the plugin joins the text so far in front of its text in Review, the
 //! words the model repeated at the seam taken out, and the kept calls
 //! after it, so the conversation gets one assistant message. Each
 //! request's usage counts for the turn as every model call's does
-//! (rig-telemetry's `TurnSpending`). After `max_continuations` the reply
-//! is kept as it is, its cut calls dropped, with a notice. A provider that
-//! reports no finish reason is never continued.
+//! (rig-telemetry's `TurnSpending`). Once the joined reply is committed,
+//! its marks point at the saved message's text. After `max_continuations`,
+//! or when its turn is ending, a cut reply is kept as it is, its cut calls
+//! dropped, with a notice. A provider that reports no finish reason is
+//! never continued.
 //!
 //! [`Compat::prefill`]: rig_harness::rig_core::catalog::Compat::prefill
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::ReasoningSupport;
 use rig_harness::rig_core::completion::{CompletionResponse, FinishReason, Reasoning};
 use rig_harness::rig_core::effect::Outcome as Answered;
 use rig_harness::rig_core::message::{Message, Text};
+use rig_tui::ratatui::style::Style;
+use rig_tui::{MarkIn, TextMark, TranscriptView};
 use serde::Deserialize;
 
 /// The plugin's name, as an author, and its settings table.
@@ -65,6 +71,9 @@ pub enum AutoContinueSystems {
     /// Adds the partial reply to a continuation's request
     /// (`PrepareSystems::Edit`).
     Prepare,
+    /// Points the seams' marks at the joined reply once it is committed
+    /// (`PrepareSystems::Input`, the first after the commit).
+    Mark,
 }
 
 /// Continues turn replies cut off by the output-token limit.
@@ -80,6 +89,7 @@ impl Plugin for AutoContinuePlugin {
                     AutoContinueSystems::Join.in_set(ReviewSystems::Edit),
                     AutoContinueSystems::Continue.in_set(ReviewSystems::Act),
                     AutoContinueSystems::Prepare.in_set(PrepareSystems::Edit),
+                    AutoContinueSystems::Mark.in_set(PrepareSystems::Input),
                 ),
             )
             .add_systems(
@@ -88,6 +98,7 @@ impl Plugin for AutoContinuePlugin {
                     join.in_set(AutoContinueSystems::Join),
                     continue_cut.in_set(AutoContinueSystems::Continue),
                     add_partial.in_set(AutoContinueSystems::Prepare),
+                    mark_seams.in_set(AutoContinueSystems::Mark),
                 ),
             )
             .add_observer(follow_successor::<Continuing>);
@@ -100,6 +111,8 @@ impl Plugin for AutoContinuePlugin {
 pub struct Continuing {
     /// The text so far, joined.
     pub text: String,
+    /// Where in `text` each later piece begins.
+    pub seams: Vec<usize>,
     /// The tool calls the pieces so far finished, to run with the reply.
     pub kept: Vec<ToolCall>,
     /// How many continuations the reply took, this one included.
@@ -108,10 +121,14 @@ pub struct Continuing {
     pub cut: Vec<String>,
 }
 
-/// On a continued reply joined once: Review sees it each pass.
+/// On a reply joined once (Review sees it each pass): the text block that
+/// holds the joined text, and where in it each later piece begins.
 #[derive(Component)]
 #[component(storage = "SparseSet")]
-struct Joined;
+struct Joined {
+    block: Option<usize>,
+    seams: Vec<usize>,
+}
 
 /// Whether the provider said the reply stopped at the output limit.
 fn cut(response: &CompletionResponse) -> bool {
@@ -119,8 +136,9 @@ fn cut(response: &CompletionResponse) -> bool {
 }
 
 /// `before` and `after` joined, the longest end of `before` that `after`
-/// starts with again (at least four bytes) said once.
-pub fn join_at_seam(before: &str, after: &str) -> String {
+/// starts with again (at least four bytes) said once, and where `after`
+/// begins in it.
+fn join_at_seam(before: &str, after: &str) -> (String, usize) {
     let longest = before.len().min(after.len());
     let overlap = (MIN_OVERLAP..=longest)
         .rev()
@@ -131,7 +149,30 @@ pub fn join_at_seam(before: &str, after: &str) -> String {
         })
         .unwrap_or(0);
     let rest = after.get(overlap..).unwrap_or(after);
-    format!("{before}{rest}")
+    (format!("{before}{rest}"), before.len() - overlap)
+}
+
+/// The text so far, if any, joined with a piece's `text`, and the seams.
+fn joined(so_far: Option<&Continuing>, text: &str) -> (String, Vec<usize>) {
+    let Some(so_far) = so_far else {
+        return (text.to_owned(), Vec::new());
+    };
+    let (joined, seam) = join_at_seam(&so_far.text, text);
+    let mut seams = so_far.seams.clone();
+    if !so_far.text.is_empty() && !text.is_empty() {
+        seams.push(seam);
+    }
+    (joined, seams)
+}
+
+/// The mark drawn at a seam.
+fn seam(r#in: MarkIn, at: usize) -> TextMark {
+    TextMark {
+        r#in,
+        at,
+        label: " (continued) ".to_owned(),
+        style: Style::new().dim().italic(),
+    }
 }
 
 /// Takes over each turn reply cut at the output limit, while its reply has
@@ -161,11 +202,12 @@ fn continue_cut(
         if !cut(response) || count >= settings.max_continuations || ending.contains(turn) {
             continue;
         }
-        let text = response.text();
+        let (text, seams) = joined(so_far, &response.text());
         let cut: Vec<&ToolCall> = response.unfinished_calls().collect();
         let finished = response.tool_calls().filter(|call| !cut.contains(call));
         let next = Continuing {
-            text: so_far.map_or_else(|| text.clone(), |so_far| join_at_seam(&so_far.text, &text)),
+            text,
+            seams,
             kept: so_far
                 .into_iter()
                 .flat_map(|so_far| so_far.kept.iter())
@@ -186,10 +228,11 @@ fn continue_cut(
 /// Puts the reply so far in each continuation's request as it is built:
 /// an unfinished assistant message where its model continues one, else the
 /// partial text and a note on how to go on. Its [`Partial`] starts with
-/// the text so far.
+/// the text so far, marked at each seam.
 fn add_partial(
     mut calls: Query<
         (
+            Entity,
             &mut ModelRequest,
             &Continuing,
             &mut Partial,
@@ -198,18 +241,21 @@ fn add_partial(
         (Added<Admitted>, With<TurnCall>),
     >,
     agents: Query<&Connection>,
+    mut view: Option<ResMut<TranscriptView>>,
 ) {
-    for (mut call, so_far, mut partial, agent) in &mut calls {
+    for (entity, mut call, so_far, mut partial, agent) in &mut calls {
         let own = agent.and_then(|agent| agents.get(agent.0).ok());
         let spec = call.connection.as_ref().or(own).map(|it| it.spec.clone());
-        // The catalog's prefill fact holds while reasoning is off.
-        let thinking = matches!(
-            call.request.options.reasoning,
-            Some(Reasoning::Effort(_) | Reasoning::Budget { .. })
-        );
-        let prefill = spec.is_some_and(|spec| spec.compat.prefill)
-            && !thinking
-            && so_far.cut.is_empty()
+        // The catalog's prefill fact holds while reasoning is off: asked
+        // off, or left to a model that does not reason.
+        let reasoning = &call.request.options.reasoning;
+        let prefill = spec.is_some_and(|spec| {
+            let off = match reasoning {
+                Some(reasoning) => matches!(reasoning, Reasoning::Off),
+                None => matches!(spec.reasoning, ReasoningSupport::None),
+            };
+            spec.compat.prefill && off
+        }) && so_far.cut.is_empty()
             && so_far.kept.is_empty();
         let Some(history) = call.history.as_mut() else {
             continue;
@@ -222,6 +268,11 @@ fn add_partial(
             history.push(Entry::new(Message::user(note(so_far))).by(by));
         }
         partial.text.clone_from(&so_far.text);
+        if let (Some(view), false) = (view.as_mut(), so_far.text.is_empty()) {
+            let at = so_far.seams.iter().copied().chain([so_far.text.len()]);
+            let marks = at.map(|at| seam(MarkIn::Streaming(entity), at));
+            view.marks.extend(marks);
+        }
     }
 }
 
@@ -260,12 +311,18 @@ fn note(so_far: &Continuing) -> String {
 
 /// Joins the reply so far in front of the reply that ends a continuation,
 /// in place, once: the text so far in its first text block, the seam's
-/// repeat said once, and the kept calls after it. A reply cut again with
-/// no continuation left is kept as it is, without the calls the provider
-/// cut, and a notice says so.
+/// repeat said once, and the kept calls after it. A reply cut with no
+/// continuation left, or as its turn ends, is kept as it is, without the
+/// calls the provider cut, and a notice says so.
 fn join(
     mut calls: Query<
-        (Entity, &mut Outcome, &Continuing, Option<&ForAgent>),
+        (
+            Entity,
+            &mut Outcome,
+            &CallOf,
+            Option<&Continuing>,
+            Option<&ForAgent>,
+        ),
         (
             Unreviewed,
             ModelCalls,
@@ -274,16 +331,19 @@ fn join(
             Without<Joined>,
         ),
     >,
+    ending: Query<(), With<TurnOutcome>>,
     settings: Res<AutoContinueSettings>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, mut outcome, so_far, agent) in &mut calls {
+    for (call, mut outcome, &CallOf(turn), so_far, agent) in &mut calls {
         let Ok(Answered::Completion(response)) = &mut outcome.0 else {
             continue;
         };
         let given_up = cut(response);
-        if given_up && so_far.count < settings.max_continuations {
+        let count = so_far.map_or(0, |so_far| so_far.count);
+        let continues = count < settings.max_continuations && !ending.contains(turn);
+        if (given_up && continues) || (!given_up && so_far.is_none()) {
             continue;
         }
         let dropped: Vec<ToolCall> = response.unfinished_calls().cloned().collect();
@@ -297,35 +357,84 @@ fn join(
             .choice
             .iter()
             .position(|block| matches!(block, AssistantContent::Text(_)));
-        let after = if let Some(at) = first_text {
-            if let Some(AssistantContent::Text(text)) = response.choice.get_mut(at) {
-                *text = Text::new(join_at_seam(&so_far.text, &text.text));
-            }
-            at + 1
-        } else {
-            let at = response
-                .choice
-                .iter()
+        let at = first_text.unwrap_or_else(|| {
+            let mut choice = response.choice.iter();
+            choice
                 .position(|block| !matches!(block, AssistantContent::Reasoning(_)))
-                .unwrap_or(response.choice.len());
-            if so_far.text.is_empty() {
-                at
-            } else {
-                let text = AssistantContent::Text(Text::new(so_far.text.clone()));
-                response.choice.insert(at, text);
-                at + 1
-            }
+                .unwrap_or(response.choice.len())
+        });
+        let current = match response.choice.get(at) {
+            Some(AssistantContent::Text(text)) => text.text.as_str(),
+            _ => "",
         };
-        let kept = so_far.kept.iter().cloned().map(AssistantContent::ToolCall);
-        response.choice.splice(after..after, kept);
-        commands.entity(call).insert(Joined);
+        let (text, seams) = joined(so_far, current);
+        let block = (!text.is_empty()).then_some(at);
+        match (first_text, response.choice.get_mut(at)) {
+            (Some(_), Some(AssistantContent::Text(old))) => *old = Text::new(text),
+            _ if block.is_some() => response
+                .choice
+                .insert(at, AssistantContent::Text(Text::new(text))),
+            _ => {}
+        }
+        let after = block.map_or(at, |at| at + 1);
+        let kept = so_far
+            .into_iter()
+            .flat_map(|so_far| so_far.kept.iter().cloned());
+        response
+            .choice
+            .splice(after..after, kept.map(AssistantContent::ToolCall));
+        commands.entity(call).insert(Joined { block, seams });
         if given_up {
             let text = format!(
                 "The reply hit the output limit {} times; it is kept as it is.",
-                so_far.count + 1
+                count + 1
             );
             notices.write(Notice::warn(agent.map(|agent| agent.0), text));
         }
+    }
+}
+
+/// As turn calls settle: takes their seams' marks off their streaming
+/// text, and puts a joined reply's on the message it was committed as.
+fn mark_seams(
+    settled: Query<
+        (
+            Entity,
+            Option<&Outcome>,
+            Option<&Joined>,
+            Option<&ForAgent>,
+            Has<SupersededBy>,
+        ),
+        (With<TurnCall>, Added<Settled>),
+    >,
+    agents: Query<&Conversation>,
+    view: Option<ResMut<TranscriptView>>,
+) {
+    let Some(mut view) = view else {
+        return;
+    };
+    for (call, outcome, joined, agent, superseded) in &settled {
+        let streaming = MarkIn::Streaming(call);
+        if view.marks.iter().any(|mark| mark.r#in == streaming) {
+            view.marks.retain(|mark| mark.r#in != streaming);
+        }
+        let (Some(Outcome(Ok(Answered::Completion(reply)))), Some(joined), Some(agent), false) =
+            (outcome, joined, agent, superseded)
+        else {
+            continue;
+        };
+        let Some((block, message)) = joined.block.zip(reply.message()) else {
+            continue;
+        };
+        let conversation = agents.get(agent.0).ok();
+        let mut entries = conversation.into_iter().flat_map(|it| it.entries().rev());
+        let Some(entry) = entries.find(|entry| *entry.message == message) else {
+            continue;
+        };
+        let id = entry.id;
+        let marks = joined.seams.iter();
+        let marks = marks.map(|&at| seam(MarkIn::Message { id, block }, at));
+        view.marks.extend(marks);
     }
 }
 
