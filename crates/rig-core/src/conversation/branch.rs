@@ -318,7 +318,7 @@ impl Conversation {
         let mut values = self.line_values().cloned().unwrap_or_default();
         match value {
             Some(value) => values.insert(key.to_owned(), value),
-            None => values.remove(key),
+            None => values.shift_remove(key),
         };
         self.put_line_values(values, &by);
     }
