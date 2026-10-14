@@ -31,21 +31,26 @@ use bevy_log::error;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
 use rig_core::conversation::{Author, Recorded};
-use rig_memory::{LoadError, Place, Repair, Rewrite, Rewritten, SESSION, Session, Store, Writer};
+use rig_memory::{
+    LoadError, Place, Repair, Rewrite, Rewritten, SESSION, Session, Store, Versioned, Writer,
+};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::WriteJournal;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use super::follows::ReflectFollows;
 use super::restore::{RetiredSaved, SavedKeys, SavedUpgrades, SetAside};
-use super::restore::{resource_entity, saved, saved_type};
+use super::restore::{SavedReader, resource_entity, saved_type};
 
 /// Saves an agent component or a resource with the session: derive
 /// `Reflect` and add `Saved` to its `#[reflect(..)]`, as
 /// `#[reflect(Component, Saved)]` or `#[reflect(Resource, Saved)]`. Each
-/// change of it is logged at the end of the frame by its type path (an
-/// agent's in its log, a resource in the session's [`SESSION`] log, written
-/// once an agent's log is) and restored by reflection, inserted on the
+/// change of it is logged at the end of the frame under its type path, or
+/// the stable key its plugin gives it ([`SavedKeys`]), with its type's
+/// version ([`SavedUpgrades`]; an agent's in its log, a resource in the
+/// session's [`SESSION`] log, written once an agent's log is) and restored
+/// by reflection, read at its type's version through the steps its plugin
+/// registered, inserted on the
 /// agent it was saved with before [`SessionRestored`] exists, so an
 /// `On<Insert<T>>` observer re-arms what it says; a value that serializes
 /// to `null` is saved as absent, and so is an agent component removed. A
@@ -60,7 +65,11 @@ use super::restore::{resource_entity, saved, saved_type};
 ///
 /// Registration is a runtime fact: a generic type is saved only once
 /// registered (`app.register_type::<T>()`), and a logged type no build
-/// registers any more is reported on restore and kept in the log.
+/// registers any more is reported on restore and kept in the log. A value
+/// no step reads, or that no longer fits its type, is reported, listed in
+/// [`SetAside`] and not inserted; the next change of it first moves the old
+/// value to a side key (rig-memory's `SET_ASIDE`), so nothing is lost. A
+/// value a newer rig saved is reported and never written over in this run.
 #[derive(Clone)]
 pub struct ReflectSaved {
     watch: fn(&mut App),
@@ -92,18 +101,23 @@ fn log_changed<T: Component + Reflect + TypePath>(
     spawned: Query<(), Added<Agent>>,
     log: Res<SessionLog>,
     registry: Res<AppTypeRegistry>,
+    (keys, upgrades): (Res<SavedKeys>, Res<SavedUpgrades>),
 ) {
     if !log.0.is_live() {
         return;
     }
-    let name = T::type_path();
+    let path = T::type_path();
+    let name = keys.key(path).unwrap_or(path);
+    let v = upgrades.0.version(path);
     let registry = registry.read();
     for (entity, id, component) in &changed {
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
-        let key = id.map_or(SESSION, |id| id.0.as_str());
+        let log_name = id.map_or(SESSION, |id| id.0.as_str());
         let starts = id.is_some() && !spawned.contains(entity);
         match serde_json::to_value(value) {
-            Ok(value) => log.0.state(key, name, Some(value.into()), starts),
+            Ok(value) => log
+                .0
+                .state(log_name, name, Some(Versioned { v, value }), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
@@ -411,6 +425,7 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
+    let mut reader = SavedReader::new(world);
     let mut failures = Vec::new();
     for log in &rewritten.logs {
         let agent = agents.iter().find(|(_, id)| *id == log.log);
@@ -440,10 +455,15 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
                 ));
             }
         }
+        let id = agent.map(|_| AgentId(log.log.clone()));
         for key in &log.changed_keys {
             let inserted = match log.state.get(key) {
-                Some(value) => {
-                    saved(key, &value.value, &registry).and_then(|(component, value)| {
+                Some(value) => reader
+                    .read(&registry, &log.log, id.as_ref(), &log.state, key, value)
+                    .and_then(|read| {
+                        let Some((component, value)) = read else {
+                            return Ok(());
+                        };
                         let mut entity = match agent {
                             Some(agent) => world
                                 .get_entity_mut(agent)
@@ -452,10 +472,9 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
                         };
                         component.insert(&mut entity, value.as_partial_reflect(), &registry);
                         Ok(())
-                    })
-                }
+                    }),
                 // A value the rewrite made null is gone, from an agent.
-                None => saved_type(key, &registry).map(|(_, component)| {
+                None => saved_type(reader.path(key), &registry).map(|(_, component)| {
                     if let Some(mut entity) =
                         agent.and_then(|agent| world.get_entity_mut(agent).ok())
                     {
@@ -468,6 +487,7 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
             }
         }
     }
+    reader.finish(world);
     failures
 }
 

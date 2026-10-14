@@ -385,3 +385,96 @@ fn a_session_of_a_newer_format_is_refused_by_every_writer_unchanged() {
         assert_eq!(bytes(&store), before, "{name}");
     }
 }
+
+fn double(old: Value) -> Result<Value, String> {
+    let old = old.as_u64().ok_or("not a count")?;
+    Ok(json!(old * 2))
+}
+
+/// A library program reads a value of a session an older rig saved, typed,
+/// by its key, at its current version, after the session was upgraded; a
+/// value no step reads, or of another shape, is an error, not a `None`.
+#[test]
+fn a_saved_value_of_an_older_session_reads_typed_after_the_upgrade() {
+    for (name, store, _) in every_fixture() {
+        let _ = Writer::open(Arc::new(store.clone())).expect("upgraded");
+        let session = Session::read(&store).expect("it reads");
+        let mut upgrades = Upgrades::default();
+        upgrades.add("a_plugin::Counter", &[double]);
+        let counter = session.get::<u32>("a_plugin::Counter", &upgrades);
+        assert_eq!(counter.map(Result::ok), Some(Some(6)), "{name}");
+        let main = session.agent("main").expect("the main agent");
+        let model = main.get::<String>("rig::model", &upgrades);
+        assert_eq!(
+            model.and_then(Result::ok).as_deref(),
+            Some("ollama/deepseek-v4-flash")
+        );
+        assert!(main.get::<String>("nothing", &upgrades).is_none());
+        assert!(matches!(
+            main.get::<String>("a_plugin::Gone", &upgrades),
+            Some(Err(super::ValueError::Parse(_)))
+        ));
+        upgrades.add("a_plugin::Gone", &[refuse]);
+        assert!(matches!(
+            main.get::<u32>("a_plugin::Gone", &upgrades),
+            Some(Err(super::ValueError::Unread(Unread::Step { from: 1, .. })))
+        ));
+    }
+}
+
+/// A value no step reads moves to its side key the first time its key is
+/// written again, and a held key is never written.
+#[test]
+fn a_set_aside_value_moves_to_its_side_key_and_a_held_one_is_kept() {
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let saved = |v, value| Some(Versioned { v, value });
+    writer.state("main", "old", saved(1, json!("unread")), true);
+    writer.state("main", "newer", saved(9, json!("from a newer rig")), true);
+    writer.flush();
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    writer.set_aside(
+        "main",
+        "old",
+        Versioned {
+            v: 1,
+            value: json!("unread"),
+        },
+    );
+    writer.hold("main", "newer");
+    writer.state("main", "old", saved(2, json!("new")), true);
+    writer.state("main", "old", saved(2, json!("newer still")), true);
+    writer.state("main", "newer", saved(2, json!("over it")), true);
+    writer.flush();
+    let session = Session::read(&*store).expect("read");
+    let main = session.agent("main").expect("the agent");
+    assert_eq!(
+        main.state,
+        [
+            (
+                "newer".to_owned(),
+                Versioned {
+                    v: 9,
+                    value: json!("from a newer rig")
+                }
+            ),
+            (
+                "old".to_owned(),
+                Versioned {
+                    v: 2,
+                    value: json!("newer still")
+                }
+            ),
+            (
+                format!("{}old/v1", super::SET_ASIDE),
+                Versioned {
+                    v: 1,
+                    value: json!("unread")
+                }
+            ),
+        ]
+        .into()
+    );
+}

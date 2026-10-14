@@ -1,7 +1,7 @@
 //! A running session's logs: [`Writer`] queues each agent's changes as a
 //! host saves them and writes them on [`flush`](Writer::flush).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -11,8 +11,8 @@ use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
 use crate::{
-    LoadError, Repair, Rewrite, Rewritten, Session, Stamp, Store, Versioned, now_ms, rewrite,
-    upgrade,
+    LoadError, Repair, Rewrite, Rewritten, SET_ASIDE, Session, Stamp, Store, Versioned, now_ms,
+    rewrite, upgrade,
 };
 
 /// One log as the writer keeps it.
@@ -27,6 +27,11 @@ struct Log {
     /// The newest value of each saved value, so an unchanged one is not
     /// written again.
     state: BTreeMap<String, Versioned>,
+    /// The keys whose newest value no step reads: moved to a side key
+    /// before the key is next written.
+    set_aside: BTreeMap<String, Versioned>,
+    /// The keys a newer rig wrote: never written in this run.
+    held: BTreeSet<String>,
     /// The log's lineage, from its header.
     lineage: Lineage,
     /// The changes it holds.
@@ -231,12 +236,31 @@ impl Book {
 
     /// Queues the saved value `key` of the log `name` when it changed;
     /// `None` or `null` when it was removed. With `starts`, the change
-    /// starts the log.
+    /// starts the log. A held key is not written; a key set aside has its
+    /// value moved to its side key first.
     pub fn state(&mut self, name: &str, key: &str, value: Option<Versioned>, starts: bool) {
         let value = value.filter(|saved| !saved.value.is_null());
-        let known = self.logs.get(name).and_then(|log| log.state.get(key));
+        let log = self.logs.get(name);
+        if log.is_some_and(|log| log.held.contains(key)) {
+            return;
+        }
+        let known = log.and_then(|log| log.state.get(key));
         if known == value.as_ref() {
             return;
+        }
+        let set_aside = self
+            .logs
+            .get_mut(name)
+            .and_then(|log| log.set_aside.remove(key));
+        if let Some(saved) = set_aside {
+            let side = Meta::State {
+                key: format!("{SET_ASIDE}{key}/v{}", saved.v),
+                v: saved.v,
+                value: Some(saved.value),
+            };
+            if !self.meta(name, &side) {
+                return;
+            }
         }
         let meta = Meta::State {
             key: key.to_owned(),
@@ -277,6 +301,20 @@ impl Book {
 
     pub fn retire(&mut self, name: &str) {
         self.meta(name, &Meta::Retired);
+    }
+
+    /// Marks the newest value of `key` in the log `name` as set aside.
+    pub fn set_aside_value(&mut self, name: &str, key: &str, saved: Versioned) {
+        if let Some(log) = self.logs.get_mut(name) {
+            log.set_aside.insert(key.to_owned(), saved);
+        }
+    }
+
+    /// Holds `key` in the log `name`: it is never written.
+    pub fn hold(&mut self, name: &str, key: &str) {
+        if let Some(log) = self.logs.get_mut(name) {
+            log.held.insert(key.to_owned());
+        }
     }
 
     /// Goes on after `rewritten`: each rewritten log with its new lineage
@@ -437,6 +475,20 @@ impl Writer {
     /// Queues that the agent of the log `log` is gone for good.
     pub fn retire(&self, log: &str) {
         self.inner().book.retire(log);
+    }
+
+    /// The newest value of `key` in the log `log`, `saved`, is set aside:
+    /// no step reads it. The first time `key` is written again, `saved` is
+    /// first written under the side key `rig.set_aside/<key>/v<N>`
+    /// ([`SET_ASIDE`]), so it is kept and the key goes on.
+    pub fn set_aside(&self, log: &str, key: &str, saved: Versioned) {
+        self.inner().book.set_aside_value(log, key, saved);
+    }
+
+    /// Holds `key` in the log `log`: a newer rig saved its value, which
+    /// this run never writes over.
+    pub fn hold(&self, log: &str, key: &str) {
+        self.inner().book.hold(log, key);
     }
 
     /// Rewrites the session's saved history through `with`, as done by

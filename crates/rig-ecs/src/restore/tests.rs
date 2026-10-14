@@ -4,6 +4,7 @@ use std::io;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
+use bevy_reflect::prelude::{ReflectDefault, ReflectDeserialize, ReflectSerialize};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
 use rig_core::completion::{Message, Reasoning, Usage};
@@ -972,4 +973,208 @@ fn a_message_kept_for_an_idle_agent_comes_back_to_the_user_after_a_restart() {
     assert_eq!(app.world().resource::<RecalledTexts>().0, ["also the docs"]);
     assert!(!said(&mut app).contains("also the docs"));
     assert_eq!(model.request_count(), 0);
+}
+
+/// A plugin's label on a message, at version 2: version 1 saved only the
+/// label, as a string.
+#[derive(
+    Component, Reflect, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize,
+)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+struct Labelled {
+    id: u32,
+    label: String,
+}
+
+fn labelled_v1_to_v2(old: Value) -> Result<Value, String> {
+    let label = old.as_str().ok_or("not a label")?;
+    Ok(serde_json::json!({ "id": 0, "label": label }))
+}
+
+fn refuse(_: Value) -> Result<Value, String> {
+    Err("unreadable".to_owned())
+}
+
+/// A session whose agent `main` has said one thing and holds `saved` under
+/// the key `key`.
+fn session_holding(key: &str, saved: rig_memory::Versioned) -> MemoryStore {
+    let store = MemoryStore::default();
+    let opened = rig_memory::Writer::open(std::sync::Arc::new(store.clone()));
+    let Ok((writer, _)) = opened else {
+        return store;
+    };
+    writer.start();
+    let mut conversation = rig_core::conversation::Conversation::new();
+    conversation.push(Message::user("hello"));
+    writer.save("main", &mut conversation);
+    writer.state("main", key, Some(saved), true);
+    writer.flush();
+    store
+}
+
+/// An app on `store` whose `Labelled` reads through `steps`, after its
+/// first frame.
+fn labelled_app(store: &MemoryStore, steps: &'static [rig_memory::Upgrade]) -> App {
+    let mut app = App::new();
+    app.set_error_handler(bevy_ecs::error::warn)
+        .add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(SessionStore::new(store.clone()));
+    let mut upgrades = app
+        .world_mut()
+        .resource_mut::<crate::restore::SavedUpgrades>();
+    upgrades.0.add(Labelled::type_path(), steps);
+    app.finish();
+    app.update();
+    app
+}
+
+fn labelled(app: &mut App) -> Option<Labelled> {
+    let agent = first_agent(app)?;
+    app.world().get::<Labelled>(agent).cloned()
+}
+
+fn main_state(store: &MemoryStore) -> std::collections::BTreeMap<String, rig_memory::Versioned> {
+    let session = rig_memory::Session::read(store).expect("it reads");
+    session
+        .agent("main")
+        .map(|main| main.state.clone())
+        .unwrap_or_default()
+}
+
+/// A value of an older version is restored as its plugin's steps read it,
+/// and so is it when a rewrite of the session rereads it; its next change
+/// is saved at the type's version.
+#[test]
+fn an_older_saved_value_is_restored_and_reread_upgraded() {
+    let path = Labelled::type_path();
+    let store = session_holding(path, serde_json::json!("seven").into());
+    let mut app = labelled_app(&store, &[labelled_v1_to_v2]);
+    let upgraded = |label: &str| Labelled {
+        id: 0,
+        label: label.to_owned(),
+    };
+    assert_eq!(labelled(&mut app), Some(upgraded("seven")));
+
+    app.world_mut().trigger(crate::journal::RewriteSession {
+        by: Author::plugin("shout"),
+        with: std::sync::Arc::new(rig_memory::Strings(|text: &mut String| {
+            let hit = text == "seven";
+            if hit {
+                *text = "SEVEN".to_owned();
+            }
+            hit
+        })),
+        asker: None,
+    });
+    app.update();
+    assert_eq!(labelled(&mut app), Some(upgraded("SEVEN")));
+
+    let agent = first_agent(&mut app);
+    if let Some(agent) = agent {
+        app.world_mut().entity_mut(agent).insert(upgraded("eight"));
+    }
+    app.update();
+    let saved = main_state(&store).remove(path).map(|saved| saved.v);
+    assert_eq!(saved, Some(2));
+}
+
+/// A value no step reads is not restored but listed and kept: its next
+/// change moves it to its side key first. A value a newer rig saved is not
+/// restored nor ever written over.
+#[test]
+fn an_unreadable_value_is_set_aside_and_a_newer_one_held() {
+    let path = Labelled::type_path();
+    let store = session_holding(path, serde_json::json!("seven").into());
+    let mut app = labelled_app(&store, &[refuse]);
+    assert_eq!(labelled(&mut app), None);
+    let set_aside = app.world().resource::<crate::restore::SetAside>();
+    let keys: Vec<&str> = set_aside.0.iter().map(|value| value.key.as_str()).collect();
+    assert_eq!(keys, [path]);
+    let changed = Labelled {
+        id: 1,
+        label: "new".to_owned(),
+    };
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut().entity_mut(agent).insert(changed.clone());
+    }
+    app.update();
+    let state = main_state(&store);
+    let side = format!("{}{path}/v1", rig_memory::SET_ASIDE);
+    assert_eq!(state.get(&side), Some(&serde_json::json!("seven").into()));
+    let now = state.get(path).map(|saved| (saved.v, saved.value.clone()));
+    assert_eq!(
+        now,
+        serde_json::to_value(&changed).ok().map(|value| (2, value))
+    );
+    drop(app);
+    // The side key is kept, not read again.
+    let mut again = labelled_app(&store, &[labelled_v1_to_v2]);
+    assert_eq!(labelled(&mut again), Some(changed));
+    drop(again);
+
+    let newer = rig_memory::Versioned {
+        v: 9,
+        value: serde_json::json!({ "from": "the future" }),
+    };
+    let store = session_holding(path, newer.clone());
+    let mut app = labelled_app(&store, &[labelled_v1_to_v2]);
+    assert_eq!(labelled(&mut app), None);
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(Labelled::default());
+    }
+    app.update();
+    assert_eq!(main_state(&store).get(path), Some(&newer));
+}
+
+/// The goal of a plugin, saved under its stable key.
+#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq)]
+#[reflect(Resource, Saved, Default)]
+struct Goal(String);
+
+/// The same goal after its type was renamed.
+#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq)]
+#[reflect(Resource, Saved, Default)]
+struct RenamedGoal(String);
+
+/// A value saved under a stable key is logged under it, read by a library
+/// program by it, and restored into a type renamed since.
+#[test]
+fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
+    let store = MemoryStore::default();
+    let keyed = |app: &mut App, path: &str| {
+        let mut keys = app.world_mut().resource_mut::<crate::restore::SavedKeys>();
+        assert!(keys.add(path, "goals.goal").is_ok());
+    };
+    let mut first = App::new();
+    first
+        .set_error_handler(bevy_ecs::error::warn)
+        .add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(SessionStore::new(store.clone()));
+    keyed(&mut first, Goal::type_path());
+    first.finish();
+    first.update();
+    first
+        .world_mut()
+        .insert_resource(Goal("ship it".to_owned()));
+    if let Some(agent) = first_agent(&mut first) {
+        say(&mut first, agent, Message::user("hello"));
+    }
+    first.update();
+    drop(first);
+    let session = rig_memory::Session::read(&store).expect("it reads");
+    let goal = session.get::<String>("goals.goal", &rig_memory::Upgrades::default());
+    assert_eq!(goal.and_then(Result::ok).as_deref(), Some("ship it"));
+
+    let mut second = App::new();
+    second
+        .set_error_handler(bevy_ecs::error::warn)
+        .add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(SessionStore::new(store.clone()));
+    keyed(&mut second, RenamedGoal::type_path());
+    second.finish();
+    second.update();
+    let goal = second.world().get_resource::<RenamedGoal>().cloned();
+    assert_eq!(goal, Some(RenamedGoal("ship it".to_owned())));
 }

@@ -2,10 +2,12 @@
 //! rig saves an agent's model and title under, typed reads of any saved
 //! value, and which agent of a session is its main one.
 
+use std::collections::BTreeMap;
+
 use serde::de::DeserializeOwned;
 
 use crate::session::skipped;
-use crate::{SavedAgent, Session, Upgrades, ValueError};
+use crate::{SavedAgent, Session, Upgrades, ValueError, Versioned};
 
 /// The key an agent's model is saved under: a string, `vendor/model`.
 pub const MODEL: &str = "rig::model";
@@ -38,8 +40,7 @@ impl SavedAgent {
         key: &str,
         upgrades: &Upgrades,
     ) -> Option<Result<T, ValueError>> {
-        let _ = (key, upgrades);
-        None
+        get(&self.state, key, upgrades)
     }
 
     /// Its model, `vendor/model`, when one was saved ([`MODEL`]).
@@ -51,6 +52,17 @@ impl SavedAgent {
     pub fn title(&self) -> Option<String> {
         self.value(TITLE)?.ok()
     }
+}
+
+/// The value of `key` in `state`, upgraded through `upgrades` and parsed.
+fn get<T: DeserializeOwned>(
+    state: &BTreeMap<String, Versioned>,
+    key: &str,
+    upgrades: &Upgrades,
+) -> Option<Result<T, ValueError>> {
+    let saved = state.get(key)?.clone();
+    let value = upgrades.upgrade(key, saved).map_err(ValueError::from);
+    Some(value.and_then(|value| serde_json::from_value(value).map_err(ValueError::from)))
 }
 
 /// Where an agent sorts among the agents of a session: those nothing
@@ -73,8 +85,7 @@ impl Session {
         key: &str,
         upgrades: &Upgrades,
     ) -> Option<Result<T, ValueError>> {
-        let _ = (key, upgrades);
-        None
+        get(&self.state, key, upgrades)
     }
 
     /// The main agent: the first by [`main_order`] of the agents a restore
