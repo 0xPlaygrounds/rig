@@ -533,7 +533,7 @@ fn discard_unsaved(
 /// for a move, takes the range out of it. The new session's effect log
 /// starts empty. [`SessionForked`] names it, or [`SessionForkFailed`]
 /// says why there is none; switching to it is
-/// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`](super::exit::ExitReason::Switch).
+/// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`].
 #[derive(Event, Clone, Debug, Default)]
 pub struct ForkSession {
     /// The session copied: this one with `None`.

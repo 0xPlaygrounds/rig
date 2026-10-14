@@ -2,7 +2,7 @@
 //! sessions, the lines of one session, or the entries of one line, in a
 //! plain [`Picker`] the harness fills in place as items are read off the
 //! main thread, newest first, and previews the highlighted item
-//! ([`PickPreview`](crate::pick::PickPreview)). A plugin opens one with its
+//! ([`PickPreview`]). A plugin opens one with its
 //! own source, filter, labels and command:
 //!
 //! ```no_run
