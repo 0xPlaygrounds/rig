@@ -33,7 +33,9 @@ pub enum Place<'a> {
         /// Who made the record.
         by: Option<&'a Author>,
     },
-    /// In memory only: an unsaved aside of `log`'s live conversation.
+    /// In memory only, of the live agent of `log`: an unsaved aside of its
+    /// conversation, or a copy a host or a plugin keeps of a message it
+    /// was sent or wrote.
     Unsaved {
         /// The log.
         log: &'a str,
