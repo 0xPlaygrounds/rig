@@ -356,6 +356,10 @@ fn a_range_moved_out_and_merged_back_is_where_it_was() {
         conversation.move_out(5..7, "past", by.clone()),
         Err(BranchError::NoEntry(6))
     );
+    assert_eq!(
+        conversation.move_out(3..3, "empty", by.clone()),
+        Err(BranchError::NoEntry(3))
+    );
 
     let moved = conversation.move_out(2..5, "aside", by.clone());
     assert!(moved.is_ok(), "{moved:?}");
@@ -516,6 +520,12 @@ fn a_line_copied_out_merges_back_by_appending_or_where_it_was_moved_from() {
         shared_prefix(&line, &conversation.line(None).unwrap_or_default()),
         5
     );
+    let unsaid = [crate::conversation::Entry::new(Message::user("one"))];
+    assert_eq!(
+        shared_prefix(&unsaid, &unsaid),
+        0,
+        "no id, shared with none"
+    );
 
     // The copy goes on, then comes back at the end with new ids.
     let Some(mut copy) = copy else { return };
@@ -556,6 +566,31 @@ fn a_line_copied_out_merges_back_by_appending_or_where_it_was_moved_from() {
     assert_eq!(keys(&conversation), all);
 }
 
+/// A branch or a line merged in after a call still waiting for its result
+/// is refused, and nothing changes.
+#[test]
+fn a_merge_after_an_unanswered_call_is_refused() {
+    let by = Author::plugin("tree");
+    let shell = ToolName::new("shell").expect("a tool name");
+    let call = AssistantContent::tool_call("c1", shell, json!({}));
+    let mut conversation =
+        Conversation::from_messages([Message::user("one"), Message::assistant("two")]);
+    let main = conversation.branch_off(2, "calls", by.clone());
+    let main = main.unwrap_or_default();
+    let copy = conversation.line_conversation(Some(main), 2);
+    conversation.push(Message::Assistant(crate::message::AssistantMessage::new(
+        vec![call],
+    )));
+    let before = conversation.clone();
+    assert_eq!(
+        conversation.merge_branch(main, by.clone()),
+        Err(BranchError::PartsCall)
+    );
+    let merged = copy.map(|copy| conversation.merge_line(&copy, MergeAt::End, by));
+    assert_eq!(merged, Some(Err(BranchError::PartsCall)));
+    assert_eq!(conversation, before, "nothing changed");
+}
+
 /// An aside put in a kept branch, at any depth, is there when the branch
 /// comes back, and its id stays its own.
 #[test]
@@ -575,11 +610,38 @@ fn an_aside_put_in_a_kept_branch_comes_back_with_it() {
     let later = conversation.add_aside(Aside::new("note", by.clone(), json!(2)));
     assert_ne!(later, put);
     assert_eq!(conversation.aside(put), None);
-    assert!(conversation.switch_branch(first, by).is_ok());
+    assert!(conversation.switch_branch(first, by.clone()).is_ok());
     assert_eq!(
         conversation.aside(put).map(|aside| aside.kind.as_str()),
         Some("pointer")
     );
     log.extend(conversation.take_unsaved());
     assert_eq!(fold(&log), conversation);
+
+    // Two deep: "main" kept inside "b", reached in one switch.
+    let mut conversation = Conversation::from_messages([
+        Message::user("one"),
+        Message::assistant("two"),
+        Message::user("three"),
+    ]);
+    let three = conversation.id(2);
+    assert!(conversation.branch_off(2, "b", by.clone()).is_ok());
+    assert!(conversation.branch_off(1, "c", by.clone()).is_ok());
+    let main = conversation
+        .branches()
+        .into_iter()
+        .find(|kept| kept.inside.is_some());
+    let main = main.map(|kept| kept.id).unwrap_or_default();
+    let note = Aside::new("note", by.clone(), json!(3)).after(three);
+    let put = conversation.add_aside_in(Some(main), note);
+    assert!(put.is_ok(), "{put:?}");
+    let put = put.unwrap_or_default();
+    assert_eq!(conversation.aside(put), None);
+    assert!(conversation.switch_branch(main, by).is_ok());
+    assert_eq!(
+        conversation
+            .aside(put)
+            .map(|aside| (aside.kind.as_str(), aside.after)),
+        Some(("note", three))
+    );
 }
