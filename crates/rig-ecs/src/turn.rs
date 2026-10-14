@@ -139,10 +139,11 @@ pub struct ModelRequest {
     /// The messages of a request the kernel built, until Start puts them
     /// in the request (after the system prompt), in place of what
     /// `request.chat_history` holds: a view of its agent's conversation
-    /// (rig-core's `Conversation::view`), whose edits are never saved and
-    /// never reach the agent. A Prepare system edits it as a conversation,
-    /// so each edit names its author and the entries it kept keep their
-    /// ids: `history.splice(0..0, examples, Author::plugin("few-shot"))`.
+    /// without its asides (rig-core's `Conversation::request_view`), whose
+    /// edits are never saved and never reach the agent. A Prepare system
+    /// edits it as a conversation, so each edit names its author and the
+    /// entries it kept keep their ids:
+    /// `history.splice(0..0, examples, Author::plugin("few-shot"))`.
     /// Its [`unsaved`](rig_core::conversation::Conversation::unsaved)
     /// changes are who changed the request, and how, until Start; an id
     /// of an entry a plugin added belongs to this request alone. `None`
@@ -388,7 +389,7 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
     let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
         return;
     };
-    let last = conversation.turns().last().map(|(_, record)| record);
+    let last = conversation.turns().next_back().map(|(_, record)| record);
     let record = match last.filter(|record| restored && record.end.is_none()) {
         Some(record) => record,
         None => conversation.open_turn(),
@@ -701,7 +702,7 @@ pub(crate) fn build_requests(
                 .try_insert_if_new(Outcome(Err(why)));
             continue;
         }
-        let history = builder.conversation.view();
+        let history = builder.conversation.request_view();
         let model = build((agent, &builder), spec, &parts, history);
         commands.entity(call.entity).try_insert(model);
     }

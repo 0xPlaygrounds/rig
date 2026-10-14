@@ -610,7 +610,7 @@ impl Conversation {
     }
 
     /// The asides, in the order put.
-    pub fn asides(&self) -> impl Iterator<Item = (AsideId, &Aside)> {
+    pub fn asides(&self) -> impl DoubleEndedIterator<Item = (AsideId, &Aside)> {
         self.asides.iter().map(|(id, aside)| (*id, aside))
     }
 
@@ -1177,13 +1177,22 @@ impl Conversation {
         self.revision = changes.saturating_add(self.unsaved.len() as u64);
     }
 
-    /// A copy with an empty outbox, for edits never saved (a request's
-    /// copy, a branch in memory).
+    /// A copy with an empty outbox, for edits never saved (a branch in
+    /// memory, a reset's state).
     pub fn view(&self) -> Self {
+        Self {
+            asides: self.asides.clone(),
+            ..self.request_view()
+        }
+    }
+
+    /// A [`view`](Self::view) without the asides, for a model request's
+    /// copy: a request never sends them, and one is built per model call.
+    pub fn request_view(&self) -> Self {
         Self {
             messages: self.messages.clone(),
             meta: self.meta.clone(),
-            asides: self.asides.clone(),
+            asides: Vec::new(),
             halted: self.halted,
             next_id: self.next_id,
             next_aside: self.next_aside,

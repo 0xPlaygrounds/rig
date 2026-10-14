@@ -62,8 +62,9 @@ impl TurnRecord {
 }
 
 impl Conversation {
-    /// The turn records, oldest first, with their asides' ids.
-    pub fn turns(&self) -> impl Iterator<Item = (AsideId, TurnRecord)> + '_ {
+    /// The turn records, oldest first, with their asides' ids; the newest
+    /// is `turns().next_back()`, found from the end.
+    pub fn turns(&self) -> impl DoubleEndedIterator<Item = (AsideId, TurnRecord)> + '_ {
         self.asides()
             .filter_map(|(id, aside)| Some((id, TurnRecord::of(aside)?)))
     }
@@ -71,7 +72,7 @@ impl Conversation {
     /// Records a turn that begins now, numbered after the last record and
     /// starting at [`turn_start`](Self::turn_start). The record.
     pub fn open_turn(&mut self) -> TurnRecord {
-        let last = self.turns().last().map(|(_, record)| record.index);
+        let last = self.turns().next_back().map(|(_, record)| record.index);
         let record = TurnRecord {
             index: last.map_or(0, |index| index.saturating_add(1)),
             start: self.turn_start(),
@@ -86,7 +87,7 @@ impl Conversation {
     /// Ends the last turn record, when it is open, with `end`; whether it
     /// was open.
     pub fn end_turn(&mut self, end: TurnEnd) -> bool {
-        let Some((id, record)) = self.turns().last() else {
+        let Some((id, record)) = self.turns().next_back() else {
             return false;
         };
         let Some(aside) = self.aside(id).filter(|_| record.end.is_none()).cloned() else {
