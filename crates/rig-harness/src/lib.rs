@@ -169,8 +169,8 @@ pub mod prelude {
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
-        AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems,
-        ProvidedBy, Provides, RigHarnessPlugins,
+        AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,
+        Provides, RigHarnessPlugins,
     };
     pub use rig_memory::ForkedFrom;
     pub use rig_tools::{Spill, blocking};
