@@ -1,6 +1,6 @@
 //! Version 2 of the worklist: version 1's commands and `/work doing <n>`;
 //! each agent's checklist saved as items with an id, a status and the turn
-//! they were added in, at version 2 of [`KEY`](crate::KEY).
+//! they were added in, at version 2 of [`KEY`].
 
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
