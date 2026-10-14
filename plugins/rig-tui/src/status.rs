@@ -7,7 +7,7 @@
 //! the terminal view does it behind a default `tui` cargo feature. The
 //! plugin guide has an example and the default plugins' names and places.
 //! A [`StatusLine`] draws one in a panel, for the agent shown or another,
-//! and [`line`] fits any items to a width.
+//! and [`line()`] fits any items to a width.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;

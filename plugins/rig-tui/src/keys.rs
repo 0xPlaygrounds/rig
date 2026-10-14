@@ -710,7 +710,7 @@ pub enum Found {
 }
 
 /// The binding that `typed` matches in the scopes that apply while the
-/// keys go to `focus` ([`KeyScope::applying`]), so a global binding
+/// keys go to `focus` (`KeyScope::applying`), so a global binding
 /// shadows the input's; the oldest entity of two bound around the conflict
 /// check. A single key that is no character, pressed with modifiers that
 /// nothing binds, is that key alone.
