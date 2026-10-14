@@ -13,6 +13,8 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# `/resume` labels and naming the new session.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
