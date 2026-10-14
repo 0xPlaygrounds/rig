@@ -86,7 +86,7 @@ use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
-use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
+use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, Shown};
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
 pub use conversation_panel::ConversationPanel;
@@ -136,6 +136,8 @@ impl Plugin for TuiPlugin {
         // Spawned in `build`, so a plugin's `finish` may disable one.
         keys::add_built_in(app);
         app.add_entry_renderer(BUILD_ORIGIN, build_failed);
+        // The notices shown and the unsent draft, in the session's files.
+        app.keeps_files("tui");
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiFrame>()
             .init_resource::<TranscriptView>()

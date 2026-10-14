@@ -31,7 +31,7 @@ use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::successor::follow_successor;
-use rig_harness::{PluginEntity, ProvidedBy};
+use rig_harness::{AppKeepsExt, PluginEntity, ProvidedBy};
 use rig_memory::{
     Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryPlan, SummaryState, TrackArgument,
     apply_summary, undo_summary,
@@ -54,6 +54,7 @@ impl Plugin for CompactionPlugin {
             ..CompactionPolicy::default()
         }))
         .register_required_components::<TurnOf, Compactions>()
+        .keeps_saved::<Summarized>()
         .add_command(
             "compact",
             "Summarize all but the newest reply to free context; /compact <focus> says what to keep",

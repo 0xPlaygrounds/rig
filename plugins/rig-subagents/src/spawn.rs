@@ -181,6 +181,7 @@ pub(super) struct Brief(pub(super) Deliver);
 
 pub(super) fn add(app: &mut App) {
     app.add_setting::<SubagentPolicy>("subagents")
+        .keeps_saved::<Once>()
         .add_observer(spawn_requested)
         .add_observer(follow_successor::<SpawnSubagent>)
         .add_observer(follow_successor::<TaskCall>)

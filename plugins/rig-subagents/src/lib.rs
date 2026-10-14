@@ -119,7 +119,11 @@ pub struct SubagentsPlugin;
 
 impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate));
+        app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate))
+            .keeps_saved::<Subtask>()
+            .keeps_saved::<Helper>()
+            .keeps_saved::<Peers>()
+            .keeps_saved::<OpenRequests>();
         spawn::add(app);
         tools::add(app);
         lifecycle::add(app);

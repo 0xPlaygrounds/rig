@@ -40,6 +40,8 @@ impl Plugin for UsagePlugin {
         app.register_required_components::<Agent, Spending>()
             .register_required_components::<TurnOf, TurnSpending>()
             .init_resource::<SessionSpending>()
+            .keeps_saved::<Spending>()
+            .keeps_saved::<SessionSpending>()
             .add_command(
                 "usage",
                 "Show the tokens, cost and context this agent, its subagents and the session used",
