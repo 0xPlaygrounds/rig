@@ -5,7 +5,7 @@ use rig_harness_test_support::{
     Ended, MemoryStore, app_on, calls, log_ended, press, reply, run_until, scripted_models,
     tui_view,
 };
-use rig_tui::{Focus, TuiTestScreen};
+use rig_tui::{Focus, MainPane, TuiTestScreen};
 
 use super::*;
 
@@ -58,9 +58,18 @@ fn first_row(app: &App) -> String {
     rows.first().cloned().unwrap_or_default()
 }
 
+/// The main pane's `T`.
+fn of_main_pane<T: Component>(app: &App) -> Option<&T> {
+    let world = app.world();
+    let mut panes = world.try_query_filtered::<&T, With<MainPane>>()?;
+    panes.single(world).ok()
+}
+
 /// The first row prompt `n` (from 1) is drawn at, and the top row.
 fn rows(app: &App, agent: Entity, n: usize) -> (Option<usize>, usize) {
-    let drawn = app.world().resource::<DrawnTranscript>();
+    let drawn = of_main_pane::<DrawnTranscript>(app)
+        .cloned()
+        .unwrap_or_default();
     let conversation = app.world().get::<Conversation>(agent);
     let ids = conversation
         .map(|conversation| turns(conversation))
@@ -145,7 +154,8 @@ fn keys_jump_between_prompts_and_the_header_follows_the_top_row() {
     );
     press_and_show(&mut app, "ctrl+end");
     assert_eq!(header(&app), None);
-    assert!(app.world().resource::<TranscriptView>().top().is_none());
+    let view = of_main_pane::<TranscriptView>(&app);
+    assert!(view.is_some_and(|view| view.top().is_none()));
     assert!(!first_row(&app).starts_with('▸'));
 
     // On turn 2, narrowed from 120 to 40 columns: still turn 2, one row.
