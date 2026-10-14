@@ -8,7 +8,7 @@ use rig_ecs::journal::SessionStore;
 use rig_ecs::stage::{EffectRecorded, ForAgent, Outcome, Started};
 use rig_memory::MemoryStore;
 
-use super::{Answer, Answerer, Answerers, Ask, AskPlugin};
+use super::{Answer, Answerer, Answerers, Ask, AskPlugin, Choice};
 use crate::commands::CommandPlugin;
 use crate::pick::{Chosen, Pick, PickPlugin};
 
@@ -164,4 +164,21 @@ fn a_front_answers_for_its_agent_or_for_all() {
     assert!(can(&mut app, Some(one)) && !can(&mut app, Some(other)) && !can(&mut app, None));
     app.world_mut().spawn(Answerer::default());
     assert!(can(&mut app, Some(other)) && can(&mut app, None));
+}
+
+/// A choice that starts ticked and says more round-trips through serde, and
+/// a choice saved before either existed still reads.
+#[test]
+fn a_choice_keeps_its_tick_and_more_through_serde() {
+    let choice = Choice::new("1", "write a.rs")
+        .checked()
+        .more("{\"path\":\"a.rs\"}");
+    let saved = serde_json::to_value(&choice).ok();
+    let read = saved.and_then(|value| serde_json::from_value::<Choice>(value).ok());
+    assert_eq!(read, Some(choice));
+    let old = serde_json::json!({ "id": "yes", "label": "Yes" });
+    assert_eq!(
+        serde_json::from_value::<Choice>(old).ok(),
+        Some(Choice::new("yes", "Yes"))
+    );
 }

@@ -12,6 +12,9 @@
 //! A plugin that gathers approvals, such as one asking about a reply's
 //! calls together, runs before [`ApprovalSystems`] and holds or decides
 //! them; the harness asks only about what is undecided and unheld then.
+//! To batch a reply's later calls with its earlier ones, it marks them in
+//! Prepare (`Added<Admitted>`): a call waiting on an earlier one
+//! (`Waiting`) is not [`Undecided`] there, so Gate never sees it.
 //!
 //! ```
 //! use rig_harness::prelude::*;

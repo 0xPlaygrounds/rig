@@ -138,6 +138,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
                 label,
                 detail: None,
                 checked: false,
+                more: None,
             })
             .into(),
         free_text: true,
@@ -145,6 +146,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         multiple: false,
         selected: 0,
         edit: None,
+        keys: &[],
     };
     let mut choosing = Choosing {
         entity: bevy_ecs::entity::Entity::PLACEHOLDER,
@@ -153,6 +155,8 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         ticked: Vec::new(),
         scroll: 0,
         draft: None,
+        more: false,
+        touched: false,
     };
     // What is typed filters the choices and is an answer of its own.
     assert_eq!(

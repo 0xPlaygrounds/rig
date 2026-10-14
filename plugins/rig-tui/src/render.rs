@@ -1379,8 +1379,9 @@ const LEAST_LIST: usize = 3;
 fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) -> Rect {
     let area = frame.area();
     let width = area.width.saturating_mul(4) / 5;
+    let more = shown.more(choosing);
     let body = wrap_all(
-        &plain_lines(shown.body, Style::new()),
+        &plain_lines(more.unwrap_or(shown.body), Style::new()),
         usize::from(width.saturating_sub(2).max(1)),
     );
     let rows = shown.rows(&choosing.filter);
@@ -1410,6 +1411,11 @@ fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) 
     }
     if shown.ticks {
         keys.push("Tab ticks");
+    }
+    if more.is_some() {
+        keys.push("← hides more");
+    } else if shown.items.iter().any(|item| item.more.is_some()) {
+        keys.push("→ shows more");
     }
     let block = Block::bordered().title(format!(
         " {} · {}, Enter picks, Esc closes ",

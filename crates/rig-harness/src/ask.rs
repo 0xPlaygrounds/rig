@@ -64,6 +64,11 @@ use serde::{Deserialize, Serialize};
 
 /// A question for the user. Spawn it with the agent it is about
 /// (`ForAgent`), if any; it is an open effect, recorded with its answer.
+/// To change an open question, spawn the new one and insert
+/// `SupersededBy(new)` on the old one: the old one settles as superseded
+/// and a front shows the new one in its place, keeping the user's ticks.
+/// An old one that is a hold releases what it holds as it settles, so move
+/// the hold first.
 #[derive(Component, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_add = request)]
 #[require(Name = Name::new("ask"))]
@@ -101,6 +106,40 @@ pub struct Choice {
     pub id: String,
     /// What the user reads, such as "Yes, run it".
     pub label: String,
+    /// Whether it starts ticked, in a question that takes several
+    /// ([`Ask::multiple`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub checked: bool,
+    /// More about it than its label, such as a call's full arguments, which
+    /// a front shows when the user asks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub more: Option<String>,
+}
+
+impl Choice {
+    /// The choice `id`, read as `label`.
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            checked: false,
+            more: None,
+        }
+    }
+
+    /// The same choice, ticked at first.
+    #[must_use]
+    pub fn checked(mut self) -> Self {
+        self.checked = true;
+        self
+    }
+
+    /// The same choice, with `text` to show when the user asks for more.
+    #[must_use]
+    pub fn more(mut self, text: impl Into<String>) -> Self {
+        self.more = Some(text.into());
+        self
+    }
 }
 
 impl Ask {
@@ -130,11 +169,13 @@ impl Ask {
     }
 
     /// The same question, offering `id` read as `label`.
-    pub fn choice(mut self, id: impl Into<String>, label: impl Into<String>) -> Self {
-        self.choices.push(Choice {
-            id: id.into(),
-            label: label.into(),
-        });
+    pub fn choice(self, id: impl Into<String>, label: impl Into<String>) -> Self {
+        self.with(Choice::new(id, label))
+    }
+
+    /// The same question, offering `choice`.
+    pub fn with(mut self, choice: Choice) -> Self {
+        self.choices.push(choice);
         self
     }
 
