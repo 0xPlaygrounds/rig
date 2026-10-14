@@ -18,7 +18,7 @@ use std::borrow::Cow;
 
 use rig_harness::prelude::*;
 use rig_memory::{Summarizer, SummaryLimits, SummaryPrompts};
-use rig_tui::TuiInput;
+use rig_tui::MainInput;
 use serde::Deserialize;
 
 /// The purpose the brief's call is made for, in usage.
@@ -203,7 +203,7 @@ fn take_brief(
     calls: Query<(&CallOf, &ForAgent, &Briefing, &Outcome)>,
     agents: Query<Inherited>,
     editable: Res<EditableBrief>,
-    input: Option<ResMut<TuiInput>>,
+    input: Option<MainInput>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
