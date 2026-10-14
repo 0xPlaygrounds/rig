@@ -4507,6 +4507,348 @@ dependencies = [
 ]
 
 [[package]]
+name = "corpus-ct-ask-session-cli"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-clarify-first"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-compaction-archive"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-context-snapshots"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-conversation-chapters"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-git-guardrails"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-git-history-tools"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-history-versions"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-metrics-endpoint"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-paste-chips"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-process-reaper"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-prompt-revisions"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-provider-side-tools"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-reply-review-comments"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-resume-subagent"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-schema-adapter"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-session-compare-library"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-memory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-session-finder"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-shell-companion"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-split-session"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-status-command"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-test-runner-tool"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-timed-grants"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-transcript-import-library"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-memory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-ct-turn-navigation"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "corpus-custom-provider"
 version = "0.0.0"
 dependencies = [

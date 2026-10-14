@@ -1,0 +1,22 @@
+[package]
+name = "corpus-ct-timed-grants"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (conversation-over-time fresh held-out): CT-01: 01. Time-boxed permission grants"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
