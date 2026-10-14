@@ -8,9 +8,15 @@ description = "Plugin corpus (conversation-over-time fresh held-out): CT-24: 24.
 [lints]
 workspace = true
 
+[[bin]]
+name = "session-compare"
+path = "src/main.rs"
+
 [dependencies]
 # A plain program on rig's library crates: no Bevy, no harness.
 rig-core = { workspace = true }
 rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
+# The file tools' names and typed arguments: which calls change which files.
+rig-tools = { path = "../../crates/rig-tools" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
