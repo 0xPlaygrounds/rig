@@ -241,7 +241,7 @@ fn add_partial(
         (Added<Admitted>, With<TurnCall>),
     >,
     agents: Query<&Connection>,
-    mut view: Option<ResMut<TranscriptView>>,
+    mut views: Query<&mut TranscriptView>,
 ) {
     for (entity, mut call, so_far, mut partial, agent) in &mut calls {
         let own = agent.and_then(|agent| agents.get(agent.0).ok());
@@ -268,10 +268,12 @@ fn add_partial(
             history.push(Entry::new(Message::user(note(so_far))).by(by));
         }
         partial.text.clone_from(&so_far.text);
-        if let (Some(view), false) = (view.as_mut(), so_far.text.is_empty()) {
+        if !so_far.text.is_empty() {
             let at = so_far.seams.iter().copied().chain([so_far.text.len()]);
-            let marks = at.map(|at| seam(MarkIn::Streaming(entity), at));
-            view.marks.extend(marks);
+            let marks: Vec<TextMark> = at.map(|at| seam(MarkIn::Streaming(entity), at)).collect();
+            for mut view in &mut views {
+                view.marks.extend(marks.iter().cloned());
+            }
         }
     }
 }
@@ -408,15 +410,14 @@ fn mark_seams(
         (With<TurnCall>, Added<Settled>),
     >,
     agents: Query<&Conversation>,
-    view: Option<ResMut<TranscriptView>>,
+    mut views: Query<&mut TranscriptView>,
 ) {
-    let Some(mut view) = view else {
-        return;
-    };
     for (call, outcome, joined, agent, superseded) in &settled {
         let streaming = MarkIn::Streaming(call);
-        if view.marks.iter().any(|mark| mark.r#in == streaming) {
-            view.marks.retain(|mark| mark.r#in != streaming);
+        for mut view in &mut views {
+            if view.marks.iter().any(|mark| mark.r#in == streaming) {
+                view.marks.retain(|mark| mark.r#in != streaming);
+            }
         }
         let (Some(Outcome(Ok(Answered::Completion(reply)))), Some(joined), Some(agent), false) =
             (outcome, joined, agent, superseded)
@@ -433,8 +434,12 @@ fn mark_seams(
         };
         let id = entry.id;
         let marks = joined.seams.iter();
-        let marks = marks.map(|&at| seam(MarkIn::Message { id, block }, at));
-        view.marks.extend(marks);
+        let marks: Vec<TextMark> = marks
+            .map(|&at| seam(MarkIn::Message { id, block }, at))
+            .collect();
+        for mut view in &mut views {
+            view.marks.extend(marks.iter().cloned());
+        }
     }
 }
 
