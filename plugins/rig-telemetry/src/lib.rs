@@ -11,4 +11,4 @@ pub mod usage;
 
 pub use diagnostics::{Diagnostics, DiagnosticsPlugin};
 pub use effect_log::{EffectFilter, EffectLog, EffectLogPlugin};
-pub use usage::{CallUsage, SessionSpending, Spending, TurnSpending, UsagePlugin, UsageRow};
+pub use usage::{AgentUsage, CallUsage, SessionUsage, TurnUsage, UsagePlugin, UsageRow};

@@ -9,7 +9,7 @@ use rig_tui::ratatui::style::{Style, Stylize as _};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    InputSystems, KeyFocus, KeyInput, PanelCanvas, Placement, RequestRedraw, TerminalEvents,
+    InputSystems, KeyFocus, KeyInput, PanelCanvas, PendingInput, Placement, RequestRedraw,
     TuiPanel, TuiSystems,
 };
 
@@ -24,7 +24,7 @@ pub struct TerminalsPanel {
 
 pub(crate) fn add(app: &mut App) {
     app.add_message::<RequestRedraw>()
-        .init_resource::<TerminalEvents>()
+        .init_resource::<PendingInput>()
         .add_systems(Startup, spawn)
         .add_systems(rig_tui::TuiKeys, type_keys.in_set(InputSystems::Filter))
         .add_systems(
@@ -126,7 +126,7 @@ fn draw(
 /// While the panel has the keys, what the user types goes to the terminal
 /// shown, and its agent is told the next time it looks.
 fn type_keys(
-    events: Res<TerminalEvents>,
+    events: Res<PendingInput>,
     focus: Option<Res<KeyFocus>>,
     panels: Query<&TerminalsPanel>,
     terminals: Query<&Terminal>,

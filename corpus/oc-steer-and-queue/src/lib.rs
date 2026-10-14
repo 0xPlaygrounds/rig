@@ -40,8 +40,8 @@ use rig_tui::ratatui::style::{Modifier, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
-    Focused, InputAction, InputSystems, KeyInput, MainInput, PanelCanvas, Placement, RequestRedraw,
-    TerminalEvents, TuiInputState, TuiKeys, TuiPanel, TuiPlugin, TuiSystems,
+    Focused, InputAction, InputContext, InputSystems, KeyInput, MainInput, PanelCanvas,
+    PendingInput, Placement, RequestRedraw, TuiKeys, TuiPanel, TuiPlugin, TuiSystems,
 };
 
 /// Who decides the messages the plugin takes over.
@@ -412,9 +412,9 @@ fn spawn_strip(mut commands: Commands) {
 
 /// The strip's keys, Alt+Enter, and editing a message in the input.
 fn strip_keys(
-    mut events: ResMut<TerminalEvents>,
+    mut events: ResMut<PendingInput>,
     mut input: MainInput,
-    state: Res<TuiInputState>,
+    state: Res<InputContext>,
     mut strip: ResMut<Strip>,
     shown: Query<(Entity, Has<ActiveTurn>), With<Focused>>,
     pending: PendingMessages,

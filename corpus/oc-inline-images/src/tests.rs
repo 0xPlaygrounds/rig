@@ -56,7 +56,7 @@ fn front(
             ..TerminalGraphics::default()
         })
         .insert_resource(TuiTestScreen::new(80, 24))
-        .insert_resource(TuiScreen(Rect::new(0, 0, 80, 24)))
+        .insert_resource(TerminalSize(Rect::new(0, 0, 80, 24)))
         .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_open_tool(
             "screenshot",

@@ -679,7 +679,7 @@ fn chapter_command(
 /// note.
 #[cfg(feature = "tui")]
 fn show(agent: Entity, conversation: &Conversation, line: &ChapterLine, commands: &mut Commands) {
-    use rig_tui::{Focus, ItemRow, MainPane, ScrollTo, TranscriptItem};
+    use rig_tui::{ItemRow, MainPane, ScrollTo, ShowAgent, TranscriptItem};
     let note = conversation.asides().find(|(_, aside)| {
         aside.after == Some(line.start) && aside.author == author() && Note::of(aside).is_some()
     });
@@ -687,7 +687,7 @@ fn show(agent: Entity, conversation: &Conversation, line: &ChapterLine, commands
         Some((id, _)) => TranscriptItem::Aside(id),
         None => TranscriptItem::Message(line.start),
     };
-    commands.trigger(Focus { entity: agent });
+    commands.trigger(ShowAgent { entity: agent });
     commands.queue(move |world: &mut World| {
         let mut main = world.query_filtered::<Entity, With<MainPane>>();
         if let Ok(pane) = main.single(world) {

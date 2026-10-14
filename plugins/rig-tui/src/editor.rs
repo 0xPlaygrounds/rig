@@ -28,7 +28,7 @@ use rig_ecs::agent::ActiveTurn;
 use rig_harness::main_agent::ShownAgent;
 use unicode_width::UnicodeWidthChar;
 
-use super::input::TuiInputState;
+use super::input::InputContext;
 use super::keys::KeyFocus;
 use super::panel::PanelCanvas;
 use super::pick::Choices;
@@ -469,7 +469,7 @@ fn hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
 /// keys.
 pub(crate) fn draw_editors(
     mut editors: Query<(Entity, &Editor, &mut PanelCanvas, &mut Caret)>,
-    (state, choices, focus): (Res<TuiInputState>, Choices, Res<KeyFocus>),
+    (state, choices, focus): (Res<InputContext>, Choices, Res<KeyFocus>),
     (shown, active): (Res<ShownAgent>, Query<(), With<ActiveTurn>>),
 ) {
     let answering = state.answering().and_then(|ask| choices.shown(ask));

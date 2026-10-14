@@ -27,7 +27,7 @@ use std::time::{Instant, SystemTime};
 use rig_harness::prelude::*;
 use rig_sessions::SessionTitle;
 use rig_telemetry::Diagnostics;
-use rig_telemetry::diagnostics::KEPT;
+use rig_telemetry::diagnostics::MAX_DIAGNOSTICS;
 use serde::Deserialize;
 
 pub mod registry;
@@ -361,7 +361,7 @@ fn fingerprint(logged: &Logged) -> Fingerprint {
 
 /// Counts the errors added to rig-telemetry's [`Diagnostics`] since the
 /// last change, by the plugin that logged them. It keeps the newest
-/// [`KEPT`] and has no event per entry, so the new ones are those after the
+/// [`MAX_DIAGNOSTICS`] and has no event per entry, so the new ones are those after the
 /// last one counted.
 fn plugin_errors(
     diagnostics: Res<Diagnostics>,
@@ -373,7 +373,7 @@ fn plugin_errors(
         .as_ref()
         .and_then(|last| kept.iter().rposition(|logged| fingerprint(logged) == *last))
         .map_or(0, |at| at + 1);
-    let fresh = kept.iter().skip(seen.min(KEPT));
+    let fresh = kept.iter().skip(seen.min(MAX_DIAGNOSTICS));
     let mut registry = registry.lock();
     for logged in fresh.filter(|logged| logged.level == NoticeLevel::Error) {
         let plugin = vec![registry.label("plugin", logged.plugin.as_deref().unwrap_or("unknown"))];

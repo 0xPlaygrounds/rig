@@ -24,8 +24,8 @@ use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    Editor, InputSystems, KeyInput, MainEditor, PanelCanvas, Placement, TerminalEvents,
-    TuiInputState, TuiKeys, TuiPanel, TuiSystems,
+    Editor, InputContext, InputSystems, KeyInput, MainEditor, PanelCanvas, PendingInput, Placement,
+    TuiKeys, TuiPanel, TuiSystems,
 };
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -199,11 +199,8 @@ fn note_activity(
 /// typed character after the idle clock ran out asks for a recap. Any key
 /// before then puts the clock off.
 fn watch_keys(
-    mut events: ResMut<TerminalEvents>,
-    (input, state): (
-        Option<Single<&Editor, With<MainEditor>>>,
-        Res<TuiInputState>,
-    ),
+    mut events: ResMut<PendingInput>,
+    (input, state): (Option<Single<&Editor, With<MainEditor>>>, Res<InputContext>),
     clocks: Query<(Entity, Has<Due>), With<IdleClock>>,
     cards: Query<Entity, With<RecapCard>>,
     config: Res<RecapConfig>,

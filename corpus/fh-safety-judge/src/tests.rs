@@ -12,7 +12,7 @@ use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, app_in, connect, first_agent, log_ended,
     log_tool_outputs, pass_wall_clock, reply, run_until, scratch_home, scripted_models,
 };
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, UsagePlugin};
 
 use super::*;
 
@@ -228,7 +228,7 @@ fn the_judge_allows_denies_and_asks() {
         assert!(!sent.contains("STUB-OUTPUT"), "{sent}");
     }
     // The judge's spending counts with the agent's, as the judge's.
-    let spent = world.get::<Spending>(agent);
+    let spent = world.get::<AgentUsage>(agent);
     let judged = spent.and_then(|spent| spent.purposes.get("judge"));
     assert_eq!(judged.map(|spent| spent.calls), Some(3));
     assert_eq!(world.resource::<JudgeLog>().0.len(), 3);

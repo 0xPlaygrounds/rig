@@ -7,7 +7,7 @@ use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
     tui_view,
 };
-use rig_tui::{MainEditor, TuiInputState};
+use rig_tui::{InputContext, MainEditor};
 
 use super::*;
 
@@ -145,9 +145,9 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
     let picker = app.world_mut().spawn(picker).id();
     app.update();
     app.update();
-    let picking = app.world().resource::<TuiInputState>().picking();
+    let picking = app.world().resource::<InputContext>().picking();
     assert_eq!(picking, Some(picker));
-    let selection = |app: &App| app.world().resource::<TuiInputState>().selection();
+    let selection = |app: &App| app.world().resource::<InputContext>().selection();
     assert_eq!(selection(&app), Some(0));
     press(&mut app, "j");
     assert_eq!(selection(&app), Some(1));

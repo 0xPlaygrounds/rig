@@ -34,8 +34,8 @@ use rig_sessions::SwitchSession;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::{
-    InputSystems, KeyFocus, KeyInput, PaneKeys, Placement, TerminalEvents, TranscriptPane,
-    TranscriptSource, TuiInputState, TuiKeys, TuiPanel,
+    InputContext, InputSystems, KeyFocus, KeyInput, PaneKeys, PendingInput, Placement,
+    TranscriptPane, TranscriptSource, TuiKeys, TuiPanel,
 };
 use serde::{Deserialize, Serialize};
 
@@ -354,8 +354,8 @@ fn listed(
 /// toggles every project, `n` closes it; other characters do nothing, so
 /// one filter applies. Enter on an unreadable session says why and stays.
 fn screen_keys(
-    mut events: ResMut<TerminalEvents>,
-    state: Res<TuiInputState>,
+    mut events: ResMut<PendingInput>,
+    state: Res<InputContext>,
     mut screens: Query<(Entity, &mut StartScreen, &mut Picker)>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,

@@ -7,7 +7,7 @@ use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply, run_until,
     scripted_models,
 };
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, UsagePlugin};
 
 use super::*;
 
@@ -98,7 +98,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
         None,
         "cheap falls back to its default"
     );
-    let spent = app.world().get::<Spending>(agent);
+    let spent = app.world().get::<AgentUsage>(agent);
     let models: Vec<&str> = spent
         .map(|spent| spent.models.keys().map(String::as_str).collect())
         .unwrap_or_default();

@@ -28,24 +28,24 @@ model's and its reasoning's text (`add_message_renderer`), lines under every
 message (`add_message_decorator`), each also only in one pane when spawned
 under it, and candidates
 for completion after a marker such as `#` or for a command's argument
-(`CompletionSource`, with what is typed in `TuiInputState::typed`). They take part
+(`CompletionSource`, with what is typed in `InputContext::typed`). They take part
 in the input as data: key bindings (`KeyBinding`, `AppKeyBindingsExt`; the
 view's own keys are bindings too), the keys for a panel (`KeyFocus`), the
 draft (`MainInput`) and the prompt history (`PromptHistory`, `Sent`), the
-frame's keys before any binding sees them, one at a time (`TerminalEvents`,
+frame's keys before any binding sees them, one at a time (`PendingInput`,
 filtered in `InputSystems::Filter` of the `TuiKeys` schedule, with
-`TuiInputState`), bindings while the transcript has the keys
+`InputContext`), bindings while the transcript has the keys
 (`KeyScope::Transcript`), a program run with the
 terminal (`RunInTerminal`, such as `$EDITOR`), and their own pickers
 (rig-harness's `Picker`), which the view shows, filled in place as items
-arrive, with what is typed and selected kept (`PickerState`), the item
+arrive, with what is typed and selected kept (`PickerInput`), the item
 highlighted (`Highlighted`) and a preview beside it (`PickPreview`). They
 read and steer each pane (`TranscriptView`, `ScrollTo`, labels inside replies' text as
 `TextMark`s), where a notice is drawn
 (`ShownNotice::slot`), the rows a pane laid out with the matches it lit and
 the items it cut (`DrawnTranscript`), where the frame drew each panel
 (`TuiFrame`, for a plugin that writes to the terminal itself, and
-`Repaint` to write cells it drew over again), and any agent's transcript,
+`RedrawArea` to write cells it drew over again), and any agent's transcript,
 or a saved conversation, laid out the same way without drawing it, cut or
 whole (`TranscriptLayout`). The
 clipboard goes through rig-tools' `clipboard`. A crate that also builds

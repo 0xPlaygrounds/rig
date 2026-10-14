@@ -61,7 +61,7 @@ pub struct ActivitySystems;
 #[reflect(Component)]
 pub struct Activity {
     /// Its status.
-    pub status: Status,
+    pub status: ActivityStatus,
     /// Its turn's tool calls without an output yet, in order.
     pub tools: Vec<ToolActivity>,
 }
@@ -69,13 +69,13 @@ pub struct Activity {
 impl Activity {
     /// Whether a turn runs.
     pub fn is_busy(&self) -> bool {
-        self.status != Status::Idle
+        self.status != ActivityStatus::Idle
     }
 }
 
 /// An agent's status.
 #[derive(Reflect, Clone, Debug, Default, PartialEq, Eq)]
-pub enum Status {
+pub enum ActivityStatus {
     /// No turn runs.
     #[default]
     Idle,
@@ -99,7 +99,7 @@ pub enum Status {
     },
 }
 
-impl fmt::Display for Status {
+impl fmt::Display for ActivityStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Idle => f.write_str("idle"),
@@ -246,11 +246,13 @@ fn update_activity(
         // does not wait for it.
         let asks = work.iter().filter_map(|effect| asks.get(*effect).ok());
         let mut asks = asks.filter(|ask| turn.is_none() || !ask.inline);
-        let asking = asks.next().map(|ask| Status::Asking(ask.title.clone()));
+        let asking = asks
+            .next()
+            .map(|ask| ActivityStatus::Asking(ask.title.clone()));
         let Some(turn) = turn else {
             let named = work.iter().find_map(|effect| others.get(*effect).ok());
             let status = asking
-                .or_else(|| named.map(|name| Status::Busy(name.as_str().to_owned())))
+                .or_else(|| named.map(|name| ActivityStatus::Busy(name.as_str().to_owned())))
                 .unwrap_or_default();
             activity.set_if_neq(Activity {
                 status,
@@ -270,16 +272,16 @@ fn update_activity(
         let status = if let Some(asking) = asking {
             asking
         } else if let Some(wait) = backoff {
-            Status::Retrying {
+            ActivityStatus::Retrying {
                 attempt: wait.attempt,
                 seconds: wait.seconds_left(),
             }
         } else if let Some(name) = calls.iter().find_map(|call| others.get(*call).ok()) {
-            Status::Busy(name.as_str().to_owned())
+            ActivityStatus::Busy(name.as_str().to_owned())
         } else if calls.iter().any(|call| tools.contains(*call)) {
-            Status::RunningTools
+            ActivityStatus::RunningTools
         } else {
-            Status::Thinking
+            ActivityStatus::Thinking
         };
         let open_tools = calls
             .iter()
@@ -320,9 +322,9 @@ fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed
     use rig_tui::Tone;
     for (activity, mut items) in &mut agents {
         let shown = match &activity.status {
-            Status::Idle => STATUS.says("idle", Tone::Green),
-            Status::Asking(title) => STATUS.says(format!("asking: {title}"), Tone::Cyan),
-            Status::Retrying { attempt, seconds } => STATUS.says(
+            ActivityStatus::Idle => STATUS.says("idle", Tone::Green),
+            ActivityStatus::Asking(title) => STATUS.says(format!("asking: {title}"), Tone::Cyan),
+            ActivityStatus::Retrying { attempt, seconds } => STATUS.says(
                 format!(
                     "retry {attempt}/{} in {seconds}s… (Esc stops)",
                     rig_ecs::turn::RETRY_POLICY.max_retries

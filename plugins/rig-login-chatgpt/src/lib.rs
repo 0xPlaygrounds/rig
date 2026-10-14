@@ -105,7 +105,7 @@ impl SignIn for ChatGptSignIn {
 
 /// A sign-in waiting for the user, on an entity of its own whose
 /// [`Running`] task is the flow until it ends as a
-/// [`Done<SignedInResult>`]; `--print` waits for it as for any `Running`
+/// [`Done<SignInEnded>`]; `--print` waits for it as for any `Running`
 /// task. Despawning it cancels the flow.
 #[derive(Component)]
 pub struct PendingLogin {
@@ -116,7 +116,7 @@ pub struct PendingLogin {
 }
 
 /// How a sign-in ended: `Err` says why it failed.
-pub struct SignedInResult(Result<(), String>);
+pub struct SignInEnded(Result<(), String>);
 
 /// Whether `text` names [`PROVIDER`], or is empty; otherwise a notice
 /// says what it takes.
@@ -185,7 +185,7 @@ fn on_login(
 
 /// Runs the sign-in by `method`, sending what the user must do through
 /// `prompts`. The credential file is written readable by the owner alone.
-async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake) -> SignedInResult {
+async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake) -> SignInEnded {
     let say = move |text: String| {
         prompts.send(text).ok();
         wake.wake();
@@ -215,7 +215,7 @@ async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake)
             });
         })
         .await;
-    SignedInResult(signed_in.map(drop).map_err(|error| error.to_string()))
+    SignInEnded(signed_in.map(drop).map_err(|error| error.to_string()))
 }
 
 /// The line after a sign-in prompt.
@@ -233,14 +233,14 @@ fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<N
 /// Reports how a sign-in ended, and connects the agents whose chosen model
 /// it serves and could not connect before.
 fn on_signed_in(
-    done: On<Add<Done<SignedInResult>>>,
-    logins: Query<(&PendingLogin, &Done<SignedInResult>)>,
+    done: On<Add<Done<SignInEnded>>>,
+    logins: Query<(&PendingLogin, &Done<SignInEnded>)>,
     unconnected: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
     models: Res<Models>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((login, Done(SignedInResult(result)))) = logins.get(done.entity) else {
+    let Ok((login, Done(SignInEnded(result)))) = logins.get(done.entity) else {
         return;
     };
     match result {

@@ -20,11 +20,11 @@ use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 
 use super::complete::Completion;
 use super::editor::{Caret, Editor};
-use super::input::TuiInputState;
+use super::input::InputContext;
 use super::keys::KeyFocus;
 use super::pane::{PaneState, TranscriptPane};
-use super::panel::{self, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel};
-use super::pick::{Choices, InlineStrip, Listing, PickerState, Row};
+use super::panel::{self, PanelCanvas, Placement, RedrawArea, RequestRedraw, TuiPanel};
+use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
 use super::renderers::{
     AsideRenderer, CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks,
     MessageDecorator, MessageRenderer, MessageView, Renderers, Role, ToolCallView, ToolRenderer,
@@ -37,7 +37,7 @@ use super::transcript::{
     Transcript, live_call, notice_lines, plain_lines,
 };
 use super::view::{
-    Continuation, DrawnTranscript, Highlight, MarkIn, Notices, ShownNotice, TranscriptItem,
+    DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
     TranscriptSlot, TranscriptView, TuiView,
 };
 use super::wrap::wrap_all;
@@ -111,7 +111,7 @@ pub(crate) fn needs_redraw(
             Changed<PaneState>,
             Changed<Editor>,
             Changed<StatusLine>,
-            Changed<PickerState>,
+            Changed<PickerInput>,
             Changed<PickPreview>,
             Changed<Picker>,
         )>,
@@ -131,7 +131,7 @@ pub(crate) fn needs_redraw(
         ),
     >,
     (app_status, test): (Option<Res<AppStatus>>, Option<Res<TuiTestScreen>>),
-    (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<Repaint>),
+    (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<RedrawArea>),
     mut removed: (
         RemovedComponents<TuiPanel>,
         RemovedComponents<StatusItems>,
@@ -140,7 +140,7 @@ pub(crate) fn needs_redraw(
         (
             RemovedComponents<TranscriptPane>,
             RemovedComponents<Editor>,
-            RemovedComponents<PickerState>,
+            RemovedComponents<PickerInput>,
         ),
         RemovedLooks,
     ),
@@ -271,7 +271,7 @@ pub(crate) fn layout(
     screens: (Option<Res<Tui>>, Option<Res<TuiTestScreen>>),
     (view, previewed): (
         Res<TuiView>,
-        Query<(Entity, &PickerState), With<PickPreview>>,
+        Query<(Entity, &PickerInput), With<PickPreview>>,
     ),
     mut frame: ResMut<FrameLayout>,
     mut panels: Query<(
@@ -836,7 +836,7 @@ impl Lights<'_> {
 /// splits lights on both rows.
 pub(crate) fn light(
     rows: &[Line<'static>],
-    continues: &[Option<Continuation>],
+    continues: &[Option<RowWrap>],
     first: usize,
     lights: &Lights<'_>,
 ) -> Vec<Line<'static>> {
@@ -886,7 +886,7 @@ struct Slot {
 /// the row it starts in. A match over a character an earlier match lit is
 /// no match.
 pub(crate) fn lit<'a, 'line: 'a>(
-    rows: impl IntoIterator<Item = (&'a Line<'line>, Option<&'a Continuation>)>,
+    rows: impl IntoIterator<Item = (&'a Line<'line>, Option<&'a RowWrap>)>,
     first: usize,
     lights: &Lights<'_>,
 ) -> Vec<LitRow> {
@@ -1028,11 +1028,11 @@ pub(crate) fn render(
     (mut tui, mut test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
     mut drew: ResMut<TuiFrame>,
     view: Res<TuiView>,
-    (state, focus, choices): (Res<TuiInputState>, Res<KeyFocus>, Choices),
+    (state, focus, choices): (Res<InputContext>, Res<KeyFocus>, Choices),
     mut frame_layout: ResMut<FrameLayout>,
     (panels, carets): (Query<(Entity, &TuiPanel, &PanelCanvas)>, Query<&Caret>),
-    mut showing: Query<(Entity, &mut PickerState, Option<&PickPreview>)>,
-    mut repaints: MessageReader<Repaint>,
+    mut showing: Query<(Entity, &mut PickerInput, Option<&PickPreview>)>,
+    mut repaints: MessageReader<RedrawArea>,
 ) -> Result {
     if !std::mem::take(&mut frame_layout.due) {
         return Ok(());
@@ -1272,7 +1272,7 @@ const LEAST_LIST: usize = 3;
 /// several, its tick box; for free text, the typed answer.
 fn draw_choice(
     frame: &mut Frame,
-    choosing: &mut PickerState,
+    choosing: &mut PickerInput,
     shown: &Listing<'_>,
     preview: Option<(&PickPreview, Rect)>,
 ) -> Rect {

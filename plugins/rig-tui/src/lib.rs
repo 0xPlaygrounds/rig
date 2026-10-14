@@ -46,17 +46,17 @@
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
 //! the agent shown, [`Focused`] (the harness's
-//! [`ShownAgent`]), and showing another, [`Focus`]; the
+//! [`ShownAgent`]), and showing another, [`ShowAgent`]; the
 //! status line's items ([`StatusItems`], [`AppStatus`]); and the
-//! [`TuiScreen`]'s size. It takes part in the input too: a key binding
+//! [`TerminalSize`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well, each doing an
 //! [`InputAction`], which a plugin may also put among the keys), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`MainInput`], an
 //! [`Editor`] a panel may hold too), the
 //! candidates completion lists ([`CompletionSource`]), the frame's
-//! keys before any binding sees them ([`TerminalEvents`], filtered one at
+//! keys before any binding sees them ([`PendingInput`], filtered one at
 //! a time in [`InputSystems::Filter`] of [`TuiKeys`], with
-//! [`TuiInputState`] saying what the input does with them), the terminal's focus ([`TerminalFocus`]), its own escape
+//! [`InputContext`] saying what the input does with them), the terminal's focus ([`TerminalFocus`]), its own escape
 //! codes ([`TerminalWrite`], [`CopyToClipboard`], which also goes to this
 //! machine's clipboard), a program run with the terminal
 //! ([`RunInTerminal`]), and a choice for the user, a
@@ -105,16 +105,16 @@ pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, Comp
 pub use crossterm;
 pub use editor::{Editor, MainEditor, MainInput};
 pub use history::{HistorySystems, PromptHistory, Sent};
-pub use input::{InputSystems, KeyInput, TerminalEvents, TuiInputState, TuiKeys};
+pub use input::{InputContext, InputSystems, KeyInput, PendingInput, TuiKeys};
 pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
     run_command,
 };
 pub use pane::{MainPane, MainTranscript, PaneKeys, TranscriptPane, TranscriptSource};
 pub use panel::{
-    Focused, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel, TuiScreen, TuiSystems,
+    Focused, PanelCanvas, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel, TuiSystems,
 };
-pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerState};
+pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerInput};
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout, TuiFrame};
 pub use renderers::{
@@ -131,9 +131,8 @@ pub use terminal::{
 };
 pub use transcript::PastEffects;
 pub use view::{
-    Continuation, DrawnLine, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, LineSpan,
-    MarkIn, Notices, ScrollTo, ShownNotice, TextMark, TranscriptItem, TranscriptSlot,
-    TranscriptView,
+    DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, Notices, RowWrap,
+    ScrollTo, ShowAgent, ShownNotice, TextMark, TranscriptItem, TranscriptSlot, TranscriptView,
 };
 
 /// The terminal view's name as a front.
@@ -175,13 +174,13 @@ impl Plugin for TuiViewPlugin {
             .init_resource::<Notices>()
             .init_resource::<transcript::CallFacts>()
             .init_resource::<transcript::StreamingCalls>()
-            .init_resource::<TuiScreen>()
+            .init_resource::<TerminalSize>()
             .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
-            .init_resource::<TerminalEvents>()
-            .init_resource::<TuiInputState>()
+            .init_resource::<PendingInput>()
+            .init_resource::<InputContext>()
             .add_message::<RequestRedraw>()
-            .add_message::<Repaint>()
+            .add_message::<RedrawArea>()
             .add_message::<Sent>()
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()

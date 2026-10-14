@@ -63,11 +63,7 @@ fn run_for(app: &mut App, wakes: &Receiver<()>, wall: Duration) {
 
 /// A change of the command's input: what the session spent.
 fn spend(app: &mut App) {
-    app.world_mut()
-        .resource_mut::<SessionSpending>()
-        .0
-        .total
-        .cost += 0.01;
+    app.world_mut().resource_mut::<SessionUsage>().0.total.cost += 0.01;
     app.update();
 }
 

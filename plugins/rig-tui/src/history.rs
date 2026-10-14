@@ -36,9 +36,6 @@ use rig_harness::rig_memory::{Place, Rewrite, rewrite_file, rewrite_value};
 
 use super::jsonl::{self, Kept};
 
-/// Prompts kept in the history.
-const KEPT: usize = 500;
-
 /// The file of the history in its [`PromptHistory::file`].
 const HISTORY_FILE: &str = "tui/history.jsonl";
 
@@ -47,7 +44,7 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// from the user's [`PluginData`] in `PreStartup`, appends each prompt
 /// sent in [`HistorySystems::Record`], and in [`HistorySystems::Save`] adds
 /// to the file those recorded since the last save that are still in
-/// `entries`, then keeps the newest 500. A plugin edits `entries` between
+/// `entries`, then keeps the newest [`Self::KEPT`]. A plugin edits `entries` between
 /// the two to filter what is kept, or replaces them.
 #[derive(Resource, Default)]
 pub struct PromptHistory {
@@ -61,10 +58,13 @@ pub struct PromptHistory {
 }
 
 impl PromptHistory {
+    /// How many prompts are kept.
+    pub const KEPT: usize = 500;
+
     /// The newest prompts kept in `files`, which new ones are saved to.
     pub fn load(files: Arc<dyn Files>) -> Self {
         Self {
-            entries: jsonl::tail(&Kept(files.clone(), HISTORY_FILE), KEPT),
+            entries: jsonl::tail(&Kept(files.clone(), HISTORY_FILE), Self::KEPT),
             file: Some(files),
             unsaved: Vec::new(),
         }
@@ -129,7 +129,7 @@ pub(crate) fn record(mut sent: MessageReader<Sent>, mut history: ResMut<PromptHi
 /// Adds the prompts recorded since the last save that are still kept to
 /// the file, then keeps the newest.
 pub(crate) fn save(mut history: ResMut<PromptHistory>) {
-    if history.unsaved.is_empty() && history.entries.len() <= KEPT {
+    if history.unsaved.is_empty() && history.entries.len() <= PromptHistory::KEPT {
         return;
     }
     let unsaved = std::mem::take(&mut history.unsaved);
@@ -139,7 +139,7 @@ pub(crate) fn save(mut history: ResMut<PromptHistory>) {
     {
         warn!("could not save the prompt history: {failure}");
     }
-    let excess = history.entries.len().saturating_sub(KEPT);
+    let excess = history.entries.len().saturating_sub(PromptHistory::KEPT);
     history.entries.drain(..excess);
 }
 

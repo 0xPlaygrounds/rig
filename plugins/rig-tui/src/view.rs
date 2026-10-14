@@ -23,7 +23,7 @@ use super::jsonl::{self, Kept};
 use super::keys::KeyPress;
 use super::pane::{PaneState, TranscriptPane, TranscriptSource};
 use super::panel::Focused;
-use super::pick::PickerState;
+use super::pick::PickerInput;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
@@ -46,7 +46,7 @@ const DRAFT_FILE: &str = "tui/draft.txt";
 /// a subagent picked with `/agents`.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
-pub struct Focus {
+pub struct ShowAgent {
     /// The agent.
     pub entity: Entity,
 }
@@ -233,7 +233,7 @@ pub struct LineSpan {
 /// Scrolls the transcript pane `pane` so that `row` of `item` is shown;
 /// `item: None` follows the newest output again. An item not drawn leaves
 /// the pane where it is. Its [`TranscriptView::top`] reads where it is.
-/// To show another agent in the main pane, trigger [`Focus`] first.
+/// To show another agent in the main pane, trigger [`ShowAgent`] first.
 #[derive(Event, Clone, Debug)]
 pub struct ScrollTo {
     /// The pane ([`TranscriptPane`]).
@@ -310,7 +310,7 @@ pub struct DrawnRow {
     pub text: String,
     /// How it continues the row before it, when the view wrapped one
     /// line into both; [`DrawnTranscript::lines`] rejoins them.
-    pub continues: Option<Continuation>,
+    pub continues: Option<RowWrap>,
     /// How many matches of each highlight the view lit starting in it,
     /// by its index in [`TranscriptView::highlights`] (where two overlap,
     /// the one placed first lit it); a match a wrap splits counts in the
@@ -323,7 +323,7 @@ pub struct DrawnRow {
 pub struct DrawnLine {
     /// Its rows in the transcript.
     pub rows: Range<usize>,
-    /// Its text: its rows rejoined, as each one's [`Continuation`] says.
+    /// Its text: its rows rejoined, as each one's [`RowWrap`] says.
     pub text: String,
     /// Where each of its rows starts in `text`, by byte; the blanks a wrap
     /// dropped end the row before.
@@ -342,7 +342,7 @@ impl DrawnLine {
 /// wrapped one line into both: the line is the row before, then `gap`,
 /// then this row's text past its `indent`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Continuation {
+pub struct RowWrap {
     /// The blanks the wrap dropped at the break.
     pub gap: String,
     /// How many spaces the row starts with that the line does not have,
@@ -783,7 +783,7 @@ pub(crate) fn keep_notices(
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
     data: Option<Res<PluginData>>,
-    (input, showing): (Query<&Editor, With<MainEditor>>, Query<&PickerState>),
+    (input, showing): (Query<&Editor, With<MainEditor>>, Query<&PickerInput>),
 ) {
     let (Some(reason), Some(data)) = (reason, data) else {
         return;
@@ -836,10 +836,10 @@ pub(crate) fn mark_focused(
     }
 }
 
-/// Shows the agent a [`Focus`] names: the panes of the agent shown follow
+/// Shows the agent a [`ShowAgent`] names: the panes of the agent shown follow
 /// its newest output.
 pub(crate) fn on_focus(
-    focus: On<Focus>,
+    focus: On<ShowAgent>,
     agents: Query<(), With<Agent>>,
     mut shown: ResMut<ShownAgent>,
     mut view: ResMut<TuiView>,

@@ -5,7 +5,7 @@ use rig_harness_test_support::{
     Ended, MemoryStore, app_on, calls, log_ended, press, reply, run_until, scripted_models,
     tui_view,
 };
-use rig_tui::{Focus, MainPane, TuiTestScreen};
+use rig_tui::{MainPane, ShowAgent, TuiTestScreen};
 
 use super::*;
 
@@ -107,7 +107,7 @@ fn keys_jump_between_prompts_and_the_header_follows_the_top_row() {
     app.finish();
     app.cleanup();
     app.update();
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
     for n in 1..=4 {
         ask(&mut app, &wakes, agent, n, Author::user());
     }

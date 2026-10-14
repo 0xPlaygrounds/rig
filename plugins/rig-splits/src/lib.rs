@@ -28,9 +28,7 @@
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message as ChatMessage;
-use rig_harness::rig_core::conversation::{
-    BranchError, Conversation as Line, MergeAt, Spliced, shared_prefix,
-};
+use rig_harness::rig_core::conversation::{self, BranchError, MergeAt, Spliced, shared_prefix};
 use rig_harness::rig_core::message::UserContent;
 use rig_harness::rig_memory::{self, LineId, SPLIT, SplitPointer, lines};
 
@@ -259,7 +257,10 @@ fn read_session(world: &World, id: &SessionId) -> Result<Session, String> {
 }
 
 /// The line of `conversation` that `name` names.
-fn find_line(conversation: &Line, name: &str) -> Result<rig_memory::Line, String> {
+fn find_line(
+    conversation: &conversation::Conversation,
+    name: &str,
+) -> Result<rig_memory::Line, String> {
     let listed = lines(conversation);
     let by_aside = name.parse::<AsideId>().ok();
     let found = listed.iter().find(|line| match &line.id {
@@ -275,7 +276,10 @@ fn find_line(conversation: &Line, name: &str) -> Result<rig_memory::Line, String
 
 /// The kept branch `name` names in `conversation`; `None` for the active
 /// line, or no name.
-fn branch(conversation: &Line, name: Option<&str>) -> Result<Option<AsideId>, String> {
+fn branch(
+    conversation: &conversation::Conversation,
+    name: Option<&str>,
+) -> Result<Option<AsideId>, String> {
     let line = name.map(|name| find_line(conversation, name)).transpose()?;
     match line.map(|line| line.id) {
         None | Some(LineId::Active) => Ok(None),
@@ -287,7 +291,10 @@ fn branch(conversation: &Line, name: Option<&str>) -> Result<Option<AsideId>, St
 }
 
 /// The newest entry of line `line` of `conversation`.
-fn newest(conversation: &Line, line: Option<AsideId>) -> Result<MessageId, String> {
+fn newest(
+    conversation: &conversation::Conversation,
+    line: Option<AsideId>,
+) -> Result<MessageId, String> {
     let entries = conversation.line(line).unwrap_or_default();
     let last = entries.last().and_then(|entry| entry.id);
     last.ok_or_else(|| "the line has no entry to split at".to_owned())
@@ -311,7 +318,10 @@ fn run(world: &mut World, agent: Entity, asked: Asked) -> Result<String, String>
 }
 
 /// Splits or moves into a branch of `conversation`, as `asked` says.
-fn in_session(conversation: &mut Line, asked: &Asked) -> Result<String, String> {
+fn in_session(
+    conversation: &mut conversation::Conversation,
+    asked: &Asked,
+) -> Result<String, String> {
     let failed = |failure: BranchError| failure.to_string();
     if let Some(line) = branch(conversation, asked.place.line.as_deref())? {
         conversation.switch_branch(line, by()).map_err(failed)?;
@@ -360,7 +370,7 @@ fn in_session(conversation: &mut Line, asked: &Asked) -> Result<String, String> 
 fn edit(
     world: &mut World,
     (target, go): (&Target, bool),
-    change: impl FnOnce(&mut Line) -> Result<String, String>,
+    change: impl FnOnce(&mut conversation::Conversation) -> Result<String, String>,
 ) -> Result<String, String> {
     match (&target.session, target.entity) {
         (None, Some(entity)) => {
@@ -508,7 +518,10 @@ fn switch(world: &mut World, target: &Target, name: Option<&str>) -> Result<Stri
 }
 
 /// The conversation of `target`, as it is now.
-fn conversation_of(world: &mut World, target: &Target) -> Result<Line, String> {
+fn conversation_of(
+    world: &mut World,
+    target: &Target,
+) -> Result<conversation::Conversation, String> {
     match (&target.session, target.entity) {
         (Some(session), _) => read_session(world, session)?
             .agent(&target.agent.0)
@@ -571,7 +584,11 @@ fn merged(spliced: &Spliced) -> String {
 
 /// The active line of `agent` in session `session`, where a split of a
 /// line is kept.
-fn split_line(world: &World, session: &str, agent: &str) -> Result<Line, String> {
+fn split_line(
+    world: &World,
+    session: &str,
+    agent: &str,
+) -> Result<conversation::Conversation, String> {
     let split: SessionId = session
         .parse()
         .map_err(|_| format!("`{session}` is no session id"))?;
@@ -644,7 +661,7 @@ fn compare(world: &mut World, target: &Target, name: &str) -> Result<String, Str
 
 /// `line` from the last of its `shared` first entries on, moved back past
 /// tool results so none is shown without its call.
-fn own(line: &Line, shared: usize) -> Line {
+fn own(line: &conversation::Conversation, shared: usize) -> conversation::Conversation {
     let results = |at: usize| match line.messages().get(at) {
         Some(ChatMessage::User { content }) => content
             .iter()
@@ -663,7 +680,7 @@ fn own(line: &Line, shared: usize) -> Line {
 /// Shows two lines side by side, each in a transcript pane of one box
 /// over the screen: Tab goes from one to the other, Esc closes them.
 #[cfg(feature = "tui")]
-fn show(world: &mut World, sides: [(String, Line); 2]) -> Result<(), String> {
+fn show(world: &mut World, sides: [(String, conversation::Conversation); 2]) -> Result<(), String> {
     use rig_tui::crossterm::event::KeyCode;
     use rig_tui::ratatui::layout::Constraint;
     use rig_tui::{
@@ -716,6 +733,6 @@ fn show(world: &mut World, sides: [(String, Line); 2]) -> Result<(), String> {
 
 /// Without the terminal view there is nowhere to show two lines.
 #[cfg(not(feature = "tui"))]
-fn show(_: &mut World, _: [(String, Line); 2]) -> Result<(), String> {
+fn show(_: &mut World, _: [(String, conversation::Conversation); 2]) -> Result<(), String> {
     Err("Comparing lines needs the terminal view.".to_owned())
 }

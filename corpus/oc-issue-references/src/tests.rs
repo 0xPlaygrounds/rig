@@ -9,7 +9,7 @@ use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, first_agent, log_ended, log_tool_outputs,
     press, reply, run_until, scripted_models, tui_view,
 };
-use rig_tui::{Editor, MainEditor, TuiInputState};
+use rig_tui::{Editor, InputContext, MainEditor};
 use serde_json::{Value, json};
 
 use super::*;
@@ -305,7 +305,7 @@ fn hash_offers_the_open_issues_by_title() {
     press(&mut app, "1 4");
     let listed: Vec<(String, String)> = app
         .world()
-        .resource::<TuiInputState>()
+        .resource::<InputContext>()
         .completion()
         .map(|open| open.items.iter())
         .into_iter()

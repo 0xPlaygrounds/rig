@@ -32,7 +32,7 @@ use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
 use rig_sessions::SwitchSession;
-use rig_tui::{CopyToClipboard, Focus, ItemRow, MainPane, ScrollTo, TranscriptItem};
+use rig_tui::{CopyToClipboard, ItemRow, MainPane, ScrollTo, ShowAgent, TranscriptItem};
 use serde::{Deserialize, Serialize};
 
 /// Snippets shown per session.
@@ -668,7 +668,7 @@ fn leaving(
 
 /// Focuses `agent` and scrolls `pane` to `message`.
 fn scroll(commands: &mut Commands, agent: Entity, pane: Entity, message: MessageId) {
-    commands.trigger(Focus { entity: agent });
+    commands.trigger(ShowAgent { entity: agent });
     commands.trigger(ScrollTo {
         pane,
         item: Some(TranscriptItem::Message(message)),

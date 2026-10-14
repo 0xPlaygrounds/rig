@@ -20,7 +20,7 @@ use rig_harness::prelude::*;
 use rig_subagents::{
     Lifecycle, Role, SpawnSubagent, SubagentPolicy, SubagentSystems, SubagentsPlugin, TASK,
 };
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, UsagePlugin};
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::Deserialize;
 
@@ -271,7 +271,7 @@ fn cap(
     calls: Query<(&CallOf, &ForAgent), (ReadyToStart, ModelCalls, With<TurnCall>)>,
     turns: Query<&Calls, Without<TurnOutcome>>,
     model_calls: Query<(), With<TurnCall>>,
-    subagents: Query<&Spending, With<SpawnedBy>>,
+    subagents: Query<&AgentUsage, With<SpawnedBy>>,
     config: Res<SubagentsConfig>,
     mut commands: Commands,
 ) {
@@ -307,7 +307,10 @@ fn add_column(added: On<Add<SpawnedBy>>, mut commands: Commands) {
 
 /// Keeps each subagent's column current: its depth and spend.
 fn show_column(
-    agents: Query<(Entity, &PolicyColumn, &Spending), Or<(Added<PolicyColumn>, Changed<Spending>)>>,
+    agents: Query<
+        (Entity, &PolicyColumn, &AgentUsage),
+        Or<(Added<PolicyColumn>, Changed<AgentUsage>)>,
+    >,
     lineage: Query<&SpawnedBy>,
     mut columns: Query<&mut AgentColumn>,
 ) {

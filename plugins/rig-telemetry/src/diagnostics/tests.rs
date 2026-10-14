@@ -13,7 +13,7 @@ impl Plugin for Noisy {
     fn build(&self, app: &mut App) {
         app.add_plugins(ParentHas::<Name>::in_schedule(Update))
             .add_systems(Startup, |mut commands: Commands| {
-                (0..KEPT).for_each(|n| warn!("warning {n}"));
+                (0..MAX_DIAGNOSTICS).for_each(|n| warn!("warning {n}"));
                 error!(agent = "a1", "about a1");
                 info!("not kept");
                 let parent = commands.spawn_empty().id();
@@ -65,7 +65,7 @@ fn warnings_and_errors_are_kept_tagged_and_bounded() {
     );
     assert_eq!(newest, [bevy, own]);
     let oldest = kept.front().map(|logged| logged.message.as_str());
-    assert_eq!((kept.len(), oldest), (KEPT, Some("warning 2")));
+    assert_eq!((kept.len(), oldest), (MAX_DIAGNOSTICS, Some("warning 2")));
 }
 
 #[test]

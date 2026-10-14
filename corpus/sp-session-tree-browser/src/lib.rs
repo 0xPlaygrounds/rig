@@ -27,7 +27,7 @@ use rig_tui::ratatui::text::Line as Row;
 use rig_tui::ratatui::widgets::{Block, Clear, Paragraph};
 use rig_tui::{
     InputAction, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope,
-    PaneKeys, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TranscriptPane,
+    PaneKeys, PanelCanvas, PendingInput, Placement, RequestRedraw, TranscriptPane,
     TranscriptSource, TuiKeys, TuiPanel, TuiSystems,
 };
 
@@ -463,7 +463,7 @@ fn selected(browser: &Browser) -> Option<&Which> {
 /// Types the search while it is being typed: every key goes to it, Enter
 /// and Esc end it.
 fn type_search(
-    mut events: ResMut<TerminalEvents>,
+    mut events: ResMut<PendingInput>,
     mut browsers: Query<&mut Browser>,
     mut commands: Commands,
 ) {

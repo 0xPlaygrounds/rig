@@ -12,7 +12,9 @@ use rig_harness_test_support::{
 };
 use rig_sessions::SessionsPlugin;
 use rig_tui::ratatui::text::Line as Drawn;
-use rig_tui::{AppToolRenderersExt, Focus, MainEditor, MainPane, TranscriptView, TuiTestScreen};
+use rig_tui::{
+    AppToolRenderersExt, MainEditor, MainPane, ShowAgent, TranscriptView, TuiTestScreen,
+};
 
 use super::*;
 
@@ -73,7 +75,7 @@ fn start(
         entity: agent,
         model,
     });
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
     app.update();
     (app, wakes, agent)
 }

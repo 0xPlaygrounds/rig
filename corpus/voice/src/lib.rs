@@ -42,7 +42,7 @@ use rig_harness::rig_core::completion::CompletionRequest;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::{
     AppKeyBindingsExt, InputSystems, KeyBinding, KeyInput, KeyPress, KeyPressed, Keys, MainInput,
-    TerminalEvents,
+    PendingInput,
 };
 use serde::Deserialize;
 
@@ -433,7 +433,7 @@ fn on_send(
 }
 
 /// A key pressed in the terminal stops the speaking.
-fn hush_on_keys(events: Res<TerminalEvents>, backends: Res<VoiceBackends>) {
+fn hush_on_keys(events: Res<PendingInput>, backends: Res<VoiceBackends>) {
     let typed = events.0.iter().any(
         |item| matches!(item, KeyInput::Event(Event::Key(key)) if key.kind == KeyEventKind::Press),
     );

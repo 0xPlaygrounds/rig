@@ -16,7 +16,7 @@ use super::*;
 /// Puts `items` in the view's keys, then runs a frame.
 fn push(app: &mut App, items: impl IntoIterator<Item = KeyInput>) {
     app.world_mut()
-        .resource_mut::<TerminalEvents>()
+        .resource_mut::<PendingInput>()
         .0
         .extend(items);
     app.update();

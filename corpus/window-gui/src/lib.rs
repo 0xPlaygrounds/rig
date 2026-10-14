@@ -23,7 +23,7 @@ mod window;
 
 use std::collections::HashSet;
 
-use rig_activity::{Activity, ActivityPlugin, ActivitySystems, Status};
+use rig_activity::{Activity, ActivityPlugin, ActivityStatus, ActivitySystems};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
 use rig_harness::rig_memory::main_order;
@@ -293,7 +293,7 @@ pub struct Dismiss;
 /// What the agent does, for its row.
 fn status_text(activity: &Activity) -> String {
     match &activity.status {
-        Status::RunningTools if !activity.tools.is_empty() => {
+        ActivityStatus::RunningTools if !activity.tools.is_empty() => {
             let names: Vec<String> = activity
                 .tools
                 .iter()

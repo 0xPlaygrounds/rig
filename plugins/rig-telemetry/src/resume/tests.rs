@@ -25,7 +25,7 @@ fn what_the_session_spent_is_in_its_resume_line() {
     let mut usage = Usage::default();
     usage.input_tokens = Some(1_200);
     usage.output_tokens = Some(300);
-    let mut spent = app.world_mut().resource_mut::<SessionSpending>();
+    let mut spent = app.world_mut().resource_mut::<SessionUsage>();
     spent.0.record(None, None, &usage);
     app.update();
 

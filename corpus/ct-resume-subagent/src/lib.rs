@@ -8,7 +8,7 @@
 //! - `/subagents` lists the subagents: short id, task, model, turns,
 //!   tokens, and when each last finished.
 //! - `/talk <id>` asks the terminal view to show that subagent and send
-//!   what the user types to it ([`rig_tui::Focus`]); `/talk main` goes
+//!   what the user types to it ([`rig_tui::ShowAgent`]); `/talk main` goes
 //!   back. Its replies stay in its own conversation: a message from the
 //!   user opens no request, so rig-subagents reports nothing to the parent.
 //! - `follow_up {agent_id, message}` sends one of the caller's own
@@ -26,7 +26,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_memory::now_ms;
 use rig_subagents::{Lifecycle, OpenRequests, Subtask};
-use rig_telemetry::Spending;
+use rig_telemetry::AgentUsage;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -396,7 +396,7 @@ fn talk(
     }
     if wanted == "main" {
         if let Some(main) = main_agent(&roots) {
-            commands.trigger(rig_tui::Focus { entity: main });
+            commands.trigger(rig_tui::ShowAgent { entity: main });
             notices.write(Notice::info(main, "Talking to the main agent."));
         }
         return;
@@ -406,7 +406,7 @@ fn talk(
         notices.write(Notice::error(args.agent, why));
         return;
     };
-    commands.trigger(rig_tui::Focus { entity: agent });
+    commands.trigger(rig_tui::ShowAgent { entity: agent });
     let task = title.map(|title| format!(" (\"{}\")", title.0));
     let text = format!(
         "Talking to subagent `{}`{}. /talk main goes back.",
@@ -422,7 +422,7 @@ type Listed<'a> = (
     Option<&'a AgentTitle>,
     Option<&'a ModelChoice>,
     &'a Conversation,
-    Option<&'a Spending>,
+    Option<&'a AgentUsage>,
     Option<&'a FinishedAt>,
     Has<ActiveTurn>,
 );

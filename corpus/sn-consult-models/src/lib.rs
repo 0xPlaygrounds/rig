@@ -31,7 +31,7 @@ use rig_core::completion::UsageTotals;
 use rig_core::effect::EffectId;
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_telemetry::Spending;
+use rig_telemetry::AgentUsage;
 use rig_tools::workspace::Workspace;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -183,7 +183,7 @@ impl Consultation {
         &mut self,
         slot: usize,
         result: Result<String, String>,
-        spending: &Query<&Spending>,
+        spending: &Query<&AgentUsage>,
     ) -> bool {
         let Some(slot) = self
             .slots
@@ -502,7 +502,7 @@ fn request_settled(
     settled: On<Add<Settled>>,
     requests: Query<(&SlotRequest, &Outcome, Has<SpawnedAgent>)>,
     mut consultations: Query<&mut Consultation>,
-    spending: Query<&Spending>,
+    spending: Query<&AgentUsage>,
     mut commands: Commands,
 ) {
     let Ok((&SlotRequest { consultation, slot }, outcome, spawned)) = requests.get(settled.entity)
@@ -532,7 +532,7 @@ fn count_steps(
     >,
     agents: Query<&SlotOf>,
     mut consultations: Query<&mut Consultation>,
-    spending: Query<&Spending>,
+    spending: Query<&AgentUsage>,
     config: Res<ConsultConfig>,
     mut commands: Commands,
 ) {
@@ -582,7 +582,7 @@ fn turn_settled(
     turns: Query<(&TurnOutcome, &ForAgent), With<Turn>>,
     agents: Query<&SlotOf>,
     mut consultations: Query<&mut Consultation>,
-    spending: Query<&Spending>,
+    spending: Query<&AgentUsage>,
     mut commands: Commands,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
@@ -614,7 +614,7 @@ fn turn_settled(
 fn timed_out(
     due: On<Add<Due>>,
     mut consultations: Query<&mut Consultation>,
-    spending: Query<&Spending>,
+    spending: Query<&AgentUsage>,
     mut commands: Commands,
 ) {
     let Ok(mut consult) = consultations.get_mut(due.entity) else {

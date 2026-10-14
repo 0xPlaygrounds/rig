@@ -17,7 +17,7 @@
 //! stderr. `--json` prints `{answer, cited_turns, model, tokens, cost}`:
 //! the turns of the messages the tools showed the agent, the model, and
 //! what the run's model calls used, from rig-telemetry's
-//! [`SessionSpending`] (null without it). `--model` picks the model, else
+//! [`SessionUsage`] (null without it). `--model` picks the model, else
 //! the `[ask_session]` table's `model`, else the cheapest reachable priced
 //! model. Exit codes: 0 answered, 2 session not found or unreadable, 3 the
 //! model failed, 1 a bad command line.
@@ -35,7 +35,7 @@ use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_memory::{MemoryStore, Store};
-use rig_telemetry::SessionSpending;
+use rig_telemetry::SessionUsage;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -425,7 +425,7 @@ fn answered(
         Option<Res<Asker>>,
         Res<Options>,
         Res<Cited>,
-        Option<Res<SessionSpending>>,
+        Option<Res<SessionUsage>>,
     ),
     mut commands: Commands,
 ) {

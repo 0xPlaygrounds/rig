@@ -1822,8 +1822,8 @@ adds them to the catalog in `Models` (rig-core's `ProviderId::declare`,
 `Connector::provide`, `catalog_mut`) at any time.
 
 Spending is data too. rig-telemetry adds each settled model call's usage
-to its agent's `Spending`, the session's `SessionSpending` (both saved)
-and its turn's `TurnSpending`, per model and per purpose (`turn`,
+to its agent's `AgentUsage`, the session's `SessionUsage` (both saved)
+and its turn's `TurnUsage`, per model and per purpose (`turn`,
 `compaction`, a plugin's `Effect::with_purpose`), and shows the session's
 in its `/resume` line (the `spent` label); a plugin that pays for work
 that is no model request `record`s it, and one whose model call settles
@@ -1834,7 +1834,7 @@ gives the choices to answer with.
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_print::PrintSection;
-use rig_telemetry::{SessionSpending, UsageRow};
+use rig_telemetry::{SessionUsage, UsageRow};
 
 /// What the session may spend, in USD.
 const CAP: f64 = 5.0;
@@ -1843,13 +1843,13 @@ const CAP: f64 = 5.0;
 /// what is left in `/usage` and after a `--print` answer.
 fn build(app: &mut App) {
     app.world_mut().spawn((UsageRow::new("budget", ""), PrintSection::new("budget", "")));
-    let show = show_budget.run_if(resource_exists_and_changed::<SessionSpending>);
+    let show = show_budget.run_if(resource_exists_and_changed::<SessionUsage>);
     app.add_systems(AgentPass, refuse_over_budget.in_set(Stage::Gate)).add_systems(Update, show);
 }
 
 fn refuse_over_budget(
     mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>,
-    spent: Option<Res<SessionSpending>>,
+    spent: Option<Res<SessionUsage>>,
 ) {
     if spent.is_none_or(|spent| spent.0.total.cost < CAP) {
         return;
@@ -1860,7 +1860,7 @@ fn refuse_over_budget(
     }
 }
 
-fn show_budget(spent: Res<SessionSpending>, mut shown: Query<(&mut UsageRow, &mut PrintSection)>) {
+fn show_budget(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut PrintSection)>) {
     let left = (CAP - spent.0.total.cost).max(0.0);
     let text = format!("Budget: ${left:.2} of ${CAP:.2} left.");
     for (mut row, mut section) in &mut shown {
@@ -2095,7 +2095,7 @@ draws lines under every tool call, after its look, an item
 says where the frame drew each panel (`area`) and row (`screen_row`) and
 what an overlay `covered`, for a plugin that writes to the terminal
 itself, such as an image over rows its renderer left blank, and
-`Repaint(rect)` writes cells it drew over again. A test draws frames into
+`RedrawArea(rect)` writes cells it drew over again. A test draws frames into
 a `TuiTestScreen::new(80, 24)` beside `tui_view`: its `rows()`, the bytes
 `written()`.
 
@@ -2225,7 +2225,7 @@ A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 (`BelowInput`), or a box over the screen (`Over`). The plugin draws it
 into its `PanelCanvas` in `TuiSystems::Draw`, run only for a frame that is
 drawn, and writes a `RequestRedraw` when its own state changed;
-`TuiScreen` is the terminal's size, `Focused` marks the agent shown;
+`TerminalSize` is the terminal's size, `Focused` marks the agent shown;
 `Within { panel, part, of }` is a column of another panel.
 
 ```rust,no_run
@@ -2291,12 +2291,12 @@ fn watch(In(args): In<CommandArgs>, agents: Query<(Entity, &Name), With<Agent>>,
 The terminal view (`rig_tui`) takes part in the input as data, there in
 any run and inert without the view:
 
-- **The frame's keys.** `TerminalEvents` is what the terminal reported
+- **The frame's keys.** `PendingInput` is what the terminal reported
   (`KeyInput::Event`) and the actions plugins put in (`KeyInput::Action`),
   in order, done one at a time in the `TuiKeys` schedule: a system in its
   `InputSystems::Filter` reads, changes, drops or replaces the item before
   any binding or the input sees it, with the main `Editor` and
-  `TuiInputState` (the open completion, the question or picker shown, its
+  `InputContext` (the open completion, the question or picker shown, its
   `selection()`) as the keys before it left them; `Dispatch` does the
   rest. A modal input is one filter, and `/` starts a slash command unless
   a filter or binding takes it.
@@ -2314,7 +2314,7 @@ any run and inert without the view:
   in the input, `CompletionSource::marker('#')` (`/` and `@` are the
   view's), or for a command's argument, `CompletionSource::arg("model")`
   (`.at(n)`). One that looks its candidates up reads what is typed,
-  `TuiInputState::typed()`, and is inserted again: an open list follows.
+  `InputContext::typed()`, and is inserted again: an open list follows.
 - **The input.** An `Editor` holds a draft (`text()`, `set`, `insert`,
   `take`, …), the main one's read as `MainInput`; the keys type into a
   panel's own while it has the `KeyFocus`. `PromptHistory` is the prompts
@@ -2339,8 +2339,8 @@ use rig_harness::prelude::*;
 use rig_tui::crossterm::event::{Event, KeyCode};
 use rig_tui::{
     AppKeyBindingsExt, InputAction, InputSystems, KeyBinding, KeyFocus, KeyInput,
-    KeyPress, KeyPressed, MainEditor, MainInput, RunInTerminal, TerminalEvents,
-    TerminalExit, TuiInputState, TuiKeys, Editor,
+    KeyPress, KeyPressed, MainEditor, MainInput, RunInTerminal, PendingInput,
+    TerminalExit, InputContext, TuiKeys, Editor,
 };
 
 /// A program writing the draft in this file.
@@ -2360,8 +2360,8 @@ fn build(app: &mut App) {
 
 /// `/` on an empty input gives the search box the keys; elsewhere it is typed.
 fn slash_searches(
-    mut events: ResMut<TerminalEvents>,
-    (input, state): (Single<&Editor, With<MainEditor>>, Res<TuiInputState>),
+    mut events: ResMut<PendingInput>,
+    (input, state): (Single<&Editor, With<MainEditor>>, Res<InputContext>),
     boxes: Query<Entity, With<SearchBox>>,
     mut focus: ResMut<KeyFocus>,
 ) {

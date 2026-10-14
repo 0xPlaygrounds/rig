@@ -31,7 +31,7 @@ use super::renderers::{
     result_text,
 };
 use super::view::{
-    Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, ShownNotice, TextMark,
+    DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, RowWrap, ShownNotice, TextMark,
     TranscriptItem,
 };
 use super::wrap::wrap;
@@ -884,7 +884,7 @@ struct Cached {
 #[derive(Default)]
 pub(crate) struct Wrapped {
     rows: Vec<Line<'static>>,
-    continues: Vec<Option<Continuation>>,
+    continues: Vec<Option<RowWrap>>,
     marks: Marks,
 }
 
@@ -1202,7 +1202,7 @@ impl Transcript {
     fn joined<'a>(
         &'a self,
         parts: &'a [Part],
-    ) -> impl Iterator<Item = (&'a Line<'static>, Option<&'a Continuation>)> + 'a {
+    ) -> impl Iterator<Item = (&'a Line<'static>, Option<&'a RowWrap>)> + 'a {
         let wrapped = parts.iter().filter_map(|part| self.wrapped(part));
         let rows = wrapped.flat_map(|wrapped| wrapped.rows.iter().zip(&wrapped.continues));
         rows.map(|(row, continues)| (row, continues.as_ref()))

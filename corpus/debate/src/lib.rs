@@ -13,7 +13,7 @@
 use rig_basics::{AgentColumn, ColumnOf};
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_telemetry::Spending;
+use rig_telemetry::AgentUsage;
 use serde::Deserialize;
 
 /// The rounds when neither the settings nor `--rounds` say.
@@ -394,7 +394,7 @@ fn add_spent_column(inserted: On<Insert<Debater>>, mut commands: Commands) {
 /// Keeps each debater's spend column current.
 fn show_spent(
     mut columns: Query<(&mut AgentColumn, &ColumnOf), With<SpentColumn>>,
-    spent: Query<Ref<Spending>>,
+    spent: Query<Ref<AgentUsage>>,
 ) {
     for (mut column, &ColumnOf(agent)) in &mut columns {
         if let Ok(spending) = spent.get(agent)

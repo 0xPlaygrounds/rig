@@ -7,7 +7,7 @@ use crate::Highlight;
 /// The screen after drawing `shown` as `choosing` says, 120 columns by
 /// 20 rows, a line per row.
 fn drawn_choice(
-    choosing: &mut super::super::pick::PickerState,
+    choosing: &mut super::super::pick::PickerInput,
     shown: &super::super::pick::Listing<'_>,
 ) -> String {
     use ratatui::Terminal;
@@ -29,7 +29,7 @@ fn drawn_choice(
 
 #[test]
 fn a_question_shows_its_body_choices_and_typed_answer() {
-    use super::super::pick::{Item, Listing, PickerState, Row};
+    use super::super::pick::{Item, Listing, PickerInput, Row};
 
     let mut shown = Listing {
         title: "Allow `rm -rf build`?",
@@ -50,7 +50,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         edit: None,
         keys: &[],
     };
-    let mut choosing = PickerState {
+    let mut choosing = PickerInput {
         filter: "allow".to_owned(),
         selected: 0,
         ticked: Vec::new(),
@@ -226,7 +226,7 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
 #[test]
 fn a_repaint_writes_its_cells_again_on_the_next_frame() {
     use crate::tests::view_app;
-    use crate::{Repaint, TuiTestScreen};
+    use crate::{RedrawArea, TuiTestScreen};
     use ratatui::layout::Rect;
 
     let (mut app, _) = view_app();
@@ -240,9 +240,9 @@ fn a_repaint_writes_its_cells_again_on_the_next_frame() {
             .is_empty()
     );
     app.world_mut()
-        .write_message(Repaint(Rect::new(10, 3, 30, 2)));
+        .write_message(RedrawArea(Rect::new(10, 3, 30, 2)));
     app.world_mut()
-        .write_message(Repaint(Rect::new(50, 19, 30, 4)));
+        .write_message(RedrawArea(Rect::new(50, 19, 30, 4)));
     app.update();
     assert_eq!(
         app.world().resource::<TuiTestScreen>().repainted(),

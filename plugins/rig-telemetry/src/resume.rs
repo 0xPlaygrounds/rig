@@ -1,11 +1,11 @@
 //! What the session spent, in its line in `/resume`: a [`ResumeLabel`]
-//! like any plugin's, kept current from [`SessionSpending`].
+//! like any plugin's, kept current from [`SessionUsage`].
 
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
 use rig_sessions::ResumeLabel;
 
-use super::SessionSpending;
+use super::SessionUsage;
 
 /// The tag of the session's spending among its [`ResumeLabel`]s, and so
 /// in its listing's `labels`.
@@ -24,13 +24,13 @@ pub(super) fn add(app: &mut App) {
         label_spending
             .after(StopTurnsOnExit)
             .before(WriteLogs)
-            .run_if(resource_changed::<SessionSpending>),
+            .run_if(resource_changed::<SessionUsage>),
     );
 }
 
 /// Says what the session's model calls cost, or their tokens when none
 /// was priced; nothing before the first call.
-fn label_spending(spent: Res<SessionSpending>, mut labels: Query<&mut ResumeLabel, With<Spent>>) {
+fn label_spending(spent: Res<SessionUsage>, mut labels: Query<&mut ResumeLabel, With<Spent>>) {
     let total = &spent.0.total;
     let text = if total.calls > 0 {
         total.cost_or_tokens()

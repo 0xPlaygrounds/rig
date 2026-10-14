@@ -43,7 +43,7 @@ use ratatui::widgets::Widget;
 pub enum TuiSystems {
     /// Before the frame is laid out: a plugin updates what it shows and
     /// its [`TuiPanel`]s here, such as a placement that depends on the
-    /// [`TuiScreen`].
+    /// [`TerminalSize`].
     Prepare,
     /// The view decides whether to draw a frame and lays it out: first
     /// every panel by its placement (the input, the status line, the
@@ -79,11 +79,11 @@ pub struct RequestRedraw;
 /// cells go out before that frame's
 /// [`TerminalWrite`](crate::TerminalWrite)s.
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Repaint(pub Rect);
+pub struct RedrawArea(pub Rect);
 
 /// The size of the terminal, from its start and each resize.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TuiScreen(pub Rect);
+pub struct TerminalSize(pub Rect);
 
 /// Marks the agent the terminal view shows and sends what is typed to.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]

@@ -124,7 +124,7 @@ fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
 
 /// Keys a modal filter turned into actions, one at a time, as vim's
 /// normal mode would: `d` waits for its motion.
-fn normal_mode(mut events: ResMut<crate::TerminalEvents>, mut deleting: Local<bool>) {
+fn normal_mode(mut events: ResMut<crate::PendingInput>, mut deleting: Local<bool>) {
     use crate::{InputAction, KeyInput, KeyPress};
     use crossterm::event::{Event, KeyCode};
     let key = |item: &KeyInput| match item {
@@ -170,7 +170,7 @@ struct Seen(Vec<String>);
 
 /// Notes the input as the key being done finds it.
 fn note_input(
-    events: Res<crate::TerminalEvents>,
+    events: Res<crate::PendingInput>,
     input: Single<&Editor, With<crate::MainEditor>>,
     mut seen: ResMut<Seen>,
 ) {
@@ -197,7 +197,7 @@ struct Searches(usize);
 
 /// `/` on an empty input opens a search instead of a slash command.
 fn slash_searches(
-    mut events: ResMut<crate::TerminalEvents>,
+    mut events: ResMut<crate::PendingInput>,
     input: Single<&Editor, With<crate::MainEditor>>,
     mut searches: ResMut<Searches>,
 ) {

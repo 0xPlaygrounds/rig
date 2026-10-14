@@ -7,7 +7,7 @@ use rig_harness_test_support::{
     Collected, MemoryStore, app_on, calls, collect, reply, run_until, scripted_models, tui_view,
 };
 use rig_subagents::SubagentsPlugin;
-use rig_tui::{Focus, TuiTestScreen};
+use rig_tui::{ShowAgent, TuiTestScreen};
 use serde_json::json;
 
 use super::*;
@@ -78,7 +78,7 @@ fn start(
         model: MAIN_MODEL.to_owned(),
     });
     // The terminal view shows the main agent, as a front does.
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
     (app, wakes, agent)
 }
 

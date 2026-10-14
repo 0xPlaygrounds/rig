@@ -4,7 +4,7 @@ use rig_harness::rig_core::message::{ToolCall, ToolFunction, ToolName};
 use super::*;
 
 /// The agent's status after a frame.
-fn status(app: &mut App, agent: Entity) -> Option<Status> {
+fn status(app: &mut App, agent: Entity) -> Option<ActivityStatus> {
     app.update();
     let activity = app.world().get::<Activity>(agent);
     activity.map(|activity| activity.status.clone())
@@ -26,12 +26,12 @@ fn a_question_and_a_plugins_work_outside_the_turn_show() {
     let review = world
         .spawn((review, ForAgent(agent), Name::new("reviewing")))
         .id();
-    let reviewing = Some(Status::Busy("reviewing".to_owned()));
+    let reviewing = Some(ActivityStatus::Busy("reviewing".to_owned()));
     assert_eq!(status(&mut app, agent), reviewing);
 
     let ask = Ask::yes_no("Keep the changes?");
     let ask = app.world_mut().spawn((ask, ForAgent(agent))).id();
-    let asking = Some(Status::Asking("Keep the changes?".to_owned()));
+    let asking = Some(ActivityStatus::Asking("Keep the changes?".to_owned()));
     assert_eq!(status(&mut app, agent), asking);
 
     let yes = Answer::choice("yes").outcome();
@@ -40,7 +40,7 @@ fn a_question_and_a_plugins_work_outside_the_turn_show() {
     app.world_mut()
         .entity_mut(review)
         .insert(Outcome::custom("done"));
-    assert_eq!(status(&mut app, agent), Some(Status::Idle));
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::Idle));
 }
 
 #[test]
@@ -83,11 +83,11 @@ fn an_inline_question_leaves_a_running_turn_its_status() {
     let agent = world.spawn(Agent).id();
     let ask = Ask::yes_no("Try the next step?").inline();
     world.spawn((ask, ForAgent(agent)));
-    let asking = Some(Status::Asking("Try the next step?".to_owned()));
+    let asking = Some(ActivityStatus::Asking("Try the next step?".to_owned()));
     assert_eq!(status(&mut app, agent), asking);
 
     app.world_mut().spawn(TurnOf(agent));
-    assert_eq!(status(&mut app, agent), Some(Status::Thinking));
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
 }
 
 #[test]

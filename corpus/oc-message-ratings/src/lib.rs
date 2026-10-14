@@ -23,8 +23,8 @@ use rig_tui::crossterm::event::{KeyCode, KeyModifiers};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, EntryView, Focus, InputAction, ItemRow, KeyBinding,
-    KeyPress, KeyPressed, KeyScope, MainPane, ScrollTo, TranscriptItem, TranscriptView, TuiPlugin,
+    AppKeyBindingsExt, AppToolRenderersExt, EntryView, InputAction, ItemRow, KeyBinding, KeyPress,
+    KeyPressed, KeyScope, MainPane, ScrollTo, ShowAgent, TranscriptItem, TranscriptView, TuiPlugin,
     run_command,
 };
 use serde::{Deserialize, Serialize};
@@ -423,7 +423,7 @@ fn open(
     let item = TranscriptItem::Aside(marker);
     view.expanded.insert(item.clone());
     view.selected = Some(item.clone());
-    commands.trigger(Focus { entity: agent });
+    commands.trigger(ShowAgent { entity: agent });
     commands.trigger(ScrollTo {
         pane,
         item: Some(item),

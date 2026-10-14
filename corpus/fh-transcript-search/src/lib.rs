@@ -35,9 +35,9 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Focus, Highlight, InputSystems,
-    ItemRow, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope, LineSpan, MainPane,
-    PanelCanvas, Placement, RequestRedraw, ScrollTo, TerminalEvents, TranscriptItem,
+    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Highlight, InputSystems, ItemRow,
+    KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope, LineSpan, MainPane,
+    PanelCanvas, PendingInput, Placement, RequestRedraw, ScrollTo, ShowAgent, TranscriptItem,
     TranscriptLayout, TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
 };
 
@@ -446,7 +446,7 @@ impl Transcripts<'_, '_> {
 /// changed, and shows the match in the transcript; Esc closes it. A filter
 /// of each key.
 fn type_in_bar(
-    mut events: ResMut<TerminalEvents>,
+    mut events: ResMut<PendingInput>,
     mut bars: Query<(Entity, &mut TranscriptSearch)>,
     transcripts: Transcripts,
     main: Main,
@@ -566,7 +566,7 @@ fn show(
         let found = drawn.iter().find(|found| found.key() == hit.key());
         let row = ItemRow::Top(found.map_or(hit.row, |found| found.row));
         let item = hit.item().cloned();
-        commands.trigger(Focus { entity: hit.agent });
+        commands.trigger(ShowAgent { entity: hit.agent });
         commands.trigger(ScrollTo { pane, item, row });
     }
     // Drawn cut, the match shown counts among other matches of its item.
@@ -607,7 +607,7 @@ fn close(
     if let Some((agent, top)) = search.back.take() {
         let (item, row) = top.map_or((None, 0), |(item, row)| (Some(item), row));
         let row = ItemRow::Top(row);
-        commands.trigger(Focus { entity: agent });
+        commands.trigger(ShowAgent { entity: agent });
         commands.trigger(ScrollTo { pane, item, row });
     }
 }

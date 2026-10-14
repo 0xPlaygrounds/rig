@@ -35,7 +35,7 @@ const SHOWN: usize = 50;
 /// command, such as `/model`'s models ([`CompletionSource::arg`]). The
 /// word typed completes to the candidates it matches. Several for one
 /// trigger add up; keep one current by inserting it again, such as when
-/// a lookup of what is typed ([`TuiInputState::typed`]) finished: an open
+/// a lookup of what is typed ([`InputContext::typed`]) finished: an open
 /// list follows.
 ///
 /// ```
@@ -49,7 +49,7 @@ const SHOWN: usize = 50;
 /// }
 /// ```
 ///
-/// [`TuiInputState::typed`]: crate::TuiInputState::typed
+/// [`InputContext::typed`]: crate::InputContext::typed
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct CompletionSource {
     /// What it completes.
@@ -167,7 +167,7 @@ pub struct Candidate {
 }
 
 /// The open completion list of the input, as
-/// [`TuiInputState::completion`](crate::TuiInputState::completion) gives it.
+/// [`InputContext::completion`](crate::InputContext::completion) gives it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Completion {
     /// What it completes.

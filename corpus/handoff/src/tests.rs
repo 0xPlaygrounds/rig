@@ -6,7 +6,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, commit_message, connect, log_ended, reply, run_until,
 };
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, UsagePlugin};
 
 use super::*;
 
@@ -119,7 +119,7 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     }
     // The brief's call counts in A's usage, as a handoff.
     let spent = world
-        .get::<Spending>(a)
+        .get::<AgentUsage>(a)
         .and_then(|spent| spent.purposes.get(PURPOSE));
     assert_eq!(spent.map(|spent| spent.calls), Some(1));
     drop(app);

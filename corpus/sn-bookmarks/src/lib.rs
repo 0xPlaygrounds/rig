@@ -25,8 +25,8 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppToolRenderersExt, AsideView, Focus, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed,
-    KeyScope, MainPane, PaneKeys, Placement, ScrollTo, TranscriptItem, TranscriptPane,
+    AppToolRenderersExt, AsideView, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope,
+    MainPane, PaneKeys, Placement, ScrollTo, ShowAgent, TranscriptItem, TranscriptPane,
     TranscriptSource, TranscriptView, TuiPanel,
 };
 use serde::{Deserialize, Serialize};
@@ -285,7 +285,7 @@ fn open(
         };
         let (pane, mut view) = main.into_inner();
         view.selected = Some(item.clone());
-        commands.trigger(Focus { entity: agent });
+        commands.trigger(ShowAgent { entity: agent });
         commands.trigger(ScrollTo {
             pane,
             item: Some(item),

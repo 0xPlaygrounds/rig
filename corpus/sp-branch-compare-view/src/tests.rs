@@ -6,7 +6,7 @@ use rig_harness_test_support::{
     Ended, MemoryStore, app_on, calls, log_ended, press, reply, run_until, scripted_models,
     tui_view,
 };
-use rig_tui::{Focus, TuiTestScreen};
+use rig_tui::{ShowAgent, TuiTestScreen};
 use serde_json::json;
 
 use super::*;
@@ -127,7 +127,7 @@ fn two_branches_side_by_side_aligned_by_turn_and_the_picked_one_goes_on() {
     app.finish();
     app.cleanup();
     app.update();
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
 
     // Turn 1 on the main line; then branch A from it, and branch B.
     ask(&mut app, &wakes, agent, "start", 1);

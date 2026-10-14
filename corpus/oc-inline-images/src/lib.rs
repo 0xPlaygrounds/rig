@@ -43,8 +43,8 @@ use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
     AppKeyBindingsExt, AppToolRenderersExt, CallDecorator, ContentBlock, ContentKind,
     CopyToClipboard, DrawnTranscript, KeyBinding, KeyPress, KeyPressed, KeyScope, MainPane,
-    Repaint, TerminalWrite, ToolCallView, TranscriptItem, TranscriptView, TuiFrame, TuiScreen,
-    TuiSystems,
+    RedrawArea, TerminalSize, TerminalWrite, ToolCallView, TranscriptItem, TranscriptView,
+    TuiFrame, TuiSystems,
 };
 use serde::Deserialize;
 
@@ -513,7 +513,7 @@ fn follow_look(
     images: Res<Images>,
     (settings, graphics): (Res<ImagesSettings>, Res<TerminalGraphics>),
     (screen, view): (
-        Res<TuiScreen>,
+        Res<TerminalSize>,
         Option<Single<&TranscriptView, With<MainPane>>>,
     ),
     mut decorators: Query<&mut CallDecorator>,
@@ -820,7 +820,7 @@ fn place_images(
     (drawn, frame): (Single<Ref<DrawnTranscript>, With<MainPane>>, Res<TuiFrame>),
     conversations: Query<&Conversation>,
     mut placed: ResMut<Placed>,
-    (mut terminal, mut repaints): (MessageWriter<TerminalWrite>, MessageWriter<Repaint>),
+    (mut terminal, mut repaints): (MessageWriter<TerminalWrite>, MessageWriter<RedrawArea>),
 ) {
     if !drawn.is_changed() && !frame.is_changed() && !placed.deferred {
         return;
@@ -848,7 +848,7 @@ fn place_images(
     if !out.is_empty() {
         terminal.write(TerminalWrite(out.into_bytes()));
     }
-    repaints.write_batch(repaint.into_iter().map(Repaint));
+    repaints.write_batch(repaint.into_iter().map(RedrawArea));
 }
 
 /// Takes kitty's images off the screen as the app exits.
@@ -960,9 +960,9 @@ impl Plugin for InlineImagesPlugin {
         app.insert_resource(images)
             .init_resource::<Placed>()
             .init_resource::<TuiFrame>()
-            .init_resource::<TuiScreen>()
+            .init_resource::<TerminalSize>()
             .add_message::<TerminalWrite>()
-            .add_message::<Repaint>()
+            .add_message::<RedrawArea>()
             .add_message::<CopyToClipboard>()
             .add_content_renderer(ContentKind::Image, move |view| match view.block {
                 ContentBlock::Image(image) => content.lock().lines(image).0,

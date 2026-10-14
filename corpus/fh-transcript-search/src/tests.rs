@@ -57,7 +57,7 @@ fn note_interrupt(_: On<StopTurn>, mut interrupts: ResMut<Interrupts>) {
 /// Ctrl+F, then `keys`, in one frame: the bar takes the keys after it.
 fn search(app: &mut App, keys: impl IntoIterator<Item = KeyCode>) {
     let ctrl_f = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
-    let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+    let mut events = app.world_mut().resource_mut::<PendingInput>();
     events.0.push(KeyInput::Event(Event::Key(ctrl_f)));
     press(app, keys);
 }
@@ -89,7 +89,7 @@ fn edit_view(app: &mut App, edit: impl FnOnce(&mut TranscriptView)) {
 fn press(app: &mut App, keys: impl IntoIterator<Item = KeyCode>) {
     for code in keys {
         let key = KeyEvent::new(code, KeyModifiers::NONE);
-        let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+        let mut events = app.world_mut().resource_mut::<PendingInput>();
         events.0.push(KeyInput::Event(Event::Key(key)));
     }
     app.update();

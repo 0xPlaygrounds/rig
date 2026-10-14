@@ -20,7 +20,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_sessions::{NameSession, SessionsPlugin};
 use rig_tools::{ago, shorten};
-use rig_tui::{Focus, MainInput};
+use rig_tui::{MainInput, ShowAgent};
 
 /// Most characters of a message in the `/branch` picker.
 const LABEL_CHARS: usize = 70;
@@ -355,7 +355,7 @@ fn arrive(
         .map(|(agent, ..)| agent)
         .or_else(|| main_agent(&agents))
     {
-        commands.trigger(Focus { entity });
+        commands.trigger(ShowAgent { entity });
     }
     if let Some(mut input) = input {
         input.set(text);

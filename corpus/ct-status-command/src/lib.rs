@@ -25,7 +25,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_tools::process::{Launcher, Spawn};
 use rig_harness::rig_tools::workspace::Listing;
 use rig_sessions::SessionTitle;
-use rig_telemetry::SessionSpending;
+use rig_telemetry::SessionUsage;
 use rig_tui::{AppStatus, FRONT, Side, StatusItem, StatusSystems, Tone};
 use serde::{Deserialize, Serialize};
 
@@ -294,7 +294,7 @@ fn observe(
         Res<ProjectRoot>,
         Option<Res<SessionPaths>>,
         Option<Res<SessionTitle>>,
-        Option<Res<SessionSpending>>,
+        Option<Res<SessionUsage>>,
     ),
     agents: Query<Observed, With<Agent>>,
     mut input: ResMut<StatusInput>,

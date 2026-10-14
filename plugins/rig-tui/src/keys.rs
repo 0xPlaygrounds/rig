@@ -17,7 +17,7 @@
 //! do it in `Plugin::finish`, once every plugin's `build` ran. A plugin
 //! that wants keys before every binding, or only in some states, such as a
 //! modal editor or `/` on an empty input, takes them from the
-//! [`TerminalEvents`](crate::TerminalEvents) in
+//! [`PendingInput`](crate::PendingInput) in
 //! [`InputSystems::Filter`](crate::InputSystems::Filter) instead.
 //!
 //! A plugin's pressed binding triggers [`KeyPressed`] on its entity,
@@ -466,7 +466,7 @@ pub fn run_command(
 /// the binding does, in order with the other keys of the frame, instead of
 /// triggering [`KeyPressed`]: the view's own keys are such bindings, and a
 /// plugin rebinds one by spawning its own. Pushed onto the
-/// [`TerminalEvents`](crate::TerminalEvents) as
+/// [`PendingInput`](crate::PendingInput) as
 /// [`KeyInput::Action`](crate::KeyInput::Action), it is done where it
 /// stands among the keys.
 ///

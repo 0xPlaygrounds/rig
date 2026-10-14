@@ -11,7 +11,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_memory::{Place, rewrite_value};
 
 /// How many warnings and errors [`Diagnostics`] keeps.
-pub const KEPT: usize = 100;
+pub const MAX_DIAGNOSTICS: usize = 100;
 
 /// Keeps the warnings and errors the log passes on in [`Diagnostics`].
 #[derive(Default)]
@@ -49,7 +49,7 @@ fn collect(
             .next()
             .filter(|_| owners.next().is_none())
             .map(Name::to_string);
-        if diagnostics.0.len() == KEPT {
+        if diagnostics.0.len() == MAX_DIAGNOSTICS {
             diagnostics.0.pop_front();
         }
         diagnostics.0.push_back(logged);

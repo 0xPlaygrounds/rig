@@ -7,7 +7,7 @@
 //! keys and runs them through [`editor::Editor`] (motions, counts,
 //! operators, registers, undo and a visual selection), written back into
 //! the main input ([`MainInput`]). While a picker, a question or a panel has the keys
-//! ([`TuiInputState`]), it leaves them alone. Enter stays the view's key,
+//! ([`InputContext`]), it leaves them alone. Enter stays the view's key,
 //! so it sends in either mode. Twice within [`DOUBLE_ESC`] in normal mode
 //! with an empty input, the Esc goes on to the view, doing what it does
 //! without the plugin. The mode shows in the status line, and `/vim on|off`
@@ -19,8 +19,8 @@ use rig_harness::prelude::*;
 use rig_harness::rig_tools::clipboard;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use rig_tui::{
-    AppStatus, CopyToClipboard, InputAction, InputSystems, KeyInput, KeyScope, MainInput, Sent,
-    Side, StatusItem, StatusSystems, TerminalEvents, Tone, TuiInputState, TuiKeys, TuiPlugin,
+    AppStatus, CopyToClipboard, InputAction, InputContext, InputSystems, KeyInput, KeyScope,
+    MainInput, PendingInput, Sent, Side, StatusItem, StatusSystems, Tone, TuiKeys, TuiPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -146,8 +146,8 @@ enum Take {
 /// input before the view does the keys passed on, whatever their order).
 #[allow(clippy::too_many_arguments)]
 fn edit(
-    mut events: ResMut<TerminalEvents>,
-    state: Res<TuiInputState>,
+    mut events: ResMut<PendingInput>,
+    state: Res<InputContext>,
     mut vim: ResMut<Vim>,
     mut input: MainInput,
     time: Res<Time<Real>>,

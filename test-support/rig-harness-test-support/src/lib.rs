@@ -349,11 +349,11 @@ pub fn tui_view(app: &mut App) -> &mut App {
 /// the terminal view ([`tui_view`]), then runs that frame.
 pub fn press(app: &mut App, keys: &str) {
     use rig_tui::crossterm::event::{Event, KeyEvent};
-    use rig_tui::{KeyInput, Keys, TerminalEvents};
+    use rig_tui::{KeyInput, Keys, PendingInput};
 
     let parsed: Result<Keys, String> = keys.parse();
     assert!(parsed.is_ok(), "{keys}: {parsed:?}");
-    let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+    let mut events = app.world_mut().resource_mut::<PendingInput>();
     for press in parsed.iter().flat_map(Keys::presses) {
         let key = KeyEvent::new(press.code, press.modifiers);
         events.0.push(KeyInput::Event(Event::Key(key)));

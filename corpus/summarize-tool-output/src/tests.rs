@@ -4,7 +4,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scripted_models,
 };
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, UsagePlugin};
 
 use super::*;
 
@@ -99,7 +99,7 @@ fn a_big_output_is_saved_and_summarized_by_the_cheap_model() {
     assert_eq!(numbers.count(), 2000, "{whole}");
     assert_eq!(cheap.request_count(), 1);
     // The summary counts in the agent's usage, as the summarizer's.
-    let spent = app.world().get::<Spending>(agent);
+    let spent = app.world().get::<AgentUsage>(agent);
     let summarizer = spent.and_then(|spent| spent.purposes.get("summarizer"));
     assert_eq!(summarizer.map(|spent| spent.calls), Some(1));
     clean(&root);

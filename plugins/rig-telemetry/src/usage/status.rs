@@ -5,7 +5,7 @@ use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
-use super::{Spending, TurnSpending, Window};
+use super::{AgentUsage, TurnUsage, Window};
 
 pub(super) fn add(app: &mut App) {
     app.add_systems(
@@ -31,19 +31,19 @@ const CONTEXT: StatusItem = StatusItem::new("context", Side::Right, 40, 5);
 fn show_meter(
     mut agents: Query<
         (
-            (&Spending, &LastUsage),
+            (&AgentUsage, &LastUsage),
             (Option<&Connection>, Option<&Window>),
             &mut StatusItems,
         ),
         Or<(
-            Changed<Spending>,
+            Changed<AgentUsage>,
             Changed<LastUsage>,
             Changed<Connection>,
             Changed<Window>,
         )>,
     >,
 ) {
-    for ((Spending { total: spent, .. }, last), (connection, window), mut items) in &mut agents {
+    for ((AgentUsage { total: spent, .. }, last), (connection, window), mut items) in &mut agents {
         let shown = spent.calls > 0;
         let window = Window::of(window, connection);
         let context = last.context().map(|tokens| ContextUse { tokens, window });
@@ -70,8 +70,8 @@ fn show_meter(
 }
 
 /// What each running turn spent so far, once a model call of it finished.
-fn show_turn(mut turns: Query<(&TurnSpending, &mut StatusItems), Changed<TurnSpending>>) {
-    for (TurnSpending(spent), mut items) in &mut turns {
+fn show_turn(mut turns: Query<(&TurnUsage, &mut StatusItems), Changed<TurnUsage>>) {
+    for (TurnUsage(spent), mut items) in &mut turns {
         if spent.calls > 0 {
             let used = spent.cost_or_tokens();
             items.show(TURN.says(format!("this turn {used}"), Tone::Dim));

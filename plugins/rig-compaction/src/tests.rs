@@ -12,7 +12,7 @@ use super::*;
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, commit_message, connect, log_ended, reply, run_until,
 };
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, UsagePlugin};
 
 /// What a second Prepare system adds to every turn's request.
 const INJECTED: &str = "Context from another plugin.";
@@ -199,7 +199,10 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     );
     assert!(live.len() < before.len());
     // The usage plugin counts the summary's call with the turn's.
-    let spent = app.world().get::<Spending>(agent).map(|spent| spent.total);
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .map(|spent| spent.total);
     assert_eq!(spent.map(|spent| spent.calls), Some(2));
 
     // A second compaction builds on the first summary without reading it

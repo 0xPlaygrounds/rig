@@ -1,7 +1,7 @@
 //! A dollar budget for the session. `/budget 2.00` sets it, `/budget`
 //! shows what was spent against it and `/budget off` removes it; a new
 //! session starts with the `default` of the `[budget]` settings table, if
-//! any. What was spent is rig-telemetry's [`SessionSpending`]: every model
+//! any. What was spent is rig-telemetry's [`SessionUsage`]: every model
 //! call of every agent, subagents' and plugins' calls included, priced as
 //! rig-core prices them. At 80% a warning is shown once. Once the budget
 //! is spent, a Gate system refuses every model request about to be sent:
@@ -11,7 +11,7 @@
 //! `$1.42/$2.00`, red past 80%.
 
 use rig_harness::prelude::*;
-use rig_telemetry::{SessionSpending, UsagePlugin};
+use rig_telemetry::{SessionUsage, UsagePlugin};
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 use serde::Deserialize;
 
@@ -50,9 +50,9 @@ impl Plugin for CostBudgetPlugin {
         .add_systems(
             PostUpdate,
             (
-                warn.run_if(resource_changed::<SessionSpending>),
+                warn.run_if(resource_changed::<SessionUsage>),
                 show.in_set(StatusSystems::Show).run_if(
-                    resource_changed::<SessionSpending>.or_eager(resource_changed::<Budget>),
+                    resource_changed::<SessionUsage>.or_eager(resource_changed::<Budget>),
                 ),
             ),
         );
@@ -90,7 +90,7 @@ impl Budget {
 }
 
 /// What the session spent, in USD.
-fn spent(spending: &SessionSpending) -> f64 {
+fn spent(spending: &SessionUsage) -> f64 {
     spending.0.total.cost
 }
 
@@ -110,7 +110,7 @@ fn valid(limit: f64) -> bool {
 fn refuse_when_spent(
     mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls)>,
     budget: Res<Budget>,
-    spending: Res<SessionSpending>,
+    spending: Res<SessionUsage>,
 ) {
     let spent = spent(&spending);
     let Some(limit) = budget.limit.filter(|limit| spent >= *limit) else {
@@ -127,7 +127,7 @@ fn refuse_when_spent(
 
 /// Warns once when 80% of the budget is spent.
 fn warn(
-    spending: Res<SessionSpending>,
+    spending: Res<SessionUsage>,
     mut budget: ResMut<Budget>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -143,7 +143,7 @@ fn warn(
 fn budget(
     In(args): In<CommandArgs>,
     mut budget: ResMut<Budget>,
-    spending: Res<SessionSpending>,
+    spending: Res<SessionUsage>,
     mut notices: MessageWriter<Notice>,
 ) {
     let spent = spent(&spending);
@@ -175,7 +175,7 @@ fn budget(
 
 /// The session's spending against its budget in the status line, red past
 /// 80%; nothing without a budget.
-fn show(budget: Res<Budget>, spending: Res<SessionSpending>, mut status: ResMut<AppStatus>) {
+fn show(budget: Res<Budget>, spending: Res<SessionUsage>, mut status: ResMut<AppStatus>) {
     let spent = spent(&spending);
     let tone = if budget.near(spent) {
         Tone::Red
