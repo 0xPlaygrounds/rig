@@ -14,7 +14,7 @@ bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order"] }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
