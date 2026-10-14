@@ -81,7 +81,9 @@ impl Deref for SessionPaths {
 /// written; a run whose store does not open, or whose session cannot be
 /// read, is refused, and nothing of the session is changed. Every store it
 /// opens marks its session saved ([`SessionDir::mark_saved`]) the first
-/// time a log is written to it, so `/resume` lists the session. By default
+/// time a log is written to it, so `/resume` lists the session, but a
+/// sessionless run's ([`Front::sessionless`](super::cli::Front::sessionless)).
+/// By default
 /// a session is kept in its directory ([`DirStore`]: `logs/`, `blobs/` and
 /// `files/`), which refuses a session an older rig saved.
 #[derive(Resource, Clone)]
@@ -393,20 +395,26 @@ fn insert_plugin_data(world: &mut World) {
 /// Opens the session's store, the one in the world or else the one the
 /// run's front or [`SessionStores`] opens for [`SessionPaths`], and reads
 /// the session it holds ([`open_session`]), before anything is written to
-/// it.
+/// it. A sessionless run's store never marks its session saved, whoever
+/// opens it, so a crash leaves no session for `/resume` to list.
 fn open_store(world: &mut World) -> Result<(), LoadError> {
     let store = match world.remove_resource::<SessionStore>() {
         Some(SessionStore(store)) => store,
         None => {
             cli::choose(world);
             let front = world.get_resource::<Cli>().and_then(Cli::chosen);
+            let keeps = !front.is_some_and(|front| front.sessionless);
             let stores = front
                 .and_then(|front| front.session_store.as_ref())
                 .or_else(|| world.get_resource::<SessionStores>());
             let (Some(paths), Some(stores)) = (world.get_resource::<SessionPaths>(), stores) else {
                 return Ok(());
             };
-            stores.open(paths)?
+            if keeps {
+                stores.open(paths)?
+            } else {
+                (stores.0)(paths)?
+            }
         }
     };
     open_session(world, store)

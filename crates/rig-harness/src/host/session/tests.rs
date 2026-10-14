@@ -487,6 +487,53 @@ fn a_fronts_own_store_keeps_only_the_sessions_of_its_runs() {
     assert_eq!(print, Some((false, false)));
 }
 
+/// A sessionless run never marks its session saved, in a front's own
+/// store (such as a question asked in memory) or in its directory, so a
+/// crash leaves nothing `/resume` lists; a run that keeps its session
+/// does, a front's own store included.
+#[test]
+fn a_sessionless_run_never_marks_its_session_saved() {
+    let home = scratch_home("rig-sessionless-unmarked");
+    let crashed = |id: &str, front: Front| {
+        let id: SessionId = id.parse().ok()?;
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .add_plugins(SessionPlugin)
+            .add_front(front);
+        app.finish();
+        let store = app.world().get_resource::<SessionStore>()?.0.clone();
+        let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+        save(&*store, "agent-1", &mut said).ok()?;
+        // No exit: the run is cut short.
+        drop(app);
+        Some(session.is_saved())
+    };
+    let in_memory = |front: Front| {
+        let store = MemoryStore::default();
+        front.session_store(move |_| Ok(Arc::new(store.clone())))
+    };
+    let asked = crashed(
+        "1700000000-12",
+        in_memory(Front::new("ask").headless().sessionless()),
+    );
+    let exported = crashed(
+        "1700000000-13",
+        Front::new("export").headless().sessionless(),
+    );
+    let replied = crashed("1700000000-14", in_memory(Front::new("reply").headless()));
+    let printed = crashed("1700000000-15", Front::new("print").headless());
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(asked, Some(false), "a sessionless front's own store");
+    assert_eq!(exported, Some(false), "a sessionless run's directory");
+    assert_eq!(replied, Some(true), "a front's own store");
+    assert_eq!(printed, Some(true), "its directory");
+}
+
 #[test]
 fn a_new_session_and_a_fork_start_new_and_a_second_start_resumes() {
     let root = std::env::temp_dir().join(format!("rig-first-{}", std::process::id()));
