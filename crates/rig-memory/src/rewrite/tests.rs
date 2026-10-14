@@ -324,6 +324,39 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     assert_eq!(main.messages().last(), Some(&Message::assistant("fine")));
 }
 
+/// A writer without a store rewrites nothing. One with a store rewrites a
+/// log saved there by another hand too, and goes on with its own.
+#[test]
+fn a_writer_rewrites_its_whole_store_and_without_one_nothing() {
+    let nothing = Writer::default()
+        .rewrite(Author::plugin("redact"), &redact())
+        .expect("rewritten");
+    assert!(nothing.logs.is_empty() && nothing.files.is_empty());
+
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let mut live = Conversation::from_messages([Message::user("sk-1 here")]);
+    writer.save("main", &mut live);
+    let mut other = Conversation::from_messages([Message::user("sk-1 there")]);
+    save(&*store, "other", &mut other).expect("saved by another hand");
+    let rewritten = writer
+        .rewrite(Author::plugin("redact"), &redact())
+        .expect("rewritten");
+    let mut names: Vec<&str> = rewritten.logs.iter().map(|log| log.log.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["main", "other"]);
+    let other = load(&*store, "other").expect("loaded");
+    assert_eq!(other.messages(), [Message::user("[R] there")]);
+    let main = rewritten.logs.iter().find(|log| log.log == "main");
+    live.reread(main.expect("main").conversation.clone())
+        .expect("reread");
+    live.push(Message::assistant("ok"));
+    writer.save("main", &mut live);
+    writer.flush();
+    assert_eq!(load(&*store, "main").expect("loaded"), live);
+}
+
 /// A map that also changes a field name or a tag of a message keeps the
 /// message readable and still maps its data.
 #[test]
