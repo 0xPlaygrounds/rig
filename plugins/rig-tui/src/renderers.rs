@@ -51,13 +51,16 @@ use bevy_ecs::system::SystemParam;
 use bevy_log::warn;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
-use rig_core::completion::AssistantContent;
+use rig_core::completion::{AssistantContent, Message};
+use rig_core::conversation::Branch;
 use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
 use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
-use rig_ecs::prelude::MessageId;
+use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
+use rig_harness::note::Note;
+use rig_harness::rig_memory::SplitPointer;
 use rig_tools::shorten;
 
-use super::diff;
+use super::{diff, markdown};
 
 /// Characters of a call's arguments shown on its header line.
 const ARGUMENT_CHARS: usize = 160;
@@ -424,6 +427,14 @@ impl ContentView<'_> {
     }
 }
 
+/// The name of the plugin `author` is, or empty for any other author.
+pub(crate) fn plugin_name(author: &Author) -> &str {
+    match &author.kind {
+        AuthorKind::Plugin(name) => name,
+        _ => "",
+    }
+}
+
 /// A tool result's text, joined.
 pub(crate) fn result_text(result: &ToolResult) -> String {
     result
@@ -494,6 +505,17 @@ pub struct ToolRenderer {
     pub render: Arc<RenderToolCall>,
 }
 
+impl ToolRenderer {
+    /// The look `render` of the tool `tool`.
+    pub fn new(
+        tool: &str,
+        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> Self {
+        let (tool, render) = (tool.to_owned(), Arc::new(render));
+        Self { tool, render }
+    }
+}
+
 /// Draws a note or a delivered text as transcript lines, not yet wrapped.
 pub type RenderEntry = dyn Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync;
 
@@ -508,6 +530,17 @@ pub struct EntryRenderer {
     pub render: Arc<RenderEntry>,
 }
 
+impl EntryRenderer {
+    /// The look `render` of the plugin `plugin`'s notes and texts.
+    pub fn new(
+        plugin: &str,
+        render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> Self {
+        let (plugin, render) = (plugin.to_owned(), Arc::new(render));
+        Self { plugin, render }
+    }
+}
+
 /// Draws a content block as transcript lines, not yet wrapped.
 pub type RenderContent = dyn Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync;
 
@@ -520,8 +553,65 @@ pub struct ContentRenderer {
     pub render: Arc<RenderContent>,
 }
 
-/// The decorators that drew lines under a call, each by name with the
-/// lines it drew among the call's.
+impl ContentRenderer {
+    /// The look `render` of the blocks of `kind`.
+    pub fn new(
+        kind: ContentKind,
+        render: impl Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> Self {
+        let render = Arc::new(render);
+        Self { kind, render }
+    }
+}
+
+/// Draws an aside as transcript lines, not yet wrapped.
+pub type RenderAside = dyn Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync;
+
+/// The look of the asides of a kind, on an entity of its own.
+#[derive(Component, Clone)]
+pub struct AsideRenderer {
+    /// The kind it draws, such as `rig.branch`.
+    pub kind: String,
+    /// Draws one aside.
+    pub render: Arc<RenderAside>,
+}
+
+impl AsideRenderer {
+    /// The look `render` of the asides of `kind`.
+    pub fn new(
+        kind: &str,
+        render: impl Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> Self {
+        let (kind, render) = (kind.to_owned(), Arc::new(render));
+        Self { kind, render }
+    }
+}
+
+/// Draws a message's text as transcript lines, not yet wrapped.
+pub type RenderMessage = dyn Fn(&MessageView<'_>) -> Vec<Line<'static>> + Send + Sync;
+
+/// The look of the text of a [`Role`], on an entity of its own.
+#[derive(Component, Clone)]
+pub struct MessageRenderer {
+    /// Whose text it draws.
+    pub role: Role,
+    /// Draws one text.
+    pub render: Arc<RenderMessage>,
+}
+
+impl MessageRenderer {
+    /// The look `render` of the text of `role`.
+    pub fn new(
+        role: Role,
+        render: impl Fn(&MessageView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> Self {
+        let render = Arc::new(render);
+        Self { role, render }
+    }
+}
+
+/// The decorators that drew lines under a call or a message, each by name
+/// with the lines it drew among its own.
 pub(crate) type Decorated = Vec<(String, std::ops::Range<usize>)>;
 
 /// Lines drawn under every tool call, after its look, on an entity of
@@ -534,8 +624,161 @@ pub struct CallDecorator {
     pub render: Arc<RenderToolCall>,
 }
 
-/// Registers tool, entry and content renderers and call decorators on an
-/// [`App`].
+impl CallDecorator {
+    /// The decorator `name` drawing `render`'s lines.
+    pub fn new(
+        name: &str,
+        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> Self {
+        let (name, render) = (name.to_owned(), Arc::new(render));
+        Self { name, render }
+    }
+}
+
+/// Draws lines under a message.
+pub type DecorateMessage = dyn Fn(&DecoratedMessage<'_>) -> Vec<Line<'static>> + Send + Sync;
+
+/// Lines drawn under every message the user or the model wrote, after its
+/// own, on an entity of its own.
+#[derive(Component, Clone)]
+pub struct MessageDecorator {
+    /// What it is called, such as the plugin's name.
+    pub name: String,
+    /// Draws its lines under a message; none leaves it as it is.
+    pub render: Arc<DecorateMessage>,
+}
+
+impl MessageDecorator {
+    /// The decorator `name` drawing `render`'s lines.
+    pub fn new(
+        name: &str,
+        render: impl Fn(&DecoratedMessage<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> Self {
+        let (name, render) = (name.to_owned(), Arc::new(render));
+        Self { name, render }
+    }
+}
+
+/// An aside of a conversation, as an aside renderer sees it.
+pub struct AsideView<'a> {
+    /// Its id.
+    pub id: AsideId,
+    /// The aside.
+    pub aside: &'a Aside,
+    /// Whether it is drawn whole: the user expanded it.
+    pub expanded: bool,
+}
+
+/// The default look of a kept branch (`rig.branch`): `↳`, its title and
+/// how many entries are kept there, or moved there out of the line.
+pub fn branch_lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
+    let Ok(branch) = serde_json::from_value::<Branch>(view.aside.value.clone()) else {
+        return Vec::new();
+    };
+    let count = branch.entries.len();
+    let entries = if count == 1 { "entry" } else { "entries" };
+    let how = if branch.moved { "moved" } else { "kept" };
+    vec![Line::styled(
+        format!("↳ {} · {count} {entries} {how} there", branch.title),
+        Style::new().blue(),
+    )]
+}
+
+/// The default look of a pointer to a split kept in another session
+/// (`rig.split`): `⇢`, its title and its session, with what was moved
+/// there and whether it was merged back.
+pub fn split_lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
+    let Ok(split) = serde_json::from_value::<SplitPointer>(view.aside.value.clone()) else {
+        return Vec::new();
+    };
+    let mut text = format!("⇢ {} · session {}", split.title, split.session);
+    if split.moved > 0 {
+        text.push_str(&format!(" · {} moved there", split.moved));
+    }
+    if split.merged {
+        text.push_str(" · merged back");
+    }
+    vec![Line::styled(text, Style::new().blue())]
+}
+
+/// Whose text a [`MessageView`] is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Role {
+    /// What the user typed.
+    User,
+    /// A text block of a reply, or the reply streaming in.
+    Assistant,
+    /// A reply's reasoning.
+    Reasoning,
+}
+
+impl Role {
+    /// Its name: `user`, `assistant` or `reasoning`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Assistant => "assistant",
+            Self::Reasoning => "reasoning",
+        }
+    }
+}
+
+/// A text of a message, as a message renderer sees it.
+pub struct MessageView<'a> {
+    /// Whose text it is.
+    pub role: Role,
+    /// The message it is in; `None` for the reply streaming in.
+    pub message: Option<MessageId>,
+    /// The text's place among the message's content.
+    pub block: usize,
+    /// The text.
+    pub text: &'a str,
+    /// The labels drawn inside it ([`TextMark`](crate::TextMark)), each
+    /// before its byte.
+    pub marks: &'a [(usize, Span<'static>)],
+}
+
+impl MessageView<'_> {
+    /// The default look: the user's text after `›`, a reply's as markdown
+    /// with its marks, reasoning dimmed.
+    pub fn default_lines(&self) -> Vec<Line<'static>> {
+        match self.role {
+            Role::User => {
+                let style = Style::new().cyan().bold();
+                let lines = self.text.lines().enumerate();
+                let rows = lines.map(|(index, line)| {
+                    let prefix = if index == 0 { "› " } else { "  " };
+                    Line::styled(format!("{prefix}{}", line.replace('\t', "    ")), style)
+                });
+                rows.collect()
+            }
+            Role::Assistant => markdown::render_marked(self.text, self.marks),
+            Role::Reasoning => {
+                let lines = self.text.lines();
+                let style = Style::new().dim().italic();
+                let rows = lines.map(|line| Line::styled(line.replace('\t', "    "), style));
+                rows.collect()
+            }
+        }
+    }
+}
+
+/// A message the user or the model wrote, as a message decorator sees it.
+pub struct DecoratedMessage<'a> {
+    /// The message.
+    pub message: &'a Message,
+    /// Its id, when it has one.
+    pub id: Option<MessageId>,
+    /// Its author, when it has one.
+    pub author: Option<&'a Author>,
+}
+
+/// Registers the looks of the transcript on an [`App`]: tool, entry,
+/// content, aside and message renderers, and decorators under calls and
+/// messages. Each spawns a global look, which every transcript pane draws
+/// with; a look spawned as a child of a pane
+/// ([`TranscriptPane`](crate::TranscriptPane)) applies in that pane only,
+/// before the global one.
 pub trait AppToolRenderersExt {
     /// Draw the calls of `tool` with `render`, unless the tool has a
     /// renderer already: that one stays, with a warning. To restyle
@@ -565,6 +808,27 @@ pub trait AppToolRenderersExt {
         render: impl Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 
+    /// Draw the asides of `kind` with `render` after the entry they
+    /// follow, as the transcript item
+    /// [`TranscriptItem::Aside`](crate::TranscriptItem::Aside), unless the
+    /// kind has a renderer already, as for tools. An aside of a kind with
+    /// no renderer is not drawn; a note (`note`) is drawn by its plugin's
+    /// entry renderer.
+    fn add_aside_renderer(
+        &mut self,
+        kind: &str,
+        render: impl Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self;
+
+    /// Draw the text of `role` with `render` in place of
+    /// [`MessageView::default_lines`], unless the role has a renderer
+    /// already, as for tools.
+    fn add_message_renderer(
+        &mut self,
+        role: Role,
+        render: impl Fn(&MessageView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self;
+
     /// Draw `render`'s lines under every tool call, after the call's own
     /// look, whichever draws it. Decorators add up, in the order of their
     /// entities; `Disabled` on one (`decorator:<name>`) leaves it out. Its
@@ -577,6 +841,31 @@ pub trait AppToolRenderersExt {
         name: &str,
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
+
+    /// Draw `render`'s lines under every message the user or the model
+    /// wrote, after its own lines, as [`add_call_decorator`] does under
+    /// calls (`message-decorator:<name>`). Its rows are the transcript item
+    /// [`TranscriptItem::MessageDecoration`](crate::TranscriptItem::MessageDecoration).
+    ///
+    /// [`add_call_decorator`]: Self::add_call_decorator
+    fn add_message_decorator(
+        &mut self,
+        name: &str,
+        render: impl Fn(&DecoratedMessage<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self;
+}
+
+/// Spawns the global look `look` named `name`, unless a global one of the
+/// same key (`same`) is there: a disabled one, which a query skips, frees
+/// its key.
+fn add_look<T: Component>(app: &mut App, name: String, look: T, same: impl Fn(&T) -> bool) {
+    let world = app.world_mut();
+    let mut looks = world.query_filtered::<&T, Without<ChildOf>>();
+    if looks.iter(world).any(same) {
+        warn!("look not added: `{name}` has one; insert `Disabled` on it to replace it");
+        return;
+    }
+    world.spawn((Name::new(name), look));
 }
 
 impl AppToolRenderersExt for App {
@@ -585,20 +874,10 @@ impl AppToolRenderersExt for App {
         tool: &str,
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self {
-        let world = self.world_mut();
-        // A query skips a disabled renderer.
-        let mut renderers = world.query::<&ToolRenderer>();
-        if renderers.iter(world).any(|renderer| renderer.tool == tool) {
-            warn!("renderer not added: `{tool}` has one; insert `Disabled` on it to replace it");
-            return self;
-        }
-        world.spawn((
-            Name::new(format!("renderer:{tool}")),
-            ToolRenderer {
-                tool: tool.to_owned(),
-                render: Arc::new(render),
-            },
-        ));
+        let look = ToolRenderer::new(tool, render);
+        add_look(self, format!("renderer:{tool}"), look, |other| {
+            other.tool == tool
+        });
         self
     }
 
@@ -607,24 +886,10 @@ impl AppToolRenderersExt for App {
         plugin: &str,
         render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self {
-        let world = self.world_mut();
-        let mut renderers = world.query::<&EntryRenderer>();
-        if renderers
-            .iter(world)
-            .any(|renderer| renderer.plugin == plugin)
-        {
-            warn!(
-                "renderer not added: plugin `{plugin}` has one; insert `Disabled` on it to replace it"
-            );
-            return self;
-        }
-        world.spawn((
-            Name::new(format!("entry:{plugin}")),
-            EntryRenderer {
-                plugin: plugin.to_owned(),
-                render: Arc::new(render),
-            },
-        ));
+        let look = EntryRenderer::new(plugin, render);
+        add_look(self, format!("entry:{plugin}"), look, |other| {
+            other.plugin == plugin
+        });
         self
     }
 
@@ -633,18 +898,32 @@ impl AppToolRenderersExt for App {
         kind: ContentKind,
         render: impl Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self {
-        let world = self.world_mut();
-        let mut renderers = world.query::<&ContentRenderer>();
-        let name = kind.name();
-        if renderers.iter(world).any(|renderer| renderer.kind == kind) {
-            warn!("renderer not added: `{name}` has one; insert `Disabled` on it to replace it");
-            return self;
-        }
-        let render = Arc::new(render);
-        world.spawn((
-            Name::new(format!("content:{name}")),
-            ContentRenderer { kind, render },
-        ));
+        let look = ContentRenderer::new(kind, render);
+        let name = format!("content:{}", kind.name());
+        add_look(self, name, look, |other| other.kind == kind);
+        self
+    }
+
+    fn add_aside_renderer(
+        &mut self,
+        kind: &str,
+        render: impl Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self {
+        let look = AsideRenderer::new(kind, render);
+        add_look(self, format!("aside:{kind}"), look, |other| {
+            other.kind == kind
+        });
+        self
+    }
+
+    fn add_message_renderer(
+        &mut self,
+        role: Role,
+        render: impl Fn(&MessageView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self {
+        let look = MessageRenderer::new(role, render);
+        let name = format!("message:{}", role.name());
+        add_look(self, name, look, |other| other.role == role);
         self
     }
 
@@ -653,22 +932,21 @@ impl AppToolRenderersExt for App {
         name: &str,
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self {
-        let world = self.world_mut();
-        let mut decorators = world.query::<&CallDecorator>();
-        if decorators
-            .iter(world)
-            .any(|decorator| decorator.name == name)
-        {
-            warn!("decorator not added: `{name}` is taken; insert `Disabled` on it to replace it");
-            return self;
-        }
-        world.spawn((
-            Name::new(format!("decorator:{name}")),
-            CallDecorator {
-                name: name.to_owned(),
-                render: Arc::new(render),
-            },
-        ));
+        let look = CallDecorator::new(name, render);
+        add_look(self, format!("decorator:{name}"), look, |other| {
+            other.name == name
+        });
+        self
+    }
+
+    fn add_message_decorator(
+        &mut self,
+        name: &str,
+        render: impl Fn(&DecoratedMessage<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
+    ) -> &mut Self {
+        let look = MessageDecorator::new(name, render);
+        let entity = format!("message-decorator:{name}");
+        add_look(self, entity, look, |other| other.name == name);
         self
     }
 }
@@ -679,7 +957,10 @@ pub(crate) struct Looks<'w, 's> {
     tools: Query<'w, 's, Ref<'static, ToolRenderer>>,
     entries: Query<'w, 's, Ref<'static, EntryRenderer>>,
     contents: Query<'w, 's, Ref<'static, ContentRenderer>>,
+    asides: Query<'w, 's, Ref<'static, AsideRenderer>>,
+    messages: Query<'w, 's, Ref<'static, MessageRenderer>>,
     decorators: Query<'w, 's, (Entity, Ref<'static, CallDecorator>)>,
+    message_decorators: Query<'w, 's, (Entity, Ref<'static, MessageDecorator>)>,
 }
 
 impl Looks<'_, '_> {
@@ -697,6 +978,14 @@ impl Looks<'_, '_> {
             let renderer = renderer.into_inner();
             (renderer.kind, &renderer.render)
         });
+        let asides = self.asides.iter().map(|renderer| {
+            let renderer = renderer.into_inner();
+            (renderer.kind.as_str(), &renderer.render)
+        });
+        let messages = self.messages.iter().map(|renderer| {
+            let renderer = renderer.into_inner();
+            (renderer.role, &renderer.render)
+        });
         let mut decorators: Vec<(Entity, (&str, &Arc<RenderToolCall>))> = (self.decorators.iter())
             .map(|(entity, decorator)| {
                 let decorator = decorator.into_inner();
@@ -704,11 +993,25 @@ impl Looks<'_, '_> {
             })
             .collect();
         decorators.sort_by_key(|(entity, _)| *entity);
+        let mut message_decorators: Vec<(Entity, (&str, &Arc<DecorateMessage>))> =
+            (self.message_decorators.iter())
+                .map(|(entity, decorator)| {
+                    let decorator = decorator.into_inner();
+                    (entity, (decorator.name.as_str(), &decorator.render))
+                })
+                .collect();
+        message_decorators.sort_by_key(|(entity, _)| *entity);
         Renderers {
             tools: tools.collect(),
             entries: entries.collect(),
             contents: contents.collect(),
+            asides: asides.collect(),
+            messages: messages.collect(),
             decorators: decorators.into_iter().map(|(_, look)| look).collect(),
+            message_decorators: message_decorators
+                .into_iter()
+                .map(|(_, look)| look)
+                .collect(),
         }
     }
 
@@ -717,7 +1020,13 @@ impl Looks<'_, '_> {
         self.tools.iter().any(|look| look.is_changed())
             || self.entries.iter().any(|look| look.is_changed())
             || self.contents.iter().any(|look| look.is_changed())
+            || self.asides.iter().any(|look| look.is_changed())
+            || self.messages.iter().any(|look| look.is_changed())
             || self.decorators.iter().any(|(_, look)| look.is_changed())
+            || self
+                .message_decorators
+                .iter()
+                .any(|(_, look)| look.is_changed())
     }
 }
 
@@ -730,8 +1039,14 @@ pub(crate) struct Renderers<'a> {
     pub(crate) entries: HashMap<&'a str, &'a Arc<RenderEntry>>,
     /// The content renderers by kind.
     pub(crate) contents: HashMap<ContentKind, &'a Arc<RenderContent>>,
+    /// The aside renderers by kind.
+    pub(crate) asides: HashMap<&'a str, &'a Arc<RenderAside>>,
+    /// The message renderers by role.
+    pub(crate) messages: HashMap<Role, &'a Arc<RenderMessage>>,
     /// The call decorators, by name, in order.
     pub(crate) decorators: Vec<(&'a str, &'a Arc<RenderToolCall>)>,
+    /// The message decorators, by name, in order.
+    pub(crate) message_decorators: Vec<(&'a str, &'a Arc<DecorateMessage>)>,
 }
 
 impl Renderers<'_> {
@@ -778,6 +1093,52 @@ impl Renderers<'_> {
             Some(render) => render(view),
             None => view.default_lines(),
         }
+    }
+
+    /// An aside's lines: a note's by its plugin's entry renderer, any
+    /// other's by its kind's renderer; `None` for a kind nothing draws.
+    pub(crate) fn aside(&self, view: &AsideView<'_>) -> Option<Vec<Line<'static>>> {
+        if let Some(note) = Note::of(view.aside) {
+            let entry = EntryView {
+                plugin: plugin_name(&view.aside.author),
+                title: &note.title,
+                text: &note.text,
+                expanded: view.expanded,
+            };
+            return Some(self.entry(&entry));
+        }
+        let render = self.asides.get(view.aside.kind.as_str())?;
+        Some(render(view))
+    }
+
+    /// Whether an aside of `aside`'s kind is drawn.
+    pub(crate) fn draws(&self, aside: &Aside) -> bool {
+        aside.kind == Note::KIND || self.asides.contains_key(aside.kind.as_str())
+    }
+
+    /// A message text's lines, by its role's renderer or the default look.
+    pub(crate) fn message(&self, view: &MessageView<'_>) -> Vec<Line<'static>> {
+        match self.messages.get(&view.role) {
+            Some(render) => render(view),
+            None => view.default_lines(),
+        }
+    }
+
+    /// Every message decorator's lines under `message`, and each that drew
+    /// any with the lines it drew.
+    pub(crate) fn message_decorations(
+        &self,
+        message: &DecoratedMessage<'_>,
+    ) -> (Vec<Line<'static>>, Decorated) {
+        let (mut lines, mut decorated) = (Vec::new(), Vec::new());
+        for (name, decorate) in &self.message_decorators {
+            let start = lines.len();
+            lines.extend(decorate(message));
+            if lines.len() > start {
+                decorated.push(((*name).to_owned(), start..lines.len()));
+            }
+        }
+        (lines, decorated)
     }
 }
 

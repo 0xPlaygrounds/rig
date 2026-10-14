@@ -253,6 +253,52 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 }
 
 #[test]
+fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
+    use crate::Role;
+
+    let (mut app, agent) = view_app();
+    app.add_message_renderer(Role::User, |view| {
+        vec![Line::from(format!("asked: {}", view.text))]
+    })
+    .add_message_decorator("ratings", |message| {
+        let rated = message.id.is_some() && matches!(message.message, Message::Assistant(_));
+        rated.then(|| Line::from("★ rate it")).into_iter().collect()
+    });
+    say(&mut app, agent, Message::user("first question"));
+    say(&mut app, agent, Message::assistant("first answer"));
+    say(&mut app, agent, Message::user("second question"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        let kept = conversation.branch_off(2, "blue", Author::user());
+        assert!(kept.is_ok(), "{kept:?}");
+    }
+    app.update();
+    let lines = on_screen(&mut app, agent, 100);
+    let order = [
+        "asked: first question",
+        "first answer",
+        "★ rate it",
+        "↳ main · 1 entry kept there",
+    ];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
+    assert!(line_of(&lines, "second question").is_none(), "{lines:#?}");
+    // The decoration is an item of its own inside the reply's rows.
+    app.init_resource::<DrawnTranscript>();
+    on_screen(&mut app, agent, 100);
+    let drawn = app.world().resource::<DrawnTranscript>();
+    let reply = message_id(&app, agent, 1);
+    let decoration = reply.map(|id| TranscriptItem::MessageDecoration(id, "ratings".into()));
+    let rows = decoration.and_then(|item| drawn.rows_of(&item));
+    let message = reply.and_then(|id| drawn.rows_of(&TranscriptItem::Message(id)));
+    assert!(
+        rows.zip(message)
+            .is_some_and(|(rows, message)| message.start < rows.start && rows.end <= message.end),
+        "{drawn:#?}"
+    );
+}
+
+#[test]
 fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
     let (mut app, agent) = view_app();
     app.add_entry_renderer("btw", |entry| {
@@ -278,7 +324,7 @@ fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
     // Alt+Up selects the newest item, the last message; again, the note.
     press(&mut app, "alt+up alt+up");
     let selected = app.world().resource::<TranscriptView>().selected.clone();
-    assert_eq!(selected, note.map(TranscriptItem::Note));
+    assert_eq!(selected, note.map(TranscriptItem::Aside));
     // Ctrl+O expands it: drawn whole.
     press(&mut app, "ctrl+o");
     let lines = on_screen(&mut app, agent, 100);

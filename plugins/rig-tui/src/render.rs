@@ -21,17 +21,17 @@ use super::complete::Completion;
 use super::conversation_panel::ConversationPanel;
 use super::editor::{Layout as InputLayout, TuiInput};
 use super::keys::KeyFocus;
-use super::markdown;
 use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
 use super::renderers::{
-    CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks, Renderers, ToolCallView,
-    ToolRenderer, UNNAMED_HOLD,
+    AsideRenderer, CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks,
+    MessageDecorator, MessageRenderer, MessageView, Renderers, Role, ToolCallView, ToolRenderer,
+    UNNAMED_HOLD,
 };
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::{Tui, TuiTestScreen};
 use super::transcript::{
-    Below, CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, ShownNote, StreamingCalls,
+    Below, CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, ShownAside, StreamingCalls,
     Transcript, live_call, notice_lines, plain_lines,
 };
 use super::view::{
@@ -46,7 +46,6 @@ use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, SentTo};
-use rig_harness::note::Note;
 use rig_harness::prelude::{CallOutput, ToolProgress};
 use rig_harness::primary::Shown;
 
@@ -98,6 +97,9 @@ pub(crate) fn needs_redraw(
             Changed<EntryRenderer>,
             Changed<ContentRenderer>,
             Changed<CallDecorator>,
+            Changed<AsideRenderer>,
+            Changed<MessageRenderer>,
+            Changed<MessageDecorator>,
             Changed<ConversationPanel>,
         )>,
     >,
@@ -163,7 +165,10 @@ pub(crate) struct RemovedLooks<'w, 's> {
     tools: RemovedComponents<'w, 's, ToolRenderer>,
     entries: RemovedComponents<'w, 's, EntryRenderer>,
     contents: RemovedComponents<'w, 's, ContentRenderer>,
+    asides: RemovedComponents<'w, 's, AsideRenderer>,
+    messages: RemovedComponents<'w, 's, MessageRenderer>,
     decorators: RemovedComponents<'w, 's, CallDecorator>,
+    message_decorators: RemovedComponents<'w, 's, MessageDecorator>,
 }
 
 impl RemovedLooks<'_, '_> {
@@ -172,7 +177,10 @@ impl RemovedLooks<'_, '_> {
         self.tools.read().count()
             + self.entries.read().count()
             + self.contents.read().count()
+            + self.asides.read().count()
+            + self.messages.read().count()
             + self.decorators.read().count()
+            + self.message_decorators.read().count()
             > 0
     }
 }
@@ -360,8 +368,8 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) partial: Option<(Entity, &'a Partial)>,
     /// The tool calls it streams.
     pub(crate) streaming: Vec<ToolCall>,
-    /// The notes in its conversation, in the order put.
-    pub(crate) notes: Vec<ShownNote<'a>>,
+    /// The asides in its conversation, in the order put.
+    pub(crate) asides: Vec<ShownAside<'a>>,
     /// The calls under each of its tool calls that started any.
     pub(crate) children: ChildCalls,
 }
@@ -380,16 +388,16 @@ impl<'a> ShownAgent<'a> {
             outputs: BTreeMap::new(),
             partial: None,
             streaming: Vec::new(),
-            notes: conversation
-                .asides()
-                .filter_map(|(id, aside)| {
-                    let note = Note::of(aside)?;
-                    Some(ShownNote { id, aside, note })
-                })
-                .collect(),
+            asides: asides(conversation),
             children: ChildCalls::default(),
         }
     }
+}
+
+/// The asides of `conversation`, in the order put.
+fn asides(conversation: &conversation::Conversation) -> Vec<ShownAside<'_>> {
+    let asides = conversation.asides();
+    asides.map(|(id, aside)| ShownAside { id, aside }).collect()
 }
 
 /// An effect not settled yet, a tool or model call or any other, as
@@ -569,13 +577,7 @@ impl TranscriptLayout<'_, '_> {
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial,
             streaming: streaming.map(|(_, call)| call.clone()).collect(),
-            notes: conversation
-                .asides()
-                .filter_map(|(id, aside)| {
-                    let note = Note::of(aside)?;
-                    Some(ShownNote { id, aside, note })
-                })
-                .collect(),
+            asides: asides(conversation),
             children: self.facts.children(&self.live_calls(), &id.0),
         })
     }
@@ -639,7 +641,7 @@ pub(crate) fn lay_out_transcript(
     // Notes and notices before the first message, after each message,
     // and notices inside one.
     let mut after: Vec<Vec<(usize, &ShownNotice)>> = vec![Vec::new(); count + 1];
-    let mut notes_after: Vec<Vec<&ShownNote<'_>>> = vec![Vec::new(); count + 1];
+    let mut asides_after: Vec<Vec<&ShownAside<'_>>> = vec![Vec::new(); count + 1];
     let mut look = Look {
         renderers: sources.renderers,
         calls: &shown.calls,
@@ -672,28 +674,29 @@ pub(crate) fn lay_out_transcript(
             after.push((at, notice));
         }
     }
-    for note in &shown.notes {
-        let before = match TranscriptSlot::of_aside(note.aside, conversation) {
+    let drawn = shown.asides.iter();
+    for aside in drawn.filter(|shown| sources.renderers.draws(shown.aside)) {
+        let before = match TranscriptSlot::of_aside(aside.aside, conversation) {
             TranscriptSlot::Top => 0,
             TranscriptSlot::After(index) => index + 1,
             TranscriptSlot::Inside(index, item) => {
                 let inside = look.inside.entry(index).or_default();
-                inside.push((item, Inside::Note(note)));
+                inside.push((item, Inside::Aside(aside)));
                 continue;
             }
         };
-        if let Some(at) = notes_after.get_mut(before) {
-            at.push(note);
+        if let Some(at) = asides_after.get_mut(before) {
+            at.push(aside);
         }
     }
     transcript.update(shown.entity, conversation, shown.changed, &look, width);
-    let mut after = after.into_iter().zip(notes_after);
+    let mut after = after.into_iter().zip(asides_after);
     for index in 0..=count {
-        let (notices, notes) = after.next().unwrap_or_default();
-        for note in notes {
-            let item = note.item();
+        let (notices, asides) = after.next().unwrap_or_default();
+        for aside in asides {
+            let item = aside.item();
             let (drawn, cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                sources.renderers.entry(&note.view(expanded))
+                aside.lines(sources.renderers, expanded)
             });
             let mut lines = vec![Line::default()];
             lines.extend(drawn);
@@ -707,11 +710,23 @@ pub(crate) fn lay_out_transcript(
         }
         if index == count {
             if let Some((call, partial)) = shown.partial {
-                extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
+                let view = |role, text, marks| MessageView {
+                    role,
+                    message: None,
+                    block: 0,
+                    text,
+                    marks,
+                };
+                let reasoning = view(Role::Reasoning, &partial.reasoning, &[]);
+                extra.extend(sources.renderers.message(&reasoning));
                 if !partial.text.is_empty() {
                     extra.push(Line::default());
                     let marks = look.marks_in(MarkIn::Streaming(call));
-                    extra.extend(markdown::render_marked(&partial.text, &marks));
+                    extra.extend(sources.renderers.message(&view(
+                        Role::Assistant,
+                        &partial.text,
+                        &marks,
+                    )));
                 }
             }
             for call in &shown.streaming {
@@ -1169,7 +1184,12 @@ fn cells_in(buffer: &Buffer, areas: &[Rect]) -> Vec<(u16, u16, Cell)> {
 pub(crate) fn selectable(marks: Marks) -> Vec<TranscriptItem> {
     let items = marks.into_iter().map(|(item, _)| item);
     items
-        .filter(|item| !matches!(item, TranscriptItem::Decoration(..)))
+        .filter(|item| {
+            !matches!(
+                item,
+                TranscriptItem::Decoration(..) | TranscriptItem::MessageDecoration(..)
+            )
+        })
         .collect()
 }
 

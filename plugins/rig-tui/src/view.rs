@@ -85,8 +85,10 @@ pub enum TranscriptItem {
     Message(MessageId),
     /// A tool call, by its call id.
     Call(CallId),
-    /// A plugin's [`Note`](rig_harness::note::Note), by its aside's id.
-    Note(AsideId),
+    /// An aside a look draws, such as a plugin's
+    /// [`Note`](rig_harness::note::Note) or a kept branch, by its id
+    /// ([`add_aside_renderer`](crate::AppToolRenderersExt::add_aside_renderer)).
+    Aside(AsideId),
     /// A notice, by its index in [`TranscriptView::notices`].
     Notice(usize),
     /// A content block of a message, an image, audio, a video or a
@@ -98,6 +100,11 @@ pub enum TranscriptItem {
     /// ([`add_call_decorator`](crate::AppToolRenderersExt::add_call_decorator)),
     /// inside the call's rows. Selecting moves past it.
     Decoration(CallId, String),
+    /// The rows a message decorator drew under a message, by the
+    /// message's id and the decorator's name
+    /// ([`add_message_decorator`](crate::AppToolRenderersExt::add_message_decorator)),
+    /// inside the message's rows. Selecting moves past it.
+    MessageDecoration(MessageId, String),
 }
 
 /// The terminal view's transcript, as plugins read and steer it. A change

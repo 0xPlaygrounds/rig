@@ -698,9 +698,9 @@ pub(crate) fn arm_inline_keys(
     }
 }
 
-/// What the keys pressed so far match.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Found {
+/// What the keys pressed so far match, as [`find`] says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Found {
     /// This binding's keys.
     Binding(Entity),
     /// The start of a binding's keys: wait for the next.
@@ -714,11 +714,7 @@ pub(crate) enum Found {
 /// shadows the input's; the oldest entity of two bound around the conflict
 /// check. A single key that is no character, pressed with modifiers that
 /// nothing binds, is that key alone.
-pub(crate) fn find(
-    bindings: &[(Entity, &KeyBinding)],
-    typed: &[KeyPress],
-    focus: KeyScope,
-) -> Found {
+pub fn find(bindings: &[(Entity, &KeyBinding)], typed: &[KeyPress], focus: KeyScope) -> Found {
     let scoped = |scope: KeyScope| {
         bindings
             .iter()

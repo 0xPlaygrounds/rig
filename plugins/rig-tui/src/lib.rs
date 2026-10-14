@@ -13,8 +13,14 @@
 //! ([`Note`](rig_harness::note::Note)) and
 //! delivered texts with [`AppToolRenderersExt::add_entry_renderer`], a
 //! kind of content block (images, audio, video, documents) with
-//! [`AppToolRenderersExt::add_content_renderer`], and rows under every
-//! call with [`AppToolRenderersExt::add_call_decorator`]. The
+//! [`AppToolRenderersExt::add_content_renderer`], a kind of aside (a kept
+//! branch, a split) with [`AppToolRenderersExt::add_aside_renderer`], the
+//! user's, the model's and its reasoning's text with
+//! [`AppToolRenderersExt::add_message_renderer`], and rows under every
+//! call or message with [`AppToolRenderersExt::add_call_decorator`] and
+//! [`AppToolRenderersExt::add_message_decorator`]. The line producers the
+//! transcript draws with are public ([`markdown`], [`wrap`], [`diff`],
+//! [`excerpt`]), so a plugin's own text looks the same. The
 //! [`TranscriptView`] says, and lets a plugin set, what is expanded and
 //! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;
 //! [`ScrollTo`] scrolls to an item or to a row of it a highlight lights,
@@ -78,16 +84,18 @@ mod status;
 mod terminal;
 mod transcript;
 mod view;
-mod wrap;
+pub mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
+use rig_core::conversation::BRANCH;
 use rig_ecs::journal::SessionRewritten;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, Shown};
+use rig_harness::rig_memory::SPLIT;
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
 pub use conversation_panel::ConversationPanel;
@@ -106,9 +114,11 @@ pub use pick::{ChoiceAction, ChoiceKeys};
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout, TuiFrame};
 pub use renderers::{
-    AppToolRenderersExt, CallDecorator, CallState, ChildCall, ContentBlock, ContentKind,
-    ContentRenderer, ContentView, EntryRenderer, EntryView, RESULT_LINES, RenderContent,
-    RenderEntry, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
+    AppToolRenderersExt, AsideRenderer, AsideView, CallDecorator, CallState, ChildCall,
+    ContentBlock, ContentKind, ContentRenderer, ContentView, DecorateMessage, DecoratedMessage,
+    EntryRenderer, EntryView, MessageDecorator, MessageRenderer, MessageView, RESULT_LINES,
+    RenderAside, RenderContent, RenderEntry, RenderMessage, RenderToolCall, Role, ToolCallView,
+    ToolRenderer, branch_lines, excerpt, split_lines,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{
@@ -136,7 +146,9 @@ impl Plugin for TuiPlugin {
         status::add(app);
         // Spawned in `build`, so a plugin's `finish` may disable one.
         keys::add_built_in(app);
-        app.add_entry_renderer(BUILD_ORIGIN, build_failed);
+        app.add_entry_renderer(BUILD_ORIGIN, build_failed)
+            .add_aside_renderer(BRANCH, branch_lines)
+            .add_aside_renderer(SPLIT, split_lines);
         // The notices shown and the unsent draft, in the session's files.
         app.keeps_files("tui");
         app.init_resource::<render::FrameLayout>()
