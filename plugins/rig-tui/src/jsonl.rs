@@ -1,6 +1,6 @@
-//! Files of one JSON value per line that only grow, such as the prompt
-//! history and the notices kept for the next build: values are appended,
-//! and the newest are read back. A file is one of the view's in a
+//! Files of one JSON value per line, such as the prompt history, which
+//! only grows, and the notices a reload keeps for the next build: values
+//! are appended or written whole, and the newest are read back. A file is one of the view's in a
 //! [`PluginData`](rig_harness::prelude::PluginData) place.
 
 use std::fmt;
@@ -41,6 +41,14 @@ pub(crate) fn append<'a, T: Serialize + 'a>(
         return Ok(());
     }
     file.0.append_file(file.1, lines.as_bytes())
+}
+
+/// Replaces `file` with `values`, one per line.
+pub(crate) fn write<'a, T: Serialize + 'a>(
+    file: &Kept,
+    values: impl IntoIterator<Item = &'a T>,
+) -> io::Result<()> {
+    file.0.write_file(file.1, lines(values).as_bytes())
 }
 
 /// The last `kept` values of `file`, oldest first, skipping lines that do

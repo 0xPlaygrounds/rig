@@ -2,8 +2,8 @@
 //! harness's [`Shown`]), the input's completion, scrolling, the pickers and questions waiting to be
 //! shown, and the transcript as plugins read and steer it
 //! ([`TranscriptView`]): what is expanded and selected, the text lit,
-//! where it is scrolled, and recent notices, which are kept in the
-//! session's [`PluginData`] for the next build.
+//! where it is scrolled, and recent notices, which a reload keeps in the
+//! session's [`PluginData`] for the build it starts.
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -31,10 +31,11 @@ use rig_harness::prelude::{ExitReason, PluginData};
 use rig_harness::primary::Shown;
 use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 
-/// Notices kept for display, and read back by the next build.
+/// Notices kept for display, and for the build a reload starts.
 const KEPT_NOTICES: usize = 200;
 
-/// The file of the session's [`PluginData`] that keeps the notices shown.
+/// The file of the session's [`PluginData`] that keeps the notices shown
+/// for the build a reload starts, until it reads them.
 const NOTICES_FILE: &str = "tui/notices.jsonl";
 
 /// The file of the session's [`PluginData`] that keeps what was typed and
@@ -134,8 +135,6 @@ pub struct TranscriptView {
     width: Option<u16>,
     /// Recent notices, oldest first.
     notices: Vec<ShownNotice>,
-    /// Where they are kept for the next build of the session.
-    notices_file: Option<Kept>,
 }
 
 /// Whose text a [`TextMark`] is in.
@@ -709,37 +708,48 @@ impl TranscriptView {
     }
 
     /// Maps the notices shown through `with`, the map the session was
-    /// rewritten through (the file they are kept in is the session's, which
-    /// the rewrite mapped); one the map leaves unreadable is dropped.
+    /// rewritten through; one the map leaves unreadable is dropped.
     pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
         let at = Place::File { name: NOTICES_FILE };
         self.notices
             .retain_mut(|notice| rewrite_value(with, &at, NOTICES_FILE, notice).is_ok());
     }
 
-    /// Keeps `notice` for display and for the next build, dropping the
-    /// oldest past [`KEPT_NOTICES`].
+    /// Keeps `notice` for display, dropping the oldest past
+    /// [`KEPT_NOTICES`].
     fn keep(&mut self, notice: ShownNotice) {
-        if let Some(file) = &self.notices_file
-            && let Err(failure) = jsonl::append(file, [&notice])
-        {
-            warn!("could not keep a notice for the next build: {failure}");
-        }
         self.notices.push(notice);
         let excess = self.notices.len().saturating_sub(KEPT_NOTICES);
         self.notices.drain(..excess);
     }
 }
 
-/// Reads back the notices an earlier build of the session showed, and
-/// keeps the next ones in the session's [`PluginData`].
+/// Reads back the notices the build before a reload kept, once: a run
+/// started any other way, or a fork, which copies the session's files,
+/// shows none of another run's.
 pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut view: ResMut<TranscriptView>) {
     let Some(data) = data else {
         return;
     };
-    let file = Kept(data.session.clone(), NOTICES_FILE);
-    view.notices = jsonl::tail(&file, KEPT_NOTICES);
-    view.notices_file = Some(file);
+    view.notices = jsonl::tail(&Kept(data.session.clone(), NOTICES_FILE), KEPT_NOTICES);
+    data.session.remove_file(NOTICES_FILE).ok();
+}
+
+/// Keeps the notices shown for the build a reload starts.
+pub(crate) fn keep_notices(
+    reason: Option<Res<ExitReason>>,
+    data: Option<Res<PluginData>>,
+    view: Res<TranscriptView>,
+) {
+    let (Some(reason), Some(data)) = (reason, data) else {
+        return;
+    };
+    if *reason != ExitReason::Reload || view.notices.is_empty() {
+        return;
+    }
+    if let Err(failure) = jsonl::write(&Kept(data.session.clone(), NOTICES_FILE), &view.notices) {
+        warn!("could not keep the notices for the next build: {failure}");
+    }
 }
 
 /// Keeps what was typed and not sent for the build a reload starts, such

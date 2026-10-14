@@ -53,7 +53,7 @@ fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {
 }
 
 #[test]
-fn notices_are_kept_for_the_next_build_of_the_session() {
+fn notices_are_kept_for_the_build_a_reload_starts_and_for_no_other_run() {
     let session = MemoryStore::default();
     let build = || {
         let (mut app, agent) = view_app();
@@ -65,17 +65,33 @@ fn notices_are_kept_for_the_next_build_of_the_session() {
         assert!(loaded.is_ok());
         (app, agent)
     };
+    let shown = |app: &mut App, agent: Entity, text: &str| {
+        let lines = transcript(app, agent);
+        line_of(&lines, text).is_some()
+    };
+    // A run that quits keeps nothing for the next run, nor for a fork,
+    // which copies the session's files.
     let (mut app, agent) = build();
+    app.world_mut()
+        .write_message(Notice::warn(agent, "Shown in the run that quit."));
+    app.update();
+    app.insert_resource(ExitReason::Quit);
+    assert!(app.world_mut().run_system_once(keep_notices).is_ok());
+    drop(app);
+    let (mut app, agent) = build();
+    assert!(!shown(&mut app, agent, "Shown in the run that quit."));
+    // A reload keeps them for its build, once.
     app.world_mut()
         .write_message(Notice::warn(agent, "Kept across a reload."));
     app.update();
+    app.insert_resource(ExitReason::Reload);
+    assert!(app.world_mut().run_system_once(keep_notices).is_ok());
     drop(app);
     let (mut app, agent) = build();
-    let lines = transcript(&mut app, agent);
-    assert!(
-        line_of(&lines, "Kept across a reload.").is_some(),
-        "{lines:#?}"
-    );
+    assert!(shown(&mut app, agent, "Kept across a reload."));
+    drop(app);
+    let (mut app, agent) = build();
+    assert!(!shown(&mut app, agent, "Kept across a reload."));
 }
 
 #[test]

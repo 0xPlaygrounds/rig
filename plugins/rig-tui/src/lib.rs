@@ -204,7 +204,7 @@ impl Plugin for TuiPlugin {
                 Last,
                 (
                     terminal::keep_screen_on_reload,
-                    view::keep_draft.run_if(on_message::<AppExit>),
+                    (view::keep_draft, view::keep_notices).run_if(on_message::<AppExit>),
                 )
                     .in_set(bevy_app::OnAppExitSystems),
             );
