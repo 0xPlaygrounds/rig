@@ -1298,7 +1298,9 @@ value back, inserted on the restored agent before `SessionRestored`
 exists, so an `On<Insert<T>>` observer can re-arm what it says. A resource
 that says `#[reflect(Resource, Saved)]` and is inserted in `build` is kept
 the same way. One holding rig-core data, such as a `MessageId`, is saved
-through serde ([so](#changing-history)).
+through serde ([so](#changing-history)). A plugin says what it keeps
+(`keeps_saved::<T>()`, `keeps_files("vim")` in `PluginData.session`) as
+`Keeps` on its entity; a saved value no plugin keeps is the core's.
 
 ```rust,no_run
 use std::collections::HashMap;
@@ -1306,14 +1308,14 @@ use std::collections::HashMap;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 
-/// How often each agent called each tool, kept across `/compact`,
-/// `/reload` and `/resume`.
+/// How often each agent called each tool, kept across restarts.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Saved)]
 struct ToolCounts(HashMap<String, u32>);
 
 fn build(app: &mut App) {
     app.register_required_components::<Agent, ToolCounts>()
+        .keeps_saved::<ToolCounts>()
         .add_observer(count)
         .add_observer(count_the_past);
 }
@@ -1331,8 +1333,7 @@ fn count_the_past(added: On<Add<ToolCounts>>, mut agents: Query<(&Conversation, 
     }
 }
 
-/// Counts each call as the model asks for it, once: not again when a
-/// restart runs it again.
+/// Counts each call as the model asks for it, not again on a restart.
 fn count(
     call: On<Add<ToolRequest>>,
     calls: Query<(&ToolRequest, &ForAgent), Without<Restored>>,
@@ -1421,8 +1422,7 @@ lists it in `/resume` with `SessionMeta { title, .. }.write(&*store)`.
 ```rust,no_run
 use rig_harness::prelude::*;
 
-/// The messages the user bookmarked, kept with the session. A `MessageId`
-/// is not `Reflect`, so the component is saved through its serde form.
+/// The messages the user bookmarked; a `MessageId` is saved through serde.
 #[derive(Component, Reflect, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 struct Bookmarks(Vec<MessageId>);
