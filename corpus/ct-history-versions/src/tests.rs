@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use rig_compaction::{Compaction, CompactionPlugin, summary_author};
+use rig_compaction::{AppCompactionExt, Compaction, CompactionPlugin, summary_author};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::rig_memory::Cut;
+use rig_harness::rig_memory::{CompactionOverrides, Cut};
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, collect, connect, first_agent, log_ended, reply,
@@ -118,10 +118,15 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
 
     // A command drops turn 2, then a compaction condenses turns 1 and 3.
     run(&mut app, agent, "drop-turn 2");
-    let keep_two_turns = Cut::With(Arc::new(|messages: &[Message], _, _, _| {
+    app.add_compaction_cut("keep-two-turns", |messages: &[Message], _, _, _| {
         messages.len().checked_sub(4)
-    }));
-    app.world_mut().resource_mut::<Compaction>().0.cut = keep_two_turns;
+    });
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(Compaction(CompactionOverrides {
+            cut: Some(Cut::Named("keep-two-turns".to_owned())),
+            ..CompactionOverrides::default()
+        }));
     app.world_mut().trigger(RunCommand::new(agent, "compact"));
     run_until(&mut app, &wakes, |world| {
         let compacted = world
