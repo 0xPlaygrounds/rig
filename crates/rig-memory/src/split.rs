@@ -10,7 +10,7 @@ use rig_core::conversation::{AsideId, Conversation, Entry, MessageId};
 use serde::{Deserialize, Serialize};
 
 use crate::fork::copy_plugin_files;
-use crate::{Keep, LoadError, SavedAgent, Session, Store};
+use crate::{Keep, LoadError, SavedAgent, Session, SessionMeta, Store, now_ms};
 
 /// The kind of the aside a line keeps after the last entry a split of it
 /// copied: a [`SplitPointer`].
@@ -49,7 +49,9 @@ pub struct SplitOf<'a> {
 /// the session in `from` (read strictly, older formats through the chain):
 /// one log for the agent, the same id, its line as one reset with ids and
 /// made-times kept, its saved values as they are now, the session log's
-/// values, the blobs its images name, and the session's plugin files. The
+/// values, the blobs its images name, the session's plugin files, and its
+/// listing ([`SessionMeta`]) with the copied line's length, so a listing
+/// shows the split and its listed values before it ever runs. The
 /// asides that follow the copied entries come along, nested branches
 /// among them, but not the branches on the path to the line copied. The
 /// copy as written.
@@ -112,7 +114,16 @@ pub fn split(
     copy.save(to)?;
     copy_plugin_files(from, to, &Keep)?;
     let written = copy.agents.into_iter().next();
-    Ok(written.map(|agent| agent.conversation).unwrap_or_default())
+    let written = written.map(|agent| agent.conversation).unwrap_or_default();
+    if let Some(listing) = SessionMeta::read(from) {
+        let listing = SessionMeta {
+            messages: written.messages().len(),
+            updated: now_ms(),
+            ..listing
+        };
+        listing.write(to)?;
+    }
+    Ok(written)
 }
 
 /// A line of a conversation, as [`lines`] lists it.

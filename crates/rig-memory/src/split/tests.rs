@@ -8,8 +8,8 @@ use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName};
 use serde_json::json;
 
 use crate::{
-    Files, Line, LineId, MemoryStore, SPLIT, SavedAgent, Session, SplitOf, SplitPointer, Store,
-    Versioned, lines, split,
+    Files, Line, LineId, MemoryStore, SPLIT, SavedAgent, Session, SessionMeta, SplitOf,
+    SplitPointer, Store, Versioned, lines, split,
 };
 
 fn keys(conversation: &Conversation) -> Vec<MessageKey> {
@@ -18,7 +18,8 @@ fn keys(conversation: &Conversation) -> Vec<MessageKey> {
 
 /// A session of one agent, `main`, whose line parts into a kept branch
 /// `side` after its second entry, with a rating on its first, a saved
-/// value, a session value and a plugin file.
+/// value, a session value, a listing with a listed value and a plugin
+/// file.
 fn saved() -> (MemoryStore, Conversation, AsideId) {
     let by = Author::plugin("tree");
     let mut conversation = Conversation::from_messages([
@@ -53,6 +54,13 @@ fn saved() -> (MemoryStore, Conversation, AsideId) {
     };
     assert!(session.save(&store).is_ok());
     assert!(store.write_file("plugins/notes.md", b"kept").is_ok());
+    let listing = SessionMeta {
+        title: "one".to_owned(),
+        messages: 4,
+        data: BTreeMap::from([("goals.goal".to_owned(), Versioned::from(json!("ship")))]),
+        ..SessionMeta::default()
+    };
+    assert!(listing.write(&store).is_ok());
     let read = Session::read(&store).ok();
     let read = read.and_then(|session| session.agents.into_iter().next());
     let conversation = read.map(|agent| agent.conversation).unwrap_or_default();
@@ -62,8 +70,10 @@ fn saved() -> (MemoryStore, Conversation, AsideId) {
 /// A split of a kept branch through its last entry is a session of the
 /// one agent holding that line: its entries' keys, the asides that follow
 /// them but not the branch on the way to it, its title and line values,
-/// the agent's and the session's saved values, and the plugin files. One
-/// through an earlier entry stops there, without the line values.
+/// the agent's and the session's saved values, the plugin files, and the
+/// listing with its listed values, so a picker finds the split before it
+/// ever runs. One through an earlier entry stops there, without the line
+/// values.
 #[test]
 fn a_split_holds_the_line_with_its_keys_asides_and_values() {
     let (store, source, side) = saved();
@@ -113,6 +123,10 @@ fn a_split_holds_the_line_with_its_keys_asides_and_values() {
         copy.read_file("plugins/notes.md").ok(),
         Some(b"kept".to_vec())
     );
+    let listing = SessionMeta::read(&copy).unwrap_or_default();
+    assert_eq!(listing.title, "one");
+    assert_eq!(listing.messages, line.len());
+    assert_eq!(listing.data.get("goals.goal"), Some(&json!("ship").into()));
 
     let second = line.get(1).and_then(|entry| entry.id);
     let short = MemoryStore::default();
@@ -125,6 +139,8 @@ fn a_split_holds_the_line_with_its_keys_asides_and_values() {
         written.as_ref().map(|copy| copy.messages().len()).ok(),
         Some(2)
     );
+    let listing = SessionMeta::read(&short).unwrap_or_default();
+    assert_eq!(listing.messages, 2);
     assert_eq!(
         written.ok().and_then(|copy| copy.line_values().cloned()),
         None
