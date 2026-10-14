@@ -34,7 +34,7 @@ use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_ecs::journal::{SessionRestored, SessionStore};
 use rig_harness::rig_memory::SessionMeta;
 use rig_sessions::{SessionTitle, SwitchSession};
-use rig_tui::{CopyToClipboard, ItemRow, ScrollTo, TranscriptItem};
+use rig_tui::{CopyToClipboard, Focus, ItemRow, MainPane, ScrollTo, TranscriptItem};
 use serde::{Deserialize, Serialize};
 
 /// Snippets shown per session.
@@ -685,6 +685,7 @@ fn acted(
     opened: Query<&Opened>,
     sessions: Sessions,
     agents: Query<(Entity, &AgentId)>,
+    main: Option<Single<Entity, With<MainPane>>>,
     mut copies: Option<ResMut<bevy_ecs::message::Messages<CopyToClipboard>>>,
     mut forked: MessageWriter<ForkedHere>,
     mut notices: MessageWriter<Notice>,
@@ -701,11 +702,11 @@ fn acted(
     let result = match action {
         Some("Resume") if session.current => {
             let agent = agents.iter().find(|(_, id)| id.0 == hit.agent);
-            if let Some((agent, _)) = agent {
-                let item = Some(TranscriptItem::Message(hit.message));
+            if let (Some((agent, _)), Some(pane)) = (agent, main.as_deref()) {
+                commands.trigger(Focus { entity: agent });
                 commands.trigger(ScrollTo {
-                    agent,
-                    item,
+                    pane: *pane,
+                    item: Some(TranscriptItem::Message(hit.message)),
                     row: ItemRow::Reveal,
                 });
             }
@@ -809,7 +810,12 @@ fn fork_here(sessions: &Sessions, session: &Found, hit: &Hit) -> Result<SessionI
 
 /// Once the session is restored, scrolls its transcript to the message a
 /// `/find` named, then forgets it.
-fn jump(data: Option<Res<PluginData>>, agents: Query<(Entity, &AgentId)>, mut commands: Commands) {
+fn jump(
+    data: Option<Res<PluginData>>,
+    agents: Query<(Entity, &AgentId)>,
+    main: Option<Single<Entity, With<MainPane>>>,
+    mut commands: Commands,
+) {
     let Some(data) = data else {
         return;
     };
@@ -820,11 +826,12 @@ fn jump(data: Option<Res<PluginData>>, agents: Query<(Entity, &AgentId)>, mut co
     let Ok(jump) = serde_json::from_slice::<Jump>(&bytes) else {
         return;
     };
-    if let Some((agent, _)) = agents.iter().find(|(_, id)| id.0 == jump.agent) {
-        let item = Some(TranscriptItem::Message(jump.message));
+    let agent = agents.iter().find(|(_, id)| id.0 == jump.agent);
+    if let (Some((agent, _)), Some(pane)) = (agent, main.as_deref()) {
+        commands.trigger(Focus { entity: agent });
         commands.trigger(ScrollTo {
-            agent,
-            item,
+            pane: *pane,
+            item: Some(TranscriptItem::Message(jump.message)),
             row: ItemRow::Reveal,
         });
     }
