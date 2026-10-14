@@ -39,8 +39,8 @@ use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
     AppKeyBindingsExt, HistorySystems, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress,
-    KeyPressed, KeyScope, PanelCanvas, Placement, PromptHistory, RequestRedraw, TerminalEvents,
-    TuiInput, TuiPanel, TuiPlugin, TuiSystems,
+    KeyPressed, KeyScope, MainInput, PanelCanvas, Placement, PromptHistory, RequestRedraw,
+    TerminalEvents, TuiPanel, TuiPlugin, TuiSystems,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -311,7 +311,7 @@ fn offer(history: Res<History>, mut prompts: ResMut<PromptHistory>) {
 /// input then holds), else once typing paused for [`QUIET`].
 fn follow_input(
     shown: Res<Shown>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
     mut typing: ResMut<Typing>,
     mut drafts: Query<&mut Draft>,
     mut commands: Commands,
@@ -444,7 +444,7 @@ fn type_search(
     events: Res<TerminalEvents>,
     mut searches: Query<(Entity, &mut Search)>,
     focus: Res<KeyFocus>,
-    mut input: ResMut<TuiInput>,
+    mut input: Option<MainInput>,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
@@ -464,7 +464,9 @@ fn type_search(
         }
         match key.code {
             KeyCode::Enter => {
-                if let Some(prompt) = search.matches().get(search.selected) {
+                if let (Some(prompt), Some(input)) =
+                    (search.matches().get(search.selected), input.as_mut())
+                {
                     input.set(*prompt);
                 }
                 commands.entity(panel).despawn();

@@ -7,6 +7,8 @@ use rig_harness_test_support::{
     scratch_home,
 };
 
+use rig_tui::{Editor, MainEditor};
+
 use super::*;
 
 /// The kernel, the journal, the pickers' `Shown` and the plugin on
@@ -30,18 +32,32 @@ fn start(store: &MemoryStore, home: &Home) -> (App, Receiver<()>) {
 fn browse(app: &mut App, up: bool) {
     let world = app.world_mut();
     let entries = world.resource::<PromptHistory>().entries.clone();
-    let mut input = world.resource_mut::<TuiInput>();
-    if up {
-        input.up(&entries);
-    } else {
-        input.down(&entries);
-    }
+    edit_input(app, |input| {
+        if up {
+            input.up(&entries);
+        } else {
+            input.down(&entries);
+        }
+    });
     app.update();
 }
 
 fn input(app: &App) -> (String, usize) {
-    let input = app.world().resource::<TuiInput>();
-    (input.text().to_owned(), input.cursor())
+    let world = app.world();
+    let mut main = world.try_query_filtered::<&Editor, With<MainEditor>>();
+    let input = main.as_mut().and_then(|main| main.single(world).ok());
+    input.map_or_else(Default::default, |input| {
+        (input.text().to_owned(), input.cursor())
+    })
+}
+
+/// Edits the default screen's input.
+fn edit_input(app: &mut App, edit: impl FnOnce(&mut Editor)) {
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut Editor, With<MainEditor>>();
+    if let Ok(mut input) = main.single_mut(world) {
+        edit(&mut input);
+    }
 }
 
 /// Only the first "a" is recorded; the draft typed survives a restart,
@@ -83,7 +99,7 @@ fn history_skips_repeats_and_secrets_and_the_draft_survives_a_restart() {
     assert_eq!(texts, ["a"], "{written}");
 
     // The focused agent's draft, typed in the terminal view's input.
-    app.world_mut().resource_mut::<TuiInput>().set("half writ");
+    edit_input(&mut app, |input| input.set("half writ"));
     app.update();
     advance(&mut app, QUIET + Duration::from_millis(100));
     app.update();
