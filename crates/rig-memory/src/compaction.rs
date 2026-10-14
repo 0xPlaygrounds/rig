@@ -13,11 +13,16 @@
 //! The summarizer's default prompts ask for pi's structured checkpoint;
 //! the tool arguments a summary keeps track of are the caller's.
 //!
+//! A policy is plain serde data, so a host keeps one per agent and saves
+//! it; [`CompactionOverrides`] holds the knobs one source sets (settings, an
+//! agent) over another, and a named [`Cut`] is resolved in [`CutRules`].
+//!
 //! ```
-//! use rig_memory::{CompactionPolicy, SummaryState};
+//! use rig_memory::{CompactionPolicy, CutRules, SummaryState};
 //!
 //! let policy = CompactionPolicy::default();
-//! assert_eq!(policy.cut(&[], 0, &rig_memory::CompactReason::Threshold, None), None);
+//! let reason = rig_memory::CompactReason::Threshold;
+//! assert_eq!(policy.cut(&[], 0, &reason, None, &CutRules::default()), None);
 //! assert_eq!(SummaryState::default().message(), None);
 //! ```
 
@@ -64,14 +69,25 @@ pub struct TrackedSet {
 
 /// A rule of [`SummaryState::track`]: the string argument `argument` of
 /// every call of the tool `tool` goes into the set `set`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TrackArgument<'a> {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackArgument {
     /// The tool's name.
-    pub tool: &'a str,
+    pub tool: Cow<'static, str>,
     /// The argument's name.
-    pub argument: &'a str,
+    pub argument: Cow<'static, str>,
     /// The set's name.
-    pub set: &'a str,
+    pub set: Cow<'static, str>,
+}
+
+impl TrackArgument {
+    /// The rule tracking `argument` of `tool` in the set `set`.
+    pub const fn new(tool: &'static str, argument: &'static str, set: &'static str) -> Self {
+        Self {
+            tool: Cow::Borrowed(tool),
+            argument: Cow::Borrowed(argument),
+            set: Cow::Borrowed(set),
+        }
+    }
 }
 
 impl SummaryState {
@@ -110,11 +126,11 @@ impl SummaryState {
 
     /// Adds the arguments `rules` name of the tool calls in `messages` to
     /// the tracked sets, creating the rules' sets in rule order first.
-    pub fn track(&mut self, messages: &[Message], rules: &[TrackArgument<'_>]) {
+    pub fn track(&mut self, messages: &[Message], rules: &[TrackArgument]) {
         for rule in rules {
             if !self.tracked.iter().any(|set| set.name == rule.set) {
                 self.tracked.push(TrackedSet {
-                    name: rule.set.to_owned(),
+                    name: rule.set.clone().into_owned(),
                     values: BTreeSet::new(),
                 });
             }
@@ -134,7 +150,7 @@ impl SummaryState {
                 let value = call
                     .function
                     .arguments
-                    .get(rule.argument)
+                    .get(rule.argument.as_ref())
                     .and_then(|value| value.as_str());
                 let set = self.tracked.iter_mut().find(|set| set.name == rule.set);
                 if let (Some(value), Some(set)) = (value, set) {
@@ -207,44 +223,88 @@ pub enum CompactReason {
 /// use std::sync::Arc;
 ///
 /// use rig_core::completion::Message;
-/// use rig_memory::{CompactReason, CompactionPolicy, Cut};
+/// use rig_memory::{CompactReason, CompactionPolicy, Cut, CutRules};
 ///
 /// // Summarize everything before the newest user message.
+/// let mut rules = CutRules::default();
+/// rules.add("before-last-user", |messages: &[Message], _, _, _| {
+///     messages.iter().rposition(|message| matches!(message, Message::User { .. }))
+/// });
 /// let policy = CompactionPolicy {
-///     cut: Cut::With(Arc::new(|messages, _, _, _| {
-///         messages.iter().rposition(|message| matches!(message, Message::User { .. }))
-///     })),
+///     cut: Cut::Named("before-last-user".into()),
 ///     ..CompactionPolicy::default()
 /// };
 /// let messages = [Message::user("a"), Message::assistant("b"), Message::user("c")];
-/// assert_eq!(policy.cut(&messages, 0, &CompactReason::Threshold, None), Some(2));
+/// assert_eq!(policy.cut(&messages, 0, &CompactReason::Threshold, None, &rules), Some(2));
 /// ```
-#[derive(Clone, Default)]
+///
+/// Its serde form is a string: `"budget"`, or the rule's name.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
 pub enum Cut {
     /// After the newest messages within [`CompactionPolicy::keep`], never
     /// between a tool call and its result.
     #[default]
     Budget,
-    /// A rule given what [`CompactionPolicy::cut`] is given: the messages,
-    /// how many of the first are summarized already, the reason and the
-    /// model. It answers the first message to keep, or `None` when nothing
-    /// new would be summarized; an answer that summarizes nothing new or
-    /// lies past the end counts as `None`.
-    With(
-        Arc<
-            dyn Fn(&[Message], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize>
-                + Send
-                + Sync,
-        >,
-    ),
+    /// The rule of this name in the [`CutRules`] the cut is given; by
+    /// [`Budget`](Self::Budget) when there is none.
+    Named(String),
 }
 
-impl fmt::Debug for Cut {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Budget => f.write_str("Budget"),
-            Self::With(_) => f.debug_tuple("With").finish_non_exhaustive(),
+impl Cut {
+    /// What [`Cut::Budget`] is called.
+    pub const BUDGET: &'static str = "budget";
+}
+
+impl From<String> for Cut {
+    fn from(name: String) -> Self {
+        if name == Self::BUDGET {
+            Self::Budget
+        } else {
+            Self::Named(name)
         }
+    }
+}
+
+impl From<Cut> for String {
+    fn from(cut: Cut) -> Self {
+        match cut {
+            Cut::Budget => Cut::BUDGET.to_owned(),
+            Cut::Named(name) => name,
+        }
+    }
+}
+
+/// A rule a [`Cut::Named`] names, given what [`CompactionPolicy::cut`] is
+/// given: the messages, how many of the first are summarized already, the
+/// reason and the model. It answers the first message to keep, or `None`
+/// when nothing new would be summarized; an answer that summarizes nothing
+/// new or lies past the end counts as `None`.
+pub type CutRule = Arc<
+    dyn Fn(&[Message], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize> + Send + Sync,
+>;
+
+/// The cut rules a policy may name ([`Cut::Named`]), by name.
+#[derive(Clone, Default)]
+pub struct CutRules(pub BTreeMap<String, CutRule>);
+
+impl CutRules {
+    /// Adds `rule` as `name`, in place of one of that name.
+    pub fn add(
+        &mut self,
+        name: impl Into<String>,
+        rule: impl Fn(&[Message], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize>
+        + Send
+        + Sync
+        + 'static,
+    ) {
+        self.0.insert(name.into(), Arc::new(rule));
+    }
+}
+
+impl fmt::Debug for CutRules {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set().entries(self.0.keys()).finish()
     }
 }
 
@@ -253,14 +313,15 @@ impl fmt::Debug for Cut {
 /// file tools read and changed, how much of the newest conversation stays
 /// as it is, where a compaction cuts, how many one turn may make, and how
 /// old tool outputs are cleared first. Tokens are estimated by the default
-/// [`HeuristicTokenCounter`].
-#[derive(Clone, Debug)]
+/// [`HeuristicTokenCounter`]. Plain serde data: a host keeps one per agent
+/// and saves it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CompactionPolicy {
     /// The summarizer; its reserve is how much of the model's window is
     /// kept free.
     pub summarizer: Summarizer,
     /// The tool arguments tracked across compactions.
-    pub tracked: Vec<TrackArgument<'static>>,
+    pub tracked: Vec<TrackArgument>,
     /// Tokens of the newest messages an automatic compaction keeps as they
     /// are, a quarter of the model's window at most (pi's
     /// `keepRecentTokens`): the work carries on, so its recent part stays.
@@ -297,16 +358,17 @@ impl Default for CompactionPolicy {
     }
 }
 
-impl CompactionPolicy {
-    /// The estimated tokens of `messages`.
-    pub fn estimate(&self, messages: &[Message]) -> u64 {
-        let counter = HeuristicTokenCounter::default();
-        messages
-            .iter()
-            .map(|message| counter.count(message))
-            .sum::<usize>() as u64
-    }
+/// The estimated tokens of `messages`, by the default
+/// [`HeuristicTokenCounter`], as a policy estimates them.
+pub fn estimate_tokens(messages: &[Message]) -> u64 {
+    let counter = HeuristicTokenCounter::default();
+    messages
+        .iter()
+        .map(|message| counter.count(message))
+        .sum::<usize>() as u64
+}
 
+impl CompactionPolicy {
     /// Whether a request of `tokens` leaves less than the summarizer's
     /// reserve of `spec`'s window free. Never, when the window is not known.
     pub fn over_threshold(&self, tokens: u64, spec: &ModelSpec) -> bool {
@@ -331,9 +393,10 @@ impl CompactionPolicy {
 
     /// Where a new compaction for `reason` of `messages`, whose first
     /// `from` are summarized already, should end with `spec`, by the
-    /// policy's [`Cut`]: the first message it keeps, after `from` and at
-    /// most `messages.len()`, or `None` when nothing new would be
-    /// summarized. By [`Cut::Budget`], a compaction that must happen (the
+    /// policy's [`Cut`] (a named one from `rules`, by [`Cut::Budget`] when
+    /// `rules` has none of that name): the first message it keeps, after
+    /// `from` and at most `messages.len()`, or `None` when nothing new would
+    /// be summarized. By [`Cut::Budget`], a compaction that must happen (the
     /// user asked, or the model refused the request as too long) still
     /// summarizes a short conversation's older messages.
     pub fn cut(
@@ -342,18 +405,28 @@ impl CompactionPolicy {
         from: usize,
         reason: &CompactReason,
         spec: Option<&ModelSpec>,
+        rules: &CutRules,
     ) -> Option<usize> {
-        match &self.cut {
-            Cut::Budget => cut_at(
+        match self.rule(rules) {
+            Ok(Some(rule)) => {
+                rule(messages, from, reason, spec).filter(|&at| at > from && at <= messages.len())
+            }
+            Ok(None) | Err(_) => cut_at(
                 messages,
                 from,
                 self.keep(reason, spec),
                 !matches!(reason, CompactReason::Threshold),
                 &HeuristicTokenCounter::default(),
             ),
-            Cut::With(rule) => {
-                rule(messages, from, reason, spec).filter(|&at| at > from && at <= messages.len())
-            }
+        }
+    }
+
+    /// The rule the policy's cut names in `rules`: `None` for the budget,
+    /// the name when `rules` has none of it.
+    fn rule<'r>(&self, rules: &'r CutRules) -> Result<Option<&'r CutRule>, &str> {
+        match &self.cut {
+            Cut::Budget => Ok(None),
+            Cut::Named(name) => rules.0.get(name).map(Some).ok_or(name.as_str()),
         }
     }
 
@@ -424,6 +497,9 @@ pub fn summarized_prefix(conversation: &Conversation) -> usize {
 /// A summary [`CompactionPolicy::plan_summary`] planned.
 #[derive(Clone, Debug)]
 pub struct SummaryPlan {
+    /// The name of the cut the policy says that the rules did not have, so
+    /// it cut by the budget instead.
+    pub unknown_cut: Option<String>,
     /// The first message the compaction keeps; `None` when it summarizes
     /// every message. By id, so a splice made while the summary is written
     /// does not move it.
@@ -436,7 +512,8 @@ pub struct SummaryPlan {
 
 impl CompactionPolicy {
     /// Plans a compaction of `conversation` for `reason`, written by
-    /// `spec`, building on `state`: where it cuts ([`Self::cut`]) and the
+    /// `spec`, building on `state`, its cut named in `rules`: where it cuts
+    /// ([`Self::cut`]) and the
     /// summary request ([`Self::plan`]) of its messages not summarized yet
     /// ([`summarized_prefix`]). `None` when nothing new would be
     /// summarized.
@@ -450,15 +527,18 @@ impl CompactionPolicy {
         state: &SummaryState,
         reason: &CompactReason,
         spec: &ModelSpec,
+        rules: &CutRules,
     ) -> Result<Option<SummaryPlan>, UnsupportedOption> {
         let messages = conversation.messages();
         let from = summarized_prefix(conversation);
-        let Some(upto) = self.cut(messages, from, reason, Some(spec)) else {
+        let Some(upto) = self.cut(messages, from, reason, Some(spec), rules) else {
             return Ok(None);
         };
         let (state, request) = self.plan(state, messages, from, upto, spec, reason)?;
         let upto = conversation.id(upto);
+        let unknown_cut = self.rule(rules).err().map(str::to_owned);
         Ok(Some(SummaryPlan {
+            unknown_cut,
             upto,
             state,
             request,
@@ -499,6 +579,15 @@ pub fn apply_summary(
 
 /// The kind of the aside [`apply_summary`] puts after each summary.
 pub const COMPACTED: &str = "rig.compaction";
+
+/// The summary state the next compaction of `conversation` builds on: the
+/// newest compaction's not undone ([`Compacted`]), or the state before any.
+pub fn summary_state(conversation: &Conversation) -> SummaryState {
+    Compacted::of(conversation)
+        .last()
+        .map(|(_, compacted)| compacted.state)
+        .unwrap_or_default()
+}
 
 /// What a compaction replaced, kept with the conversation in an aside of
 /// kind [`COMPACTED`] by [`summary_author`] after its summary: the newest
@@ -600,8 +689,10 @@ pub fn undo_summary(
     })
 }
 
-/// What a [`Summarizer`] asks the model.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// What a [`Summarizer`] asks the model. Each prompt missing from its serde
+/// form is the default's.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct SummaryPrompts {
     /// The summarizer's system prompt.
     pub system: Cow<'static, str>,
@@ -663,8 +754,10 @@ impl SummaryPrompts {
     };
 }
 
-/// The sizes a [`Summarizer`] works within.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The sizes a [`Summarizer`] works within. Each size missing from its
+/// serde form is the default's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct SummaryLimits {
     /// Tokens left free below the model's window.
     pub reserve: u64,
@@ -687,12 +780,25 @@ impl SummaryLimits {
     };
 }
 
+impl Default for SummaryLimits {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl Default for SummaryPrompts {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// Builds the request for a summary of a conversation's older messages and
 /// reads the summary from the model's answer. The conversation goes as
 /// text in one user message, so the model reads it rather than continues
 /// it. The format follows pi's
 /// (`references/pi/packages/coding-agent/src/core/compaction/compaction.ts:507-579`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Summarizer {
     /// What the model is asked.
     pub prompts: SummaryPrompts,
@@ -706,6 +812,12 @@ impl Summarizer {
         prompts: SummaryPrompts::DEFAULT,
         limits: SummaryLimits::DEFAULT,
     };
+}
+
+impl Default for Summarizer {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 /// Why a summary cannot be used.
@@ -903,9 +1015,11 @@ pub struct Cleared {
 /// went wrong. The calls themselves stay, so the conversation keeps its
 /// shape (opencode's `prune`,
 /// `references/opencode/packages/opencode/src/session/compaction.ts:271-316`).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ClearToolOutputs {
-    keep_tokens: usize,
+    /// Tokens of the newest tool output kept.
+    pub keep_tokens: usize,
 }
 
 impl ClearToolOutputs {
@@ -997,6 +1111,90 @@ fn clear_items(message: &mut Message, items: &[usize]) {
 /// Whether `content` is a cleared output.
 fn is_cleared(content: &[ToolResultContent]) -> bool {
     matches!(content, [only] if only.as_text() == Some(ClearToolOutputs::PLACEHOLDER))
+}
+
+/// The compaction knobs one source sets over another's policy, such as
+/// `[compaction]` in settings over the built-in default, or an agent's own
+/// over the settings: each field set replaces the base's, each unset one
+/// (missing from its serde form) keeps it. Unknown fields are refused.
+///
+/// ```
+/// use rig_memory::{CompactionOverrides, CompactionPolicy, TrackArgument};
+///
+/// let base = CompactionPolicy {
+///     tracked: vec![TrackArgument::new("read", "path", "read-files")],
+///     ..CompactionPolicy::default()
+/// };
+/// let own: CompactionOverrides = serde_json::from_str(r#"{"keep_recent": 1000}"#)?;
+/// let policy = own.apply(&base);
+/// assert_eq!(policy.keep_recent, 1000);
+/// assert_eq!(policy.tracked, base.tracked);
+/// # Ok::<(), serde_json::Error>(())
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CompactionOverrides {
+    /// What the summarizer is asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompts: Option<SummaryPrompts>,
+    /// The summarizer's sizes, the reserve among them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limits: Option<SummaryLimits>,
+    /// The tool arguments tracked across compactions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tracked: Option<Vec<TrackArgument>>,
+    /// Tokens an automatic compaction keeps.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_recent: Option<usize>,
+    /// Tokens a compaction the user asked for keeps.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_asked: Option<usize>,
+    /// How old tool outputs are cleared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clearing: Option<ClearToolOutputs>,
+    /// Where a compaction ends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cut: Option<Cut>,
+    /// Summaries one turn may ask for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub per_turn: Option<u32>,
+}
+
+impl CompactionOverrides {
+    /// `base` with each field set here replaced.
+    pub fn apply(&self, base: &CompactionPolicy) -> CompactionPolicy {
+        let mut policy = base.clone();
+        if let Some(prompts) = &self.prompts {
+            policy.summarizer.prompts = prompts.clone();
+        }
+        if let Some(limits) = self.limits {
+            policy.summarizer.limits = limits;
+        }
+        if let Some(tracked) = &self.tracked {
+            policy.tracked = tracked.clone();
+        }
+        if let Some(keep) = self.keep_recent {
+            policy.keep_recent = keep;
+        }
+        if let Some(keep) = self.keep_asked {
+            policy.keep_asked = keep;
+        }
+        if let Some(clearing) = &self.clearing {
+            policy.clearing = clearing.clone();
+        }
+        if let Some(cut) = &self.cut {
+            policy.cut = cut.clone();
+        }
+        if let Some(per_turn) = self.per_turn {
+            policy.per_turn = per_turn;
+        }
+        policy
+    }
+
+    /// Whether it sets no knob.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 #[cfg(test)]
