@@ -285,7 +285,7 @@ fn the_next_request_reads_the_note_and_the_split_off_session_resumes() {
     let sent = main
         .requests()
         .last()
-        .map(|request| format!("{request:?}"))
+        .map(|request| format!("{:?}", request.chat_history))
         .unwrap_or_default();
     assert!(sent.contains("were moved to session `cache`"), "{sent}");
     assert!(
