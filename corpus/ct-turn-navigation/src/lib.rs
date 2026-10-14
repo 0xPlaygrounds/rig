@@ -11,6 +11,7 @@
 //! never a plugin's message. The view itself keeps a scrolled view where it
 //! is as output arrives and marks the new output below it.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use rig_harness::prelude::*;
@@ -22,8 +23,7 @@ use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
     AppKeyBindingsExt, DrawnTranscript, ItemRow, KeyPressed, Keys, MainPane, PanelCanvas,
-    Placement, RequestRedraw, ScrollTo, TranscriptItem, TranscriptView, TuiPanel, TuiPlugin,
-    TuiSystems,
+    Placement, ScrollTo, TranscriptItem, TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
 };
 use serde::{Deserialize, Deserializer};
 use unicode_width::UnicodeWidthChar;
@@ -156,11 +156,19 @@ fn is_prompt(entry: &EntryRef<'_>) -> bool {
             .is_none_or(|author| !matches!(author.kind, AuthorKind::Plugin(_)))
 }
 
-/// Each prompt of `conversation`, with its turn.
+/// Each prompt of `conversation`, with its turn: the request of each turn
+/// the user or an agent asked for, numbered among them. A turn a plugin's
+/// message began, and what it adds, belong to the prompt before it.
 fn turns(conversation: &conversation::Conversation) -> Vec<(MessageId, TurnHeader)> {
+    let asked: HashSet<MessageId> = conversation
+        .turns()
+        .filter_map(|(_, record)| conversation.request(record.start))
+        .filter(is_prompt)
+        .map(|request| request.id)
+        .collect();
     let mut turns: Vec<(MessageId, u64, TurnHeader)> = Vec::new();
     for entry in conversation.entries() {
-        if is_prompt(&entry) {
+        if asked.contains(&entry.id) {
             let header = TurnHeader {
                 turn: turns.len() + 1,
                 first_line: first_line(entry.message),
@@ -275,14 +283,15 @@ fn jump(
 }
 
 /// Once the frame is laid out, the header for where the main pane is
-/// scrolled: drawn in this frame, and when it comes or goes, its row is
-/// laid out at the next one, which it asks for.
+/// scrolled, drawn in this frame. When it comes or goes, its row (the
+/// panel's height) is laid out only at the next frame, which the changed
+/// panel asks for and the wake brings now.
 fn note_header(
     pane: Single<(Ref<DrawnTranscript>, Ref<TranscriptView>), With<MainPane>>,
     conversations: Query<&Conversation>,
     mut header: ResMut<PromptHeader>,
     mut panels: Query<&mut TuiPanel, With<HeaderPanel>>,
-    (mut redraw, wake): (MessageWriter<RequestRedraw>, Option<Res<Wake>>),
+    wake: Option<Res<Wake>>,
 ) {
     let (drawn, view) = &*pane;
     if !drawn.is_changed() && !view.is_changed() {
@@ -304,11 +313,7 @@ fn note_header(
     let moved = panels.iter_mut().fold(false, |moved, mut panel| {
         panel.set_if_neq(placed.clone()) || moved
     });
-    if !moved {
-        return;
-    }
-    redraw.write(RequestRedraw);
-    if let Some(wake) = wake {
+    if let Some(wake) = wake.filter(|_| moved) {
         wake.wake();
     }
 }
