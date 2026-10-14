@@ -19,9 +19,8 @@
 //! the new one and drops a model this build cannot reach (its agent takes
 //! the default model); the bundled files are written as chosen when they
 //! differ on disk or the project is at another commit; plugins named in
-//! the manifest that are not installed are listed, and so are saved values
-//! no plugin of this build knows (they stay in the logs for a later
-//! build).
+//! the manifest that are not installed are listed (their saved values and
+//! files stay in the session for a later build).
 
 #[cfg(test)]
 mod tests;
@@ -32,7 +31,6 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use bevy_reflect::TypeRegistry;
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
@@ -75,6 +73,8 @@ impl Plugin for SessionBundlePlugin {
     fn build(&self, app: &mut App) {
         let front = Front::new(COMMAND).sessionless();
         app.register_type::<BundleOrigin>()
+            .keeps_saved::<BundleOrigin>()
+            .keeps_files("session-bundle")
             .init_resource::<BundleOrigin>()
             .init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
@@ -136,10 +136,9 @@ pub struct Manifest {
     pub session: String,
     /// The bundled session's name or title.
     pub name: String,
-    /// The plugins of the build that wrote it whose crate owns saved values
-    /// of the session, each with those values' keys. Plugins that share a
-    /// crate are each named with all of its keys.
-    pub plugins: BTreeMap<String, Vec<String>>,
+    /// The plugins of the build that wrote it that keep saved values or
+    /// session files of the session (their [`Keeps`]), each with what.
+    pub plugins: BTreeMap<String, Kept>,
     /// The models its agents used, as `vendor/model`.
     pub models: Vec<String>,
     /// The project root it worked in.
@@ -151,6 +150,15 @@ pub struct Manifest {
     /// The git branch the session started on.
     pub branch: Option<String>,
     /// The project-relative files bundled.
+    pub files: Vec<String>,
+}
+
+/// What a plugin keeps of a bundled session.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct Kept {
+    /// The keys of its saved values.
+    pub saved: Vec<String>,
+    /// Its session files, as the store names them (`plugins/vim/…`).
     pub files: Vec<String>,
 }
 
@@ -465,7 +473,6 @@ struct Here<'a> {
     stores: &'a SessionStores,
     models: Option<&'a Models>,
     installed: Vec<String>,
-    registry: &'a TypeRegistry,
 }
 
 /// Imports `plan` with the files chosen so.
@@ -512,17 +519,6 @@ fn import(plan: &Plan, choice: &FileChoice, here: &Here<'_>) -> Result<BundleImp
         kept: Vec::new(),
         notes,
     };
-    let owned: BTreeSet<&String> = manifest.plugins.values().flatten().collect();
-    let unowned: Vec<String> = saved_keys(&saved_session(&plan.bundle.store))
-        .into_iter()
-        .filter(|key| here.registry.get_with_type_path(key).is_none() && !owned.contains(key))
-        .collect();
-    if !unowned.is_empty() {
-        imported.notes.push(format!(
-            "Saved values of an unknown plugin, kept for when it is installed: {}.",
-            unowned.join(", ")
-        ));
-    }
     if let Some(head) = &plan.other_commit {
         imported.notes.push(format!(
             "The project is at commit {head}, not {}.",
@@ -684,13 +680,6 @@ fn track_changes(
     }
 }
 
-/// The session kept in `store`, as far as it reads.
-fn saved_session(store: &dyn Store) -> Session {
-    Session::read_lenient(store)
-        .map(|(saved, _)| saved)
-        .unwrap_or_default()
-}
-
 /// The key of every saved value of `saved`, its own and its agents'.
 fn saved_keys(saved: &Session) -> BTreeSet<String> {
     let agents = saved.agents.iter().flat_map(|agent| agent.state.keys());
@@ -705,8 +694,7 @@ struct Running<'w, 's> {
     title: Option<Res<'w, SessionTitle>>,
     root: Res<'w, ProjectRoot>,
     origin: Res<'w, BundleOrigin>,
-    registry: Res<'w, AppTypeRegistry>,
-    plugins: Query<'w, 's, (&'static Name, &'static PluginSource)>,
+    plugins: Query<'w, 's, (&'static Name, &'static Keeps)>,
 }
 
 impl Running<'_, '_> {
@@ -728,25 +716,33 @@ impl Running<'_, '_> {
         let session = session.map(|id| id.to_string()).unwrap_or_default();
         let name = self.title.as_deref().map(SessionTitle::shown);
         let name = name.filter(|name| !name.is_empty()).map(str::to_owned);
-        let saved = saved_session(store);
+        let saved =
+            Session::read_lenient(store).map_or_else(|_| Session::default(), |(saved, _)| saved);
         let models: BTreeSet<String> = saved.agents.iter().filter_map(SavedAgent::model).collect();
-        // A saved key is a type path; the registry names the crate that
-        // owns it, and each loaded plugin names its crate.
-        let registry = self.registry.read();
-        let mut plugins: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        for key in saved_keys(&saved) {
-            let krate = registry
-                .get_with_type_path(&key)
-                .and_then(|known| known.type_info().type_path_table().crate_name());
-            let owners = self
-                .plugins
-                .iter()
-                .filter(|(_, source)| krate == Some(source.krate.replace('-', "_").as_str()));
-            for (name, _) in owners {
-                let keys = plugins.entry(name.as_str().to_owned()).or_default();
-                keys.push(key.clone());
-            }
-        }
+        let keys = saved_keys(&saved);
+        let files = bundle
+            .store
+            .files()
+            .map_err(|failure| failure.to_string())?;
+        let plugins = self.plugins.iter().filter_map(|(name, keeps)| {
+            let kept = Kept {
+                saved: keys
+                    .iter()
+                    .filter(|key| keeps.saved(key))
+                    .cloned()
+                    .collect(),
+                files: files
+                    .iter()
+                    .filter(|file| {
+                        file.strip_prefix("plugins/")
+                            .is_some_and(|file| keeps.file(file))
+                    })
+                    .cloned()
+                    .collect(),
+            };
+            let keeps_some = !kept.saved.is_empty() || !kept.files.is_empty();
+            keeps_some.then(|| (name.as_str().to_owned(), kept))
+        });
         let created_ms = now_ms();
         let root = match self.origin.project_root.as_str() {
             "" => self.root.0.clone(),
@@ -758,7 +754,7 @@ impl Running<'_, '_> {
             rig_version: VERSION.to_owned(),
             name: name.unwrap_or_else(|| format!("session-{session}")),
             session,
-            plugins,
+            plugins: plugins.collect(),
             models: models.into_iter().collect(),
             project_root: root,
             created_ms,
@@ -963,7 +959,6 @@ struct Importer<'w, 's> {
     models: Option<Res<'w, Models>>,
     processes: Option<Res<'w, Processes>>,
     root: Res<'w, ProjectRoot>,
-    registry: Res<'w, AppTypeRegistry>,
     plugins: Query<'w, 's, &'static Name, With<PluginSource>>,
 }
 
@@ -997,7 +992,6 @@ impl Importer<'_, '_> {
                 .iter()
                 .map(|name| name.as_str().to_owned())
                 .collect(),
-            registry: &self.registry.read(),
         };
         import(plan, choice, &here)
     }

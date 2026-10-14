@@ -22,7 +22,7 @@ struct CounterPlugin;
 
 impl Plugin for CounterPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<Counter>();
+        app.register_type::<Counter>().keeps_saved::<Counter>();
     }
 }
 
@@ -70,7 +70,6 @@ fn start(
     load::<ReadTool>(&mut app, "rig-coding-tools", "");
     load::<SubagentsPlugin>(&mut app, "rig-subagents", "");
     if counter {
-        // Its crate is this one, which owns `Counter`.
         load::<CounterPlugin>(&mut app, "corpus-oc-session-bundle", "");
     }
     load::<SessionBundlePlugin>(&mut app, "corpus-oc-session-bundle", "");
@@ -154,15 +153,22 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         .first()
         .map(|written| written.manifest.clone())
         .unwrap_or_default();
-    let counter = manifest
-        .plugins
-        .iter()
-        .find(|(plugin, _)| plugin.ends_with("CounterPlugin"));
-    assert!(
-        counter.is_some_and(|(_, keys)| keys.iter().any(|key| key.ends_with("::Counter"))),
+    // Each plugin is named with what it says it keeps, though the counter
+    // and the bundle plugin share a crate.
+    let kept = |plugin: &str| {
+        let kept = manifest
+            .plugins
+            .iter()
+            .find(|(name, _)| name.ends_with(plugin));
+        kept.map(|(_, kept)| kept.saved.clone()).unwrap_or_default()
+    };
+    assert_eq!(
+        kept("::CounterPlugin"),
+        [Counter::type_path()],
         "{manifest:?} {:?}",
         refusals(&app)
     );
+    assert_eq!(kept("::SessionBundlePlugin"), [BundleOrigin::type_path()]);
     assert_eq!(manifest.rig_version, VERSION);
     assert_eq!(manifest.project_root, a);
     assert_eq!(manifest.files, ["src/lib.rs"]);
