@@ -1,8 +1,10 @@
-//! Splits of a conversation, built only on the harness's, rig-core's and
-//! rig-memory's public API: `/split` at any entry into a branch of the
-//! session or into a new session, `/split move` taking a range out and
-//! leaving a pointer behind, and `/split switch` and `/split merge` for
-//! any line, a branch kept in the session or a split kept in another.
+//! Splits of a conversation, built only on the harness's, rig-core's,
+//! rig-memory's and rig-tui's public API: `/split` at any entry into a
+//! branch of the session or into a new session, `/split move` taking a
+//! range out and leaving a pointer behind, `/splits` listing the lines of
+//! any saved session in the native session picker, and `/split switch`,
+//! `/split compare` and `/split merge` for any line, a branch kept in the
+//! session or a split kept in another.
 //! It adds no event of its own: other plugins split through the same
 //! primitives ([`ForkSession`] with [`ForkCut::Line`], rig-core's
 //! `branch_off`, `move_out`, `merge_branch` and `merge_line`), or run its
@@ -17,19 +19,25 @@
 //! ```text
 //! /split [new] [<where>] [title]
 //! /split move <first> <last> [new] [<where>] [title]
-//! /split switch <line> [<where>]
+//! /split switch [<line>] [<where>]
+//! /split compare <line> [<where>]
 //! /split merge <line> [<where>]
+//! /splits [session]
 //! ```
 
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::conversation::{BranchError, Conversation as Line, MergeAt, Spliced};
-use rig_harness::rig_memory::{LineId, SPLIT, SplitPointer, lines};
+use rig_harness::rig_core::completion::Message as ChatMessage;
+use rig_harness::rig_core::conversation::{
+    BranchError, Conversation as Line, MergeAt, Spliced, shared_prefix,
+};
+use rig_harness::rig_core::message::UserContent;
+use rig_harness::rig_memory::{self, LineId, SPLIT, SplitPointer, lines};
 
 #[cfg(test)]
 mod tests;
 
-/// The `/split` command.
+/// The `/split` and `/splits` commands.
 #[derive(Default)]
 pub struct SplitsPlugin;
 
@@ -42,8 +50,13 @@ impl Plugin for SplitsPlugin {
             .add_command(
                 "split",
                 "Split the conversation at an entry into a branch, or with `new` a new session; \
-                 /split move <first> <last>, /split switch <line>, /split merge <line>",
+                 /split move <first> <last>, /split switch|compare|merge <line>",
                 split,
+            )
+            .add_command(
+                "splits",
+                "List the lines of this or a named saved session; picking one switches to it",
+                splits,
             )
             .add_systems(Last, go_to_split.after(ForkSessions));
     }
@@ -69,8 +82,11 @@ enum Action {
         last: MessageId,
         new: bool,
     },
-    /// Make a line the active one.
-    Switch(String),
+    /// Make a line the active one; `None` names the active line, which
+    /// in another session runs it.
+    Switch(Option<String>),
+    /// Show a line beside the active one.
+    Compare(String),
     /// Bring a line back into the active one.
     Merge(String),
 }
@@ -117,7 +133,12 @@ fn parse(args: &str) -> Result<Asked, String> {
         }
         Some("switch") => {
             words.next();
-            Action::Switch(named(words.next())?)
+            let line = words.next_if(|word| !word.starts_with("--"));
+            Action::Switch(line.map(str::to_owned))
+        }
+        Some("compare") => {
+            words.next();
+            Action::Compare(named(words.next())?)
         }
         Some("merge") => {
             words.next();
@@ -141,7 +162,7 @@ fn parse(args: &str) -> Result<Asked, String> {
             "--at" => place.at = Some(message(Some(&value()?))?),
             "new" if title.is_empty() => match &mut action {
                 Action::Split { new } | Action::Move { new, .. } => *new = true,
-                Action::Switch(_) | Action::Merge(_) => title.push(word),
+                Action::Switch(_) | Action::Compare(_) | Action::Merge(_) => title.push(word),
             },
             _ => title.push(word),
         }
@@ -238,7 +259,7 @@ fn read_session(world: &World, id: &SessionId) -> Result<Session, String> {
 }
 
 /// The line of `conversation` that `name` names.
-fn find_line(conversation: &Line, name: &str) -> Result<LineId, String> {
+fn find_line(conversation: &Line, name: &str) -> Result<rig_memory::Line, String> {
     let listed = lines(conversation);
     let by_aside = name.parse::<AsideId>().ok();
     let found = listed.iter().find(|line| match &line.id {
@@ -248,14 +269,15 @@ fn find_line(conversation: &Line, name: &str) -> Result<LineId, String> {
     });
     let found = found.or_else(|| listed.iter().find(|line| line.title == name));
     found
-        .map(|line| line.id.clone())
+        .cloned()
         .ok_or_else(|| format!("there is no line `{name}`"))
 }
 
 /// The kept branch `name` names in `conversation`; `None` for the active
 /// line, or no name.
 fn branch(conversation: &Line, name: Option<&str>) -> Result<Option<AsideId>, String> {
-    match name.map(|name| find_line(conversation, name)).transpose()? {
+    let line = name.map(|name| find_line(conversation, name)).transpose()?;
+    match line.map(|line| line.id) {
         None | Some(LineId::Active) => Ok(None),
         Some(LineId::Branch(id)) => Ok(Some(id)),
         Some(LineId::Session { session, .. }) => Err(format!(
@@ -282,7 +304,8 @@ fn run(world: &mut World, agent: Entity, asked: Asked) -> Result<String, String>
                 in_session(conversation, &asked)
             })
         }
-        Action::Switch(name) => switch(world, &target, &name),
+        Action::Switch(name) => switch(world, &target, name.as_deref()),
+        Action::Compare(name) => compare(world, &target, &name),
         Action::Merge(name) => merge(world, &target, &name),
     }
 }
@@ -450,11 +473,21 @@ fn go_to_split(
 }
 
 /// `/split switch`: makes line `name` the active one, or runs the session
-/// it is kept in.
-fn switch(world: &mut World, target: &Target, name: &str) -> Result<String, String> {
+/// it is kept in; the active line (no name) of another session runs that
+/// session.
+fn switch(world: &mut World, target: &Target, name: Option<&str>) -> Result<String, String> {
     let conversation = conversation_of(world, target)?;
-    match find_line(&conversation, name)? {
-        LineId::Active => Ok("That is the active line.".to_owned()),
+    let line = name
+        .map(|name| find_line(&conversation, name))
+        .transpose()?;
+    match line.map_or(LineId::Active, |line| line.id) {
+        LineId::Active => match &target.session {
+            None => Ok("That is the active line.".to_owned()),
+            Some(session) => {
+                world.trigger(Exit(ExitReason::Switch(Some(session.clone()))));
+                Ok(format!("Running session {session}."))
+            }
+        },
         LineId::Session { session, .. } => {
             let id: SessionId = session
                 .parse()
@@ -493,7 +526,7 @@ fn conversation_of(world: &mut World, target: &Target) -> Result<Line, String> {
 fn merge(world: &mut World, target: &Target, name: &str) -> Result<String, String> {
     let conversation = conversation_of(world, target)?;
     let failed = |failure: BranchError| failure.to_string();
-    match find_line(&conversation, name)? {
+    match find_line(&conversation, name)?.id {
         LineId::Active => Ok("That is the active line.".to_owned()),
         LineId::Branch(id) => edit(world, (target, false), |conversation| {
             let spliced = conversation.merge_branch(id, by()).map_err(failed)?;
@@ -512,13 +545,7 @@ fn merge(world: &mut World, target: &Target, name: &str) -> Result<String, Strin
                     "the split in session {session} is merged already, or not in the active line"
                 )
             })?;
-            let split: SessionId = session
-                .parse()
-                .map_err(|_| format!("`{session}` is no session id"))?;
-            let line = read_session(world, &split)?
-                .agent(&agent)
-                .map(|agent| agent.conversation.clone())
-                .ok_or_else(|| format!("session {session} has no agent {agent}"))?;
+            let line = split_line(world, &session, &agent)?;
             let at = match pointer.moved {
                 0 => MergeAt::End,
                 moved => MergeAt::Back { pointer: id, moved },
@@ -537,4 +564,155 @@ fn merge(world: &mut World, target: &Target, name: &str) -> Result<String, Strin
 /// What a merge says it did.
 fn merged(spliced: &Spliced) -> String {
     format!("Merged {} entries back.", spliced.changed.len())
+}
+
+/// The active line of `agent` in session `session`, where a split of a
+/// line is kept.
+fn split_line(world: &World, session: &str, agent: &str) -> Result<Line, String> {
+    let split: SessionId = session
+        .parse()
+        .map_err(|_| format!("`{session}` is no session id"))?;
+    read_session(world, &split)?
+        .agent(agent)
+        .map(|agent| agent.conversation.clone())
+        .ok_or_else(|| format!("session {session} has no agent {agent}"))
+}
+
+/// `/splits [session]`: the lines of the agent's conversation, or of a
+/// named saved session's main agent, in the native session picker with a
+/// preview; picking one runs `/split switch` for it.
+fn splits(In(args): In<CommandArgs>, world: &mut World) {
+    let name = args.args.trim();
+    let place = Where {
+        from: (!name.is_empty()).then(|| name.to_owned()),
+        ..Where::default()
+    };
+    let target = match target(world, args.agent, &place) {
+        Ok(target) => target,
+        Err(why) => {
+            world.write_message(Notice::error(args.agent, why));
+            return;
+        }
+    };
+    let title = match &target.session {
+        None => "Lines of this conversation".to_owned(),
+        Some(session) => format!("Lines of session {session}"),
+    };
+    world.spawn((
+        Picker::new(title).for_agent(args.agent),
+        SessionPicker {
+            source: SessionSource::Lines {
+                session: target.session,
+                agent: Some(target.agent.0),
+            },
+            command: "split switch {line} --from {session} --agent {agent}".to_owned(),
+            ..SessionPicker::default()
+        },
+    ));
+}
+
+/// `/split compare`: shows line `name` beside the active one, each from
+/// the last entry they share.
+fn compare(world: &mut World, target: &Target, name: &str) -> Result<String, String> {
+    let conversation = conversation_of(world, target)?;
+    let found = find_line(&conversation, name)?;
+    let other = match &found.id {
+        LineId::Active => return Err("That is the active line: name another one.".to_owned()),
+        LineId::Branch(id) => {
+            let length = conversation.line(Some(*id)).map_or(0, |line| line.len());
+            conversation
+                .line_conversation(Some(*id), length)
+                .ok_or_else(|| format!("there is no line `{name}`"))?
+        }
+        LineId::Session { session, agent } => split_line(world, session, agent)?,
+    };
+    let ours = conversation.line(None).unwrap_or_default();
+    let shared = shared_prefix(&ours, &other.line(None).unwrap_or_default());
+    let sides = [
+        (
+            conversation.branch_title().to_owned(),
+            own(&conversation, shared),
+        ),
+        (found.title, own(&other, shared)),
+    ];
+    show(world, sides)?;
+    Ok(format!("Comparing from entry {shared}."))
+}
+
+/// `line` from the last of its `shared` first entries on, moved back past
+/// tool results so none is shown without its call.
+fn own(line: &Line, shared: usize) -> Line {
+    let results = |at: usize| match line.messages().get(at) {
+        Some(ChatMessage::User { content }) => content
+            .iter()
+            .any(|part| matches!(part, UserContent::ToolResult(_))),
+        _ => false,
+    };
+    let mut head = shared.saturating_sub(1);
+    while head > 0 && results(head) {
+        head -= 1;
+    }
+    let mut own = line.view();
+    own.splice(..head, [], by());
+    own
+}
+
+/// Shows two lines side by side, each in a transcript pane of one box
+/// over the screen: Tab goes from one to the other, Esc closes them.
+#[cfg(feature = "tui")]
+fn show(world: &mut World, sides: [(String, Line); 2]) -> Result<(), String> {
+    use rig_tui::crossterm::event::KeyCode;
+    use rig_tui::ratatui::layout::Constraint;
+    use rig_tui::{
+        KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, PaneKeys, Placement, TranscriptPane,
+        TranscriptSource, TuiPanel,
+    };
+
+    let over = Placement::Over {
+        width: Constraint::Percentage(90),
+        height: Constraint::Percentage(90),
+    };
+    let compared = world
+        .spawn((Name::new("split compare"), TuiPanel::new(over)))
+        .id();
+    let panes: Vec<Entity> = (0..)
+        .zip(sides)
+        .map(|(part, (title, line))| {
+            let within = Placement::Within {
+                panel: compared,
+                part,
+                of: 2,
+            };
+            let pane = TranscriptPane::new(TranscriptSource::Value(line)).titled(title);
+            let spawned = (pane, TuiPanel::new(within), PaneKeys, ChildOf(compared));
+            world.spawn(spawned).id()
+        })
+        .collect();
+    let (Some(&left), Some(&right)) = (panes.first(), panes.last()) else {
+        return Err("no room to compare".to_owned());
+    };
+    for (pane, other) in [(left, right), (right, left)] {
+        let key = |code, label| {
+            let binding = KeyBinding::new(KeyPress::key(code), label);
+            (binding.in_scope(KeyScope::Panel(pane)), ChildOf(pane))
+        };
+        world
+            .spawn(key(KeyCode::Esc, "Close the comparison"))
+            .observe(move |_: On<KeyPressed>, mut commands: Commands| {
+                commands.entity(compared).try_despawn();
+            });
+        world.spawn(key(KeyCode::Tab, "The other line")).observe(
+            move |_: On<KeyPressed>, mut focus: ResMut<KeyFocus>| {
+                focus.0 = Some(other);
+            },
+        );
+    }
+    world.insert_resource(KeyFocus(Some(left)));
+    Ok(())
+}
+
+/// Without the terminal view there is nowhere to show two lines.
+#[cfg(not(feature = "tui"))]
+fn show(_: &mut World, _: [(String, Line); 2]) -> Result<(), String> {
+    Err("Comparing lines needs the terminal view.".to_owned())
 }

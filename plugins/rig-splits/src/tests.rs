@@ -6,7 +6,9 @@ use rig_compaction::Compaction;
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::RunCommand;
+use rig_harness::pick::PickPlugin;
 use rig_harness::rig_memory::{CompactionOverrides, DirStore, load, save};
+use rig_harness::sessions::SessionPickerPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, commit_message, connect, first_agent, log_ended, reply,
     run_until, scratch_home,
@@ -55,6 +57,7 @@ fn start(
 ) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
     app.add_plugins((AgentPlugin, JournalPlugin, SplitsPlugin))
+        .add_plugins((PickPlugin, SessionPickerPlugin))
         .init_resource::<Switched>()
         .init_resource::<Ended>()
         .add_observer(keep_switch)
@@ -322,6 +325,103 @@ fn the_grammar_reads_where_new_and_the_title() {
     assert!(parse("--at x").is_err());
     assert_eq!(
         parse("switch a3").map(|asked| asked.action),
-        Ok(Action::Switch("a3".to_owned()))
+        Ok(Action::Switch(Some("a3".to_owned())))
     );
+    assert_eq!(
+        parse("switch --from 1-2").map(|asked| (asked.action, asked.place.from)),
+        Ok((Action::Switch(None), Some("1-2".to_owned())))
+    );
+}
+
+/// `/split compare` shows the active line and another side by side, each
+/// from the last entry they share; `/splits` lists the lines in the
+/// session picker, and picking one switches to it.
+#[cfg(feature = "tui")]
+#[test]
+fn splits_lists_the_lines_and_compare_shows_each_from_where_they_part() {
+    use rig_harness::pick::{Chosen, Pick};
+    use rig_tui::{TranscriptPane, TranscriptSource};
+
+    let home = scratch_home("rig-splits-compare");
+    let Ok(id) = "1700000000-41".parse::<SessionId>() else {
+        return;
+    };
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<_>>::new());
+    let Some((mut app, wakes, agent)) = start(&home, &id, &model) else {
+        return;
+    };
+    let said = ["Name a colour.", "Red.", "Another?", "Green."];
+    for (at, text) in said.into_iter().enumerate() {
+        let message = match at % 2 {
+            0 => Message::user(text),
+            _ => Message::assistant(text),
+        };
+        assert_eq!(commit_message(app.world_mut(), agent, message), Ok(()));
+    }
+    app.update();
+    let red = ids(&app, agent).get(1).copied().unwrap_or_default();
+    split(&mut app, agent, &format!("--at {red} blue"));
+    for message in [Message::user("Blue?"), Message::assistant("Blue.")] {
+        assert_eq!(commit_message(app.world_mut(), agent, message), Ok(()));
+    }
+    app.update();
+
+    split(&mut app, agent, "compare main");
+    assert_eq!(errors(&app), Vec::<String>::new());
+    let mut panes = app.world_mut().query::<&TranscriptPane>();
+    let shown: Vec<(Option<String>, Vec<Message>)> = panes
+        .iter(app.world())
+        .filter_map(|pane| match &pane.source {
+            TranscriptSource::Value(line) => Some((pane.title.clone(), line.messages().to_vec())),
+            _ => None,
+        })
+        .collect();
+    let side = |title: &str, texts: &[&str]| {
+        let messages = texts.iter().enumerate().map(|(at, text)| match at % 2 {
+            0 => Message::assistant(*text),
+            _ => Message::user(*text),
+        });
+        (Some(title.to_owned()), messages.collect::<Vec<_>>())
+    };
+    assert_eq!(
+        shown,
+        [
+            side("blue", &["Red.", "Blue?", "Blue."]),
+            side("main", &["Red.", "Another?", "Green."]),
+        ]
+    );
+
+    app.world_mut().trigger(RunCommand::new(agent, "splits"));
+    app.update();
+    let mut pickers = app
+        .world_mut()
+        .query_filtered::<Entity, With<SessionPicker>>();
+    let picker = pickers.iter(app.world()).next();
+    assert!(picker.is_some(), "a session picker");
+    let Some(picker) = picker else {
+        return;
+    };
+    let labels = |world: &World| -> Vec<String> {
+        let items = world
+            .get::<Picker>(picker)
+            .map(|picker| picker.items.clone());
+        items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| item.label.trim().to_owned())
+            .collect()
+    };
+    run_until(&mut app, &wakes, |world| !labels(world).is_empty());
+    assert_eq!(labels(app.world()), ["blue", "main"]);
+    app.world_mut()
+        .trigger(Pick::person(picker, Some(Chosen::item(1))));
+    app.update();
+    app.update();
+    assert_eq!(errors(&app), Vec::<String>::new());
+    let title = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.branch_title().to_owned());
+    assert_eq!(title.as_deref(), Some("main"));
+    std::fs::remove_dir_all(home.root()).ok();
 }
