@@ -6,11 +6,11 @@
 //! subagents and branches, and every plugin's saved values and session
 //! files, exactly as a restore reads them), the project-relative paths and
 //! current contents of the files the session's tools changed, and a
-//! [`Manifest`]. Secrets found by rig-core's `redact` shapes or as
-//! environment-looking assignments (`AWS_SECRET_ACCESS_KEY=…`), through a
-//! rig-memory rewrite of a copy of the store, are asked about first
-//! (redact, keep or cancel); with nobody to ask the bundle is refused
-//! unless `--allow-secrets`.
+//! [`Manifest`]. Secrets that rig-core's `redact` finds (key shapes and
+//! assignments such as `AWS_SECRET_ACCESS_KEY=…`), through a rig-memory
+//! rewrite of a copy of the store, are asked about first (redact, keep or
+//! cancel); with nobody to ask the bundle is refused unless
+//! `--allow-secrets`.
 //!
 //! `rig bundle open <file> [--project <dir>] [--replace] [--apply|--keep|--apply-file <path>…]`
 //! and `/unbundle <file> …` import a bundle as a new saved session of the
@@ -19,26 +19,29 @@
 //! the new one and drops a model this build cannot reach (its agent takes
 //! the default model); the bundled files are written as chosen when they
 //! differ on disk or the project is at another commit; plugins named in
-//! the manifest that are not installed are listed (their saved values stay
-//! in the logs for a later build).
+//! the manifest that are not installed are listed, and so are saved values
+//! no plugin of this build knows (they stay in the logs for a later
+//! build).
 
 #[cfg(test)]
 mod tests;
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
+use bevy_reflect::TypeRegistry;
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use rig_core::redact;
-use rig_harness::harness_protocol::{SessionDir, SessionId};
+use rig_harness::harness_protocol::{SessionDir, SessionId, VERSION};
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_memory::{
-    FORMAT, MODEL, MemoryStore, Place, Rewrite, SavedAgent, Session, SessionMeta, Store, Strings,
+    MODEL, MemoryStore, Place, Rewrite, SavedAgent, Session, SessionMeta, Store, Strings,
     check_name, fork, now_ms, rewrite,
 };
 use rig_harness::rig_tools::process::Launcher;
@@ -127,15 +130,16 @@ pub struct Manifest {
     pub format: String,
     /// The bundle's own id: the session and when it was written.
     pub id: String,
-    /// The session log format of the bundled store, as rig-memory names it
-    /// (the harness exposes no rig version).
-    pub session_format: String,
+    /// The version of rig that wrote it.
+    pub rig_version: String,
     /// The bundled session's id.
     pub session: String,
     /// The bundled session's name or title.
     pub name: String,
-    /// The plugins of the build that wrote it.
-    pub plugins: Vec<String>,
+    /// The plugins of the build that wrote it whose crate owns saved values
+    /// of the session, each with those values' keys. Plugins that share a
+    /// crate are each named with all of its keys.
+    pub plugins: BTreeMap<String, Vec<String>>,
     /// The models its agents used, as `vendor/model`.
     pub models: Vec<String>,
     /// The project root it worked in.
@@ -253,7 +257,7 @@ impl Bundle {
         let rewritten = rewrite(
             &store,
             Author::plugin("session-bundle"),
-            &Strings(|text: &mut String| redact_text(text)),
+            &Strings(redact_text),
         )
         .map_err(|failure| failure.to_string())?;
         let mut found: Vec<String> = rewritten
@@ -461,6 +465,7 @@ struct Here<'a> {
     stores: &'a SessionStores,
     models: Option<&'a Models>,
     installed: Vec<String>,
+    registry: &'a TypeRegistry,
 }
 
 /// Imports `plan` with the files chosen so.
@@ -494,18 +499,30 @@ fn import(plan: &Plan, choice: &FileChoice, here: &Here<'_>) -> Result<BundleImp
             return Err(why);
         }
     };
+    let missing_plugins = manifest
+        .plugins
+        .keys()
+        .filter(|plugin| !here.installed.contains(plugin))
+        .cloned()
+        .collect();
     let mut imported = BundleImported {
         session,
-        missing_plugins: manifest
-            .plugins
-            .iter()
-            .filter(|plugin| !here.installed.contains(plugin))
-            .cloned()
-            .collect(),
+        missing_plugins,
         applied: Vec::new(),
         kept: Vec::new(),
         notes,
     };
+    let owned: BTreeSet<&String> = manifest.plugins.values().flatten().collect();
+    let unowned: Vec<String> = saved_keys(&saved_session(&plan.bundle.store))
+        .into_iter()
+        .filter(|key| here.registry.get_with_type_path(key).is_none() && !owned.contains(key))
+        .collect();
+    if !unowned.is_empty() {
+        imported.notes.push(format!(
+            "Saved values of an unknown plugin, kept for when it is installed: {}.",
+            unowned.join(", ")
+        ));
+    }
     if let Some(head) = &plan.other_commit {
         imported.notes.push(format!(
             "The project is at commit {head}, not {}.",
@@ -667,6 +684,19 @@ fn track_changes(
     }
 }
 
+/// The session kept in `store`, as far as it reads.
+fn saved_session(store: &dyn Store) -> Session {
+    Session::read_lenient(store)
+        .map(|(saved, _)| saved)
+        .unwrap_or_default()
+}
+
+/// The key of every saved value of `saved`, its own and its agents'.
+fn saved_keys(saved: &Session) -> BTreeSet<String> {
+    let agents = saved.agents.iter().flat_map(|agent| agent.state.keys());
+    saved.state.keys().chain(agents).cloned().collect()
+}
+
 /// What `/bundle` reads of the app.
 #[derive(bevy_ecs::system::SystemParam)]
 struct Running<'w, 's> {
@@ -675,7 +705,8 @@ struct Running<'w, 's> {
     title: Option<Res<'w, SessionTitle>>,
     root: Res<'w, ProjectRoot>,
     origin: Res<'w, BundleOrigin>,
-    plugins: Query<'w, 's, &'static Name, With<PluginSource>>,
+    registry: Res<'w, AppTypeRegistry>,
+    plugins: Query<'w, 's, (&'static Name, &'static PluginSource)>,
 }
 
 impl Running<'_, '_> {
@@ -697,10 +728,25 @@ impl Running<'_, '_> {
         let session = session.map(|id| id.to_string()).unwrap_or_default();
         let name = self.title.as_deref().map(SessionTitle::shown);
         let name = name.filter(|name| !name.is_empty()).map(str::to_owned);
-        let saved = Session::read_lenient(store)
-            .map(|(saved, _)| saved)
-            .unwrap_or_default();
+        let saved = saved_session(store);
         let models: BTreeSet<String> = saved.agents.iter().filter_map(SavedAgent::model).collect();
+        // A saved key is a type path; the registry names the crate that
+        // owns it, and each loaded plugin names its crate.
+        let registry = self.registry.read();
+        let mut plugins: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for key in saved_keys(&saved) {
+            let krate = registry
+                .get_with_type_path(&key)
+                .and_then(|known| known.type_info().type_path_table().crate_name());
+            let owners = self
+                .plugins
+                .iter()
+                .filter(|(_, source)| krate == Some(source.krate.replace('-', "_").as_str()));
+            for (name, _) in owners {
+                let keys = plugins.entry(name.as_str().to_owned()).or_default();
+                keys.push(key.clone());
+            }
+        }
         let created_ms = now_ms();
         let root = match self.origin.project_root.as_str() {
             "" => self.root.0.clone(),
@@ -709,14 +755,10 @@ impl Running<'_, '_> {
         bundle.manifest = Manifest {
             format: BUNDLE_FORMAT.to_owned(),
             id: format!("{session}-{created_ms}"),
-            session_format: FORMAT.to_owned(),
+            rig_version: VERSION.to_owned(),
             name: name.unwrap_or_else(|| format!("session-{session}")),
             session,
-            plugins: self
-                .plugins
-                .iter()
-                .map(|name| name.as_str().to_owned())
-                .collect(),
+            plugins,
             models: models.into_iter().collect(),
             project_root: root,
             created_ms,
@@ -921,6 +963,7 @@ struct Importer<'w, 's> {
     models: Option<Res<'w, Models>>,
     processes: Option<Res<'w, Processes>>,
     root: Res<'w, ProjectRoot>,
+    registry: Res<'w, AppTypeRegistry>,
     plugins: Query<'w, 's, &'static Name, With<PluginSource>>,
 }
 
@@ -954,6 +997,7 @@ impl Importer<'_, '_> {
                 .iter()
                 .map(|name| name.as_str().to_owned())
                 .collect(),
+            registry: &self.registry.read(),
         };
         import(plan, choice, &here)
     }
@@ -1119,62 +1163,14 @@ fn answered_files(
     }
 }
 
-/// Redacts every secret of `text`: rig-core's shapes, and the value of
-/// each environment-looking assignment of a secret (`NAME=value` where the
-/// name says it is a secret, key, token or password); whether it had one.
+/// Redacts every secret rig-core finds in `text`; whether it had one.
 fn redact_text(text: &mut String) -> bool {
-    let shapes = redact::text(text);
-    let mut out = String::with_capacity(shapes.len());
-    let mut changed = matches!(shapes, std::borrow::Cow::Owned(_));
-    let mut rest: &str = &shapes;
-    while let Some(at) = rest.find('=') {
-        let (before, after) = rest.split_at(at);
-        let after = after.get(1..).unwrap_or_default();
-        let name_len = before
-            .chars()
-            .rev()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .count();
-        let name = before
-            .get(before.len().saturating_sub(name_len)..)
-            .unwrap_or_default();
-        let value_len = after
-            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '`' | ';' | ','))
-            .unwrap_or(after.len());
-        let value = after.get(..value_len).unwrap_or_default();
-        out.push_str(before);
-        out.push('=');
-        if secret_name(name) && !value.is_empty() && value != redact::REDACTED {
-            out.push_str(redact::REDACTED);
-            rest = after.get(value_len..).unwrap_or_default();
-            changed = true;
-        } else {
-            rest = after;
-        }
-    }
-    out.push_str(rest);
-    if changed {
-        *text = out;
-    }
-    changed
-}
-
-/// Whether an environment variable named `name` holds a secret.
-fn secret_name(name: &str) -> bool {
-    const SECRET: [&str; 7] = [
-        "SECRET",
-        "TOKEN",
-        "PASSWORD",
-        "PASSWD",
-        "API_KEY",
-        "ACCESS_KEY",
-        "PRIVATE_KEY",
-    ];
-    name.len() > 2
-        && name
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-        && SECRET.iter().any(|word| name.contains(word))
+    let redacted = match redact::text(text) {
+        Cow::Owned(redacted) => redacted,
+        Cow::Borrowed(_) => return false,
+    };
+    *text = redacted;
+    true
 }
 
 /// Makes every mention of the path `from` in `text`, as a whole path or

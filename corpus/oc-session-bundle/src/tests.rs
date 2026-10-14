@@ -61,19 +61,17 @@ fn start(
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(ProjectRoot(root.to_owned()))
         .insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((
-            AgentPlugin,
-            JournalPlugin,
-            WriteTool,
-            ReadTool,
-            SubagentsPlugin,
-        ))
+        .add_plugins((AgentPlugin, JournalPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
+    load::<WriteTool>(&mut app, "rig-coding-tools", "");
+    load::<ReadTool>(&mut app, "rig-coding-tools", "");
+    load::<SubagentsPlugin>(&mut app, "rig-subagents", "");
     if counter {
-        load::<CounterPlugin>(&mut app, "counter", "");
+        // Its crate is this one, which owns `Counter`.
+        load::<CounterPlugin>(&mut app, "corpus-oc-session-bundle", "");
     }
     load::<SessionBundlePlugin>(&mut app, "corpus-oc-session-bundle", "");
     collect::<BundleWritten>(&mut app);
@@ -156,14 +154,16 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         .first()
         .map(|written| written.manifest.clone())
         .unwrap_or_default();
+    let counter = manifest
+        .plugins
+        .iter()
+        .find(|(plugin, _)| plugin.ends_with("CounterPlugin"));
     assert!(
-        manifest
-            .plugins
-            .iter()
-            .any(|plugin| plugin.ends_with("CounterPlugin")),
+        counter.is_some_and(|(_, keys)| keys.iter().any(|key| key.ends_with("::Counter"))),
         "{manifest:?} {:?}",
         refusals(&app)
     );
+    assert_eq!(manifest.rig_version, VERSION);
     assert_eq!(manifest.project_root, a);
     assert_eq!(manifest.files, ["src/lib.rs"]);
     assert_eq!(manifest.models, ["test/model"]);
@@ -225,11 +225,20 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         edited
     );
     assert_eq!(imported.applied, ["src/lib.rs"]);
+    // Only the lacking plugins that kept saved values are named, not the
+    // file tools this build also lacks.
+    assert_eq!(
+        imported.missing_plugins,
+        [
+            "corpus_oc_session_bundle::tests::CounterPlugin",
+            "rig_subagents::SubagentsPlugin"
+        ]
+    );
     assert!(
         imported
             .lines()
             .iter()
-            .any(|line| line.starts_with("Missing plugins") && line.contains("CounterPlugin")),
+            .any(|line| line.starts_with("Missing plugins")),
         "{imported:?}"
     );
     assert_eq!(
@@ -296,7 +305,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     commit_message(
         app.world_mut(),
         agent,
-        Message::user("export AWS_SECRET_ACCESS_KEY=abc123"),
+        Message::user("export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENG"),
     )
     .ok();
     app.update();
