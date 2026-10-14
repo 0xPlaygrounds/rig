@@ -12,7 +12,14 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# The pool the rules files are read on.
+bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The summary machinery a `summary` rule drives, and the per-agent policy
+# that keeps it off agents with other rules.
+rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
+# `task`'s spawn requests, which carry a subagent's type.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
