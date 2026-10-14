@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::CommandPlugin;
@@ -102,7 +103,13 @@ fn find(
 fn found(app: &App, picker: Option<Entity>) -> Vec<SessionId> {
     let search = picker.and_then(|picker| app.world().get::<Search>(picker));
     search
-        .map(|search| search.found.iter().map(|found| found.id.clone()).collect())
+        .map(|search| {
+            search
+                .found
+                .iter()
+                .map(|found| found.session.id.clone())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -173,7 +180,7 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
             PickPlugin,
             SessionFinderPlugin,
         ));
-    collect::<ForkedHere>(&mut app);
+    collect::<SessionForked>(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -208,31 +215,33 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
     let first = shown.items.first().map(|item| item.label.as_str());
     assert_eq!(first, Some("user: The «png» icons look blurry."));
 
-    // Fork here at session C's message.
+    // The highlighted hit, and the hit opened, show C's conversation at it.
     let c_before = messages(&home, &c);
-    app.world_mut().trigger(Pick::person(
-        picker.unwrap_or(Entity::PLACEHOLDER),
-        Some(Chosen::item(0)),
-    ));
+    let results = picker.unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut().entity_mut(results).insert(Highlighted(0));
+    app.world_mut().flush();
+    let at = |app: &App, entity: Entity| match app.world().get::<PickPreview>(entity) {
+        Some(PickPreview::Conversation { conversation, at }) => at
+            .and_then(|at| conversation.index_of(at))
+            .and_then(|at| conversation.messages().get(at).cloned()),
+        _ => None,
+    };
+    assert_eq!(at(&app, results).as_ref(), c_before.first());
+    app.world_mut()
+        .trigger(Pick::person(results, Some(Chosen::item(0))));
     app.update();
     let world = app.world_mut();
     let mut opened = world.query_filtered::<Entity, With<Opened>>();
-    let opened = opened.iter(world).next();
-    let context = opened
-        .and_then(|opened| app.world().get::<Picker>(opened))
-        .map(|picker| picker.body.clone());
-    assert!(
-        context
-            .as_deref()
-            .is_some_and(|body| body.contains("▶ user: The «png» icons")),
-        "{context:?}"
-    );
-    app.world_mut().trigger(Pick::person(
-        opened.unwrap_or(Entity::PLACEHOLDER),
-        Some(Chosen::item(1)),
-    ));
-    app.update();
-    let forks = &app.world().resource::<Collected<ForkedHere>>().0;
+    let opened = opened.iter(world).next().unwrap_or(Entity::PLACEHOLDER);
+    assert_eq!(at(&app, opened).as_ref(), c_before.first());
+
+    // Fork here at session C's message.
+    app.world_mut()
+        .trigger(Pick::person(opened, Some(Chosen::item(1))));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Collected<SessionForked>>().0.is_empty()
+    });
+    let forks = &app.world().resource::<Collected<SessionForked>>().0;
     let fork = forks.first().map(|fork| fork.to.clone());
     assert_eq!(forks.first().map(|fork| &fork.from), Some(&c));
     let forked = fork.map(|fork| messages(&home, &fork)).unwrap_or_default();
