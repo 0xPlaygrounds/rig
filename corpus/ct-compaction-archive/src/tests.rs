@@ -367,3 +367,8 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
     );
     assert!(error.contains("1 archived message matches"), "{error}");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(CompactionArchivePlugin);
+}
