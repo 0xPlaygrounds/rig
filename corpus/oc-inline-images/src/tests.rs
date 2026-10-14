@@ -64,7 +64,10 @@ fn front(
             ToolOptions::default(),
             shoot,
         );
-    tui_view(&mut app).add_plugins(InlineImagesPlugin);
+    // Another plugin's decorator, drawn after this one's under the call.
+    tui_view(&mut app)
+        .add_plugins(InlineImagesPlugin)
+        .add_call_decorator("note", |_| vec![Line::from("  (a note under the call)")]);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -150,13 +153,14 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
             .is_some_and(|(cup, caption)| cup == caption + 2),
         "{out:?} on {rows:#?}"
     );
-    // The caption is one of the call's rows, after its result.
+    // The caption is one of this plugin's decoration rows, though another
+    // decorator draws after it.
     let (drawn, frame) = (
         app.world().resource::<DrawnTranscript>(),
         app.world().resource::<TuiFrame>(),
     );
     let call = drawn.items().iter().find_map(|(item, rows)| match item {
-        TranscriptItem::Call(_) => Some(rows.clone()),
+        TranscriptItem::Decoration(_, name) if name == DECORATOR => Some(rows.clone()),
         _ => None,
     });
     let on_rows = call.clone().into_iter().flatten().filter_map(|row| {
@@ -201,6 +205,27 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
     app.update();
     assert_eq!(block_rows(&app), 8);
     assert_eq!(written(&app), "");
+    drop(app);
+
+    // iTerm2 draws the attachment in the cells: scrolled off, the view writes those
+    // cells again.
+    let (mut app, _, agent) = front(&store, "", Some(Protocol::Iterm2));
+    assert!(written(&app).contains("\x1b]1337;File=inline=1;"));
+    let areas: Vec<Rect> = app
+        .world()
+        .resource::<Placed>()
+        .spots
+        .values()
+        .map(Spot::area)
+        .collect();
+    assert_eq!(areas.len(), 1, "{areas:?}");
+    let long = ChatMessage::assistant("more\n\n".repeat(30));
+    let committed = commit_message(app.world_mut(), agent, long);
+    assert!(committed.is_ok(), "{committed:?}");
+    app.update();
+    app.update();
+    let repainted = app.world().resource::<TuiTestScreen>().repainted();
+    assert_eq!(repainted, areas.as_slice());
     drop(app);
 
     // `mode = "off"`: one line with the size, no blocks.

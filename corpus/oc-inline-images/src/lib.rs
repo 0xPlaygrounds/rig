@@ -43,8 +43,8 @@ use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
     AppKeyBindingsExt, AppToolRenderersExt, CallDecorator, ContentBlock, ContentKind,
-    CopyToClipboard, DrawnTranscript, KeyBinding, KeyPress, KeyPressed, KeyScope, TerminalWrite,
-    ToolCallView, TranscriptItem, TranscriptView, TuiFrame, TuiScreen, TuiSystems,
+    CopyToClipboard, DrawnTranscript, KeyBinding, KeyPress, KeyPressed, KeyScope, Repaint,
+    TerminalWrite, ToolCallView, TranscriptItem, TranscriptView, TuiFrame, TuiScreen, TuiSystems,
 };
 use serde::Deserialize;
 
@@ -190,8 +190,8 @@ enum Look {
     Line,
 }
 
-/// What an image's look depends on: the settings, the terminal and its
-/// width.
+/// What an image's look depends on: the settings, the terminal, its
+/// width and the transcript's.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Params {
     look: Look,
@@ -201,14 +201,20 @@ struct Params {
 }
 
 impl Params {
-    fn of(settings: &ImagesSettings, graphics: &TerminalGraphics, width: u16) -> Self {
+    /// With `widths` the terminal's and the transcript's, which side
+    /// panels may narrow (0 before the first frame).
+    fn of(settings: &ImagesSettings, graphics: &TerminalGraphics, widths: (u16, u16)) -> Self {
         let look = match (settings.mode, graphics.protocol) {
             (Mode::Off, _) => Look::Line,
             (Mode::Blocks, _) | (Mode::Auto, None) => Look::Blocks,
             (Mode::Auto, Some(protocol)) => Look::Escape(protocol),
         };
         let percent = u32::from(settings.max_width_percent.min(100));
-        let cols = u32::from(width.saturating_sub(INDENT)) * percent / 100;
+        let cols = u32::from(widths.0.saturating_sub(INDENT)) * percent / 100;
+        let cols = match widths.1 {
+            0 => cols,
+            transcript => cols.min(u32::from(transcript.saturating_sub(INDENT))),
+        };
         let bounds = (
             u16::try_from(cols).unwrap_or(u16::MAX).max(1),
             settings.max_rows.max(1),
@@ -457,50 +463,52 @@ fn image_in(conversation: &Conversation, id: MessageId, index: usize) -> Option<
     }
 }
 
-/// The images an item of the transcript draws, each with its first row
-/// among the item's rows `rows`, which a call shares with its own look:
-/// this plugin's decorator draws a call's images last.
+/// The first row of each line among `rows`, as the view wrapped them.
+fn line_starts(drawn: &DrawnTranscript, rows: &Range<usize>) -> Vec<usize> {
+    let wrapped = drawn.rows().get(rows.clone()).unwrap_or_default();
+    let starts = wrapped.iter().enumerate();
+    starts
+        .filter(|(n, row)| *n == 0 || row.continues.is_none())
+        .map(|(n, _)| rows.start + n)
+        .collect()
+}
+
+/// The images an item of the transcript draws, each with its first row:
+/// a message's image block, or this plugin's decoration of a call.
 fn drawn_in(
     shared: &mut Shared,
-    conversation: &Conversation,
+    (conversation, drawn): (&Conversation, &DrawnTranscript),
     item: &TranscriptItem,
     rows: &Range<usize>,
 ) -> Vec<(usize, Fitted)> {
-    match item {
+    let images = match item {
         TranscriptItem::Content(id, index) => {
-            let image = image_in(conversation, *id, *index);
-            let (_, drawn) = shared.all_lines(image);
-            drawn
-                .into_iter()
-                .map(|(at, fitted)| (rows.start + at, fitted))
-                .collect()
+            image_in(conversation, *id, *index).into_iter().collect()
         }
-        TranscriptItem::Call(call) => {
-            let (lines, drawn) = shared.all_lines(images_of_call(conversation, call));
-            let Some(start) = rows.end.checked_sub(lines.len()) else {
-                return Vec::new();
-            };
-            drawn
-                .into_iter()
-                .map(|(at, fitted)| (start + at, fitted))
-                .collect()
+        TranscriptItem::Decoration(call, name) if name == DECORATOR => {
+            images_of_call(conversation, call)
         }
-        _ => Vec::new(),
-    }
+        _ => return Vec::new(),
+    };
+    let (_, fitted) = shared.all_lines(images);
+    let starts = line_starts(drawn, rows);
+    let at_row = |(line, fitted): (usize, Fitted)| Some((*starts.get(line)?, fitted));
+    fitted.into_iter().filter_map(at_row).collect()
 }
 
 /// Keeps the look of images in step with the settings, the terminal and
 /// its width, and draws the transcript again when it changes.
 fn follow_look(
     images: Res<Images>,
-    (settings, graphics, screen): (Res<ImagesSettings>, Res<TerminalGraphics>, Res<TuiScreen>),
+    (settings, graphics): (Res<ImagesSettings>, Res<TerminalGraphics>),
+    (screen, frame): (Res<TuiScreen>, Res<TuiFrame>),
     mut decorators: Query<&mut CallDecorator>,
 ) {
     let width = match screen.0.width {
         0 => 80,
         width => width,
     };
-    let params = Params::of(&settings, &graphics, width);
+    let params = Params::of(&settings, &graphics, (width, frame.transcript.width));
     let mut shared = images.lock();
     if shared.params == params {
         return;
@@ -545,6 +553,8 @@ struct Placed {
     sent: Vec<u64>,
     /// The screen they were placed on.
     screen: Option<Rect>,
+    /// Whether an image waits for the cells under it to be written again.
+    deferred: bool,
 }
 
 /// Where each image the terminal draws is on screen, at least in part
@@ -561,7 +571,7 @@ fn wanted(
         if rows.end <= on_screen.start || rows.start >= on_screen.end {
             continue;
         }
-        for (index, (start, fitted)) in drawn_in(shared, conversation, item, rows)
+        for (index, (start, fitted)) in drawn_in(shared, (conversation, drawn), item, rows)
             .into_iter()
             .enumerate()
         {
@@ -723,17 +733,16 @@ fn in_cells(protocol: Protocol, decoded: &Decoded, spot: &Spot, cell: (u16, u16)
     }
 }
 
-/// The terminal's writes that take `placed` to `wanted`: images no longer
-/// wanted where they are come off, and the rest are placed.
+/// The terminal's writes that take `placed` to `wanted`, and the areas
+/// to write again: images no longer wanted where they are come off, and
+/// the rest are placed.
 fn writes(
     placed: &mut Placed,
     wanted: HashMap<At, (Spot, Arc<Decoded>)>,
     protocol: Protocol,
     graphics: &TerminalGraphics,
-    drawn: &DrawnTranscript,
-    frame: &TuiFrame,
-) -> String {
-    let mut out = String::new();
+) -> (String, Vec<Rect>) {
+    let (mut out, mut repaint) = (String::new(), Vec::new());
     let gone: Vec<(At, Spot)> = placed
         .spots
         .iter()
@@ -743,7 +752,7 @@ fn writes(
     for (at, spot) in gone {
         placed.spots.remove(&at);
         if protocol.in_cells() {
-            out.push_str(&erase(&spot, drawn, frame));
+            repaint.push(spot.area());
             continue;
         }
         let (id, placement) = (image_id(spot.key), placement_id(&at));
@@ -752,6 +761,12 @@ fn writes(
     }
     for (at, (spot, decoded)) in wanted {
         if placed.spots.get(&at) == Some(&spot) {
+            continue;
+        }
+        // The cells repainted after the next frame would cover it: it is
+        // placed after that frame.
+        if repaint.iter().any(|area| area.intersects(spot.area())) {
+            placed.deferred = true;
             continue;
         }
         let sequence = if protocol.in_cells() {
@@ -772,7 +787,7 @@ fn writes(
         out.push_str(&at_spot(&spot, &for_tmux(&sequence, graphics.tmux)));
         placed.spots.insert(at, spot);
     }
-    out
+    (out, repaint)
 }
 
 /// Moves the cursor to `spot`'s top left for `sequence`.
@@ -780,46 +795,18 @@ fn at_spot(spot: &Spot, sequence: &str) -> String {
     at((spot.x, spot.y), sequence)
 }
 
-/// Blanks the cells of `spot` past the text the transcript now draws on
-/// each of its rows, unless an overlay covers them: an image in the
-/// cells stays until written over, and the view rewrites only cells
-/// whose text changed.
-fn erase(spot: &Spot, drawn: &DrawnTranscript, frame: &TuiFrame) -> String {
-    let on_screen = drawn.on_screen();
-    let mut out = String::new();
-    for y in spot.y..spot.y.saturating_add(spot.shown) {
-        let row = Rect::new(spot.x, y, spot.cols, 1);
-        if frame.covered(row) || !frame.transcript.intersects(row) {
-            continue;
-        }
-        let index = on_screen.start + usize::from(y.saturating_sub(frame.transcript.y));
-        let text = drawn
-            .rows()
-            .get(index)
-            .filter(|_| on_screen.contains(&index))
-            .map_or(0, |row| row.text.chars().count());
-        let text_end = frame
-            .transcript
-            .x
-            .saturating_add(u16::try_from(text).unwrap_or(u16::MAX));
-        let (from, end) = (spot.x.max(text_end), spot.x.saturating_add(spot.cols));
-        if from < end {
-            out.push_str(&at((from, y), &format!("\x1b[{}X", end - from)));
-        }
-    }
-    out
-}
-
 /// After each drawn frame, places the images on screen and takes off
-/// those that left it, through the view's writer.
+/// those that left it, through the view's writer; the cells an image drawn
+/// in them leaves are written again by the view.
 fn place_images(
     images: Res<Images>,
     graphics: Res<TerminalGraphics>,
     (drawn, frame): (Res<DrawnTranscript>, Res<TuiFrame>),
     conversations: Query<&Conversation>,
     mut placed: ResMut<Placed>,
-    mut terminal: MessageWriter<TerminalWrite>,
+    (mut terminal, mut repaints): (MessageWriter<TerminalWrite>, MessageWriter<Repaint>),
 ) {
+    placed.deferred = false;
     // A resize clears the screen: everything is placed again.
     if placed.screen != Some(frame.screen) {
         placed.spots.clear();
@@ -838,10 +825,11 @@ fn place_images(
         (Look::Escape(_), Some(conversation)) => wanted(&mut shared, conversation, &drawn, &frame),
         _ => HashMap::new(),
     };
-    let out = writes(&mut placed, wanted, protocol, &graphics, &drawn, &frame);
+    let (out, repaint) = writes(&mut placed, wanted, protocol, &graphics);
     if !out.is_empty() {
         terminal.write(TerminalWrite(out.into_bytes()));
     }
+    repaints.write_batch(repaint.into_iter().map(Repaint));
 }
 
 /// Takes kitty's images off the screen as the app exits.
@@ -954,6 +942,7 @@ impl Plugin for InlineImagesPlugin {
             .init_resource::<TuiFrame>()
             .init_resource::<TuiScreen>()
             .add_message::<TerminalWrite>()
+            .add_message::<Repaint>()
             .add_message::<CopyToClipboard>()
             .add_content_renderer(ContentKind::Image, move |view| match view.block {
                 ContentBlock::Image(image) => content.lock().lines(image).0,
@@ -969,7 +958,9 @@ impl Plugin for InlineImagesPlugin {
             .add_systems(
                 PostUpdate,
                 place_images.after(TuiSystems::Render).run_if(
-                    resource_changed::<DrawnTranscript>.or_eager(resource_changed::<TuiFrame>),
+                    resource_changed::<DrawnTranscript>
+                        .or_eager(resource_changed::<TuiFrame>)
+                        .or_eager(|placed: Res<Placed>| placed.deferred),
                 ),
             )
             .add_systems(
