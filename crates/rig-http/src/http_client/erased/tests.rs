@@ -314,6 +314,28 @@ mod middleware {
         );
     }
 
+    /// A transport error that kept no reply, such as a reset connection, has
+    /// nothing to show a response hook, so none runs and the request fails
+    /// with that error.
+    #[test]
+    fn a_transport_error_without_a_reply_runs_no_response_hook() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let erased = DynHttpClient::new(RecordingHttpClient::new(""))
+            .with_middleware(SeeReplies(seen.clone()));
+        let (parts, body) = request("hello").into_parts();
+        let failed = block_on(erased.observe(parts, body, |_| async {
+            Err::<Response<Bytes>, _>(crate::http_client::Error::instance(std::io::Error::other(
+                "connection reset",
+            )))
+        }));
+        let err = failed.err().map(|err| err.to_string());
+        assert!(
+            err.is_some_and(|err| err.contains("connection reset")),
+            "the transport's error"
+        );
+        assert!(seen.lock().expect("seen").is_empty());
+    }
+
     /// What a caller attached to a request, such as the call it serves.
     #[derive(Clone, Debug, PartialEq)]
     struct Serves(u64);
