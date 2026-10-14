@@ -13,10 +13,15 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The `dead_end` tool's parameters.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+# The real `shell` and `edit` tools, and a real compaction.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
