@@ -17,9 +17,9 @@ use corpus_checkpoint_rewind::{Rewind, RewindScope, Rewound};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_sessions::{NameSession, ResumeLabel, SessionTitle, SessionsPlugin, list};
+use rig_sessions::{NameSession, ResumeLabel, SessionTitle, SessionsPlugin};
 use rig_tools::shorten;
-use rig_tui::{Focus, TuiInput};
+use rig_tui::{Focus, MainInput};
 
 /// Most characters of a message in the `/branch` picker.
 const LABEL_CHARS: usize = 70;
@@ -120,8 +120,8 @@ fn fork(
         })
         .id();
     commands.trigger(ForkSession {
-        before: None,
         asker: Some(asker),
+        ..ForkSession::default()
     });
 }
 
@@ -197,7 +197,8 @@ fn branch(
                 })
                 .id();
             commands.trigger(ForkSession {
-                before: Some((id.clone(), message)),
+                from: None,
+                cut: ForkCut::Before(id.clone(), message),
                 asker: Some(asker),
             });
         },
@@ -327,7 +328,7 @@ fn arrive(
     store: Option<Res<SessionStore>>,
     started: Option<Res<AppStart>>,
     agents: PrimaryQuery,
-    input: Option<ResMut<TuiInput>>,
+    input: Option<MainInput>,
     mut commands: Commands,
 ) {
     let Some(parent) = store.and_then(|store| ForkedFrom::read(&*store.0)) else {
@@ -373,16 +374,16 @@ fn tree(
         return;
     };
     let this = title.shown();
-    let parent_of_session = |id: &SessionId| {
-        let store = stores.open(&home.0.session(id)).ok()?;
-        ForkedFrom::read(&*store)
-    };
-    let mut nodes: Vec<Node> = list(&home.0, &stores, paths.path())
+    let mut nodes: Vec<Node> = home
+        .0
+        .saved_sessions()
         .into_iter()
+        .filter(|(_, dir)| dir.path() != paths.path())
+        .filter_map(|(_, dir)| SessionEntry::read(&dir, &stores))
         .map(|entry| Node {
-            parent: parent_of_session(&entry.id),
             id: entry.id.to_string(),
             label: entry.label(),
+            parent: entry.listing.parent,
         })
         .collect();
     nodes.push(Node {

@@ -6,6 +6,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::journal::JournalPlugin;
 use rig_harness_test_support::{app_in, connect, first_agent, reply, run_until, scratch_home};
+use rig_tui::{Editor, MainEditor};
 
 use super::*;
 
@@ -35,8 +36,8 @@ fn start(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
 /// [`start`], with `more` added before the first frame.
 fn start_with(home: &Home, id: &SessionId, more: impl FnOnce(&mut App)) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_in(home, id);
-    app.init_resource::<TuiInput>()
-        .add_plugins((AgentPlugin, JournalPlugin, ForkSessionPlugin))
+    app.world_mut().spawn((Editor::default(), MainEditor));
+    app.add_plugins((AgentPlugin, JournalPlugin, ForkSessionPlugin))
         .register_required_components::<Agent, Turns>()
         .add_observer(count);
     more(&mut app);
@@ -174,11 +175,11 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
         state(&mut app),
         (vec!["one".to_owned(), "r1".to_owned()], Some(1))
     );
-    assert_eq!(app.world().resource::<TuiInput>().text(), "two");
+    assert_eq!(input(&mut app), "two");
     drop(app);
     // Only its first start fills the input.
-    let (app, _) = start(&home, &branched);
-    assert_eq!(app.world().resource::<TuiInput>().text(), "");
+    let (mut app, _) = start(&home, &branched);
+    assert_eq!(input(&mut app), "");
     drop(app);
 
     // The original, reloaded from its log, still has all three turns.
@@ -270,4 +271,14 @@ fn a_branch_with_its_files_switches_once_they_are_back() {
     assert_eq!(app.world().resource::<Exits>().0, [ExitReason::Switch(to)]);
     drop(app);
     fs::remove_dir_all(home.root()).ok();
+}
+
+/// What the main input line holds.
+fn input(app: &mut App) -> String {
+    let world = app.world_mut();
+    world
+        .query_filtered::<&Editor, With<MainEditor>>()
+        .single(world)
+        .map(|editor| editor.text().to_owned())
+        .unwrap_or_default()
 }
