@@ -261,13 +261,14 @@ impl Drain<'_, '_> {
 }
 
 /// The schedule that saves the agent conversations changed since it last
-/// ran ([`save_now`]), between the stages of each agent pass and in `Last`
-/// ([`Saving`]): followed components are mirrored into their lines first
-/// ([`Mirroring`]), and after the save each agent whose line may have
-/// changed is given its line's values (`follows::sync`). So a change of a
-/// followed component is kept at the entry it was made after, give or take
-/// a stage, and a line changed before a stage gives its values to that
-/// stage, not to the next frame.
+/// ran ([`save_now`]): right before `Update`, between the stages of each
+/// agent pass and in `Last` ([`Saving`]). Followed components are mirrored
+/// into their lines first ([`Mirroring`]), and after the save each agent
+/// whose line may have changed is given its line's values
+/// (`follows::sync`). So a change of a followed component is kept at the
+/// entry it was made after, give or take a stage, and a line changed
+/// before `Update`, such as by a key or a command, or before a stage gives
+/// its values to `Update` or that stage, not to the next frame.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct SaveConversations;
 
@@ -285,8 +286,9 @@ pub(crate) fn save_conversations(mut drain: Drain, mut saved: ResMut<SavedOne>) 
 }
 
 /// Runs [`SaveConversations`]: an agent whose conversation had changes,
-/// if any did.
+/// if any did; one the run before `Update` saved is not counted.
 pub(crate) fn save_now(world: &mut World) -> Option<Entity> {
+    world.get_resource_mut::<SavedOne>()?.0 = None;
     world.try_run_schedule(SaveConversations).ok()?;
     world.get_resource_mut::<SavedOne>()?.0.take()
 }

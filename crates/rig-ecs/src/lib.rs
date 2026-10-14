@@ -104,8 +104,10 @@ pub mod prelude {
     };
 }
 
+use bevy_app::MainScheduleOrder;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_time::TimePlugin;
 
@@ -154,6 +156,15 @@ impl Plugin for AgentPlugin {
                 .edit_schedule(First, single)
                 .edit_schedule(PreUpdate, single)
                 .edit_schedule(Last, single);
+        }
+        // A line changed before `Update` gives its followed values to it.
+        if let Some(mut order) = app.world_mut().get_resource_mut::<MainScheduleOrder>()
+            && let Some(at) = order
+                .labels
+                .iter()
+                .position(|label| *label == Update.intern())
+        {
+            order.labels.insert(at, SaveConversations.intern());
         }
         app.init_resource::<effects::Effects>()
             .init_resource::<SessionLog>()

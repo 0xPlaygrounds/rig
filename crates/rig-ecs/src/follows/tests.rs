@@ -338,3 +338,45 @@ fn an_unreadable_value_is_set_aside_on_the_next_change() {
         Some(json!({"v": 9, "value": "later"}))
     );
 }
+
+/// The line a system in `PreUpdate` switches the agents to, once, as a key
+/// or a slash command does.
+#[derive(Resource, Default)]
+struct SwitchTo(Option<AsideId>);
+
+fn switch_early(mut to: ResMut<SwitchTo>, mut agents: Query<&mut Conversation, With<Agent>>) {
+    if let Some(line) = to.0.take() {
+        for mut conversation in &mut agents {
+            assert!(conversation.switch_branch(line, Author::user()).is_ok());
+        }
+    }
+}
+
+/// A line switched before `Update`, with no turn running, gives the agent
+/// its value before `Update`: a plugin system there reads the line's value,
+/// and its change stays with that line.
+#[test]
+fn a_line_switched_before_update_gives_its_value_to_update() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    app.init_resource::<Probe>()
+        .init_resource::<SwitchTo>()
+        .add_systems(PreUpdate, switch_early)
+        .add_systems(Update, probe);
+    let agent = agent(&mut app);
+    say(&mut app, agent, "one");
+    set_mode(&mut app, agent, "plan");
+    branch_off(&mut app, agent, 1, "other");
+    set_mode(&mut app, agent, "build");
+    say(&mut app, agent, "two");
+    let main = branch(&app, agent, "main");
+    app.world_mut().resource_mut::<SwitchTo>().0 = Some(main);
+    app.world_mut().resource_mut::<Probe>().armed = true;
+    app.update();
+    let seen = app.world().resource::<Probe>().seen.clone();
+    assert_eq!(seen, ["plan"], "the line switched to");
+    switch(&mut app, agent, "other");
+    assert_eq!(mode(&app, agent).as_deref(), Some("build"));
+    switch(&mut app, agent, "main");
+    assert_eq!(mode(&app, agent).as_deref(), Some("plan+"));
+}

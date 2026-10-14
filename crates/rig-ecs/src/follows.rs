@@ -12,15 +12,16 @@
 //! own once it has one. A removed component is kept as a `null` value, so
 //! it stays removed on that line.
 //!
-//! Whenever the kernel saves the conversations, between the stages of each
-//! agent pass and at the end of the frame, it first mirrors each change of
+//! Whenever the kernel saves the conversations, right before `Update`,
+//! between the stages of each agent pass and at the end of the frame, it
+//! first mirrors each change of
 //! a followed component into the conversation, and after a change that may
 //! change the line (a splice, a reset, a branch, line value or followed
 //! value put) gives the agent its line's value, read as a saved value is
 //! (upgraded through its plugin's steps); a value it gave is never
 //! mirrored back. So a change is kept at the entry it was made after, give
-//! or take a stage, and a line changed before the agent loop or in a stage
-//! gives its value to the next stage. Pushes and tool calls cost nothing.
+//! or take a stage, and a line changed before `Update` (by a key or a
+//! command) or in a stage gives its value to `Update` or the next stage. Pushes and tool calls cost nothing.
 
 use std::collections::HashMap;
 
