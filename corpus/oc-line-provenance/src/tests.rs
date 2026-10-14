@@ -253,7 +253,9 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
     );
     assert!(!screen.contains("add logging"), "{screen}");
     press(&mut app, "esc");
-    let mut panels = app.world_mut().query::<&rig_tui::ConversationPanel>();
+    let mut panels = app
+        .world_mut()
+        .query_filtered::<(), (With<rig_tui::TranscriptPane>, Without<rig_tui::MainPane>)>();
     assert_eq!(panels.iter(app.world()).count(), 0, "Esc closes the panel");
 
     app.world_mut()
