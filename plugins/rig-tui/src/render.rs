@@ -9,6 +9,8 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use crossterm::cursor::MoveTo;
 use ratatui::Frame;
+use ratatui::backend::Backend;
+use ratatui::buffer::{Buffer, Cell};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
@@ -19,7 +21,7 @@ use super::complete::Completion;
 use super::editor::{Layout as InputLayout, TuiInput};
 use super::keys::KeyFocus;
 use super::markdown;
-use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, RequestRedraw, TuiPanel};
+use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
 use super::renderers::{
     CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks, Renderers, ToolCallView,
@@ -111,7 +113,7 @@ pub(crate) fn needs_redraw(
         ),
     >,
     app_status: Option<Res<AppStatus>>,
-    mut requests: MessageReader<RequestRedraw>,
+    (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<Repaint>),
     mut removed: (
         RemovedComponents<TuiPanel>,
         RemovedComponents<StatusItems>,
@@ -122,7 +124,7 @@ pub(crate) fn needs_redraw(
     mut paced: Local<Paced>,
 ) -> bool {
     // Every reader is drained, so none redraws again for the same change.
-    let requested = requests.read().count() > 0;
+    let requested = requests.read().count() + repaints.read().count() > 0;
     let removed = removed.0.read().count()
         + removed.1.read().count()
         + removed.2.read().count()
@@ -914,12 +916,13 @@ pub(crate) fn render(
     (from, changed): (TranscriptLayout, Query<(), Changed<Conversation>>),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     status: (Query<&StatusItems>, Option<Res<AppStatus>>),
-    mut removed_looks: RemovedLooks,
+    (mut removed_looks, mut repaints): (RemovedLooks, MessageReader<Repaint>),
 ) -> Result {
     let frame_layout = std::mem::take(&mut *frame_layout);
     let Some(input_rows) = frame_layout.input_rows else {
         return Ok(());
     };
+    let repaint: Vec<Rect> = repaints.read().map(|repaint| repaint.0).collect();
     // Placing the scroll is drawing's own bookkeeping, not a change to
     // redraw for; so is noting where it is, after drawing.
     let view = view.bypass_change_detection();
@@ -990,7 +993,7 @@ pub(crate) fn render(
         );
         frame.render_widget(Paragraph::new(rows), transcript_area);
         draw_below(frame, visible.below, transcript_area);
-        view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
+        view.items = selectable(visible.marks);
         noted = Some((visible.top, transcript_area.width));
         let agent = shown_agent.and_then(|agent| status.0.get(agent).ok());
         let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
@@ -1064,12 +1067,17 @@ pub(crate) fn render(
     let drawn = match (tui.as_deref_mut(), test.as_deref_mut()) {
         (Some(tui), _) => {
             tui.begin_frame()?;
-            let drawn = tui.terminal.draw(draw_frame).map(|_| ());
+            let drawn = tui.terminal.draw(draw_frame);
+            let drawn = drawn.map(|completed| cells_in(completed.buffer, &repaint));
+            let drawn = drawn.and_then(|cells| {
+                let cells = cells.iter().map(|(x, y, cell)| (*x, *y, cell));
+                tui.terminal.backend_mut().draw(cells)
+            });
             tui.end_frame(cursor.filter(|_| drawn.is_ok()))?;
             drawn
         }
         (None, Some(test)) => {
-            test.draw(draw_frame);
+            test.draw(draw_frame, &repaint);
             Ok(())
         }
         (None, None) => Ok(()),
@@ -1080,6 +1088,24 @@ pub(crate) fn render(
     drew.set_if_neq(areas);
     drawn?;
     Ok(())
+}
+
+/// The cells of `buffer` in `areas`, clipped to it, to write again.
+fn cells_in(buffer: &Buffer, areas: &[Rect]) -> Vec<(u16, u16, Cell)> {
+    let areas = areas.iter().map(|area| area.intersection(buffer.area));
+    let positions = areas.flat_map(|area| area.positions());
+    positions
+        .filter_map(|at| Some((at.x, at.y, buffer.cell(at)?.clone())))
+        .collect()
+}
+
+/// The items a selection moves through, of the marks drawn: all but a
+/// decorator's rows, which belong to their call.
+pub(crate) fn selectable(marks: Marks) -> Vec<TranscriptItem> {
+    let items = marks.into_iter().map(|(item, _)| item);
+    items
+        .filter(|item| !matches!(item, TranscriptItem::Decoration(..)))
+        .collect()
 }
 
 /// Where the last frame drew each part of the screen: for a plugin that

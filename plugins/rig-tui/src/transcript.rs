@@ -660,9 +660,20 @@ impl Look<'_> {
         expanded: bool,
         draw: impl Fn(bool) -> Vec<Line<'static>>,
     ) -> (Vec<Line<'static>>, bool) {
-        let lines = draw(expanded);
-        let cut = self.note_cut && !expanded && draw(true) != lines;
+        let (lines, (), cut) = self.drawn_with(expanded, |expanded| (draw(expanded), ()));
         (lines, cut)
+    }
+
+    /// As [`drawn`](Self::drawn), with what `draw` says beside the lines
+    /// drawn; only the lines tell whether they are cut.
+    pub(crate) fn drawn_with<T>(
+        &self,
+        expanded: bool,
+        draw: impl Fn(bool) -> (Vec<Line<'static>>, T),
+    ) -> (Vec<Line<'static>>, T, bool) {
+        let (lines, beside) = draw(expanded);
+        let cut = self.note_cut && !expanded && draw(true).0 != lines;
+        (lines, beside, cut)
     }
 
     /// The marks in `text`, each with the span it draws.
@@ -1485,7 +1496,8 @@ fn message_lines(
                         let result = tool_results(next).find(|result| result.call == call.id);
                         let (facts, took) = look.facts.of(&call.id);
                         let item = TranscriptItem::Call(call.id.clone());
-                        let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
+                        let expanded = look.is_expanded(&item);
+                        let (drawn, decorated, is_cut) = look.drawn_with(expanded, |expanded| {
                             let view = ToolCallView {
                                 call,
                                 result,
@@ -1496,11 +1508,15 @@ fn message_lines(
                                 output: look.outputs.get(&call.id).map(String::as_str),
                                 children: look.children.get(&call.id).map_or(&[], Vec::as_slice),
                             };
-                            look.renderers.call(&view)
+                            look.renderers.call_decorated(&view)
                         });
                         let start = lines.len();
                         lines.extend(drawn);
                         marks.push((item.clone(), start..lines.len()));
+                        for (name, rows) in decorated {
+                            let decoration = TranscriptItem::Decoration(call.id.clone(), name);
+                            marks.push((decoration, start + rows.start..start + rows.end));
+                        }
                         if is_cut {
                             cut.push(item);
                         }

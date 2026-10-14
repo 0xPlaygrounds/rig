@@ -131,7 +131,7 @@ pub(crate) fn drawn_rows(
             }
             let selected = transcript_view.selected.as_ref();
             let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
-            view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
+            view.items = crate::render::selectable(visible.marks);
             TranscriptView::note_drawn(&mut transcript_view, visible.top, 80);
             lines
         };

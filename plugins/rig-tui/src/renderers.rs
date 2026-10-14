@@ -520,6 +520,10 @@ pub struct ContentRenderer {
     pub render: Arc<RenderContent>,
 }
 
+/// The decorators that drew lines under a call, each by name with the
+/// lines it drew among the call's.
+pub(crate) type Decorated = Vec<(String, std::ops::Range<usize>)>;
+
 /// Lines drawn under every tool call, after its look, on an entity of
 /// its own.
 #[derive(Component, Clone)]
@@ -563,7 +567,11 @@ pub trait AppToolRenderersExt {
 
     /// Draw `render`'s lines under every tool call, after the call's own
     /// look, whichever draws it. Decorators add up, in the order of their
-    /// entities; `Disabled` on one (`decorator:<name>`) leaves it out.
+    /// entities; `Disabled` on one (`decorator:<name>`) leaves it out. Its
+    /// rows under a call are the transcript item
+    /// [`TranscriptItem::Decoration`](crate::TranscriptItem::Decoration),
+    /// by the call's id and `name`, which is a key: a second decorator with
+    /// a name taken is not added, with a warning.
     fn add_call_decorator(
         &mut self,
         name: &str,
@@ -645,7 +653,16 @@ impl AppToolRenderersExt for App {
         name: &str,
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self {
-        self.world_mut().spawn((
+        let world = self.world_mut();
+        let mut decorators = world.query::<&CallDecorator>();
+        if decorators
+            .iter(world)
+            .any(|decorator| decorator.name == name)
+        {
+            warn!("decorator not added: `{name}` is taken; insert `Disabled` on it to replace it");
+            return self;
+        }
+        world.spawn((
             Name::new(format!("decorator:{name}")),
             CallDecorator {
                 name: name.to_owned(),
@@ -680,15 +697,18 @@ impl Looks<'_, '_> {
             let renderer = renderer.into_inner();
             (renderer.kind, &renderer.render)
         });
-        let mut decorators: Vec<(Entity, &Arc<RenderToolCall>)> = (self.decorators.iter())
-            .map(|(entity, decorator)| (entity, &decorator.into_inner().render))
+        let mut decorators: Vec<(Entity, (&str, &Arc<RenderToolCall>))> = (self.decorators.iter())
+            .map(|(entity, decorator)| {
+                let decorator = decorator.into_inner();
+                (entity, (decorator.name.as_str(), &decorator.render))
+            })
             .collect();
         decorators.sort_by_key(|(entity, _)| *entity);
         Renderers {
             tools: tools.collect(),
             entries: entries.collect(),
             contents: contents.collect(),
-            decorators: decorators.into_iter().map(|(_, render)| render).collect(),
+            decorators: decorators.into_iter().map(|(_, look)| look).collect(),
         }
     }
 
@@ -710,22 +730,36 @@ pub(crate) struct Renderers<'a> {
     pub(crate) entries: HashMap<&'a str, &'a Arc<RenderEntry>>,
     /// The content renderers by kind.
     pub(crate) contents: HashMap<ContentKind, &'a Arc<RenderContent>>,
-    /// The call decorators, in order.
-    pub(crate) decorators: Vec<&'a Arc<RenderToolCall>>,
+    /// The call decorators, by name, in order.
+    pub(crate) decorators: Vec<(&'a str, &'a Arc<RenderToolCall>)>,
 }
 
 impl Renderers<'_> {
     /// A tool call's lines, by its tool's renderer or the default look,
     /// then every decorator's.
     pub(crate) fn call(&self, view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+        self.call_decorated(view).0
+    }
+
+    /// A tool call's lines, as [`call`](Self::call) draws them, and each
+    /// decorator that drew any with the lines it drew.
+    pub(crate) fn call_decorated(
+        &self,
+        view: &ToolCallView<'_>,
+    ) -> (Vec<Line<'static>>, Decorated) {
         let mut lines = match self.tools.get(view.name()) {
             Some(render) => render(view),
             None => view.default_lines(),
         };
-        for decorate in &self.decorators {
+        let mut decorated = Vec::new();
+        for (name, decorate) in &self.decorators {
+            let start = lines.len();
             lines.extend(decorate(view));
+            if lines.len() > start {
+                decorated.push(((*name).to_owned(), start..lines.len()));
+            }
         }
-        lines
+        (lines, decorated)
     }
 
     /// A note's or a delivered text's lines, by its plugin's renderer or

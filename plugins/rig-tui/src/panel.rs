@@ -61,6 +61,15 @@ pub enum TuiSystems {
 #[derive(Message, Clone, Copy, Debug, Default)]
 pub struct RequestRedraw;
 
+/// Asks the terminal view to write every cell of the area again after its
+/// next frame, changed or not, and to draw that frame: for a plugin that
+/// drew over cells itself (an image in the cells), so they show the view's
+/// text again once it is gone. The area is clipped to the screen; the
+/// cells go out before that frame's
+/// [`TerminalWrite`](crate::TerminalWrite)s.
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Repaint(pub Rect);
+
 /// The size of the terminal, from its start and each resize.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TuiScreen(pub Rect);

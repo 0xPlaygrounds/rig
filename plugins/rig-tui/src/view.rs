@@ -90,6 +90,11 @@ pub enum TranscriptItem {
     /// document, by the message's id and the block's place in it
     /// ([`ContentView`](crate::ContentView)).
     Content(MessageId, usize),
+    /// The rows a call decorator drew under a call, by the call's id and
+    /// the decorator's name
+    /// ([`add_call_decorator`](crate::AppToolRenderersExt::add_call_decorator)),
+    /// inside the call's rows. Selecting moves past it.
+    Decoration(CallId, String),
 }
 
 /// The terminal view's transcript, as plugins read and steer it. A change
@@ -415,7 +420,7 @@ impl DrawnTranscript {
     }
 
     /// The innermost item `row` belongs to, such as a call rather than
-    /// its message.
+    /// its message, or a decorator's rows rather than their call.
     pub fn item_at(&self, row: usize) -> Option<&TranscriptItem> {
         let holding = self.items.iter().filter(|(_, rows)| rows.contains(&row));
         holding

@@ -96,7 +96,9 @@ pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
     run_command,
 };
-pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
+pub use panel::{
+    Focused, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel, TuiScreen, TuiSystems,
+};
 pub use pick::{ChoiceAction, ChoiceKeys};
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout, TuiFrame};
@@ -144,6 +146,7 @@ impl Plugin for TuiPlugin {
             .init_resource::<TerminalEvents>()
             .init_resource::<TuiInputState>()
             .add_message::<RequestRedraw>()
+            .add_message::<Repaint>()
             .add_message::<Sent>()
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()

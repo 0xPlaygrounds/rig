@@ -1032,3 +1032,43 @@ fn a_mark_on_a_streaming_reply_is_drawn_until_cleared() {
     let rows = text(&mut app);
     assert!(rows.iter().any(|row| row == "so far more"), "{rows:?}");
 }
+
+/// Each decorator's rows under a call are an item of their own, inside the
+/// call's, holding only its lines whatever order the decorators came in;
+/// a second decorator with a name taken is not added.
+#[test]
+fn each_decorators_rows_are_an_item_inside_its_call() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    app.add_tool_renderer("shell", |call| vec![call.header("shell", "")])
+        .add_call_decorator("late", |_| {
+            vec![Line::from("  late one"), Line::from("  late two")]
+        })
+        .add_call_decorator("early", |_| vec![Line::from("  early")])
+        .add_call_decorator("early", |_| vec![Line::from("  never")]);
+    let Ok(shell) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(shell, json!({})));
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call)]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let lines = on_screen(&mut app, agent, 40);
+    assert!(line_of(&lines, "never").is_none(), "{lines:#?}");
+    let drawn = app.world().resource::<DrawnTranscript>();
+    let texts = |item: TranscriptItem| -> Vec<String> {
+        let rows = drawn.rows_of(&item).unwrap_or_default();
+        let rows = rows.filter_map(|row| drawn.rows().get(row));
+        rows.map(|row| row.text.trim().to_owned()).collect()
+    };
+    let id = CallId::from_wire("c1");
+    let decoration = |name: &str| TranscriptItem::Decoration(id.clone(), name.to_owned());
+    assert_eq!(texts(decoration("late")), ["late one", "late two"]);
+    assert_eq!(texts(decoration("early")), ["early"]);
+    let call = drawn
+        .rows_of(&TranscriptItem::Call(id.clone()))
+        .unwrap_or_default();
+    for name in ["late", "early"] {
+        let rows = drawn.rows_of(&decoration(name)).unwrap_or_default();
+        assert!(call.start <= rows.start && rows.end <= call.end, "{name}");
+    }
+}

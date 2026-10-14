@@ -230,6 +230,7 @@ where
 pub struct TuiTestScreen {
     terminal: Terminal<TestBackend>,
     written: Vec<u8>,
+    repainted: Vec<Rect>,
 }
 
 impl TuiTestScreen {
@@ -239,6 +240,7 @@ impl TuiTestScreen {
         Self {
             terminal,
             written: Vec::new(),
+            repainted: Vec::new(),
         }
     }
 
@@ -270,9 +272,18 @@ impl TuiTestScreen {
         &self.written
     }
 
-    /// Draws a frame with `draw`.
-    pub(crate) fn draw(&mut self, draw: impl FnOnce(&mut Frame)) {
-        let Ok(_) = self.terminal.draw(draw);
+    /// The areas written again after a frame ([`Repaint`](crate::Repaint)),
+    /// clipped to the screen, in order.
+    pub fn repainted(&self) -> &[Rect] {
+        &self.repainted
+    }
+
+    /// Draws a frame with `draw`, then writes `repaint`'s cells again.
+    pub(crate) fn draw(&mut self, draw: impl FnOnce(&mut Frame), repaint: &[Rect]) {
+        let Ok(completed) = self.terminal.draw(draw);
+        let screen = completed.area;
+        let areas = repaint.iter().map(|area| area.intersection(screen));
+        self.repainted.extend(areas.filter(|area| !area.is_empty()));
     }
 }
 

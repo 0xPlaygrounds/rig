@@ -315,3 +315,32 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     assert_eq!(frame.overlays.len(), 1, "{frame:?}");
     assert!(frame.covered(frame.transcript));
 }
+
+/// A repaint asks for a frame and writes its cells again, clipped to the
+/// screen, though nothing in them changed.
+#[test]
+fn a_repaint_writes_its_cells_again_on_the_next_frame() {
+    use crate::tests::view_app;
+    use crate::{Repaint, TuiTestScreen};
+    use ratatui::layout::Rect;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    app.update();
+    app.update();
+    assert!(
+        app.world()
+            .resource::<TuiTestScreen>()
+            .repainted()
+            .is_empty()
+    );
+    app.world_mut()
+        .write_message(Repaint(Rect::new(10, 3, 30, 2)));
+    app.world_mut()
+        .write_message(Repaint(Rect::new(50, 19, 30, 4)));
+    app.update();
+    assert_eq!(
+        app.world().resource::<TuiTestScreen>().repainted(),
+        [Rect::new(10, 3, 30, 2), Rect::new(50, 19, 10, 1)]
+    );
+}
