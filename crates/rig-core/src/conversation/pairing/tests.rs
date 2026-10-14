@@ -265,6 +265,7 @@ fn stored_results_are_kept_once_per_id_and_an_empty_user_message_stands() {
             Some(Message::User {
                 content: Vec::new(),
             }),
+            Some(Message::user("next")),
             Some(assistant(vec![AssistantContent::text("a")])),
             None,
         ],
@@ -274,6 +275,8 @@ fn stored_results_are_kept_once_per_id_and_an_empty_user_message_stands() {
         },
     );
     assert_eq!(paired.repairs, vec![orphan(1, "s1")]);
+    // The empty message stands, and the user message after it is not
+    // merged into it.
     assert_eq!(
         paired.messages,
         vec![
@@ -281,6 +284,7 @@ fn stored_results_are_kept_once_per_id_and_an_empty_user_message_stands() {
             Message::User {
                 content: Vec::new()
             },
+            Message::user("next"),
             assistant(vec![AssistantContent::text("a")]),
         ]
     );
@@ -387,4 +391,33 @@ fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
     let again = normalize(normalized.entries.clone());
     assert_eq!(again.entries, normalized.entries);
     assert!(again.merged.is_empty() && again.dropped.is_empty() && again.repairs.is_empty());
+}
+
+/// A system entry that arrives while calls wait goes after the entry that
+/// answers them, keeping its id, as `repair` places a held system message.
+#[test]
+fn normalize_puts_a_system_entry_after_the_results_it_waited_for() {
+    let entry = |id: u64, message: Message| Entry {
+        message,
+        author: None,
+        id: Some(MessageId(id)),
+        made: None,
+    };
+    let normalized = normalize(vec![
+        entry(0, assistant(vec![call("c1")])),
+        entry(1, Message::system("note")),
+        entry(2, results(&["c1"])),
+    ]);
+    let order: Vec<(Option<MessageId>, &Message)> = normalized
+        .entries
+        .iter()
+        .map(|entry| (entry.id, &entry.message))
+        .collect();
+    let note = Message::system("note");
+    let answer = results(&["c1"]);
+    assert_eq!(
+        order.get(1..),
+        Some([(Some(MessageId(2)), &answer), (Some(MessageId(1)), &note)].as_slice())
+    );
+    assert!(normalized.repairs.is_empty() && normalized.merged.is_empty());
 }
