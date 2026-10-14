@@ -8,11 +8,17 @@ description = "Plugin corpus (conversation-over-time fresh held-out): CT-07: 07.
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# Selecting a chapter in `/chapters` scrolls the terminal view there.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
