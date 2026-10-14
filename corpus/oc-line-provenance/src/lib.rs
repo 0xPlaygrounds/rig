@@ -138,8 +138,7 @@ type Agents<'w, 's> = Query<
     ),
 >;
 
-/// Records what a settled tool call changed, and carries every line's
-/// origin forward.
+/// Logs what a settled tool call changed, with who made it and why.
 fn call_settled(
     settled: On<Add<Settled>>,
     calls: Query<(&ToolRequest, &Published, &ForAgent, &CallOf)>,
