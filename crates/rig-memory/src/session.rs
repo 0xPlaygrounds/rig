@@ -318,9 +318,30 @@ pub(crate) fn fold_all(store: &dyn Store, images: bool) -> Result<Vec<Folded>, L
     Ok(folded)
 }
 
-/// What reading `folded` repaired, torn tails not set aside.
-pub(crate) fn repairs(folded: &[Folded]) -> Vec<Repair> {
+/// What reading `folded`, the logs of `store` that hold a record, repaired,
+/// torn tails not set aside. A log that holds no complete line but a torn
+/// one, such as one whose first write was cut short, is torn whole.
+pub(crate) fn repairs(store: &dyn Store, folded: &[Folded]) -> Result<Vec<Repair>, LoadError> {
     let mut repairs = Vec::new();
+    for log in store.logs()? {
+        if folded.iter().any(|folded| folded.name == log) {
+            continue;
+        }
+        // A log that cannot be read is refused or set aside by its fold.
+        let lines = log_lines(store, &log).ok().flatten();
+        let Some(lines) = lines.filter(|lines| lines.len() == 0) else {
+            continue;
+        };
+        let cut = lines.tail().len() as u64;
+        if cut > 0 {
+            repairs.push(Repair::TornTail {
+                log,
+                kept: 0,
+                cut,
+                set_aside: None,
+            });
+        }
+    }
     for log in folded {
         if let Some((kept, cut)) = log.torn {
             repairs.push(Repair::TornTail {
@@ -335,7 +356,7 @@ pub(crate) fn repairs(folded: &[Folded]) -> Vec<Repair> {
             why: why.clone(),
         }));
     }
-    repairs
+    Ok(repairs)
 }
 
 /// The names of the logs a restore skips: those retired, and the agents
@@ -412,7 +433,7 @@ impl Session {
     /// refused.
     pub fn read(store: &dyn Store) -> Result<Self, LoadError> {
         let folded = fold_all(store, true)?;
-        let repairs = repairs(&folded);
+        let repairs = repairs(store, &folded)?;
         Ok(session_of(folded, repairs))
     }
 
@@ -438,7 +459,7 @@ impl Session {
                 Err(error) => unreadable.push(Unreadable { log, error }),
             }
         }
-        let repairs = repairs(&folded);
+        let repairs = repairs(store, &folded)?;
         Ok((session_of(folded, repairs), unreadable))
     }
 

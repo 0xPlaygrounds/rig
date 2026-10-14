@@ -243,6 +243,45 @@ fn a_torn_tail_is_reported_then_set_aside() {
     assert_eq!(load(&*store, "main").expect("loaded"), conversation);
 }
 
+/// A log whose first write was cut short holds no record yet: reading
+/// reports it torn whole, and opening it to write sets it aside, so the
+/// header written next starts a line and the session still reads.
+#[test]
+fn a_log_holding_only_a_torn_first_line_is_set_aside_before_it_is_written() {
+    let store = Arc::new(MemoryStore::default());
+    store
+        .append_log("main", br#"{"seq":0,"n":0,"t":1,"ty"#)
+        .expect("torn");
+    let session = Session::read(&*store).expect("read");
+    assert!(session.agent("main").is_none());
+    let torn = Repair::TornTail {
+        log: "main".to_owned(),
+        kept: 0,
+        cut: 24,
+        set_aside: None,
+    };
+    assert_eq!(session.repairs, [torn]);
+
+    let (writer, session) = Writer::open(store.clone()).expect("opened");
+    assert!(matches!(
+        session.repairs.as_slice(),
+        [Repair::TornTail {
+            kept: 0,
+            set_aside: Some(_),
+            ..
+        }]
+    ));
+    assert_eq!(
+        store.read_file("recovered/main-1.part").expect("set aside"),
+        br#"{"seq":0,"n":0,"t":1,"ty"#
+    );
+    writer.start();
+    let mut conversation = Conversation::from_messages([Message::user("hello")]);
+    writer.save("main", &mut conversation);
+    writer.flush();
+    assert_eq!(load(&*store, "main").expect("loaded"), conversation);
+}
+
 #[test]
 fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
     let store = MemoryStore::default();
