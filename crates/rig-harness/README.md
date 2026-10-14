@@ -17,7 +17,7 @@ changed plugins and restarts in the same session. The
   is Bevy's `MinimalPlugins` with the log, a clean exit on signals and a
   loop that sleeps until there is work or a wall-clock `WakeAt`;
   `RigHarnessPlugins` adds the session (its rig-memory store, opened by
-  the replaceable `SessionStores`, which refuses a session an older rig
+  the replaceable `StoreOpener`, which refuses a session an older rig
   saved without changing it, the plain `Scratch` files, forking
   (`ForkSessions`), rewriting a stopped session (`rewrite_stopped`; the
   running one is the kernel's `RewriteSession`, which also maps its scratch

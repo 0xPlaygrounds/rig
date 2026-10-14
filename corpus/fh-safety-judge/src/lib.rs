@@ -283,7 +283,7 @@ fn send_to_judge(
                 .and_then(|by| plugins.get(by.0).ok());
             plugin.map_or_else(Vec::new, |(name, source)| {
                 let mut names = vec![name.as_str().to_owned()];
-                names.extend(source.map(|source| source.krate.clone()));
+                names.extend(source.map(|source| source.package.clone()));
                 names
             })
         };

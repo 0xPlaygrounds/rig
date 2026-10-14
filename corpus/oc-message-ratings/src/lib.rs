@@ -341,13 +341,13 @@ fn when(at_ms: u64) -> String {
 #[derive(bevy_ecs::system::SystemParam)]
 struct Project<'w> {
     paths: Option<Res<'w, SessionPaths>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     home: Option<Res<'w, RigHome>>,
 }
 
 impl Project<'_> {
     /// `RIG_HOME`, and how its sessions' stores open.
-    fn home_and_stores(&self) -> (Home, SessionStores) {
+    fn home_and_stores(&self) -> (Home, StoreOpener) {
         let home = self
             .home
             .as_ref()

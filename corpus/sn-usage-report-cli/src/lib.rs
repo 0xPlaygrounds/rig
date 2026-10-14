@@ -1,6 +1,6 @@
 //! SN-24: `rig usage`, what the saved sessions spent on models, from the
 //! shell. The command reads each saved session's effect log through the
-//! session's store ([`SessionStores`]), read-only and without a model
+//! session's store ([`StoreOpener`]), read-only and without a model
 //! call, and sums every model request a handler ran (the turns', the
 //! subagents' and the plugins' own) and every tool call, by day, project,
 //! model or session ([`report`]). A request saved without a price is priced
@@ -65,7 +65,7 @@ struct Sources<'w> {
     invoked: Option<Res<'w, Invoked>>,
     home: Option<Res<'w, RigHome>>,
     root: Option<Res<'w, ProjectRoot>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     models: Option<Res<'w, Models>>,
 }
 
@@ -107,7 +107,7 @@ pub fn run(
     words: &[String],
     home: &Home,
     root: &std::path::Path,
-    stores: &SessionStores,
+    stores: &StoreOpener,
     catalog: &rig_core::catalog::Catalog,
     now: chrono::DateTime<chrono::Local>,
 ) -> UsageRun {

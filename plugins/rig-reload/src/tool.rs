@@ -98,7 +98,7 @@ fn describe(
             .iter()
             .map(|(name, source)| {
                 let short = name.rsplit("::").next().unwrap_or_default();
-                format!("{short} ({})", source.krate)
+                format!("{short} ({})", source.package)
             })
             .collect(),
     );

@@ -6,7 +6,7 @@ use super::super::history::Sent;
 use super::super::view::{self, TuiView};
 use super::send;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
-use rig_harness::primary::Shown;
+use rig_harness::main_agent::ShownAgent;
 
 /// The texts agents accepted.
 #[derive(Resource, Default)]
@@ -18,7 +18,7 @@ fn enter(app: &mut App, text: &str) {
     let sent = app.world_mut().run_system_once(
         move |mut view: ResMut<TuiView>,
               mut input: crate::MainInput,
-              shown: Res<Shown>,
+              shown: Res<ShownAgent>,
               mut commands: Commands| {
             input.set(text.clone());
             send(&mut view, &mut input, None, shown.0, &mut commands, false);
@@ -45,7 +45,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         .add_message::<Sent>()
         .init_resource::<TuiView>()
         .init_resource::<view::Notices>()
-        .init_resource::<Shown>()
+        .init_resource::<ShownAgent>()
         .init_resource::<Delivered>()
         .add_observer(
             |accepted: On<Add<Started>>,
@@ -68,7 +68,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         .query_filtered::<Entity, With<Agent>>()
         .single(world)
         .ok();
-    world.insert_resource(Shown(agent));
+    world.insert_resource(ShownAgent(agent));
     let refused = [
         ("/retry now", "/retry takes no arguments, not `now`."),
         ("/gui still doesnt do anything", "Unknown command /gui."),

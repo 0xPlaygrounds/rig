@@ -131,7 +131,7 @@ impl Registry<'_, '_> {
         }
         let from_plugin = by
             .and_then(|by| self.plugins.get(by.0).ok())
-            .is_some_and(|source| self.config.plugins.contains(&source.krate));
+            .is_some_and(|source| self.config.plugins.contains(&source.package));
         let glob = |glob: &String| Pattern::new(glob).is_ok_and(|glob| glob.matches(name));
         from_plugin || self.config.tools.iter().any(glob)
     }

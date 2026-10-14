@@ -334,7 +334,7 @@ fn how(parent: &ForkedFrom) -> String {
 fn arrive(
     store: Option<Res<SessionStore>>,
     started: Option<Res<AppStart>>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     input: Option<MainInput>,
     mut commands: Commands,
 ) {
@@ -351,7 +351,10 @@ fn arrive(
         return;
     };
     let agent = agents.iter().find(|(_, id, _)| id.0 == agent);
-    if let Some(entity) = agent.map(|(agent, ..)| agent).or_else(|| primary(&agents)) {
+    if let Some(entity) = agent
+        .map(|(agent, ..)| agent)
+        .or_else(|| main_agent(&agents))
+    {
         commands.trigger(Focus { entity });
     }
     if let Some(mut input) = input {

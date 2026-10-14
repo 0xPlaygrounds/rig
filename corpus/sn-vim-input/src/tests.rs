@@ -92,7 +92,7 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
         entity: agent,
         model: "test/model".to_owned(),
     });
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     app.update();
 
     // Insert mode types; Esc, `0`, `dw`, `A!`, Esc, Enter sends `world!`,

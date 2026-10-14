@@ -376,7 +376,7 @@ enum Kind {
 #[derive(SystemParam)]
 struct Rpc<'w, 's> {
     agents: Query<'w, 's, (Entity, &'static AgentId)>,
-    shown: Res<'w, Shown>,
+    shown: Res<'w, ShownAgent>,
     asks: Query<'w, 's, &'static Ask, (Without<Outcome>, Without<Settled>)>,
     pickers: Query<'w, 's, &'static Picker>,
     commands: Commands<'w, 's>,

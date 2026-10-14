@@ -22,7 +22,7 @@ use super::*;
 
 /// The session recorded in `dir`, read as the app's stores read it.
 fn recorded_source(dir: &std::path::Path) -> io::Result<ReplaySource> {
-    let store = SessionStores::default().open(&SessionDir::at(dir))?;
+    let store = StoreOpener::default().open(&SessionDir::at(dir))?;
     ReplaySource::from_store(&*store, ReplayFlags::default())
 }
 

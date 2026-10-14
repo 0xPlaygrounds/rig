@@ -36,7 +36,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 use rig_ecs::agent::{ActiveTurn, Agent, TurnOf};
-use rig_harness::primary::Shown;
+use rig_harness::main_agent::ShownAgent;
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthChar;
 
@@ -234,7 +234,7 @@ pub struct StatusLine {
 pub(crate) fn draw_status_lines(
     mut lines: Query<(&StatusLine, &mut PanelCanvas)>,
     (items, active): (Query<&StatusItems>, Query<&ActiveTurn>),
-    (shown, app): (Res<Shown>, Option<Res<AppStatus>>),
+    (shown, app): (Res<ShownAgent>, Option<Res<AppStatus>>),
 ) {
     for (line, mut canvas) in &mut lines {
         let area = canvas.area();

@@ -170,7 +170,7 @@ pub struct StartFromSnapshot {
 /// The snapshots of `home` for the project in `root`, by session, from their listings.
 pub fn snapshots(
     home: &Home,
-    stores: &SessionStores,
+    stores: &StoreOpener,
     root: &ProjectRoot,
 ) -> Vec<(SessionId, Snapshot)> {
     home.saved_sessions()
@@ -188,7 +188,7 @@ fn snapshot_of(entry: &SessionEntry) -> Option<Snapshot> {
 }
 
 /// The snapshot `name` (or of that session id) of `home`.
-fn find(home: &Home, stores: &SessionStores, root: &ProjectRoot, name: &str) -> Option<SessionId> {
+fn find(home: &Home, stores: &StoreOpener, root: &ProjectRoot, name: &str) -> Option<SessionId> {
     let all = snapshots(home, stores, root);
     let found = all
         .into_iter()
@@ -228,7 +228,7 @@ fn remember_reads(
 /// `/snapshot save|list|delete`.
 fn snapshot(
     In(args): In<CommandArgs>,
-    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<SessionStores>),
+    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<StoreOpener>),
     agents: Query<(&AgentId, &Conversation, Has<ActiveTurn>)>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -405,7 +405,7 @@ fn pick(picked: On<Picked>, chosen: Query<(&SessionPicked, &Picker)>, mut comman
 fn write_shared(
     started: On<Add<Started>>,
     mut effects: Query<(&EffectRequest, &mut Decision, &ForAgent), With<Sharing>>,
-    (root, home, stores): (Res<ProjectRoot>, Res<RigHome>, Res<SessionStores>),
+    (root, home, stores): (Res<ProjectRoot>, Res<RigHome>, Res<StoreOpener>),
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok((request, mut decision, &ForAgent(agent))) = effects.get_mut(started.entity) else {
@@ -499,7 +499,7 @@ fn start_from_flag(
 /// Forks the snapshot into a new session; [`forked`] switches to it.
 fn start_from(
     start: On<StartFromSnapshot>,
-    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<SessionStores>),
+    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<StoreOpener>),
     turns: Query<(), With<TurnOf>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -545,7 +545,7 @@ fn start_from(
 /// `ForkSession` forks: a fork from a store that is no session of `home`.
 fn bring_in(
     home: &Home,
-    stores: &SessionStores,
+    stores: &StoreOpener,
     root: &ProjectRoot,
     name: &str,
 ) -> Result<SessionId, String> {
@@ -571,7 +571,7 @@ fn forked(
     mut forked: MessageReader<SessionForked>,
     mut failed: MessageReader<SessionForkFailed>,
     askers: Query<(Option<&Saving>, Option<&Starting>)>,
-    (home, paths, stores): (Res<RigHome>, Res<SessionPaths>, Res<SessionStores>),
+    (home, paths, stores): (Res<RigHome>, Res<SessionPaths>, Res<StoreOpener>),
     models: Res<Models>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -633,7 +633,7 @@ fn forked(
 
 /// Makes the session in `dir` the snapshot `name`, saved and listed.
 fn mark(
-    stores: &SessionStores,
+    stores: &StoreOpener,
     paths: &SessionPaths,
     dir: &SessionDir,
     name: &str,
@@ -671,7 +671,7 @@ fn mark(
 /// Readies the session in `dir`, a copy of the snapshot `name`: no snapshot itself,
 /// told so on its first start, and without the snapshot's model when it is unusable.
 fn ready(
-    stores: &SessionStores,
+    stores: &StoreOpener,
     paths: &SessionPaths,
     dir: &SessionDir,
     name: &str,
@@ -704,11 +704,7 @@ fn ready(
 
 /// Sets the listed [`Snapshot`] of the stopped session in `dir`: `edit_stopped`
 /// leaves its listing as it was.
-fn relist(
-    stores: &SessionStores,
-    dir: &SessionDir,
-    value: Option<Versioned>,
-) -> Result<(), String> {
+fn relist(stores: &StoreOpener, dir: &SessionDir, value: Option<Versioned>) -> Result<(), String> {
     let store = stores.open(dir).map_err(|e| e.to_string())?;
     let mut meta = SessionMeta::read(&*store).unwrap_or_default();
     match value {

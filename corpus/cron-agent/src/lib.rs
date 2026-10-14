@@ -141,7 +141,7 @@ fn now() -> u64 {
 #[derive(SystemParam)]
 struct Runs<'w, 's> {
     agents: Query<'w, 's, (Entity, &'static AgentId), With<Agent>>,
-    primary: PrimaryQuery<'w, 's>,
+    primary: MainAgentQuery<'w, 's>,
     running: Query<'w, 's, &'static CronRun>,
     requested: Query<'w, 's, &'static CronRequest>,
     notices: MessageWriter<'w, Notice>,
@@ -153,7 +153,7 @@ impl Runs<'_, '_> {
     fn owner(&self, owner: &str) -> Option<Entity> {
         AgentId(owner.to_owned())
             .find_in(self.agents.iter())
-            .or_else(|| primary(&self.primary))
+            .or_else(|| main_agent(&self.primary))
     }
 
     fn running(&self, job: u32) -> bool {

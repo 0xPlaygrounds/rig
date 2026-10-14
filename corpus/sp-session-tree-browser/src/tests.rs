@@ -331,7 +331,7 @@ fn browses_sessions_and_branches_and_resumes_at_a_turn() {
     let mut editors = world.query_filtered::<&rig_tui::Editor, With<MainEditor>>();
     let draft = editors.iter(world).next().map(|editor| editor.text());
     assert_eq!(draft, Some("half typed"));
-    assert_eq!(app.world().resource::<Shown>().0, Some(agent));
+    assert_eq!(app.world().resource::<ShownAgent>().0, Some(agent));
     assert_eq!(top(&mut app), before);
 
     // `o` on S1 shows it whole, read-only; S1's files stay as they were.

@@ -147,11 +147,11 @@ fn notes_now(
     In(args): In<CommandArgs>,
     notes: Res<SessionNotes>,
     calls: InFlight,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let said = match primary(&agents) {
+    let said = match main_agent(&agents) {
         _ if notes.turns == 0 => "No turns yet: nothing to note.",
         _ if !calls.is_empty() => "The session notes are being written.",
         Some(agent) => {
@@ -212,7 +212,7 @@ fn hold_exit(
     exits: Query<Entity, (With<ExitRequest>, ReadyToStart, PluginEffects)>,
     reason: Option<Res<ExitReason>>,
     notes: Res<SessionNotes>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut leaving: ResMut<Leaving>,
     mut calls: InFlight,
     mut commands: Commands,
@@ -238,7 +238,7 @@ fn hold_exit(
             reason.as_deref(),
             Some(ExitReason::Reload | ExitReason::Switch(_))
         );
-        let agent = primary(&agents).filter(|_| for_good && notes.worth_a_note());
+        let agent = main_agent(&agents).filter(|_| for_good && notes.worth_a_note());
         let Some(agent) = agent else {
             *leaving = Leaving::Released;
             continue;
@@ -281,11 +281,11 @@ fn time_out(due: On<Add<Due>>, holds: Query<(), With<NotesWait>>, mut calls: InF
 fn count_turns(
     started: On<Add<Turn>>,
     turns: Query<(&Turn, &TurnOf)>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut notes: ResMut<SessionNotes>,
 ) {
     if let Ok((turn, &TurnOf(agent))) = turns.get(started.entity)
-        && primary(&agents) == Some(agent)
+        && main_agent(&agents) == Some(agent)
     {
         notes.turns = notes.turns.max(turn.index.saturating_add(1));
     }

@@ -789,7 +789,7 @@ fn write_comments(prompt: &mut String, comments: &Value, wanted: impl Fn(&Value)
 fn set_up_done(
     done: On<Insert<Done<Option<Setup>>>>,
     mut jobs: Query<&mut Done<Option<Setup>>, With<Job>>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut commands: Commands,
 ) {
     let Ok(mut setup) = jobs.get_mut(done.entity) else {
@@ -798,7 +798,7 @@ fn set_up_done(
     let failed = match setup.0.take() {
         Some(Setup::Go(work, prompt)) => {
             commands.insert_resource(work);
-            if let Some(agent) = primary(&agents) {
+            if let Some(agent) = main_agent(&agents) {
                 commands.trigger(Deliver::new(agent, prompt, DeliveryMode::Steer));
                 return;
             }

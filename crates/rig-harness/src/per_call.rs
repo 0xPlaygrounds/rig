@@ -1,7 +1,7 @@
 //! Tools whose every call is built for where it works
 //! ([`AppPerCallExt::add_tool_per_call`]): the app's workspace, the calling
 //! agent's [`WorkDir`] or else the [`ProjectRoot`], and, for a tool that
-//! reports its output as it runs, where it reports it ([`Place`]).
+//! reports its output as it runs, where it reports it ([`CallPlace`]).
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -37,7 +37,7 @@ use crate::workspace::ProjectWorkspace;
 
 /// Where one call of a tool registered with
 /// [`add_tool_per_call`](AppPerCallExt::add_tool_per_call) works.
-pub struct Place {
+pub struct CallPlace {
     /// The app's workspace ([`ProjectWorkspace`]), or an overlay of it for
     /// a call that is previewed ([`Preview`](crate::preview::Preview)).
     pub workspace: Arc<dyn Workspace>,
@@ -54,7 +54,7 @@ pub struct Place {
     pub spill: Option<Spill>,
 }
 
-/// Registering a tool whose every call is built for its [`Place`].
+/// Registering a tool whose every call is built for its [`CallPlace`].
 pub trait AppPerCallExt {
     /// Registers `tool` with `options`, as
     /// [`add_tool_with`](AppToolsExt::add_tool_with) does, and gives each of
@@ -70,7 +70,7 @@ pub trait AppPerCallExt {
         tool: T,
         options: ToolOptions<'_>,
         live: bool,
-        make: impl Fn(Place) -> T + Send + Sync + 'static,
+        make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self;
 }
 
@@ -80,7 +80,7 @@ impl AppPerCallExt for App {
         tool: T,
         options: ToolOptions<'_>,
         live: bool,
-        make: impl Fn(Place) -> T + Send + Sync + 'static,
+        make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self {
         if !self.world().contains_resource::<PerCall>() {
             self.init_resource::<PerCall>()
@@ -88,7 +88,8 @@ impl AppPerCallExt for App {
                 .init_resource::<ProjectWorkspace>()
                 .add_systems(AgentPass, give_place.in_set(PrepareSystems::Compose));
         }
-        let make = move |place: Place| Handler(ErasedHandler::new(ToolAdapter::new(make(place))));
+        let make =
+            move |place: CallPlace| Handler(ErasedHandler::new(ToolAdapter::new(make(place))));
         if let Some(mut tools) = self.world_mut().get_resource_mut::<PerCall>() {
             tools.0.push(Made {
                 name: T::NAME,
@@ -100,12 +101,12 @@ impl AppPerCallExt for App {
     }
 }
 
-/// How a call of one tool is built for its [`Place`].
+/// How a call of one tool is built for its [`CallPlace`].
 struct Made {
     name: &'static str,
     /// Whether its calls report their output as they run.
     live: bool,
-    make: Box<dyn Fn(Place) -> Handler + Send + Sync>,
+    make: Box<dyn Fn(CallPlace) -> Handler + Send + Sync>,
 }
 
 /// The tools registered per call.
@@ -115,7 +116,7 @@ pub(crate) struct PerCall(Vec<Made>);
 impl PerCall {
     /// The handler of a call of `tool` built for `place`, when `tool` is
     /// registered per call.
-    pub(crate) fn build(&self, tool: &str, place: Place) -> Option<Handler> {
+    pub(crate) fn build(&self, tool: &str, place: CallPlace) -> Option<Handler> {
         self.made(tool).map(|made| (made.make)(place))
     }
 
@@ -138,7 +139,7 @@ pub(crate) fn base(
 }
 
 /// Gives each call of these tools admitted this pass the handler of its
-/// tool built for its [`Place`], and a live call its [`CallOutput`].
+/// tool built for its [`CallPlace`], and a live call its [`CallOutput`].
 fn give_place(
     mut calls: Query<
         (Entity, &ToolRequest, Option<&ForAgent>, &mut CallHandler),
@@ -164,7 +165,7 @@ fn give_place(
             live
         });
         let (base, confine) = base(agent.map(|agent| agent.0), &dirs, &root);
-        let place = Place {
+        let place = CallPlace {
             workspace: workspace.0.clone(),
             base,
             confine,

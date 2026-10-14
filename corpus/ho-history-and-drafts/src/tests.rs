@@ -11,7 +11,7 @@ use rig_tui::{Editor, MainEditor};
 
 use super::*;
 
-/// The kernel, the journal, the pickers' `Shown` and the plugin on
+/// The kernel, the journal, the pickers' `ShownAgent` and the plugin on
 /// `store`, with `RIG_HOME` at `home`, after the first frame.
 fn start(store: &MemoryStore, home: &Home) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);

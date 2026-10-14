@@ -12,7 +12,7 @@ use rig_core::catalog::Catalog;
 use rig_core::completion::Usage;
 use rig_core::effect::{Answered, Disposition, EffectKind, EffectRecord, FamilyDescriptor};
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
-use rig_harness::prelude::SessionStores;
+use rig_harness::prelude::StoreOpener;
 use serde::Serialize;
 
 use crate::options::{By, Format, Options, Projects, Since};
@@ -80,7 +80,7 @@ impl Report {
         options: &Options,
         home: &Home,
         root: &Path,
-        stores: &SessionStores,
+        stores: &StoreOpener,
         catalog: &Catalog,
         now: DateTime<Local>,
     ) -> (Self, Vec<String>) {
@@ -296,7 +296,7 @@ fn saved_sessions(home: &Home) -> Vec<(SessionId, SessionDir)> {
 
 /// The session's effect log, or `None` when it has none. A line being
 /// written as it is read, by a session that is open, is left for later.
-fn read_log(stores: &SessionStores, dir: &SessionDir) -> io::Result<Option<EffectLog>> {
+fn read_log(stores: &StoreOpener, dir: &SessionDir) -> io::Result<Option<EffectLog>> {
     let store = stores.open(dir)?;
     let mut bytes = match store.read_file(SESSION_EFFECT_LOG) {
         Ok(bytes) => bytes,

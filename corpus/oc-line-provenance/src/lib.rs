@@ -455,7 +455,7 @@ impl Answer {
 /// opened turn's panel takes.
 #[derive(bevy_ecs::system::SystemParam)]
 struct Opening<'w, 's> {
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     session: Option<Res<'w, SessionPaths>>,
     agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
     focus: Option<ResMut<'w, KeyFocus>>,

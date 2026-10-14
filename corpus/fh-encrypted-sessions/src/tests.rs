@@ -139,7 +139,7 @@ fn notices(app: &App) -> String {
 
 /// Why the run's stores do not open `session`, if they do not.
 fn refusal(app: &App, home: &Home, session: &SessionId) -> String {
-    let stores = app.world().resource::<SessionStores>();
+    let stores = app.world().resource::<StoreOpener>();
     match stores.open(&home.session(session)) {
         Err(why) => why.to_string(),
         Ok(_) => String::new(),
@@ -231,7 +231,7 @@ fn a_sealed_session_resumes_with_its_key_only() {
     fs::write(&log, &bytes).ok();
     let (app, _) = start(&home, &session, &model, key);
     assert!(refused(&app));
-    let stores = app.world().resource::<SessionStores>();
+    let stores = app.world().resource::<StoreOpener>();
     let read = stores.open(&dir).and_then(|store| Session::read(&*store));
     let why = read.err().map(|failure| failure.to_string());
     assert!(

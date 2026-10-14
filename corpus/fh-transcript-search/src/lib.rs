@@ -377,7 +377,7 @@ impl Plugin for TranscriptSearchPlugin {
 fn open(
     pressed: On<KeyPressed>,
     bars: Query<(), With<TranscriptSearch>>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     view: Single<&TranscriptView, With<MainPane>>,
     mut focus: ResMut<KeyFocus>,
     mut commands: Commands,
@@ -412,7 +412,7 @@ struct Transcripts<'w, 's> {
             Changed<ToolProgress>,
         )>,
     >,
-    shown: Res<'w, Shown>,
+    shown: Res<'w, ShownAgent>,
 }
 
 impl Transcripts<'_, '_> {

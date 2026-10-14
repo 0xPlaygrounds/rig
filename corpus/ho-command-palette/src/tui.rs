@@ -105,7 +105,7 @@ fn toggle(
 fn type_in_palette(
     events: Res<TerminalEvents>,
     mut open: Query<(Entity, &mut Palette), With<TuiPanel>>,
-    (focus, shown): (Res<KeyFocus>, Res<Shown>),
+    (focus, shown): (Res<KeyFocus>, Res<ShownAgent>),
     sources: PaletteSources,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,

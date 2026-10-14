@@ -37,7 +37,6 @@ use rig_ecs::session_log::{ConversationChanged, SessionRewritten, SessionStore};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
-use rig_harness::primary::primary_order;
 use rig_harness::sessions::SessionPicker;
 
 #[cfg(feature = "tui")]
@@ -363,7 +362,7 @@ fn update_meta(
     // The agents the user started come first: the title is theirs, not a
     // spawned agent's.
     let mut agents: Vec<_> = agents.iter().collect();
-    agents.sort_by(|a, b| primary_order(a.2, a.0).cmp(&primary_order(b.2, b.0)));
+    agents.sort_by(|a, b| main_order(a.2, &a.0.0).cmp(&main_order(b.2, &b.0.0)));
     if title.typed.is_empty()
         && let Some(typed) = agents
             .iter()

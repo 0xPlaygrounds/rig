@@ -194,7 +194,7 @@ impl Plugin for HistoryPlugin {
         app.add_setting::<HistorySettings>("history")
             .init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .init_resource::<History>()
             .init_resource::<Typing>()
             .register_required_components::<Agent, Draft>()
@@ -310,7 +310,7 @@ fn offer(history: Res<History>, mut prompts: ResMut<PromptHistory>) {
 /// once when it is emptied or another agent is shown (whose draft the
 /// input then holds), else once typing paused for [`QUIET`].
 fn follow_input(
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut input: MainInput,
     mut typing: ResMut<Typing>,
     mut drafts: Query<&mut Draft>,

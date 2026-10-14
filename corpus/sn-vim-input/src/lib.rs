@@ -246,7 +246,7 @@ fn paste_clipboard(
     read: On<Insert<Done<Option<String>>>>,
     reads: Query<(&ClipboardPaste, &Done<Option<String>>)>,
     (mut vim, input): (ResMut<Vim>, Option<MainInput>),
-    shown: Option<Res<Shown>>,
+    shown: Option<Res<ShownAgent>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {

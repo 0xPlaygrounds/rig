@@ -154,7 +154,7 @@ fn notices(app: &App) -> Vec<String> {
 /// The split-off session's main conversation and saved values.
 fn copy_of(home: &Home, name: &str, agent: &str) -> Option<(SessionId, SavedAgent)> {
     let id = home.find(name).ok()?;
-    let store = SessionStores::default().open(&home.session(&id)).ok()?;
+    let store = StoreOpener::default().open(&home.session(&id)).ok()?;
     let session = Session::read(&*store).ok()?;
     Some((id.clone(), session.agent(agent)?.clone()))
 }
@@ -244,7 +244,7 @@ fn split_moves_turns_three_and_four_undo_puts_them_back_and_the_copy_resumes() {
     );
     assert_eq!(copied.get(1..), before.messages().get(4..12));
     assert!(copy.conversation.validate().is_ok());
-    let detail = SessionEntry::read(&home.session(&copy_id), &SessionStores::default())
+    let detail = SessionEntry::read(&home.session(&copy_id), &StoreOpener::default())
         .map(|entry| entry.detail());
     assert!(
         detail

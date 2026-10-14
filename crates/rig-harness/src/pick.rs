@@ -4,7 +4,7 @@
 //! front that shows pickers (`Query<(Entity, &Picker)>`) triggers [`Pick`]
 //! on the one the user picked from, or closed: the harness then runs the
 //! item's command, for the picker's agent or else the agent the user is
-//! looking at ([`Shown`]), triggers [`Picked`] on
+//! looking at ([`ShownAgent`]), triggers [`Picked`] on
 //! it, and despawns it. A picker may take several items
 //! ([`Picker::multiple`]): the harness runs each one's command in list
 //! order. A [`Chosen`] holds the items picked and the text typed, either
@@ -42,7 +42,7 @@ use rig_ecs::stage::{Decision, Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
 use crate::commands::RunCommand;
-use crate::primary::{Shown, keep_shown};
+use crate::main_agent::{ShownAgent, keep_shown};
 
 /// One choice of a picker: what it shows, and the command line, without
 /// its `/`, that choosing it runs for the agent, such as
@@ -260,7 +260,7 @@ pub struct PickPlugin;
 
 impl Plugin for PickPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Shown>()
+        app.init_resource::<ShownAgent>()
             .add_systems(First, keep_shown)
             .add_observer(pick);
     }
@@ -273,7 +273,7 @@ fn pick(
     pick: On<Pick>,
     pickers: Query<&Picker>,
     mut asks: Query<(&Ask, &mut Decision), (Without<Outcome>, Without<Settled>)>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut commands: Commands,
 ) {
     let (entity, chosen) = (pick.entity, pick.chosen.clone());

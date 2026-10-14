@@ -58,7 +58,7 @@ pub mod env {
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
     pub const AGENT_ONLY: [&str; 5] = [SESSION, NOTICE, BUILD_FAILURE, RUN, START];
     /// Set by the launcher to a file's path: the agent builds its app,
-    /// writes what its plugins add there ([`Described`](super::Described))
+    /// writes what its plugins add there ([`AgentDescription`](super::AgentDescription))
     /// and exits without running a frame.
     pub const DESCRIBE: &str = "RIG_DESCRIBE";
     /// The start of a secret's variable, such as `RIG_SECRET_CRYPT`
@@ -300,7 +300,7 @@ impl Home {
         self.bin().join("staged")
     }
 
-    /// The [`Described`] report of the build whose stamp is `stamp` (its
+    /// The [`AgentDescription`] report of the build whose stamp is `stamp` (its
     /// modification time in nanoseconds and its length, as `"{mtime} {len}"`),
     /// one per build, which every copy of the build shares.
     pub fn described(&self, stamp: &str) -> PathBuf {
@@ -680,8 +680,8 @@ impl SessionDir {
 /// ([`Invocation::to_args`]): the model, each plugin option as
 /// `--name=VALUE`, then the print prompt after `--print --`, or a plugin's
 /// command and its arguments. The launcher reads the user's command line
-/// against the agent's [`Described`] report first
-/// ([`Described::invocation`]), so `rig -p "…"` and the agent binary run
+/// against the agent's [`AgentDescription`] report first
+/// ([`AgentDescription::invocation`]), so `rig -p "…"` and the agent binary run
 /// alone agree on them.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Invocation {
@@ -761,7 +761,7 @@ impl Invocation {
 }
 
 /// Reads a command line left to right, as [`Invocation::parse`] and
-/// [`Described`] do, into the invocation and the session `-r` names; they
+/// [`AgentDescription`] do, into the invocation and the session `-r` names; they
 /// differ in how a plugin option is read: `option` reads one, `--…`,
 /// given the words after it, from which it may take its value.
 fn read_args<'a, S: AsRef<str>>(
@@ -849,7 +849,7 @@ pub fn is_name(name: &str) -> bool {
 /// The launcher's own first words, which no plugin's command may take.
 pub const RESERVED_COMMANDS: [&str; 3] = ["build", "plugin", "help"];
 
-/// The first line of a [`Described`] report.
+/// The first line of a [`AgentDescription`] report.
 const DESCRIBED_HEADER: &str = "rig-describe 1";
 
 /// What a built agent's plugins add to the command line, as the agent
@@ -866,18 +866,18 @@ const DESCRIBED_HEADER: &str = "rig-describe 1";
 /// secret ⇥ crypt ⇥ Passphrase for this machine's sessions
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Described {
+pub struct AgentDescription {
     /// The plugins' commands.
-    pub commands: Vec<CommandInfo>,
+    pub commands: Vec<DescribedCommand>,
     /// The plugins' options, the fronts' included.
-    pub flags: Vec<FlagInfo>,
+    pub flags: Vec<DescribedFlag>,
     /// The secrets the plugins ask for.
-    pub secrets: Vec<SecretInfo>,
+    pub secrets: Vec<DescribedSecret>,
 }
 
 /// A plugin's command, `rig <name> <usage>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommandInfo {
+pub struct DescribedCommand {
     /// Its name.
     pub name: String,
     /// What its arguments are, such as `<tool> [path]`; may be empty.
@@ -893,7 +893,7 @@ pub struct CommandInfo {
 
 /// A plugin's option, `--name` or `--name VALUE`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FlagInfo {
+pub struct DescribedFlag {
     /// Its name.
     pub name: String,
     /// What its value is, such as `ADDR`, when it takes one.
@@ -905,14 +905,14 @@ pub struct FlagInfo {
 /// A secret a plugin asks for, which reaches the agent as
 /// [`secret_variable`] of its name.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SecretInfo {
+pub struct DescribedSecret {
     /// Its name.
     pub name: String,
     /// What to ask for.
     pub help: String,
 }
 
-impl Described {
+impl AgentDescription {
     /// Reads a report. Without the header it is empty: a build from before
     /// commands, which has none.
     pub fn parse(text: &str) -> Self {
@@ -925,7 +925,7 @@ impl Described {
         for line in lines {
             match line.split('\t').collect::<Vec<_>>().as_slice() {
                 ["command", name, usage, run, session, help] => {
-                    described.commands.push(CommandInfo {
+                    described.commands.push(DescribedCommand {
                         name: (*name).to_owned(),
                         usage: given(usage).unwrap_or_default(),
                         terminal: *run == "terminal",
@@ -933,12 +933,12 @@ impl Described {
                         help: (*help).to_owned(),
                     });
                 }
-                ["flag", name, value, help] => described.flags.push(FlagInfo {
+                ["flag", name, value, help] => described.flags.push(DescribedFlag {
                     name: (*name).to_owned(),
                     value: given(value),
                     help: (*help).to_owned(),
                 }),
-                ["secret", name, help] => described.secrets.push(SecretInfo {
+                ["secret", name, help] => described.secrets.push(DescribedSecret {
                     name: (*name).to_owned(),
                     help: (*help).to_owned(),
                 }),
@@ -996,7 +996,7 @@ impl Described {
     }
 
     /// The command `name`, if a plugin adds it.
-    pub fn command(&self, name: &str) -> Option<&CommandInfo> {
+    pub fn command(&self, name: &str) -> Option<&DescribedCommand> {
         self.commands.iter().find(|command| command.name == name)
     }
 

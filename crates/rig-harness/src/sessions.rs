@@ -37,7 +37,7 @@ use rig_ecs::session_log::SessionStore;
 use rig_memory::{Line, LineId, Listing, Store, lines, read_line, title_of};
 use rig_tools::ago;
 
-use crate::host::session::{SessionPaths, SessionStores};
+use crate::host::session::{SessionPaths, StoreOpener};
 use crate::pick::{Highlighted, Pick, PickItem, PickPreview, Picker};
 use crate::services::RigHome;
 
@@ -65,7 +65,7 @@ impl SessionEntry {
     /// The saved session in `dir`, read from its store as `stores` opens it
     /// and from its directory's files; `None` when it is not a saved
     /// session. Its logs are not read.
-    pub fn read(dir: &SessionDir, stores: &SessionStores) -> Option<Self> {
+    pub fn read(dir: &SessionDir, stores: &StoreOpener) -> Option<Self> {
         let id = dir.id().filter(|_| dir.is_saved())?;
         let store = stores.open(dir).ok();
         Some(Self::of(id, dir, store.as_deref()))
@@ -435,10 +435,10 @@ impl From<(SessionPicked, PickPreview)> for PreviewDone {
 }
 
 /// Opens session stores off the main thread: the running session's as it
-/// runs, any other as [`SessionStores`] opens it.
+/// runs, any other as [`StoreOpener`] opens it.
 #[derive(Clone)]
 struct Opener {
-    stores: SessionStores,
+    stores: StoreOpener,
     home: Home,
     running: Option<(SessionDir, Arc<dyn Store>)>,
 }
@@ -476,7 +476,7 @@ impl Opener {
 #[derive(bevy_ecs::system::SystemParam)]
 struct Sessions<'w> {
     home: Option<Res<'w, RigHome>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     paths: Option<Res<'w, SessionPaths>>,
     store: Option<Res<'w, SessionStore>>,
     wake: Option<Res<'w, Wake>>,

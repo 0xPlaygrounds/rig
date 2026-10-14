@@ -47,7 +47,7 @@ fn import_with(app: &mut App, tool: &str, path: &Path) -> Vec<SessionImported> {
 
 /// The conversation of the main agent of `session`, as its logs left it.
 fn conversation_of(home: &Home, session: &SessionId) -> Vec<Message> {
-    let store = SessionStores::default().open(&home.session(session));
+    let store = StoreOpener::default().open(&home.session(session));
     let saved = store
         .and_then(|store| Session::read(&*store))
         .unwrap_or_default();
@@ -142,7 +142,7 @@ fn imports_resumes_and_reimports() {
     let (_, answered) = paired(&messages, "toolu_1").unwrap_or_default();
     // The sidechain is a subagent of it, and each message is logged at the
     // source's time.
-    let store = SessionStores::default().open(&home.session(&first.session));
+    let store = StoreOpener::default().open(&home.session(&first.session));
     let agents = store
         .and_then(|store| Session::read(&*store))
         .unwrap_or_default()
@@ -272,6 +272,6 @@ fn resumable(home: &Home, current: &SessionId) -> Vec<SessionEntry> {
     home.saved_sessions()
         .into_iter()
         .filter(|(id, _)| id != current)
-        .filter_map(|(_, dir)| SessionEntry::read(&dir, &SessionStores::default()))
+        .filter_map(|(_, dir)| SessionEntry::read(&dir, &StoreOpener::default()))
         .collect()
 }

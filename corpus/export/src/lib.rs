@@ -177,7 +177,7 @@ impl Request {
 #[derive(SystemParam)]
 struct Sessions<'w> {
     store: Option<Res<'w, SessionStore>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     paths: Option<Res<'w, SessionPaths>>,
     title: Option<Res<'w, SessionTitle>>,
     home: Option<Res<'w, RigHome>>,

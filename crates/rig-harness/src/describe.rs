@@ -1,6 +1,6 @@
 //! How the built agent tells the `rig` launcher what its plugins add to
 //! the command line: their commands, their options and the secrets they
-//! ask for ([`Described`]). The launcher asks after each build, by running
+//! ask for ([`AgentDescription`]). The launcher asks after each build, by running
 //! the binary with [`env::DESCRIBE`] naming a file; [`run`], which the
 //! generated `main.rs` ends with, then builds the app (every plugin's
 //! `build`, `finish` and `cleanup`), writes the report to that file and
@@ -18,7 +18,9 @@ use std::path::PathBuf;
 use bevy_app::PluginsState;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{CommandInfo, Described, FlagInfo, SecretInfo, env};
+use rig::harness_protocol::{
+    AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, env,
+};
 
 use crate::host::cli::{Front, command_refusal, declared, flags};
 use crate::load::{PluginSource, ProvidedBy};
@@ -72,12 +74,12 @@ pub fn run(mut app: App) -> AppExit {
 /// What the plugins of the built app `world` add to the command line, or
 /// why the build cannot be run: two plugins adding one command, or a
 /// command the launcher cannot take, such as `build`.
-pub fn report(world: &mut World) -> Result<Described, String> {
+pub fn report(world: &mut World) -> Result<AgentDescription, String> {
     let commands: Vec<(Entity, Front)> = declared::<Front>(world)
         .into_iter()
         .filter(|(_, front)| front.command.is_some())
         .collect();
-    let mut described = Described::default();
+    let mut described = AgentDescription::default();
     for (at, (entity, front)) in commands.iter().enumerate() {
         let Some(command) = &front.command else {
             continue;
@@ -96,7 +98,7 @@ pub fn report(world: &mut World) -> Result<Described, String> {
                 command.name
             ));
         }
-        described.commands.push(CommandInfo {
+        described.commands.push(DescribedCommand {
             name: command.name.to_owned(),
             usage: command.usage.to_owned(),
             terminal: front.terminal,
@@ -106,7 +108,7 @@ pub fn report(world: &mut World) -> Result<Described, String> {
     }
     described.flags = flags(world)
         .into_iter()
-        .map(|flag| FlagInfo {
+        .map(|flag| DescribedFlag {
             name: flag.name.to_owned(),
             value: flag.value.map(str::to_owned),
             help: flag.help.to_owned(),
@@ -114,7 +116,7 @@ pub fn report(world: &mut World) -> Result<Described, String> {
         .collect();
     described.secrets = declared::<Secret>(world)
         .into_iter()
-        .map(|(_, secret)| SecretInfo {
+        .map(|(_, secret)| DescribedSecret {
             name: secret.name.to_owned(),
             help: secret.help.to_owned(),
         })
@@ -129,7 +131,7 @@ fn plugin_of(world: &World, entity: Entity) -> String {
         .and_then(|&ProvidedBy(plugin)| world.get::<PluginSource>(plugin))
         .map_or_else(
             || "a plugin added in main.rs".to_owned(),
-            |source| format!("`{}`", source.krate),
+            |source| format!("`{}`", source.package),
         )
 }
 

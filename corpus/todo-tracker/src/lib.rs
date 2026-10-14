@@ -368,11 +368,11 @@ struct PrintedList;
 /// Keeps the primary agent's list, when it has one, in the section a
 /// `--print` run prints after its answer.
 fn print_list(
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     lists: Query<&Todos, Changed<Todos>>,
     mut sections: Query<&mut PrintSection, With<PrintedList>>,
 ) {
-    let Some(todos) = primary(&agents).and_then(|agent| lists.get(agent).ok()) else {
+    let Some(todos) = main_agent(&agents).and_then(|agent| lists.get(agent).ok()) else {
         return;
     };
     let text = match todos.0.is_empty() {

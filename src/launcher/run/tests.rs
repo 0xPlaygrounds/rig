@@ -98,7 +98,7 @@ printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > 
     fs::remove_dir_all(home.root()).ok();
     assert!(first.command("stats").is_some(), "{first:?}");
     assert_eq!((first.clone(), described.as_str()), (again, "described\n"));
-    assert_eq!(old, Described::default());
+    assert_eq!(old, AgentDescription::default());
     let unknown = first.invocation(&["statz"]).err().unwrap_or_default();
     assert!(
         unknown.ends_with("commands: build, plugin, help, stats"),

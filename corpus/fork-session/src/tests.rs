@@ -132,7 +132,7 @@ fn branch_before_two(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &
 
 /// The session `session` of `home` was forked from, as its store says.
 fn parent_of(home: &Home, session: &SessionId) -> Option<ForkedFrom> {
-    let store = SessionStores::default().open(&home.session(session)).ok()?;
+    let store = StoreOpener::default().open(&home.session(session)).ok()?;
     ForkedFrom::read(&*store)
 }
 

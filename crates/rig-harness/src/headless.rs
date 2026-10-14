@@ -50,7 +50,7 @@ use rig_ecs::prelude::*;
 
 use crate::host::exit::{Exit, ExitReason, ExitRequest};
 use crate::host::launcher::Invoked;
-use crate::primary::{PrimaryQuery, primary};
+use crate::main_agent::{MainAgentQuery, main_agent};
 
 /// Running a headless run.
 pub trait AppHeadlessExt {
@@ -159,7 +159,7 @@ enum Step {
 /// The agents as the run reads them.
 #[derive(SystemParam)]
 struct Agents<'w, 's> {
-    primary: PrimaryQuery<'w, 's>,
+    primary: MainAgentQuery<'w, 's>,
     choices: Query<'w, 's, (Option<&'static ModelChoice>, Has<Connection>)>,
     /// Running turns.
     turns: Query<'w, 's, (), With<TurnOf>>,
@@ -230,7 +230,7 @@ fn drive(
     };
     let ended = match run.step {
         Step::Start => {
-            let Some(agent) = primary(&agents.primary) else {
+            let Some(agent) = main_agent(&agents.primary) else {
                 return;
             };
             let Ok((chosen, _)) = agents.choices.get(agent) else {

@@ -357,7 +357,7 @@ impl From<Result<Result<UserContent, String>, ToolExecutionError>> for Pasting {
 fn paste_image(
     _: On<KeyPressed>,
     (scratch, processes): (Option<Res<Scratch>>, Option<Res<Processes>>),
-    (shown, wake): (Res<Shown>, Res<Wake>),
+    (shown, wake): (Res<ShownAgent>, Res<Wake>),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -387,7 +387,7 @@ fn paste_image(
 fn paste_read(
     read: On<Insert<Pasting>>,
     pasting: Query<&Pasting>,
-    (mut input, mut pasted, shown): (Option<MainInput>, ResMut<Pasted>, Res<Shown>),
+    (mut input, mut pasted, shown): (Option<MainInput>, ResMut<Pasted>, Res<ShownAgent>),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {

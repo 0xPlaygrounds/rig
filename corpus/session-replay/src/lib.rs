@@ -102,7 +102,7 @@ impl ReplaySource {
 
     /// The source the options name, kept in the directory they name, read
     /// through `stores`.
-    fn from_invocation(invoked: &Invoked, stores: &SessionStores) -> io::Result<Self> {
+    fn from_invocation(invoked: &Invoked, stores: &StoreOpener) -> io::Result<Self> {
         let dir = invoked.flag_value(REPLAY).unwrap_or_default();
         let flags = ReplayFlags {
             continue_live: invoked.flag(CONTINUE_LIVE),
@@ -661,7 +661,7 @@ impl Plugin for SessionReplayPlugin {
     fn finish(&self, app: &mut App) {
         let source = if app.runs_front(REPLAY) {
             let invoked = app.world().get_resource::<Invoked>().cloned();
-            let stores = app.world().get_resource::<SessionStores>().cloned();
+            let stores = app.world().get_resource::<StoreOpener>().cloned();
             let stores = stores.unwrap_or_default();
             let source = ReplaySource::from_invocation(&invoked.unwrap_or_default(), &stores);
             app.add_observer(report_and_exit);
@@ -754,7 +754,7 @@ fn report_and_exit(
 /// user message, once the session is restored.
 fn start(
     mut replay: ResMut<Replay>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     time: Res<Time<Real>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -762,7 +762,7 @@ fn start(
     if replay.status != ReplayStatus::Waiting {
         return;
     }
-    let Some(agent) = primary(&agents) else {
+    let Some(agent) = main_agent(&agents) else {
         return;
     };
     replay.primary = Some(agent);

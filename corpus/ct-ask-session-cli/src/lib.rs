@@ -4,7 +4,7 @@
 //! The command is a front of its own ([`Front::on_command`]), sessionless,
 //! so a run leaves nothing behind, and its own session is kept in memory
 //! ([`Front::session_store`]). It finds the session by name, id, `last`
-//! or path, reads it through [`SessionStores`] without writing anything
+//! or path, reads it through [`StoreOpener`] without writing anything
 //! ([`Material`]), and makes the run's one agent the answerer: its
 //! conversation starts with the session's active line (so compaction,
 //! when the app has it, condenses one too large for the model), its system
@@ -111,7 +111,7 @@ impl Plugin for AskSessionPlugin {
             .get_resource::<RigHome>()
             .map_or_else(Home::from_env, |home| home.0.clone());
         let stores = world
-            .get_resource::<SessionStores>()
+            .get_resource::<StoreOpener>()
             .cloned()
             .unwrap_or_default();
         let current = world

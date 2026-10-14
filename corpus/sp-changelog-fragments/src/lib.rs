@@ -225,7 +225,7 @@ fn note_changes(
 fn draft(
     settled: On<Add<Settled>>,
     turns: Query<(&Turn, &ForAgent, &TurnChanges)>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     conversations: Query<(&Conversation, Option<&WorkDir>)>,
     (settings, root, workspace, models, paths): (
         Res<ChangelogSettings>,
@@ -243,7 +243,7 @@ fn draft(
     let Ok((conversation, work_dir)) = conversations.get(agent) else {
         return;
     };
-    if changes.is_empty() || primary(&agents) != Some(agent) {
+    if changes.is_empty() || main_agent(&agents) != Some(agent) {
         return;
     }
     let base = workspace

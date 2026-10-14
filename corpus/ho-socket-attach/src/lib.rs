@@ -227,8 +227,8 @@ type Agents<'w, 's> = Query<'w, 's, (Entity, &'static Name), With<Agent>>;
 /// The agent the user looks at, which a client's line goes to.
 #[derive(SystemParam)]
 struct Focused<'w, 's> {
-    shown: Option<Res<'w, Shown>>,
-    agents: PrimaryQuery<'w, 's>,
+    shown: Option<Res<'w, ShownAgent>>,
+    agents: MainAgentQuery<'w, 's>,
 }
 
 impl Focused<'_, '_> {
@@ -236,7 +236,7 @@ impl Focused<'_, '_> {
         self.shown
             .as_ref()
             .and_then(|shown| shown.0)
-            .or_else(|| primary(&self.agents))
+            .or_else(|| main_agent(&self.agents))
     }
 }
 

@@ -48,9 +48,9 @@ use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, SentTo};
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{PickPreview, Picker};
 use rig_harness::prelude::{CallOutput, ToolProgress};
-use rig_harness::primary::Shown;
 
 /// Most items the completion list shows at once.
 const COMPLETION_ROWS: usize = 8;
@@ -85,7 +85,7 @@ pub(crate) fn needs_redraw(
         Res<CallFacts>,
         Res<StreamingCalls>,
     ),
-    (focus, shown): (Res<KeyFocus>, Res<Shown>),
+    (focus, shown): (Res<KeyFocus>, Res<ShownAgent>),
     changed: Query<
         (),
         Or<(
@@ -382,7 +382,7 @@ impl CallStates<'_, '_> {
 }
 
 /// An agent, as its transcript draws it.
-pub(crate) struct ShownAgent<'a> {
+pub(crate) struct ShownConversation<'a> {
     pub(crate) entity: Entity,
     /// Its id; `None` for a conversation no agent of this app holds,
     /// which shows no notices.
@@ -407,7 +407,7 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) children: ChildCalls,
 }
 
-impl<'a> ShownAgent<'a> {
+impl<'a> ShownConversation<'a> {
     /// `conversation`, which no agent of this app holds, drawn as
     /// `entity`'s: no live parts, no notices.
     pub(crate) fn value(conversation: &'a conversation::Conversation, entity: Entity) -> Self {
@@ -570,7 +570,7 @@ impl TranscriptLayout<'_, '_> {
         width: u16,
         expanded: Expanded,
     ) -> DrawnTranscript {
-        let shown = ShownAgent::value(conversation, Entity::PLACEHOLDER);
+        let shown = ShownConversation::value(conversation, Entity::PLACEHOLDER);
         let renderers = self.looks.by_kind(None);
         let facts = CallFacts::default();
         let sources = Sources {
@@ -588,7 +588,7 @@ impl TranscriptLayout<'_, '_> {
 
     /// The agent `entity` as its transcript draws it, its conversation
     /// `changed` since the last frame or not; `None` when it is no agent.
-    pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownAgent<'_>> {
+    pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownConversation<'_>> {
         let (id, conversation) = self.agents.get(entity).ok()?;
         let turn = self.active.get(entity).ok();
         let calls = turn.and_then(|turn| self.turns.get(turn.turn()).ok());
@@ -609,7 +609,7 @@ impl TranscriptLayout<'_, '_> {
             .map(|(effect, message, _)| (effect, message))
             .collect();
         inbox.sort_by_key(|(effect, _)| effect.id());
-        Some(ShownAgent {
+        Some(ShownConversation {
             entity,
             id: Some(id),
             conversation,
@@ -669,7 +669,7 @@ impl TranscriptLayout<'_, '_> {
 pub(crate) fn lay_out_transcript(
     transcript: &mut Transcript,
     sources: &Sources<'_>,
-    shown: Option<&ShownAgent<'_>>,
+    shown: Option<&ShownConversation<'_>>,
     width: u16,
 ) -> Vec<Part> {
     let wrap_width = usize::from(width.max(1));

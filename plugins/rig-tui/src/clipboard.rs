@@ -21,8 +21,8 @@ use super::editor::{Editor, MainEditor};
 use super::terminal::CopyToClipboard;
 use rig_ecs::agent::Notice;
 use rig_ecs::tasks::Wake;
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::Processes;
-use rig_harness::primary::Shown;
 use rig_tools::clipboard;
 use rig_tools::process::Launcher;
 
@@ -103,7 +103,7 @@ pub(crate) fn copy_to_system(
 /// Types `@path` for each image read from the clipboard.
 pub(crate) fn receive_images(
     clipboard: Res<Clipboard>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut input: Query<&mut Editor, With<MainEditor>>,
     mut notices: MessageWriter<Notice>,
 ) {

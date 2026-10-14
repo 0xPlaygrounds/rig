@@ -141,7 +141,7 @@ fn ask(
     turns: Query<(&TurnOutcome, &ForAgent)>,
     agents: Query<&Conversation, Without<SpawnedBy>>,
     (shown, chips, off, config, models): (
-        Option<Res<Shown>>,
+        Option<Res<ShownAgent>>,
         Option<Res<ChipsShown>>,
         Res<SuggestOff>,
         Res<SuggestConfig>,
@@ -288,7 +288,7 @@ fn hide(pressed: On<KeyPressed>, mut commands: Commands) {
 
 /// Keeps one chips panel while the agent shown has suggestions.
 fn place_panel(
-    shown: Option<Res<Shown>>,
+    shown: Option<Res<ShownAgent>>,
     agents: Query<Ref<Suggestions>>,
     panels: Query<Entity, With<ChipsPanel>>,
     mut redraw: MessageWriter<RequestRedraw>,
@@ -314,7 +314,7 @@ fn place_panel(
 /// question waits beside the work, whose `Alt+N` keys a global binding
 /// would shadow; frees them otherwise.
 fn arm_keys(
-    shown: Option<Res<Shown>>,
+    shown: Option<Res<ShownAgent>>,
     agents: Query<(), With<Suggestions>>,
     asks: Query<&Ask, (Without<Outcome>, Without<Settled>)>,
     keys: Query<(Entity, Has<Disabled>), (With<ChipKey>, Allow<Disabled>)>,
@@ -340,7 +340,7 @@ fn arm_keys(
 /// Draws the chips of the agent shown.
 fn draw(
     mut panels: Query<&mut PanelCanvas, With<ChipsPanel>>,
-    shown: Option<Res<Shown>>,
+    shown: Option<Res<ShownAgent>>,
     agents: Query<&Suggestions>,
 ) {
     let Some(Suggestions(suggested)) = shown

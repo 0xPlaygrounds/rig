@@ -71,16 +71,16 @@ fn stages_ordered(built: On<ScheduleBuilt>) {
 /// Sends the prompt as `--print` does, when it is left out.
 fn ask(
     restored: Option<Res<SessionRestored>>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     plugins: Query<&PluginSource>,
     mut asked: Local<bool>,
     mut commands: Commands,
 ) {
-    let Some(agent) = primary(&agents).filter(|_| restored.is_some() && !*asked) else {
+    let Some(agent) = main_agent(&agents).filter(|_| restored.is_some() && !*asked) else {
         return;
     };
     *asked = true;
-    if !plugins.iter().any(|plugin| plugin.krate == "rig-print") {
+    if !plugins.iter().any(|plugin| plugin.package == "rig-print") {
         commands.trigger(Deliver::new(agent, PROMPT, DeliveryMode::Steer));
     }
 }
@@ -98,12 +98,12 @@ fn answered(
     };
     let answered = matches!(outcome,
         TurnOutcome::Answered(message) if message.final_answer().as_deref() == Some("read"));
-    let scaffold = |plugin: &PluginSource| plugin.krate == "rig-hello";
+    let scaffold = |plugin: &PluginSource| plugin.package == "rig-hello";
     let added_once = plugins.iter().filter(|plugin| scaffold(plugin)).count() == 1;
     let command = |(name, by): (&Name, &ProvidedBy)| {
         name.as_str() == "/__name__" && plugins.get(by.0).is_ok_and(scaffold)
     };
-    let reload = plugins.iter().any(|plugin| plugin.krate == "rig-reload");
+    let reload = plugins.iter().any(|plugin| plugin.package == "rig-reload");
     let reloads = slash_commands.iter().any(|name| name.as_str() == "/reload");
     let ok = answered && added_once && provided.iter().any(command) && reload == reloads;
     exits.write(AppExit::from_code(u8::from(!ok)));

@@ -79,7 +79,7 @@ fn start(
     app.cleanup();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     let model = "test/model".to_owned();
     app.world_mut().trigger(SetModel {
         entity: agent,

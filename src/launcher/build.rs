@@ -18,7 +18,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use rig::harness_protocol::{Described, Home, SessionId, env, first_errors, secret_variables};
+use rig::harness_protocol::{
+    AgentDescription, Home, SessionId, env, first_errors, secret_variables,
+};
 
 use super::config::Config;
 use super::project::{self, PACKAGE, RigSource};
@@ -395,8 +397,8 @@ const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// the request, has an empty one. Fails when the build exits with a
 /// failure, such as two plugins adding one command, or takes over
 /// [`DESCRIBE_TIMEOUT`].
-pub fn described(home: &Home, binary: &Path) -> Result<Described> {
-    if let Some(report) = kept_report(home, binary) {
+pub fn described(home: &Home, binary: &Path) -> Result<AgentDescription> {
+    if let Some(report) = good_report(home, binary) {
         return Ok(report);
     }
     let kept = home.described(&stamp(binary)?);
@@ -407,13 +409,13 @@ pub fn described(home: &Home, binary: &Path) -> Result<Described> {
     let written = parent.join(format!(".{}.tmp", std::process::id()));
     fs::write(&written, &text)?;
     fs::rename(&written, &kept)?;
-    Ok(Described::parse(&text))
+    Ok(AgentDescription::parse(&text))
 }
 
 /// The report kept for the build `binary`, if any.
-pub fn kept_report(home: &Home, binary: &Path) -> Option<Described> {
+pub fn good_report(home: &Home, binary: &Path) -> Option<AgentDescription> {
     let text = fs::read_to_string(home.described(&stamp(binary).ok()?)).ok()?;
-    Some(Described::parse(&text))
+    Some(AgentDescription::parse(&text))
 }
 
 /// Runs `binary` with [`env::DESCRIBE`] and returns what it wrote, empty

@@ -228,7 +228,7 @@ fn alt_down_rates_the_last_reply_from_the_input() {
         .spawn((Name::new("main"), Agent, AgentId("main".to_owned())))
         .id();
     // The agent the view shows, whose input the keys are pressed in.
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     app.finish();
     app.update();
     for message in [Message::user("Fix it."), Message::assistant("Fixed.")] {

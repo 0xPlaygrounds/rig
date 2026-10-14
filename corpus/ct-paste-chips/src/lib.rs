@@ -390,7 +390,7 @@ struct Chipping<'w, 's> {
     scratch: Option<Res<'w, Scratch>>,
     processes: Option<Res<'w, Processes>>,
     wake: Res<'w, Wake>,
-    shown: Res<'w, Shown>,
+    shown: Res<'w, ShownAgent>,
     connections: Query<'w, 's, &'static Connection>,
     answerers: Answerers<'w, 's>,
     notices: MessageWriter<'w, Notice>,
@@ -554,7 +554,7 @@ fn receive_images(
     clipboard: Res<ClipboardImages>,
     mut chips: ResMut<PasteChips>,
     mut input: MainInput,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok(results) = clipboard.results.lock() else {

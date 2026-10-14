@@ -102,7 +102,7 @@ struct Repo {
 
 impl Repo {
     /// This repo as seen from `place`.
-    fn at(&self, place: Place) -> Self {
+    fn at(&self, place: CallPlace) -> Self {
         Self {
             workspace: place.workspace,
             base: place.base,

@@ -229,7 +229,7 @@ fn receive(
     settings: Res<ChatSettings>,
     threads: Query<(Entity, &ChatThread)>,
     asks: OpenAsks,
-    primaries: PrimaryQuery,
+    primaries: MainAgentQuery,
     models: Query<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
     mut commands: Commands,
 ) {
@@ -258,7 +258,7 @@ fn receive(
         let agent = match bound {
             Some(agent) => agent,
             None if message.mentions_bot => {
-                let parent = primary(&primaries).and_then(|agent| models.get(agent).ok());
+                let parent = main_agent(&primaries).and_then(|agent| models.get(agent).ok());
                 let agent = spawn_agent(&mut commands, thread.clone(), parent);
                 spawned.push((agent, thread));
                 agent

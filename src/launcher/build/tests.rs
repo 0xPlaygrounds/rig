@@ -28,7 +28,7 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
                   > \"$RIG_DESCRIBE\"";
     let home = built("staged", report);
     let staged = stage(&home, &home.staged(), Staging::Always);
-    let kept = kept_report(&home, &home.staged());
+    let kept = good_report(&home, &home.staged());
     fs::remove_dir_all(home.root()).ok();
     assert!(staged.is_ok(), "{staged:?}");
     assert!(kept.is_some_and(|report| report.command("stats").is_some()));

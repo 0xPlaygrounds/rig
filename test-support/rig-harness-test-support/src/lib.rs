@@ -67,7 +67,7 @@ pub fn scratch_home(name: &str) -> Home {
 /// An app with a task pool on the session `id` of `home`, kept in its
 /// directory by the harness's session service, and its loop's wakes. The
 /// service opens the session's store as the app finishes building
-/// (`app.finish()`), from the app's `SessionStores`, as it does in the
+/// (`app.finish()`), from the app's `StoreOpener`, as it does in the
 /// agent. It sends panics to the session's log; a test shows them, so its
 /// failed assertions print.
 pub fn app_in(home: &Home, id: &SessionId) -> (App, Receiver<()>) {

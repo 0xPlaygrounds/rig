@@ -164,7 +164,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         });
     }
     assert_eq!(app.world().resource::<Ended>().0.len(), 3);
-    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
 
     // Turn 2's `shell` output is drawn cut, without the error.
     let call = TranscriptItem::Call(CallId::from_wire("c1"));
@@ -304,5 +304,5 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert!(view.highlights.is_empty() && view.expanded.is_empty());
     let last = app.world().resource::<Scrolls>().0.last().cloned();
     assert_eq!(last, Some((None, ItemRow::Top(0))));
-    assert_eq!(app.world().resource::<Shown>().0, Some(agent));
+    assert_eq!(app.world().resource::<ShownAgent>().0, Some(agent));
 }

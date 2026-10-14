@@ -46,7 +46,7 @@ impl Plugin for SplitsPlugin {
         let asker = app.world_mut().spawn(Name::new("rig-splits")).id();
         app.insert_resource(Asker(asker))
             .init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
+            .init_resource::<StoreOpener>()
             .add_command(
                 "split",
                 "Split the conversation at an entry into a branch, or with `new` a new session; \
@@ -251,7 +251,7 @@ fn home(world: &World) -> Home {
 fn read_session(world: &World, id: &SessionId) -> Result<Session, String> {
     let dir = home(world).session(id);
     let stores = world
-        .get_resource::<SessionStores>()
+        .get_resource::<StoreOpener>()
         .cloned()
         .unwrap_or_default();
     let store = stores.open(&dir).map_err(|failure| failure.to_string())?;
@@ -378,7 +378,7 @@ fn edit(
                 .cloned()
                 .ok_or("this app keeps no session")?;
             let stores = world
-                .get_resource::<SessionStores>()
+                .get_resource::<StoreOpener>()
                 .cloned()
                 .unwrap_or_default();
             let dir = home(world).session(session);
@@ -436,7 +436,7 @@ fn fork(world: &mut World, target: &Target, asked: &Asked) -> Result<String, Str
             agent: target.agent.clone(),
             line,
             through,
-            take,
+            move_from: take,
             title: title.clone(),
         },
         asker,
@@ -455,13 +455,16 @@ fn go_to_split(
     mut commands: Commands,
 ) {
     for forked in forked.read().filter(|forked| forked.asker == Some(asker.0)) {
-        let ForkCut::Line { take, title, .. } = &forked.cut else {
+        let ForkCut::Line {
+            move_from, title, ..
+        } = &forked.cut
+        else {
             continue;
         };
-        if let Some(note) = &forked.note {
+        if let Some(note) = &forked.unfinished {
             notices.write(Notice::warn(None, format!("Split “{title}”: {note}.")));
         }
-        if take.is_some() {
+        if move_from.is_some() {
             notices.write(Notice::info(
                 None,
                 format!("Moved into session {} as “{title}”.", forked.to),

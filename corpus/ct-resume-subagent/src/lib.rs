@@ -334,7 +334,7 @@ fn stamp_finished(
 fn drop_oldest(
     changed: Query<(), Changed<FinishedAt>>,
     kept: Query<(Entity, &FinishedAt, Has<ActiveTurn>, Option<&OpenRequests>), With<Subtask>>,
-    (settings, shown): (Res<KeptSubagents>, Option<Res<Shown>>),
+    (settings, shown): (Res<KeptSubagents>, Option<Res<ShownAgent>>),
     mut commands: Commands,
 ) {
     if changed.is_empty() {
@@ -382,7 +382,7 @@ fn find<'a>(
 fn talk(
     In(args): In<CommandArgs>,
     subagents: Query<(Entity, &AgentId, Option<&AgentTitle>), With<Subtask>>,
-    roots: PrimaryQuery,
+    roots: MainAgentQuery,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -395,7 +395,7 @@ fn talk(
         return;
     }
     if wanted == "main" {
-        if let Some(main) = primary(&roots) {
+        if let Some(main) = main_agent(&roots) {
             commands.trigger(rig_tui::Focus { entity: main });
             notices.write(Notice::info(main, "Talking to the main agent."));
         }

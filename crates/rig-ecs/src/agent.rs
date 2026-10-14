@@ -337,7 +337,7 @@ impl StopTurn {
 }
 
 /// How a [`Notice`] is shown and logged.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NoticeLevel {
     /// Information.
     #[default]

@@ -51,7 +51,7 @@ impl Plugin for TaskQueuePlugin {
             .add_setting::<QueueSettings>("queue")
             .init_resource::<TaskQueue>()
             .init_resource::<QueueNote>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .add_command("queue", HELP, queue)
             .add_systems(Startup, (interrupt_running, warn_shared_tree))
             .add_systems(
@@ -350,13 +350,13 @@ fn find(queue: &mut TaskQueue, number: u32) -> Result<&mut Task, String> {
 }
 
 /// Shows `agent` in the front the user uses: the terminal view's `Focus`
-/// when there is one, and the harness's [`Shown`] for any other.
+/// when there is one, and the harness's [`ShownAgent`] for any other.
 fn show(commands: &mut Commands, agent: Entity) {
     #[cfg(feature = "tui")]
     commands.trigger(rig_tui::Focus { entity: agent });
     commands.queue(move |world: &mut World| {
-        if let Some(mut shown) = world.get_resource_mut::<Shown>() {
-            shown.set_if_neq(Shown(Some(agent)));
+        if let Some(mut shown) = world.get_resource_mut::<ShownAgent>() {
+            shown.set_if_neq(ShownAgent(Some(agent)));
         }
     });
 }
@@ -415,7 +415,7 @@ fn start_next(
     settings: Res<QueueSettings>,
     agents: Query<(Entity, &QueuedTask)>,
     ids: Query<(Entity, &AgentId), With<Agent>>,
-    primary_agents: PrimaryQuery,
+    primary_agents: MainAgentQuery,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -445,7 +445,7 @@ fn start_next(
             continue;
         }
         let owner = AgentId(task.owner.clone()).find_in(ids.iter());
-        let Some(owner) = owner.or_else(|| primary(&primary_agents)) else {
+        let Some(owner) = owner.or_else(|| main_agent(&primary_agents)) else {
             task.state = TaskState::Failed;
             task.outcome = "No agent to start it from.".to_owned();
             continue;

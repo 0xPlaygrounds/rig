@@ -56,7 +56,7 @@ use rig_ecs::prelude::{
 };
 use rig_tools::overlay::Overlay;
 
-use crate::per_call::{PerCall, Place, base};
+use crate::per_call::{CallPlace, PerCall, base};
 use crate::services::{ProjectRoot, WorkDir};
 use crate::workspace::ProjectWorkspace;
 
@@ -132,7 +132,7 @@ fn preview(
     for (call, request, agent) in &calls {
         let overlay = Arc::new(Overlay::new(workspace.0.clone()));
         let (base, confine) = base(agent.map(|agent| agent.0), &dirs, &root);
-        let place = Place {
+        let place = CallPlace {
             workspace: overlay.clone(),
             base,
             confine,

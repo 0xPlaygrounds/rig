@@ -115,7 +115,7 @@ fn app(model: &MockCompletionModel, vision: &MockCompletionModel) -> (App, Recei
         entity: agent,
         model: "test/model".to_owned(),
     });
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     app.update();
     (app, wakes, agent)
 }

@@ -45,7 +45,7 @@ use rig_memory::Upgrade;
 #[reflect(Component, Clone, Debug)]
 pub struct PluginSource {
     /// Its package, such as `rig-harness`.
-    pub krate: String,
+    pub package: String,
     /// Where the package is built from, as `plugins.toml` names it, such
     /// as `path /home/me/.rig/plugins/viz` or `version 0.3`.
     pub source: String,
@@ -132,14 +132,14 @@ fn systems(world: &World) -> HashSet<(String, SystemKey)> {
 
 /// Adds `P`, unless the app has it already (another plugin added it), as
 /// the generated `main.rs` adds each plugin `plugins.toml` lists: with an
-/// entity of its own, named after it, from `krate` at `source`.
-pub fn load<P: Plugin + Default>(app: &mut App, krate: &str, source: &str) {
+/// entity of its own, named after it, from `package` at `source`.
+pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
     if app.is_plugin_added::<P>() {
         return;
     }
     let plugin = P::default();
     let source = PluginSource {
-        krate: krate.to_owned(),
+        package: package.to_owned(),
         source: source.to_owned(),
     };
     let entity = app
@@ -229,7 +229,7 @@ pub trait AppKeepsExt {
 
     /// A saved key no build reads any more, such as a deleted type's path:
     /// its values are kept in the file and never reported.
-    fn retired_saved(&mut self, key: &'static str) -> &mut Self;
+    fn ignore_saved_key(&mut self, key: &'static str) -> &mut Self;
 
     /// This plugin's saved value `T` (an agent component or a resource) is
     /// logged and restored under `key`, such as `goals.goal`, rather than its
@@ -315,7 +315,7 @@ impl AppKeepsExt for App {
         SavedAs { app: self, key }
     }
 
-    fn retired_saved(&mut self, key: &'static str) -> &mut Self {
+    fn ignore_saved_key(&mut self, key: &'static str) -> &mut Self {
         let world = self.world_mut();
         let mut retired = world.get_resource_or_init::<IgnoredSavedKeys>();
         retired.0.insert(key.to_owned());

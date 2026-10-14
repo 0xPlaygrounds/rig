@@ -14,7 +14,7 @@
 //! Each start tells the agent why it started ([`StartReason`]).
 //!
 //! The command line is read once the agent is built, against what its
-//! plugins add ([`Described::invocation`]), and the agent gets it in its
+//! plugins add ([`AgentDescription::invocation`]), and the agent gets it in its
 //! canonical form ([`Invocation`]). A plugin's command runs in a new
 //! session, or with `--resume` in that one, unless its front keeps no
 //! session, which the agent refuses. A headless run (`--print`, stdin piped
@@ -34,8 +34,8 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
 use rig::harness_protocol::{
-    Described, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SecretInfo, SessionDir, SessionId,
-    StartReason, env, secret_variable,
+    AgentDescription, DescribedSecret, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SessionDir,
+    SessionId, StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, Staging, child};
@@ -157,23 +157,23 @@ fn refused(why: &str) -> ExitCode {
 
 /// What the plugins of the build the launcher of `session` starts next add
 /// to the command line; nothing when there is no build or it cannot say.
-fn report(home: &Home, session: &SessionId) -> Described {
+fn report(home: &Home, session: &SessionId) -> AgentDescription {
     let Some(binary) = next_build(home, session) else {
-        return Described::default();
+        return AgentDescription::default();
     };
     build::described(home, &binary).unwrap_or_else(|failure| {
         eprintln!("warning: the agent build does not say what its plugins add: {failure}");
-        Described::default()
+        AgentDescription::default()
     })
 }
 
 /// The report of the build a new session starts with, as kept from its
 /// last build; `None` when it has none. It never builds.
-pub fn last_report(home: &Home) -> Option<Described> {
+pub fn last_report(home: &Home) -> Option<AgentDescription> {
     [home.staged(), home.good()]
         .into_iter()
         .find(|binary| binary.exists())
-        .and_then(|binary| build::kept_report(home, &binary))
+        .and_then(|binary| build::good_report(home, &binary))
 }
 
 /// The build the launcher of `session` starts next, as [`pick`] picks it,
@@ -571,7 +571,7 @@ impl Drop for TypeAhead {
 /// answer; `None` when the user pressed Ctrl+C. The terminal reads byte by
 /// byte with its signals off, so Ctrl+C arrives as a byte and the mode is
 /// given back, echo included, whatever the answer.
-fn ask_secret(secret: &SecretInfo) -> Result<Option<String>> {
+fn ask_secret(secret: &DescribedSecret) -> Result<Option<String>> {
     let mut stderr = std::io::stderr();
     write!(stderr, "{} ({}): ", secret.help, secret.name)?;
     stderr.flush()?;

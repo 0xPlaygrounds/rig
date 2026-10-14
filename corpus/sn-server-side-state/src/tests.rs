@@ -290,7 +290,7 @@ fn forked(home: &Home) -> Option<SessionId> {
         .flatten()
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<SessionId>().ok())
         .find(|session| {
-            SessionStores::default()
+            StoreOpener::default()
                 .open(&home.session(session))
                 .is_ok_and(|store| ForkedFrom::read(&*store).is_some())
         })

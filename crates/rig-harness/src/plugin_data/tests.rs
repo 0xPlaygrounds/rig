@@ -11,9 +11,7 @@ use rig_harness_test_support::scratch_home;
 use rig_memory::DirStore;
 
 use super::{PluginData, project_dir};
-use crate::host::session::{
-    ForkSession, SessionForked, SessionPaths, SessionPlugin, SessionStores,
-};
+use crate::host::session::{ForkSession, SessionForked, SessionPaths, SessionPlugin, StoreOpener};
 use crate::services::{ProjectRoot, RigHome};
 
 /// The session forked last.
@@ -70,7 +68,7 @@ fn a_session_file_follows_a_fork_and_the_other_places_are_in_the_home() {
     let to = app.world().resource::<Forked>().0.clone();
     let read = |dir: &std::path::Path| fs::read_to_string(dir.join("notes/today.md")).ok();
     let in_fork = to.and_then(|to| {
-        let copy = PluginData::of(&SessionStores::default(), &home.session(&to)).ok()?;
+        let copy = PluginData::of(&StoreOpener::default(), &home.session(&to)).ok()?;
         copy.read_file("notes/today.md").ok()
     });
     let project = read(&project_dir(&home, home.root(), None));

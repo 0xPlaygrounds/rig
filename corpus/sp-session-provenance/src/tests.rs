@@ -87,7 +87,7 @@ fn start(
     app.cleanup();
     app.update();
     let agent = first_agent(app.world_mut())?;
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     app.update();
     Some((app, wakes, agent))
 }

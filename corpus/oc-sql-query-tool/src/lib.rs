@@ -114,8 +114,8 @@ impl Default for At {
     }
 }
 
-impl From<Place> for At {
-    fn from(place: Place) -> Self {
+impl From<CallPlace> for At {
+    fn from(place: CallPlace) -> Self {
         Self {
             workspace: place.workspace,
             base: place.base,

@@ -66,12 +66,12 @@ pub mod describe;
 pub mod headless;
 pub mod host;
 mod load;
+pub mod main_agent;
 pub mod note;
 pub mod per_call;
 pub mod pick;
 pub mod plugin_data;
 pub mod preview;
-pub mod primary;
 pub mod progress;
 pub mod secrets;
 pub mod services;
@@ -152,16 +152,16 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, LogEvents, Logged, Scratch,
+        AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, Logged, LoggedQueue, Scratch,
         SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
-        SessionStores, edit_stopped, first_typed, rewrite_stopped, typed,
+        StoreOpener, edit_stopped, first_typed, rewrite_stopped, typed,
     };
+    pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
     pub use crate::note::Note;
-    pub use crate::per_call::{AppPerCallExt, Place};
+    pub use crate::per_call::{AppPerCallExt, CallPlace};
     pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
     pub use crate::plugin_data::PluginData;
     pub use crate::preview::{Preview, PreviewPlugin, PreviewSystems, Previewed};
-    pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};

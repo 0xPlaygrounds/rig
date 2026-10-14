@@ -56,7 +56,7 @@ impl Plugin for RecentSessionsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<StartScreenSettings>("recent_sessions")
             .init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
+            .init_resource::<StoreOpener>()
             .init_resource::<ProjectRoot>()
             .init_resource::<KeyFocus>()
             .saved_as::<SessionShape>(SHAPE)
@@ -120,7 +120,7 @@ pub struct RecentSession {
 impl RecentSession {
     /// The saved session in `dir`, from its listing alone; `None` when it
     /// is not a saved session.
-    pub fn read(dir: &SessionDir, stores: &SessionStores) -> Option<Self> {
+    pub fn read(dir: &SessionDir, stores: &StoreOpener) -> Option<Self> {
         let entry = SessionEntry::read(dir, stores)?;
         let unreadable = match stores.open(dir) {
             Err(failure) => Some(failure.to_string()),
@@ -295,7 +295,7 @@ fn start(
     (start, invoked): (Option<Res<AppStart>>, Option<Res<Invoked>>),
     answerers: Answerers,
     conversations: Query<&Conversation, With<Agent>>,
-    (home, stores, paths): (Res<RigHome>, Res<SessionStores>, Option<Res<SessionPaths>>),
+    (home, stores, paths): (Res<RigHome>, Res<StoreOpener>, Option<Res<SessionPaths>>),
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -490,7 +490,7 @@ struct ReadOnly {
 fn chose_elsewhere(
     picked: On<Picked>,
     asked: Query<&Elsewhere>,
-    (home, stores, wake): (Res<RigHome>, Res<SessionStores>, Res<Wake>),
+    (home, stores, wake): (Res<RigHome>, Res<StoreOpener>, Res<Wake>),
     mut commands: Commands,
 ) {
     let Ok(elsewhere) = asked.get(picked.entity) else {
@@ -619,8 +619,8 @@ fn track_shape(
     mut commands: Commands,
 ) {
     let main = agents.iter().min_by(|a, b| {
-        rig_harness::primary::primary_order(a.2, a.0)
-            .cmp(&rig_harness::primary::primary_order(b.2, b.0))
+        rig_harness::rig_memory::main_order(a.2, &a.0.0)
+            .cmp(&rig_harness::rig_memory::main_order(b.2, &b.0.0))
     });
     let Some((_, conversation, _)) = main else {
         return;

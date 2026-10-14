@@ -77,7 +77,7 @@ fn ask_for_a_name(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
     conversations: Query<&Conversation>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     naming: Query<(), (With<NamingCall>, Without<Settled>)>,
     (title, failures, config, models): (
         Res<SessionTitle>,
@@ -93,7 +93,7 @@ fn ask_for_a_name(
     if title.name.is_some()
         || !naming.is_empty()
         || failures.0 >= ATTEMPTS
-        || primary(&agents) != Some(agent)
+        || main_agent(&agents) != Some(agent)
     {
         return;
     }

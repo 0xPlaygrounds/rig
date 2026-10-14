@@ -62,9 +62,9 @@ use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::tasks::Wake;
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{Chosen, Pick};
 use rig_harness::prelude::{Processes, Scratch};
-use rig_harness::primary::Shown;
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -466,7 +466,7 @@ fn keyed_pane(panes: &Panes, focus: Option<Entity>) -> Option<Entity> {
 /// Does the [`TerminalEvents`] left of the key being done, in order.
 pub(crate) fn read_input(
     mut events: ResMut<TerminalEvents>,
-    (mut view, mut panes, shown): (ResMut<TuiView>, Panes, Res<Shown>),
+    (mut view, mut panes, shown): (ResMut<TuiView>, Panes, Res<ShownAgent>),
     (mut editors, mut showing): (Editors, Showing),
     mut keymap: Keymap,
     choices: Choices,

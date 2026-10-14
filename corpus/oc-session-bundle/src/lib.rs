@@ -470,7 +470,7 @@ impl Plan {
 /// What an import needs of the app.
 struct Here<'a> {
     home: &'a Home,
-    stores: &'a SessionStores,
+    stores: &'a StoreOpener,
     models: Option<&'a Models>,
     installed: Vec<String>,
 }
@@ -955,7 +955,7 @@ impl OpenArgs {
 #[derive(bevy_ecs::system::SystemParam)]
 struct Importer<'w, 's> {
     home: Res<'w, RigHome>,
-    stores: Res<'w, SessionStores>,
+    stores: Res<'w, StoreOpener>,
     models: Option<Res<'w, Models>>,
     processes: Option<Res<'w, Processes>>,
     root: Res<'w, ProjectRoot>,

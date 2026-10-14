@@ -327,7 +327,7 @@ struct Here<'w, 's> {
     turns: Query<'w, 's, (), With<TurnOf>>,
     store: Option<Res<'w, SessionStore>>,
     paths: Option<Res<'w, SessionPaths>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     home: Option<Res<'w, RigHome>>,
     scratch: Option<Res<'w, Scratch>>,
     answerers: Answerers<'w, 's>,
@@ -718,7 +718,7 @@ fn rewritten(
     pending: Query<&Pending>,
     agents: Query<(Entity, &AgentId)>,
     (stores, home, paths): (
-        Option<Res<SessionStores>>,
+        Option<Res<StoreOpener>>,
         Option<Res<RigHome>>,
         Option<Res<SessionPaths>>,
     ),

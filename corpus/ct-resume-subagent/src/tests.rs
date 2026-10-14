@@ -99,7 +99,7 @@ impl Session {
         let world = app.world_mut();
         let mut roots = world.query_filtered::<Entity, (With<Agent>, Without<SpawnedBy>)>();
         let main = roots.iter(world).next().unwrap_or(Entity::PLACEHOLDER);
-        app.world_mut().resource_mut::<Shown>().0 = Some(main);
+        app.world_mut().resource_mut::<ShownAgent>().0 = Some(main);
         app.update();
         Self { app, wakes, main }
     }
@@ -150,7 +150,7 @@ impl Session {
     }
 
     fn shown(&self) -> Option<Entity> {
-        self.app.world().resource::<Shown>().0
+        self.app.world().resource::<ShownAgent>().0
     }
 
     fn messages(&self, agent: Entity) -> usize {

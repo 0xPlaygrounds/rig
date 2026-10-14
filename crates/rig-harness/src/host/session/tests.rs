@@ -22,7 +22,7 @@ use rig_memory::{
 use super::{
     AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, ForkedFrom, Scratch,
     SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
-    SessionPlugin, SessionStores, first_typed, log_layer, rewrite_stopped, typed,
+    SessionPlugin, StoreOpener, first_typed, log_layer, rewrite_stopped, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitReason;
@@ -164,7 +164,7 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
     let home = scratch_home("rig-session-delete");
     let elsewhere = home.root().join("elsewhere");
     let kept = elsewhere.clone();
-    let stores = SessionStores::new(move |dir| {
+    let stores = StoreOpener::new(move |dir| {
         let id = dir.id().map(|id| id.to_string()).unwrap_or_default();
         Ok(Arc::new(DirStore::open(kept.join(id))?))
     });
@@ -186,7 +186,7 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
     let (Some((gone, gone_dir)), Some((cut, cut_dir)), Some((here, here_dir))) = sessions else {
         return;
     };
-    let start = |stores: &SessionStores| {
+    let start = |stores: &StoreOpener| {
         let mut app = App::new();
         app.add_message::<Notice>()
             .init_resource::<Seen>()
@@ -419,7 +419,7 @@ fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
         agent: agent_id.clone(),
         line: None,
         through,
-        take,
+        move_from: take,
         title: "side".to_owned(),
     };
     app.world_mut().trigger(ForkSession {
@@ -545,7 +545,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
         agent: agent_id.clone(),
         line: None,
         through: third,
-        take,
+        move_from: take,
         title: "side".to_owned(),
     };
     let stopped = home.session(&there);
@@ -564,7 +564,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
     let notes: Vec<_> = seen
         .forked
         .iter()
-        .map(|forked| forked.note.is_some())
+        .map(|forked| forked.unfinished.is_some())
         .collect();
     assert_eq!(notes, [true], "copied without a pointer");
     let failed: Vec<_> = seen
@@ -584,7 +584,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
     let to = seen
         .forked
         .get(1)
-        .map(|forked| (forked.to.clone(), forked.note.clone()));
+        .map(|forked| (forked.to.clone(), forked.unfinished.clone()));
     assert!(matches!(to, Some((_, None))), "{to:?} {:?}", seen.notices);
     let read = dir_store(&stopped).and_then(|store| Session::read(&store).ok());
     let conversation = read
@@ -800,7 +800,7 @@ fn a_sessionless_front_refuses_a_resumed_session_and_keeps_it() {
 
 /// A front with a store of its own keeps the session of a run it takes
 /// there, such as `rig -r X reply` with a chat thread's store; any other
-/// run keeps its session as [`SessionStores`] does.
+/// run keeps its session as [`StoreOpener`] does.
 #[test]
 fn a_fronts_own_store_keeps_only_the_sessions_of_its_runs() {
     let home = scratch_home("rig-front-store");
@@ -1009,7 +1009,7 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
     app.update();
     drop(app);
     assert!(session.is_saved());
-    let store = SessionStores::default().open(&session).ok();
+    let store = StoreOpener::default().open(&session).ok();
     let read = store.as_ref().and_then(|store| store.logs().ok());
     assert!(read.is_some_and(|logs| !logs.is_empty()));
     // The plain markers beside the store are none of its files.
@@ -1220,7 +1220,7 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     let log = fs::read_to_string(session.log()).unwrap_or_default();
     assert!(log.ends_with("the key is [REDACTED]\nafter\n"), "{log}");
 
-    let stores = SessionStores::default();
+    let stores = StoreOpener::default();
     let by = || Author::plugin("redact");
     let this = rewrite_stopped(&stores, &session, &session, by(), &redact());
     assert!(this.is_err(), "the running session is RewriteSession's");
@@ -1269,7 +1269,7 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let (session, stopped) = (home.session(&here), home.session(&there));
     let store = fs::create_dir_all(stopped.path())
         .ok()
-        .and_then(|()| SessionStores::default().open(&stopped).ok());
+        .and_then(|()| StoreOpener::default().open(&stopped).ok());
     let Some(store) = store else {
         return;
     };
@@ -1292,7 +1292,7 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     drop(std::panic::take_hook());
     app.finish();
     app.update();
-    let stores = app.world().resource::<SessionStores>().clone();
+    let stores = app.world().resource::<StoreOpener>().clone();
     let value = |value: serde_json::Value| Versioned { v: 1, value };
     let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
         read.saved

@@ -284,14 +284,14 @@ fn read_saves(
 /// holds a trigger, once the agent is idle.
 fn start_turn(
     mut watching: ResMut<Watching>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     busy: Query<(), With<ActiveTurn>>,
     sending: Query<(), With<Job>>,
     workspace: Res<ProjectWorkspace>,
     root: Res<ProjectRoot>,
     mut commands: Commands,
 ) {
-    let Some(agent) = primary(&agents) else {
+    let Some(agent) = main_agent(&agents) else {
         return;
     };
     if !watching.on || busy.contains(agent) || !sending.is_empty() {

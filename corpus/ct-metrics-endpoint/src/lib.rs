@@ -348,11 +348,11 @@ fn gauges(
 }
 
 /// What tells a logged warning or error from another.
-type Fingerprint = (bool, String, String, Option<String>);
+type Fingerprint = (NoticeLevel, String, String, Option<String>);
 
 fn fingerprint(logged: &Logged) -> Fingerprint {
     (
-        logged.error,
+        logged.level,
         logged.target.clone(),
         logged.message.clone(),
         logged.plugin.clone(),
@@ -375,7 +375,7 @@ fn plugin_errors(
         .map_or(0, |at| at + 1);
     let fresh = kept.iter().skip(seen.min(KEPT));
     let mut registry = registry.lock();
-    for logged in fresh.filter(|logged| logged.error) {
+    for logged in fresh.filter(|logged| logged.level == NoticeLevel::Error) {
         let plugin = vec![registry.label("plugin", logged.plugin.as_deref().unwrap_or("unknown"))];
         registry.add(registry::PLUGIN_ERRORS, plugin, 1.0);
     }

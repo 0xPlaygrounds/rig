@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 use launcher::plugin::USAGE as PLUGIN_USAGE;
 use launcher::run::last_report;
-use rig::harness_protocol::{Described, Home, INVOCATION_USAGE};
+use rig::harness_protocol::{AgentDescription, Home, INVOCATION_USAGE};
 
 const USAGE: &str = "\
 Usage: rig [-r <id|name>] [options] [-p prompt…] | rig [options] <command> [args…]
@@ -103,7 +103,7 @@ fn help(home: &Home, command: &str) -> ExitCode {
                 eprintln!(
                     "rig: unknown command `{command}`; commands: {}{}",
                     report.command_names().join(", "),
-                    if report == Described::default() {
+                    if report == AgentDescription::default() {
                         " (run `rig build` to list plugin commands)"
                     } else {
                         ""

@@ -21,7 +21,7 @@ impl Plugin for DiagnosticsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Diagnostics>()
             .add_message::<SessionRewritten>()
-            .add_systems(Last, collect.run_if(resource_exists::<LogEvents>))
+            .add_systems(Last, collect.run_if(resource_exists::<LoggedQueue>))
             .add_systems(
                 Update,
                 follow_rewrites.run_if(on_message::<SessionRewritten>),
@@ -35,7 +35,7 @@ impl Plugin for DiagnosticsPlugin {
 pub struct Diagnostics(pub VecDeque<Logged>);
 
 fn collect(
-    events: Res<LogEvents>,
+    events: Res<LoggedQueue>,
     plugins: Query<&Name, With<PluginSource>>,
     mut diagnostics: ResMut<Diagnostics>,
 ) {

@@ -40,7 +40,7 @@ use rig_core::conversation::Author;
 use rig_ecs::agent::Notice;
 use rig_ecs::tasks::Wake;
 
-use crate::primary::{PrimaryQuery, primary};
+use crate::main_agent::{MainAgentQuery, main_agent};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::session_log::SessionRestored;
 
@@ -309,10 +309,10 @@ fn launcher_notice(
 /// once the session is restored.
 fn deliver_build_failure(
     failure: Res<StartBuildFailure>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut commands: Commands,
 ) {
-    let Some(agent) = primary(&agents) else {
+    let Some(agent) = main_agent(&agents) else {
         return;
     };
     note_build_failure(

@@ -287,7 +287,7 @@ fn reports_saved_sessions_by_model_project_and_day() {
 
     // A damaged session is skipped, said on stderr only.
     let log = rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
-    let store = SessionStores::default().open(&s3_dir);
+    let store = StoreOpener::default().open(&s3_dir);
     let mut damaged = store
         .as_ref()
         .ok()

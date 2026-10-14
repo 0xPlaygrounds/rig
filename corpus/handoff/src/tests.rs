@@ -84,7 +84,7 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     let from = world.get::<HandedOffFrom>(b).map(|from| from.agent.clone());
     assert_eq!(from.as_ref(), world.get::<AgentId>(a));
     assert_eq!(world.get::<ModelChoice>(b), Some(&choice));
-    assert_eq!(world.resource::<Shown>().0, Some(b), "B is shown");
+    assert_eq!(world.resource::<ShownAgent>().0, Some(b), "B is shown");
     // B's first message is the brief, by A, about the goal.
     let author = world
         .get::<Conversation>(b)
@@ -127,7 +127,7 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     // A restart shows B again, named after its goal and A.
     let (mut restarted, _wakes) = start(&store);
     let world = restarted.world_mut();
-    let shown = world.resource::<Shown>().0;
+    let shown = world.resource::<ShownAgent>().0;
     let shown = shown.and_then(|agent| world.get::<AgentId>(agent)).cloned();
     assert!(shown.is_some() && shown == b_id, "{shown:?}");
     let named = world
@@ -174,5 +174,5 @@ fn a_successor_started_in_the_agent_loop_is_shown_that_frame() {
         .single(world)
         .ok();
     assert!(successor.is_some());
-    assert_eq!(world.resource::<Shown>().0, successor);
+    assert_eq!(world.resource::<ShownAgent>().0, successor);
 }

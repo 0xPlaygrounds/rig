@@ -62,7 +62,7 @@ pub struct Material {
 pub fn find(
     named: &str,
     home: &Home,
-    stores: &SessionStores,
+    stores: &StoreOpener,
     current: &Path,
 ) -> Result<SessionDir, String> {
     if named == "last" {
@@ -96,7 +96,7 @@ impl Material {
     pub fn read(
         named: &str,
         dir: &SessionDir,
-        stores: &SessionStores,
+        stores: &StoreOpener,
         all_branches: bool,
     ) -> Result<Self, String> {
         let unreadable = |why: String| format!("`{named}` cannot be read: {why}");

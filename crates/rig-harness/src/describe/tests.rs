@@ -1,5 +1,5 @@
 use bevy_app::prelude::*;
-use rig::harness_protocol::Described;
+use rig::harness_protocol::AgentDescription;
 
 use super::{Describing, report};
 use crate::host::cli::{AppCliExt, Cli, Flag, Front};
@@ -60,7 +60,7 @@ fn the_report_dispatches_a_command_line_to_its_front() {
     let text = described
         .map(|described| described.write())
         .unwrap_or_default();
-    let described = Described::parse(&text);
+    let described = AgentDescription::parse(&text);
     let command = described.command("stats");
     assert!(command.is_some_and(|command| !command.terminal && command.sessionless));
     assert_eq!(described.secrets.len(), 1);
@@ -148,7 +148,7 @@ fn a_build_asked_to_describe_itself_writes_its_report_and_runs_no_frame() {
                     && String::from_utf8_lossy(&output.stdout).contains("1 passed")
             });
             let text = std::fs::read_to_string(&report).unwrap_or_default();
-            (passed, Described::parse(&text))
+            (passed, AgentDescription::parse(&text))
         };
         let (passed, report) = described("one");
         let (clash_passed, clash) = described("clash");
@@ -156,7 +156,7 @@ fn a_build_asked_to_describe_itself_writes_its_report_and_runs_no_frame() {
         let kept_none = std::fs::read_dir(sessions).map_or(true, |mut dirs| dirs.next().is_none());
         std::fs::remove_dir_all(&dir).ok();
         assert!(passed && report.command("stats").is_some(), "{report:?}");
-        assert!(clash_passed && clash == Described::default());
+        assert!(clash_passed && clash == AgentDescription::default());
         assert!(kept_none, "a session directory was made");
         return;
     };

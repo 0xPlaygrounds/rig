@@ -282,7 +282,7 @@ fn comments_go_with_the_next_message_and_follow_forks() {
         .map(|it| it.to.clone());
     let store = forked.and_then(|to| {
         app.world()
-            .resource::<SessionStores>()
+            .resource::<StoreOpener>()
             .open(&home.session(&to))
             .ok()
     });

@@ -53,7 +53,7 @@ impl Plugin for SessionFinderPlugin {
     fn build(&self, app: &mut App) {
         let asker = app.world_mut().spawn(Name::new("session-finder")).id();
         app.init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
+            .init_resource::<StoreOpener>()
             .init_resource::<ProjectRoot>()
             .insert_resource(Asker(asker))
             .init_resource::<Resuming>()
@@ -268,7 +268,7 @@ struct Jump {
 /// What the search task needs.
 struct Place {
     home: Home,
-    stores: SessionStores,
+    stores: StoreOpener,
     project: std::path::PathBuf,
     current: Option<(SessionId, Arc<dyn Store>)>,
 }
@@ -277,7 +277,7 @@ struct Place {
 /// it, starts this one off the main thread and shows its picker.
 fn find(
     In(args): In<CommandArgs>,
-    (home, stores, root): (Res<RigHome>, Res<SessionStores>, Res<ProjectRoot>),
+    (home, stores, root): (Res<RigHome>, Res<StoreOpener>, Res<ProjectRoot>),
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     searches: Query<Entity, With<Search>>,
     wake: Res<Wake>,
@@ -639,7 +639,7 @@ fn leaving(
     reason: Res<ExitReason>,
     mut resuming: ResMut<Resuming>,
     home: Res<RigHome>,
-    stores: Res<SessionStores>,
+    stores: Res<StoreOpener>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Some((id, jump)) = resuming.0.take() else {

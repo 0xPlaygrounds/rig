@@ -182,7 +182,7 @@ fn revisions_switch_whole_continuations_nest_and_survive_a_restart() {
         .single_mut(world)
         .map(|mut view| view.selected = selected);
     assert!(picked.is_ok(), "the default screen has a main pane");
-    app.world_mut().insert_resource(Shown(Some(agent)));
+    app.world_mut().insert_resource(ShownAgent(Some(agent)));
     press(&mut app, "right");
     for _ in 0..3 {
         app.update();

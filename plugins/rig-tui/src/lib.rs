@@ -46,7 +46,7 @@
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
 //! the agent shown, [`Focused`] (the harness's
-//! [`Shown`]), and showing another, [`Focus`]; the
+//! [`ShownAgent`]), and showing another, [`Focus`]; the
 //! status line's items ([`StatusItems`], [`AppStatus`]); and the
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well, each doing an
@@ -98,7 +98,7 @@ use rig_core::conversation::BRANCH;
 use rig_ecs::session_log::SessionRewritten;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
-use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, Shown};
+use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, ShownAgent};
 use rig_harness::rig_memory::SPLIT;
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
@@ -252,7 +252,7 @@ pub fn add_view(app: &mut App) {
     app.add_message::<rig_harness::watch::FileChanges>()
         .add_message::<SessionRewritten>()
         .init_resource::<RigHome>()
-        .init_resource::<Shown>()
+        .init_resource::<ShownAgent>()
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
         .init_resource::<clipboard::Clipboard>()

@@ -57,7 +57,7 @@ impl Plugin for StatusCommandPlugin {
         app.add_setting::<StatusCommand>(SECTION)
             .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .init_resource::<AppStatus>()
             .init_resource::<StatusInput>()
             .init_resource::<Runs>()
@@ -290,7 +290,7 @@ type Observed<'a> = (
 /// Brings the [`StatusInput`] up to date, and wants a run when it changed.
 fn observe(
     (shown, root, paths, title, spending): (
-        Res<Shown>,
+        Res<ShownAgent>,
         Res<ProjectRoot>,
         Option<Res<SessionPaths>>,
         Option<Res<SessionTitle>>,

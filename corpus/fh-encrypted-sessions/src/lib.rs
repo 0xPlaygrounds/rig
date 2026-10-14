@@ -230,7 +230,7 @@ impl Plugin for EncryptedSessionsPlugin {
             key: OnceLock::new(),
         }));
         let opening = vault.clone();
-        app.insert_resource(SessionStores::new(move |dir| opening.open(dir)))
+        app.insert_resource(StoreOpener::new(move |dir| opening.open(dir)))
             .insert_resource(vault);
         if seals {
             app.insert_resource(Scratch(None));

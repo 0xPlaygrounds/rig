@@ -128,7 +128,7 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
     let (mut app, agent) = view_app();
     let id = AgentId("a1".to_owned());
     app.world_mut().entity_mut(agent).insert(id.clone());
-    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     say(&mut app, agent, Message::user("question"));
     say(&mut app, agent, Message::assistant("answer"));
     // About every agent: drawn where the agent shown was.
@@ -158,7 +158,7 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
 fn a_notice_about_an_agent_gone_before_it_is_read_is_drawn_in_no_other_transcript() {
     use rig_core::completion::Message;
     let (mut app, agent) = view_app();
-    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     say(&mut app, agent, Message::user("question"));
     // A helper whose model call fails retires in the same pass.
     let helper = app.world_mut().spawn(Agent).id();

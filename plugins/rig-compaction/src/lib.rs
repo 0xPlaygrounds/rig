@@ -64,7 +64,7 @@ impl Plugin for CompactionPlugin {
             .register_required_components::<TurnOf, Compactions>()
             .keeps_saved::<Compaction>()
             // Kept by older sessions; the state is the newest summary's now.
-            .retired_saved("rig_compaction::Summarized")
+            .ignore_saved_key("rig_compaction::Summarized")
             .add_command(
             "compact",
             "Summarize all but the newest reply to free context; /compact <focus> says what to keep",

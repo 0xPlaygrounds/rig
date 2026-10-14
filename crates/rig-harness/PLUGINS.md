@@ -272,7 +272,7 @@ refused with where and why (rig-core's `tool::validate`); a schema that
 declares no `properties` takes any arguments.
 
 A tool registered with `app.add_tool_per_call(tool, options, live, make)`
-is built for each call's `Place`: the app's workspace (an overlay of it
+is built for each call's `CallPlace`: the app's workspace (an overlay of it
 for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
 `WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
 for a `live` tool the `Live` its output goes to, as the coding tools and
@@ -1265,7 +1265,7 @@ saved type's serde form without a step: `saved_upgrades::<T>(&[steps])`
 puts `T` at version `steps.len() + 1`, each step a pure function reading
 one version as the next, with a test reading a frozen JSON literal of the
 old one. A value no step reads, a newer rig's too, is set aside in the
-file (`Shelved` lists it), never dropped; `retired_saved(key)` keeps a
+file (`Shelved` lists it), never dropped; `ignore_saved_key(key)` keeps a
 deleted type's values silently. A plugin's own aside kinds bump the same
 way, `aside_upgrades(kind, steps)`, written with `Versioned::to_aside_value`
 and read with `SavedUpgrades`' `Upgrades::read_aside`; its session files
@@ -1374,7 +1374,7 @@ is refused unchanged (`Session::read_lenient` reads what it can). rig's
 own saved values have stable keys a program reads without Bevy:
 `SavedAgent::model()` and `title()` (`ModelChoice`, `AgentTitle`), and
 `session.main_agent()` is the one the user talks to. An importer opens
-`home.new_session()` with `SessionStores::open`, makes each edit at the
+`home.new_session()` with `StoreOpener::open`, makes each edit at the
 source's time (`conversation.dated(at_ms, |c| ..)`), and lists it in
 `/resume` with `SessionMeta { title, .. }.write(&*store)`.
 
@@ -1434,7 +1434,7 @@ whole. A stopped session is `rewrite_stopped(&stores, &paths, &dir, by,
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{self, Place};
+use rig_harness::rig_memory::{self, CallPlace};
 
 fn build(app: &mut App) {
     app.add_command("redact", "Take a text out of everything saved: /redact <text>", redact)
@@ -1455,7 +1455,7 @@ fn redact(In(args): In<CommandArgs>, mut commands: Commands) {
 /// Says how it went, and maps what it keeps (`told`) with the same `with`.
 fn redacted(mut done: MessageReader<SessionRewritten>, mut told: Local<Vec<String>>, mut notices: MessageWriter<Notice>) {
     for SessionRewritten { result, with, .. } in done.read() {
-        let at = Place::File { name: "told" };
+        let at = CallPlace::File { name: "told" };
         told.retain_mut(|text| rig_memory::rewrite_value(&**with, &at, "told", text).is_ok());
         let text = result.as_ref().map_or_else(String::clone, |it| format!("{} logs rewritten", it.logs.len()));
         notices.write(Notice::info(None, text));
@@ -1616,7 +1616,7 @@ fn read_todo(
 by name. The harness opens it once every plugin is built and the run's
 front is chosen, and reads it before writing: one not readable whole is
 refused unchanged. A plugin that keeps sessions elsewhere or sealed puts
-its own `SessionStores::new(|dir| ..)` in while the app is built (forks,
+its own `StoreOpener::new(|dir| ..)` in while the app is built (forks,
 imports, deletes and `/resume` open stores through it); a front whose
 runs keep their session elsewhere, such as in a chat thread, says so,
 `Front::session_store(open)`, for the running session alone. Reading or
@@ -1681,7 +1681,7 @@ use rig_harness::rig_memory::{DirStore, SessionError};
 /// runs' in `/vault/bot`, and spilled output and pasted images nowhere.
 fn build(app: &mut App) {
     app.insert_resource(Scratch(None))
-        .insert_resource(SessionStores::new(|dir: &SessionDir| vault("/vault", dir)));
+        .insert_resource(StoreOpener::new(|dir: &SessionDir| vault("/vault", dir)));
     // The bot's front sets itself up in `finish` (not shown).
     let bot = Front::new("bot").on_command("bot", "", "Answer in the chat");
     app.add_front(bot.session_store(|dir: &SessionDir| vault("/vault/bot", dir)))
@@ -1996,7 +1996,7 @@ what the user types as `Deliver` from `Author::user()`, shows `Notice`s
 (an `Error` fails a `--print` run or refuses a command), each agent's
 `Conversation` (or `ConversationChanged` changes) and
 [notes](#the-transcript-notes-looks-and-scrolling), its reply as it
-streams ([`StreamDelta`](#what-a-model-streams)), sets `Shown` to the
+streams ([`StreamDelta`](#what-a-model-streams)), sets `ShownAgent` to the
 agent the user looks at, and may spawn an `Answerer` and answer questions
 with [`Pick`](#asking-the-user-questions-and-pickers). A front nobody sits
 at drives its run with `app.run_headless(Some(prompt))`, which ends once
@@ -2051,7 +2051,7 @@ impl Plugin for StatsPlugin {
 }
 
 /// Prints the count and their messages, from each one's listing, then exits.
-fn stats(home: Res<RigHome>, stores: Res<SessionStores>, mut commands: Commands) {
+fn stats(home: Res<RigHome>, stores: Res<StoreOpener>, mut commands: Commands) {
     let sessions = home.0.saved_sessions();
     let listings = sessions.iter().filter_map(|(_, dir)| Some(Listing::read(&*stores.open(dir).ok()?)));
     println!("{} saved sessions, {} messages", sessions.len(), listings.map(|it| it.meta.messages).sum::<usize>());

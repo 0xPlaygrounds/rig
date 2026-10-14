@@ -93,7 +93,7 @@ pub struct ModelLabel(pub String);
 /// changed under a running turn, and the agent is told so.
 fn choose_invoked_model(
     invoked: Option<Res<Invoked>>,
-    (agents, busy): (PrimaryQuery, Query<Has<ActiveTurn>>),
+    (agents, busy): (MainAgentQuery, Query<Has<ActiveTurn>>),
     mut waited: Local<Option<bool>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -102,7 +102,7 @@ fn choose_invoked_model(
         return;
     }
     let model = invoked.and_then(|invoked| invoked.args.model.clone());
-    let (Some(model), Some(agent)) = (model, primary(&agents)) else {
+    let (Some(model), Some(agent)) = (model, main_agent(&agents)) else {
         *waited = Some(true);
         return;
     };

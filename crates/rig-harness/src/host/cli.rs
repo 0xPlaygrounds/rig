@@ -71,7 +71,7 @@ use rig::harness_protocol::{RESERVED_COMMANDS, SessionDir, StartReason};
 use rig_memory::{SessionError, Store};
 
 use super::launcher::Invoked;
-use super::session::{AppStart, SessionStores};
+use super::session::{AppStart, StoreOpener};
 use crate::describe::Describing;
 use crate::secrets::Secret;
 
@@ -148,8 +148,8 @@ pub struct Front {
     /// refused.
     pub sessionless: bool,
     /// Where a run it takes keeps its session, in place of
-    /// [`SessionStores`] ([`Self::session_store`]).
-    pub session_store: Option<SessionStores>,
+    /// [`StoreOpener`] ([`Self::session_store`]).
+    pub session_store: Option<StoreOpener>,
 }
 
 impl Front {
@@ -186,15 +186,15 @@ impl Front {
 
     /// A run it takes keeps its session in the store `open` opens for the
     /// session's directory, such as one of a chat thread's, instead of the
-    /// one [`SessionStores`] opens. Only the running session's store comes
+    /// one [`StoreOpener`] opens. Only the running session's store comes
     /// from it: forks, imports and listings still open theirs with
-    /// [`SessionStores`]. The front is chosen, and the store opened, once
+    /// [`StoreOpener`]. The front is chosen, and the store opened, once
     /// every plugin is built.
     pub fn session_store(
         mut self,
         open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, SessionError> + Send + Sync + 'static,
     ) -> Self {
-        self.session_store = Some(SessionStores::new(open));
+        self.session_store = Some(StoreOpener::new(open));
         self
     }
 

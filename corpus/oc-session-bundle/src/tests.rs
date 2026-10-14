@@ -254,7 +254,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
 
     // The imported session lists the subagent, and its conversation's
     // paths are under B.
-    let store = SessionStores::default().open(&home.session(&imported.session));
+    let store = StoreOpener::default().open(&home.session(&imported.session));
     let saved = store
         .and_then(|store| Session::read(&*store))
         .unwrap_or_default();

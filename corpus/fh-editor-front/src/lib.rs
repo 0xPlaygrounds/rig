@@ -54,7 +54,7 @@ impl Plugin for EditorFrontPlugin {
             .init_resource::<Buffers>()
             .init_resource::<Inbox>()
             .init_resource::<ProjectRoot>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .configure_sets(AgentPass, EditorSystems.in_set(GateSystems::After))
             .add_systems(
                 AgentPass,
@@ -388,7 +388,7 @@ fn connect_client(world: &mut World) -> (Entity, EditorLink) {
     let wake = world.get_resource::<Wake>().cloned().unwrap_or_default();
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     let lines = lines.map(Some).chain(futures::stream::once(async { None }));
-    let agent = world.get_resource::<Shown>().and_then(|shown| shown.0);
+    let agent = world.get_resource::<ShownAgent>().and_then(|shown| shown.0);
     let client = world.spawn((
         EditorClient { out, agent },
         Answerer::default(),
@@ -543,11 +543,11 @@ fn receive(
     mut clients: Query<(&mut EditorClient, Has<Stdio>)>,
     mut buffers: ResMut<Buffers>,
     agents: Query<(Entity, &AgentId)>,
-    primaries: PrimaryQuery,
+    primaries: MainAgentQuery,
     mut reviews: Query<(&EditReview, &mut Decision), (PluginEffects, Without<Outcome>)>,
     mut calls: Query<&mut Decision, ToolCalls>,
     waits: Query<(Entity, &DiagnosticsWait)>,
-    (root, mut shown): (Res<ProjectRoot>, ResMut<Shown>),
+    (root, mut shown): (Res<ProjectRoot>, ResMut<ShownAgent>),
     mut commands: Commands,
 ) {
     for (from, line) in std::mem::take(&mut inbox.0) {
@@ -564,7 +564,7 @@ fn receive(
         };
         let reply = client.out.clone();
         let reply = |message: &ToEditor| send(&reply, message);
-        let agent = client.agent.or_else(|| primary(&primaries));
+        let agent = client.agent.or_else(|| main_agent(&primaries));
         let message = match serde_json::from_str::<FromEditor>(&line) {
             Ok(message) => message,
             Err(error) => {

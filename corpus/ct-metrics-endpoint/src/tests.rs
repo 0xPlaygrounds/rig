@@ -292,7 +292,7 @@ fn scripted_run() -> Result<Run, String> {
         .resource_mut::<Diagnostics>()
         .0
         .push_back(Logged {
-            error: true,
+            level: NoticeLevel::Error,
             target: "rig_demo".to_owned(),
             message: "a system failed".to_owned(),
             agent: None,

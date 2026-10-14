@@ -25,7 +25,7 @@ use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use rig_ecs::agent::ActiveTurn;
-use rig_harness::primary::Shown;
+use rig_harness::main_agent::ShownAgent;
 use unicode_width::UnicodeWidthChar;
 
 use super::input::TuiInputState;
@@ -470,7 +470,7 @@ fn hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
 pub(crate) fn draw_editors(
     mut editors: Query<(Entity, &Editor, &mut PanelCanvas, &mut Caret)>,
     (state, choices, focus): (Res<TuiInputState>, Choices, Res<KeyFocus>),
-    (shown, active): (Res<Shown>, Query<(), With<ActiveTurn>>),
+    (shown, active): (Res<ShownAgent>, Query<(), With<ActiveTurn>>),
 ) {
     let answering = state.answering().and_then(|ask| choices.shown(ask));
     let busy = shown.0.is_some_and(|agent| active.contains(agent));

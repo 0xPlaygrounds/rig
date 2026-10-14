@@ -41,7 +41,7 @@ fn start(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>
         entity: agent,
         model,
     });
-    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     app.update();
     (app, wakes, agent)
 }

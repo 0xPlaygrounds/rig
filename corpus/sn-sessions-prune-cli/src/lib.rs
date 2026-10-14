@@ -302,7 +302,7 @@ struct Found {
 
 /// The saved sessions of `home` other than `current`, newest first, each
 /// read as the session picker reads it.
-fn found(home: &Home, stores: &SessionStores, current: &Path) -> Vec<Found> {
+fn found(home: &Home, stores: &StoreOpener, current: &Path) -> Vec<Found> {
     let mut sessions: Vec<(SessionEntry, SessionDir)> = home
         .saved_sessions()
         .into_iter()
@@ -355,7 +355,7 @@ impl PruneReport {
 /// (milliseconds since the Unix epoch).
 pub fn plan(
     home: &Home,
-    stores: &SessionStores,
+    stores: &StoreOpener,
     current: &Path,
     prune: &Prune,
     now: u64,
@@ -486,7 +486,7 @@ struct Deleting(PruneReport, Prune);
 /// a [`DeleteSession`] for each session the plan deletes.
 fn prune_command(
     invoked: Res<Invoked>,
-    (home, stores, paths): (Res<RigHome>, Res<SessionStores>, Res<SessionPaths>),
+    (home, stores, paths): (Res<RigHome>, Res<StoreOpener>, Res<SessionPaths>),
     mut commands: Commands,
 ) {
     let words = invoked.command().map_or(&[][..], |(_, words)| words);

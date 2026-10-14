@@ -1,5 +1,5 @@
 //! View state, kept apart from the agent core: the agent shown (the
-//! harness's [`Shown`]), the input's completion, the pickers and questions
+//! harness's [`ShownAgent`]), the input's completion, the pickers and questions
 //! waiting to be shown, each transcript pane as plugins read and steer it
 //! ([`TranscriptView`]): what is expanded and selected, the text lit and
 //! where it is scrolled, and the recent notices ([`Notices`]), which a
@@ -27,8 +27,8 @@ use super::pick::PickerState;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::{ExitReason, PluginData};
-use rig_harness::primary::Shown;
 use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 
 /// Notices kept for display, and for the build a reload starts.
@@ -817,7 +817,7 @@ pub(crate) fn load_draft(
 
 /// Keeps [`Focused`] on the agent shown, and on no other.
 pub(crate) fn mark_focused(
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     marked: Query<Entity, With<Focused>>,
     mut commands: Commands,
 ) {
@@ -841,7 +841,7 @@ pub(crate) fn mark_focused(
 pub(crate) fn on_focus(
     focus: On<Focus>,
     agents: Query<(), With<Agent>>,
-    mut shown: ResMut<Shown>,
+    mut shown: ResMut<ShownAgent>,
     mut view: ResMut<TuiView>,
     mut panes: Query<(&TranscriptPane, &mut PaneState)>,
 ) {
@@ -878,7 +878,7 @@ pub(crate) fn on_scroll_to(scroll: On<ScrollTo>, mut panes: Query<&mut PaneState
 pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
     agents: Query<(&AgentId, &Conversation)>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut kept: ResMut<Notices>,
 ) {
     if notices.is_empty() {
@@ -907,7 +907,7 @@ pub(crate) fn collect_notices(
 pub(crate) fn recall_messages(
     mut recalled: MessageReader<Recalled>,
     agents: Query<(&AgentId, &Conversation)>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     (mut view, mut notices): (ResMut<TuiView>, ResMut<Notices>),
     mut input: Query<&mut Editor, With<MainEditor>>,
 ) {
