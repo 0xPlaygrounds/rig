@@ -8,12 +8,15 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
+use rig_core::conversation::MessageId;
 use rig_core::conversation::{self, Author, Entry};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
 use rig_ecs::journal::{JournalPlugin, RewriteSession, SessionStore};
 use rig_ecs::{AgentPlugin, WriteJournal};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::{DirStore, Files, MemoryStore, Store, Strings, load, save};
+use rig_memory::{
+    DirStore, Files, MemoryStore, SPLIT, Session, SplitPointer, Store, Strings, load, save,
+};
 
 use super::{
     AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, ForkedFrom, Scratch,
@@ -354,6 +357,255 @@ fn a_failed_fork_tells_its_asker_why() {
     fs::remove_dir_all(home.root()).ok();
 }
 
+/// The app of the saved session `id` of `home`, which says what forks
+/// it made, with the agent's conversation `said` (an empty one when
+/// `None`): the agent's entity.
+fn running_with(home: &Home, id: &SessionId, said: &[Message]) -> Option<(App, Entity)> {
+    let session = home.session(id);
+    fs::create_dir_all(session.path()).ok()?;
+    let mut app = App::new();
+    app.init_resource::<Seen>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch.after(ForkSessions));
+    drop(std::panic::take_hook());
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut())?;
+    for message in said {
+        commit_message(app.world_mut(), agent, message.clone()).ok()?;
+    }
+    app.update();
+    Some((app, agent))
+}
+
+/// Four messages, a question asked twice.
+fn four() -> [Message; 4] {
+    [
+        Message::user("one"),
+        Message::assistant("two"),
+        Message::user("three"),
+        Message::assistant("four"),
+    ]
+}
+
+/// A split of this session's line through a message is a new session
+/// holding that line, which names its parent and the message it copied
+/// through, and leaves a pointer after that message; a move also takes
+/// the range out of the line, the pointer in its place.
+#[test]
+fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
+    let home = scratch_home("rig-split-here");
+    let Ok(id) = "1700000000-30".parse::<SessionId>() else {
+        return;
+    };
+    let Some((mut app, agent)) = running_with(&home, &id, &four()) else {
+        return;
+    };
+    let world = app.world();
+    let agent_id = world.get::<AgentId>(agent).cloned().unwrap_or_default();
+    let ids: Vec<_> = world
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
+        .unwrap_or_default();
+    let (Some(&second), Some(&third), Some(&fourth)) = (ids.get(1), ids.get(2), ids.get(3)) else {
+        return;
+    };
+    let line = |through, take| ForkCut::Line {
+        agent: agent_id.clone(),
+        line: None,
+        through,
+        take,
+        title: "side".to_owned(),
+    };
+    app.world_mut().trigger(ForkSession {
+        cut: line(third, None),
+        ..ForkSession::default()
+    });
+    app.update();
+    let forked = app.world().resource::<Seen>().forked.first().cloned();
+    let Some(forked) = forked else {
+        panic!("no split: {:?}", app.world().resource::<Seen>().notices);
+    };
+    let copy = dir_store(&home.session(&forked.to));
+    let read = copy.as_ref().and_then(|copy| Session::read(copy).ok());
+    let copied: Vec<_> = read
+        .iter()
+        .flat_map(|read| read.agents.iter())
+        .flat_map(|agent| agent.conversation.entries().map(|entry| entry.id))
+        .collect();
+    assert_eq!(copied, ids.get(..3).unwrap_or_default());
+    let parent = copy.as_ref().and_then(ForkedFrom::read);
+    assert_eq!(
+        parent,
+        Some(ForkedFrom {
+            session: id.to_string(),
+            through: Some((agent_id.0.clone(), third)),
+            line: Some("side".to_owned()),
+            text: Some("three".to_owned()),
+            ..ForkedFrom::default()
+        })
+    );
+    let pointers = |app: &App| -> Vec<(Option<MessageId>, SplitPointer)> {
+        let conversation = app.world().get::<Conversation>(agent);
+        let asides = conversation
+            .into_iter()
+            .flat_map(|conversation| conversation.asides());
+        asides
+            .filter(|(_, aside)| aside.kind == SPLIT)
+            .filter_map(|(_, aside)| {
+                Some((
+                    aside.after,
+                    serde_json::from_value(aside.value.clone()).ok()?,
+                ))
+            })
+            .collect()
+    };
+    let pointer = |to: &SessionId, moved| SplitPointer {
+        session: to.to_string(),
+        agent: agent_id.0.clone(),
+        title: "side".to_owned(),
+        moved,
+        merged: false,
+    };
+    assert_eq!(pointers(&app), [(Some(third), pointer(&forked.to, 0))]);
+
+    app.world_mut().trigger(ForkSession {
+        cut: line(fourth, Some(second)),
+        ..ForkSession::default()
+    });
+    app.update();
+    let moved = app
+        .world()
+        .resource::<Seen>()
+        .forked
+        .get(1)
+        .map(|forked| forked.to.clone());
+    let Some(moved) = moved else {
+        panic!("no move: {:?}", app.world().resource::<Seen>().notices);
+    };
+    let left: Vec<_> = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
+        .unwrap_or_default();
+    assert_eq!(left, ids.get(..1).unwrap_or_default());
+    let now = pointers(&app);
+    assert_eq!(
+        now.last(),
+        Some(&(ids.first().copied(), pointer(&moved, 3)))
+    );
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// A split of a stopped session leaves its pointer there through
+/// [`edit_stopped`](super::edit_stopped), which holds the session's lock;
+/// a session another rig runs is copied without one, and a move out of it
+/// is refused.
+#[test]
+fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() {
+    let home = scratch_home("rig-split-stopped");
+    let (Ok(here), Ok(there)) = (
+        "1700000000-31".parse::<SessionId>(),
+        "1700000000-32".parse::<SessionId>(),
+    ) else {
+        return;
+    };
+    let Some((app, agent)) = running_with(&home, &there, &four()) else {
+        return;
+    };
+    let agent_id = app
+        .world()
+        .get::<AgentId>(agent)
+        .cloned()
+        .unwrap_or_default();
+    let ids: Vec<_> = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|conversation| {
+            conversation
+                .entries()
+                .filter_map(|entry| Some(entry.id))
+                .collect()
+        })
+        .unwrap_or_default();
+    drop(app);
+    let Some((mut app, _)) = running_with(&home, &here, &[]) else {
+        return;
+    };
+    let (Some(&second), Some(&third)) = (ids.get(1), ids.get(2)) else {
+        return;
+    };
+    let line = |take| ForkCut::Line {
+        agent: agent_id.clone(),
+        line: None,
+        through: third,
+        take,
+        title: "side".to_owned(),
+    };
+    let stopped = home.session(&there);
+    let lock = stopped.hold().ok().flatten();
+    assert!(lock.is_some(), "held as another rig would");
+    for take in [None, Some(second)] {
+        app.world_mut().trigger(ForkSession {
+            from: Some(there.clone()),
+            cut: line(take),
+            asker: None,
+        });
+        app.update();
+    }
+    drop(lock);
+    let seen = app.world().resource::<Seen>();
+    let notes: Vec<_> = seen
+        .forked
+        .iter()
+        .map(|forked| forked.note.is_some())
+        .collect();
+    assert_eq!(notes, [true], "copied without a pointer");
+    let failed: Vec<_> = seen
+        .fork_failed
+        .iter()
+        .map(|failed| failed.why.as_str())
+        .collect();
+    assert_eq!(failed, ["another rig runs it"]);
+
+    app.world_mut().trigger(ForkSession {
+        from: Some(there.clone()),
+        cut: line(Some(second)),
+        asker: None,
+    });
+    app.update();
+    let seen = app.world().resource::<Seen>();
+    let to = seen
+        .forked
+        .get(1)
+        .map(|forked| (forked.to.clone(), forked.note.clone()));
+    assert!(matches!(to, Some((_, None))), "{to:?} {:?}", seen.notices);
+    let read = dir_store(&stopped).and_then(|store| Session::read(&store).ok());
+    let conversation = read
+        .as_ref()
+        .and_then(|read| read.agent(&agent_id.0))
+        .map(|agent| &agent.conversation);
+    let left: Vec<_> = conversation
+        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
+        .unwrap_or_default();
+    let kept: Vec<_> = [ids.first(), ids.get(3)]
+        .into_iter()
+        .flatten()
+        .copied()
+        .collect();
+    assert_eq!(left, kept, "the range left the stopped session");
+    let pointers = conversation
+        .into_iter()
+        .flat_map(|conversation| conversation.asides())
+        .filter(|(_, aside)| aside.kind == SPLIT)
+        .count();
+    assert_eq!(pointers, 1);
+    fs::remove_dir_all(home.root()).ok();
+}
+
 /// A branch before a message keeps what the user wrote in it with its
 /// parent, so a view of the family reads no other log.
 #[test]
@@ -396,9 +648,13 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     let before = agent_id.zip(message);
     assert!(before.is_some(), "the message was logged");
     let asker = app.world_mut().spawn_empty().id();
+    let cut = before.clone().map_or(ForkCut::Whole, |(agent, message)| {
+        ForkCut::Before(agent, message)
+    });
     app.world_mut().trigger(ForkSession {
-        before: before.clone(),
+        cut,
         asker: Some(asker),
+        ..ForkSession::default()
     });
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
