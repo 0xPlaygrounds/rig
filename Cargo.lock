@@ -5844,7 +5844,6 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
- "rig-sessions",
  "rig-tools",
  "schemars 1.2.1",
  "serde",
