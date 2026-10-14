@@ -16,9 +16,9 @@ use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{DirStore, Files, MemoryStore, Store, Strings, load, save};
 
 use super::{
-    AppStart, DeleteSession, ForkSession, ForkSessions, ForkedFrom, Scratch, SessionDeleteFailed,
-    SessionDeleted, SessionForked, SessionPaths, SessionPlugin, SessionStores, first_typed,
-    log_layer, rewrite_stopped, typed,
+    AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, ForkedFrom, Scratch,
+    SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
+    SessionPlugin, SessionStores, first_typed, log_layer, rewrite_stopped, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitReason;
@@ -30,13 +30,17 @@ use crate::services::RigHome;
 #[derive(Resource, Default)]
 struct Seen {
     forked: Vec<SessionForked>,
+    fork_failed: Vec<SessionForkFailed>,
     deleted: Vec<SessionId>,
     failed: Vec<(SessionId, String)>,
     notices: Vec<String>,
 }
 
 fn watch(
-    mut forked: MessageReader<SessionForked>,
+    (mut forked, mut fork_failed): (
+        MessageReader<SessionForked>,
+        MessageReader<SessionForkFailed>,
+    ),
     (mut deleted, mut failed): (
         MessageReader<SessionDeleted>,
         MessageReader<SessionDeleteFailed>,
@@ -45,6 +49,7 @@ fn watch(
     mut seen: ResMut<Seen>,
 ) {
     seen.forked.extend(forked.read().cloned());
+    seen.fork_failed.extend(fork_failed.read().cloned());
     let failed = failed
         .read()
         .map(|failed| (failed.id.clone(), failed.why.clone()));
@@ -308,6 +313,44 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
         assert!(logged.starts_with("this run\n"), "{logged}");
         fs::remove_dir_all(run.path()).ok();
     }
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// A fork that cannot be made says why to whoever asked, as data, beside
+/// the error notice.
+#[test]
+fn a_failed_fork_tells_its_asker_why() {
+    let home = scratch_home("rig-fork-failed");
+    let Ok(id) = "1700000000-6".parse::<SessionId>() else {
+        return;
+    };
+    let session = home.session(&id);
+    fs::create_dir_all(session.path()).ok();
+    let mut app = App::new();
+    app.add_message::<Notice>()
+        .init_resource::<Seen>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session))
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch.after(ForkSessions));
+    drop(std::panic::take_hook());
+    let asker = app.world_mut().spawn_empty().id();
+    // No store: the session was never opened.
+    app.world_mut().trigger(ForkSession {
+        asker: Some(asker),
+        ..ForkSession::default()
+    });
+    app.update();
+    let seen = app.world().resource::<Seen>();
+    let failed: Vec<_> = seen
+        .fork_failed
+        .iter()
+        .map(|failed| (failed.from.clone(), failed.cut.clone(), failed.asker))
+        .collect();
+    assert_eq!(failed, [(None, ForkCut::Whole, Some(asker))]);
+    let why = seen.fork_failed.first().map(|failed| failed.why.as_str());
+    assert_eq!(why, Some("this session is not stored"));
+    assert_eq!(seen.notices.len(), 1, "{:?}", seen.notices);
     fs::remove_dir_all(home.root()).ok();
 }
 

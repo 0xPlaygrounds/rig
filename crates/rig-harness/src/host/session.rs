@@ -487,7 +487,8 @@ fn discard_unsaved(
 /// id and the id of a message in its conversation, the copy is the session
 /// as it was before that message was made (see [`fork`]). The new
 /// session's effect log starts empty.
-/// [`SessionForked`] names it; switching to it is
+/// [`SessionForked`] names it, or [`SessionForkFailed`] says why there is
+/// none; switching to it is
 /// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`](super::exit::ExitReason::Switch).
 #[derive(Event, Clone, Debug, Default)]
 pub struct ForkSession {
@@ -766,7 +767,10 @@ fn fork_sessions(
     ),
     home: Option<Res<RigHome>>,
     agents: Query<(&AgentId, &agent::Conversation)>,
-    mut forked: MessageWriter<SessionForked>,
+    (mut forked, mut failed): (
+        MessageWriter<SessionForked>,
+        MessageWriter<SessionForkFailed>,
+    ),
     mut notices: MessageWriter<Notice>,
 ) {
     for ForkSession { before, asker } in forks.0.drain(..) {
@@ -792,6 +796,15 @@ fn fork_sessions(
                     None,
                     format!("Could not fork the session: {why}"),
                 ));
+                let cut = before.map_or(ForkCut::Whole, |(agent, message)| {
+                    ForkCut::Before(agent, message)
+                });
+                failed.write(SessionForkFailed {
+                    from: None,
+                    cut,
+                    asker,
+                    why,
+                });
             }
         }
     }
