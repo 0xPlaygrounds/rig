@@ -7,7 +7,7 @@ use rig_harness_test_support::{
     run_until, scripted_models, tui_view,
 };
 use rig_subagents::{SubagentsPlugin, TASK};
-use rig_tui::TuiInput;
+use rig_tui::{Editor, MainEditor};
 use serde_json::json;
 
 use super::*;
@@ -106,7 +106,11 @@ impl Session {
 
     /// Types `text` in the terminal view's input and presses Enter.
     fn type_line(&mut self, text: &str) {
-        self.app.world_mut().resource_mut::<TuiInput>().set(text);
+        let world = self.app.world_mut();
+        let mut main = world.query_filtered::<&mut Editor, With<MainEditor>>();
+        if let Ok(mut input) = main.single_mut(world) {
+            input.set(text);
+        }
         press(&mut self.app, "enter");
     }
 
