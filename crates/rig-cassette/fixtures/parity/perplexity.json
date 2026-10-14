@@ -1442,7 +1442,7 @@
           "date": null,
           "last_updated": "2026-08-09",
           "place_metadata": null,
-          "snippet": "Claude Code talks the Anthropic Messages API, so point it at your router's\n```\n/v1/messages\n```\n-serving base and pass your DodoRouter key as the auth token:\n```\nexport ANTHROPIC_BASE_URL=\"{base_url}/r/{router}\"\nexport ANTHROPIC_AUTH_TOKEN=\"sk-dodo-YOUR_KEY\"\nclaude\n```\nVerified:\n```\nclaude -p \"Reply...",
+          "snippet": "Claude Code talks the Anthropic Messages API, so point it at your router's\n```\n/v1/messages\n```\n-serving base and pass your DodoRouter key as the auth token:\n```\nexport ANTHROPIC_BASE_URL=\"{base_url}/r/{router}\"\nexport ANTHROPIC_AUTH_TOKEN=\"[REDACTED]\"\nclaude\n```\nVerified:\n```\nclaude -p \"Reply...",
           "source": "web",
           "title": "Claude Code - DodoRouter",
           "url": "https://www.dodorouter.com/docs/integrations/claude-code/"
