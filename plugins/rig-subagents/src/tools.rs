@@ -152,6 +152,7 @@ fn on_task(
         system_prompt: None,
         peers: args.peers,
         once: false,
+        id: None,
         extra: args.extra.clone(),
     };
     let mut spawned = commands.spawn((
