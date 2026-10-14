@@ -18,7 +18,7 @@ use crate::blobs::{named_blobs, store_change};
 use crate::format::{Body, Header, LogLines, Meta, Rewrote, parse, write_change, write_meta};
 use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
 use crate::writer::set_aside_tail;
-use crate::{Files, LoadError, MemoryStore, Stamp, Store, now_ms};
+use crate::{Files, LoadError, MemoryStore, Stamp, Store, Versioned, now_ms};
 
 /// Where a value being rewritten is kept.
 #[derive(Clone, Copy, Debug)]
@@ -467,8 +467,8 @@ pub struct RewrittenLog {
     pub records: usize,
     /// Its conversation as rewritten, with images, continuing the new log.
     pub conversation: Conversation,
-    /// Its saved values as rewritten.
-    pub state: BTreeMap<String, Value>,
+    /// Its saved values as rewritten, each at the version it was saved at.
+    pub state: BTreeMap<String, Versioned>,
     /// The saved keys whose newest value changed; one whose value was
     /// removed is not in `state`.
     pub changed_keys: Vec<String>,
@@ -550,6 +550,7 @@ pub(crate) fn map_record(
     match body {
         Body::Meta(Meta::State {
             key,
+            v,
             value: Some(mut value),
         }) if !value.is_null() => {
             let at = Place::Record {
@@ -562,6 +563,7 @@ pub(crate) fn map_record(
             }
             let state = Meta::State {
                 key,
+                v,
                 value: Some(value),
             };
             write_meta(&mut line, stamp, &state).map_err(|failure| failure.to_string())?;

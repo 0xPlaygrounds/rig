@@ -68,14 +68,20 @@ fn a_saved_conversation_folds_back_to_itself() {
     let mut live = edited();
     let saved = writer.save("main", &mut live);
     assert!(saved.iter().all(|change| change.at.is_some()));
-    writer.state("main", "mode", Some(json!("plan")), false);
-    writer.state(crate::SESSION, "theme", Some(json!("dark")), false);
+    writer.state("main", "mode", Some(json!("plan").into()), false);
+    writer.state(crate::SESSION, "theme", Some(json!("dark").into()), false);
     writer.flush();
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("the agent");
     assert_eq!(main.conversation, live);
-    assert_eq!(main.state, [("mode".to_owned(), json!("plan"))].into());
-    assert_eq!(session.state, [("theme".to_owned(), json!("dark"))].into());
+    assert_eq!(
+        main.state,
+        [("mode".to_owned(), json!("plan").into())].into()
+    );
+    assert_eq!(
+        session.state,
+        [("theme".to_owned(), json!("dark").into())].into()
+    );
     assert!(main.rewrites.is_empty());
 }
 

@@ -190,6 +190,17 @@ pub fn fork(
     for copy in &copies {
         to.append_log(&copy.name, &copy.bytes)?;
     }
+    copy_plugin_files(from, to, with)?;
+    Ok(forked)
+}
+
+/// Copies every plugin file of `from` (`plugins/` of its store) into `to`,
+/// each mapped through `with`.
+pub(crate) fn copy_plugin_files(
+    from: &dyn Store,
+    to: &dyn Store,
+    with: &dyn Rewrite,
+) -> io::Result<()> {
     for name in from.files()? {
         if name.starts_with("plugins/") {
             let mut bytes = from.read_file(&name)?;
@@ -197,7 +208,7 @@ pub fn fork(
             to.write_file(&name, &bytes)?;
         }
     }
-    Ok(forked)
+    Ok(())
 }
 
 /// No images: a fork copies the blobs, and its folds never read them.

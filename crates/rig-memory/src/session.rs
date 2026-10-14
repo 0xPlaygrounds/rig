@@ -15,7 +15,7 @@ use serde_json::Value;
 use crate::blobs::{load_images, load_images_with, messages_mut};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
 use crate::writer::Book;
-use crate::{FORMAT, LoadError, Repair, Rewrote, Stamp, Store};
+use crate::{FORMAT, LoadError, Repair, Rewrote, Stamp, Store, Versioned};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -23,7 +23,7 @@ pub struct Session {
     /// Its agents, in the order their logs were started.
     pub agents: Vec<SavedAgent>,
     /// The session's own saved values by key: the [`SESSION`] log's.
-    pub state: BTreeMap<String, Value>,
+    pub state: BTreeMap<String, Versioned>,
     /// What reading it repaired or worked around.
     pub repairs: Vec<Repair>,
 }
@@ -40,8 +40,9 @@ pub struct SavedAgent {
     /// Its conversation, continuing its log: its lineage the log's, its
     /// revision the number of changes the log holds.
     pub conversation: Conversation,
-    /// The newest value of each of its saved values, by key.
-    pub state: BTreeMap<String, Value>,
+    /// The newest value of each of its saved values, by key, with the
+    /// version it was saved at.
+    pub state: BTreeMap<String, Versioned>,
     /// Whether it is gone for good: a restore skips it, and the agents it
     /// spawned.
     pub retired: bool,
@@ -67,6 +68,8 @@ pub enum Record {
     State {
         /// Its key.
         key: String,
+        /// The version of its type it was saved at.
+        v: u32,
         /// Its value.
         value: Option<Value>,
     },
@@ -85,7 +88,7 @@ pub(crate) struct Folded {
     /// The last record that put, replaced or removed each aside (a reset
     /// counts for every aside before and after it), and who made it.
     pub asides_set: HashMap<AsideId, (Stamp, Option<Author>)>,
-    pub state: BTreeMap<String, Value>,
+    pub state: BTreeMap<String, Versioned>,
     pub retired: bool,
     /// The `seq` after the last record's.
     pub next_seq: u64,
@@ -231,8 +234,8 @@ pub(crate) fn fold_lines(
             return Ok(ControlFlow::Break(()));
         }
         match body {
-            Body::Meta(Meta::State { key, value }) => match value.filter(|v| !v.is_null()) {
-                Some(value) => state.insert(key, value),
+            Body::Meta(Meta::State { key, v, value }) => match value.filter(|v| !v.is_null()) {
+                Some(value) => state.insert(key, Versioned { v, value }),
                 None => state.remove(&key),
             },
             Body::Meta(Meta::Retired) => {
@@ -638,8 +641,9 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, Record)>, Loa
                 });
                 Record::Change(recorded)
             }
-            Body::Meta(Meta::State { key, value }) => Record::State {
+            Body::Meta(Meta::State { key, v, value }) => Record::State {
                 key,
+                v,
                 value: value.filter(|value| !value.is_null()),
             },
             Body::Meta(Meta::Retired) => Record::Retired,

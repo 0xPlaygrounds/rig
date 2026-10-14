@@ -32,6 +32,12 @@ use web_time::{SystemTime, UNIX_EPOCH};
 /// The saved format a log's header names.
 pub const FORMAT: &str = "rig-session/2";
 
+/// The version of [`FORMAT`]: the number after `rig-session/`.
+pub const VERSION: u32 = 2;
+
+/// The oldest format version this build reads.
+pub const OLDEST: u32 = 2;
+
 /// The log of the session's own saved values, beside the agents' logs.
 pub const SESSION: &str = "session";
 
@@ -227,10 +233,21 @@ pub(crate) enum Meta {
     Header(Header),
     State {
         key: String,
+        /// The version of the value's type it was saved at; 1 is not written.
+        #[serde(default = "one", skip_serializing_if = "is_one")]
+        v: u32,
         #[serde(default)]
         value: Option<Value>,
     },
     Retired,
+}
+
+fn one() -> u32 {
+    1
+}
+
+fn is_one(v: &u32) -> bool {
+    *v == 1
 }
 
 /// A record as read.

@@ -15,10 +15,14 @@ pub const MODEL: &str = "rig::model";
 pub const TITLE: &str = "rig::title";
 
 impl SavedAgent {
-    /// Its saved value under `key`, read as a `T`: `None` when it has none,
-    /// an error when the value is not a `T`.
+    /// Its saved value under `key` as saved, not upgraded, read as a `T`:
+    /// `None` when it has none, an error when the value is not a `T`. A
+    /// program reads an older version of a plugin's value through
+    /// [`Upgrades::upgrade`](crate::Upgrades::upgrade).
     pub fn value<T: DeserializeOwned>(&self, key: &str) -> Option<Result<T, serde_json::Error>> {
-        self.state.get(key).map(T::deserialize)
+        self.state
+            .get(key)
+            .map(|saved| T::deserialize(&saved.value))
     }
 
     /// Its model, `vendor/model`, when one was saved ([`MODEL`]).

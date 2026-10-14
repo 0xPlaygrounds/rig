@@ -6,12 +6,13 @@ use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rig_core::conversation::{Author, Change, Conversation, Lineage, Recorded};
-use serde_json::Value;
 
 use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
-use crate::{LoadError, Repair, Rewrite, Rewritten, Session, Stamp, Store, now_ms, rewrite};
+use crate::{
+    LoadError, Repair, Rewrite, Rewritten, Session, Stamp, Store, Versioned, now_ms, rewrite,
+};
 
 /// One log as the writer keeps it.
 #[derive(Default)]
@@ -24,7 +25,7 @@ struct Log {
     pending: Vec<u8>,
     /// The newest value of each saved value, so an unchanged one is not
     /// written again.
-    state: BTreeMap<String, Value>,
+    state: BTreeMap<String, Versioned>,
     /// The log's lineage, from its header.
     lineage: Lineage,
     /// The changes it holds.
@@ -230,15 +231,16 @@ impl Book {
     /// Queues the saved value `key` of the log `name` when it changed;
     /// `None` or `null` when it was removed. With `starts`, the change
     /// starts the log.
-    pub fn state(&mut self, name: &str, key: &str, value: Option<Value>, starts: bool) {
-        let value = value.filter(|value| !value.is_null());
+    pub fn state(&mut self, name: &str, key: &str, value: Option<Versioned>, starts: bool) {
+        let value = value.filter(|saved| !saved.value.is_null());
         let known = self.logs.get(name).and_then(|log| log.state.get(key));
         if known == value.as_ref() {
             return;
         }
         let meta = Meta::State {
             key: key.to_owned(),
-            value: value.clone(),
+            v: value.as_ref().map_or(1, |saved| saved.v),
+            value: value.as_ref().map(|saved| saved.value.clone()),
         };
         if self.meta(name, &meta)
             && let Some(log) = self.logs.get_mut(name)
@@ -256,8 +258,8 @@ impl Book {
     pub fn states(
         &mut self,
         name: &str,
-        known: Option<&BTreeMap<String, Value>>,
-        values: &BTreeMap<String, Value>,
+        known: Option<&BTreeMap<String, Versioned>>,
+        values: &BTreeMap<String, Versioned>,
     ) {
         let removed = known.into_iter().flat_map(BTreeMap::keys);
         let removed: Vec<String> = removed
@@ -418,9 +420,10 @@ impl Writer {
     }
 
     /// Queues the saved value `key` of the log `log`, an agent's id or
-    /// [`SESSION`], when its value changed; `None` or `null` when it was
-    /// removed. With `starts`, the change starts the log.
-    pub fn state(&self, log: &str, key: &str, value: Option<Value>, starts: bool) {
+    /// [`SESSION`], with the version of its type, when it changed; `None`
+    /// or a `null` value when it was removed. With `starts`, the change
+    /// starts the log.
+    pub fn state(&self, log: &str, key: &str, value: Option<Versioned>, starts: bool) {
         self.inner().book.state(log, key, value, starts);
     }
 
