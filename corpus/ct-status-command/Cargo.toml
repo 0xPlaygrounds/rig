@@ -12,7 +12,11 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
