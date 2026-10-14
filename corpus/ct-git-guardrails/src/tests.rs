@@ -84,7 +84,7 @@ fn start(
         .insert_resource(config)
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             AskPlugin,
             ApprovalPlugin,
             CheckpointPlugin,

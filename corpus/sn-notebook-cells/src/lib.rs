@@ -122,7 +122,7 @@ fn give_handlers(
 
 /// Refuses an `edit` or `write` call on a notebook: its JSON is edited
 /// cell by cell with `notebook_edit`.
-fn refuse_text_edits(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
+fn refuse_text_edits(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (request, mut decision) in &mut calls {
         let name = request.call.function.name.as_str();
         let Some(path) = path_of(request) else {

@@ -2,7 +2,7 @@
 //! [`Preview`] on the call in [`Stage::Gate`], and the harness holds it,
 //! runs its tool on an [`Overlay`] of the workspace, which keeps every
 //! write from the disk, and puts the changes on it as [`Previewed`]. The
-//! call is then [`Undecided`] again in a later pass, for the gate to decide
+//! call is then [`ReadyToStart`] again in a later pass, for the gate to decide
 //! with the changes in hand.
 //!
 //! ```
@@ -10,7 +10,7 @@
 //!
 //! /// Asks before a call that would change more than 200 lines.
 //! fn guard(
-//!     calls: Query<(Entity, Option<&Previewed>), (ToolCalls, Undecided)>,
+//!     calls: Query<(Entity, Option<&Previewed>), (ToolCalls, ReadyToStart)>,
 //!     mut commands: Commands,
 //! ) {
 //!     for (call, previewed) in &calls {
@@ -61,7 +61,7 @@ use crate::services::{ProjectRoot, WorkDir};
 use crate::workspace::ProjectWorkspace;
 
 #[cfg(doc)]
-use rig_ecs::prelude::Undecided;
+use rig_ecs::prelude::ReadyToStart;
 
 /// Put on a tool call in [`Stage::Gate`] (or [`GateSystems::After`]) to
 /// learn what it would leave on disk: the harness holds the call, runs its

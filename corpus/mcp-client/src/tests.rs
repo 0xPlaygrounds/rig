@@ -120,7 +120,12 @@ fn stub_tools_come_and_go_with_its_server() {
         .insert_resource(RigHome(Home::at(project.join("home"))))
         // No second attempt while the test runs.
         .insert_resource(Settings::from_toml("[mcp]\nfirst_retry_secs = 3600"))
-        .add_plugins((ServicesPlugin, AgentPlugin, JournalPlugin, McpClientPlugin))
+        .add_plugins((
+            ServicesPlugin,
+            AgentPlugin,
+            SessionLogPlugin,
+            McpClientPlugin,
+        ))
         .init_resource::<Outputs>()
         .add_observer(
             |settled: On<Add<Settled>>,

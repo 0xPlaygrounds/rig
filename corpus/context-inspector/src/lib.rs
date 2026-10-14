@@ -263,7 +263,7 @@ fn keep_sent(
 /// `/context --last [full] [agent]` runs as `/why [full] [agent]`, taken
 /// over before the harness would run it as `/context`.
 fn alias(
-    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (ReadyToStart, IncomingMessages)>,
     mut commands: Commands,
 ) {
     for (typed, &ForAgent(agent), mut decision) in &mut typed {

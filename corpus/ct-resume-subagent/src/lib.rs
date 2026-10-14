@@ -160,12 +160,12 @@ fn on_follow_up(
         )),
         Some(&(agent, ..)) => {
             let request = RequestId(called.tool_call.id.to_string());
-            let author = Author::agent(called.caller.clone(), Some(request));
+            let author = Author::agent(called.agent_id.clone(), Some(request));
             let message = Incoming::new(called.args.message.trim(), DeliveryMode::Queue);
             commands.spawn((
                 message.with_author(author),
                 ForAgent(agent),
-                Effect::child_of(Some(called.effect)),
+                Effect::with_parent_id(Some(called.effect)),
                 FollowUpOf(called.call),
             ));
             None

@@ -192,7 +192,7 @@ impl Plugin for SteerQueuePlugin {
 fn take_queued(
     mut messages: Query<
         (&Effect, &Incoming, &ForAgent, &mut Decision),
-        (Undecided, IncomingMessages),
+        (ReadyToStart, IncomingMessages),
     >,
     mut agents: Query<&mut Kept, With<ActiveTurn>>,
 ) {

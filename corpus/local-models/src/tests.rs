@@ -222,7 +222,12 @@ fn started(stub: &Stub) -> Result<(App, Receiver<()>, Entity), String> {
         stub.url
     );
     app.insert_resource(Settings::from_toml(&settings))
-        .add_plugins((AgentPlugin, JournalPlugin, ModelsPlugin, LocalModelsPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            ModelsPlugin,
+            LocalModelsPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

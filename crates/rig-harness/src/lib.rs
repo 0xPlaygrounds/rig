@@ -203,7 +203,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(services::ServicesPlugin)
             .add(host::session::SessionPlugin)
             .add(rig_ecs::AgentPlugin)
-            .add(rig_ecs::journal::JournalPlugin)
+            .add(rig_ecs::session_log::SessionLogPlugin)
             .add(commands::CommandPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::exit::ExitPlugin)
@@ -225,7 +225,7 @@ impl PluginGroup for RigHarnessPlugins {
 /// with its warnings and errors passed on as data, a clean exit on SIGINT,
 /// SIGTERM and SIGHUP, and in place of Bevy's `ScheduleRunnerPlugin` a
 /// loop that runs the schedules on the main thread and sleeps until
-/// [`Wake`](rig_ecs::calls::Wake)d or until the clock's next deadline.
+/// [`Wake`](rig_ecs::tasks::Wake)d or until the clock's next deadline.
 /// Added before [`RigHarnessPlugins`], so the agent core runs on its clock;
 /// a windowing plugin added later through [`windowed`] sets its own runner
 /// in place of this loop (see [`plugin_guide`]).

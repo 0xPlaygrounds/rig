@@ -29,11 +29,11 @@ use rig_core::serde_json;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::rig_memory::{SessionMeta, Versioned, main_order, title_of};
 
-use rig_ecs::WriteJournal;
+use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
-use rig_ecs::journal::{Committed, SessionRewritten, SessionStore};
 use rig_ecs::model::ModelChoice;
 use rig_ecs::prelude::{SavedKeys, SavedUpgrades, now_ms};
+use rig_ecs::session_log::{ConversationChanged, SessionRewritten, SessionStore};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
@@ -74,7 +74,7 @@ impl Plugin for SessionsPlugin {
                     reread_title.run_if(on_message::<SessionRewritten>),
                     read_listed,
                     update_meta.run_if(
-                        on_message::<Committed>
+                        on_message::<ConversationChanged>
                             .or_eager(resource_changed::<SessionTitle>)
                             .or_eager(labels_changed)
                             .or_eager(models_changed)
@@ -82,7 +82,7 @@ impl Plugin for SessionsPlugin {
                     ),
                 )
                     .chain()
-                    .after(WriteJournal),
+                    .after(WriteLogs),
             )
             .add_systems(
                 Last,
@@ -344,7 +344,7 @@ fn models_changed(models: Query<(), (With<Agent>, Changed<ModelChoice>)>) -> boo
 fn update_meta(
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     (mut title, mut listed): (ResMut<SessionTitle>, ResMut<Listed>),
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     agents: Query<
         (
             &AgentId,

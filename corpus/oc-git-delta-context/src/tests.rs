@@ -81,7 +81,12 @@ fn the_next_turn_hears_what_the_user_changed_and_only_that() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(dir.clone()))
         .insert_resource(Scratch(Some(scratch)))
-        .add_plugins((AgentPlugin, JournalPlugin, EditTool, GitDeltaContextPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            EditTool,
+            GitDeltaContextPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

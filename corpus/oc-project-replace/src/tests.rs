@@ -98,7 +98,7 @@ fn previews_applies_all_or_nothing_and_undoes() {
     ]);
 
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin, ProjectReplacePlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ProjectReplacePlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Changed>()

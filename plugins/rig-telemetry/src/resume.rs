@@ -1,7 +1,7 @@
 //! What the session spent, in its line in `/resume`: a [`ResumeLabel`]
 //! like any plugin's, kept current from [`SessionSpending`].
 
-use rig_ecs::{StopTurns, WriteJournal};
+use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
 use rig_sessions::ResumeLabel;
 
@@ -22,8 +22,8 @@ pub(super) fn add(app: &mut App) {
     app.add_systems(
         Last,
         label_spending
-            .after(StopTurns)
-            .before(WriteJournal)
+            .after(StopTurnsOnExit)
+            .before(WriteLogs)
             .run_if(resource_changed::<SessionSpending>),
     );
 }

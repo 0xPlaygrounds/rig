@@ -10,7 +10,7 @@
 //! an old value through the step without writing it back, so the first
 //! change is what writes the new shape. A value no step reads (a newer one,
 //! or one of no known shape) is set aside by the kernel and never written
-//! over; the plugin reads that from `SetAside` and shows the agent's list
+//! over; the plugin reads that from `Shelved` and shows the agent's list
 //! read-only (newer) or empty with one warning (unreadable).
 
 use rig_harness::prelude::*;
@@ -65,7 +65,7 @@ fn build_common<T: Shows>(app: &mut App) {
 /// notice: [`Newer`] when its version is newer than this build reads,
 /// else [`Unreadable`] with a warning.
 fn mark_set_aside(
-    set_aside: Res<SetAside>,
+    set_aside: Res<Shelved>,
     (keys, upgrades): (Res<SavedKeys>, Res<SavedUpgrades>),
     agents: Query<(Entity, &AgentId, Has<Newer>, Has<Unreadable>)>,
     mut seen: Local<usize>,

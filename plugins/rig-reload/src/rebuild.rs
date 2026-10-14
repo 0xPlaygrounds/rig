@@ -18,7 +18,7 @@ pub(crate) fn add(app: &mut App) {
         Update,
         (start_queued_reload, drain_reload, finish_reload)
             .chain()
-            .after(PollCalls),
+            .after(PollTasks),
     );
 }
 

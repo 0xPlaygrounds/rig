@@ -8,7 +8,7 @@
 //!
 //! At Start the kernel accepts what is left, in the order it was sent: an
 //! idle agent takes a message into its conversation and starts a turn with
-//! it, unless it is a [`DeliveryMode::Note`]; a busy agent keeps it until
+//! it, unless it is a [`DeliveryMode::Inform`]; a busy agent keeps it until
 //! the turn's next call ([`DeliveryMode::Steer`]) or its end
 //! ([`DeliveryMode::Queue`]). A user's `/` line ([`Incoming::command`]) is
 //! text to the kernel: an app that has slash commands, such as
@@ -43,12 +43,12 @@ use web_time::SystemTime;
 use super::agent::{
     ActiveTurn, Agent, CallOf, Conversation, EffectParent, Notice, TurnOf, TurnOutcome,
 };
-use super::calls::Wake;
 use super::model::Connection;
 use super::stage::{
-    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided,
+    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, ReadyToStart, Settled, Stage, Started,
     failed_in, moved,
 };
+use super::tasks::Wake;
 use super::turn::{Exiting, TurnCall, spawn_turn_call, take_outcome};
 
 /// When a message goes to the agent's model, and whether it asks for an
@@ -67,7 +67,8 @@ pub enum DeliveryMode {
     /// goes with the agent's next model call, whenever one is made, and
     /// never makes one. An idle agent keeps it in its conversation for
     /// the next turn.
-    Note,
+    #[serde(rename = "note")]
+    Inform,
 }
 
 /// Content read by a message's sender, such as an image file the user
@@ -368,7 +369,7 @@ fn handled(how: &'static str) -> Outcome {
 /// is a note, which is kept for the next turn; and keeps it, [`Started`],
 /// for a busy agent.
 pub(crate) fn accept(
-    ready: Query<(Entity, &Effect, &Incoming, Option<&ForAgent>), Undecided>,
+    ready: Query<(Entity, &Effect, &Incoming, Option<&ForAgent>), ReadyToStart>,
     mut agents: Query<(&mut Conversation, Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -403,7 +404,7 @@ pub(crate) fn accept(
         let spec = connection.map(|connection| &*connection.spec);
         // A note to an idle agent waits for the next turn.
         let turn = match joins {
-            None if message.mode == DeliveryMode::Note => None,
+            None if message.mode == DeliveryMode::Inform => None,
             None => Some(commands.spawn(TurnOf(agent)).id()),
             joins => joins,
         };
@@ -430,7 +431,7 @@ pub(crate) fn accept(
                     TurnCall,
                     CallOf(turn),
                     ForAgent(agent),
-                    Effect::child_of(Some(effect.id())),
+                    Effect::with_parent_id(Some(effect.id())),
                 ));
             }
             (Some(_), Some(_)) => {}
@@ -452,7 +453,7 @@ pub(crate) fn carry_on_accepted(
 ) {
     let mut carried = HashSet::new();
     for (message, &ForAgent(agent)) in &accepted {
-        if message.mode == DeliveryMode::Note || !carried.insert(agent) {
+        if message.mode == DeliveryMode::Inform || !carried.insert(agent) {
             continue;
         }
         let Ok((mut conversation, connection, active)) = agents.get_mut(agent) else {
@@ -517,7 +518,9 @@ impl Inboxes<'_, '_> {
         self.on_the_way
             .iter_many(work)
             .flatten()
-            .any(|(message, decision)| message.mode != DeliveryMode::Note && !decision.is_decided())
+            .any(|(message, decision)| {
+                message.mode != DeliveryMode::Inform && !decision.is_decided()
+            })
     }
 }
 
@@ -535,7 +538,7 @@ pub(crate) fn carry_on(waiting: Vec<(Entity, &Incoming)>) -> Option<Vec<(Entity,
     let next: Vec<_> = waiting
         .into_iter()
         .filter(|(_, message)| {
-            matches!(message.mode, DeliveryMode::Note) || message.mode == carries
+            matches!(message.mode, DeliveryMode::Inform) || message.mode == carries
         })
         .collect();
     next.iter()

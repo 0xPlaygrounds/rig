@@ -42,7 +42,7 @@ fn fixture(home: &Home) -> (App, SessionDir) {
     ]);
     let (mut app, wakes) = app_in(home, &id);
     app.insert_resource(scripted_models([("test/fixture", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -88,7 +88,7 @@ fn ask(home: &Home, args: &[&str], model: &MockCompletionModel) -> AskRun {
         terminal: false,
     })
     .insert_resource(scripted_models([("test/asker", model)]))
-    .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin, AskSessionPlugin));
+    .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin, AskSessionPlugin));
     app.finish();
     run_until(&mut app, &wakes, |world| {
         world.contains_resource::<AskRun>()

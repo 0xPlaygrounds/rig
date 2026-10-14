@@ -28,7 +28,7 @@ use rig_harness::rig_core::conversation::{
     Aside, AsideId, Change, Conversation as Thread, MessageId,
 };
 use rig_harness::rig_core::message::{Message, UserContent};
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{self, Record, Store};
 use rig_tui::{MainPane, TranscriptItem, TranscriptView};
 use serde::{Deserialize, Serialize};

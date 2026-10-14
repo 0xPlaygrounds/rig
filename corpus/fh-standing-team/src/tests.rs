@@ -70,7 +70,7 @@ fn start(
             ("test/backend", backend),
             ("test/frontend", frontend),
         ]))
-        .add_plugins((ServicesPlugin, AgentPlugin, JournalPlugin))
+        .add_plugins((ServicesPlugin, AgentPlugin, SessionLogPlugin))
         .add_plugins((WriteTool, StandingTeamPlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)

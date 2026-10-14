@@ -14,7 +14,7 @@ use crate::prelude::*;
 /// A gate that asks for a preview of every call, and refuses each once it
 /// is previewed, so none runs.
 fn preview_then_refuse(
-    mut calls: Query<(Entity, Option<&Previewed>, &mut Decision), (ToolCalls, Undecided)>,
+    mut calls: Query<(Entity, Option<&Previewed>, &mut Decision), (ToolCalls, ReadyToStart)>,
     mut commands: Commands,
 ) {
     for (call, previewed, mut decision) in &mut calls {
@@ -55,7 +55,7 @@ fn a_previewed_write_lists_the_file_it_would_create_and_leaves_the_disk_alone() 
         return;
     };
     let call = ToolCall::from_wire("w1", ToolFunction::new(name, args));
-    let parent = Effect::child_of(Some(EffectId::from_raw(1)));
+    let parent = Effect::with_parent_id(Some(EffectId::from_raw(1)));
     let call = world
         .spawn((ToolRequest { call }, parent, ForAgent(agent)))
         .id();

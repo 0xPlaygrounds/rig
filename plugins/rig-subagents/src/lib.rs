@@ -53,7 +53,7 @@
 //! fn one_at_a_time(
 //!     mut requests: Query<
 //!         (&ForAgent, &mut Decision),
-//!         (Undecided, PluginEffects, With<SpawnSubagent>, Without<Ask>),
+//!         (ReadyToStart, PluginEffects, With<SpawnSubagent>, Without<Ask>),
 //!     >,
 //!     roots: Query<&Spawned, Without<SpawnedBy>>,
 //! ) {
@@ -65,7 +65,7 @@
 //! }
 //!
 //! /// Tells each new agent where the project's notes are.
-//! fn with_notes(spawned: Query<&SpawnedAgent, Unreviewed>, mut commands: Commands) {
+//! fn with_notes(spawned: Query<&SpawnedAgent, ReadyToSettle>, mut commands: Commands) {
 //!     for agent in &spawned {
 //!         let notes = PromptSection::new(PromptSection::ORDER_PROJECT, "notes", "See NOTES.md.");
 //!         commands.spawn((notes, SectionOf(agent.0)));

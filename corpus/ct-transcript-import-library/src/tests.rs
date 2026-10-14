@@ -5,7 +5,7 @@ use rig_core::conversation::Author;
 use rig_core::message::{AssistantContent, Message, UserContent};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::prelude::{AgentPlugin, Deliver, DeliveryMode, World};
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Ended, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
@@ -273,7 +273,7 @@ fn the_harness_resumes_it_with_the_whole_history() {
     let model = MockCompletionModel::from_stream_turns(vec![reply("Implementing the LRU.")]);
     let (mut app, wakes) = app_in(&home, &id);
     app.insert_resource(scripted_models([("test/main", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

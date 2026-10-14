@@ -57,7 +57,7 @@ fn front(
         })
         .insert_resource(TuiTestScreen::new(80, 24))
         .insert_resource(TuiScreen(Rect::new(0, 0, 80, 24)))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_open_tool(
             "screenshot",
             "Take a screenshot.",

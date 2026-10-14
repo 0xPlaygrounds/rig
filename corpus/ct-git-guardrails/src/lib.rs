@@ -269,7 +269,7 @@ fn inspect(
             &Decision,
             Option<&Inspected>,
         ),
-        (Undecided, ToolCalls),
+        (ReadyToStart, ToolCalls),
     >,
     dirs: Query<&WorkDir>,
     (root, processes, workspace): (Res<ProjectRoot>, Res<Processes>, Res<ProjectWorkspace>),

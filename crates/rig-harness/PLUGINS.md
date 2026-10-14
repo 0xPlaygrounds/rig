@@ -70,11 +70,11 @@ this order, until nothing moves:
 | Stage | Who | What happens there |
 |---|---|---|
 | `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
-| `Review` | plugins | outcomes not settled yet (`Unreviewed`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
+| `Review` | plugins | outcomes not settled yet (`ReadyToSettle`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
 | `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
 | `Admit` | kernel | `Admitted` on every new effect; builds turn requests |
 | `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once (phases: `PrepareSystems`) |
-| `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`Undecided`): hold it or decide it (`Decision`) |
+| `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`ReadyToStart`): hold it or decide it (`Decision`) |
 | `Start` | kernel | applies the decisions as `Outcome`s, then starts what is admitted, unheld, unanswered and undecided |
 
 **A hook is an ordinary system in a stage** that queries stage data:
@@ -96,7 +96,7 @@ decision wins: a gate decides through the effect's `Decision`, naming who
 `Decider::Person` for the user's choice in a front), so no later gate
 overturns a refusal; the kernel applies it as the `Outcome` at Start, and
 the record keeps `decided_by`. Allowing is doing nothing. A reviewer edits
-the `Outcome` in place (`Query<&mut Outcome, Unreviewed>`) once, with a
+the `Outcome` in place (`Query<&mut Outcome, ReadyToSettle>`) once, with a
 marker, since Review sees it each pass. Plugins never insert `Outcome`.
 
 **Deciding once.** A gate that only reads (a path rule) decides afresh
@@ -104,7 +104,7 @@ each time it sees a call. One whose decision asks someone or has side
 effects marks the calls it decided on (a `SparseSet` marker) and skips
 marked and held ones; the user's approval is asked once for every plugin
 ([`NeedsApproval`](#gating-and-reviewing-tool-calls)). A decision is
-applied at Start, so until then the call is still `Undecided` for later
+applied at Start, so until then the call is still `ReadyToStart` for later
 gates: a gate that holds or asks checks `decision.is_decided()` first.
 
 **Failing closed.** A stage system that fails or panics closes its stage
@@ -146,7 +146,7 @@ impl Plugin for WriteGuardPlugin {
 }
 
 /// Refuses a `write` outside `src/` when it is about to run.
-fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
+fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (request, mut decision) in &mut calls {
         let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
         if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
@@ -158,7 +158,7 @@ fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCall
 /// Keeps the first line of a failed `shell` call's output, before it is
 /// committed.
 fn shorten_errors(
-    mut calls: Query<(Entity, &ToolRequest, &mut Outcome), (Unreviewed, ToolCalls, Without<Shortened>)>,
+    mut calls: Query<(Entity, &ToolRequest, &mut Outcome), (ReadyToSettle, ToolCalls, Without<Shortened>)>,
     mut commands: Commands,
 ) {
     for (call, request, mut outcome) in &mut calls {
@@ -401,7 +401,7 @@ may write) or `ExitStatus`, is the call's `Published`.
 **What a call would change**, before it runs: a gate puts `Preview` on it,
 the harness holds it, runs its tool on an overlay of the workspace that
 keeps every write from the disk, and puts `Previewed(Ok(changes))` on it,
-`Undecided` again: each `FileChange`, a deletion's too, with its hunks, the
+`ReadyToStart` again: each `FileChange`, a deletion's too, with its hunks, the
 text before and after (`after_text()`), and each side's `FileState`
 (`bytes`, `lines`, `hash`). A tool not [registered per call](#a-tool), or
 one that starts a process (`shell`), gets `Previewed(Err(..))`.
@@ -435,7 +435,7 @@ fn build(app: &mut App) {
 }
 
 /// Wants the user to approve each `git commit`.
-fn commits(calls: Query<(Entity, &ToolRequest), (Undecided, ToolCalls)>, mut commands: Commands) {
+fn commits(calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls)>, mut commands: Commands) {
     for (call, request) in &calls {
         let command = request.call.function.arguments["command"].as_str().unwrap_or_default();
         if command.contains("git commit") {
@@ -447,7 +447,7 @@ fn commits(calls: Query<(Entity, &ToolRequest), (Undecided, ToolCalls)>, mut com
 /// Refuses a call that would change more than 500 lines, or leave a file
 /// over 1 MiB, once it knows.
 fn too_big(
-    mut calls: Query<(Entity, &Footprint, Option<&Previewed>, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(Entity, &Footprint, Option<&Previewed>, &mut Decision), (ReadyToStart, ToolCalls)>,
     mut commands: Commands,
 ) {
     for (call, footprint, previewed, mut decision) in &mut calls {
@@ -493,7 +493,7 @@ cached result, a dry run) goes in `GateSystems::After` and reads
 `Decision`, so it never answers a call a gate refused. So does a group of
 calls that runs all or none, such as a patch's edits: the plugin spawns a
 child call per member, unheld (no gate sees a call held at spawn), and in
-`After`, without `Undecided`, holds the free ones while any member is held
+`After`, without `ReadyToStart`, holds the free ones while any member is held
 or `Waiting`; then refuses all if one was refused or failed, else releases
 them.
 
@@ -519,8 +519,8 @@ model's reply asks for five calls, and a permission gate holds the `edit`:
 held `shell` call waits, reads too: a later call may depend on what an
 earlier one changes (`mkdir x` then `ls x`). So a gate that cannot get an
 answer refuses at once rather than holding. A plugin that knows better
-says what a call touches in Prepare, with `Declared`: with
-`(Footprint(Touches::Writes(Scope::Paths(vec![src]))), Declared)` on a
+says what a call touches in Prepare, with `DeclaredFootprint`: with
+`(Footprint(Touches::Writes(Scope::Paths(vec![src]))), DeclaredFootprint)` on a
 held `cargo fmt`, a read of `docs/` runs at once (a held write still
 holds back `Reads(Anything)`, which overlaps every path).
 
@@ -576,7 +576,7 @@ struct Asked;
 
 /// Holds each summary, once read from the reply, with a question.
 fn ask(
-    calls: Query<(Entity, &Summarizing, &ForAgent), (Unreviewed, Without<Asked>)>,
+    calls: Query<(Entity, &Summarizing, &ForAgent), (ReadyToSettle, Without<Asked>)>,
     answerers: Answerers,
     mut commands: Commands,
 ) {
@@ -724,7 +724,7 @@ fn mark_review_turn(
 /// A line that starts with `#` is the user's note to self: it never
 /// reaches the model.
 fn keep_to_self(
-    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (ReadyToStart, IncomingMessages)>,
     mut notices: MessageWriter<Notice>,
 ) {
     for (typed, &ForAgent(agent), mut decision) in &mut typed {
@@ -746,7 +746,7 @@ request the kernel built, its system prompt in parts, `prompt` (rig-core's
 rules, the `PromptSection`s by order), and its messages, `history`, a view
 of the agent's conversation whose edits are never saved. The kernel builds
 a turn's own call (`TurnCall`), or one from an agent outside its turns
-(`BuildFrom(agent)`), when it is admitted (an `On<Add<Admitted>>` observer
+(`SideCall(agent)`), when it is admitted (an `On<Add<Admitted>>` observer
 runs before, a Prepare system after). A plugin changes it in
 `PrepareSystems::Edit`, so compaction measures what is sent, editing
 `history` as a [conversation](#changing-history) by its `Author`
@@ -768,7 +768,7 @@ takes that model's default (its caching), one it cannot take is left out.
   connection, its request as Start will send it (to measure in
   `PrepareSystems::Fit`) and the options its model leaves out, `prompt`
   its system prompt in parts. From Start on, a call has
-  `SentTo(connection)`, its request as sent, and `Fitted`, the options
+  `SentTo(connection)`, its request as sent, and `DroppedOptions`, the options
   left out (by the model's spec or a dry run, rig-core's `Serve::check`).
   A fact a `map_stream` closure inserts in the call's `PublishedContext`
   is its `Published` once answered.
@@ -857,7 +857,7 @@ fn tools_as_text(mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall
 fn fall_back(
     failed: Query<
         (Entity, &RetryVerdict, &ModelRequest, &Effect, &CallOf, &ForAgent),
-        (Unreviewed, With<TurnCall>, Without<SupersededBy>),
+        (ReadyToSettle, With<TurnCall>, Without<SupersededBy>),
     >,
     models: Res<Models>,
     mut commands: Commands,
@@ -868,7 +868,7 @@ fn fall_back(
             continue;
         }
         let Ok(fallback) = models.connect(FALLBACK) else { continue };
-        let retry = (TurnCall, CallOf(of.0), ForAgent(agent.0), Effect::child_of(effect.parent));
+        let retry = (TurnCall, CallOf(of.0), ForAgent(agent.0), Effect::with_parent_id(effect.parent));
         commands.spawn((request.clone().on(fallback), retry)).add_related::<SupersededBy>(&[call]);
     }
 }
@@ -907,8 +907,8 @@ fn print_text(mut deltas: MessageReader<StreamDelta>) {
 
 /// Says how long each model call took to start answering.
 fn time_to_first(
-    streamed: On<Add<Streamed>>,
-    calls: Query<(&Streamed, &Started, Option<&ForAgent>)>,
+    streamed: On<Add<StreamTiming>>,
+    calls: Query<(&StreamTiming, &Started, Option<&ForAgent>)>,
     mut notices: MessageWriter<Notice>,
 ) {
     if let Ok((streamed, started, agent)) = calls.get(streamed.entity) {
@@ -939,7 +939,7 @@ time, such as a budget: calls not started never start, the others are
 answered as stopped (or with their `IfStopped`). Once nothing holds the
 outcome and every call settled, the turn ends, `Settled` until the next
 frame, for an `On<Add<Settled>>` observer (which may `Retire` the agent).
-`Interrupt` stops a turn at once. A turn with no `TurnCall` left (a
+`StopTurn` stops a turn at once. A turn with no `TurnCall` left (a
 plugin answered its call and spawned none) stays open until something
 inserts a `TurnOutcome`.
 
@@ -975,7 +975,7 @@ pub struct EndWith(pub String);
 
 /// Answers the turn's next model call with the known text.
 fn end_with(
-    mut calls: Query<(&CallOf, &mut Decision), (Undecided, ModelCalls, With<TurnCall>)>,
+    mut calls: Query<(&CallOf, &mut Decision), (ReadyToStart, ModelCalls, With<TurnCall>)>,
     turns: Query<&EndWith>,
 ) {
     for (&CallOf(turn), mut decision) in &mut calls {
@@ -1139,7 +1139,7 @@ settle order: its request (`kind`), its answer (`outcome`, a reviewer's as
 `reviewed`), who decided it before it ran (`decided_by`), its times, the
 agent it worked for (`scope`, an `AgentId`), its `turn` (`Turn.index`),
 and the effect it was made under (`parent`). rig-telemetry writes them to
-the session's effect log in `Last` (`WriteJournal`) and reads them back
+the session's effect log in `Last` (`WriteLogs`) and reads them back
 through its `EffectLog`: `read()`, or `read_matching(&filter)` by agent,
 kind name (`completion`, `tool_call`, `message`, `subagent` or a plugin's)
 and turn (`EffectFilter::default().agent(id).turn(n)`), as written by the
@@ -1148,7 +1148,7 @@ end of the last frame.
 **Redacting.** A record holds what its effect really carried (tool output,
 file changes with the text before, the request as sent). A plugin changes
 records before they are written with `MessageMutator<EffectRecorded>` in
-`Last` `.after(StopTurns).before(WriteJournal)`, and
+`Last` `.after(StopTurnsOnExit).before(WriteLogs)`, and
 [rewrites](#rewriting-saved-history-a-redaction) those written. rig-core's
 `redact` finds keys and tokens by their shapes (`json`, `text`).
 
@@ -1159,10 +1159,10 @@ they start: a model call by an adapter placed outermost, the others in
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
-use rig_harness::rig_ecs::{StopTurns, WriteJournal};
+use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 
 fn build(app: &mut App) {
-    app.add_systems(Last, hide_secrets.after(StopTurns).before(WriteJournal));
+    app.add_systems(Last, hide_secrets.after(StopTurnsOnExit).before(WriteLogs));
 }
 
 /// Takes every key-shaped secret out of every record before it is written.
@@ -1265,7 +1265,7 @@ saved type's serde form without a step: `saved_upgrades::<T>(&[steps])`
 puts `T` at version `steps.len() + 1`, each step a pure function reading
 one version as the next, with a test reading a frozen JSON literal of the
 old one. A value no step reads, a newer rig's too, is set aside in the
-file (`SetAside` lists it), never dropped; `retired_saved(key)` keeps a
+file (`Shelved` lists it), never dropped; `retired_saved(key)` keeps a
 deleted type's values silently. A plugin's own aside kinds bump the same
 way, `aside_upgrades(kind, steps)`, written with `Versioned::to_aside_value`
 and read with `SavedUpgrades`' `Upgrades::read_aside`; its session files
@@ -1334,7 +1334,7 @@ conversation unless `unsaved()` (`add_aside`, `replace_aside`,
 **Saving.** A change waits in the conversation's outbox until the kernel
 saves it to the agent's log: between the stages of every pass, at the end
 of the frame, before a tool that may change something starts, and on an
-interrupt. Each one saved is a `Committed { agent, change }`, a `ChangeRecord`
+interrupt. Each one saved is a `ConversationChanged { agent, change }`, a `ChangeRecord`
 with the `Change` (`Push`, `Splice`, `Halt`, `Aside`, `Reset` for a value
 inserted over the component), its author (`by`) and time. A splice before
 the end costs the provider's prompt cache from there on. `Retire { entity
@@ -1655,7 +1655,7 @@ session's first app (a fork's too), `Resumed`, `Reloaded` after `/reload`,
 or `Restarted` on the previous build after a rollback; a switch is `New`
 or `Resumed`. `ForkSession { from, cut, asker }` copies this session
 (`from: None`) or any saved one into a new one in `Last`'s `ForkSessions`,
-after `WriteJournal`, so a file written before it is in the copy: whole,
+after `WriteLogs`, so a file written before it is in the copy: whole,
 as it was before a message (`ForkCut::Before`), or one line
 ([`Line`](#splits-and-the-native-session-views)). `SessionForked` names
 the copy and the `asker`, `SessionForkFailed` says why not, and the copy
@@ -1699,7 +1699,7 @@ struct NotesHold;
 
 /// Holds the first exit until the notes are written, at most 10 s.
 fn hold_exit(
-    exits: Query<Entity, (With<ExitRequest>, Undecided, PluginEffects)>,
+    exits: Query<Entity, (With<ExitRequest>, ReadyToStart, PluginEffects)>,
     mut held: Local<bool>,
     mut commands: Commands,
 ) {
@@ -1848,7 +1848,7 @@ fn build(app: &mut App) {
 }
 
 fn refuse_over_budget(
-    mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>,
+    mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>,
     spent: Option<Res<SessionSpending>>,
 ) {
     if spent.is_none_or(|spent| spent.0.total.cost < CAP) {
@@ -1917,7 +1917,7 @@ out of the call's `ToolRequest` in Prepare if the tool would refuse it.
 # Testing a plugin
 
 A plugin's test builds a small app: the agent core (`AgentPlugin`,
-`JournalPlugin`), the plugin, and what it needs (`CheckpointPlugin` or
+`SessionLogPlugin`), the plugin, and what it needs (`CheckpointPlugin` or
 `PreviewPlugin` alone, never beside the harness's group), run frame by
 frame with scripted models. `rig-harness-test-support` (a path
 dev-dependency) has the parts: apps on a scratch session or a store in
@@ -1943,7 +1943,7 @@ use rig_harness_test_support::{
 };
 
 /// The gate under test: refuses a `write` outside `src/`.
-fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
+fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (request, mut decision) in &mut calls {
         let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
         if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
@@ -1968,7 +1968,7 @@ fn a_write_outside_src_is_refused() {
     let home = scratch_home("src-only");
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_systems(AgentPass, src_only.in_set(Stage::Gate))
         .add_open_tool("write", "Write a file.", ToolOptions::default(), wrote)
         .init_resource::<ToolOutputs>()
@@ -1994,7 +1994,7 @@ with `app.add_front(..)`; one takes each run, alone owns stdin and stdout,
 and sets itself up in `finish` only if `app.runs_front(name)`. It sends
 what the user types as `Deliver` from `Author::user()`, shows `Notice`s
 (an `Error` fails a `--print` run or refuses a command), each agent's
-`Conversation` (or `Committed` changes) and
+`Conversation` (or `ConversationChanged` changes) and
 [notes](#the-transcript-notes-looks-and-scrolling), its reply as it
 streams ([`StreamDelta`](#what-a-model-streams)), sets `Shown` to the
 agent the user looks at, and may spawn an `Answerer` and answer questions
@@ -2218,7 +2218,7 @@ fn show(mut agents: Query<(&Conversation, &mut StatusItems), Changed<Conversatio
 Each agent is an entity with an `Agent`, a `Name`, an `AgentId` and a
 `Conversation`; a subagent is `SpawnedBy` its parent (`Spawned`).
 `rig_activity::Activity` says what an agent does now, and
-`MessageReader<Committed>` sees every change of every conversation.
+`MessageReader<ConversationChanged>` sees every change of every conversation.
 
 A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 `Left`, `Right`, with a ratatui `Constraint`), rows under the input

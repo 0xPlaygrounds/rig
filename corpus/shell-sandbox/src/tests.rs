@@ -44,7 +44,7 @@ fn run(
     };
     app.insert_resource(ProjectRoot(base.join("project")))
         .insert_resource(config)
-        .add_plugins((AgentPlugin, JournalPlugin, ShellTool, ShellSandboxPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ShellTool, ShellSandboxPlugin))
         .init_resource::<ToolOutputs>()
         .init_resource::<Ended>()
         .add_observer(log_ended)

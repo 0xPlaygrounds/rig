@@ -115,7 +115,13 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     app.set_error_handler(rig_harness::error::warn)
         .insert_resource(scripted_models([("test/main", &main), ("test/sub", &sub)]))
         .insert_resource(ProjectRoot(root.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin, ReadTool, ListTool))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            WatchPlugin,
+            ReadTool,
+            ListTool,
+        ))
         .add_plugins((SubagentsPlugin, CompactionPlugin, GlobRulesPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)

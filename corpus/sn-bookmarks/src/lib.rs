@@ -18,7 +18,7 @@
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Change, Conversation as Saved};
 use rig_harness::rig_core::message::{Message, UserContent};
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{LoadError, Record, as_of, history};
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;

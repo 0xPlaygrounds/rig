@@ -89,7 +89,7 @@ fn five_files_two_at_a_time_one_fails_and_writes_elsewhere_are_refused() {
     app.insert_resource(Models(Connector::new(Catalog::default())))
         .insert_resource(scripts)
         .init_resource::<Alive>()
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_plugins((ReadTool, EditTool, WriteTool, MapReducePlugin))
         .add_observer(on_spawn)
         .add_observer(on_despawn);

@@ -362,7 +362,7 @@ fn rewrite(
 
 /// Puts "(ran as: `<rewritten>`)" first in each rewritten call's result.
 fn say_what_ran(
-    mut calls: Query<(Entity, &RanAs, &mut Outcome, Has<Started>), (Unreviewed, ToolCalls)>,
+    mut calls: Query<(Entity, &RanAs, &mut Outcome, Has<Started>), (ReadyToSettle, ToolCalls)>,
     mut commands: Commands,
 ) {
     for (call, RanAs(ran_as), mut outcome, started) in &mut calls {

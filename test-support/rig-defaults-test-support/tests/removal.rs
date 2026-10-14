@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 use bevy_ecs::schedule::{ScheduleBuildWarning, ScheduleBuilt, ScheduleLabel};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_defaults_test_support::DEFAULTS;
-use rig_ecs::journal::SessionRestored;
+use rig_ecs::session_log::SessionRestored;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::load;
 use rig_harness::prelude::*;

@@ -117,7 +117,7 @@ struct Answers(Vec<String>);
 /// Answers each question with the first of the `--answer` choices it
 /// offers, or refuses it, saying why on stderr.
 fn answer(
-    mut asks: Query<(&Ask, &mut Decision), (Undecided, PluginEffects)>,
+    mut asks: Query<(&Ask, &mut Decision), (ReadyToStart, PluginEffects)>,
     answers: Res<Answers>,
 ) {
     for (ask, mut decision) in &mut asks {

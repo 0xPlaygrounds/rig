@@ -38,11 +38,11 @@ use crate::secrets::Secrets;
 use crate::settings::Settings;
 use rig_core::conversation::Author;
 use rig_ecs::agent::Notice;
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::Wake;
 
 use crate::primary::{PrimaryQuery, primary};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
-use rig_ecs::journal::SessionRestored;
+use rig_ecs::session_log::SessionRestored;
 
 /// The plugin name in the [`Author`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";
@@ -266,12 +266,12 @@ pub fn build_failure_note(what: &str, summary: &str) -> String {
 }
 
 /// Puts `note`, on a failed build, in `agent`'s conversation from the
-/// plugin [`BUILD_ORIGIN`], as a [`DeliveryMode::Note`]: an idle agent gets it at
+/// plugin [`BUILD_ORIGIN`], as a [`DeliveryMode::Inform`]: an idle agent gets it at
 /// once without a turn starting (logged as halted, so a restore does not
 /// answer it and the user's next message joins it); a busy agent's model
 /// reads it with the turn's next call.
 pub fn note_build_failure(commands: &mut Commands, agent: Entity, note: String) {
-    let note = Deliver::new(agent, note, DeliveryMode::Note);
+    let note = Deliver::new(agent, note, DeliveryMode::Inform);
     commands.trigger(note.with_author(Author::plugin(BUILD_ORIGIN)));
 }
 

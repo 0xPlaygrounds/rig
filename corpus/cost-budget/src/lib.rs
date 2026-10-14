@@ -108,7 +108,7 @@ fn valid(limit: f64) -> bool {
 
 /// Once the budget is spent, refuses every model request about to be sent.
 fn refuse_when_spent(
-    mut calls: Query<&mut Decision, (Undecided, ModelCalls)>,
+    mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls)>,
     budget: Res<Budget>,
     spending: Res<SessionSpending>,
 ) {

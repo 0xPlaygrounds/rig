@@ -180,7 +180,7 @@ fn references_go_with_the_message_once_and_through_the_tool() {
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(settings(&server))
         .insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, IssueReferencesPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, IssueReferencesPlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Ended>()
@@ -292,7 +292,7 @@ fn hash_offers_the_open_issues_by_title() {
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(settings(&server)).add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         IssueReferencesPlugin,
     ));
     tui_view(&mut app);

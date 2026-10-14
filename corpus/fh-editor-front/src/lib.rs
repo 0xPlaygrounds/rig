@@ -60,7 +60,7 @@ impl Plugin for EditorFrontPlugin {
                 AgentPass,
                 (from_buffers, review_edits).chain().in_set(EditorSystems),
             )
-            .add_systems(Update, receive.after(PollCalls).before(AgentLoop))
+            .add_systems(Update, receive.after(PollTasks).before(AgentLoop))
             .add_systems(PostUpdate, (forward, close_questions))
             .add_observer(take_line)
             .add_observer(attach)
@@ -622,7 +622,7 @@ fn receive(
             }
             FromEditor::Interrupt => {
                 if let Some(agent) = agent {
-                    commands.trigger(Interrupt::new(agent));
+                    commands.trigger(StopTurn::new(agent));
                 }
             }
             FromEditor::Pick { id, choice, text } => {
@@ -842,7 +842,10 @@ fn one_path<'a>(touches: &'a Touches, dir: Option<&WorkDir>) -> Option<&'a Path>
 /// Answers each `read` of an open file that no gate decided from its
 /// buffer, unsaved changes included, as `read` shows a file.
 fn from_buffers(
-    mut calls: Query<(&ToolRequest, &ForAgent, &Footprint, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<
+        (&ToolRequest, &ForAgent, &Footprint, &mut Decision),
+        (ReadyToStart, ToolCalls),
+    >,
     dirs: Query<&WorkDir>,
     buffers: Res<Buffers>,
 ) {
@@ -866,12 +869,12 @@ fn from_buffers(
 /// Holds each `edit` and `write` of an open file with a review the
 /// editors answer, unless a gate decided it already or no editor is
 /// connected. A call a gate holds, such as one waiting for the user's
-/// approval, is not [`Undecided`], so it is reviewed only once the gate
+/// approval, is not [`ReadyToStart`], so it is reviewed only once the gate
 /// lets it go.
 fn review_edits(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &Footprint, &mut Decision),
-        (Undecided, ToolCalls),
+        (ReadyToStart, ToolCalls),
     >,
     dirs: Query<&WorkDir>,
     buffers: Res<Buffers>,
@@ -1039,7 +1042,7 @@ fn close_questions(
 /// each notice.
 fn forward(
     mut deltas: MessageReader<StreamDelta>,
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     mut notices: MessageReader<Notice>,
     ids: Query<&AgentId>,
     clients: Query<&EditorClient>,

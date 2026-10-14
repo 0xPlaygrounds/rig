@@ -47,7 +47,7 @@ fn start(user: &MemoryStore, dir: &Path, no_color: bool) -> (App, Receiver<()>, 
         .insert_resource(scripted_models([("test/model", &model)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             CommandPlugin,
             PickPlugin,
             WatchPlugin,

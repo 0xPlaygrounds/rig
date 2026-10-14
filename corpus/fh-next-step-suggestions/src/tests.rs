@@ -25,7 +25,7 @@ struct Slow;
 
 /// Holds the first effect `F` selects before it starts.
 fn hold_first<F: bevy_ecs::query::QueryFilter>(
-    calls: Query<Entity, (F, Undecided)>,
+    calls: Query<Entity, (F, ReadyToStart)>,
     mut held: Local<bool>,
     mut commands: Commands,
 ) {
@@ -49,7 +49,7 @@ fn start(
         .insert_resource(scripted_models(models))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             PickPlugin,
             NextStepSuggestionsPlugin,
         ))
@@ -228,7 +228,7 @@ fn an_interrupted_turn_gets_no_suggestions() {
     };
     run_until(&mut app, &wakes, held);
 
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });

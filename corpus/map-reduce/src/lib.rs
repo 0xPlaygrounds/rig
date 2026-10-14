@@ -526,7 +526,10 @@ fn limit_model_calls(
 /// Refuses a map worker's call that could change something, unless its
 /// footprint writes only the worker's own file. Reading stays open.
 fn keep_to_file(
-    mut calls: Query<(&ToolRequest, &ForAgent, &Footprint, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<
+        (&ToolRequest, &ForAgent, &Footprint, &mut Decision),
+        (ReadyToStart, ToolCalls),
+    >,
     workers: Query<&MapWorker>,
 ) {
     for (request, &ForAgent(agent), Footprint(touches), mut decision) in &mut calls {

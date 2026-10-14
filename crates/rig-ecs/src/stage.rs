@@ -31,7 +31,7 @@
 //! use rig_ecs::prelude::*;
 //!
 //! // Refuse every effect of the kind `deploy` when it is about to start.
-//! fn no_deploys(mut effects: Query<(&EffectRequest, &mut Decision), (Undecided, PluginEffects)>) {
+//! fn no_deploys(mut effects: Query<(&EffectRequest, &mut Decision), (ReadyToStart, PluginEffects)>) {
 //!     for (request, mut decision) in &mut effects {
 //!         if request.kind.name() == "deploy" {
 //!             decision.decide(Decider::plugin("no-deploys"), Outcome::refused("no deploys today"));
@@ -75,17 +75,17 @@ use rig_memory::now_ms;
 use web_time::SystemTime;
 
 use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
-use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
-use super::journal::{Drain, SessionLog, millis, save_now};
 use super::restore::{Interrupted, answer_interrupted, mark_started};
+use super::session_log::{Drain, SessionLog, millis, save_now};
+use super::tasks::{Running, Wake, arrive};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
     refuse_calls,
 };
 use super::turn::{
-    Adapters, Fitted, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
+    Adapters, DroppedOptions, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
     build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
     judge_failures, keeps_settled, model_pool, stop_calls, stream_partials, stream_reply,
     wait_in_order,
@@ -112,7 +112,7 @@ pub enum Stage {
     /// [`RetryVerdict`](super::turn::RetryVerdict).
     Arrive,
     /// Plugins read, edit in place or hold an [`Outcome`]
-    /// ([`Unreviewed`]), and a turn's proposed [`TurnOutcome`], in the
+    /// ([`ReadyToSettle`]), and a turn's proposed [`TurnOutcome`], in the
     /// [`ReviewSystems`] phases.
     Review,
     /// The kernel settles what is answered and unheld, writes its
@@ -120,14 +120,14 @@ pub enum Stage {
     /// turns nothing holds.
     Commit,
     /// The kernel admits what was spawned since the last pass, builds the
-    /// requests of [`TurnCall`]s and [`BuildFrom`](super::turn::BuildFrom)s,
+    /// requests of [`TurnCall`]s and [`SideCall`](super::turn::SideCall)s,
     /// and marks the calls that wait for an earlier one [`Waiting`].
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`), in
     /// the [`PrepareSystems`] phases.
     Prepare,
     /// Plugins hold ([`HoldOf`]) or decide ([`Decision`]) what is about to
-    /// start ([`Undecided`]), once the kernel answered the tool calls it
+    /// start ([`ReadyToStart`]), once the kernel answered the tool calls it
     /// refuses ([`ToolRequest`]).
     Gate,
     /// The kernel applies the decisions made since the last pass as
@@ -201,10 +201,10 @@ pub enum GateSystems {
     /// must not answer what a gate refused, and a coordinator of a group
     /// that starts together or not at all. A decision made in Gate is
     /// applied at Start, so here a decided effect still matches
-    /// [`Undecided`]: read its [`Decision`]. A tool call the kernel refuses
+    /// [`ReadyToStart`]: read its [`Decision`]. A tool call the kernel refuses
     /// is answered before every gate: read its [`Outcome`]. No gate sees an
     /// effect held from its spawn, so a coordinator spawns its members
-    /// unheld and queries them without [`Undecided`]. While any member is
+    /// unheld and queries them without [`ReadyToStart`]. While any member is
     /// held by another or [`Waiting`], it holds the free ones with holds of
     /// its own; once none is, it refuses them all if one was refused or
     /// answered with an error, else releases its holds.
@@ -245,14 +245,14 @@ pub struct Effect {
 
 impl Default for Effect {
     fn default() -> Self {
-        Self::child_of(None)
+        Self::with_parent_id(None)
     }
 }
 
 impl Effect {
     /// An effect asked for by `parent`, such as a successor keeping the
     /// parent of the effect it supersedes.
-    pub fn child_of(parent: Option<EffectId>) -> Self {
+    pub fn with_parent_id(parent: Option<EffectId>) -> Self {
         Self {
             id: EffectId::from_raw(0),
             parent,
@@ -323,7 +323,7 @@ pub struct Started {
 }
 
 /// The effect's answer, applied by the kernel from its [`Decision`]. A
-/// reviewer edits it in place (`Query<&mut Outcome, Unreviewed>`), and the
+/// reviewer edits it in place (`Query<&mut Outcome, ReadyToSettle>`), and the
 /// record keeps the first answer as its outcome and the edited one as the
 /// reviewed one. Applied to a running effect, it cancels the handler. A
 /// tool call's answer is its result: `Outcome::from(ToolResult)`.
@@ -388,7 +388,7 @@ impl From<Result<effect::Answered, ErrorReport>> for Outcome {
 /// Start, unless the effect was answered meanwhile, and its record names
 /// who decided (`EffectRecord::decided_by`); it stays decided afterwards.
 /// An effect no one decided, such as a call every gate let run, records
-/// no decider. Until then the effect is still [`Undecided`] for the gates
+/// no decider. Until then the effect is still [`ReadyToStart`] for the gates
 /// after the one that decided: a gate that holds or asks checks
 /// [`is_decided`](Self::is_decided) first.
 #[derive(Component, Debug, Default)]
@@ -425,7 +425,7 @@ impl Decision {
 /// a running command's output so far. Whoever runs the effect keeps it
 /// current; the kernel answers with it, in place of "interrupted" or
 /// "stopped", whenever it stops the effect: an
-/// [`Interrupt`](super::agent::Interrupt), its turn failing or stopping,
+/// [`StopTurn`](super::agent::StopTurn), its turn failing or stopping,
 /// its cancellation, and the app's exit, which logs it for the restart.
 #[derive(Component, Clone, Debug)]
 pub struct IfStopped(pub Outcome);
@@ -510,7 +510,7 @@ pub struct Waiting;
 /// Effects about to start: admitted, not waiting, not started, unanswered,
 /// unheld, not superseded and not a restored call the kernel answers
 /// ([`Interrupted`]). A gate's filter.
-pub type Undecided = (
+pub type ReadyToStart = (
     With<Admitted>,
     Without<Waiting>,
     Without<Started>,
@@ -524,7 +524,7 @@ pub type Undecided = (
 /// Answered effects nothing holds, not settled yet. A reviewer's filter;
 /// it matches on every pass until Commit settles the effect, so a reviewer
 /// edits once, keeping a marker on what it edited.
-pub type Unreviewed = (With<Outcome>, Without<Holds>, Without<Settled>);
+pub type ReadyToSettle = (With<Outcome>, Without<Holds>, Without<Settled>);
 
 /// Tool calls ([`ToolRequest`]), so Bevy can see they are no other kind of
 /// effect: two queries of different kinds never conflict. Two queries in
@@ -708,7 +708,7 @@ pub(crate) fn build(app: &mut App) {
         app.add_systems(AgentPass, entering(stage).in_set(Enter(stage)));
     }
     // The conversations changed are saved between the stages, so a
-    // `Committed` reader in a later stage of the pass sees the change, and
+    // `ConversationChanged` reader in a later stage of the pass sees the change, and
     // at the end of the pass; each save keeps followed components with
     // their lines (`SaveConversations`).
     let mut after: Option<InternedSystemSet> = None;
@@ -1021,7 +1021,7 @@ type Saving<'w, 's> = ParamSet<
 /// as [`ModelStarts`] and [`ToolStarts`] say, and any other effect stays
 /// open.
 fn start(
-    mut ready: Query<StartItem, Undecided>,
+    mut ready: Query<StartItem, ReadyToStart>,
     agents: Query<&AgentId>,
     turns: Query<&TurnOutcome>,
     (tools, models): (ToolStarts, ModelStarts),
@@ -1116,7 +1116,7 @@ fn start(
                 running,
                 feed,
                 SentTo(connection),
-                Fitted(dropped),
+                DroppedOptions(dropped),
             ));
             continue;
         }

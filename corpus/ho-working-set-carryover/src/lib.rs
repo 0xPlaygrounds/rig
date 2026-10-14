@@ -2,7 +2,7 @@
 //! changed and its last test or build commands, tracked from the facts its
 //! tool calls publish ([`FilesRead`], [`FilesChanged`], [`ExitStatus`]).
 //! Whenever a compaction splices a summary into an agent's conversation
-//! (a [`Committed`] splice that took messages out and put in an entry by
+//! (a [`ConversationChanged`] splice that took messages out and put in an entry by
 //! [`summary_author`](rig_compaction::summary_author), from rig-compaction or `/compact`), a "Working set"
 //! entry goes into the conversation right after the summary, and into the
 //! request already built from it, so it goes with the next request and a
@@ -204,14 +204,16 @@ fn track(
 /// and starts the read list over. A restore commits nothing, so it carries
 /// nothing over again.
 fn carry_over(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     mut agents: Query<(&mut Conversation, &mut WorkingSet)>,
     mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     root: Res<ProjectRoot>,
 ) {
     let compactions: Vec<(Entity, MessageId)> = committed
         .read()
-        .filter_map(|Committed { agent, change }| Some((*agent, summary_in(&change.change)?)))
+        .filter_map(|ConversationChanged { agent, change }| {
+            Some((*agent, summary_in(&change.change)?))
+        })
         .collect();
     for (agent, summary) in compactions {
         let Ok((mut conversation, mut set)) = agents.get_mut(agent) else {

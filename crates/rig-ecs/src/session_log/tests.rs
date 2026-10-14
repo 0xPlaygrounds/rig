@@ -13,7 +13,7 @@ use rig_memory::{Files, MemoryStore, Record, Repair, Session, Store, history};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Committed, JournalPlugin, ReflectSaved, Retire, RewriteSession, SessionRestored,
+    ConversationChanged, ReflectSaved, Retire, RewriteSession, SessionLogPlugin, SessionRestored,
     SessionRewritten, SessionStore, open_session,
 };
 use crate::AgentPlugin;
@@ -50,7 +50,7 @@ pub(crate) fn push_message(world: &mut World, agent: Entity, message: Message) {
 fn app(store: &MemoryStore) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(store.clone()));
     app.finish();
     app.update();
@@ -81,8 +81,8 @@ fn id_of(app: &App, agent: Entity) -> String {
 }
 
 /// Every change announced so far.
-fn committed(app: &App) -> Vec<Committed> {
-    let committed = app.world().resource::<Messages<Committed>>();
+fn committed(app: &App) -> Vec<ConversationChanged> {
+    let committed = app.world().resource::<Messages<ConversationChanged>>();
     let mut cursor = committed.get_cursor();
     cursor.read(committed).cloned().collect()
 }
@@ -394,16 +394,17 @@ fn a_committed_reader_in_a_later_stage_of_the_pass_sees_the_change() {
             }
         }
     };
-    let read =
-        |mut committed: MessageReader<Committed>, pass: Res<Pass>, mut seen: ResMut<Seen>| {
-            let writer = Some(Author::plugin("writer"));
-            if committed
-                .read()
-                .any(|committed| committed.change.by == writer)
-            {
-                seen.read.get_or_insert(pass.0);
-            }
-        };
+    let read = |mut committed: MessageReader<ConversationChanged>,
+                pass: Res<Pass>,
+                mut seen: ResMut<Seen>| {
+        let writer = Some(Author::plugin("writer"));
+        if committed
+            .read()
+            .any(|committed| committed.change.by == writer)
+        {
+            seen.read.get_or_insert(pass.0);
+        }
+    };
     app.add_plugins(AgentPlugin)
         .init_resource::<Pass>()
         .init_resource::<Seen>()
@@ -635,7 +636,7 @@ fn a_message_from_another_author_is_its_own_entry() {
         return;
     };
     let note =
-        Deliver::new(agent, "build passed", DeliveryMode::Note).with_author(Author::plugin("ci"));
+        Deliver::new(agent, "build passed", DeliveryMode::Inform).with_author(Author::plugin("ci"));
     app.world_mut().trigger(note);
     app.update();
     let world = app.world();

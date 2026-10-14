@@ -21,7 +21,7 @@ fn seen(app: &App) -> Vec<String> {
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Settings::from_toml("[budget]\ndefault = 5.0"))
-        .add_plugins((AgentPlugin, JournalPlugin, CostBudgetPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CostBudgetPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);

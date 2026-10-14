@@ -464,7 +464,7 @@ fn start_consultants(
         let mut spawned = commands.spawn((
             request,
             ForAgent(asker),
-            Effect::child_of(effect),
+            Effect::with_parent_id(effect),
             SlotRequest { consultation, slot },
             ChildOf(consultation),
         ));
@@ -528,7 +528,7 @@ fn request_settled(
 fn count_steps(
     mut calls: Query<
         (Entity, &ForAgent, &mut Decision),
-        (Undecided, ModelCalls, With<TurnCall>, Without<Counted>),
+        (ReadyToStart, ModelCalls, With<TurnCall>, Without<Counted>),
     >,
     agents: Query<&SlotOf>,
     mut consultations: Query<&mut Consultation>,
@@ -566,7 +566,7 @@ fn count_steps(
 /// A consultant's failed model call is not tried again: the consult has a
 /// deadline, and the other consultants answer meanwhile.
 fn no_retries(
-    mut failed: Query<(&ForAgent, &mut RetryVerdict), (Unreviewed, ModelCalls)>,
+    mut failed: Query<(&ForAgent, &mut RetryVerdict), (ReadyToSettle, ModelCalls)>,
     consultants: Query<(), With<SlotOf>>,
 ) {
     for (&ForAgent(agent), mut verdict) in &mut failed {
@@ -671,7 +671,7 @@ fn show(commands: &mut Commands, asker: Entity, report: String) {
         .spawn(picker)
         .observe(move |picked: On<Picked>, mut commands: Commands| {
             if picked.chosen == Some(Chosen::item(0)) {
-                let note = Deliver::new(asker, report.clone(), DeliveryMode::Note);
+                let note = Deliver::new(asker, report.clone(), DeliveryMode::Inform);
                 commands.trigger(note.with_author(Author::user().titled("consult")));
             }
         });
@@ -696,7 +696,7 @@ fn stop_consultants(
 
 /// Interrupting an agent ends its consults.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     consultations: Query<(Entity, &Consultation)>,
     mut commands: Commands,
 ) {

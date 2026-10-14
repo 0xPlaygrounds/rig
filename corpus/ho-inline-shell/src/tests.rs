@@ -32,7 +32,7 @@ fn typed_commands_are_expanded_in_parallel_with_a_timeout() {
         .insert_resource(ProjectRoot(env!("CARGO_MANIFEST_DIR").into()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             BasicCommandsPlugin,
             InlineShellPlugin,
         ))

@@ -95,7 +95,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_core::conversation::BRANCH;
-use rig_ecs::journal::SessionRewritten;
+use rig_ecs::session_log::SessionRewritten;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, Shown};

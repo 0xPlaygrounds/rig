@@ -391,7 +391,7 @@ fn ask(
 fn hold_messages(
     messages: Query<
         (Entity, &Incoming, &ForAgent, &Decision),
-        (Undecided, IncomingMessages, Without<Seen>),
+        (ReadyToStart, IncomingMessages, Without<Seen>),
     >,
     mut agents: Query<&mut Recovering>,
     mut commands: Commands,

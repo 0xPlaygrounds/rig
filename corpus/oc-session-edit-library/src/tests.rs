@@ -3,8 +3,8 @@ use std::fmt::Display;
 use rig_core::message::{AssistantMessage, ToolName};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::prelude::{
-    Agent, AgentPlugin, AppToolsExt, Deliver, DeliveryMode, Entity, JournalPlugin, On, SpawnedBy,
-    ToolCalled, ToolOptions, TurnOutcome, With, Without,
+    Agent, AgentPlugin, AppToolsExt, Deliver, DeliveryMode, Entity, On, SessionLogPlugin,
+    SpawnedBy, ToolCalled, ToolOptions, TurnOutcome, With, Without,
 };
 use rig_harness_test_support::{
     Ended, app_in, log_ended, reply, run_until, scratch_home, scripted_models,
@@ -182,7 +182,7 @@ fn lists_shrinks_drops_resumes_exports_and_refuses() {
     if let Some(small_id) = small_id {
         let (mut app, wakes) = app_in(&home, &small_id);
         app.insert_resource(scripted_models([("test/model", &model)]))
-            .add_plugins((AgentPlugin, JournalPlugin))
+            .add_plugins((AgentPlugin, SessionLogPlugin))
             // A `shell`, so the request declares tools and keeps the call
             // and its result as such.
             .add_open_tool(

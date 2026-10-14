@@ -308,7 +308,7 @@ fn step_command(
 fn step(
     calls: Query<
         (Entity, &ForAgent, &ToolRequest, &Decision),
-        (Undecided, ToolCalls, Without<Stepped>),
+        (ReadyToStart, ToolCalls, Without<Stepped>),
     >,
     replies: Replies,
     steppers: Steppers,
@@ -396,7 +396,7 @@ fn answered(
             },
             // Closed: the user stops the turn, as an interrupt does.
             (_, None) => {
-                edits.commands.trigger(Interrupt::new(agent));
+                edits.commands.trigger(StopTurn::new(agent));
                 continue;
             }
         };

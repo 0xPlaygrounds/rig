@@ -25,7 +25,7 @@ const EARLIER: [&str; 6] = [
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin, HandoffPlugin, UsagePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, HandoffPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

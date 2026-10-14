@@ -184,7 +184,10 @@ impl Repo<'_> {
 /// answers a message of the user's until the files are snapshotted, unless
 /// a gate before it decided the call.
 fn snapshot(
-    calls: Query<(Entity, &CallOf, &ForAgent, &Decision), (Undecided, ModelCalls, With<TurnCall>)>,
+    calls: Query<
+        (Entity, &CallOf, &ForAgent, &Decision),
+        (ReadyToStart, ModelCalls, With<TurnCall>),
+    >,
     turns: Query<&Turn, Without<Snapshotted>>,
     agents: Query<(&Conversation, &Checkpoints), Without<SpawnedBy>>,
     mut commands: Commands,

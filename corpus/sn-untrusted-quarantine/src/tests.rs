@@ -43,7 +43,7 @@ fn start(
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
         .insert_resource(scripted_models(served.iter().copied()))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_plugins((ReadTool, ShellTool, WriteTool, SubagentsPlugin))
         .add_plugins(QuarantinePlugin)
         .init_resource::<ToolOutputs>()

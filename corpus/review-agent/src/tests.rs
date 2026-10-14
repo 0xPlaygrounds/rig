@@ -46,7 +46,7 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     app.insert_resource(scripted_models(models))
         .insert_resource(Settings::from_toml(settings))
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, WriteTool))
         .add_plugins((UsagePlugin, ReviewAgentPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);

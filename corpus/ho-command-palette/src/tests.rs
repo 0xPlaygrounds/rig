@@ -45,10 +45,15 @@ impl PortableTool for ZzRuntime {
 /// after the first frame, with its agent shown.
 fn start(home: &Home) -> (App, Entity) {
     let (mut app, _wakes) = app_in(home, &SessionId::generate());
-    app.add_plugins((AgentPlugin, JournalPlugin, PickPlugin, CommandPalettePlugin))
-        .init_resource::<Striped>()
-        .add_command("zebra-stripes", "Paint the stripes", stripe)
-        .add_command("gone", "Gone soon", |_: In<CommandArgs>| {});
+    app.add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        PickPlugin,
+        CommandPalettePlugin,
+    ))
+    .init_resource::<Striped>()
+    .add_command("zebra-stripes", "Paint the stripes", stripe)
+    .add_command("gone", "Gone soon", |_: In<CommandArgs>| {});
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);

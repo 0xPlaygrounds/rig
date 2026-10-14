@@ -48,7 +48,7 @@ fn start(home: &Home, id: &SessionId, models: &Models3) -> (App, Receiver<()>, E
     ]))
     .add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         PickPlugin,
         ConversationChaptersPlugin,
     ))

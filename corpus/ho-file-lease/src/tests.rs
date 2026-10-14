@@ -169,7 +169,7 @@ fn writes_to_one_file_wait_for_its_lease_and_its_owner_hears_of_the_change() {
     ]))
     .insert_resource(Settings::from_toml(settings))
     .insert_resource(ProjectRoot(dir.clone()))
-    .add_plugins((AgentPlugin, JournalPlugin, ClockPlugin, FileLeasePlugin))
+    .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin, FileLeasePlugin))
     .add_tool(SlowWrite {
         dir: dir.clone(),
         desk: desk.clone(),
@@ -217,7 +217,7 @@ fn writes_to_one_file_wait_for_its_lease_and_its_owner_hears_of_the_change() {
     assert!(!read(&dir).contains('B'));
 
     // C's turn is interrupted while it waits: its call leaves the queue.
-    app.world_mut().trigger(Interrupt::new(agent_c));
+    app.world_mut().trigger(StopTurn::new(agent_c));
     run_until(&mut app, &wakes, ended(1));
     assert!(wait_of(app.world_mut(), agent_c).is_none());
 

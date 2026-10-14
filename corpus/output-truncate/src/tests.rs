@@ -49,7 +49,7 @@ fn a_long_shell_output_reaches_the_model_cut_and_is_kept_whole() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(root.clone())).add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ShellTool,
         OutputTruncatePlugin,
     ));

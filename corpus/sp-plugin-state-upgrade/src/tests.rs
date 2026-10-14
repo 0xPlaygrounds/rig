@@ -33,7 +33,7 @@ fn start(home: &Home, id: &SessionId, version: Version) -> (App, Receiver<()>, E
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(TuiTestScreen::new(100, 20));
     rig_harness_test_support::tui_view(&mut app);
-    app.add_plugins((AgentPlugin, JournalPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);

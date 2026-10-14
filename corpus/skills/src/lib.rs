@@ -311,11 +311,11 @@ fn delivered(
 /// A conversation compacted into a summary may have lost the bodies
 /// loaded in the running turn, so they may be loaded again.
 fn forget_compacted(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     agents: Query<&ActiveTurn>,
     mut loaded: Query<&mut LoadedInTurn>,
 ) {
-    for Committed { agent, change } in committed.read() {
+    for ConversationChanged { agent, change } in committed.read() {
         if summary_in(&change.change).is_some()
             && let Ok(turn) = agents.get(*agent)
             && let Ok(mut loaded) = loaded.get_mut(turn.turn())

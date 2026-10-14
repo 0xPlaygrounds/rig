@@ -116,7 +116,7 @@ fn commands_see_only_what_the_policy_allows() {
         .insert_resource(ProjectRoot(root.clone()))
         .insert_resource(UserPolicyFile(None))
         .insert_resource(TuiTestScreen::new(120, 200))
-        .add_plugins((AgentPlugin, JournalPlugin, CommandPlugin, ShellTool))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, ShellTool))
         .add_plugins((PickPlugin, SubagentsPlugin, ShellEnvPolicyPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)

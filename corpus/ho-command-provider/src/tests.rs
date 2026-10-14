@@ -112,7 +112,7 @@ fn start(name: &str, scripts: &[(&str, &str)], config: &str) -> (App, Receiver<(
     app.add_plugins((
         ServicesPlugin,
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         CommandProviderPlugin,
     ))
     .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
@@ -143,7 +143,7 @@ fn interrupt(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
     run_until(app, wakes, |world| {
         world.resource::<Collected<StreamDelta>>().0.len() > before
     });
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     app.update();
 }
 
@@ -203,7 +203,7 @@ fn a_program_answers_calls_tools_and_fails() {
         .trigger(Deliver::new(agent, "say hi", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| noticed(world, "Retrying in"));
     assert!(noticed(app.world(), "asked to be tried again"));
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     app.update();
 }
 

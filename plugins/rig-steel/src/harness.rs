@@ -20,11 +20,11 @@ use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
     Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnOutcome,
 };
-use rig_ecs::calls::{PollCalls, Wake};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
-use rig_ecs::model::{Effort, ModelChoice, Models};
+use rig_ecs::model::{ModelChoice, Models, ReasoningSetting};
 use rig_ecs::prelude::{Author, RequestId};
 use rig_ecs::stage::{AgentLoop, Effect, ForAgent, Outcome, Settled, SupersededBy};
+use rig_ecs::tasks::{PollTasks, Wake};
 use rig_ecs::tools::ToolRequest;
 
 /// The [`Harness`] resource and the jobs, replies and tool calls behind it.
@@ -35,7 +35,7 @@ impl Plugin for HarnessPlugin {
         app.init_resource::<Jobs>()
             .init_resource::<Replies>()
             .add_systems(PreStartup, insert_harness)
-            .add_systems(Update, run_jobs.before(PollCalls).before(AgentLoop))
+            .add_systems(Update, run_jobs.before(PollTasks).before(AgentLoop))
             .add_observer(end_replies)
             .add_observer(drop_replies)
             .add_observer(answer_call)
@@ -229,7 +229,10 @@ fn spawn_agent(
     let inherited = parent.map(|parent| {
         (
             world.get::<ModelChoice>(parent).cloned(),
-            world.get::<Effort>(parent).copied().unwrap_or_default(),
+            world
+                .get::<ReasoningSetting>(parent)
+                .copied()
+                .unwrap_or_default(),
             world.get::<SystemPrompt>(parent).cloned(),
             world.get::<ToolAccess>(parent).cloned(),
         )

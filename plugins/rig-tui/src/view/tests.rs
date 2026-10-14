@@ -26,7 +26,7 @@ fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {
     use rig_core::completion::Message;
     use rig_core::message::UserContent;
     let (mut app, agent) = view_app();
-    let note = Deliver::new(agent, "first", DeliveryMode::Note);
+    let note = Deliver::new(agent, "first", DeliveryMode::Inform);
     app.world_mut().trigger(note);
     app.update();
     app.world_mut()
@@ -206,7 +206,7 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
 fn laid_out_narrow(said: &[&str]) -> Option<DrawnTranscript> {
     let (mut app, agent) = view_app();
     for text in said {
-        let note = Deliver::new(agent, *text, DeliveryMode::Note);
+        let note = Deliver::new(agent, *text, DeliveryMode::Inform);
         app.world_mut().trigger(note);
         app.update();
     }

@@ -102,7 +102,7 @@ fn the_architect_plans_and_the_editor_edits() {
         .insert_resource(ProjectRoot(dir.clone()))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_plugins((ReadTool, SearchTool, EditTool, WriteTool, ShellTool))
         .add_plugins((UsagePlugin, ArchitectEditorPlugin));
     collect::<Notice>(&mut app);

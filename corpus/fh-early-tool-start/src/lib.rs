@@ -169,7 +169,7 @@ fn start_early(
         }
         commands.spawn((
             ToolRequest { call: call.clone() },
-            Effect::child_of(None),
+            Effect::with_parent_id(None),
             CallOf(turn),
             ForAgent(agent),
             StartedEarly {

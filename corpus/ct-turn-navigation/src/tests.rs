@@ -93,7 +93,7 @@ fn keys_jump_between_prompts_and_the_header_follows_the_top_row() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Settings::default())
         .insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_open_tool("dump", "Print a lot.", ToolOptions::default(), dump)
         .init_resource::<Ended>()
         .add_observer(log_ended)

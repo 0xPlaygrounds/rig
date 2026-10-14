@@ -41,7 +41,12 @@ fn writes(id: &str, root: &Path, content: &str) -> [Vec<MockStreamEvent>; 2] {
 fn run(store: &MemoryStore, root: &Path, model: &MockCompletionModel, until: &str) -> Option<App> {
     let (mut app, wakes): (App, Receiver<()>) = app_on(store);
     app.insert_resource(ProjectRoot(root.to_path_buf()))
-        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, CheckAfterTurnPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            WriteTool,
+            CheckAfterTurnPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);

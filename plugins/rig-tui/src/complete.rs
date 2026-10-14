@@ -19,7 +19,7 @@ use crossbeam_channel::Receiver;
 
 use super::editor::{Editor, MainEditor};
 use super::view::TuiView;
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::Wake;
 use rig_harness::commands::SlashCommand;
 use rig_harness::services::ProjectRoot;
 use rig_harness::watch::{FileChanges, FileWatch};

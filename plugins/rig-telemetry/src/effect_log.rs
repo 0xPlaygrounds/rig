@@ -24,12 +24,12 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
 use rig_cassette::effect_log::{self, LogHeader, jsonl};
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
-use rig_ecs::WriteJournal;
+use rig_ecs::WriteLogs;
 use rig_ecs::effects::Effects;
-#[cfg(feature = "tui")]
-use rig_ecs::journal::SessionRestored;
-use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+#[cfg(feature = "tui")]
+use rig_ecs::session_log::SessionRestored;
+use rig_ecs::session_log::SessionStore;
 use rig_ecs::tools::ToolDef;
 #[cfg(feature = "tui")]
 use rig_harness::prelude::AppCliExt;
@@ -57,7 +57,7 @@ impl Plugin for EffectLogPlugin {
             .insert_resource(EffectLog { store })
             .insert_resource(EffectLogFile { header, writer })
             .add_systems(Startup, describe_tools)
-            .add_systems(Last, write_effects.in_set(WriteJournal))
+            .add_systems(Last, write_effects.in_set(WriteLogs))
             .add_observer(describe_model);
         #[cfg(feature = "tui")]
         if app.runs_front(rig_tui::FRONT) {

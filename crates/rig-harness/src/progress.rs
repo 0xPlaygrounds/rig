@@ -5,8 +5,8 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use crossbeam_channel::Receiver;
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult};
-use rig_ecs::calls::Wake;
 use rig_ecs::stage::{AgentPass, IfStopped, Outcome, Stage};
+use rig_ecs::tasks::Wake;
 use rig_tools::{Cut, Live};
 
 /// A line about a running call's progress, such as `12 of 40 files` or a

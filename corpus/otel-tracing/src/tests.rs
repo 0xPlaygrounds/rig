@@ -55,7 +55,7 @@ fn read(called: On<ToolCalled<ReadArgs>>, mut commands: Commands) {
 
 /// Spec 01's denial, reduced to its gate: every `read` call is refused
 /// before it runs.
-fn deny(calls: Query<(Entity, &ToolRequest), Undecided>, mut commands: Commands) {
+fn deny(calls: Query<(Entity, &ToolRequest), ReadyToStart>, mut commands: Commands) {
     for (call, request) in &calls {
         if request.call.function.name.as_str() == "read" {
             let denied = Outcome::refused("The user denied this command");
@@ -70,7 +70,7 @@ fn traced_app(store: &MemoryStore) -> (App, std::sync::mpsc::Receiver<()>, Memor
     let memory = Memory::default();
     app.insert_resource(Tracing::new(memory.clone(), "memory", true))
         .insert_resource(Models(Connector::new(Catalog::default())))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     (app, wakes, memory)

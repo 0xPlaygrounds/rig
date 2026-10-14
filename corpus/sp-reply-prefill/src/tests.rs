@@ -82,7 +82,7 @@ fn app(
         }
     };
     app.insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, ReplyPrefillPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReplyPrefillPlugin))
         .add_systems(AgentPass, held.in_set(PrepareSystems::Edit))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
         .init_resource::<Ended>()

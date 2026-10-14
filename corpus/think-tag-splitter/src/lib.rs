@@ -147,7 +147,7 @@ fn adapt(
 
 /// Learns which models send tags from the replies the split rewrote.
 fn remember(
-    calls: Query<(&SentTo, &Published), (Unreviewed, ModelCalls)>,
+    calls: Query<(&SentTo, &Published), (ReadyToSettle, ModelCalls)>,
     mut sends: ResMut<SendsTags>,
 ) {
     for (sent, published) in &calls {

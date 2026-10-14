@@ -38,7 +38,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(Settings::from_toml(SETTINGS))
         .insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
         .add_plugins((rig_models::ModelsPlugin, ModelRouterPlugin))
         .add_open_tool(
             "read",
@@ -69,7 +69,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
 
     // The picker's `router` item runs `/model router`; the agent reasons
     // hard, which only `strong` takes.
-    let high = Effort(Some(Reasoning::Effort(Level::High)));
+    let high = ReasoningSetting(Some(Reasoning::Effort(Level::High)));
     world.entity_mut(agent).insert(high);
     world.trigger(RunCommand::new(agent, "model router".to_owned()));
     app.update();

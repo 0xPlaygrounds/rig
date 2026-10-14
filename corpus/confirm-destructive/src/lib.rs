@@ -112,7 +112,7 @@ impl Plugin for ConfirmDestructivePlugin {
 fn gate(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &mut Decision),
-        (Undecided, ToolCalls, Without<Approved>),
+        (ReadyToStart, ToolCalls, Without<Approved>),
     >,
     patterns: Res<DestructivePatterns>,
     allowed: Res<SessionAllowances>,

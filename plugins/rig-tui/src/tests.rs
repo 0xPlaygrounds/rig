@@ -252,7 +252,7 @@ fn a_plugins_test_lays_out_a_transcript_without_a_terminal() {
     let world = app.world_mut();
     let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
     let Ok(agent) = agent else { return };
-    let note = Deliver::new(agent, "a note", DeliveryMode::Note);
+    let note = Deliver::new(agent, "a note", DeliveryMode::Inform);
     app.world_mut().trigger(note);
     app.update();
     let lay_out = move |layout: TranscriptLayout| {

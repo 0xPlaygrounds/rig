@@ -32,7 +32,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as History;
 use rig_harness::rig_core::conversation::pairing::{self, PairingError};
 use rig_harness::rig_core::message::{Message, Text, ToolResult as ResultPart, ToolResultContent};
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{LoadError, Record};
 use rig_tui::{RunInTerminal, TerminalExit};
 use serde::Deserialize;

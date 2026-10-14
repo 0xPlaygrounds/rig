@@ -189,7 +189,7 @@ fn handoff(
 type Inherited<'a> = (
     &'a AgentId,
     Option<&'a ModelChoice>,
-    &'a Effort,
+    &'a ReasoningSetting,
     &'a SystemPrompt,
     &'a ToolAccess,
     Option<&'a Connection>,

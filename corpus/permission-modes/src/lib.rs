@@ -263,7 +263,7 @@ fn offer(
 fn ask(
     mut calls: Query<
         (Entity, &ToolRequest, &Footprint, &ForAgent, &mut Decision),
-        (Undecided, ToolCalls, Without<Approved>),
+        (ReadyToStart, ToolCalls, Without<Approved>),
     >,
     agents: Query<(
         Option<&Name>,

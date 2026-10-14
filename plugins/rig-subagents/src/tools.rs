@@ -201,7 +201,7 @@ fn send_briefs(
             }
             for (sibling, _) in siblings.iter().filter(|(_, (.., briefing))| !briefing) {
                 let text = format!("A new peer works beside you: {}.", named(me));
-                let note = Deliver::new(*sibling, text, DeliveryMode::Note);
+                let note = Deliver::new(*sibling, text, DeliveryMode::Inform);
                 commands.trigger(note.with_author(Author::plugin("subagents")));
             }
         }
@@ -243,7 +243,7 @@ impl Agents<'_, '_> {
         let unread: Vec<&Incoming> = self
             .inboxes
             .iter()
-            .filter(|(sent, to, _)| to.0 == caller && sent.mode != DeliveryMode::Note)
+            .filter(|(sent, to, _)| to.0 == caller && sent.mode != DeliveryMode::Inform)
             .map(|(sent, ..)| sent)
             .collect();
         let read = |request: &&Request| {
@@ -328,7 +328,7 @@ impl Agents<'_, '_> {
             let request = RequestId(called.tool_call.id.to_string());
             let asked = Request {
                 id: request.clone(),
-                asker: called.caller.clone(),
+                asker: called.agent_id.clone(),
                 batch: None,
             };
             let busy = self.agents.get(target.entity).is_ok_and(|agent| agent.busy);
@@ -338,7 +338,7 @@ impl Agents<'_, '_> {
             if !busy {
                 entity.insert(EffectParent(called.effect));
             }
-            let author = Author::agent(called.caller.clone(), Some(request));
+            let author = Author::agent(called.agent_id.clone(), Some(request));
             let mode = match waiting {
                 true => DeliveryMode::Steer,
                 false => DeliveryMode::Queue,

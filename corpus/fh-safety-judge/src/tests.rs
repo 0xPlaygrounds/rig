@@ -122,7 +122,12 @@ fn start(
         });
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     app.insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin, SafetyJudgePlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            UsagePlugin,
+            SafetyJudgePlugin,
+        ))
         .add_open_tool(
             "shell",
             "Run a command.",

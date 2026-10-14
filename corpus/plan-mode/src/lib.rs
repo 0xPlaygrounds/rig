@@ -147,7 +147,7 @@ fn plan_only(
 /// Refuses each call of a tool that is not read-only, of a planning agent,
 /// when it is about to run.
 fn no_changes(
-    mut calls: Query<(&Footprint, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(&Footprint, &ForAgent, &mut Decision), (ReadyToStart, ToolCalls)>,
     planning: Query<(), With<PlanMode>>,
     parents: Query<&SpawnedBy>,
 ) {

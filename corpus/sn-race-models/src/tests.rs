@@ -139,7 +139,7 @@ fn race(models: Models, over: &[&str]) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(models)
         .insert_resource(races)
-        .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin, RaceModelsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin, RaceModelsPlugin))
         .add_open_tool("probe", "Probe.", ToolOptions::default(), probed)
         .init_resource::<Probes>()
         .init_resource::<Ended>()

@@ -230,7 +230,7 @@ fn receive(
     threads: Query<(Entity, &ChatThread)>,
     asks: OpenAsks,
     primaries: PrimaryQuery,
-    models: Query<(Option<&ModelChoice>, &Effort, Option<&Connection>)>,
+    models: Query<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
     mut commands: Commands,
 ) {
     let Some(transport) = &mut bridge.transport else {
@@ -301,7 +301,7 @@ fn choice(ask: &Ask, reply: &str) -> Option<usize> {
 fn spawn_agent(
     commands: &mut Commands,
     thread: ChatThread,
-    parent: Option<(Option<&ModelChoice>, &Effort, Option<&Connection>)>,
+    parent: Option<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
 ) -> Entity {
     let name = Name::new(format!("chat {}", thread.thread));
     let mut agent = commands.spawn((name, thread));

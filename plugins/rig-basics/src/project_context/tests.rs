@@ -25,7 +25,7 @@ use super::{
 fn an_agent_without_a_prompt_of_its_own_is_told_it_is_rig() {
     let model = MockCompletionModel::from_stream_turns([reply("hi"), reply("hello")]);
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
         .add_systems(AgentPass, default_prompt.in_set(Stage::Prepare));
@@ -287,7 +287,7 @@ fn in_another_workspace_the_first_request_waits_for_its_instruction_files() {
         .insert_resource(ProjectWorkspace(Arc::new(Remote::saying(
             "Run the remote's tests.",
         ))))
-        .add_plugins((AgentPlugin, JournalPlugin, ProjectContextPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ProjectContextPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

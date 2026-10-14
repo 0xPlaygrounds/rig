@@ -1,5 +1,5 @@
 //! Work that runs off the main thread: a [`Running`] task on an entity
-//! becomes a [`Done`] component when it finishes, through one `poll_calls`
+//! becomes a [`Done`] component when it finishes, through one `poll_tasks`
 //! system, so observers of that component carry on; on an effect, such as
 //! an open tool call, it becomes the effect's
 //! [`Outcome`](super::stage::Outcome) in
@@ -21,7 +21,7 @@ use futures::{Stream, StreamExt};
 
 use super::stage::{self, Effect};
 
-/// Frames run right after a woken one (see [`settle`]).
+/// Frames run right after a woken one (see [`run_settle_frames`]).
 const SETTLE_FRAMES: u32 = 4;
 
 /// Wakes the app's loop from another thread: a finished call, a streamed
@@ -67,7 +67,7 @@ impl Default for Wake {
 
 /// Runs four more frames after a frame some [`Wake`] woke,
 /// in `Last`, by asking the loop for each without counting it as a wake.
-pub(crate) fn settle(wake: Res<Wake>, mut left: Local<u32>) {
+pub(crate) fn run_settle_frames(wake: Res<Wake>, mut left: Local<u32>) {
     if wake.woken.swap(false, Ordering::AcqRel) {
         *left = SETTLE_FRAMES;
     }
@@ -81,7 +81,7 @@ pub(crate) fn settle(wake: Res<Wake>, mut left: Local<u32>) {
 type Finish = Box<dyn FnOnce(EntityWorldMut) + Send>;
 
 /// Work running off the main thread for its entity, such as a call: when
-/// it finishes, the kernel replaces it with its output in [`PollCalls`], as a
+/// it finishes, the kernel replaces it with its output in [`PollTasks`], as a
 /// [`Done<T>`] or the component [`Running::spawn_into`] names, and
 /// observers of that component carry on. Bevy's own pattern
 /// (`examples/async_tasks/async_compute.rs`): one task component for every
@@ -217,11 +217,11 @@ impl<T: Send + Sync + 'static> From<T> for Done<T> {
 /// The system polling running work, in `Update`: a system that reads what
 /// finished this frame runs after it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PollCalls;
+pub struct PollTasks;
 
 /// Replaces each finished [`Running`] task with its output, but an
 /// effect's, which the kernel takes in [`Stage::Arrive`](stage::Stage::Arrive).
-pub(crate) fn poll_calls(
+pub(crate) fn poll_tasks(
     calls: Query<(Entity, &mut Running), Without<Effect>>,
     commands: Commands,
 ) {

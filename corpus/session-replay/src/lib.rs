@@ -999,7 +999,7 @@ type Answerable<'a> = (
 /// calls included; so is everything after the replay ended, as no record
 /// has it. With `continue_live` they are left to start live.
 fn answer_from_record(
-    mut effects: Query<Answerable, (Undecided, Without<Incoming>, Without<ExitRequest>)>,
+    mut effects: Query<Answerable, (ReadyToStart, Without<Incoming>, Without<ExitRequest>)>,
     (replayable, again): (Query<&Replayable>, Query<&RunsAgain>),
     replay: Res<Replay>,
     mut commands: Commands,
@@ -1059,7 +1059,7 @@ fn answer_from_record(
 /// With `--speed`, holds each answer from the record as long as the
 /// recorded effect ran.
 fn keep_recorded_timing(
-    answered: Query<(Entity, &Effect), Unreviewed>,
+    answered: Query<(Entity, &Effect), ReadyToSettle>,
     replay: Res<Replay>,
     mut commands: Commands,
 ) {

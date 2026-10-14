@@ -59,7 +59,7 @@ fn keep_two_turns(
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
         .init_resource::<ToolOutputs>()

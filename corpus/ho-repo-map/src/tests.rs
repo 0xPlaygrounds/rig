@@ -51,7 +51,7 @@ fn the_map_is_in_the_prompt_ranked_by_work_and_kept_per_turn() {
     app.insert_resource(ProjectRoot(project.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ReadTool,
             EditTool,
             RepoMapPlugin,

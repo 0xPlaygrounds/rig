@@ -72,7 +72,7 @@ fn start(
         .insert_resource(TuiTestScreen::new(120, 60))
         .init_resource::<Ended>()
         .add_observer(log_ended)
-        .add_plugins((AgentPlugin, JournalPlugin, ModelsPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, ModelsPlugin));
     load::<AlphaPlugin>(&mut app, "alpha", &format!("version {alpha}"));
     if provenance {
         load::<SessionProvenancePlugin>(&mut app, "sp-session-provenance", "path corpus");

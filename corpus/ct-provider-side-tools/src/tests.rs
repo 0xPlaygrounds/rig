@@ -234,7 +234,7 @@ fn app(fake: &Fake, other: &MockCompletionModel) -> (App, Receiver<()>, Entity) 
     }
     app.insert_resource(Settings::from_toml(&settings))
         .insert_resource(Models(connector))
-        .add_plugins((AgentPlugin, JournalPlugin, ProviderToolsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ProviderToolsPlugin))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
         .init_resource::<Ran>()
         .add_observer(log_ran)

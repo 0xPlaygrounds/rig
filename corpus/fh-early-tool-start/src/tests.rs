@@ -234,7 +234,7 @@ fn start(first: Vec<Step>) -> (App, Receiver<()>, Paced, UnboundedSender<()>) {
         footprint: Some(Touches::Reads(Scope::Anything)),
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin, EarlyToolStartPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, EarlyToolStartPlugin))
         .add_tool_with(ReadStub(paced.log.clone()), reads)
         .add_tool_with(ShellStub(paced.log.clone()), ToolOptions::default())
         .add_systems(AgentPass, rewrite_reads.in_set(PrepareSystems::Input))

@@ -368,7 +368,7 @@ fn auto_interview(
     mut typed: Query<
         (&Incoming, &ForAgent, &mut Decision),
         (
-            Undecided,
+            ReadyToStart,
             IncomingMessages,
             Without<Clarified>,
             Without<Restored>,
@@ -481,7 +481,7 @@ fn ask(
         },
         ForAgent(state.agent),
         HoldOf(call),
-        Effect::child_of(Some(called.effect)),
+        Effect::with_parent_id(Some(called.effect)),
     ));
 }
 

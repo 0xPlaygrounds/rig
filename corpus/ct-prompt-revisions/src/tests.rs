@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::ask::AskPlugin;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, app_in, connect, first_agent, log_ended, press, reply, run_until,
     scratch_home, tui_view,
@@ -39,7 +39,7 @@ fn start(home: &Home, id: &SessionId, view: bool) -> (App, Receiver<()>, Entity)
     if view {
         tui_view(&mut app);
     }
-    app.add_plugins((AgentPlugin, JournalPlugin, AskPlugin, AnswerAsks))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin, AnswerAsks))
         .add_plugins(PromptRevisionsPlugin)
         .register_type::<TurnCount>()
         .add_observer(count)

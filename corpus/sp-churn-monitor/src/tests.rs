@@ -65,7 +65,7 @@ fn start(
         .insert_resource(ProjectRoot(dir.to_path_buf()))
         .insert_resource(Settings::from_toml(settings))
         .insert_resource(TuiTestScreen::new(140, 30))
-        .add_plugins((AgentPlugin, JournalPlugin, EditTool, SubagentsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, EditTool, SubagentsPlugin))
         .add_plugins(ChurnMonitorPlugin);
     collect::<Notice>(&mut app);
     tui_view(&mut app);

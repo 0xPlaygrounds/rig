@@ -64,8 +64,11 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
     std::fs::write(examples.join("commit.md"), EXAMPLE).ok();
     let session = SessionId::generate();
     let (mut app, wakes) = app_in(&home, &session);
-    app.insert_resource(ProjectRoot(root))
-        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin));
+    app.insert_resource(ProjectRoot(root)).add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        WatchPlugin,
+    ));
     load::<HouseRulesPlugin>(&mut app, "house-rules", "test");
     load::<FewShotExamplesPlugin>(&mut app, "corpus-few-shot-examples", "test");
     load::<ContextInspectorPlugin>(&mut app, "corpus-context-inspector", "test");

@@ -116,7 +116,7 @@ impl Plugin for LoopBreakerPlugin {
 /// reply's order; refuses the repeated ones, and stops a turn that loops.
 fn judge(
     mut turns: Query<(Entity, &TurnOf, &Calls, &mut TurnCalls), Without<TurnOutcome>>,
-    mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls, Without<Counted>)>,
+    mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls, Without<Counted>)>,
     limits: Res<LoopLimits>,
     breaking: Res<LoopBreaking>,
     mut commands: Commands,

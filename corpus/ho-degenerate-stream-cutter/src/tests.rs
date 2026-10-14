@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, Ended, ToolOutputs, app_on, collect, first_agent, log_ended, log_tool_outputs,
     reply, run_until, scripted_models,
@@ -107,7 +107,7 @@ fn looping_and_role_play_replies_are_cut_where_they_go_wrong() {
 
     let (mut app, wakes) = app_on(&Default::default());
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, StreamCutterPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, StreamCutterPlugin))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read_file)
         .init_resource::<Read>()
         .add_systems(

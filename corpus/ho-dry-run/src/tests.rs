@@ -15,7 +15,7 @@ use super::*;
 /// the first frame restored the session, its agent and its loop's wakes.
 fn start(store: &MemoryStore) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
-    app.add_plugins((AgentPlugin, JournalPlugin, DryRunPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, DryRunPlugin))
         .add_plugins((ReadTool, WriteTool, EditTool, ShellTool))
         .init_resource::<Ended>()
         .add_observer(log_ended)

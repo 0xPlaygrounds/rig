@@ -59,7 +59,7 @@ fn a_users_slash_line_runs_as_a_command_unless_taken_over_sent_literally_or_not_
         }
     };
     // A Gate system ordered before the commands takes its own lines over.
-    let take_over = |typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands| {
+    let take_over = |typed: Query<(Entity, &Incoming), ReadyToStart>, mut commands: Commands| {
         for (message, typed) in &typed {
             if typed.text().starts_with("/secret") {
                 commands
@@ -75,7 +75,7 @@ fn a_users_slash_line_runs_as_a_command_unless_taken_over_sent_literally_or_not_
             take_over.in_set(Stage::Gate).before(CommandSystems),
         ),
     );
-    let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Note);
+    let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Inform);
     for typed in [
         note("hi"),
         Deliver::new(agent, "/echo typed", DeliveryMode::Queue),
@@ -90,7 +90,7 @@ fn a_users_slash_line_runs_as_a_command_unless_taken_over_sent_literally_or_not_
     assert_eq!(
         echoed.as_slice(),
         [
-            ("hello".to_owned(), DeliveryMode::Note),
+            ("hello".to_owned(), DeliveryMode::Inform),
             ("typed".to_owned(), DeliveryMode::Queue)
         ]
     );

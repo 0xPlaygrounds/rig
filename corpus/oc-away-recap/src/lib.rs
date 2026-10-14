@@ -181,7 +181,7 @@ fn recap_on_resume(started: Option<Res<AppStart>>, mut commands: Commands) {
 /// Puts the idle clock off with every change of the main agent's
 /// conversation.
 fn note_activity(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     agents: PrimaryQuery,
     clocks: Query<Entity, With<IdleClock>>,
     config: Res<RecapConfig>,

@@ -77,7 +77,7 @@ fn app(dir: &Path, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         "[verify]\ncommand = \"sh check.sh\"\nquiet_ms = 100\n",
     ))
     .insert_resource(ProjectRoot(dir.to_path_buf()))
-    .add_plugins((AgentPlugin, JournalPlugin, ClockPlugin))
+    .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin))
     .add_plugins((EditTool, WriteTool, ShellTool))
     .add_plugins(BackgroundVerifyPlugin)
     .init_resource::<Ended>()

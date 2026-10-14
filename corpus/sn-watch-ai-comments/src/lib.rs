@@ -410,7 +410,7 @@ fn mark_turn(
 
 /// Refuses each call of a question's turn that may change anything.
 fn question_only(
-    mut calls: Query<(&Footprint, &CallOf, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(&Footprint, &CallOf, &mut Decision), (ReadyToStart, ToolCalls)>,
     turns: Query<&JobTurn>,
 ) {
     for (footprint, &CallOf(turn), mut decision) in &mut calls {

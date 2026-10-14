@@ -50,7 +50,7 @@ fn session(
         .insert_resource(scripted_models([("test/main", main), ("test/sub", sub)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ReadTool,
             ShellTool,
             SubagentsPlugin,
@@ -158,7 +158,7 @@ fn calls_are_counted_per_session_per_agent_and_per_project() {
         .trigger(Deliver::new(agent, "go", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| world.resource::<ShellStarted>().0);
     std::thread::sleep(Duration::from_secs(1));
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     run_until(&mut app, &wakes, |world| {
         session_calls(world, "shell").cancelled == 1
     });

@@ -76,7 +76,7 @@ fn session(
         ("test/main", main),
         ("test/tasks", tasks),
     ]))
-    .add_plugins((AgentPlugin, JournalPlugin, TaskQueuePlugin))
+    .add_plugins((AgentPlugin, SessionLogPlugin, TaskQueuePlugin))
     .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
     .init_resource::<Shells>()
     .init_resource::<Log>()

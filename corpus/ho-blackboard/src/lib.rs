@@ -346,7 +346,7 @@ fn on_post(
     mut commands: Commands,
 ) {
     let name = agents.get(called.agent).ok().and_then(|(_, name, _)| name);
-    let author = author_of(&called.caller, name);
+    let author = author_of(&called.agent_id, name);
     let output = match board.post(&author, &called.args) {
         Ok((post, said)) => {
             let topic = called.args.topic.trim();
@@ -408,7 +408,7 @@ fn on_read(
 
 /// Sends `text` to `agent` with its next request; it wakes no idle agent.
 fn send_note(commands: &mut Commands, agent: Entity, text: &str) {
-    let note = Deliver::new(agent, text, DeliveryMode::Note);
+    let note = Deliver::new(agent, text, DeliveryMode::Inform);
     commands
         .trigger(note.with_author(rig_harness::rig_core::conversation::Author::plugin("board")));
 }

@@ -25,7 +25,7 @@ fn start(home: &Home, id: &SessionId, new: Option<&str>) -> Option<(App, Receive
     app.world_mut().spawn((TranscriptView::default(), MainPane));
     app.init_resource::<Ended>()
         .add_observer(log_ended)
-        .add_plugins((AgentPlugin, JournalPlugin, BookmarksPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, BookmarksPlugin));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut())?;

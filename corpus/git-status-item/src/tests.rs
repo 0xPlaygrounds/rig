@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
-use rig_ecs::journal::JournalPlugin;
+use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     app_on, calls, connect, first_agent, reply, run_until, scratch_home,
@@ -65,7 +65,12 @@ fn the_item_shows_the_branch_then_the_file_the_agent_wrote() {
     .add_front(Front::new(FRONT).on_terminal())
     .insert_resource(ProjectRoot(dir.clone()))
     .insert_resource(runner)
-    .add_plugins((AgentPlugin, JournalPlugin, WriteTool, GitStatusItemPlugin));
+    .add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        WriteTool,
+        GitStatusItemPlugin,
+    ));
     app.finish();
 
     run_until(&mut app, &wakes, |world| item(world).is_some());

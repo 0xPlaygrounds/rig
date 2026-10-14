@@ -295,7 +295,7 @@ fn hired(
 /// Counts the tool results committed to each supervised worker's
 /// conversation, and sends its supervisor a check every `every_calls`.
 fn count_calls(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     workers: Query<(&Conversation, Option<&Spawned>)>,
     mut supervisors: Query<&mut Supervisor>,
     mut commands: Commands,
@@ -541,9 +541,9 @@ fn on_verdict(
             // request; it starts none.
             let mode = match turn {
                 Some(_) => DeliveryMode::Steer,
-                None => DeliveryMode::Note,
+                None => DeliveryMode::Inform,
             };
-            let author = Author::agent(called.caller.clone(), None).titled(NAME);
+            let author = Author::agent(called.agent_id.clone(), None).titled(NAME);
             answer(Ok("Sent; the worker reads it with its next model call."));
             commands.trigger(Deliver::new(worker, text, mode).with_author(author));
         }

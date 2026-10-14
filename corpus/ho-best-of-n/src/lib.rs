@@ -822,7 +822,7 @@ fn job_done(
         }
         (Work::Apply { k, why, .. }, Ok(_)) => {
             let note = note(&run, *k, why);
-            let deliver = Deliver::new(run.owner, note, DeliveryMode::Note);
+            let deliver = Deliver::new(run.owner, note, DeliveryMode::Inform);
             commands.trigger(deliver.with_author(Author::plugin("best-of")));
             finish(run_entity, &run, &mut commands);
         }
@@ -1099,7 +1099,7 @@ fn candidate_done(
 /// stops their turns and commands, the run's effects are cancelled with it,
 /// and its worktrees are removed.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     runs: Query<(Entity, &Run)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,

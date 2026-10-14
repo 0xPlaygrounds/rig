@@ -16,7 +16,7 @@
 //! (`shared_prefix`), asks the agent's model to summarize what the other
 //! branch did after it (or after the last merge from it), shows the
 //! summary for review (Accept / Edit / Cancel) and, on Accept, sends one
-//! note "Merged from branch `<name>`" to the agent (`DeliveryMode::Note`),
+//! note "Merged from branch `<name>`" to the agent (`DeliveryMode::Inform`),
 //! followed by an aside recording the source and the last merged message's
 //! key. A note into an inactive branch is put there directly, once no turn
 //! runs, and left for that branch's next request (`Halt::Kept`). With
@@ -490,7 +490,7 @@ fn merge(
         Summarizing(pending),
         merging,
         ModelRequest::new(request),
-        Effect::child_of(None).with_purpose(NAME),
+        Effect::with_parent_id(None).with_purpose(NAME),
         ForAgent(args.agent),
     ));
 }
@@ -640,7 +640,7 @@ fn author_of(record: &MergeRecord) -> Author {
 /// turn's first.
 fn deliver(accepted: &Accepted, merging: Merging, commands: &mut Commands) {
     let (text, record) = note_of(accepted);
-    let note = Incoming::new(text, DeliveryMode::Note).with_author(author_of(&record));
+    let note = Incoming::new(text, DeliveryMode::Inform).with_author(author_of(&record));
     let agent = ForAgent(accepted.pending.agent);
     commands.spawn((note, agent, NoteOf(record), merging));
 }

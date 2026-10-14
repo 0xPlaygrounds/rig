@@ -927,7 +927,9 @@ fn reply(text: &str, calls: Vec<ToolCall>) -> Outcome {
 /// kernel settles it before the next is made, as a reply settles before
 /// its calls start; its id.
 fn settle(app: &mut App, parent: Option<EffectId>, effect: impl Bundle) -> Option<EffectId> {
-    let spawned = app.world_mut().spawn((effect, Effect::child_of(parent)));
+    let spawned = app
+        .world_mut()
+        .spawn((effect, Effect::with_parent_id(parent)));
     let id = spawned.get::<Effect>().map(Effect::id);
     app.update();
     id

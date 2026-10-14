@@ -27,7 +27,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
-use rig_harness::rig_ecs::journal::{Committed, SessionRestored};
+use rig_harness::rig_ecs::session_log::{ConversationChanged, SessionRestored};
 use rig_harness::rig_memory::{META, SessionMeta, read_line};
 use rig_harness::rig_tools::ago;
 use rig_sessions::SwitchSession;
@@ -65,7 +65,7 @@ impl Plugin for RecentSessionsPlugin {
             .add_systems(
                 Update,
                 (
-                    track_shape.run_if(on_message::<Committed>),
+                    track_shape.run_if(on_message::<ConversationChanged>),
                     read_only_closed.run_if(resource_changed::<KeyFocus>),
                 ),
             )

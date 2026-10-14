@@ -49,7 +49,7 @@ impl Session {
             .insert_resource(policy)
             .init_resource::<Steps>()
             .init_resource::<ToolOutputs>()
-            .add_plugins((AgentPlugin, JournalPlugin, SubagentPolicyPlugin))
+            .add_plugins((AgentPlugin, SessionLogPlugin, SubagentPolicyPlugin))
             .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
             .add_observer(log_tool_outputs)
             .add_observer(

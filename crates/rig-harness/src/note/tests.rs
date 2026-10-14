@@ -2,7 +2,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_core::conversation::{Aside, Author};
 use rig_ecs::agent::{Agent, Conversation};
-use rig_ecs::journal::{JournalPlugin, SessionStore};
+use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
 use rig_memory::MemoryStore;
 
 use super::Note;
@@ -11,7 +11,7 @@ use super::Note;
 fn app(store: &MemoryStore) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((rig_ecs::AgentPlugin, JournalPlugin))
+        .add_plugins((rig_ecs::AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(store.clone()));
     app.finish();
     app.update();

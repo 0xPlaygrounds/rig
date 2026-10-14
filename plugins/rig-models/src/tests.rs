@@ -154,7 +154,7 @@ fn the_last_model_chosen_is_kept_in_the_apps_home() {
     let mut first = app(&home);
     first.insert_resource(SessionRestored::default());
     let world = first.world_mut();
-    let agent = world.spawn((Agent, Effort::default())).id();
+    let agent = world.spawn((Agent, ReasoningSetting::default())).id();
     world
         .entity_mut(agent)
         .insert(ModelChoice("deepseek/deepseek-flash".to_owned()));

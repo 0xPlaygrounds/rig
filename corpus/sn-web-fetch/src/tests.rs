@@ -104,7 +104,7 @@ fn app_with(
     std::fs::write(home.root().join(CONFIG), config).ok();
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     app.insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, WebFetchPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WebFetchPlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Ended>()

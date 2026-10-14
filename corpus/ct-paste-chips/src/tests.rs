@@ -102,7 +102,7 @@ fn app(model: &MockCompletionModel, vision: &MockCompletionModel) -> (App, Recei
         models.0.catalog_mut().insert(spec);
     }
     app.insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, PasteChipsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, PasteChipsPlugin))
         .insert_resource(ClipboardImages::new(Arc::new(fake_clipboard)))
         .init_resource::<Ended>()
         .add_observer(log_ended);

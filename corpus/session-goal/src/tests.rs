@@ -21,7 +21,7 @@ fn record_replies(mut notices: MessageReader<Notice>, mut replies: ResMut<Replie
 fn start(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin, SessionGoalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SessionGoalPlugin))
         .init_resource::<Replies>()
         .add_systems(Last, record_replies);
     app.finish();

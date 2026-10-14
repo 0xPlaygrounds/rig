@@ -32,7 +32,7 @@ use bevy_remote::schemas::SchemaTypesMetadata;
 use bevy_remote::{BrpMessage, BrpResult, BrpSender, RemoteMethodSystemId, RemoteMethods};
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::calls::Running;
+use rig_harness::rig_ecs::tasks::Running;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value};

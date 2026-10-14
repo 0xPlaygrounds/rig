@@ -25,7 +25,7 @@ fn start(someone_answers: bool) -> (App, Receiver<()>, MockCompletionModel) {
         reply("Using it."),
     ]);
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin, PickPlugin, AskUserPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, AskUserPlugin))
         .init_resource::<Ended>()
         .init_resource::<ToolOutputs>()
         .add_observer(log_ended)

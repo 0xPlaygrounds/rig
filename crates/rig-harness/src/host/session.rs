@@ -39,10 +39,10 @@ use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author, BranchError, Conversation, MessageId};
 use rig_core::message::UserContent;
-use rig_ecs::WriteJournal;
+use rig_ecs::WriteLogs;
 use rig_ecs::agent::{self, ActiveTurn, AgentId, Notice};
-use rig_ecs::journal::{SessionRewritten, SessionStore, open_session};
 use rig_ecs::restore::SavedKeys;
+use rig_ecs::session_log::{SessionRewritten, SessionStore, open_session};
 use rig_memory::{
     DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, SPLIT, Session, SessionMeta,
     SplitOf, SplitPointer, Store, fork, load, rewrite, split,
@@ -361,12 +361,12 @@ impl Plugin for SessionPlugin {
                 finish_deletes.run_if(not(resource_exists::<Describing>)),
             )
             .add_systems(First, timings::next_frame)
-            .configure_sets(Last, ForkSessions.after(WriteJournal))
+            .configure_sets(Last, ForkSessions.after(WriteLogs))
             .add_systems(Last, fork_sessions.in_set(ForkSessions))
             .add_systems(
                 Last,
                 rewrite_scratch
-                    .in_set(WriteJournal)
+                    .in_set(WriteLogs)
                     .run_if(on_message::<SessionRewritten>),
             )
             .add_systems(
@@ -775,7 +775,7 @@ fn map_spill(scratch: &Scratch, with: &dyn Rewrite) -> io::Result<()> {
 }
 
 /// Maps the files this session keeps beside its store through each
-/// rewrite of the session, in [`WriteJournal`], so the systems after it
+/// rewrite of the session, in [`WriteLogs`], so the systems after it
 /// read them mapped: its name, the spilled tool output, and the text log
 /// under its lock, then logged to again where it is. Pasted images are
 /// left.
@@ -829,7 +829,7 @@ pub struct SessionDeleteFailed {
 }
 
 /// The system in `Last` that copies the sessions [`ForkSession`] asked
-/// for, after [`WriteJournal`]: a fork copies what the session logged up
+/// for, after [`WriteLogs`]: a fork copies what the session logged up
 /// to its frame, and a plugin that writes the session's store in that
 /// frame says `.before(ForkSessions)` for the fork to have it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]

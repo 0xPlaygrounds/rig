@@ -62,7 +62,7 @@ use rig_core::tool::{
 };
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
-use rig_ecs::turn::RETRY;
+use rig_ecs::turn::RETRY_POLICY;
 use serde::{Deserialize, Serialize};
 
 /// How long a test waits for a tool to answer.
@@ -305,14 +305,14 @@ fn the_first_decision_wins() {
     app.add_systems(
         AgentPass,
         (
-            |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>| {
+            |mut effects: Query<&mut Decision, (ReadyToStart, PluginEffects)>| {
                 for mut decision in &mut effects {
                     decision.decide(Decider::plugin("refuser"), Outcome::refused("not now"));
                 }
             },
             // Ordered after the refusal, this one decides too: it loses,
             // and it is told so.
-            |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>,
+            |mut effects: Query<&mut Decision, (ReadyToStart, PluginEffects)>,
              mut seen: ResMut<Seen>| {
                 for mut decision in &mut effects {
                     let allowed = rig_core::tool::ToolResult::skipped("allowed");
@@ -349,14 +349,14 @@ fn the_first_decision_wins() {
 #[test]
 fn an_effect_answered_before_its_decision_was_applied_names_no_decider() {
     let mut app = app();
-    let refuse = |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>| {
+    let refuse = |mut effects: Query<&mut Decision, (ReadyToStart, PluginEffects)>| {
         for mut decision in &mut effects {
             decision.decide(Decider::plugin("refuser"), Outcome::refused("not now"));
         }
     };
     // Answers `answered` itself, after the refusal and before Start
     // applies it.
-    let answer = |effects: Query<(Entity, &EffectRequest), (Undecided, PluginEffects)>,
+    let answer = |effects: Query<(Entity, &EffectRequest), (ReadyToStart, PluginEffects)>,
                   mut commands: Commands| {
         for (entity, request) in &effects {
             if request.kind.name() == "answered" {
@@ -415,7 +415,7 @@ fn after_the_gates_an_answer_sees_their_decisions_and_holds() {
                 }
             })
             .in_set(GateSystems::After),
-            (|mut effects: Query<(Entity, &Way, &mut Decision), (Undecided, PluginEffects)>,
+            (|mut effects: Query<(Entity, &Way, &mut Decision), (ReadyToStart, PluginEffects)>,
               mut commands: Commands| {
                 for (effect, way, mut decision) in &mut effects {
                     match way {
@@ -504,7 +504,7 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
                 tool: called.entity,
                 call: called.call,
                 agent: called.agent,
-                caller: called.caller.clone(),
+                caller: called.agent_id.clone(),
                 effect: called.effect,
                 parent: called.parent,
                 id: called.tool_call.id.to_string(),
@@ -532,7 +532,7 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
         let spawned = (
             ToolRequest { call },
             ForAgent(agent),
-            Effect::child_of(Some(parent)),
+            Effect::with_parent_id(Some(parent)),
         );
         Some(world.spawn(spawned).id())
     };
@@ -582,14 +582,14 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
 }
 
 /// A gate that refuses every tool call.
-fn refuse_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
+fn refuse_calls(mut calls: Query<&mut Decision, (ReadyToStart, ToolCalls)>) {
     for mut decision in &mut calls {
         decision.decide(Decider::plugin("test"), Outcome::refused("no"));
     }
 }
 
 /// Another gate that allows every tool call.
-fn allow_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
+fn allow_calls(mut calls: Query<&mut Decision, (ReadyToStart, ToolCalls)>) {
     for mut decision in &mut calls {
         decision.decide(
             Decider::plugin("test"),
@@ -599,7 +599,7 @@ fn allow_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
 }
 
 /// A gate that takes every message over.
-fn take_messages(mut messages: Query<&mut Decision, (Undecided, IncomingMessages)>) {
+fn take_messages(mut messages: Query<&mut Decision, (ReadyToStart, IncomingMessages)>) {
     for mut decision in &mut messages {
         decision.decide(Decider::plugin("test"), Outcome::custom("taken"));
     }
@@ -670,7 +670,7 @@ fn an_effect_decided_as_its_hold_goes_never_starts() {
     // the call it held and lets go of it, as Start opens.
     app.add_systems(
         AgentPass,
-        (|mut asked: Query<&mut Decision, (Undecided, With<Asked>)>| {
+        (|mut asked: Query<&mut Decision, (ReadyToStart, With<Asked>)>| {
             for mut decision in &mut asked {
                 decision.decide(Decider::plugin("test"), Outcome::custom("no"));
             }
@@ -775,7 +775,7 @@ fn every_prepare_and_gate_system_sees_a_late_spawn_before_it_starts() {
         .add_systems(
             AgentPass,
             (
-                |names: Query<&Name, Undecided>,
+                |names: Query<&Name, ReadyToStart>,
                  mut seen: ResMut<Seen>,
                  mut late: ResMut<SpawnedLate>,
                  mut commands: Commands| {
@@ -785,7 +785,7 @@ fn every_prepare_and_gate_system_sees_a_late_spawn_before_it_starts() {
                         commands.spawn((open("late"), Name::new("late")));
                     }
                 },
-                |names: Query<&Name, Undecided>, mut seen: ResMut<Seen>| {
+                |names: Query<&Name, ReadyToStart>, mut seen: ResMut<Seen>| {
                     noted(&mut seen, "gate b", names);
                 },
             )
@@ -829,19 +829,20 @@ struct ReviewHold(Option<Entity>);
 #[test]
 fn reviews_edit_in_place_in_order_and_the_record_keeps_the_raw_outcome() {
     let mut app = app();
-    let redact = |mut effects: Query<(Entity, &mut Outcome), (Unreviewed, Without<Redacted>)>,
-                  mut hold: ResMut<ReviewHold>,
-                  mut commands: Commands| {
-        for (effect, mut outcome) in &mut effects {
-            *outcome = Outcome::from(rig_core::tool::ToolResult::skipped("redacted"));
-            commands.entity(effect).insert(Redacted);
-            hold.0 = Some(commands.spawn(HoldOf(effect)).id());
-        }
-    };
+    let redact =
+        |mut effects: Query<(Entity, &mut Outcome), (ReadyToSettle, Without<Redacted>)>,
+         mut hold: ResMut<ReviewHold>,
+         mut commands: Commands| {
+            for (effect, mut outcome) in &mut effects {
+                *outcome = Outcome::from(rig_core::tool::ToolResult::skipped("redacted"));
+                commands.entity(effect).insert(Redacted);
+                hold.0 = Some(commands.spawn(HoldOf(effect)).id());
+            }
+        };
     // Ordered after, it sees the first edit as it would any data.
     let check = |mut effects: Query<
         (Entity, &mut Outcome),
-        (Unreviewed, With<Redacted>, Without<Checked>),
+        (ReadyToSettle, With<Redacted>, Without<Checked>),
     >,
                  mut seen: ResMut<Seen>,
                  mut commands: Commands| {
@@ -1203,7 +1204,7 @@ struct Gated {
 
 /// Holds `held` once and refuses `refused`; logs every call it sees.
 fn gate(
-    mut calls: Query<(Entity, &ToolRequest, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(Entity, &ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>,
     settled: Query<&ToolRequest, With<Settled>>,
     mut gated: ResMut<Gated>,
     mut commands: Commands,
@@ -1471,7 +1472,7 @@ fn declare_src(mut calls: Query<(Entity, &ToolRequest), Added<Admitted>>, mut co
             let src = Scope::Paths(vec![PathBuf::from("/work/src/../src")]);
             commands
                 .entity(call)
-                .insert((Footprint(Touches::Writes(src)), Declared));
+                .insert((Footprint(Touches::Writes(src)), DeclaredFootprint));
         }
     }
 }
@@ -1517,7 +1518,7 @@ fn a_footprint_a_plugin_declared_on_a_call_stands() {
 struct GatedFootprints(Vec<(String, Touches)>);
 
 fn log_footprints(
-    calls: Query<(&ToolRequest, &Footprint), (Undecided, ToolCalls)>,
+    calls: Query<(&ToolRequest, &Footprint), (ReadyToStart, ToolCalls)>,
     mut log: ResMut<GatedFootprints>,
 ) {
     for (request, footprint) in &calls {
@@ -1667,7 +1668,7 @@ fn fall_back(
             &CallOf,
             &ForAgent,
         ),
-        (Unreviewed, With<TurnCall>, Without<SupersededBy>),
+        (ReadyToSettle, With<TurnCall>, Without<SupersededBy>),
     >,
     Commands,
 ) + Send
@@ -1684,7 +1685,7 @@ fn fall_back(
                     TurnCall,
                     CallOf(of.0),
                     ForAgent(agent.0),
-                    Effect::child_of(effect.parent),
+                    Effect::with_parent_id(effect.parent),
                 ))
                 .add_related::<SupersededBy>(&[call]);
         }
@@ -1700,7 +1701,7 @@ fn a_call_that_gave_up_is_superseded_on_another_model_and_the_turn_goes_on() {
         .add_observer(log_ended)
         // The retries ran out already: the first failure gives up.
         .add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
-            let retries = RETRY.max_retries;
+            let retries = RETRY_POLICY.max_retries;
             commands.entity(turn.entity).insert(Recovery { retries });
         })
         .add_systems(
@@ -1739,7 +1740,7 @@ fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
     let world = app.world_mut();
     let mut held = world.query_filtered::<(), (With<TurnCall>, With<Holds>, Without<Settled>)>();
     assert_eq!(held.iter(world).count(), 1, "the failed call waits, held");
-    world.trigger(Interrupt::new(agent));
+    world.trigger(StopTurn::new(agent));
     world.flush();
     assert_eq!(waits(world), 0, "the wait went with the call");
     // Long past the wait, nothing was sent again.
@@ -1760,7 +1761,7 @@ struct Refusing(bool);
 
 fn refuse_when_asked(
     refusing: Res<Refusing>,
-    mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>,
+    mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>,
 ) {
     for mut decision in calls.iter_mut().filter(|_| refusing.0) {
         decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
@@ -1782,7 +1783,8 @@ fn each_turn_is_recorded_with_how_it_ended() {
     let ended_once = |world: &mut World| world.resource::<Ended>().0.len() == 1;
     assert!(run_until(&mut app, ended_once));
     let world = app.world_mut();
-    let note = Deliver::new(agent, "fyi", DeliveryMode::Note).with_author(Author::plugin("check"));
+    let note =
+        Deliver::new(agent, "fyi", DeliveryMode::Inform).with_author(Author::plugin("check"));
     world.trigger(note);
     world.resource_mut::<Refusing>().0 = true;
     world.trigger(Deliver::new(agent, "and?", DeliveryMode::Steer));
@@ -1811,7 +1813,7 @@ fn each_turn_is_recorded_with_how_it_ended() {
 #[test]
 fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
     let mut app = app();
-    let refuse = |mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>| {
+    let refuse = |mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>| {
         for mut decision in &mut calls {
             decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
         }
@@ -1919,7 +1921,7 @@ struct SideAnswers(Vec<String>);
 #[test]
 fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
     let mut app = app();
-    let ask = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<BuildFrom>)>| {
+    let ask = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<SideCall>)>| {
         for mut call in &mut calls {
             let question = Entry::new(Message::user("And in one word?"));
             if let Some(history) = &mut call.history {
@@ -1931,7 +1933,7 @@ fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
         .add_systems(AgentPass, ask.in_set(Stage::Prepare))
         .add_observer(
             |settled: On<Add<Settled>>,
-             calls: Query<&Outcome, With<BuildFrom>>,
+             calls: Query<&Outcome, With<SideCall>>,
              mut answers: ResMut<SideAnswers>| {
                 let reply = calls.get(settled.entity).ok().and_then(Outcome::completion);
                 let text = reply.and_then(|reply| reply.message()?.final_answer());
@@ -1942,7 +1944,7 @@ fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
     let agent = agent_on(&mut app, &model);
     let said = |world: &mut World| world.get::<Conversation>(agent).map(|c| c.messages().len());
     assert!(run_until(&mut app, |world| said(world) == Some(2)));
-    app.world_mut().spawn(BuildFrom(agent));
+    app.world_mut().spawn(SideCall(agent));
     let answered = run_until(&mut app, |world| {
         !world.resource::<SideAnswers>().0.is_empty()
     });
@@ -2194,7 +2196,7 @@ fn a_messages_parts_go_to_the_model_in_its_authors_order() {
 }
 
 /// Takes over the user's messages that start with `!`, as a shell would.
-fn run_in_shell(mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>) {
+fn run_in_shell(mut typed: Query<(&Incoming, &mut Decision), (ReadyToStart, IncomingMessages)>) {
     for (typed, mut decision) in &mut typed {
         if typed.author.kind == AuthorKind::User && typed.text().starts_with('!') {
             decision.decide(Decider::plugin("test"), Outcome::custom("ran in a shell"));
@@ -2301,7 +2303,7 @@ fn an_accepted_note_withdrawn_by_deciding_it_is_never_delivered() {
     let held = |world: &mut World| world.resource::<Judging>().0.is_some();
     assert!(run_until(&mut app, held));
     let note = |text: &str| {
-        let note = Incoming::new(text, DeliveryMode::Note).with_author(Author::plugin("check"));
+        let note = Incoming::new(text, DeliveryMode::Inform).with_author(Author::plugin("check"));
         (note, ForAgent(agent))
     };
     let kept = app.world_mut().spawn(note("the docs build")).id();
@@ -2333,7 +2335,7 @@ struct Reviewing(Vec<Entity>);
 
 /// Holds each tool call's answer while it is reviewed.
 fn hold_results(
-    calls: Query<Entity, (Unreviewed, ToolCalls, Added<Outcome>)>,
+    calls: Query<Entity, (ReadyToSettle, ToolCalls, Added<Outcome>)>,
     mut reviewing: ResMut<Reviewing>,
     mut commands: Commands,
 ) {
@@ -2442,7 +2444,7 @@ fn a_message_a_stopped_turn_did_not_send_is_handed_back_unless_a_plugin_keeps_it
         assert!(run_until(app, |world| world
             .get::<Started>(message)
             .is_some()));
-        app.world_mut().trigger(Interrupt::new(agent));
+        app.world_mut().trigger(StopTurn::new(agent));
         app.world_mut().resource_mut::<Reviewing>().0.clear();
         app.update();
         message
@@ -2528,7 +2530,7 @@ fn a_length_cutoff_is_a_proposal_that_a_new_turn_call_carries_on() {
 #[test]
 fn a_turn_a_plugin_fails_starts_nothing_more_and_ends_with_its_reason() {
     let mut app = app();
-    let budget = |calls: Query<&CallOf, (Undecided, With<TurnCall>)>, mut commands: Commands| {
+    let budget = |calls: Query<&CallOf, (ReadyToStart, With<TurnCall>)>, mut commands: Commands| {
         for &CallOf(turn) in &calls {
             let over = TurnOutcome::Failed("over budget".to_owned());
             commands.entity(turn).insert(over);
@@ -2606,7 +2608,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     let hold = world.spawn(HoldOf(check)).id();
     app.update();
     let world = app.world_mut();
-    world.trigger(Interrupt::new(agent));
+    world.trigger(StopTurn::new(agent));
     world.flush();
     // At once: the hold is gone, the held call answered and settled, the
     // turn ended as stopped, and the streamed text kept.
@@ -2694,11 +2696,11 @@ fn an_interrupt_keeps_no_text_of_a_superseded_call() {
             TurnCall,
             CallOf(turn),
             ForAgent(agent),
-            Effect::child_of(parent),
+            Effect::with_parent_id(parent),
         ))
         .add_related::<SupersededBy>(&[loser]);
     world.flush();
-    world.trigger(Interrupt::new(agent));
+    world.trigger(StopTurn::new(agent));
     world.flush();
     let said = conversation(&app, agent);
     assert!(
@@ -2751,7 +2753,7 @@ fn a_race_of_any_size_commits_only_its_winner() {
             TurnCall,
             CallOf(turn),
             ForAgent(agent),
-            Effect::child_of(parent),
+            Effect::with_parent_id(parent),
         )
     };
     let second = world.spawn(racer(request.clone().on(racing))).id();
@@ -2861,7 +2863,7 @@ fn an_interrupted_call_answers_with_what_it_says_it_is_if_stopped() {
     let Some((agent, _)) = stalled(&mut app) else {
         return;
     };
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     app.update();
     let said = conversation(&app, agent);
     let results = results_at(&said, said.len().saturating_sub(1));
@@ -2913,7 +2915,7 @@ fn a_call_of_a_failed_turn_answers_with_what_it_says_it_is_if_stopped() {
 #[derive(Resource, Default)]
 struct Streams {
     events: Vec<(Entity, StreamEvent)>,
-    stamps: Vec<(Entity, Streamed)>,
+    stamps: Vec<(Entity, StreamTiming)>,
 }
 
 #[test]
@@ -2949,7 +2951,7 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
         .add_systems(
             PostUpdate,
             |mut deltas: MessageReader<StreamDelta>,
-             calls: Query<(Entity, &Streamed), (With<TurnCall>, Changed<Streamed>)>,
+             calls: Query<(Entity, &StreamTiming), (With<TurnCall>, Changed<StreamTiming>)>,
              mut seen: ResMut<Streams>| {
                 let read = deltas
                     .read()
@@ -3348,7 +3350,7 @@ impl Serve for NoSeed {
     }
 }
 
-/// What `ModelStarts::sent` said in Prepare, and `Fitted` after Start.
+/// What `ModelStarts::sent` said in Prepare, and `DroppedOptions` after Start.
 #[derive(Resource, Default)]
 struct LeftOut(Vec<Vec<String>>);
 
@@ -3375,7 +3377,9 @@ fn a_call_knows_the_options_its_model_left_out() {
         .init_resource::<LeftOut>()
         .add_observer(log_ended)
         .add_observer(
-            |fitted: On<Add<Fitted>>, calls: Query<&Fitted>, mut left: ResMut<LeftOut>| {
+            |fitted: On<Add<DroppedOptions>>,
+             calls: Query<&DroppedOptions>,
+             mut left: ResMut<LeftOut>| {
                 left.0
                     .extend(calls.get(fitted.entity).map(|it| options(&it.0)));
             },
@@ -3444,7 +3448,7 @@ fn a_call_knows_the_model_it_went_to_and_what_its_adapters_published() {
                 }));
         }
     };
-    let review = |calls: Query<(&ModelRequest, &SentTo, Option<&Published>), Unreviewed>,
+    let review = |calls: Query<(&ModelRequest, &SentTo, Option<&Published>), ReadyToSettle>,
                   mut seen: ResMut<SentCalls>| {
         for (call, sent, published) in &calls {
             let fact = published.and_then(|published| published.0.get::<Rewritten>().ok());
@@ -3726,7 +3730,7 @@ fn a_coordinator_after_the_gates_sees_a_call_the_kernel_refuses() {
 
 /// An answer after the gates that stands in for running every tool call,
 /// such as a cached result.
-fn stand_in(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
+fn stand_in(mut calls: Query<&mut Decision, (ReadyToStart, ToolCalls)>) {
     for mut decision in &mut calls {
         decision.decide(Decider::plugin("cache"), ToolResult::skipped("cached"));
     }

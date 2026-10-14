@@ -365,7 +365,7 @@ fn on_schedule(
     let owner = runs
         .get(called.agent)
         .and_then(|&SpawnedBy(owner)| ids.get(owner));
-    let owner = owner.cloned().unwrap_or_else(|_| called.caller.clone());
+    let owner = owner.cloned().unwrap_or_else(|_| called.agent_id.clone());
     let fields = (args.schedule.as_str(), args.prompt.as_str(), args.catch_up);
     let result = match add(&mut jobs, fields, &owner) {
         Ok(job) => ToolResult::success(
@@ -424,7 +424,7 @@ fn adopt(
             &ForAgent,
             Option<&SpawnedAgent>,
         ),
-        (Unreviewed, PluginEffects),
+        (ReadyToSettle, PluginEffects),
     >,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -468,7 +468,7 @@ fn report(
                 .unwrap_or_else(|| "(no answer)".to_owned());
             notices.write(Notice::info(owner, format!("{job}: {answer}")));
             let author = Author::agent(from.clone(), None).titled(job);
-            let note = Deliver::new(owner, answer, DeliveryMode::Note);
+            let note = Deliver::new(owner, answer, DeliveryMode::Inform);
             commands.trigger(note.with_author(author));
         }
         TurnOutcome::Failed(why) => {

@@ -73,7 +73,7 @@ fn run(dir: &Path, model: &MockCompletionModel) -> Option<App> {
     .insert_resource(ProjectRoot(dir.to_path_buf()))
     .add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ExitPlugin,
         PrintPlugin,
         ReadTool,

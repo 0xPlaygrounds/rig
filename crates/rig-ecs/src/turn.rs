@@ -9,7 +9,7 @@
 //! say ([`Waiting`]), and once every one settled their results go back in call order and the
 //! next [`TurnCall`] is spawned. rig-core's turn-failure rule decides when
 //! a reply ends the turn instead. A model call that failed gets the
-//! [`RETRY`] policy's [`RetryVerdict`] in Arrive, which Review may read,
+//! [`RETRY_POLICY`] policy's [`RetryVerdict`] in Arrive, which Review may read,
 //! edit in place or act on by superseding the call; Commit carries out what is
 //! left: a [`Backoff`] then a new call, or the turn's end. A call refused
 //! before it was sent ends the turn and keeps the user's message. Each
@@ -17,7 +17,7 @@
 //! decides is a [`TurnOutcome`] proposed on the turn, which Review may
 //! edit in place, hold or carry on from; once nothing holds it and every call of
 //! the turn settled, Commit ends the turn and marks it [`Settled`] for
-//! the readers of how it ended. [`Interrupt`] ends it at once.
+//! the readers of how it ended. [`StopTurn`] ends it at once.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -56,19 +56,19 @@ use rig_memory::now_ms;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastUsage,
-    Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, LastUsage, Notice,
+    Partial, Retry, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
 };
-use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
-use super::journal::{Committed, SessionLog, save_conversation};
-use super::model::{Connection, Effort};
+use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
 use super::restore::{Restored, commit_results, mark_settled};
+use super::session_log::{ConversationChanged, SessionLog, save_conversation};
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
     SupersededBy, Waiting, cancel, failed_in, release,
 };
+use super::tasks::{Running, Wake};
 use super::tools::{Footprint, ToolDef, ToolRequest};
 
 /// The notice when the agent has no model to call.
@@ -76,7 +76,7 @@ pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
 
 /// How failed model calls are retried: rig-core's default, four retries in
 /// a row per turn (a reply resets the count).
-pub const RETRY: RetryPolicy = RetryPolicy::DEFAULT;
+pub const RETRY_POLICY: RetryPolicy = RetryPolicy::DEFAULT;
 
 /// A turn's recovery so far: the failed calls retried since its last reply.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
@@ -94,7 +94,7 @@ pub struct Recovery {
 #[derive(Component, Reflect, Clone, Debug)]
 #[reflect(Component, from_reflect = false)]
 pub struct Backoff {
-    /// Which retry this wait is for, from 1 to [`RETRY`]'s `max_retries`.
+    /// Which retry this wait is for, from 1 to [`RETRY_POLICY`]'s `max_retries`.
     pub attempt: u32,
     /// When the call is sent again.
     #[reflect(ignore)]
@@ -117,7 +117,7 @@ impl Backoff {
 /// model it goes to, applies the adapters to it, fits the request
 /// to the result (an option the model cannot take is left out, as
 /// none) and sends it streamed, recording on the call where it went
-/// ([`SentTo`]). A [`TurnCall`] or [`BuildFrom`] has its
+/// ([`SentTo`]). A [`TurnCall`] or [`SideCall`] has its
 /// request built by the kernel when it is admitted, with its system prompt
 /// in parts ([`ModelRequest::prompt`]) and its conversation
 /// ([`ModelRequest::history`]) beside it; a plugin's own call, such as a
@@ -189,7 +189,7 @@ pub struct SentTo(pub Connection);
 /// handler (rig-core's `Serve::check`). [`ModelStarts::sent`] gives the
 /// same list before Start, such as to warn about an option in Prepare.
 #[derive(Component, Clone, Debug, Default)]
-pub struct Fitted(pub Vec<UnsupportedOption>);
+pub struct DroppedOptions(pub Vec<UnsupportedOption>);
 
 /// The adapters of a model call, applied to its final [`Connection`] at
 /// Start: those placed [`outermost`](Adapter::outermost) last, each group
@@ -277,9 +277,9 @@ pub struct TurnCall;
 #[derive(Component, Reflect, Clone, Copy, Debug)]
 #[reflect(Component)]
 #[require(Effect)]
-pub struct BuildFrom(pub Entity);
+pub struct SideCall(pub Entity);
 
-/// On a model call whose handler failed: what the [`RETRY`] policy says,
+/// On a model call whose handler failed: what the [`RETRY_POLICY`] policy says,
 /// put by the kernel in Arrive with the turn's [`Recovery`]. Review may
 /// read it, edit it in place (`Query<&mut RetryVerdict>`), or take the failure over by superseding the call;
 /// for a [`TurnCall`], Commit carries out what is left: `Retry` waits a
@@ -325,7 +325,7 @@ pub struct StreamDelta {
 /// when the reply ended. On the call from its first item until it is
 /// despawned.
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Streamed {
+pub struct StreamTiming {
     /// The wall-clock time of the first item.
     pub first: web_time::SystemTime,
     /// The wall-clock time of the latest item; the reply's end once it
@@ -435,14 +435,14 @@ pub(crate) struct Ending {
 /// ends [`TurnOutcome::Stopped`], in its record too. The conversation is
 /// saved and written to the log at once, so a log that ends mid-turn
 /// always means a crash or a restart.
-pub(crate) fn on_interrupt(
-    interrupt: On<Interrupt>,
+pub(crate) fn on_stop_turn(
+    interrupt: On<StopTurn>,
     mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
     mut turns: Query<(&mut Turn, Option<&Calls>)>,
     replies: Query<ReplyCall>,
     partials: Query<&Partial, (With<TurnCall>, Without<Settled>, Without<SupersededBy>)>,
     log: Res<SessionLog>,
-    mut committed: MessageWriter<Committed>,
+    mut committed: MessageWriter<ConversationChanged>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -611,7 +611,7 @@ fn take_running(world: &mut World, cancelling: &mut Cancelling) {
 pub(crate) struct Builder {
     id: &'static AgentId,
     connection: Option<&'static Connection>,
-    effort: &'static Effort,
+    effort: &'static ReasoningSetting,
     prompt: &'static SystemPrompt,
     access: &'static ToolAccess,
     conversation: &'static mut Conversation,
@@ -624,7 +624,7 @@ pub(crate) struct Builder {
 pub(crate) struct Unbuilt {
     entity: Entity,
     effect: &'static mut Effect,
-    from: Option<&'static BuildFrom>,
+    from: Option<&'static SideCall>,
     turn_call: Has<TurnCall>,
     of: Option<&'static CallOf>,
     agent: Option<&'static ForAgent>,
@@ -638,7 +638,7 @@ pub(crate) struct Parts<'w, 's> {
     sections: Query<'w, 's, (&'static PromptSection, Option<&'static SectionOf>)>,
 }
 
-/// Builds the [`ModelRequest`] of each [`TurnCall`] and [`BuildFrom`]
+/// Builds the [`ModelRequest`] of each [`TurnCall`] and [`SideCall`]
 /// admitted this pass without one, in [`Stage::Admit`]: the agent's system
 /// prompt with the rules of the tools it is offered and its prompt
 /// sections, its conversation, the tools,
@@ -650,7 +650,7 @@ pub(crate) fn build_requests(
     mut unbuilt: Query<
         Unbuilt,
         (
-            Or<(With<TurnCall>, With<BuildFrom>)>,
+            Or<(With<TurnCall>, With<SideCall>)>,
             Added<Admitted>,
             Without<ModelRequest>,
             Without<Outcome>,
@@ -781,7 +781,7 @@ impl ModelStarts<'_, '_> {
     /// model that calls none, options left unset taking that model's
     /// defaults (its caching), options it does not take left out, and the
     /// [`prompt`](ModelRequest::prompt) in front with the rules of the
-    /// tools it carries; and the options it leaves out, as [`Fitted`] will
+    /// tools it carries; and the options it leaves out, as [`DroppedOptions`] will
     /// say. Refused without a model.
     pub fn sent(
         &self,
@@ -903,14 +903,14 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
-/// [`Streamed`], a [`StreamDelta`] per event, in order, and the text
+/// [`StreamTiming`], a [`StreamDelta`] per event, in order, and the text
 /// and reasoning into its [`Partial`], if it has one.
 pub(crate) fn stream_partials(
     mut calls: Query<(
         Entity,
         &Feed,
         Option<&mut Partial>,
-        Option<&mut Streamed>,
+        Option<&mut StreamTiming>,
         Option<&ForAgent>,
     )>,
     mut deltas: MessageWriter<StreamDelta>,
@@ -918,7 +918,7 @@ pub(crate) fn stream_partials(
 ) {
     for (effect, feed, mut partial, mut streamed, agent) in &mut calls {
         // The stamp of a call whose first item came now.
-        let mut first: Option<Streamed> = None;
+        let mut first: Option<StreamTiming> = None;
         for fed in feed.0.try_iter() {
             let event = match fed {
                 Fed::Item(at) => {
@@ -928,7 +928,7 @@ pub(crate) fn stream_partials(
                             stamp.items += 1;
                         }
                         None => {
-                            first = Some(Streamed {
+                            first = Some(StreamTiming {
                                 first: at,
                                 last: at,
                                 items: 1,
@@ -959,7 +959,7 @@ pub(crate) fn stream_partials(
     }
 }
 
-/// Puts the [`RETRY`] policy's [`RetryVerdict`] on each model call whose
+/// Puts the [`RETRY_POLICY`] policy's [`RetryVerdict`] on each model call whose
 /// handler just failed, in [`Stage::Arrive`], counting its turn's
 /// [`Recovery`].
 pub(crate) fn judge_failures(
@@ -983,7 +983,7 @@ pub(crate) fn judge_failures(
         // std's clock, which a `Retry-After` date is read against, read
         // through `web_time` so it works on the web too.
         let now = UNIX_EPOCH + Duration::from_millis(now_ms());
-        let verdict = RETRY.verdict(report, retries, now);
+        let verdict = RETRY_POLICY.verdict(report, retries, now);
         commands.entity(call).try_insert(RetryVerdict(verdict));
     }
 }
@@ -1031,7 +1031,7 @@ pub(crate) fn back_off(
                 "The model call failed: {report}. Retrying in {}s ({}/{}).",
                 backoff.seconds_left(),
                 backoff.attempt,
-                RETRY.max_retries
+                RETRY_POLICY.max_retries
             ),
         ));
         let hold = commands
@@ -1052,7 +1052,7 @@ pub(crate) fn back_off(
                         TurnCall,
                         CallOf(turn),
                         ForAgent(agent),
-                        Effect::child_of(parent),
+                        Effect::with_parent_id(parent),
                     ))
                     .add_related::<SupersededBy>(&[call]);
             });
@@ -1322,7 +1322,7 @@ pub(crate) fn spawn_reply(
     for call in calls {
         commands.spawn((
             ToolRequest { call },
-            Effect::child_of(Some(reply)),
+            Effect::with_parent_id(Some(reply)),
             CallOf(turn),
             ForAgent(agent),
         ));

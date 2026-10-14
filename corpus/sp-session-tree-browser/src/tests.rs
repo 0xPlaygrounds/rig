@@ -49,7 +49,7 @@ fn start(
     app.insert_resource(ProjectRoot(project.to_owned()))
         .insert_resource(scripted_models([("test/model", model)]))
         .insert_resource(TuiTestScreen::new(180, 30))
-        .add_plugins((AgentPlugin, JournalPlugin, CommandPlugin, SessionsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, SessionsPlugin))
         .add_open_tool("note", "Take a note.", ToolOptions::default(), note)
         .add_open_tool("wait", "Wait.", ToolOptions::default(), wait)
         .init_resource::<Ended>()

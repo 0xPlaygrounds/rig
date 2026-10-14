@@ -92,7 +92,12 @@ fn imports_resumes_and_reimports() {
             },
             terminal: false,
         })
-        .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin, ImportSessionsPlugin));
+        .add_plugins((
+            ExitPlugin,
+            AgentPlugin,
+            SessionLogPlugin,
+            ImportSessionsPlugin,
+        ));
     collect::<SessionImported>(&mut command);
     command.finish();
     command.update();
@@ -103,7 +108,7 @@ fn imports_resumes_and_reimports() {
     // `/import codex <file>` in a session.
     let current = SessionId::generate();
     let (mut app, _wakes) = app_in(&home, &current);
-    app.add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ImportSessionsPlugin));
     collect::<SessionImported>(&mut app);
     app.finish();
     app.update();
@@ -186,7 +191,7 @@ fn imports_resumes_and_reimports() {
         let (mut resumed, wakes) = app_in(&home, &first.session);
         resumed
             .insert_resource(scripted_models([("test/model", &model)]))
-            .add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin))
+            .add_plugins((AgentPlugin, SessionLogPlugin, ImportSessionsPlugin))
             // A `shell` here, so the request declares tools and keeps the
             // imported calls as calls.
             .add_open_tool(

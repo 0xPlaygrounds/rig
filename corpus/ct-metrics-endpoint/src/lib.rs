@@ -209,8 +209,8 @@ fn turn_settled(
 
 /// Observes how long a model call waited for its first streamed item.
 fn first_token(
-    streamed: On<Add<Streamed>>,
-    calls: Query<(&Streamed, &Started, &ModelRequest, Option<&SentTo>)>,
+    streamed: On<Add<StreamTiming>>,
+    calls: Query<(&StreamTiming, &Started, &ModelRequest, Option<&SentTo>)>,
     registry: Res<SharedRegistry>,
 ) {
     if let Ok((streamed, started, request, sent)) = calls.get(streamed.entity) {

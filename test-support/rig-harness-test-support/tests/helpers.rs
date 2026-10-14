@@ -26,7 +26,7 @@ fn a_scripted_catalog_model_answers_in_a_session_directory_and_its_work_is_colle
     let id = SessionId::generate();
     let (mut app, wakes) = app_in(&home, &id);
     app.insert_resource(scripted_models([("corpus-test/one", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_open_tool("look", "Look.", ToolOptions::default(), look)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)

@@ -10,8 +10,8 @@ use rig_core::conversation::{self, MessageId, short_id};
 use rig_core::effect::EffectId;
 use serde::{Deserialize, Serialize};
 
-use super::journal::{ReflectSaved, save_discarded};
-use super::model::Effort;
+use super::model::ReasoningSetting;
+use super::session_log::{ReflectSaved, save_discarded};
 use super::stage::moved;
 use super::turn::{NO_MODEL, Recovery, start_turn};
 
@@ -20,7 +20,14 @@ use super::turn::{NO_MODEL, Recovery, start_turn};
 /// [`ModelChoice`](super::model::ModelChoice) until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
-#[require(AgentId, Conversation, Effort, LastUsage, SystemPrompt, ToolAccess)]
+#[require(
+    AgentId,
+    Conversation,
+    ReasoningSetting,
+    LastUsage,
+    SystemPrompt,
+    ToolAccess
+)]
 pub struct Agent;
 
 /// The agent's stable id, used in its log's name, effect scopes and logs.
@@ -98,7 +105,7 @@ pub struct EffectParent(pub EffectId);
 ///
 /// Each change is kept in the conversation's outbox until the kernel saves
 /// it to the agent's log and announces it as a
-/// [`Committed`](super::journal::Committed) (see [`journal`](super::journal)).
+/// [`ConversationChanged`](super::session_log::ConversationChanged) (see [`journal`](super::session_log)).
 /// A value inserted in place of the agent's own is saved as one reset, the
 /// changes the old one had not saved first. It is reflected opaquely and
 /// saved through serde.
@@ -312,14 +319,14 @@ pub struct Retry {
 /// or held.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
-pub struct Interrupt {
+pub struct StopTurn {
     /// The agent.
     pub entity: Entity,
     /// Why, when it is not the user who stops it.
     pub reason: Option<String>,
 }
 
-impl Interrupt {
+impl StopTurn {
     /// The user stopping `agent`'s turn.
     pub fn new(agent: Entity) -> Self {
         Self {

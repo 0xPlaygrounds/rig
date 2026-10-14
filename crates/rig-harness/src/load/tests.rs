@@ -2,7 +2,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use bevy_reflect::prelude::*;
-use rig_ecs::journal::ReflectSaved;
+use rig_ecs::session_log::ReflectSaved;
 
 use super::{AppKeepsExt, Keeps, PluginEntity, PluginSource, ProvidedBy, load};
 

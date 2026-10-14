@@ -10,7 +10,7 @@
 //!   it is a [`Span`] from the moment it is [`Admitted`] to its
 //!   [`Outcome`], cut into [`PhaseKind`]s: [`Waiting`] behind an earlier
 //!   call, held ([`Holds`]), [`Started`], and for a model call the time to
-//!   its first streamed item ([`Streamed`]) and the streaming after it;
+//!   its first streamed item ([`StreamTiming`]) and the streaming after it;
 //! - each hold ([`HoldOf`]) on a call or on the turn is a span of its own,
 //!   nested under what it holds: a question for the user ([`Ask`]) is a
 //!   wait on the user, any other hold is plugin work;
@@ -712,7 +712,11 @@ fn started(add: On<Add<Started>>, sent: Query<&SentTo>, mut recorder: ResMut<Rec
 }
 
 /// A model call streams from its first item on, timed where it came.
-fn first_item(add: On<Add<Streamed>>, streams: Query<&Streamed>, mut recorder: ResMut<Recorder>) {
+fn first_item(
+    add: On<Add<StreamTiming>>,
+    streams: Query<&StreamTiming>,
+    mut recorder: ResMut<Recorder>,
+) {
     let Ok(streamed) = streams.get(add.entity) else {
         return;
     };

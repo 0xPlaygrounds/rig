@@ -93,7 +93,7 @@ fn agent_app(
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(SessionPaths(dir.0.clone()))
         .insert_resource(Models(Connector::new(Catalog::default())))
-        .add_plugins((AgentPlugin, JournalPlugin, TurnTimelinePlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, TurnTimelinePlugin));
     let Some(mut connection) = connect(model) else {
         return (app, wakes, Entity::PLACEHOLDER);
     };
@@ -203,7 +203,7 @@ struct Approved;
 fn ask(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &Decision),
-        (Undecided, ToolCalls, Without<Approved>),
+        (ReadyToStart, ToolCalls, Without<Approved>),
     >,
     mut commands: Commands,
 ) {

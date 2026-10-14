@@ -241,7 +241,7 @@ struct Lost;
 /// host lost", with what the command printed before, and starts the
 /// reconnect. Once: Review sees the outcome each pass until it settles.
 fn fail_lost(
-    mut calls: Query<(Entity, &mut Outcome, &Published), (Unreviewed, ToolCalls, Without<Lost>)>,
+    mut calls: Query<(Entity, &mut Outcome, &Published), (ReadyToSettle, ToolCalls, Without<Lost>)>,
     pointed: Res<Pointed>,
     mut commands: Commands,
 ) {

@@ -37,7 +37,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::{Schedules, SystemKey};
 use bevy_log::error;
 use bevy_reflect::prelude::*;
-use rig_ecs::restore::{RetiredSaved, SavedKeys, SavedUpgrades};
+use rig_ecs::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades};
 use rig_memory::Upgrade;
 
 /// Where a plugin comes from, on the entity [`load`] spawns for it.
@@ -317,7 +317,7 @@ impl AppKeepsExt for App {
 
     fn retired_saved(&mut self, key: &'static str) -> &mut Self {
         let world = self.world_mut();
-        let mut retired = world.get_resource_or_init::<RetiredSaved>();
+        let mut retired = world.get_resource_or_init::<IgnoredSavedKeys>();
         retired.0.insert(key.to_owned());
         keep(world, |keeps| &mut keeps.saved, key);
         self

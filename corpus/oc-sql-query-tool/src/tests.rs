@@ -77,7 +77,7 @@ fn the_agent_reads_but_cannot_change_the_database() {
     ]);
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, SqlQueryToolPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SqlQueryToolPlugin))
         .init_resource::<Results>()
         .add_observer(log_results)
         .init_resource::<Ended>()

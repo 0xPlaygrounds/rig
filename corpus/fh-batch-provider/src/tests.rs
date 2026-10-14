@@ -223,7 +223,7 @@ fn start(store: &MemoryStore, fake: &Fake) -> (App, Receiver<()>) {
         .insert_resource(BatchAccount(AnthropicConfig::new("test-key")))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ClockPlugin,
             ExitPlugin,
             BatchProviderPlugin,
@@ -369,7 +369,7 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     app.world_mut().trigger(deliver);
     until(&mut app, &wakes, |_| fake.items() == 5);
     let last = fake.sent("And the warnings.");
-    app.world_mut().trigger(Interrupt {
+    app.world_mut().trigger(StopTurn {
         entity: a,
         reason: None,
     });

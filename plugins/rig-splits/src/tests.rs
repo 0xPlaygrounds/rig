@@ -56,7 +56,7 @@ fn start(
     model: &MockCompletionModel,
 ) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
-    app.add_plugins((AgentPlugin, JournalPlugin, SplitsPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, SplitsPlugin))
         .add_plugins((PickPlugin, SessionPickerPlugin))
         .init_resource::<Switched>()
         .init_resource::<Ended>()

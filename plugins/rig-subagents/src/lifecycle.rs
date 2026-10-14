@@ -207,7 +207,7 @@ impl Agents<'_, '_> {
             let mode = if !self.wait_calls(asker, agent).is_empty() {
                 DeliveryMode::Steer
             } else if open.any(|r| r.batch.is_some_and(|batch| batched.contains(&batch))) {
-                DeliveryMode::Note
+                DeliveryMode::Inform
             } else {
                 DeliveryMode::Queue
             };
@@ -217,7 +217,7 @@ impl Agents<'_, '_> {
             self.commands.spawn((
                 Incoming::new(text, mode).with_author(author),
                 ForAgent(asker),
-                Effect::child_of(parent.map(|parent| parent.0)),
+                Effect::with_parent_id(parent.map(|parent| parent.0)),
                 Report,
             ));
             self.wake.wake();

@@ -33,7 +33,7 @@ use super::input::TerminalInput;
 use super::keys::KeyBinding;
 use super::panel::TuiScreen;
 use super::view::TuiView;
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::Wake;
 use rig_harness::harness_protocol::secret_variables;
 use rig_harness::prelude::{Exit, ExitReason, Scratch};
 

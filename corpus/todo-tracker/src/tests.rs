@@ -13,7 +13,7 @@ use rig_harness_test_support::{
 /// restored the session, with its first agent.
 fn start(store: &MemoryStore) -> (App, Receiver<()>, Option<Entity>) {
     let (mut app, wakes) = app_on(store);
-    app.add_plugins((AgentPlugin, JournalPlugin, TodoPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, TodoPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

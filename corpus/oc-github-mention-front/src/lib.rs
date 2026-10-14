@@ -843,7 +843,7 @@ fn started(
 /// so the harness refuses it, as it does any call another plugin wants
 /// approved.
 fn needs_approval(
-    calls: Query<(Entity, &ToolRequest, &Footprint), (Undecided, ToolCalls, Without<Approved>)>,
+    calls: Query<(Entity, &ToolRequest, &Footprint), (ReadyToStart, ToolCalls, Without<Approved>)>,
     run: Res<Run>,
     mut commands: Commands,
 ) {

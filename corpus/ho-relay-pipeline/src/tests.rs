@@ -43,7 +43,7 @@ struct Holding(bool);
 
 /// Holds the implement stage's calls, so the stage runs at a restart.
 fn hold_implement(
-    calls: Query<(Entity, &ForAgent), (With<TurnCall>, Undecided, Without<Held>)>,
+    calls: Query<(Entity, &ForAgent), (With<TurnCall>, ReadyToStart, Without<Held>)>,
     helpers: Query<&AgentTitle, With<rig_subagents::Helper>>,
     mut holding: ResMut<Holding>,
     mut commands: Commands,
@@ -77,7 +77,7 @@ fn session(
     ]))
     .insert_resource(RigHome(home.clone()))
     .insert_resource(ProjectRoot(home.root().to_owned()))
-    .add_plugins((AgentPlugin, JournalPlugin, RelayPipelinePlugin))
+    .add_plugins((AgentPlugin, SessionLogPlugin, RelayPipelinePlugin))
     .add_open_tool("read", "Read a file.", ToolOptions::default(), unused)
     .add_open_tool("write", "Write a file.", ToolOptions::default(), unused);
     app.finish();
@@ -130,7 +130,7 @@ fn a_failed_test_sends_the_pipeline_back_to_implement_and_the_agent_gets_the_rep
     let line = "pipe feature add retry to the client".to_owned();
     app.world_mut().trigger(RunCommand::new(host, line));
     // Interrupting the user's agent leaves its pipeline running.
-    app.world_mut().trigger(Interrupt::new(host));
+    app.world_mut().trigger(StopTurn::new(host));
     run_until(&mut app, &wakes, |world| reported(world, host));
 
     let asked: Vec<String> = stages

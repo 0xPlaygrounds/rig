@@ -410,7 +410,7 @@ fn undo(
                 "The user undid your changes of an earlier turn ({what}): those files are \
                  back as they were before it. Read them again before you change them."
             );
-            let note = Deliver::new(agent, text, DeliveryMode::Note);
+            let note = Deliver::new(agent, text, DeliveryMode::Inform);
             commands.trigger(note.with_author(Author::plugin(NAME)));
         }
         Err(why) => {

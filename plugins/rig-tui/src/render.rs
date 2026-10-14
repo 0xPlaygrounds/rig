@@ -77,7 +77,7 @@ pub(crate) struct Paced {
 /// conversation or comes with a notice. A streaming reply alone draws at
 /// most every [`STREAM_FRAME`]; the text that waits is drawn by one of the
 /// frames the kernel runs after the wake that brought it (see
-/// [`Wake`](rig_ecs::calls::Wake)), 16 ms apart, under any loop.
+/// [`Wake`](rig_ecs::tasks::Wake)), 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     (view, notices, facts, streaming): (
         Res<TuiView>,
@@ -1399,7 +1399,7 @@ fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
         let when = match message.mode {
             DeliveryMode::Steer => "steering",
             DeliveryMode::Queue => "after this turn",
-            DeliveryMode::Note => "noted",
+            DeliveryMode::Inform => "noted",
         };
         let text = message.text();
         let first = text.lines().next().unwrap_or_default();

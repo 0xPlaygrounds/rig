@@ -387,7 +387,7 @@ fn refresh(
 fn deliver(
     mut calls: Query<
         (Entity, &ForAgent, &ToolRequest, &Published, &mut Outcome),
-        (Unreviewed, ToolCalls, Without<Checked>),
+        (ReadyToSettle, ToolCalls, Without<Checked>),
     >,
     mut agents: Query<(&mut DeliveredRules, &Conversation, Option<&WorkDir>)>,
     rules: Res<Rules>,

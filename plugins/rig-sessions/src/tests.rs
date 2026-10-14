@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
-use rig_ecs::journal::JournalPlugin;
 use rig_ecs::prelude::{Author, RewriteSession, SavedAgent, Session, Store, Strings};
+use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::{
     AppKeepsExt, ForkSession, ForkedFrom, ReflectSaved, SessionEntry, SessionForked, SessionSource,
@@ -147,8 +147,11 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     let dir = home.session(&id);
     let memory = InMemory::default();
     let (mut app, _wakes) = app_in(&home, &id);
-    app.insert_resource(memory.stores())
-        .add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin));
+    app.insert_resource(memory.stores()).add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        SessionsPlugin,
+    ));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -332,7 +335,7 @@ fn a_rewritten_session_keeps_its_rewritten_title() {
     let id = SessionId::generate();
     let dir = home.session(&id);
     let (mut app, _wakes) = app_in(&home, &id);
-    app.add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);

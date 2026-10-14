@@ -18,7 +18,7 @@ use rig_compaction::{
 };
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{
     CompactReason, Compacted, Cut, Record, SummaryState, estimate_tokens, undo_summary,
 };
@@ -171,7 +171,10 @@ fn keep_newest_turns(
 /// Holds each summary of a compaction the user asked for, once the model
 /// wrote it, for review by someone who can answer.
 fn review(
-    calls: Query<(Entity, &Summarizing, &Replaces, &ForAgent), (Unreviewed, Without<UnderReview>)>,
+    calls: Query<
+        (Entity, &Summarizing, &Replaces, &ForAgent),
+        (ReadyToSettle, Without<UnderReview>),
+    >,
     answerers: Answerers,
     mut commands: Commands,
 ) {

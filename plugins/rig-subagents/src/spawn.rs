@@ -224,7 +224,12 @@ fn open_effect(request: &SpawnSubagent) -> EffectRequest {
 fn refuse_too_deep(
     mut requests: Query<
         (&ForAgent, &mut Decision),
-        (Undecided, PluginEffects, With<SpawnSubagent>, Without<Ask>),
+        (
+            ReadyToStart,
+            PluginEffects,
+            With<SpawnSubagent>,
+            Without<Ask>,
+        ),
     >,
     lineage: Query<&SpawnedBy>,
     policy: Res<SubagentPolicy>,
@@ -247,7 +252,7 @@ type Parent<'a> = (
     &'a AgentId,
     &'a ToolAccess,
     Option<&'a ModelChoice>,
-    &'a Effort,
+    &'a ReasoningSetting,
     &'a SystemPrompt,
     Option<&'a Connection>,
 );
@@ -257,10 +262,10 @@ type Parent<'a> = (
 /// agent's depth and the parent's tools by name.
 fn settle(
     request: &SpawnSubagent,
-    (parent, depth): ((Option<&ModelChoice>, Effort), usize),
+    (parent, depth): ((Option<&ModelChoice>, ReasoningSetting), usize),
     tools: &[&str],
     (models, policy): (&Models, &SubagentPolicy),
-) -> Result<(ModelChoice, Effort, Vec<String>), String> {
+) -> Result<(ModelChoice, ReasoningSetting, Vec<String>), String> {
     let briefless = request.role == Role::Task && request.brief.trim().is_empty();
     if request.title.trim().is_empty() || briefless {
         return Err("`description` and `prompt` must not be empty".to_owned());

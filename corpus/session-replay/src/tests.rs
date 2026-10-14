@@ -45,7 +45,7 @@ fn without_tools(mut calls: Query<&mut Adapters, Added<Admitted>>) {
 /// (when there is one) as [`without_tools`] adapts it.
 fn with_agents(app: &mut App, connection: Option<Connection>) {
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_systems(AgentPass, without_tools.in_set(Stage::Prepare))
         .add_tool_with(
             Write::default(),

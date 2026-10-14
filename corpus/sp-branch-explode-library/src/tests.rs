@@ -8,7 +8,7 @@ use rig_core::conversation::{Aside, Author};
 use rig_core::message::{Message, UserContent};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::prelude::{
-    AgentPlugin, App, Deliver, DeliveryMode, Entity, JournalPlugin, ModelChoice,
+    AgentPlugin, App, Deliver, DeliveryMode, Entity, ModelChoice, SessionLogPlugin,
 };
 use rig_harness::rig_ecs::agent::Conversation as AgentConversation;
 use rig_harness_test_support::{
@@ -23,7 +23,7 @@ const MODEL: &str = "test/model";
 fn start(home: &Home, id: &SessionId, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(scripted_models([(MODEL, model)]))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

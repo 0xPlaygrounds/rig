@@ -11,7 +11,7 @@ use super::*;
 /// An app on `store` that counts spending, after its first frame.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
-    app.add_plugins((AgentPlugin, JournalPlugin, UsagePlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

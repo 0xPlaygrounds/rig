@@ -19,7 +19,7 @@ fn app(
     model: &MockCompletionModel,
 ) -> (App, std::sync::mpsc::Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
-    app.add_plugins((AgentPlugin, JournalPlugin, ReadTool, EditTool, WriteTool))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, EditTool, WriteTool))
         .add_plugins(ReadBeforeEditPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended);

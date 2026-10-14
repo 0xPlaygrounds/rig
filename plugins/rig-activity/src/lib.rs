@@ -325,7 +325,7 @@ fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed
             Status::Retrying { attempt, seconds } => STATUS.says(
                 format!(
                     "retry {attempt}/{} in {seconds}s… (Esc stops)",
-                    rig_ecs::turn::RETRY.max_retries
+                    rig_ecs::turn::RETRY_POLICY.max_retries
                 ),
                 Tone::Red,
             ),

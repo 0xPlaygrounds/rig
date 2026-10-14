@@ -301,7 +301,7 @@ fn confine(
 
 /// Refuses each `shell` call when there is no sandbox to run it in.
 fn refuse_unsandboxed(
-    mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>,
     sandbox: Res<Sandbox>,
 ) {
     if sandbox.backend.is_some() {
@@ -330,7 +330,7 @@ struct Hinted;
 fn hint(
     mut calls: Query<
         (Entity, &ToolRequest, &mut Outcome, &Published),
-        (Unreviewed, ToolCalls, Without<Hinted>),
+        (ReadyToSettle, ToolCalls, Without<Hinted>),
     >,
     network: Res<SandboxNetwork>,
     mut commands: Commands,

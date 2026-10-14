@@ -35,7 +35,7 @@ fn typing_in_the_input_box_reaches_the_agent_and_its_answer_the_transcript() {
     let (mut app, wakes) = app_on(&store);
     app.set_error_handler(bevy_ecs::error::warn).add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         AskPlugin,
         PickPlugin,
         WindowGuiPlugin,
@@ -86,7 +86,7 @@ fn a_question_is_a_dialog_its_buttons_answer() {
     let (mut app, _wakes) = app_on(&store);
     app.set_error_handler(bevy_ecs::error::warn).add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         AskPlugin,
         PickPlugin,
         WindowGuiPlugin,

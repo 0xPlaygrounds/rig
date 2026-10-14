@@ -427,7 +427,7 @@ fn run(rpc: &mut Rpc, command: Command) -> Result<(), String> {
         }
         Kind::Interrupt => {
             let agent = rpc.agent(command.agent)?;
-            rpc.commands.trigger(Interrupt::new(agent));
+            rpc.commands.trigger(StopTurn::new(agent));
         }
         Kind::SetModel { model } => {
             let entity = rpc.agent(command.agent)?;

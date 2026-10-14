@@ -578,7 +578,7 @@ impl Adding<'_, '_> {
                         model: model.clone(),
                     },
                     ModelRequest::new(CompletionRequest::new(ask)).on(vision),
-                    Effect::child_of(Some(effect.id())).with_purpose("vision"),
+                    Effect::with_parent_id(Some(effect.id())).with_purpose("vision"),
                     ForAgent(agent),
                     HoldOf(message),
                 ));
@@ -615,7 +615,7 @@ fn time_out(describe: Entity, secs: u64, commands: &mut Commands) {
 /// image and the model, or the note that the model cannot see the image
 /// when the description failed, and lets the message go.
 fn take_descriptions(
-    described: Query<(Entity, &Describing, &Outcome), (Unreviewed, ModelCalls, With<HoldOf>)>,
+    described: Query<(Entity, &Describing, &Outcome), (ReadyToSettle, ModelCalls, With<HoldOf>)>,
     mut messages: Query<(&mut Incoming, &ForAgent), IncomingMessages>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,

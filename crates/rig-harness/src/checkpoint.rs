@@ -58,7 +58,7 @@ use rig_core::serve::ErasedHandler;
 use rig_core::tool::{Scope, Touches};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    AgentPass, CallHandler, CallOf, Footprint, ForAgent, GateSystems, ToolCalls, Undecided,
+    AgentPass, CallHandler, CallOf, Footprint, ForAgent, GateSystems, ReadyToStart, ToolCalls,
 };
 use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
@@ -214,7 +214,7 @@ fn checkpoint(
             Option<&ForAgent>,
             Option<&CallOf>,
         ),
-        (ToolCalls, Undecided, Without<CallCheckpoint>),
+        (ToolCalls, ReadyToStart, Without<CallCheckpoint>),
     >,
     turns: Query<&TurnCheckpoint>,
     dirs: Query<&WorkDir>,

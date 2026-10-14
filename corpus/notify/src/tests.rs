@@ -43,7 +43,7 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_an_answered_questi
         .insert_resource(Models(Connector::new(Catalog::default())))
         .insert_resource(Settings::from_toml("[notify]\nmin_seconds = 0"))
         .insert_resource(Notifier(recording.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, NotifyPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, NotifyPlugin));
     let (top, sub) = (
         MockCompletionModel::from_stream_turns([reply("All done.\nmore")]),
         MockCompletionModel::from_stream_turns([reply("Sub done.")]),

@@ -292,7 +292,7 @@ fn queue(
                 TaskState::Pending => {}
                 TaskState::Running => {
                     if let Some(agent) = agent_of(number) {
-                        commands.trigger(Interrupt::new(agent));
+                        commands.trigger(StopTurn::new(agent));
                     }
                     task.ended = Some(now());
                 }

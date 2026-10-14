@@ -96,7 +96,7 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
         entity: tool,
         call,
         agent,
-        caller: caller.clone(),
+        agent_id: caller.clone(),
         effect: effect.id(),
         parent: effect.parent,
         tool_call: tool_call.clone(),
@@ -140,7 +140,7 @@ pub struct CallHandler(pub Handler);
 /// registered handles it. The call stays open until its
 /// [`Decision`] is decided, such as with
 /// `Outcome::from(ToolResult::success("Done.".into()))`; despawning it, as
-/// an [`Interrupt`](super::agent::Interrupt) does, cancels it.
+/// a [`StopTurn`](super::agent::StopTurn) does, cancels it.
 #[derive(EntityEvent, Clone)]
 pub struct ToolCalled<A: Send + Sync + 'static> {
     /// The tool.
@@ -150,7 +150,7 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
     /// The calling agent.
     pub agent: Entity,
     /// The calling agent's id.
-    pub caller: AgentId,
+    pub agent_id: AgentId,
     /// The call's effect, which work done for it is recorded under.
     pub effect: EffectId,
     /// The effect that asked for the call, such as the model call whose
@@ -167,7 +167,7 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
 /// what its calls touch when they cannot say more; on a call, what it
 /// touches as Gate sees it, computed by the kernel when Gate opens: what
 /// its handler says of its final arguments, else its tool's, its paths
-/// [`normalized`](Touches::normalized), unless a plugin [`Declared`] it on
+/// [`normalized`](Touches::normalized), unless a plugin [`DeclaredFootprint`] it on
 /// the call. A call waits
 /// while an earlier call of its reply that conflicts with it is not
 /// settled ([`Waiting`](super::stage::Waiting)).
@@ -192,10 +192,10 @@ impl Default for Footprint {
 /// command that only reads, lets the reply's other calls run beside it:
 ///
 /// ```ignore
-/// commands.entity(call).insert((Footprint(Touches::Writes(Scope::Paths(vec![src]))), Declared));
+/// commands.entity(call).insert((Footprint(Touches::Writes(Scope::Paths(vec![src]))), DeclaredFootprint));
 /// ```
 #[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Declared;
+pub struct DeclaredFootprint;
 
 /// How a tool is registered with [`AppToolsExt::add_tool_with`].
 #[derive(Clone, Debug, Default)]
@@ -374,7 +374,7 @@ fn register_tool(
         serves,
     ));
     if declared {
-        entity.insert(Declared);
+        entity.insert(DeclaredFootprint);
     }
     Some(entity.id())
 }
@@ -420,7 +420,7 @@ pub(crate) fn complete_calls(
 
 /// Gives each admitted tool call that has not started the [`Footprint`]
 /// of the call as it stands, when Gate opens: after every Prepare edit of
-/// its arguments or handler; one a plugin [`Declared`] on the call stands.
+/// its arguments or handler; one a plugin [`DeclaredFootprint`] on the call stands.
 pub(crate) fn compute_footprints(
     calls: Query<
         (
@@ -428,11 +428,11 @@ pub(crate) fn compute_footprints(
             &ToolRequest,
             Option<&CallHandler>,
             Option<&Footprint>,
-            Has<Declared>,
+            Has<DeclaredFootprint>,
         ),
         (With<Admitted>, Without<Started>, Without<Settled>),
     >,
-    tools: Query<(&ToolDef, &Footprint, Has<Declared>)>,
+    tools: Query<(&ToolDef, &Footprint, Has<DeclaredFootprint>)>,
     mut commands: Commands,
 ) {
     for (entity, ToolRequest { call }, handler, had, declared) in &calls {

@@ -83,7 +83,7 @@ fn start(store: &MemoryStore, home: &Path, models: Models) -> (App, Receiver<()>
     app.insert_resource(RigHome(Home::at(home)))
         .insert_resource(ProjectRoot(home.join("project")))
         .insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin, SubagentsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin, SubagentsPlugin))
         .add_plugins(PerAgentCompactionPlugin);
     collect::<Notice>(&mut app);
     let read = |called: On<ToolCalled<serde_json::Value>>,

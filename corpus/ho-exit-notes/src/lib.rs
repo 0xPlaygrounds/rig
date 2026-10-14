@@ -170,7 +170,7 @@ fn summarize(agent: Entity, commands: &mut Commands) {
     commands.spawn((
         Name::new("session notes"),
         NotesCall,
-        BuildFrom(agent),
+        SideCall(agent),
         ForAgent(agent),
         Effect::default().with_purpose("notes"),
     ));
@@ -209,7 +209,7 @@ fn ask_for_notes(
 /// that leaves for good, of a session worth a note, starts the summary and
 /// the deadline; one asked for while waiting skips the summary.
 fn hold_exit(
-    exits: Query<Entity, (With<ExitRequest>, Undecided, PluginEffects)>,
+    exits: Query<Entity, (With<ExitRequest>, ReadyToStart, PluginEffects)>,
     reason: Option<Res<ExitReason>>,
     notes: Res<SessionNotes>,
     agents: PrimaryQuery,

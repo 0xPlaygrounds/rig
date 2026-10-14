@@ -117,7 +117,7 @@ fn app(
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             CommandPlugin,
             ExitPlugin,
             ShellTool,

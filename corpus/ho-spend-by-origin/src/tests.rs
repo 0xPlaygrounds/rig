@@ -66,7 +66,7 @@ fn start(
     app.insert_resource(scripted_models([("test/main", main), ("test/sub", sub)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SubagentsPlugin,
             SpendByOriginPlugin,
         ))

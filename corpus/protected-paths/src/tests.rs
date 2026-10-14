@@ -43,7 +43,13 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     app.set_error_handler(rig_harness::error::warn)
         .insert_resource(ProjectRoot(project.clone()))
         .insert_resource(RigHome(Home::at(dir.join("home"))))
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool, SearchTool))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            ReadTool,
+            WriteTool,
+            SearchTool,
+        ))
         .add_plugins(ProtectedPathsPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended);

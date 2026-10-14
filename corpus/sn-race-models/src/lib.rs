@@ -337,7 +337,7 @@ fn route(
                         TurnCall,
                         CallOf(turn),
                         ForAgent(agent),
-                        Effect::child_of(effect.parent),
+                        Effect::with_parent_id(effect.parent),
                         Racer {
                             member,
                             solo: false,
@@ -373,7 +373,7 @@ fn is_content(event: &StreamEvent) -> bool {
 /// Claims the race for the first racer that streams content, as its
 /// stream's first item comes: a delta moves no stage, so this does not
 /// wait for the next frame's [`claim`].
-fn claim_at_once(_: On<Add<Streamed>>, mut commands: Commands) {
+fn claim_at_once(_: On<Add<StreamTiming>>, mut commands: Commands) {
     commands.run_system_cached(claim);
 }
 
@@ -398,7 +398,7 @@ fn estimate(request: &ModelRequest, sent: Option<&SentTo>) -> Option<CallUsage> 
 type Claimant<'a> = (
     &'a Racer,
     &'a CallOf,
-    Option<&'a Streamed>,
+    Option<&'a StreamTiming>,
     Option<&'a Started>,
     &'a ModelRequest,
     Option<&'a SentTo>,
@@ -479,7 +479,7 @@ fn list_errors(
     mut failed: Query<
         (Entity, &Racer, &CallOf, &mut Outcome),
         (
-            Unreviewed,
+            ReadyToSettle,
             With<TurnCall>,
             Without<SupersededBy>,
             Without<DroppedOut>,
@@ -553,7 +553,7 @@ fn drop_out(
             (&ModelRequest, Option<&SentTo>),
         ),
         (
-            Unreviewed,
+            ReadyToSettle,
             With<TurnCall>,
             Without<SupersededBy>,
             Without<DroppedOut>,
@@ -596,7 +596,7 @@ fn drop_out(
                     TurnCall,
                     CallOf(of.0),
                     ForAgent(agent),
-                    Effect::child_of(effect.parent),
+                    Effect::with_parent_id(effect.parent),
                     Racer {
                         member: next,
                         solo: true,

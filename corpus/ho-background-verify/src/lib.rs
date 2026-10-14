@@ -10,7 +10,7 @@
 //!
 //! A failure goes to each agent that edited since the last pass, with the
 //! first error lines, and starts no turn. A busy agent gets it as a
-//! [`DeliveryMode::Note`], which goes with its next model call; an idle
+//! [`DeliveryMode::Inform`], which goes with its next model call; an idle
 //! one with its next message from the user, as an attachment added in
 //! Prepare. A note whose agent's turn would end before another call
 //! waits for the user's message instead, so that it stays withdrawable.
@@ -370,7 +370,7 @@ fn checked(
     for &agent in to {
         match agents.get(agent) {
             Ok(true) => {
-                let message = Incoming::new(note.text.clone(), DeliveryMode::Note)
+                let message = Incoming::new(note.text.clone(), DeliveryMode::Inform)
                     .with_author(Author::plugin(VERIFY));
                 commands.spawn((message, ForAgent(agent), note.clone()));
             }
@@ -439,7 +439,10 @@ fn release(answered: On<Add<Outcome>>, holding: Query<&Holding>, mut commands: C
 /// A note about to go to an agent whose turn ended meanwhile would be
 /// committed at once: it waits for the user's next message instead.
 fn to_idle_agents(
-    mut notes: Query<(Entity, &CheckNote, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut notes: Query<
+        (Entity, &CheckNote, &ForAgent, &mut Decision),
+        (ReadyToStart, IncomingMessages),
+    >,
     busy: Query<Has<ActiveTurn>>,
     mut verify: ResMut<Verify>,
     mut commands: Commands,
@@ -486,7 +489,7 @@ fn attach_notes(
     mut commands: Commands,
 ) {
     for (entity, mut typed, &ForAgent(agent)) in &mut typed {
-        let note = typed.mode != DeliveryMode::Note && typed.command().is_none();
+        let note = typed.mode != DeliveryMode::Inform && typed.command().is_none();
         if typed.author.kind != AuthorKind::User || !note {
             continue;
         }

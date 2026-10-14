@@ -22,8 +22,8 @@ use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::effects::Handler;
-use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+use rig_ecs::session_log::SessionStore;
 use rig_harness::ask::{Answer, Answerer, Ask, AskSystems};
 use rig_harness::clock::WakeAt;
 use rig_harness::harness_protocol::{Home, SessionId};
@@ -270,7 +270,7 @@ pub fn start_call(
 ) -> Option<Entity> {
     let name = ToolName::new(tool).ok()?;
     let call = ToolCall::from_wire(id, ToolFunction::new(name, args));
-    let parent = Effect::child_of(Some(EffectId::from_raw(1)));
+    let parent = Effect::with_parent_id(Some(EffectId::from_raw(1)));
     Some(
         world
             .spawn((ToolRequest { call }, parent, ForAgent(agent)))

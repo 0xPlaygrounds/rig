@@ -50,7 +50,7 @@ fn note_scroll(scroll: On<ScrollTo>, mut scrolls: ResMut<Scrolls>) {
 #[derive(Resource, Default)]
 struct Interrupts(usize);
 
-fn note_interrupt(_: On<Interrupt>, mut interrupts: ResMut<Interrupts>) {
+fn note_interrupt(_: On<StopTurn>, mut interrupts: ResMut<Interrupts>) {
     interrupts.0 += 1;
 }
 
@@ -135,7 +135,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     app.insert_resource(scripted_models([("test/model", &model)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             PickPlugin,
             TranscriptSearchPlugin,
         ))

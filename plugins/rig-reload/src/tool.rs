@@ -60,7 +60,7 @@ fn on_reload_tool(
                 format!(
                     "The model of agent {} asked to reload: the agent rebuilds and \
                      restarts once no turn runs. /reload cancel cancels it.",
-                    called.caller.short()
+                    called.agent_id.short()
                 ),
             ));
             ToolResult::success(

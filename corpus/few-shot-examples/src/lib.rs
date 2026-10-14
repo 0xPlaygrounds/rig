@@ -320,7 +320,7 @@ type NewRequests<'w, 's> = Query<
         &'static ForAgent,
         Option<&'static CallOf>,
     ),
-    (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>),
+    (Added<Admitted>, Or<(With<TurnCall>, With<SideCall>)>),
 >;
 
 /// Puts the examples that fit each request right after its system prompt.

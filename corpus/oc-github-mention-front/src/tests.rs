@@ -198,7 +198,7 @@ fn run(dir: &Path, home: &Home, api: &str, event: &Value, model: &MockCompletion
         ServicesPlugin,
         AgentPlugin,
         ApprovalPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         WriteTool,
         GithubMentionPlugin,
     ))

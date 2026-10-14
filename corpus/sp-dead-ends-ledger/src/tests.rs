@@ -36,7 +36,7 @@ fn start(
         .insert_resource(Models(Connector::new(Catalog::default())))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             EditTool,
             ShellTool,
             CompactionPlugin,

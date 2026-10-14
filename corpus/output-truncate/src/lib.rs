@@ -113,7 +113,7 @@ struct Truncated;
 fn cut_long_results(
     mut calls: Query<
         (Entity, &ToolRequest, &mut Outcome),
-        (Unreviewed, ToolCalls, Without<Truncated>),
+        (ReadyToSettle, ToolCalls, Without<Truncated>),
     >,
     config: Res<Truncate>,
     root: Res<ProjectRoot>,

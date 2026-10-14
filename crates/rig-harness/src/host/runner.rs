@@ -14,7 +14,7 @@ use bevy_app::PluginsState;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::Wake;
 
 use crate::clock::{Due, KeepAwake, WakeAt};
 

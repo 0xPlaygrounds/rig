@@ -97,7 +97,10 @@ impl Plugin for ToolArgRepairPlugin {
 /// keep the model's text. A repaired reply needs no repair, so the next
 /// pass leaves it alone.
 fn repair_replies(
-    mut replies: Query<(&mut Outcome, Option<&SentTo>), (Unreviewed, ModelCalls, With<TurnCall>)>,
+    mut replies: Query<
+        (&mut Outcome, Option<&SentTo>),
+        (ReadyToSettle, ModelCalls, With<TurnCall>),
+    >,
     tools: Query<&ToolDef>,
     settings: Res<ArgRepairSettings>,
     mut repairs: ResMut<Repairs>,
@@ -156,7 +159,7 @@ struct Hinted;
 fn hint(
     mut calls: Query<
         (Entity, &ToolRequest, &mut Outcome),
-        (Unreviewed, ToolCalls, Without<Hinted>),
+        (ReadyToSettle, ToolCalls, Without<Hinted>),
     >,
     tools: Query<&ToolDef>,
     mut commands: Commands,

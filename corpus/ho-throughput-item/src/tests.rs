@@ -40,7 +40,7 @@ fn a_turns_call_shows_its_speed_and_a_plugins_call_only_counts() {
         return;
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin, TuiPlugin, ThroughputPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, TuiPlugin, ThroughputPlugin))
         .insert_resource(TimeUpdateStrategy::ManualDuration(FRAME))
         .init_resource::<Ended>()
         .add_observer(log_ended);

@@ -3,7 +3,7 @@
 //! Watches every model call and tool call while it runs, of any agent or
 //! plugin, with a timer of its own per call ([`WakeAt`] at the call's next
 //! deadline), so nothing runs while no call does. A model call whose
-//! stream ([`Streamed`]) sent nothing for the model timeout is reported
+//! stream ([`StreamTiming`]) sent nothing for the model timeout is reported
 //! and sent again once ([`resend`]); a second stall fails it. A tool call
 //! past its soft limit is reported, shown on the status line while it
 //! runs, and stopped only past its `kill_after`. Each stall is a line of
@@ -172,7 +172,7 @@ fn model_due(
     mut calls: Query<
         (
             &Started,
-            Option<&Streamed>,
+            Option<&StreamTiming>,
             Option<&SentTo>,
             Option<&ForAgent>,
             Has<Resent>,

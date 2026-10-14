@@ -19,7 +19,7 @@ fn start(store: &MemoryStore, root: &Path) -> (App, Receiver<()>) {
     app.insert_resource(ProjectRoot(root.to_owned()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ReadTool,
             EditTool,
             WriteTool,

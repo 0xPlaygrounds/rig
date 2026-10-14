@@ -10,7 +10,7 @@ use rig_core::error::ErrorKind;
 use rig_core::message::{Origin as Made, Reasoning, ToolName};
 use rig_core::providers::registry::ConnectError;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, first_agent, log_ended, run_until, scratch_home,
 };
@@ -201,7 +201,7 @@ fn start(home: &Home, id: &SessionId, server: &Server, style: &str) -> (App, Rec
         .insert_resource(StatefulVendors(vendor.into_iter().collect()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SubagentsPlugin,
             ServerSideStatePlugin,
         ))

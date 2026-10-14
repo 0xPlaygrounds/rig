@@ -14,7 +14,7 @@ use super::chain::{self, Entry, Event, Ran, line_hash};
 use super::*;
 
 /// The small plugin of the spec's test: refuses `rm -rf` before it runs.
-fn no_rm(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
+fn no_rm(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (request, mut decision) in &mut calls {
         let command = request.call.function.arguments.get("command");
         let command = command
@@ -78,7 +78,7 @@ fn calls_are_logged_chained_and_checked() {
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ShellTool,
         WriteTool,
         AuditLogPlugin,

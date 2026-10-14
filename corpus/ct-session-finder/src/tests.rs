@@ -43,7 +43,7 @@ fn saved_session(
     .ok();
     let model = MockCompletionModel::from_stream_turns(turns);
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin))
         .add_open_tool(
             "build",
             "Build the project.",
@@ -175,7 +175,7 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
     app.insert_resource(ProjectRoot(project.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             CommandPlugin,
             PickPlugin,
             SessionFinderPlugin,

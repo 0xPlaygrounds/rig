@@ -56,7 +56,7 @@ use rig_core::effect::{Answered as EffectOutcome, Decider, EffectKind};
 use rig_ecs::inbox::Incoming;
 use rig_ecs::stage::{
     AgentPass, Decision, Effect, EffectRequest, ForAgent, IncomingMessages, Outcome, PluginEffects,
-    Settled, Stage, Undecided,
+    ReadyToStart, Settled, Stage,
 };
 
 use crate::commands::CommandSystems;
@@ -340,7 +340,7 @@ fn request(mut world: DeferredWorld, context: HookContext) {
 /// answers the oldest such question that is not inline, and goes no
 /// further.
 fn answer_with_text(
-    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (ReadyToStart, IncomingMessages)>,
     mut asks: Query<
         (Entity, &Ask, &ForAgent, &Effect, &mut Decision),
         (PluginEffects, Without<Outcome>, Without<Settled>),

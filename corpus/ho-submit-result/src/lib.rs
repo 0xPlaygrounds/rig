@@ -264,7 +264,7 @@ fn submit(
 fn judge(
     calls: Query<
         (Entity, &ToolRequest, &Outcome, &ForAgent, &CallOf),
-        (Unreviewed, ToolCalls, Without<Judged>),
+        (ReadyToSettle, ToolCalls, Without<Judged>),
     >,
     mut turns: Query<&mut Submitting>,
     tool: Res<SubmitTool>,
@@ -346,7 +346,7 @@ fn remind(
 /// once every other call of the reply settled, with the result: nothing is
 /// sent and the turn ends answered with it.
 fn end_with_result(
-    mut calls: Query<(&CallOf, &mut Decision), (Undecided, ModelCalls, With<TurnCall>)>,
+    mut calls: Query<(&CallOf, &mut Decision), (ReadyToStart, ModelCalls, With<TurnCall>)>,
     turns: Query<&Submitting>,
 ) {
     for (&CallOf(turn), mut decision) in &mut calls {

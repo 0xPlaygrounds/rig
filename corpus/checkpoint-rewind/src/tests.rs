@@ -54,7 +54,7 @@ fn start(home: &Home, session: &SessionId, model: &MockCompletionModel) -> (App,
         .insert_resource(Answers::new([Answer::choice("yes")]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             PickPlugin,
             WriteTool,
             AnswerAsks,
@@ -196,7 +196,7 @@ struct Stuck;
 
 /// Holds every call writing `c.txt`, so the turn is still running.
 fn hold_c(
-    calls: Query<(Entity, &ToolRequest), (Undecided, ToolCalls)>,
+    calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls)>,
     stuck: Query<&HoldOf, With<Stuck>>,
     mut commands: Commands,
 ) {
@@ -248,7 +248,7 @@ fn a_stopped_turns_edits_are_not_the_users() {
             .iter_entities()
             .any(|entity| entity.contains::<Stuck>())
     });
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     run_until(&mut app, &wakes, |world| {
         let noting = world
             .iter_entities()

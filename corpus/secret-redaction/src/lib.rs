@@ -29,7 +29,7 @@ use rig_harness::rig_core::redact;
 use rig_harness::rig_core::serve::{self, AfterServe as Answer, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_harness::rig_ecs::{StopTurns, WriteJournal};
+use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -94,7 +94,10 @@ impl Plugin for SecretRedactionPlugin {
                     redact_results.in_set(Set::Review),
                 ),
             )
-            .add_systems(Last, redact_records.after(StopTurns).before(WriteJournal))
+            .add_systems(
+                Last,
+                redact_records.after(StopTurnsOnExit).before(WriteLogs),
+            )
             .add_command("secrets", "List the placeholders secrets are sent as", list);
     }
 }
@@ -355,7 +358,7 @@ fn reveal_placeholders(
 
 /// A tool call that still names a placeholder names one this run does not
 /// know, such as one from before a restart: it is refused.
-fn refuse_forgotten(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
+fn refuse_forgotten(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (request, mut decision) in &mut calls {
         let args = Value::Object(request.call.function.arguments.clone()).to_string();
         let unknown = PLACEHOLDER.as_ref().and_then(|pattern| pattern.find(&args));
@@ -380,7 +383,7 @@ struct Redacted;
 fn redact_results(
     mut answered: Query<
         (Entity, &mut Outcome, &ToolRequest),
-        (Unreviewed, ToolCalls, Without<Redacted>),
+        (ReadyToSettle, ToolCalls, Without<Redacted>),
     >,
     secrets: Res<Secrets>,
     mut commands: Commands,

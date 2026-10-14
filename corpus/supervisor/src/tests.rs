@@ -39,7 +39,7 @@ impl Session {
         };
         let models = [("test/worker", worker), ("test/supervisor", supervisor)];
         app.insert_resource(scripted_models(models))
-            .add_plugins((AgentPlugin, JournalPlugin, ClockPlugin, SupervisorPlugin))
+            .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin, SupervisorPlugin))
             .init_resource::<Reads>()
             .init_resource::<Ended>()
             .add_open_tool("read", "Read a file.", ToolOptions::default(), read)

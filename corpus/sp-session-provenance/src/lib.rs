@@ -13,8 +13,8 @@ use std::path::Path;
 
 use rig_harness::harness_protocol::VERSION;
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::WriteJournal;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::WriteLogs;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use serde::{Deserialize, Serialize};
 
 /// The key the record is kept under.
@@ -39,7 +39,7 @@ impl Plugin for SessionProvenancePlugin {
             Last,
             (record_setup, track_models)
                 .chain()
-                .before(WriteJournal)
+                .before(WriteLogs)
                 .run_if(resource_exists::<SessionRestored>),
         );
     }

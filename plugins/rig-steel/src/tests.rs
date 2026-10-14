@@ -36,7 +36,7 @@ struct Hold;
 
 /// Holds every `touch` call, and refuses every `poke` call, when it is
 /// about to start.
-fn gate(calls: Query<(Entity, &ToolRequest), Undecided>, mut commands: Commands) {
+fn gate(calls: Query<(Entity, &ToolRequest), ReadyToStart>, mut commands: Commands) {
     for (call, request) in &calls {
         match request.call.function.name.as_str() {
             "touch" => {
@@ -61,7 +61,7 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         footprint: Some(footprint),
     };
     app.insert_resource(Models(Connector::new(Catalog::default())))
-        .add_plugins((AgentPlugin, JournalPlugin, SteelPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SteelPlugin))
         .add_open_tool(
             "look",
             "Look.",
@@ -172,7 +172,7 @@ fn an_interrupt_ends_a_held_tool_call_of_a_program_and_its_hold() {
     run_until(&mut app, &wakes, |world| held_touches(world) > 0);
     assert_eq!(held_touches(app.world()), 1);
 
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     app.world_mut().flush();
     // At once: the program's call ended, and with it its held call and the
     // hold, so nothing it asked can still start.

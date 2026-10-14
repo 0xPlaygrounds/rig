@@ -45,7 +45,7 @@ use rig_compaction::Summarizing;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Chat;
 use rig_harness::rig_core::message::ToolResultContent;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{LoadError, Record, summary_author};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -646,7 +646,7 @@ pub fn mark(conversation: &mut Chat, id: MessageId) -> bool {
 
 /// rig-compaction's summary gets the line as it is reviewed, before it
 /// replaces anything.
-fn mark_compaction_summary(mut calls: Query<&mut Summarizing, Unreviewed>) {
+fn mark_compaction_summary(mut calls: Query<&mut Summarizing, ReadyToSettle>) {
     for mut summarizing in &mut calls {
         if let Some(summary) = summarizing
             .summary
@@ -662,10 +662,10 @@ fn mark_compaction_summary(mut calls: Query<&mut Summarizing, Unreviewed>) {
 /// Another plugin's condensation summary, an entry by a plugin, gets the
 /// line once its splice is committed.
 fn mark_other_summaries(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     mut agents: Query<&mut Conversation>,
 ) {
-    for Committed { agent, change } in committed.read() {
+    for ConversationChanged { agent, change } in committed.read() {
         let Some((summaries, _)) = condensation(&change.change) else {
             continue;
         };

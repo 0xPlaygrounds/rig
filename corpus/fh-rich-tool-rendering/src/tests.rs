@@ -7,7 +7,7 @@ use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, Us
 use rig_core::streaming::parse_partial_arguments;
 use rig_core::test_utils::MockCompletionModel;
 use rig_core::tool::ToolResultContext;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
@@ -80,13 +80,19 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         return;
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin, EditTool, ShellTool, TuiPlugin))
-        .add_plugins(RichToolRenderingPlugin)
-        .add_tool_renderer("probe", |call| vec![call.header("probe says hi", "")])
-        .init_resource::<Ended>()
-        .init_resource::<Facts>()
-        .add_observer(log_ended)
-        .add_observer(note_facts);
+    app.add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        EditTool,
+        ShellTool,
+        TuiPlugin,
+    ))
+    .add_plugins(RichToolRenderingPlugin)
+    .add_tool_renderer("probe", |call| vec![call.header("probe says hi", "")])
+    .init_resource::<Ended>()
+    .init_resource::<Facts>()
+    .add_observer(log_ended)
+    .add_observer(note_facts);
     app.finish();
     app.update();
     let world = app.world_mut();

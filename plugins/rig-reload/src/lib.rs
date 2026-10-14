@@ -10,7 +10,7 @@
 //! fails leaves this build running, and the launcher rolls back a new
 //! build that fails to start. Views show where it is from the
 //! [`ReloadStatus`] resource; with the `tui` feature, the terminal view's
-//! status line does. An [`Interrupt`] of an idle agent (Esc in the
+//! status line does. A [`StopTurn`] of an idle agent (Esc in the
 //! terminal view) cancels a running build.
 //!
 //! A failed build's first errors go into the conversation of the agent that
@@ -130,7 +130,7 @@ fn reload(
 /// Cancels a running build when an idle agent is interrupted, as Esc does
 /// in the terminal view; Esc on a running turn stops the turn only.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     busy: Query<Has<ActiveTurn>>,
     status: Res<ReloadStatus>,
     mut commands: Commands,

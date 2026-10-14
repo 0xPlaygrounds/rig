@@ -316,7 +316,7 @@ fn structure(
 fn check(
     mut calls: Query<
         (Entity, &Outcome, &ForAgent, &mut Structured),
-        (Unreviewed, ModelCalls, Without<SupersededBy>),
+        (ReadyToSettle, ModelCalls, Without<SupersededBy>),
     >,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,

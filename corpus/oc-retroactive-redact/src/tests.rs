@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, MemoryStore, app_in, app_on, calls, collect,
     commit_message, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
@@ -37,7 +37,7 @@ fn start(
 ) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin))
         .add_plugins((RetroactiveRedactPlugin, AnswerAsks))
         .insert_resource(Answers::new(answers))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
@@ -248,7 +248,7 @@ fn redact_alone_proposes_the_env_files_key() {
     let (mut app, wakes) = app_on(&store);
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         RetroactiveRedactPlugin,
         AnswerAsks,
     ))

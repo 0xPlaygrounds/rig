@@ -37,7 +37,7 @@ use flate2::write::GzEncoder;
 use rig_core::redact;
 use rig_harness::harness_protocol::{SessionDir, SessionId, VERSION};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{
     MODEL, MemoryStore, Place, Rewrite, SavedAgent, Session, SessionMeta, Store, Strings,
     check_name, fork, now_ms, rewrite,

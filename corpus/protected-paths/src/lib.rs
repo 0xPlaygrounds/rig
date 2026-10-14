@@ -350,7 +350,7 @@ fn named_paths(arguments: &serde_json::Map<String, serde_json::Value>, search: b
 fn filter_searches(
     mut calls: Query<
         (Entity, &mut Outcome, &Published, Has<Restored>),
-        (Unreviewed, ToolCalls, Without<Filtered>),
+        (ReadyToSettle, ToolCalls, Without<Filtered>),
     >,
     policy: Res<PathPolicy>,
     mut counts: ResMut<PathGuardCounts>,
@@ -410,7 +410,7 @@ struct Filtered;
 fn guard(
     mut calls: Query<
         (&ToolRequest, &Footprint, Has<Restored>, &mut Decision),
-        (Undecided, ToolCalls),
+        (ReadyToStart, ToolCalls),
     >,
     policy: Res<PathPolicy>,
     mut counts: ResMut<PathGuardCounts>,

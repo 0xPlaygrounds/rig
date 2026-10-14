@@ -22,7 +22,7 @@ fn start(
     let (mut app, wakes) = app_on(store);
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         PickPlugin,
         ReviewableCompactionPlugin,
         AnswerAsks,

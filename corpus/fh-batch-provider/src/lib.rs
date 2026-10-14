@@ -305,7 +305,7 @@ fn take_over(
             Option<&ForAgent>,
             Has<TurnCall>,
         ),
-        (Undecided, ModelCalls, Without<Batched>),
+        (ReadyToStart, ModelCalls, Without<Batched>),
     >,
     starts: ModelStarts,
     agents: Query<&BatchWait>,

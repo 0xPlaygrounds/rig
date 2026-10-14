@@ -46,7 +46,12 @@ fn session(
     app.insert_resource(scripted_models([("test/model", model)]))
         .insert_resource(Settings::from_toml(&format!("[jobs]\n{jobs}")))
         .insert_resource(processes)
-        .add_plugins((AgentPlugin, JournalPlugin, ExitPlugin, BackgroundJobsPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            ExitPlugin,
+            BackgroundJobsPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

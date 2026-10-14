@@ -18,8 +18,8 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::{RELOAD_EXIT_CODE, SessionId};
 use rig_core::effect::{Decider, EffectKind};
 use rig_ecs::agent::Notice;
-use rig_ecs::calls::Wake;
 use rig_ecs::stage::{Decision, EffectRequest, Outcome, Settled, Started};
+use rig_ecs::tasks::Wake;
 
 use super::launcher;
 use super::session::SessionPaths;

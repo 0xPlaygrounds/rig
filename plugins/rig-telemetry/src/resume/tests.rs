@@ -16,7 +16,7 @@ fn what_the_session_spent_is_in_its_resume_line() {
     let home = scratch_home("rig-telemetry-resume");
     let id = SessionId::generate();
     let (mut app, _wakes) = app_in(&home, &id);
-    app.add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin, UsagePlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin, UsagePlugin));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);

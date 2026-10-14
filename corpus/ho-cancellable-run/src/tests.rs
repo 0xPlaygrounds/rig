@@ -27,7 +27,7 @@ fn running(model: &MockCompletionModel, name: &str) -> (App, Receiver<()>, Entit
     let home = scratch_home(name);
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     app.insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, CancellableRunPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CancellableRunPlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Ended>()
@@ -101,7 +101,7 @@ fn an_interrupted_run_keeps_its_output_so_far() {
     let model = script("unused");
     let (mut app, wakes, agent, pid) = running(&model, "ho-cancellable-run-interrupt");
 
-    app.world_mut().trigger(Interrupt {
+    app.world_mut().trigger(StopTurn {
         entity: agent,
         reason: None,
     });

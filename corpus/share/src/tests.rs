@@ -98,7 +98,7 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
         .insert_resource(Answers::new([confirm.clone(), confirm]))
         .init_resource::<Bodies>()
         .init_resource::<Ended>()
-        .add_plugins((AgentPlugin, JournalPlugin, AnswerAsks, SharePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, AnswerAsks, SharePlugin))
         .add_observer(log_ended)
         .add_observer(
             |asked: On<Add<Ask>>, asks: Query<&Ask>, mut bodies: ResMut<Bodies>| {

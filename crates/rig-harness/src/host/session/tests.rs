@@ -11,8 +11,8 @@ use rig_core::completion::Message;
 use rig_core::conversation::MessageId;
 use rig_core::conversation::{self, Author, Entry};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
-use rig_ecs::journal::{JournalPlugin, RewriteSession, SessionStore};
-use rig_ecs::{AgentPlugin, WriteJournal};
+use rig_ecs::session_log::{RewriteSession, SessionLogPlugin, SessionStore};
+use rig_ecs::{AgentPlugin, WriteLogs};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{
     DirStore, Files, MemoryStore, SPLIT, Session, SessionMeta, SplitPointer, Store, Strings,
@@ -297,7 +297,7 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
         let layer = log_layer(&mut app);
         let file = app.world().resource::<super::TextLog>().file.clone();
         std::io::Write::write_all(&mut super::LogWriter(file), b"this run\n").ok();
-        app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
             .add_plugins(SessionPlugin);
         drop(std::panic::take_hook());
         app.finish();
@@ -369,7 +369,7 @@ fn running_with(home: &Home, id: &SessionId, said: &[Message]) -> Option<(App, E
     app.init_resource::<Seen>()
         .insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .add_plugins(SessionPlugin)
         .add_systems(Last, watch.after(ForkSessions));
     drop(std::panic::take_hook());
@@ -624,7 +624,7 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     app.init_resource::<Seen>()
         .insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .add_plugins(SessionPlugin)
         .add_systems(Last, watch.after(ForkSessions));
     if let Some(store) = dir_store(&session) {
@@ -948,7 +948,7 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
         app.init_resource::<Seen>()
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
-            .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+            .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
             .add_plugins(SessionPlugin)
             .add_systems(Last, watch.after(ForkSessions));
         if let Some(store) = dir_store(&session) {
@@ -994,7 +994,7 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
     let mut app = App::new();
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .add_plugins(SessionPlugin);
     drop(std::panic::take_hook());
     app.finish();
@@ -1137,7 +1137,7 @@ fn a_fork_has_what_a_plugin_wrote_before_it_in_its_frame() {
         .add_systems(
             Last,
             (
-                note_frame.after(WriteJournal).before(ForkSessions),
+                note_frame.after(WriteLogs).before(ForkSessions),
                 watch.after(ForkSessions),
             ),
         );
@@ -1202,7 +1202,7 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     app.add_plugins((
         TaskPoolPlugin::default(),
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         SessionPlugin,
     ));
     drop(std::panic::take_hook());

@@ -42,7 +42,7 @@ fn start(
         .insert_resource(scripted_models([("test/main", main), ("test/side", side)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SubagentsPlugin,
             SideQuestionPlugin,
         ))

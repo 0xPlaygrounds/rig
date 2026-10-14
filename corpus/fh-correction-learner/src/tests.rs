@@ -40,7 +40,7 @@ struct Slow(bool);
 struct SlowHold;
 
 fn hold_classifier(
-    calls: Query<Entity, (With<Classifying>, Undecided, ModelCalls)>,
+    calls: Query<Entity, (With<Classifying>, ReadyToStart, ModelCalls)>,
     slow: Res<Slow>,
     mut held: Local<HashSet<Entity>>,
     mut commands: Commands,
@@ -141,7 +141,7 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
         .insert_resource(ProjectRoot(project.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ProjectContextPlugin,
             UsagePlugin,
         ))

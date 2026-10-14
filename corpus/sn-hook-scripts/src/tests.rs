@@ -131,7 +131,7 @@ fn run(
     .add_observer(log_tool_outputs)
     .add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         rig_coding_tools::ShellTool,
         rig_coding_tools::EditTool,
         HookScriptsPlugin,

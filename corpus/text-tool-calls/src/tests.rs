@@ -37,7 +37,7 @@ struct Shown(Vec<(Entity, String)>);
 /// "x", after the first frame restored the session.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
-    app.add_plugins((AgentPlugin, JournalPlugin, TextToolCallsPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, TextToolCallsPlugin))
         .init_resource::<Reads>()
         .init_resource::<Shown>()
         .init_resource::<Ended>()

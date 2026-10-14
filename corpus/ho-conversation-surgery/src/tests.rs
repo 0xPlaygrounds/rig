@@ -32,7 +32,7 @@ fn shell(called: On<ToolCalled<Command>>, mut commands: Commands) {
 fn start(store: &MemoryStore, model: &MockCompletionModel) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, ConversationSurgeryPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ConversationSurgeryPlugin))
         .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
         .init_resource::<Ended>()
         .add_observer(log_ended);

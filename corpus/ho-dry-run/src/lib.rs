@@ -196,7 +196,7 @@ impl Plugin for DryRunPlugin {
 fn preview(
     mut calls: Query<
         (Entity, &ToolRequest, &Footprint, &ForAgent, &mut Decision),
-        (Undecided, ToolCalls),
+        (ReadyToStart, ToolCalls),
     >,
     agents: Query<Option<&WorkDir>, With<DryRun>>,
     overlay: Res<Overlay>,
@@ -336,7 +336,7 @@ fn keep_previewed(
 fn read_overlay(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &mut Outcome),
-        (Unreviewed, ToolCalls, Without<Overlaid>),
+        (ReadyToSettle, ToolCalls, Without<Overlaid>),
     >,
     agents: Query<Option<&WorkDir>, With<DryRun>>,
     overlay: Res<Overlay>,

@@ -45,7 +45,7 @@ fn session(root: &Path, model: &MockCompletionModel, say: &[&str]) -> Vec<Messag
     app.insert_resource(ProjectRoot(root.to_path_buf()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             BasicCommandsPlugin,
             rig_harness::host::exit::ExitPlugin,
             WriteTool,

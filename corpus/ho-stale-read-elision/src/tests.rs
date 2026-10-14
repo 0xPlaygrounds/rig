@@ -75,7 +75,7 @@ fn superseded_reads_go_out_as_stubs_and_stay_whole_in_the_conversation() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ReadTool,
         EditTool,
         StaleReadElisionPlugin,

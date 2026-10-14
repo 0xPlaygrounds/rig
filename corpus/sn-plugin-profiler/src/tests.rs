@@ -41,7 +41,7 @@ struct Waited;
 struct SlowHold;
 
 fn hold_requests(
-    requests: Query<Entity, (Undecided, ModelCalls, Without<Waited>)>,
+    requests: Query<Entity, (ReadyToStart, ModelCalls, Without<Waited>)>,
     me: Res<PluginEntity<Slowpoke>>,
     mut commands: Commands,
 ) {
@@ -132,7 +132,7 @@ fn start(home: &str, plugins: impl FnOnce(&mut App)) -> (App, Receiver<()>) {
     }))
     .add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ClockPlugin,
         PluginProfilerPlugin,
     ))

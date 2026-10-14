@@ -128,7 +128,7 @@ fn ask(
             AskedByTool,
             ForAgent(called.agent),
             HoldOf(call),
-            Effect::child_of(Some(called.effect)),
+            Effect::with_parent_id(Some(called.effect)),
         ))
         .id();
     if let Some(seconds) = settings.timeout {

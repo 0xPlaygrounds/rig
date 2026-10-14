@@ -61,7 +61,7 @@ fn start(
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(ProjectRoot(root.to_owned()))
         .insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
         .init_resource::<ToolOutputs>()
@@ -208,7 +208,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         terminal: false,
     })
     .insert_resource(scripted_models([("test/other", &model)]))
-    .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin));
+    .add_plugins((ExitPlugin, AgentPlugin, SessionLogPlugin));
     load::<SessionBundlePlugin>(&mut open, "corpus-oc-session-bundle", "");
     collect::<BundleImported>(&mut open);
     open.finish();

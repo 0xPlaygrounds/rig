@@ -42,7 +42,7 @@ fn run(home: &Home, turns: &[&str], script: Vec<Vec<MockStreamEvent>>) -> (Sessi
     let model = MockCompletionModel::from_stream_turns(script);
     let (mut app, wakes) = app_in(home, &id);
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin))
         .add_open_tool("dump", "Dump a lot.", ToolOptions::default(), dump)
         .init_resource::<Ended>()
         .add_observer(log_ended);

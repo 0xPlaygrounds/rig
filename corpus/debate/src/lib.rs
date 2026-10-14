@@ -356,7 +356,7 @@ fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
     commands.entity(host).remove::<Debate>();
     for &(_, agent) in &debate.seated {
         let reason = Some("the debate stopped".to_owned());
-        commands.trigger(Interrupt {
+        commands.trigger(StopTurn {
             entity: agent,
             reason,
         });
@@ -364,7 +364,7 @@ fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
 }
 
 /// Interrupting the agent stops its debate.
-fn stop_on_interrupt(interrupt: On<Interrupt>, debates: Query<&Debate>, mut commands: Commands) {
+fn stop_on_interrupt(interrupt: On<StopTurn>, debates: Query<&Debate>, mut commands: Commands) {
     if let Ok(debate) = debates.get(interrupt.entity) {
         stop(&mut commands, interrupt.entity, debate);
     }
@@ -452,7 +452,7 @@ fn step(
             return;
         }
         let text = format!("Debate verdict on \"{}\":\n\n{answer}", debate.question);
-        let note = Deliver::new(host, text, DeliveryMode::Note);
+        let note = Deliver::new(host, text, DeliveryMode::Inform);
         commands.trigger(note.with_author(from(&debate, role)));
         notices.write(Notice::info(
             host,

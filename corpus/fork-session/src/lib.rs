@@ -17,7 +17,7 @@
 use corpus_checkpoint_rewind::{Rewind, RewindScope, Rewound};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_sessions::{NameSession, SessionsPlugin};
 use rig_tools::{ago, shorten};
 use rig_tui::{Focus, MainInput};

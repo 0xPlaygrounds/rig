@@ -75,7 +75,7 @@ fn the_passing_candidate_is_applied_and_the_worktrees_go() {
     app.insert_resource(models)
         .insert_resource(ProjectRoot(repo.clone()))
         .init_resource::<BeforeApply>()
-        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, BestOfPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WriteTool, BestOfPlugin))
         .add_observer(note_before_apply);
     collect::<Notice>(&mut app);
     let host = app

@@ -477,7 +477,7 @@ fn begin(
 fn hold_messages(
     messages: Query<
         (Entity, &ForAgent, &Decision),
-        (Undecided, IncomingMessages, Without<HeldForSplit>),
+        (ReadyToStart, IncomingMessages, Without<HeldForSplit>),
     >,
     agents: Query<&Splitting>,
     mut commands: Commands,

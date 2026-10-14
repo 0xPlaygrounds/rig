@@ -23,8 +23,8 @@ use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::redact;
-use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_ecs::{StopTurns, WriteJournal};
+use rig_harness::rig_ecs::session_log::SessionStore;
+use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::rig_memory::{self, MemoryStore, Place, map_strings};
 use serde::Serialize;
 use serde_json::Value;
@@ -100,9 +100,9 @@ impl Plugin for RetroactiveRedactPlugin {
             .add_systems(
                 Last,
                 (
-                    withhold_arguments.after(StopTurns).before(WriteJournal),
+                    withhold_arguments.after(StopTurnsOnExit).before(WriteLogs),
                     rewritten
-                        .after(WriteJournal)
+                        .after(WriteLogs)
                         .run_if(on_message::<SessionRewritten>),
                 ),
             );

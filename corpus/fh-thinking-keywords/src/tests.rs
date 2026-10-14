@@ -16,7 +16,7 @@ fn app(models: Models, model: &str) -> (App, std::sync::mpsc::Receiver<()>, Enti
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(models)
         .insert_resource(ThinkConfig::default())
-        .add_plugins((AgentPlugin, JournalPlugin, ThinkingKeywordsPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, ThinkingKeywordsPlugin));
     let read = |called: On<ToolCalled<serde_json::Value>>,
                 mut calls: Query<&mut Decision, ToolCalls>| {
         if let Ok(mut call) = calls.get_mut(called.call) {

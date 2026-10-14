@@ -11,9 +11,9 @@ use super::{FOLLOWS, ReflectFollows};
 use crate::AgentPlugin;
 use crate::agent::{Agent, AgentId, Conversation};
 use crate::inbox::{Deliver, DeliveryMode};
-use crate::journal::tests::{edit, push_message};
-use crate::journal::{JournalPlugin, SessionStore};
-use crate::restore::SetAside;
+use crate::restore::Shelved;
+use crate::session_log::tests::{edit, push_message};
+use crate::session_log::{SessionLogPlugin, SessionStore};
 use crate::stage::{AgentPass, Stage};
 
 /// A plugin's mode, kept with the line it was set on.
@@ -24,7 +24,7 @@ struct Mode(String);
 fn app(store: &MemoryStore) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(store.clone()));
     app.finish();
     app.update();
@@ -260,7 +260,7 @@ fn a_line_changed_before_the_agent_loop_gives_its_value_to_the_loop() {
         assert!(conversation.switch_branch(main, Author::user()).is_ok());
     });
     app.world_mut()
-        .trigger(Deliver::new(agent, "three", DeliveryMode::Note));
+        .trigger(Deliver::new(agent, "three", DeliveryMode::Inform));
     app.world_mut().resource_mut::<Probe>().armed = true;
     app.update();
     let seen = app.world().resource::<Probe>().seen.clone();
@@ -307,7 +307,7 @@ fn an_unreadable_value_is_set_aside_on_the_next_change() {
     say(&mut app, agent, "two");
     keep_raw(&mut app, agent, json!({"v": 1, "value": 42}));
     assert_eq!(mode(&app, agent).as_deref(), Some("plan"), "not read");
-    let set_aside = app.world().resource::<SetAside>();
+    let set_aside = app.world().resource::<Shelved>();
     assert!(set_aside.0.iter().any(|value| value.key == key));
     set_mode(&mut app, agent, "build");
     assert_eq!(

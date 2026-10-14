@@ -104,7 +104,7 @@ async fn main() -> Result<()> {
     let agent = AgentBuilder::new(model.clone())
         .preamble(
             "Follow this protocol exactly. For the initial request, reply exactly \
-             `RETRY: incomplete draft`. If the latest user message asks you to \
+             `RETRY_POLICY: incomplete draft`. If the latest user message asks you to \
              replace the rejected response, reply exactly `ACCEPTED`.",
         )
         .build();

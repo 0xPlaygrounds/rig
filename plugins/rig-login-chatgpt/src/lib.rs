@@ -27,9 +27,9 @@ use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
 use rig_harness::harness_protocol::Home;
 
-use rig_ecs::agent::{ActiveTurn, Agent, Interrupt, Notice};
-use rig_ecs::calls::{Done, PollCalls, Running, Wake};
+use rig_ecs::agent::{ActiveTurn, Agent, Notice, StopTurn};
 use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
+use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
@@ -69,7 +69,7 @@ impl Plugin for ChatgptLoginPlugin {
             on_login,
         )
         .add_command("logout", "Forget a sign-in: /logout chatgpt", on_logout)
-        .add_systems(Update, show_login_prompts.in_set(PollCalls))
+        .add_systems(Update, show_login_prompts.in_set(PollTasks))
         .add_observer(on_signed_in)
         .add_observer(cancel_on_interrupt);
     }
@@ -279,7 +279,7 @@ fn on_signed_in(
 
 /// Esc cancels the agent's waiting sign-ins.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     pending: Query<(Entity, &PendingLogin)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,

@@ -76,7 +76,7 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
     let home = scratch_home("sn-vim-input");
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, CommandPlugin, VimPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, VimPlugin))
         .add_open_tool("wait", "Waits.", ToolOptions::default(), wait)
         .init_resource::<Ended>()
         .init_resource::<Picked>()

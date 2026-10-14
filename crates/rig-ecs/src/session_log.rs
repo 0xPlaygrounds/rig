@@ -8,7 +8,7 @@
 //! the conversation's outbox until the kernel saves it: between the stages
 //! of every pass, at the end of the frame, before a tool that may change
 //! something starts, and when a turn is interrupted. Saving queues the
-//! changes for the log, announces each as a [`Committed`], and writes the
+//! changes for the log, announces each as a [`ConversationChanged`], and writes the
 //! queue at the end of the frame, a subagent's log before its parent's.
 //!
 //! Records are appended while the session runs. Nothing is rewritten
@@ -36,10 +36,10 @@ use rig_memory::{
 };
 use web_time::{SystemTime, UNIX_EPOCH};
 
-use super::WriteJournal;
+use super::WriteLogs;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use super::follows::{self, Mirroring, ReflectFollows};
-use super::restore::{RetiredSaved, SavedKeys, SavedUpgrades, SetAside};
+use super::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades, Shelved};
 use super::restore::{SavedReader, resource_entity, saved_type};
 
 /// Saves an agent component or a resource with the session: derive
@@ -67,7 +67,7 @@ use super::restore::{SavedReader, resource_entity, saved_type};
 /// registered (`app.register_type::<T>()`), and a logged type no build
 /// registers any more is reported on restore and kept in the log. A value
 /// no step reads, or that no longer fits its type, is reported, listed in
-/// [`SetAside`] and not inserted; the next change of it first moves the old
+/// [`Shelved`] and not inserted; the next change of it first moves the old
 /// value to a side key (rig-memory's `SET_ASIDE`), so nothing is lost. A
 /// value a newer rig saved is reported and never written over in this run.
 #[derive(Clone)]
@@ -205,7 +205,7 @@ pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), Load
 /// restore makes none; a change made while nothing is logged (no store, or
 /// before the restore) is announced all the same.
 #[derive(Message, Clone, Debug)]
-pub struct Committed {
+pub struct ConversationChanged {
     /// The agent.
     pub agent: Entity,
     /// The change: what changed, who made it and when.
@@ -222,15 +222,15 @@ pub struct Retire {
 }
 
 /// Saves the outbox of `conversation`, that of `agent` whose id is `id`,
-/// to `log`; one [`Committed`] per change saved.
+/// to `log`; one [`ConversationChanged`] per change saved.
 pub(crate) fn save_conversation(
     log: &SessionLog,
     agent: Entity,
     id: &AgentId,
     conversation: &mut Conversation,
-) -> Vec<Committed> {
+) -> Vec<ConversationChanged> {
     let saved = log.0.save(&id.0, conversation);
-    let committed = |change| Committed { agent, change };
+    let committed = |change| ConversationChanged { agent, change };
     saved.into_iter().map(committed).collect()
 }
 
@@ -241,7 +241,7 @@ pub(crate) struct Drain<'w, 's> {
     agents:
         Query<'w, 's, (Entity, &'static AgentId, &'static mut Conversation), Changed<Conversation>>,
     log: Res<'w, SessionLog>,
-    committed: MessageWriter<'w, Committed>,
+    committed: MessageWriter<'w, ConversationChanged>,
 }
 
 impl Drain<'_, '_> {
@@ -328,7 +328,7 @@ pub(crate) fn retire(
     retire: On<Retire>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     log: Res<SessionLog>,
-    mut committed: MessageWriter<Committed>,
+    mut committed: MessageWriter<ConversationChanged>,
     mut commands: Commands,
 ) {
     let agent = retire.entity;
@@ -343,7 +343,7 @@ pub(crate) fn retire(
 
 /// The systems in `Last` that queue what the frame changed for the log:
 /// after the turns stopped on exit, before [`apply_rewrites`] and
-/// [`WriteJournal`].
+/// [`WriteLogs`].
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Saving;
 
@@ -375,7 +375,7 @@ pub struct RewriteSession {
 }
 
 /// A [`RewriteSession`] done, or why not, in the frame it ran, before
-/// [`WriteJournal`]. The owners of what the kernel does not keep re-read
+/// [`WriteLogs`]. The owners of what the kernel does not keep re-read
 /// or map theirs on it, with the same `with` (rig-memory's
 /// `rewrite_value`, `rewrite_file`): the effect log's writer, the scratch
 /// files, and every plugin's copies, in memory or in files of its own.
@@ -526,20 +526,20 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
 
 /// Restores the session at startup, settles what a crash or restart left
 /// half done, and logs everything after.
-pub struct JournalPlugin;
+pub struct SessionLogPlugin;
 
-impl Plugin for JournalPlugin {
+impl Plugin for SessionLogPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
-            .add_systems(Last, write_logs.in_set(WriteJournal))
+            .add_systems(Last, write_logs.in_set(WriteLogs))
             .configure_sets(SaveConversations, Mirroring.before(save_conversations))
             .add_systems(SaveConversations, follows::sync.after(save_conversations))
             .add_observer(open_child_log)
             .init_resource::<SavedUpgrades>()
-            .init_resource::<RetiredSaved>()
+            .init_resource::<IgnoredSavedKeys>()
             .init_resource::<SavedKeys>()
-            .init_resource::<SetAside>();
+            .init_resource::<Shelved>();
     }
 
     /// Watches every type registered as [`ReflectSaved`] or

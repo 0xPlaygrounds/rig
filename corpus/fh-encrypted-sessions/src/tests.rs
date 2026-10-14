@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness_test_support::{
     Collected, Ended, app_in, calls, collect, first_agent, log_ended, reply, run_until,
     scratch_home, scripted_models,
@@ -67,7 +67,7 @@ fn start(
     app.insert_resource(secrets)
         .insert_resource(scripted_models([("test/model", model)]))
         .register_type::<Notes>()
-        .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin, EffectLogPlugin))
+        .add_plugins((ExitPlugin, AgentPlugin, SessionLogPlugin, EffectLogPlugin))
         .add_plugins(EncryptedSessionsPlugin)
         .add_open_tool("echo", "Echoes.", ToolOptions::default(), echo)
         .init_resource::<Ended>()

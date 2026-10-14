@@ -96,7 +96,7 @@ fn start(
         .insert_resource(ApproveRules::from_toml(RULES).unwrap_or_default())
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             AskPlugin,
             ApprovalPlugin,
             PickPlugin,
@@ -191,7 +191,7 @@ fn one_question_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
         .trigger(Deliver::new(agent, "and the rest", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| world.resource::<Opened>().0 == 2);
     assert_eq!(rows(&mut app), ["rm b.txt", "rm README.md"]);
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 2
     });

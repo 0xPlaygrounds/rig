@@ -4,7 +4,7 @@ use bevy_ecs::prelude::*;
 use rig_core::effect::{Answered as EffectOutcome, Decider, Disposition, EffectKind};
 use rig_ecs::agent::{Agent, Conversation};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Incoming};
-use rig_ecs::journal::SessionStore;
+use rig_ecs::session_log::SessionStore;
 use rig_ecs::stage::{EffectRecorded, ForAgent, Outcome, Started};
 use rig_memory::MemoryStore;
 

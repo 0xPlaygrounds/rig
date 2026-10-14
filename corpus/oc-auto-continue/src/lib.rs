@@ -183,7 +183,7 @@ fn continue_cut(
     calls: Query<
         (Entity, &Outcome, &CallOf, Option<&Continuing>),
         (
-            Unreviewed,
+            ReadyToSettle,
             ModelCalls,
             With<TurnCall>,
             Without<SupersededBy>,
@@ -326,7 +326,7 @@ fn join(
             Option<&ForAgent>,
         ),
         (
-            Unreviewed,
+            ReadyToSettle,
             ModelCalls,
             With<TurnCall>,
             Without<SupersededBy>,

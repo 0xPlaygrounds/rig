@@ -30,7 +30,7 @@ use bevy_ecs::prelude::*;
 use rig_ecs::agent::CallOf;
 use rig_ecs::stage::{Effect, EffectRequest, ForAgent, HoldOf, Settled, SupersededBy};
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
+use rig_ecs::turn::{ModelRequest, SideCall, TurnCall};
 
 use crate::load::ProvidedBy;
 
@@ -72,7 +72,7 @@ pub fn follow_successor<M: Component>(
 
 /// Sends `effect` again: spawns a successor that supersedes it, with its
 /// request, unless it settled or was superseded already. A [`TurnCall`]
-/// or [`BuildFrom`] is built anew by the kernel. A plugin's own
+/// or [`SideCall`] is built anew by the kernel. A plugin's own
 /// [`ModelRequest`], [`EffectRequest`] or [`ToolRequest`] is copied as it
 /// is now, with its Prepare edits (a model call's adapters, apart in
 /// `Adapters`, are pushed again in Prepare), and its [`Effect`] parent and
@@ -89,10 +89,10 @@ pub fn resend(effect: Entity) -> impl Command {
         if old.contains::<Settled>() || old.contains::<SupersededBy>() {
             return;
         }
-        let mut again = Effect::child_of(was.parent);
+        let mut again = Effect::with_parent_id(was.parent);
         again.purpose.clone_from(&was.purpose);
         let turn_call = old.contains::<TurnCall>();
-        let build_from = old.get::<BuildFrom>().copied();
+        let build_from = old.get::<SideCall>().copied();
         let copied = if turn_call || build_from.is_some() {
             (None, None, None)
         } else {

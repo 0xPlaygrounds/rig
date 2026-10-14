@@ -26,7 +26,7 @@ fn start(model: &MockCompletionModel, dir: &Path) -> (App, Receiver<()>, Entity)
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((AgentPlugin, JournalPlugin, CheckpointPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CheckpointPlugin))
         .add_plugins((EditTool, ShellTool, WatchAiCommentsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)

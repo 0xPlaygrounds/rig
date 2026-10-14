@@ -54,7 +54,7 @@ use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
 use rig_core::tool::{Scope, ToolExecutionError, ToolResult, Touches};
 use rig_ecs::agent::AgentId;
-use rig_ecs::calls::{Running, Wake};
+use rig_ecs::tasks::{Running, Wake};
 use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -159,7 +159,7 @@ fn on_run_steel(
     let program = run_program(
         called.tool_call.id.to_string(),
         harness.within(called.call),
-        called.caller.clone(),
+        called.agent_id.clone(),
         called.args.code.clone(),
     );
     commands.entity(called.call).insert(Running::answering(

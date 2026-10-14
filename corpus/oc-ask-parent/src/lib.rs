@@ -244,7 +244,7 @@ fn offer_where_useful(
 fn ask(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &mut Decision),
-        (Undecided, ToolCalls, Without<Asked>),
+        (ReadyToStart, ToolCalls, Without<Asked>),
     >,
     agents: Query<(&AgentId, Option<&SpawnedBy>, Option<&AgentTitle>)>,
     settings: Res<AskParentSettings>,
@@ -453,7 +453,7 @@ fn time_out(
 
 /// Interrupting an agent interrupts each subagent waiting on its answer,
 /// which cancels the subagent's `ask_parent` call and stops its turn.
-fn cancel_children(interrupt: On<Interrupt>, questions: Query<&Question>, mut commands: Commands) {
+fn cancel_children(interrupt: On<StopTurn>, questions: Query<&Question>, mut commands: Commands) {
     let parent = interrupt.entity;
     for question in questions
         .iter()
@@ -461,7 +461,7 @@ fn cancel_children(interrupt: On<Interrupt>, questions: Query<&Question>, mut co
     {
         let reason = Some("its parent was stopped while it waited for an answer".to_owned());
         commands.entity(question.child).insert(StoppedWithParent);
-        commands.trigger(Interrupt {
+        commands.trigger(StopTurn {
             entity: question.child,
             reason,
         });
@@ -481,7 +481,7 @@ fn quiet_stop_reports(
             .iter()
             .find(|&(_, id, &SpawnedBy(parent))| parent == to && from == Some(id.0.as_str()));
         if let Some((child, ..)) = child {
-            report.mode = DeliveryMode::Note;
+            report.mode = DeliveryMode::Inform;
             commands.entity(child).remove::<StoppedWithParent>();
         }
     }

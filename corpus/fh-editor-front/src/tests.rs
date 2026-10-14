@@ -71,7 +71,7 @@ fn app_with(
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ReadTool,
         EditTool,
         WriteTool,
@@ -200,7 +200,7 @@ struct Approval;
 
 /// Holds each `edit` once, as a gate that asks the user does.
 fn ask_about_edits(
-    calls: Query<(Entity, &ToolRequest, &Decision), (Undecided, ToolCalls)>,
+    calls: Query<(Entity, &ToolRequest, &Decision), (ReadyToStart, ToolCalls)>,
     asked: Query<&HoldOf, With<Approval>>,
     mut commands: Commands,
 ) {

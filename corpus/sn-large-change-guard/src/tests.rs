@@ -5,7 +5,7 @@ use rig_coding_tools::{EditTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness::rig_ecs::AgentPlugin;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, answer_open, app_on, calls, connect, first_agent,
@@ -61,7 +61,7 @@ fn start(
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((AgentPlugin, JournalPlugin, AskPlugin, PreviewPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin, PreviewPlugin))
         .add_plugins((WriteTool, EditTool))
         .add_plugins(LargeChangeGuardPlugin)
         .init_resource::<Ended>()

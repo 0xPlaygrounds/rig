@@ -67,7 +67,7 @@ fn start(store: &MemoryStore, config: &str) -> (App, Receiver<()>, Option<Entity
         .insert_resource(CustomProviders::parse(config))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ModelsPlugin,
             UsagePlugin,
             CustomProviderPlugin,

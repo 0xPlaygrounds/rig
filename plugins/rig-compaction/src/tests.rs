@@ -23,7 +23,7 @@ const INJECTED: &str = "Context from another plugin.";
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     rig_harness::load::<CompactionPlugin>(
@@ -249,7 +249,7 @@ struct Resent(Vec<bool>);
 
 /// Sends the first summary again once it is answered, before it settles.
 fn resend_first_summary(
-    answered: Query<(Entity, Has<ProvidedBy>), (With<Summarizing>, Unreviewed)>,
+    answered: Query<(Entity, Has<ProvidedBy>), (With<Summarizing>, ReadyToSettle)>,
     mut resent: ResMut<Resent>,
     mut commands: Commands,
 ) {
@@ -401,7 +401,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         matches!(focus.as_slice(), [request] if request.contains("Additional focus: keep the sums")),
         "{focus:?}"
     );
-    world.trigger(Interrupt::new(agent));
+    world.trigger(StopTurn::new(agent));
     world.flush();
     for _ in 0..5 {
         app.update();
@@ -613,7 +613,7 @@ struct Reviewed;
 /// Holds each answered summary call for review, as a plugin asking the
 /// user would.
 fn hold_for_review(
-    calls: Query<Entity, (With<Summarizing>, Unreviewed, Without<Reviewed>)>,
+    calls: Query<Entity, (With<Summarizing>, ReadyToSettle, Without<Reviewed>)>,
     asked: Query<&Reviewing>,
     mut commands: Commands,
 ) {

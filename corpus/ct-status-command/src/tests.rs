@@ -99,7 +99,7 @@ fn the_item_follows_the_session_through_slow_failing_and_replaced_scripts() {
         })
         .add_front(Front::new(FRONT).on_terminal())
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin))
         .add_plugins((
             rig_harness::clock::ClockPlugin,
             rig_harness::pick::PickPlugin,

@@ -17,7 +17,7 @@ fn start(store: &MemoryStore, home: &Home) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(ProjectRoot(home.root().join("project")))
-        .add_plugins((AgentPlugin, JournalPlugin, PickPlugin, HistoryPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, HistoryPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

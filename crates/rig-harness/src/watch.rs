@@ -40,7 +40,7 @@ use bevy_ecs::world::DeferredWorld;
 use bevy_log::warn;
 use bevy_tasks::futures_lite::{Stream, StreamExt as _, stream};
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_ecs::calls::{Done, Running, Wake};
+use rig_ecs::tasks::{Done, Running, Wake};
 use rig_tools::workspace::{Listing, Watch, Workspace};
 
 use crate::workspace::ProjectWorkspace;

@@ -187,7 +187,7 @@ fn with_defaults(
 /// allows, for its model to read. An agent at the limit is not offered
 /// `task`, but its model may call it anyway.
 fn refuse_too_deep(
-    mut calls: Query<(&ToolRequest, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut Decision), (ReadyToStart, ToolCalls)>,
     lineage: Query<&SpawnedBy>,
     config: Res<SubagentsConfig>,
 ) {
@@ -211,7 +211,7 @@ fn refuse_too_deep(
 fn queue(
     new: Query<
         (Entity, &SpawnSubagent, &ForAgent, &Decision),
-        (Undecided, PluginEffects, Without<Ask>),
+        (ReadyToStart, PluginEffects, Without<Ask>),
     >,
     held: Query<(Entity, &Queued, &HoldOf)>,
     parents: Query<&ForAgent, With<SpawnSubagent>>,
@@ -268,7 +268,7 @@ fn queue(
 /// or once the subagent spent `max_cost`. rig-subagents reports the
 /// reason with what it had said.
 fn cap(
-    calls: Query<(&CallOf, &ForAgent), (Undecided, ModelCalls, With<TurnCall>)>,
+    calls: Query<(&CallOf, &ForAgent), (ReadyToStart, ModelCalls, With<TurnCall>)>,
     turns: Query<&Calls, Without<TurnOutcome>>,
     model_calls: Query<(), With<TurnCall>>,
     subagents: Query<&Spending, With<SpawnedBy>>,

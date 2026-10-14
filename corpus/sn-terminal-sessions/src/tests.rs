@@ -79,7 +79,7 @@ fn a_shell_is_driven_across_turns_and_dies_with_the_app() {
     app.insert_resource(scripted_models([("test/model", &model)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ExitPlugin,
             TerminalSessionsPlugin,
         ))

@@ -62,7 +62,7 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
         .add_observer(log_tool_outputs)
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ReadTool,
             WriteTool,
             AnswerAsks,

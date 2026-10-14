@@ -28,7 +28,7 @@ struct HoldAnswers(bool);
 struct AnswerHold;
 
 fn hold_answers(
-    calls: Query<Entity, (Unreviewed, With<TurnCall>)>,
+    calls: Query<Entity, (ReadyToSettle, With<TurnCall>)>,
     holds: Query<&HoldOf, With<AnswerHold>>,
     hold: Res<HoldAnswers>,
     mut commands: Commands,
@@ -111,7 +111,7 @@ fn two_branches_side_by_side_aligned_by_turn_and_the_picked_one_goes_on() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/model", &model)]))
         .insert_resource(ProjectRoot(project.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, EditTool))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, EditTool))
         .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
         .init_resource::<Ended>()
         .init_resource::<HoldAnswers>()

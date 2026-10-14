@@ -150,7 +150,7 @@ struct Called(Vec<(String, Value)>);
 fn start(store: &MemoryStore, names: &[&str]) -> (App, Receiver<()>, Option<Entity>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Settings::from_toml(SETTINGS))
-        .add_plugins((AgentPlugin, JournalPlugin, SchemaAdapterPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SchemaAdapterPlugin))
         .init_resource::<Called>()
         .init_resource::<Ended>()
         .add_observer(log_ended);

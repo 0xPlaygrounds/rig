@@ -335,7 +335,7 @@ fn gate(
             Option<&Checked>,
             &mut Decision,
         ),
-        (Undecided, ToolCalls, Without<Approved>),
+        (ReadyToStart, ToolCalls, Without<Approved>),
     >,
     answerers: Answerers,
     mut session: ResMut<SessionDeps>,

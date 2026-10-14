@@ -69,7 +69,7 @@ fn app(
         .insert_resource(AppStart(reason))
         .insert_resource(TuiTestScreen::new(80, 30))
         .insert_resource(Settings::from_toml(&settings))
-        .add_plugins((AgentPlugin, JournalPlugin, AwayRecapPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, AwayRecapPlugin))
         .add_open_tool("edit", "Edit a file.", ToolOptions::default(), edited)
         .init_resource::<Ended>()
         .add_observer(log_ended)

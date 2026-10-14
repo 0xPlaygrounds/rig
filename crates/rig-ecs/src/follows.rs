@@ -38,8 +38,8 @@ use rig_memory::{SET_ASIDE, Versioned};
 use serde_json::{Map, Value};
 
 use super::agent::{Agent, AgentId, Conversation};
-use super::journal::{Committed, SaveConversations, SessionLog, save_conversation};
 use super::restore::{SavedKeys, SavedReader, SavedUpgrades};
+use super::session_log::{ConversationChanged, SaveConversations, SessionLog, save_conversation};
 
 /// The kind of the asides holding followed values:
 /// `{"key": <key>, "v": n, "value": …}`, by rig.
@@ -52,7 +52,7 @@ pub const FOLLOWS: &str = "rig.follows";
 /// had at that point; with none set on the line, the component is removed.
 /// Versioned like a saved value, and keyed by its type path or the stable
 /// key its plugin gives it: a line value no step reads is listed in
-/// `SetAside` and left on the line, and the next change of the component
+/// `Shelved` and left on the line, and the next change of the component
 /// moves it to a side key (rig-memory's `SET_ASIDE`) on that line; a newer
 /// rig's is never written over in this run. It takes the place of `Saved`
 /// for its type.
@@ -103,7 +103,7 @@ enum Unreadable {
     /// A newer rig saved it.
     Newer,
     /// No step reads it, or it no longer fits its type.
-    SetAside,
+    Shelved,
 }
 
 /// Whether the change of `key` on `agent` is not to be kept: its line value
@@ -121,7 +121,7 @@ fn held(
     let at = (agent, key.to_owned());
     match unread.0.get(&at) {
         Some(Unreadable::Newer) => true,
-        Some(Unreadable::SetAside) => {
+        Some(Unreadable::Shelved) => {
             unread.0.remove(&at);
             if let Some(old) = current(conversation, key)
                 && let Some(saved) = versioned(&old)
@@ -413,8 +413,8 @@ pub(crate) fn followed(world: &World) -> Vec<(String, String)> {
 /// conversations ([`SaveConversations`]): collapses the values of entries a splice took out,
 /// anchors line values once a line has an entry of its own, and, after a
 /// change that may change the line, gives each agent its line's values.
-pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Committed>>) {
-    let Some(messages) = world.get_resource::<Messages<Committed>>() else {
+pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<ConversationChanged>>) {
+    let Some(messages) = world.get_resource::<Messages<ConversationChanged>>() else {
         return;
     };
     let mut work: HashMap<Entity, Work> = HashMap::new();
@@ -507,7 +507,7 @@ pub(crate) fn give_line_values(
         .collect();
     for (key, path, value) in lines {
         if let Some(mut unread) = world.get_resource_mut::<Unread>()
-            && unread.0.get(&(agent, key.clone())) == Some(&Unreadable::SetAside)
+            && unread.0.get(&(agent, key.clone())) == Some(&Unreadable::Shelved)
         {
             unread.0.remove(&(agent, key.clone()));
         }
@@ -551,7 +551,7 @@ pub(crate) fn give_line_values(
             Err((newer, why)) => {
                 warn!("not giving the agent its line's `{key}`: {why}");
                 let mut unread = world.get_resource_or_init::<Unread>();
-                let unreadable = unread.0.entry((agent, key)).or_insert(Unreadable::SetAside);
+                let unreadable = unread.0.entry((agent, key)).or_insert(Unreadable::Shelved);
                 if newer {
                     *unreadable = Unreadable::Newer;
                 }

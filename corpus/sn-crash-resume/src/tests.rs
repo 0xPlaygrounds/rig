@@ -12,7 +12,7 @@ use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness::note::Note;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::effects::Handler;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness_test_support::{
     Collected, answer_open, app_in, collect, connect, first_agent, reply, run_until, scratch_home,
 };
@@ -25,7 +25,7 @@ use super::{CrashResumePlugin, Progress, Recovering, TITLE, read_progress};
 /// questions and an input box, one frame run.
 fn app(home: &Home, session: &SessionId) -> (App, std::sync::mpsc::Receiver<()>) {
     let (mut app, wakes) = app_in(home, session);
-    app.add_plugins((AgentPlugin, JournalPlugin, AskPlugin, CrashResumePlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin, CrashResumePlugin))
         .add_tool(Shell::default())
         .add_tool(Read::default());
     app.world_mut().spawn((Editor::default(), MainEditor));

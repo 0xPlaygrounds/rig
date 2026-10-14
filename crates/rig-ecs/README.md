@@ -16,7 +16,7 @@ What it holds, by module:
 - `turn`: the turn loop (model request, tool calls, results, the next
   request or the end), steering, interrupts, and retries that wait on
   Bevy's clock. A model call is an effect (`ModelRequest`): the turn's own
-  (`TurnCall`) and a side call built from an agent (`BuildFrom`) have
+  (`TurnCall`) and a side call built from an agent (`SideCall`) have
   their request built by the kernel, with the system prompt in parts
   (rig-core's `SystemPrompt`: the role and tagged sections), a plugin
   edits it in Prepare (prompt, tools, options, the model it goes to, and
@@ -24,10 +24,10 @@ What it holds, by module:
   edit attributed to its author and never saved) and pushes its
   `Adapters` (an `outermost()` one wraps all the others), and Start
   renders the prompt and fits the request to that model, putting on it
-  the options left out (`Fitted`); `ModelStarts::sent` gives what Start
+  the options left out (`DroppedOptions`); `ModelStarts::sent` gives what Start
   will send, and `ModelStarts::prompt` its prompt in parts. Its stream is
   written as `StreamDelta`s (rig-core's `StreamEvent`s: a part's start,
-  its fragments, its end) and stamped on the call (`Streamed`). A failed
+  its fragments, its end) and stamped on the call (`StreamTiming`). A failed
   call carries its `RetryVerdict`, which Review may act on by superseding
   the call, such as on another model (any number of effects may be
   `SupersededBy` one successor, as a race's losers are by its winner). A
@@ -53,7 +53,7 @@ What it holds, by module:
   `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell Bevy which
   effects two systems can never share. A tool call is such an effect
   (`ToolRequest`): as Gate opens, the kernel gives it the `Footprint` of
-  what it reads and writes (rig-core's `Touches`; one a plugin `Declared`
+  what it reads and writes (rig-core's `Touches`; one a plugin `DeclaredFootprint`
   on the call in Prepare stands), and Gate sees it when
   it is about to run, once every earlier call of its reply it conflicts
   with settled (`Waiting`). A running effect's owner keeps `IfStopped`
@@ -88,7 +88,7 @@ What it holds, by module:
   conversation's outbox until the kernel saves it with rig-memory's
   `Writer`, between the stages of every pass, at the end of the frame and
   before a tool that may change something, and announces it as a
-  `Committed`. `Retire` retires an agent for good. Nothing is rewritten
+  `ConversationChanged`. `Retire` retires an agent for good. Nothing is rewritten
   except through rig-memory: a `RewriteSession` maps every saved record in
   place, keeping each record's place and stamp, the agents' conversations
   and saved values become the rewritten ones, and `SessionRewritten` tells

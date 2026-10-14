@@ -80,7 +80,7 @@ fn scripts_are_tools_that_come_and_go_with_their_files() {
     app.set_error_handler(rig_harness::error::warn)
         .insert_resource(ProjectRoot(root.clone()))
         .insert_resource(RigHome(home))
-        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin, ReadTool))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin, ReadTool))
         .add_plugins(ScriptToolsPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended)

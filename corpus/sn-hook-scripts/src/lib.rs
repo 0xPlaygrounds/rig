@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use std::process::Output;
 
 use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput};
-use rig_harness::rig_ecs::calls::Running;
+use rig_harness::rig_ecs::tasks::Running;
 use rig_tools::process::{KillOnDrop, Spawn};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -772,7 +772,7 @@ fn release_start(commands: &mut Commands, agent: Entity, holds: &Query<(Entity, 
 /// Holds each turn call of an agent whose `session_start` hooks have not
 /// finished.
 fn hold_until_started(
-    calls: Query<(Entity, &ForAgent), (Undecided, ModelCalls, With<TurnCall>)>,
+    calls: Query<(Entity, &ForAgent), (ReadyToStart, ModelCalls, With<TurnCall>)>,
     pending: Query<(), With<StartPending>>,
     mut commands: Commands,
 ) {
@@ -796,7 +796,7 @@ fn before_tool(
             Option<&Verdict>,
             Has<BeforeRan>,
         ),
-        (Undecided, ToolCalls),
+        (ReadyToStart, ToolCalls),
     >,
     (agents, tools): (Query<&AgentId>, Query<&ToolDef>),
     hooks: Res<Hooks>,
@@ -859,7 +859,7 @@ fn prompt_submit(
             Option<&Verdict>,
             Has<BeforeRan>,
         ),
-        (Undecided, IncomingMessages),
+        (ReadyToStart, IncomingMessages),
     >,
     agents: Query<&AgentId>,
     hooks: Res<Hooks>,
@@ -924,7 +924,7 @@ fn after_tool(
             Option<&Verdict>,
             Has<AfterRan>,
         ),
-        (Unreviewed, ToolCalls),
+        (ReadyToSettle, ToolCalls),
     >,
     agents: Query<&AgentId>,
     hooks: Res<Hooks>,

@@ -452,7 +452,7 @@ fn write_shared(
 /// Takes over the user's `/new --from <name>` lines before the slash commands run;
 /// a plain `/new` stays rig-sessions'.
 fn new_from(
-    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (ReadyToStart, IncomingMessages)>,
     mut commands: Commands,
 ) {
     for (incoming, &ForAgent(agent), mut decision) in &mut typed {

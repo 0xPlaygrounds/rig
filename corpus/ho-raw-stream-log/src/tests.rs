@@ -92,7 +92,7 @@ fn a_call_is_recorded_raw_and_redacted_and_off_records_nothing() {
     let dir = home.session(&id).path().join("raw");
     let (mut app, wakes) = app_in(&home, &id);
     app.insert_resource(Models(connector))
-        .add_plugins((AgentPlugin, JournalPlugin, RawStreamLogPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, RawStreamLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

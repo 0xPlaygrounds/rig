@@ -5,7 +5,7 @@
 //! [`Sent`] adds a prompt to it.
 //!
 //! A prompt is kept as typed, a slash command's included. When the session
-//! is rewritten ([`SessionRewritten`](rig_ecs::journal::SessionRewritten)), the history, in memory and in its
+//! is rewritten ([`SessionRewritten`](rig_ecs::session_log::SessionRewritten)), the history, in memory and in its
 //! file, goes through the same map: a redaction reaches every prompt that
 //! held what it removed, those of other sessions too, and so the
 //! `/redact <text>` line that asked for it. A command whose arguments must

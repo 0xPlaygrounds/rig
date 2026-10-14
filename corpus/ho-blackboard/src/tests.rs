@@ -13,7 +13,7 @@ use rig_harness_test_support::{
 fn app(store: &MemoryStore, models: Models) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, BlackboardPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, BlackboardPlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
     (app, wakes)

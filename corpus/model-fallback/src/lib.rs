@@ -193,7 +193,7 @@ fn fall_back(
             &ForAgent,
         ),
         (
-            Unreviewed,
+            ReadyToSettle,
             ModelCalls,
             With<TurnCall>,
             Without<SupersededBy>,
@@ -225,7 +225,7 @@ fn fall_back(
                 TurnCall,
                 CallOf(turn),
                 ForAgent(agent),
-                Effect::child_of(effect.parent),
+                Effect::with_parent_id(effect.parent),
             ))
             .add_related::<SupersededBy>(&[call]);
     }

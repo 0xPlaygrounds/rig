@@ -25,7 +25,7 @@ fn run(
         .insert_resource(scripted_models([("corpus-summarizer/cheap", cheap)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ShellTool,
             SummarizeToolOutputPlugin,
             UsagePlugin,

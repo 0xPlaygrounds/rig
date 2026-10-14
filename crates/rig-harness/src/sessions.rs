@@ -32,8 +32,8 @@ use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::conversation::{AsideId, Conversation, EntryRef, MessageId};
 use rig_core::message::UserContent;
-use rig_ecs::journal::SessionStore;
-use rig_ecs::prelude::{PollCalls, Running, Wake};
+use rig_ecs::prelude::{PollTasks, Running, Wake};
+use rig_ecs::session_log::SessionStore;
 use rig_memory::{Line, LineId, Listing, Store, lines, read_line, title_of};
 use rig_tools::ago;
 
@@ -911,7 +911,7 @@ pub struct SessionPickerPlugin;
 
 impl Plugin for SessionPickerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (start, preview).chain().after(PollCalls))
+        app.add_systems(Update, (start, preview).chain().after(PollTasks))
             .add_observer(read_done)
             .add_observer(preview_done)
             .add_observer(picked);

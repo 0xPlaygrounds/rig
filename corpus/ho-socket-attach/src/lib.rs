@@ -31,7 +31,7 @@ use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::AppExit;
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::StopTurns;
+use rig_harness::rig_ecs::StopTurnsOnExit;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -78,7 +78,10 @@ impl Plugin for SocketAttachPlugin {
             .add_systems(Startup, listen)
             .add_systems(PostUpdate, (stream_text, relay_notices))
             // After the turns a quit stops, so clients see them end.
-            .add_systems(Last, close.after(StopTurns).run_if(on_message::<AppExit>))
+            .add_systems(
+                Last,
+                close.after(StopTurnsOnExit).run_if(on_message::<AppExit>),
+            )
             .add_observer(handle)
             .add_observer(delivered)
             .add_observer(turn_ended)

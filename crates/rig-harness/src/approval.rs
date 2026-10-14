@@ -14,14 +14,14 @@
 //! them; the harness asks only about what is undecided and unheld then.
 //! To batch a reply's later calls with its earlier ones, it marks them in
 //! Prepare (`Added<Admitted>`): a call waiting on an earlier one
-//! (`Waiting`) is not [`Undecided`] there, so Gate never sees it.
+//! (`Waiting`) is not [`ReadyToStart`] there, so Gate never sees it.
 //!
 //! ```
 //! use rig_harness::prelude::*;
 //!
 //! /// Wants the user to approve every `shell` call.
 //! fn guard(
-//!     calls: Query<(Entity, &ToolRequest), (Undecided, ToolCalls, Without<Approved>)>,
+//!     calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls, Without<Approved>)>,
 //!     mut commands: Commands,
 //! ) {
 //!     for (call, request) in &calls {
@@ -39,7 +39,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_core::effect::Decider;
 use rig_ecs::stage::{
-    AgentPass, Decision, EffectRequest, ForAgent, GateSystems, HoldOf, Outcome, Undecided,
+    AgentPass, Decision, EffectRequest, ForAgent, GateSystems, HoldOf, Outcome, ReadyToStart,
 };
 use rig_ecs::tools::ToolRequest;
 
@@ -134,7 +134,7 @@ fn ask(
             Option<&EffectRequest>,
             &mut Decision,
         ),
-        (Undecided, Without<Approved>, Without<Ask>),
+        (ReadyToStart, Without<Approved>, Without<Ask>),
     >,
     answerers: Answerers,
     mut commands: Commands,

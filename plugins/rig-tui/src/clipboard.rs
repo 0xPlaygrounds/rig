@@ -20,7 +20,7 @@ use crossbeam_channel::{Receiver, Sender};
 use super::editor::{Editor, MainEditor};
 use super::terminal::CopyToClipboard;
 use rig_ecs::agent::Notice;
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::Wake;
 use rig_harness::prelude::Processes;
 use rig_harness::primary::Shown;
 use rig_tools::clipboard;

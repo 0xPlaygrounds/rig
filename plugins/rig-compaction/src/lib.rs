@@ -3,7 +3,7 @@
 //! messages are summarized by the model into rig-memory's checkpoint, which
 //! takes their place in the conversation. Both are splices of the
 //! conversation by [`summary_author`], so they are logged, restored and
-//! announced as [`Committed`]; the summary is an entry of its own by that
+//! announced as [`ConversationChanged`]; the summary is an entry of its own by that
 //! author. The same happens after the model refused a
 //! request as too long, and `/compact <focus>` does it now. It is stage systems over the turn's model calls
 //! ([`TurnCall`]): a Prepare system measures each request against the
@@ -36,8 +36,8 @@
 use bevy_ecs::query::QueryData;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Usage, tokens_label};
-use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+use rig_ecs::session_log::SessionStore;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::settings::AppSettingsExt;
 use rig_harness::successor::follow_successor;
@@ -682,7 +682,7 @@ fn compact_near_the_window(
 fn recover_from_overflow(
     failed: Query<
         (Entity, &RetryVerdict, &Effect, &CallOf, &ForAgent),
-        (Unreviewed, With<TurnCall>, Without<SupersededBy>),
+        (ReadyToSettle, With<TurnCall>, Without<SupersededBy>),
     >,
     mut agents: Query<Compacting>,
     mut turns: Query<&mut Compactions>,
@@ -713,7 +713,7 @@ fn recover_from_overflow(
                         TurnCall,
                         CallOf(turn),
                         ForAgent(agent),
-                        Effect::child_of(effect.parent),
+                        Effect::with_parent_id(effect.parent),
                     ))
                     .add_related::<SupersededBy>(&[call]);
                 continue;
@@ -757,7 +757,7 @@ fn read_summary(
     mut calls: Query<
         (Entity, &mut Summarizing, &Outcome),
         (
-            Unreviewed,
+            ReadyToSettle,
             ModelCalls,
             Without<TurnCall>,
             Without<SummaryRead>,
@@ -850,7 +850,7 @@ fn take_summary(
                     TurnCall,
                     CallOf(turn),
                     ForAgent(agent),
-                    Effect::child_of(parent),
+                    Effect::with_parent_id(parent),
                 ))
                 .add_related::<SupersededBy>(&[call]);
         }

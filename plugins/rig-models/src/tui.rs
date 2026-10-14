@@ -194,10 +194,17 @@ fn show(
         Entity,
         Option<&ModelChoice>,
         Option<&ModelLabel>,
-        &Effort,
+        &ReasoningSetting,
         &mut StatusItems,
     )>,
-    changed: Query<(), Or<(Changed<ModelChoice>, Changed<Effort>, Changed<ModelLabel>)>>,
+    changed: Query<
+        (),
+        Or<(
+            Changed<ModelChoice>,
+            Changed<ReasoningSetting>,
+            Changed<ModelLabel>,
+        )>,
+    >,
     mut unlabeled: RemovedComponents<ModelLabel>,
 ) {
     let unlabeled: Vec<Entity> = unlabeled.read().collect();

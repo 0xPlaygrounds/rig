@@ -527,11 +527,11 @@ fn route_summaries(
 
 /// Leaves a record after each summary of a matched agent.
 fn record_summaries(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     mut agents: Query<(Identity, &mut Conversation)>,
     rules: Res<CompactionRules>,
 ) {
-    for Committed { agent, change } in committed.read() {
+    for ConversationChanged { agent, change } in committed.read() {
         let Some(summary) = rig_compaction::summary_in(&change.change) else {
             continue;
         };

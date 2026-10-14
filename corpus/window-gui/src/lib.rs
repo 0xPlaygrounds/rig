@@ -611,7 +611,7 @@ fn submit(
 
 fn stop(_stop: On<Stop>, shown: Res<Shown>, mut commands: Commands) {
     if let Some(entity) = shown.0 {
-        commands.trigger(Interrupt::new(entity));
+        commands.trigger(StopTurn::new(entity));
     }
 }
 

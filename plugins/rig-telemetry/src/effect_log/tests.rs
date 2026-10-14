@@ -77,7 +77,7 @@ fn a_rewrite_reaches_the_log_written_and_the_records_not_written_yet() {
     const SECRET: &str = "sk-123";
     let store = MemoryStore::default();
     let (mut app, _wakes) = app_on(&store);
-    app.add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin));
     app.finish();
     app.update();
     app.world_mut()
@@ -127,7 +127,7 @@ fn a_resumed_session_sends_its_log_to_the_terminal_view() {
 
     let store = MemoryStore::default();
     let (mut before, _wakes) = app_on(&store);
-    before.add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin));
+    before.add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin));
     before.finish();
     before.update();
     for record in [record(1, "a", "note", 0), record(2, "a", "subagent", 0)] {
@@ -140,7 +140,7 @@ fn a_resumed_session_sends_its_log_to_the_terminal_view() {
     // The view's front, taking this headless run.
     app.add_front(Front::new(rig_tui::FRONT).headless())
         .add_message::<PastEffects>()
-        .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin));
     collect::<PastEffects>(&mut app);
     app.finish();
     run_until(&mut app, &wakes, |world| {

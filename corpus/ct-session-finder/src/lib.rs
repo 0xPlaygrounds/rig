@@ -30,7 +30,7 @@ use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
-use rig_harness::rig_ecs::journal::{SessionRestored, SessionStore};
+use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
 use rig_sessions::SwitchSession;
 use rig_tui::{CopyToClipboard, Focus, ItemRow, MainPane, ScrollTo, TranscriptItem};
 use serde::{Deserialize, Serialize};

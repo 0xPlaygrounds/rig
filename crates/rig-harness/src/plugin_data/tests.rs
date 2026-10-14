@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, SessionId};
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
-use rig_ecs::journal::{JournalPlugin, SessionStore};
+use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
 use rig_harness_test_support::scratch_home;
 use rig_memory::DirStore;
 
@@ -46,7 +46,7 @@ fn a_session_file_follows_a_fork_and_the_other_places_are_in_the_home() {
         .insert_resource(SessionPaths(session.clone()))
         .insert_resource(SessionStore::new(store))
         .insert_resource(ProjectRoot(home.root().to_owned()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .init_resource::<Forked>()
         .add_plugins(SessionPlugin)
         .add_systems(Last, keep_forked);

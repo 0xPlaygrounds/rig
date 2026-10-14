@@ -124,7 +124,7 @@ fn mirror(domains: Res<FetchDomains>, state: Res<FetchState>) {
 fn gate(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &mut Decision),
-        (Undecided, ToolCalls, Without<AllowedOnce>),
+        (ReadyToStart, ToolCalls, Without<AllowedOnce>),
     >,
     open: Query<&DomainAsk, Without<Outcome>>,
     state: Res<FetchState>,

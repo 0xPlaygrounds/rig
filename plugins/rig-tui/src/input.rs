@@ -59,9 +59,9 @@ use super::panel::{TuiPanel, TuiScreen};
 use super::pick::{self, Choices, PickerState, Showing};
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
-use rig_ecs::agent::{ActiveTurn, Interrupt, Notice};
-use rig_ecs::calls::Wake;
+use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
+use rig_ecs::tasks::Wake;
 use rig_harness::pick::{Chosen, Pick};
 use rig_harness::prelude::{Processes, Scratch};
 use rig_harness::primary::Shown;
@@ -762,7 +762,7 @@ fn act(
             Some(completion) => view.dismissed = Some(completion.start),
             None => {
                 if let Some(entity) = context.agent {
-                    commands.trigger(Interrupt::new(entity));
+                    commands.trigger(StopTurn::new(entity));
                 }
             }
         },

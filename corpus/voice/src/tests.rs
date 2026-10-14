@@ -76,7 +76,7 @@ fn a_held_key_sends_the_transcript_after_a_moment_and_the_answer_is_spoken_witho
         transcriber: Some(Arc::new(FakeTranscriber)),
         speaker: Some(Arc::new(speaker.clone())),
     })
-    .add_plugins((AgentPlugin, JournalPlugin, VoicePlugin));
+    .add_plugins((AgentPlugin, SessionLogPlugin, VoicePlugin));
     app.finish();
     // Frames take no time until the test moves the clock.
     advance(&mut app, Duration::ZERO);

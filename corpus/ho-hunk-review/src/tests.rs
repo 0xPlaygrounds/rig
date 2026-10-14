@@ -40,7 +40,7 @@ fn edited(name: &str) -> (App, Receiver<()>, Entity, MockCompletionModel, PathBu
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         PickPlugin,
         EditTool,
         HunkReviewPlugin,

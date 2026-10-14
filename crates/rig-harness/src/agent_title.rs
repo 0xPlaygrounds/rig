@@ -2,7 +2,7 @@
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_ecs::journal::ReflectSaved;
+use rig_ecs::session_log::ReflectSaved;
 
 /// An agent's title, such as a subagent's task, which names it in views.
 /// Saved with the session as a string under rig-memory's `TITLE` (its type

@@ -31,7 +31,7 @@ fn run_session(
     let id: SessionId = id.parse().unwrap_or_else(|_| SessionId::generate());
     let (mut app, wakes) = app_in(home, &id);
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)

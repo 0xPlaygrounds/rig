@@ -47,7 +47,7 @@ use rig_harness::rig_core::providers::anthropic::wire::{AnthropicConfig, compati
 use rig_harness::rig_core::providers::openai::wire::{Auth, Dialect, OpenAIConfig, Route};
 use rig_harness::rig_core::providers::registry::{ConnectError, ProviderConfig, ProviderId};
 use rig_harness::rig_core::serve::ErasedHandler;
-use rig_harness::rig_ecs::{StopTurns, WriteJournal};
+use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -88,7 +88,7 @@ impl Plugin for OpaqueReasoningPlugin {
                 ),
             )
             .add_observer(follow_successor::<WithoutBlobs>)
-            .add_systems(Last, hide_blobs.after(StopTurns).before(WriteJournal))
+            .add_systems(Last, hide_blobs.after(StopTurnsOnExit).before(WriteLogs))
             .add_systems(Startup, report_problems);
     }
 
@@ -318,8 +318,11 @@ fn prefixes(messages: &[ChatMessage]) -> Vec<Fingerprint> {
 
 /// Anchors each message with blobs as it is committed, and notes its blobs'
 /// size in the transcript.
-fn anchor_blobs(mut committed: MessageReader<Committed>, mut agents: Query<&mut Conversation>) {
-    for Committed { agent, change } in committed.read() {
+fn anchor_blobs(
+    mut committed: MessageReader<ConversationChanged>,
+    mut agents: Query<&mut Conversation>,
+) {
+    for ConversationChanged { agent, change } in committed.read() {
         let Change::Push { entries } = &change.change else {
             continue;
         };
@@ -421,7 +424,7 @@ fn retry_without_blobs(
     failed: Query<
         (Entity, &Outcome, &ModelRequest, &ForAgent),
         (
-            Unreviewed,
+            ReadyToSettle,
             ModelCalls,
             Without<SupersededBy>,
             Without<WithoutBlobs>,

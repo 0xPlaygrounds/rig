@@ -164,7 +164,7 @@ fn offer(
         (
             Added<Admitted>,
             ModelCalls,
-            Or<(With<TurnCall>, With<BuildFrom>)>,
+            Or<(With<TurnCall>, With<SideCall>)>,
         ),
     >,
     registry: Registry,
@@ -280,7 +280,7 @@ fn score(def: &ToolDefinition, terms: &[String]) -> usize {
 /// allows it): before its result is committed, this activates the tool and
 /// says so at the end of the result.
 fn activate_on_call(
-    mut calls: Query<(&ToolRequest, &ForAgent, &mut Outcome), (Unreviewed, ToolCalls)>,
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut Outcome), (ReadyToSettle, ToolCalls)>,
     registry: Registry,
     mut agents: Query<(&ToolAccess, &mut ActivatedTools)>,
 ) {

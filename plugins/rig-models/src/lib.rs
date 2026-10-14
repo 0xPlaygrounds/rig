@@ -165,9 +165,9 @@ fn effort(
     }
     match spec.reasoning.named(&args.args) {
         Ok(choice) => {
-            commands.trigger(SetEffort {
+            commands.trigger(SetReasoning {
                 entity: args.agent,
-                effort: Effort(choice.reasoning),
+                effort: ReasoningSetting(choice.reasoning),
             });
         }
         Err(why) => {

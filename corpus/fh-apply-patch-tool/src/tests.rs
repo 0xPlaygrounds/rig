@@ -92,7 +92,7 @@ fn writes(footprint: &Footprint, name: &str) -> bool {
 }
 
 /// Another plugin's rule on any file tool: never `secret.txt`.
-fn no_secrets(mut calls: Query<(&Footprint, &mut Decision), (Undecided, ToolCalls)>) {
+fn no_secrets(mut calls: Query<(&Footprint, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (footprint, mut decision) in &mut calls {
         if writes(footprint, "secret.txt") {
             decision.decide(Decider::plugin("test"), Outcome::refused("no secrets"));
@@ -111,7 +111,7 @@ struct Asked;
 /// Another plugin's approval of `slow.txt`: held until the next frame;
 /// and a question to the user about `asked.txt`, which nobody answers.
 fn ask_for_slow(
-    calls: Query<(Entity, &Footprint, &Decision), (Undecided, ToolCalls, Without<Asked>)>,
+    calls: Query<(Entity, &Footprint, &Decision), (ReadyToStart, ToolCalls, Without<Asked>)>,
     mut commands: Commands,
 ) {
     for (call, footprint, decision) in &calls {
@@ -174,7 +174,7 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     ]))
     .add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         EditTool,
         WriteTool,
         DeleteTool,

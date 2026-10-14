@@ -16,7 +16,7 @@ use super::*;
 
 /// The stand-in approval rule: every `shell` and `write` call asks.
 fn ask_always(
-    calls: Query<(Entity, &ToolRequest), (Undecided, ToolCalls, Without<Approved>)>,
+    calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls, Without<Approved>)>,
     mut commands: Commands,
 ) {
     for (call, request) in &calls {
@@ -29,7 +29,7 @@ fn ask_always(
 }
 
 /// The stand-in protected-path rule: nothing under `src/locked` is written.
-fn protect(mut calls: Query<(&Footprint, &mut Decision), (Undecided, ToolCalls)>) {
+fn protect(mut calls: Query<(&Footprint, &mut Decision), (ReadyToStart, ToolCalls)>) {
     for (footprint, mut decision) in &mut calls {
         let locked = written(Some(&footprint.0)).is_some_and(|paths| {
             paths
@@ -69,7 +69,7 @@ fn start(
     app.insert_resource(ProjectRoot(dir.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ClockPlugin,
             AskPlugin,
             ApprovalPlugin,

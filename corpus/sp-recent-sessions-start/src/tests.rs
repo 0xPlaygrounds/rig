@@ -39,7 +39,7 @@ fn saved_session(home: &Home, project: &Path, ask: &str) -> SessionId {
         .insert_resource(ProjectRoot(project.to_owned()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SessionsPlugin,
             RecentSessionsPlugin,
         ))
@@ -82,7 +82,7 @@ fn at_terminal(
     app.insert_resource(scripted_models([(MODEL, model)]))
         .insert_resource(ProjectRoot(project.to_owned()))
         .insert_resource(TuiTestScreen::new(120, 40))
-        .add_plugins((AgentPlugin, JournalPlugin, CommandPlugin, PickPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, PickPlugin))
         .add_plugins((SessionsPlugin, RecentSessionsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
@@ -305,7 +305,7 @@ fn lists_filters_and_resumes_recent_sessions_without_writing() {
         .insert_resource(ProjectRoot(project.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SessionsPlugin,
             RecentSessionsPlugin,
         ))

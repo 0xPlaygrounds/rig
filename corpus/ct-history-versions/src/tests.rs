@@ -24,7 +24,7 @@ fn start(
     app.insert_resource(Settings::from_toml(settings));
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         CompactionPlugin,
         HistoryVersionsPlugin,
     ))

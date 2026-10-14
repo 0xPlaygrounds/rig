@@ -681,7 +681,7 @@ fn describe(hits: &[Hit<'_>]) -> String {
 fn look_up(
     messages: Query<
         (Entity, &Incoming, &Decision),
-        (Undecided, IncomingMessages, Without<TurnContext>),
+        (ReadyToStart, IncomingMessages, Without<TurnContext>),
     >,
     settings: Res<CodeSearchSettings>,
     index: Res<CodeIndex>,

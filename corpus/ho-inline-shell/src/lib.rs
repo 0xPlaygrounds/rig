@@ -349,7 +349,7 @@ fn finished(
             expanded,
             Expanded,
             ForAgent(job.agent),
-            Effect::child_of(effect.parent),
+            Effect::with_parent_id(effect.parent),
         ))
         .add_related::<SupersededBy>(&[message]);
     for (hold, _) in mine {

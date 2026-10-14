@@ -39,7 +39,7 @@ fn run_turn(model: &MockCompletionModel, root: PathBuf, ask: &str) -> (App, Enti
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/model", model)]))
         .insert_resource(ProjectRoot(root))
-        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, UsagePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WriteTool, UsagePlugin))
         .add_plugins(AutoContinuePlugin)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)

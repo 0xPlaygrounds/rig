@@ -27,7 +27,7 @@ use rig_core::effect::Decider;
 use rig_ecs::agent::{Notice, NoticeLevel};
 use rig_ecs::inbox::{DeliveryMode, Incoming, Recalled};
 use rig_ecs::stage::{
-    AgentPass, Decision, Effect, ForAgent, IncomingMessages, Outcome, Stage, Undecided,
+    AgentPass, Decision, Effect, ForAgent, IncomingMessages, Outcome, ReadyToStart, Stage,
 };
 
 /// What a command system receives: the agent the command was typed for,
@@ -84,7 +84,10 @@ fn runner(app: &mut App) {
 /// Takes each user's `/` line about to start over, in the order they were
 /// sent, and runs it for its agent, sent as it was.
 fn run_typed(
-    mut typed: Query<(&Effect, &Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut typed: Query<
+        (&Effect, &Incoming, &ForAgent, &mut Decision),
+        (ReadyToStart, IncomingMessages),
+    >,
     mut commands: Commands,
 ) {
     let mut lines: Vec<_> = typed
