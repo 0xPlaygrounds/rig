@@ -18,7 +18,10 @@ use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_memory::MemoryStore;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{AppToolRenderersExt, EntryView, ItemRow, ScrollTo, TranscriptItem, TranscriptView};
+use rig_tui::{
+    AppToolRenderersExt, EntryView, Focus, ItemRow, MainPane, ScrollTo, TranscriptItem,
+    TranscriptView,
+};
 use serde::{Deserialize, Serialize};
 
 /// The author (a plugin name) of a bookmark's marker in the transcript.
@@ -268,15 +271,19 @@ fn list(
     commands.spawn((picker, Choices(labels))).observe(open);
 }
 
-/// Opens the bookmark chosen in a `/bookmarks` picker: scrolls to its
-/// message and selects it, or, when a condensing took the message out,
-/// shows the saved history around it after what stands for it now.
+/// Opens the bookmark chosen in a `/bookmarks` picker: shows its agent in
+/// the main pane, scrolled to its message and selected, or, when a
+/// condensing took the message out, the saved history around it after
+/// what stands for it now.
 fn open(
     picked: On<Picked>,
     choices: Query<&Choices>,
     bookmarks: Res<Bookmarks>,
     mut agents: Query<(Entity, &AgentId, &mut Conversation)>,
-    (store, view): (Option<Res<SessionStore>>, Option<ResMut<TranscriptView>>),
+    (store, pane): (
+        Option<Res<SessionStore>>,
+        Option<Single<(Entity, &mut TranscriptView), With<MainPane>>>,
+    ),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -320,16 +327,19 @@ fn open(
         let title = format!("Bookmark `{}`, before it was condensed", bookmark.label);
         let note =
             Note::new(title, history).aside(Author::plugin(HISTORY_ORIGIN), Some(bookmark.message));
-        TranscriptItem::Note(conversation.add_aside(note.unsaved()))
+        TranscriptItem::Aside(conversation.add_aside(note.unsaved()))
     };
-    if let Some(mut view) = view {
-        if matches!(item, TranscriptItem::Note(_)) {
-            view.expanded.insert(item.clone());
-        }
-        view.selected = Some(item.clone());
+    let Some(pane) = pane else {
+        return;
+    };
+    let (pane, mut view) = pane.into_inner();
+    if matches!(item, TranscriptItem::Aside(_)) {
+        view.expanded.insert(item.clone());
     }
+    view.selected = Some(item.clone());
+    commands.trigger(Focus { entity: agent });
     commands.trigger(ScrollTo {
-        agent,
+        pane,
         item: Some(item),
         row: ItemRow::Reveal,
     });

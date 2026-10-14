@@ -21,8 +21,9 @@ fn start(home: &Home, id: &SessionId, new: Option<&str>) -> Option<(App, Receive
         app.world_mut()
             .spawn((Name::new("agent"), Agent, AgentId(new.to_owned())));
     }
-    app.init_resource::<TranscriptView>()
-        .init_resource::<Ended>()
+    // The terminal view's main pane, its view alone.
+    app.world_mut().spawn((TranscriptView::default(), MainPane));
+    app.init_resource::<Ended>()
         .add_observer(log_ended)
         .add_plugins((AgentPlugin, JournalPlugin, BookmarksPlugin));
     app.finish();
@@ -109,7 +110,12 @@ fn open_bookmark(
     });
     app.world_mut().despawn(picker);
     app.update();
-    app.world().resource::<TranscriptView>().selected.clone()
+    let world = app.world_mut();
+    let mut panes = world.query_filtered::<&TranscriptView, With<MainPane>>();
+    panes
+        .single(world)
+        .ok()
+        .and_then(|view| view.selected.clone())
 }
 
 fn labels(app: &App) -> Vec<String> {
@@ -251,9 +257,10 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
     // Fork before exchange 2: the fork keeps only `api-design`.
     let agent_id = app.world().get::<AgentId>(agent).cloned();
     let before = agent_id.map(|agent_id| (agent_id, *question_2));
+    let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
     app.world_mut().trigger(ForkSession {
-        before,
-        asker: None,
+        cut,
+        ..ForkSession::default()
     });
     run_until(&mut app, &wakes, |_| fork_of(&home).is_some());
     let fork = fork_of(&home);
@@ -271,7 +278,7 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
     app.update();
     let opened = open_bookmark(&mut app, &wakes, agent, "api-design");
     let history = match opened {
-        Some(TranscriptItem::Note(id)) => note(&app, agent, id),
+        Some(TranscriptItem::Aside(id)) => note(&app, agent, id),
         _ => None,
     };
     let text = history.map(|history| history.text).unwrap_or_default();
