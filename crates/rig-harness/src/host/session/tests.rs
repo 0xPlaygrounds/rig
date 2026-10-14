@@ -428,9 +428,12 @@ fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
     });
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
-    let Some(forked) = forked else {
-        panic!("no split: {:?}", app.world().resource::<Seen>().notices);
-    };
+    assert!(
+        forked.is_some(),
+        "no split: {:?}",
+        app.world().resource::<Seen>().notices
+    );
+    let Some(forked) = forked else { return };
     let copy = dir_store(&home.session(&forked.to));
     let read = copy.as_ref().and_then(|copy| Session::read(copy).ok());
     let copied: Vec<_> = read
@@ -485,9 +488,12 @@ fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
         .forked
         .get(1)
         .map(|forked| forked.to.clone());
-    let Some(moved) = moved else {
-        panic!("no move: {:?}", app.world().resource::<Seen>().notices);
-    };
+    assert!(
+        moved.is_some(),
+        "no move: {:?}",
+        app.world().resource::<Seen>().notices
+    );
+    let Some(moved) = moved else { return };
     let left: Vec<_> = app
         .world()
         .get::<Conversation>(agent)
@@ -526,12 +532,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
     let ids: Vec<_> = app
         .world()
         .get::<Conversation>(agent)
-        .map(|conversation| {
-            conversation
-                .entries()
-                .filter_map(|entry| Some(entry.id))
-                .collect()
-        })
+        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
         .unwrap_or_default();
     drop(app);
     let Some((mut app, _)) = running_with(&home, &here, &[]) else {
