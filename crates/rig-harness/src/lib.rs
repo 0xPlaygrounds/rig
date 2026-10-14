@@ -84,7 +84,8 @@ pub mod workspace;
 
 pub use describe::run;
 pub use load::{
-    AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, load,
+    AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, SavedAs,
+    load,
 };
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
@@ -174,7 +175,7 @@ pub mod prelude {
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
         AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,
-        Provides, RigHarnessPlugins,
+        Provides, RigHarnessPlugins, SavedAs,
     };
     pub use rig_memory::{ForkedFrom, Listing, SplitPointer};
     pub use rig_tools::{Spill, blocking};

@@ -35,8 +35,9 @@ use bevy_app::prelude::*;
 use bevy_ecs::observer::Observer;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::{Schedules, SystemKey};
+use bevy_log::error;
 use bevy_reflect::prelude::*;
-use rig_ecs::restore::{RetiredSaved, SavedUpgrades};
+use rig_ecs::restore::{RetiredSaved, SavedKeys, SavedUpgrades};
 use rig_memory::Upgrade;
 
 /// Where a plugin comes from, on the entity [`load`] spawns for it.
@@ -229,6 +230,38 @@ pub trait AppKeepsExt {
     /// A saved key no build reads any more, such as a deleted type's path:
     /// its values are kept in the file and never reported.
     fn retired_saved(&mut self, key: &'static str) -> &mut Self;
+
+    /// This plugin's saved value `T` (an agent component or a resource) is
+    /// logged and restored under `key`, such as `goals.goal`, rather than its
+    /// type path, so a rename keeps it and a program without Bevy reads it
+    /// by that key (rig-memory's `Session::get`). Keys are namespaced by
+    /// the plugin; a key another type has, or a second key for `T`, is
+    /// refused with an error in the log. [`SavedAs::listed`] also lists it.
+    fn saved_as<T: TypePath>(&mut self, key: &'static str) -> SavedAs<'_>;
+}
+
+/// A saved value's key, as [`AppKeepsExt::saved_as`] recorded it.
+#[must_use = "a saved key is recorded already; call `listed` to list its values too"]
+pub struct SavedAs<'a> {
+    app: &'a mut App,
+    /// The key, or `None` when it was refused.
+    key: Option<&'static str>,
+}
+
+impl<'a> SavedAs<'a> {
+    /// The value is listed too: copied into the session's listing
+    /// (rig-memory's `SessionMeta::data`) whenever it changes, so a listing
+    /// and a session picker show and filter by it without opening a log.
+    /// Keep listed values small.
+    pub fn listed(self) -> &'a mut App {
+        if let Some(key) = self.key {
+            self.app
+                .world_mut()
+                .get_resource_or_init::<SavedKeys>()
+                .list(key);
+        }
+        self.app
+    }
 }
 
 impl AppKeepsExt for App {
@@ -262,6 +295,24 @@ impl AppKeepsExt for App {
             .add(kind, steps);
         keep(world, |keeps| &mut keeps.asides, kind);
         self
+    }
+
+    fn saved_as<T: TypePath>(&mut self, key: &'static str) -> SavedAs<'_> {
+        let world = self.world_mut();
+        let added = world
+            .get_resource_or_init::<SavedKeys>()
+            .add(T::type_path(), key);
+        let key = match added {
+            Ok(()) => {
+                keep(world, |keeps| &mut keeps.saved, key);
+                Some(key)
+            }
+            Err(failure) => {
+                error!("not saving `{}` under `{key}`: {failure}", T::type_path());
+                None
+            }
+        };
+        SavedAs { app: self, key }
     }
 
     fn retired_saved(&mut self, key: &'static str) -> &mut Self {

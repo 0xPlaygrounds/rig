@@ -116,5 +116,5 @@ pub use session::{Record, SavedAgent, Session, Unreadable, as_of, history, load,
 pub use split::{Line, LineId, SPLIT, SplitOf, SplitPointer, lines, split};
 pub use store::{Files, MemoryStore, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};
-pub use upgrade::{SET_ASIDE, Unread, Upgrade, Upgraded, Upgrades, Versioned, upgrade};
+pub use upgrade::{SET_ASIDE, Unread, Upgrade, Upgraded, Upgrades, ValueError, Versioned, upgrade};
 pub use writer::Writer;

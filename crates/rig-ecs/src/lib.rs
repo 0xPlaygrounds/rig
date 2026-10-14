@@ -71,7 +71,7 @@ pub mod prelude {
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
     pub use crate::restore::{
-        Interrupted, Restored, RetiredSaved, SavedUpgrades, SetAside, SetAsideValue,
+        Interrupted, Restored, RetiredSaved, SavedKeys, SavedUpgrades, SetAside, SetAsideValue,
     };
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,

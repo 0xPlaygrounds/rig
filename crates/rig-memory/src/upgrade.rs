@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 
 use rig_core::conversation::Aside;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{LoadError, Store};
@@ -22,10 +23,12 @@ use crate::{LoadError, Store};
 pub const SET_ASIDE: &str = "rig.set_aside/";
 
 /// A saved value and the version its type had when it was saved (1 for one
-/// saved before versions).
-#[derive(Clone, Debug, PartialEq)]
+/// saved before versions). Its serde form is `{"v": n, "value": …}`, without
+/// `v` at 1.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Versioned {
     /// The version of its type it was saved at, from 1.
+    #[serde(default = "one", skip_serializing_if = "is_one")]
     pub v: u32,
     /// The value, as saved.
     pub value: Value,
@@ -61,6 +64,14 @@ impl Versioned {
             value: value.clone(),
         })
     }
+}
+
+fn one() -> u32 {
+    1
+}
+
+fn is_one(v: &u32) -> bool {
+    *v == 1
 }
 
 /// A value saved before its type had versions: version 1.
@@ -149,6 +160,17 @@ impl Upgrades {
     pub fn read_aside(&self, aside: &Aside) -> Result<Value, Unread> {
         self.upgrade(&aside.kind, Versioned::of_aside_value(&aside.value))
     }
+}
+
+/// Why a saved value could not be read as a type.
+#[derive(Debug, thiserror::Error)]
+pub enum ValueError {
+    /// It was set aside: no step reads its version.
+    #[error(transparent)]
+    Unread(#[from] Unread),
+    /// At this version it does not parse as the type.
+    #[error("the saved value does not parse: {0}")]
+    Parse(#[from] serde_json::Error),
 }
 
 /// The logs [`upgrade`] rewrote.

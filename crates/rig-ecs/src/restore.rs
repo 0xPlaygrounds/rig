@@ -44,7 +44,7 @@
 //! App::new().add_systems(AgentPass, stay_paused.in_set(Stage::Gate));
 //! ```
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
@@ -365,6 +365,65 @@ pub(crate) fn restore_session(world: &mut World) {
 /// at its type's version here.
 #[derive(Resource, Default)]
 pub struct SavedUpgrades(pub Upgrades);
+
+/// The stable keys saved types are logged and restored under instead of
+/// their type paths, such as `goals.goal` (rig-harness
+/// `AppKeepsExt::saved_as`), and which of them are listed: copied into the
+/// session's listing (rig-memory's `SessionMeta::data`) as they change.
+#[derive(Resource, Default, Debug, Clone, PartialEq, Eq)]
+pub struct SavedKeys {
+    /// Each key by type path.
+    keys: BTreeMap<String, String>,
+    /// Each type path by key.
+    paths: BTreeMap<String, String>,
+    /// The listed keys.
+    listed: BTreeSet<String>,
+}
+
+impl SavedKeys {
+    /// Saves the type of path `path` under `key`; again for the same pair
+    /// it does nothing.
+    ///
+    /// # Errors
+    ///
+    /// Recording nothing, when another type has `key` or the type has
+    /// another key.
+    pub fn add(&mut self, path: &str, key: &str) -> Result<(), String> {
+        match (self.paths.get(key), self.keys.get(path)) {
+            (Some(taken), _) if taken != path => {
+                Err(format!("the saved key `{key}` is taken by `{taken}`"))
+            }
+            (_, Some(other)) if other != key => {
+                Err(format!("`{path}` is saved under `{other}` already"))
+            }
+            _ => {
+                self.keys.insert(path.to_owned(), key.to_owned());
+                self.paths.insert(key.to_owned(), path.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Lists `key`'s values in the session's listing.
+    pub fn list(&mut self, key: &str) {
+        self.listed.insert(key.to_owned());
+    }
+
+    /// The key the type of path `path` is saved under, when it has one.
+    pub fn key(&self, path: &str) -> Option<&str> {
+        self.keys.get(path).map(String::as_str)
+    }
+
+    /// The path of the type saved under `key`, when one is.
+    pub fn path(&self, key: &str) -> Option<&str> {
+        self.paths.get(key).map(String::as_str)
+    }
+
+    /// Whether `key`'s values are listed.
+    pub fn is_listed(&self, key: &str) -> bool {
+        self.listed.contains(key)
+    }
+}
 
 /// Saved keys no build reads any more, such as a deleted type's path: their
 /// values are kept in the file, and never reported.

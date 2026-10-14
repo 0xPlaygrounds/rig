@@ -13,7 +13,7 @@ use std::io;
 use rig_core::conversation::MessageId;
 use serde::{Deserialize, Serialize};
 
-use crate::Files;
+use crate::{Files, Versioned};
 
 /// The file of a session's store that holds its [`SessionMeta`].
 pub const META: &str = "meta.json";
@@ -43,6 +43,11 @@ pub struct SessionMeta {
     pub model: String,
     /// How many messages the main agent's active line holds.
     pub messages: usize,
+    /// Plugins' listed values by key, each copied here whenever it changes,
+    /// so a listing shows and filters by them without opening a log; kept
+    /// small.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub data: BTreeMap<String, Versioned>,
 }
 
 impl SessionMeta {

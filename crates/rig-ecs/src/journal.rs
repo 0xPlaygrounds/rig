@@ -37,7 +37,7 @@ use web_time::{SystemTime, UNIX_EPOCH};
 use super::WriteJournal;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use super::follows::ReflectFollows;
-use super::restore::{RetiredSaved, SavedUpgrades, SetAside};
+use super::restore::{RetiredSaved, SavedKeys, SavedUpgrades, SetAside};
 use super::restore::{resource_entity, saved, saved_type};
 
 /// Saves an agent component or a resource with the session: derive
@@ -470,6 +470,7 @@ impl Plugin for JournalPlugin {
             .add_observer(open_child_log)
             .init_resource::<SavedUpgrades>()
             .init_resource::<RetiredSaved>()
+            .init_resource::<SavedKeys>()
             .init_resource::<SetAside>();
     }
 
