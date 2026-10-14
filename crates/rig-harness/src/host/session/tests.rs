@@ -21,6 +21,7 @@ use super::{
     log_layer, rewrite_stopped, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
+use crate::host::exit::ExitReason;
 use crate::host::launcher::{Invoked, LauncherRun};
 use crate::plugin_data::PluginData;
 use crate::services::RigHome;
@@ -406,8 +407,48 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
     assert_eq!(ended(true, AppExit::from_code(1)), Some(false));
     let log = std::fs::read_to_string(run.log()).ok();
     assert_eq!(log.as_deref(), Some("1-0"), "the launcher points at it");
-    assert_eq!(ended(false, AppExit::from_code(1)), Some(true));
+    // Any run that saved nothing leaves no directory either.
+    assert_eq!(ended(false, AppExit::from_code(1)), Some(false));
+    let log = std::fs::read_to_string(run.log()).ok();
+    assert_eq!(log.as_deref(), Some("0-0"));
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// A run that leaves its session before anything was saved there, such
+/// as one switching to another session at startup, removes its directory,
+/// whatever its front; a reload, which runs the session again, and a
+/// saved session keep it.
+#[test]
+fn an_unsaved_session_left_for_good_leaves_no_directory() {
+    let home = scratch_home("rig-unsaved-left");
+    let left = |id: &str, reason: ExitReason, saved: bool| {
+        let id: SessionId = id.parse().ok()?;
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        if saved {
+            session.mark_saved().ok()?;
+        }
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .add_plugins(SessionPlugin);
+        app.update();
+        app.world_mut().write_message(reason.exit());
+        app.insert_resource(reason);
+        app.update();
+        Some(session.path().exists())
+    };
+    let switched = left("1700000000-16", ExitReason::Switch(None), false);
+    let quit = left("1700000000-17", ExitReason::Quit, false);
+    let reloaded = left("1700000000-18", ExitReason::Reload, false);
+    let saved = left("1700000000-19", ExitReason::Switch(None), true);
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(switched, Some(false), "switched away at startup");
+    assert_eq!(quit, Some(false), "quit");
+    assert_eq!(reloaded, Some(true), "reloaded");
+    assert_eq!(saved, Some(true), "saved");
 }
 
 /// A front whose runs keep no session never takes a resumed one, such as

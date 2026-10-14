@@ -48,6 +48,7 @@ use rig_tools::Spill;
 use rig_tools::attach::attached_file;
 
 use super::cli::{self, Cli};
+use super::exit::ExitReason;
 use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
 use crate::plugin_data::PluginData;
@@ -307,7 +308,7 @@ impl Plugin for SessionPlugin {
                 Last,
                 mark_started
                     .run_if(resource_exists::<Unmarked>)
-                    .before(discard_sessionless),
+                    .before(discard_unsaved),
             );
         }
         app.init_resource::<SessionStores>()
@@ -338,7 +339,7 @@ impl Plugin for SessionPlugin {
             )
             .add_systems(
                 Last,
-                discard_sessionless
+                discard_unsaved
                     .after(OnAppExitSystems)
                     .run_if(on_message::<AppExit>),
             );
@@ -439,22 +440,40 @@ fn mark_started(paths: Res<SessionPaths>, mut commands: Commands) {
     }
 }
 
-/// Removes the session's directory when a sessionless front's run ends,
-/// however, once everything was written there; never a resumed session's,
-/// which such a front refuses. A run that failed first moves its text log
-/// into the launcher's run directory, where the launcher's failure message
-/// points.
-fn discard_sessionless(
+/// Removes the session's directory when the run leaves it for good with
+/// nothing saved there, such as a run that switches to another session at
+/// startup, or when a sessionless front's run ends, however, once
+/// everything was written there; never a saved session a front keeps,
+/// never on a reload, which runs the session again, and never a resumed
+/// session's, which a sessionless front refuses. A run that failed first
+/// moves its text log into the launcher's run directory, where the
+/// launcher's failure message points.
+fn discard_unsaved(
     mut exits: MessageReader<AppExit>,
-    (cli, start): (Option<Res<Cli>>, Option<Res<AppStart>>),
+    (cli, start, reason): (
+        Option<Res<Cli>>,
+        Option<Res<AppStart>>,
+        Option<Res<ExitReason>>,
+    ),
     paths: Res<SessionPaths>,
     (run, scratch): (Option<Res<LauncherRun>>, Option<Res<Scratch>>),
 ) {
-    let resumed = start.is_some_and(|start| start.0 == StartReason::Resumed);
-    if resumed || !cli.is_some_and(|cli| cli.sessionless()) {
+    let exits: Vec<&AppExit> = exits.read().collect();
+    let reload = match reason.as_deref() {
+        Some(reason) => *reason == ExitReason::Reload,
+        None => exits
+            .iter()
+            .any(|exit| ExitReason::of(exit) == ExitReason::Reload),
+    };
+    let discard = if cli.is_some_and(|cli| cli.sessionless()) {
+        start.is_none_or(|start| start.0 != StartReason::Resumed)
+    } else {
+        !reload && !paths.is_saved()
+    };
+    if !discard {
         return;
     }
-    if !exits.read().all(AppExit::is_success)
+    if !exits.iter().all(|exit| exit.is_success())
         && let Some(run) = run
         && let Some(log) = scratch.and_then(|scratch| scratch.log())
     {
