@@ -111,7 +111,7 @@ use bevy_time::TimePlugin;
 
 use agent::{Agent, Notice};
 use calls::{PollCalls, Wake, poll_calls, settle};
-use journal::{Saving, SessionLog, save_conversations};
+use journal::{SaveConversations, SavedOne, Saving, SessionLog, save_conversations, save_in_last};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
 /// them for the restart, unended. It runs before
@@ -157,6 +157,11 @@ impl Plugin for AgentPlugin {
         }
         app.init_resource::<effects::Effects>()
             .init_resource::<SessionLog>()
+            .init_resource::<SavedOne>()
+            .edit_schedule(SaveConversations, |schedule| {
+                schedule.set_executor(SingleThreadedExecutor::new());
+            })
+            .add_systems(SaveConversations, save_conversations)
             .init_resource::<Wake>()
             .init_resource::<model::Models>()
             .add_message::<Notice>()
@@ -190,7 +195,7 @@ impl Plugin for AgentPlugin {
                     turn::stop_turns_on_exit
                         .in_set(StopTurns)
                         .run_if(on_message::<AppExit>),
-                    save_conversations.in_set(Saving),
+                    save_in_last.in_set(Saving),
                     journal::apply_rewrites
                         .after(Saving)
                         .before(WriteJournal)

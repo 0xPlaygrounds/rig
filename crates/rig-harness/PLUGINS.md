@@ -1226,7 +1226,10 @@ through serde ([so](#changing-history)). A plugin says what it keeps
 the conversation it was set on: a split, a branch switch, a move, a merge,
 a fork and a restore give the agent its line's value as of that point, or
 remove it where none was set
-([splits](#splits-and-the-native-session-views)).
+([splits](#splits-and-the-native-session-views)). The kernel keeps it
+whenever it saves the conversations, between the stages of each agent pass
+and at the end of the frame, so a line changed before the agent loop gives
+its value to the loop's next stage.
 
 ```rust,no_run
 use std::collections::HashMap;

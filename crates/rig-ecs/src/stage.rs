@@ -78,7 +78,7 @@ use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
-use super::journal::{Drain, SessionLog, millis};
+use super::journal::{Drain, SessionLog, millis, save_now};
 use super::restore::{Interrupted, answer_interrupted, mark_started};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
@@ -709,7 +709,8 @@ pub(crate) fn build(app: &mut App) {
     }
     // The conversations changed are saved between the stages, so a
     // `Committed` reader in a later stage of the pass sees the change, and
-    // at the end of the pass.
+    // at the end of the pass; each save keeps followed components with
+    // their lines (`SaveConversations`).
     let mut after: Option<InternedSystemSet> = None;
     for stage in Stage::ALL {
         let save = save_in_pass.before(Enter(stage));
@@ -729,8 +730,10 @@ pub(crate) fn build(app: &mut App) {
 /// made in a stage is announced to the later stages of the pass; one that
 /// saved any counts as a move, so the loop runs another pass, where the
 /// earlier stages see it too.
-fn save_in_pass(mut drain: Drain, mut passes: ResMut<Passes>) {
-    if let Some(agent) = drain.save() {
+fn save_in_pass(world: &mut World) {
+    if let Some(agent) = save_now(world)
+        && let Some(mut passes) = world.get_resource_mut::<Passes>()
+    {
         saved_some(&mut passes, agent);
     }
 }

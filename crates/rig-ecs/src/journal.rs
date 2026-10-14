@@ -24,7 +24,7 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_ecs::resource::IsResource;
-use bevy_ecs::schedule::SystemSet;
+use bevy_ecs::schedule::{ScheduleLabel, SystemSet};
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use bevy_log::{error, warn};
@@ -260,11 +260,42 @@ impl Drain<'_, '_> {
     }
 }
 
+/// The schedule that saves the agent conversations changed since it last
+/// ran ([`save_now`]), between the stages of each agent pass and in `Last`
+/// ([`Saving`]): followed components are mirrored into their lines first
+/// ([`Mirroring`]), and after the save each agent whose line may have
+/// changed is given its line's values (`follows::sync`). So a change of a
+/// followed component is kept at the entry it was made after, give or take
+/// a stage, and a line changed before a stage gives its values to that
+/// stage, not to the next frame.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct SaveConversations;
+
+/// An agent whose conversation [`save_conversations`] saved changes of,
+/// since [`save_now`] last took it.
+#[derive(Resource, Default)]
+pub(crate) struct SavedOne(Option<Entity>);
+
+/// Saves the conversations changed since it last ran, in
+/// [`SaveConversations`].
+pub(crate) fn save_conversations(mut drain: Drain, mut saved: ResMut<SavedOne>) {
+    if let Some(agent) = drain.save() {
+        saved.0 = Some(agent);
+    }
+}
+
+/// Runs [`SaveConversations`]: an agent whose conversation had changes,
+/// if any did.
+pub(crate) fn save_now(world: &mut World) -> Option<Entity> {
+    world.try_run_schedule(SaveConversations).ok()?;
+    world.get_resource_mut::<SavedOne>()?.0.take()
+}
+
 /// Saves the conversations changed outside the agent loop, such as by
 /// commands and observers, in `Last` before the frame's records are
 /// written.
-pub(crate) fn save_conversations(mut drain: Drain) {
-    drain.save();
+pub(crate) fn save_in_last(world: &mut World) {
+    save_now(world);
 }
 
 /// Saves what a conversation about to be replaced or removed did not save
@@ -500,8 +531,8 @@ impl Plugin for JournalPlugin {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(Last, write_logs.in_set(WriteJournal))
-            .configure_sets(Last, Mirroring.in_set(Saving).before(save_conversations))
-            .add_systems(Last, follows::sync.in_set(Saving).after(save_conversations))
+            .configure_sets(SaveConversations, Mirroring.before(save_conversations))
+            .add_systems(SaveConversations, follows::sync.after(save_conversations))
             .add_observer(open_child_log)
             .init_resource::<SavedUpgrades>()
             .init_resource::<RetiredSaved>()

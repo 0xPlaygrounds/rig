@@ -12,12 +12,15 @@
 //! own once it has one. A removed component is kept as a `null` value, so
 //! it stays removed on that line.
 //!
-//! The kernel mirrors each change of a followed component into the
-//! conversation at the end of the frame, before it is saved, and after a
-//! change that may change the line (a splice, a reset, a branch, line value
-//! or followed value put) gives the agent its line's value, read as a saved
-//! value is (upgraded through its plugin's steps); a value it gave is never
-//! mirrored back. Pushes and tool calls cost nothing.
+//! Whenever the kernel saves the conversations, between the stages of each
+//! agent pass and at the end of the frame, it first mirrors each change of
+//! a followed component into the conversation, and after a change that may
+//! change the line (a splice, a reset, a branch, line value or followed
+//! value put) gives the agent its line's value, read as a saved value is
+//! (upgraded through its plugin's steps); a value it gave is never
+//! mirrored back. So a change is kept at the entry it was made after, give
+//! or take a stage, and a line changed before the agent loop or in a stage
+//! gives its value to the next stage. Pushes and tool calls cost nothing.
 
 use std::collections::{HashMap, HashSet};
 
@@ -34,7 +37,7 @@ use rig_memory::Versioned;
 use serde_json::{Map, Value};
 
 use super::agent::{Agent, AgentId, Conversation};
-use super::journal::{Committed, SessionLog, save_conversation};
+use super::journal::{Committed, SaveConversations, SessionLog, save_conversation};
 use super::restore::{SavedKeys, SavedReader, SavedUpgrades};
 
 /// The kind of the asides holding followed values:
@@ -61,14 +64,14 @@ impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectFollows {
                 .get_resource_or_init::<Followed>()
                 .0
                 .push(T::type_path().to_owned());
-            app.add_systems(Last, mirror::<T>.in_set(Mirroring));
+            app.add_systems(SaveConversations, mirror::<T>.in_set(Mirroring));
         };
         Self { watch }
     }
 }
 
-/// The systems in `Last` that mirror followed components into their
-/// conversations, before the frame's changes are saved.
+/// The systems that mirror followed components into their conversations
+/// before each save of them ([`SaveConversations`]).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Mirroring;
 
@@ -364,8 +367,8 @@ pub(crate) fn followed(world: &World) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Keeps followed values with their lines, after the conversations were
-/// saved in `Last`: collapses the values of entries a splice took out,
+/// Keeps followed values with their lines, after each save of the
+/// conversations ([`SaveConversations`]): collapses the values of entries a splice took out,
 /// anchors line values once a line has an entry of its own, and, after a
 /// change that may change the line, gives each agent its line's values.
 pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Committed>>) {

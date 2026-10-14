@@ -9,8 +9,10 @@ use rig_memory::{Keep, MemoryStore, fork};
 use super::{FOLLOWS, ReflectFollows};
 use crate::AgentPlugin;
 use crate::agent::{Agent, AgentId, Conversation};
+use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::tests::{edit, push_message};
 use crate::journal::{JournalPlugin, SessionStore};
+use crate::stage::{AgentPass, Stage};
 
 /// A plugin's mode, kept with the line it was set on.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
@@ -215,4 +217,55 @@ fn a_value_changed_in_the_frame_of_a_split_is_kept() {
     assert_eq!(mode(&app, agent).as_deref(), Some("plan"));
     app.update();
     assert_eq!(mode(&app, agent).as_deref(), Some("plan"));
+}
+
+/// What the probe in Gate saw, and whether it still looks.
+#[derive(Resource, Default)]
+struct Probe {
+    armed: bool,
+    seen: Vec<String>,
+}
+
+/// Reads the agent's mode once in Gate and changes it from what it read,
+/// as a plugin starting work on a message does.
+fn probe(mut probe: ResMut<Probe>, mut modes: Query<&mut Mode, With<Agent>>) {
+    if !std::mem::take(&mut probe.armed) {
+        return;
+    }
+    for mut mode in &mut modes {
+        probe.seen.push(mode.0.clone());
+        mode.0.push('+');
+    }
+}
+
+/// A line changed before the agent loop gives the agent its value before
+/// the loop's next stage, so a change made there starts from the line's
+/// value and stays with that line, not with the line it left.
+#[test]
+fn a_line_changed_before_the_agent_loop_gives_its_value_to_the_loop() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    app.init_resource::<Probe>()
+        .add_systems(AgentPass, probe.in_set(Stage::Gate));
+    let agent = agent(&mut app);
+    say(&mut app, agent, "one");
+    set_mode(&mut app, agent, "plan");
+    branch_off(&mut app, agent, 1, "other");
+    set_mode(&mut app, agent, "build");
+    say(&mut app, agent, "two");
+    let main = branch(&app, agent, "main");
+    edit(app.world_mut(), agent, move |conversation| {
+        assert!(conversation.switch_branch(main, Author::user()).is_ok());
+    });
+    app.world_mut()
+        .trigger(Deliver::new(agent, "three", DeliveryMode::Note));
+    app.world_mut().resource_mut::<Probe>().armed = true;
+    app.update();
+    let seen = app.world().resource::<Probe>().seen.clone();
+    assert_eq!(seen, ["plan"], "the line switched to");
+    assert_eq!(mode(&app, agent).as_deref(), Some("plan+"));
+    switch(&mut app, agent, "other");
+    assert_eq!(mode(&app, agent).as_deref(), Some("build"));
+    switch(&mut app, agent, "main");
+    assert_eq!(mode(&app, agent).as_deref(), Some("plan+"));
 }
