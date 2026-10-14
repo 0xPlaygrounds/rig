@@ -4778,7 +4778,6 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_tasks",
- "chrono",
  "futures",
  "regex",
  "rig-core",
