@@ -12,18 +12,20 @@
 //! later ones that folded it in, after checking the result fits the
 //! model's window. Messages added after the summary stay after them.
 
-use std::sync::Arc;
-
-use rig_compaction::{Compaction, Summarizing, Uncompact, summary_author, summary_in};
+use rig_compaction::{
+    AppCompactionExt, Compaction, CompactionCuts, CompactionDefault, Summarizing, Uncompact, plan,
+    policy_of, summary_author, summary_in,
+};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
 use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_memory::{
-    CompactReason, Compacted, CompactionPolicy, Cut, Record, SummaryState, undo_summary,
+    CompactReason, Compacted, Cut, Record, SummaryState, estimate_tokens, undo_summary,
 };
 use serde::Deserialize;
 
-/// The plugin's settings table.
+/// The plugin's settings table, and the name of the cut a compaction the
+/// user asked for makes: before the newest turns.
 pub const NAME: &str = "reviewable-compaction";
 
 /// The review of `/compact`'s summary, its cut, and `/uncompact`.
@@ -36,9 +38,13 @@ impl Plugin for ReviewableCompactionPlugin {
             app.add_plugins(rig_compaction::CompactionPlugin);
         }
         app.add_setting::<ReviewSettings>(NAME)
-            .add_systems(AgentPass, review.in_set(ReviewSystems::Act))
-            .add_observer(measure)
-            .add_observer(follow_successor::<Replaces>)
+            .add_systems(
+                AgentPass,
+                (
+                    keep_newest_turns.in_set(PrepareSystems::Edit),
+                    review.in_set(ReviewSystems::Act),
+                ),
+            )
             .add_observer(reviewed)
             .add_observer(edited)
             .add_command(
@@ -50,21 +56,16 @@ impl Plugin for ReviewableCompactionPlugin {
         app.add_systems(Update, editor::take_edit);
     }
 
-    /// Makes a compaction the user asked for keep the newest turns; the
-    /// others cut as they did.
+    /// Adds the cut that keeps the newest turns, which a compaction the
+    /// user asked for makes; the others cut as they did.
     fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        let keep = world
+        let keep = app
+            .world()
             .get_resource::<ReviewSettings>()
             .map_or(2, |settings| settings.keep_turns);
-        if let Some(mut compaction) = world.get_resource_mut::<Compaction>() {
-            let theirs = compaction.0.clone();
-            compaction.0.cut =
-                Cut::With(Arc::new(move |messages, from, reason, spec| match reason {
-                    CompactReason::Asked { .. } => newest_turns(messages, from, keep),
-                    _ => theirs.cut(messages, from, reason, spec),
-                }));
-        }
+        app.add_compaction_cut(NAME, move |messages, from, _, _| {
+            newest_turns(messages, from, keep)
+        });
     }
 }
 
@@ -88,8 +89,8 @@ impl Default for ReviewSettings {
 struct UnderReview;
 
 /// On a summary call of a compaction the user asked for: how many
-/// messages it replaces and their estimated tokens, as it was planned. It
-/// follows the call when Regenerate sends it again.
+/// messages it replaces and their estimated tokens, as it was planned; a
+/// call Regenerate sends again is planned and measured anew.
 #[derive(Component, Clone, Copy, Debug)]
 struct Replaces(usize, u64);
 
@@ -121,39 +122,56 @@ fn newest_turns(messages: &[Message], from: usize, keep: usize) -> Option<usize>
     starts.get(first_kept).copied()
 }
 
-/// Measures what each summary call of a compaction the user asked for
-/// replaces, when it starts.
-fn measure(
-    added: On<Add<Summarizing>>,
-    calls: Query<(&Summarizing, &ForAgent)>,
-    agents: Query<&Conversation>,
-    policy: Res<Compaction>,
+/// Plans each summary call of a compaction the user asked for again, by
+/// the agent's policy with the cut that keeps the newest turns, and
+/// measures what it replaces.
+fn keep_newest_turns(
+    mut calls: Query<
+        (Entity, &mut ModelRequest, &mut Summarizing, &ForAgent),
+        (Added<Admitted>, ModelCalls),
+    >,
+    agents: Query<(&Conversation, Option<&Compaction>, Option<&Connection>)>,
+    (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((summarizing, &ForAgent(agent))) = calls.get(added.entity) else {
-        return;
-    };
-    let Ok(conversation) = agents.get(agent) else {
-        return;
-    };
-    if !matches!(summarizing.reason, CompactReason::Asked { .. }) {
-        return;
+    for (call, mut model, mut summarizing, &ForAgent(agent)) in &mut calls {
+        if !matches!(summarizing.reason, CompactReason::Asked { .. }) {
+            continue;
+        }
+        let Ok((conversation, own, connection)) = agents.get(agent) else {
+            continue;
+        };
+        if let Some(connection) = connection {
+            let mut policy = policy_of(own, &default);
+            policy.cut = Cut::Named(NAME.to_owned());
+            let reason = summarizing.reason.clone();
+            match plan(conversation, &policy, &cuts.0, reason, &connection.spec) {
+                Ok(Some((planned, request))) => {
+                    *summarizing = planned;
+                    model.request = request;
+                }
+                Ok(None) => {}
+                Err(why) => {
+                    notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
+                }
+            }
+        }
+        let messages = conversation.messages();
+        let end = summarizing
+            .upto
+            .and_then(|upto| conversation.index_of(upto))
+            .unwrap_or(messages.len());
+        let older = messages.get(..end).unwrap_or_default();
+        let replaces = Replaces(older.len(), estimate_tokens(older));
+        commands.entity(call).try_insert(replaces);
     }
-    let messages = conversation.messages();
-    let end = summarizing
-        .upto
-        .and_then(|upto| conversation.index_of(upto))
-        .unwrap_or(messages.len());
-    let older = messages.get(..end).unwrap_or_default();
-    let replaces = Replaces(older.len(), policy.0.estimate(older));
-    commands.entity(added.entity).try_insert(replaces);
 }
 
 /// Holds each summary of a compaction the user asked for, once the model
 /// wrote it, for review by someone who can answer.
 fn review(
     calls: Query<(Entity, &Summarizing, &Replaces, &ForAgent), (Unreviewed, Without<UnderReview>)>,
-    policy: Res<Compaction>,
     answerers: Answerers,
     mut commands: Commands,
 ) {
@@ -162,13 +180,7 @@ fn review(
             continue;
         }
         commands.entity(call).insert(UnderReview);
-        present(
-            &mut commands,
-            (call, agent),
-            summarizing,
-            replaces,
-            &policy.0,
-        );
+        present(&mut commands, (call, agent), summarizing, replaces);
     }
 }
 
@@ -178,7 +190,6 @@ fn present(
     (call, agent): (Entity, Entity),
     summarizing: &Summarizing,
     Replaces(replaced, before): Replaces,
-    policy: &CompactionPolicy,
 ) {
     let summary = summarizing.summary.clone().unwrap_or_default();
     let state = SummaryState {
@@ -187,7 +198,7 @@ fn present(
     };
     let after = state
         .message()
-        .map(|text| policy.estimate(&[Message::user(text)]))
+        .map(|text| estimate_tokens(&[Message::user(text)]))
         .unwrap_or_default();
     let body = format!(
         "{summary}\n\nreplaces {replaced} messages, ~{} tokens → ~{}",
@@ -251,7 +262,6 @@ fn edited(
     settled: On<Add<Settled>>,
     asks: Query<(&Editing, &Outcome)>,
     mut calls: Query<(&mut Summarizing, &Replaces, &ForAgent)>,
-    policy: Res<Compaction>,
     mut commands: Commands,
 ) {
     let Ok((&Editing(call), outcome)) = asks.get(settled.entity) else {
@@ -263,13 +273,7 @@ fn edited(
     };
     let text = Answer::of(outcome).and_then(|answer| answer.text);
     edit(&mut summarizing, text);
-    present(
-        &mut commands,
-        (call, agent),
-        &summarizing,
-        replaces,
-        &policy.0,
-    );
+    present(&mut commands, (call, agent), &summarizing, replaces);
 }
 
 /// Makes `text` the summary, unless it is empty.
@@ -297,7 +301,6 @@ fn uncompact(
         Has<ActiveTurn>,
     )>,
     store: Option<Res<SessionStore>>,
-    policy: Res<Compaction>,
     answerers: Answerers,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -361,7 +364,7 @@ fn uncompact(
             return;
         }
     }
-    let tokens = policy.0.estimate(probe.messages());
+    let tokens = estimate_tokens(probe.messages());
     let spec = connection.map(|connection| &*connection.spec);
     if let Some((spec, window)) = spec.and_then(|spec| Some((spec, spec.context_window?)))
         && tokens > u64::from(window)
@@ -413,7 +416,7 @@ mod editor {
     use std::path::PathBuf;
     use std::process::Command;
 
-    use rig_compaction::{Compaction, Summarizing};
+    use rig_compaction::Summarizing;
     use rig_harness::prelude::*;
     use rig_tui::{RunInTerminal, TerminalExit};
 
@@ -451,7 +454,6 @@ mod editor {
     pub(super) fn take_edit(
         done: Query<(Entity, &TerminalExit, &EditorFor), Added<TerminalExit>>,
         mut calls: Query<(&mut Summarizing, &Replaces, &ForAgent)>,
-        policy: Res<Compaction>,
         mut commands: Commands,
     ) {
         for (run, exit, EditorFor(call, path)) in &done {
@@ -462,7 +464,7 @@ mod editor {
             let text = std::fs::read_to_string(path).ok();
             edit(&mut summarizing, text.filter(|_| exit.success()));
             let call = (*call, agent);
-            present(&mut commands, call, &summarizing, replaces, &policy.0);
+            present(&mut commands, call, &summarizing, replaces);
         }
     }
 }
