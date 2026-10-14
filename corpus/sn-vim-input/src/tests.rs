@@ -7,7 +7,7 @@ use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
     tui_view,
 };
-use rig_tui::TuiInputState;
+use rig_tui::{MainEditor, TuiInputState};
 
 use super::*;
 
@@ -54,7 +54,12 @@ fn said(request: &CompletionRequest) -> Vec<String> {
 }
 
 fn input(app: &App) -> String {
-    app.world().resource::<TuiInput>().text().to_owned()
+    let world = app.world();
+    let mut main = world.try_query_filtered::<&rig_tui::Editor, With<MainEditor>>();
+    let input = main.as_mut().and_then(|main| main.single(world).ok());
+    input
+        .map(|input| input.text().to_owned())
+        .unwrap_or_default()
 }
 
 fn status(app: &App) -> String {

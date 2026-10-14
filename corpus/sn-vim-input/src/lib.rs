@@ -6,7 +6,7 @@
 //! keys before it left: Esc goes to normal mode, where it takes the
 //! keys and runs them through [`editor::Editor`] (motions, counts,
 //! operators, registers, undo and a visual selection), written back into
-//! [`TuiInput`]. While a picker, a question or a panel has the keys
+//! the main input ([`MainInput`]). While a picker, a question or a panel has the keys
 //! ([`TuiInputState`]), it leaves them alone. Enter stays the view's key,
 //! so it sends in either mode. Twice within [`DOUBLE_ESC`] in normal mode
 //! with an empty input, the Esc goes on to the view, doing what it does
@@ -19,8 +19,8 @@ use rig_harness::prelude::*;
 use rig_harness::rig_tools::clipboard;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use rig_tui::{
-    AppStatus, CopyToClipboard, InputAction, InputSystems, KeyInput, KeyScope, Sent, Side,
-    StatusItem, StatusSystems, TerminalEvents, Tone, TuiInput, TuiInputState, TuiKeys, TuiPlugin,
+    AppStatus, CopyToClipboard, InputAction, InputSystems, KeyInput, KeyScope, MainInput, Sent,
+    Side, StatusItem, StatusSystems, TerminalEvents, Tone, TuiInputState, TuiKeys, TuiPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -149,7 +149,7 @@ fn edit(
     mut events: ResMut<TerminalEvents>,
     state: Res<TuiInputState>,
     mut vim: ResMut<Vim>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
     time: Res<Time<Real>>,
     (processes, wake): (Option<Res<Processes>>, Res<Wake>),
     mut copies: MessageWriter<CopyToClipboard>,
@@ -245,7 +245,7 @@ fn take(key: &KeyEvent, mode: Mode, elsewhere: bool) -> Take {
 fn paste_clipboard(
     read: On<Insert<Done<Option<String>>>>,
     reads: Query<(&ClipboardPaste, &Done<Option<String>>)>,
-    (mut vim, mut input): (ResMut<Vim>, ResMut<TuiInput>),
+    (mut vim, input): (ResMut<Vim>, Option<MainInput>),
     shown: Option<Res<Shown>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -257,6 +257,9 @@ fn paste_clipboard(
     let Some(text) = text else {
         let agent = shown.and_then(|shown| shown.0);
         notices.write(Notice::info(agent, "No clipboard text to paste."));
+        return;
+    };
+    let Some(mut input) = input else {
         return;
     };
     let mut buffer = Buffer {
