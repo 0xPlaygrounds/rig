@@ -170,7 +170,7 @@ fn scenario() -> Option<()> {
     continue_session(&local, side_b()?, "local/qwen")?;
 
     // A log a newer rig wrote: left out with a warning, not refused.
-    let newer = br#"{"seq":0,"n":99,"t":0,"type":"header","format":"rig-session/3","log":"helper","lineage":7}"#;
+    let newer = br#"{"seq":0,"n":99,"t":0,"type":"header","format":"rig-session/99","log":"helper","lineage":7}"#;
     ok(local.append_log("helper", &[newer.as_slice(), b"\n"].concat()))?;
 
     let paths = [&a, &b, &forked, &text].map(|path| path.display().to_string());
