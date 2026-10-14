@@ -689,7 +689,7 @@ impl ToolServerHandle {
                         rig_core::vector_store::VectorStoreError::DatastoreError(Box::new(report))
                     })?;
                     let ids = match outcome {
-                        rig_core::effect::Outcome::Documents(
+                        rig_core::effect::Answered::Documents(
                             rig_core::effect::RetrievedDocuments::Ids(ids),
                         ) => ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>(),
                         other => {

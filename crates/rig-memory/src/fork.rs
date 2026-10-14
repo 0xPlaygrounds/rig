@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::io;
 
 use rig_core::conversation::{
-    Aside, AsideId, Author, AuthorKind, Change, Lineage, MessageId, Recorded,
+    Aside, AsideId, Author, AuthorKind, Change, ChangeRecord, Lineage, MessageId,
 };
 
 use crate::format::{LogLines, Meta, SESSION, write_change, write_meta};
@@ -151,7 +151,7 @@ pub fn fork(
             seq: copy.next_seq,
             t: carry.set.t,
         };
-        let recorded = Recorded {
+        let recorded = ChangeRecord {
             change: Change::Aside {
                 id: carry.id,
                 aside: carry.aside,

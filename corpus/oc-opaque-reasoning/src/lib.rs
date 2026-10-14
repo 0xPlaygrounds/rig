@@ -38,7 +38,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{
     Catalog, Compat, ModelFacts, ModelSpec, Provide, ReasoningSupport, Transport,
 };
-use rig_harness::rig_core::effect::{EffectKind, Outcome as EffectOutcome};
+use rig_harness::rig_core::effect::{Answered as EffectOutcome, EffectKind};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::message::{
     Api, AssistantMessage, Fingerprint, Message as ChatMessage, Native,

@@ -254,7 +254,7 @@ async fn a_replay_under_another_layer_stack_is_refused() {
 #[test]
 fn the_record_is_the_handlers_answer() {
     let replaced = corpus::golden(REPLACE_TOOL_RESULT.fixture);
-    let Ok(rig_core::effect::Outcome::ToolResult { result, .. }) = &replaced[1].outcome else {
+    let Ok(rig_core::effect::Answered::ToolResult { result, .. }) = &replaced[1].outcome else {
         panic!("a tool result: {:?}", replaced[1].outcome);
     };
     assert_eq!(

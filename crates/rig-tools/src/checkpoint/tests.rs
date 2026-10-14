@@ -184,7 +184,7 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
         .unwrap_or_default();
     let recorded = buffer
         .take(id)
-        .and_then(|record| record.tool_output)
+        .and_then(|record| record.published)
         .and_then(|output| output.get::<FilesChanged>().ok().flatten());
     assert_eq!(
         recorded.as_ref(),

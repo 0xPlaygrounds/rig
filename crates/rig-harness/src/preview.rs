@@ -46,7 +46,7 @@ use std::sync::Arc;
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
-use rig_core::effect::{EffectKind, Outcome};
+use rig_core::effect::{Answered, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::serve_inline;
 use rig_core::tool::{FileChange, ToolErrorKind};
@@ -151,7 +151,7 @@ fn preview(
         };
         let kind = EffectKind::from(&request.call);
         let work = async move {
-            if let Outcome::ToolResult { result } = serve_inline(&handler, kind).await? {
+            if let Answered::ToolResult { result } = serve_inline(&handler, kind).await? {
                 result.into_result().map_err(ErrorReport::from)?;
             }
             Ok(overlay.changes())

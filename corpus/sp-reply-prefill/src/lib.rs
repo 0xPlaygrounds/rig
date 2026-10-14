@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{ModelSpec, ReasoningSupport};
 use rig_harness::rig_core::completion::Reasoning;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::Message;
 use serde::Deserialize;
 

@@ -118,7 +118,7 @@ fn summary(session: &Session) -> Value {
             "state": agent.state,
             "parent": agent.parent,
             "retired": agent.retired,
-            "title": agent.conversation.branch_title(),
+            "title": agent.conversation.line_title(),
         });
         agents.insert(agent.id.clone(), summary);
     }

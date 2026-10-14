@@ -22,7 +22,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Section;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, ToolOutput};
 use rig_harness::rig_tools::split_status;
 use schemars::JsonSchema;

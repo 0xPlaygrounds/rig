@@ -25,10 +25,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::message::{Reasoning, Text};
-use rig_harness::rig_core::serve::{Decision, Intercept, Verdict};
+use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
 use rig_harness::rig_core::tool::{ContextValue, PublishedContext};
 use rig_harness::rig_ecs::effects::Handler;
@@ -166,9 +166,9 @@ impl Intercept for LeaveOutReasoning {
         format!("{NAME}-history")
     }
 
-    async fn before(&self, _: EffectId, kind: &EffectKind) -> Decision {
+    async fn before(&self, _: EffectId, kind: &EffectKind) -> BeforeServe {
         let EffectKind::Completion { request, stream } = kind else {
-            return Decision::Proceed;
+            return BeforeServe::Proceed;
         };
         let reasoning = |block: &AssistantContent| matches!(block, AssistantContent::Reasoning(_));
         let has = |message: &message::Message| match message {
@@ -176,7 +176,7 @@ impl Intercept for LeaveOutReasoning {
             _ => false,
         };
         if !request.chat_history.iter().any(has) {
-            return Decision::Proceed;
+            return BeforeServe::Proceed;
         }
         let mut request = request.clone();
         for message in &mut request.chat_history {
@@ -185,7 +185,7 @@ impl Intercept for LeaveOutReasoning {
             }
         }
         let stream = *stream;
-        Decision::Patch(EffectKind::Completion { request, stream })
+        BeforeServe::Patch(EffectKind::Completion { request, stream })
     }
 
     async fn after(
@@ -193,8 +193,8 @@ impl Intercept for LeaveOutReasoning {
         _: EffectId,
         _: &EffectKind,
         _: &Result<Answered, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
+    ) -> AfterServe {
+        AfterServe::Keep
     }
 }
 

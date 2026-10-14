@@ -2,7 +2,7 @@
 //! its owner to take.
 //!
 //! ```
-//! use rig_core::effect::{EffectId, EffectKind, Outcome, tool_key};
+//! use rig_core::effect::{EffectId, EffectKind, Answered, tool_key};
 //! use rig_core::serve::{DispatchContext, RecordBuffer, Recorder};
 //! use rig_core::tool::ToolResult;
 //!
@@ -11,7 +11,7 @@
 //! let kind = EffectKind::ToolCall { name: "add".into(), args: "{}".into() };
 //! buffer.begin(id, tool_key("add"), kind, DispatchContext::default());
 //! assert_eq!(buffer.in_flight(), 1);
-//! buffer.resolve(id, Ok(Outcome::ToolResult { result: ToolResult::skipped("no") }));
+//! buffer.resolve(id, Ok(Answered::ToolResult { result: ToolResult::skipped("no") }));
 //! let record = buffer.take(id).ok_or("resolved")?;
 //! assert!(record.outcome.is_ok());
 //! # Ok::<(), &str>(())
@@ -22,10 +22,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use super::{DispatchContext, Recorder};
 use crate::{
     effect::{
-        Disposition, EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome,
+        Answered, Disposition, EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey,
     },
     error::ErrorReport,
-    streaming::{Item, StreamEvent, Transcript},
+    streaming::{Item, StreamEvent, StreamRecord},
     tool::ToolResultContext,
 };
 
@@ -55,7 +55,7 @@ struct Slot {
     key: HandlerKey,
     kind: EffectKind,
     origin: DispatchContext,
-    outcome: Option<Result<Outcome, ErrorReport>>,
+    outcome: Option<Result<Answered, ErrorReport>>,
     events: Option<Vec<Item<StreamEvent>>>,
     stream_origin: Option<crate::message::Origin>,
     tool_output: Option<ToolResultContext>,
@@ -67,14 +67,14 @@ impl Slot {
     /// The record, once the dispatch resolved.
     fn into_record(self) -> Option<EffectRecord> {
         Some(EffectRecord {
-            tool_output: self.tool_output,
+            published: self.tool_output,
             id: self.id,
             key: self.key,
             kind: self.kind,
             outcome: self.outcome?,
             events: self
                 .events
-                .and_then(|items| Transcript::from_items(items).ok()),
+                .and_then(|items| StreamRecord::from_items(items).ok()),
             stream_origin: self.stream_origin,
             parent: self.origin.parent,
             scope: self.origin.scope,
@@ -275,7 +275,7 @@ impl Recorder for RecordBuffer {
         self.with_slot(id, open, |slot| slot.tool_output = Some(output));
     }
 
-    fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
+    fn resolve(&self, id: EffectId, outcome: Result<Answered, ErrorReport>) {
         let finished_ms = self.now();
         self.with_slot(
             id,

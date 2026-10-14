@@ -47,11 +47,11 @@ fn every_kind_is_found_by_its_shape_and_redacted() {
     ];
     for (key, kind) in keys {
         let line = format!("before \"{key}\", after");
-        let found: Vec<Secret> = find(&line).collect();
+        let found: Vec<SecretMatch> = find(&line).collect();
         let start = "before \"".len();
         assert_eq!(
             found,
-            [Secret {
+            [SecretMatch {
                 kind,
                 range: start..start + key.len()
             }],

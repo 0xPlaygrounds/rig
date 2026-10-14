@@ -370,7 +370,7 @@ fn record_usage(
     mut agents: Query<&mut CacheHistory>,
     mut session: ResMut<SessionCache>,
 ) {
-    let Ok((Outcome(Ok(effect::Outcome::Completion(reply))), &ForAgent(agent))) =
+    let Ok((Outcome(Ok(effect::Answered::Completion(reply))), &ForAgent(agent))) =
         calls.get(settled.entity)
     else {
         return;

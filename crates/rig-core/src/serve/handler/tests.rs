@@ -9,7 +9,7 @@ use crate::streaming::{Item, Part, Relayed, StreamEvent, UnknownPayload};
 
 #[derive(Default)]
 struct Seen {
-    outcomes: Vec<Result<Outcome, ErrorReport>>,
+    outcomes: Vec<Result<Answered, ErrorReport>>,
     events: usize,
     discard_events: bool,
 }
@@ -18,7 +18,7 @@ struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
     fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
         self.0.lock().expect("seen").outcomes.push(outcome.clone());
     }
 
@@ -141,7 +141,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
     }
     let shapes: [(&str, Shape); 6] = [
         ("a completed response with an image", || {
-            Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
+            Reply::Outcome(Ok(Answered::Completion(CompletionResponse::new(
                 vec![
                     AssistantContent::text("done"),
                     AssistantContent::Image(Image {
@@ -301,16 +301,16 @@ fn a_model_handler_names_what_its_model_leaves_out() {
         fn name(&self) -> String {
             "pass".to_owned()
         }
-        async fn before(&self, _: EffectId, _: &EffectKind) -> crate::serve::Decision {
-            crate::serve::Decision::Proceed
+        async fn before(&self, _: EffectId, _: &EffectKind) -> crate::serve::BeforeServe {
+            crate::serve::BeforeServe::Proceed
         }
         async fn after(
             &self,
             _: EffectId,
             _: &EffectKind,
-            _: &Result<Outcome, ErrorReport>,
-        ) -> crate::serve::Verdict {
-            crate::serve::Verdict::Keep
+            _: &Result<Answered, ErrorReport>,
+        ) -> crate::serve::AfterServe {
+            crate::serve::AfterServe::Keep
         }
     }
     let http = crate::test_utils::RecordingHttpClient::new("{}");

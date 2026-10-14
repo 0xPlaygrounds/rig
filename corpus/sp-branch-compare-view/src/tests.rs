@@ -262,7 +262,7 @@ fn two_branches_side_by_side_aligned_by_turn_and_the_picked_one_goes_on() {
     let title = app
         .world()
         .get::<Conversation>(agent)
-        .map(|c| c.branch_title().to_owned());
+        .map(|c| c.line_title().to_owned());
     assert_eq!(title.as_deref(), Some("B"));
     assert!(panes(&mut app).is_none());
     ask(&mut app, &wakes, agent, "next", 6);

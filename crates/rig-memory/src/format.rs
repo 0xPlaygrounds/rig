@@ -30,7 +30,7 @@
 use std::fmt;
 use std::io;
 
-use rig_core::conversation::{Author, Change, Lineage, Recorded};
+use rig_core::conversation::{Author, Change, ChangeRecord, Lineage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use web_time::{SystemTime, UNIX_EPOCH};
@@ -261,7 +261,7 @@ fn is_one(v: &u32) -> bool {
 pub(crate) enum Body {
     Meta(Meta),
     /// Its `at` is the stamp's `t`.
-    Change(Recorded),
+    Change(ChangeRecord),
 }
 
 /// The fields every line starts with.
@@ -301,8 +301,8 @@ pub(crate) fn parse(line: &[u8]) -> Result<(Stamp, Body), String> {
     let body = match &*head.kind {
         "header" | "state" | "retired" => serde_json::from_slice(line).map(Body::Meta),
         kind if CHANGES.contains(&kind) => {
-            serde_json::from_slice(line).map(|recorded: Recorded| {
-                Body::Change(Recorded {
+            serde_json::from_slice(line).map(|recorded: ChangeRecord| {
+                Body::Change(ChangeRecord {
                     at: Some(stamp.t),
                     ..recorded
                 })

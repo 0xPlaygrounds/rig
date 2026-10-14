@@ -1,6 +1,6 @@
 use rig_core::{
     completion::{AssistantContent, CompletionRequest, CompletionResponse, Message, Usage},
-    effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Outcome},
+    effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey},
     error::{ErrorKind, ErrorReport},
 };
 
@@ -23,7 +23,7 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
             request: request(),
             stream: false,
         };
-        record.outcome = Ok(Outcome::Completion(CompletionResponse::new(
+        record.outcome = Ok(Answered::Completion(CompletionResponse::new(
             vec![AssistantContent::text("ok")],
             Usage::default(),
             rig_core::message::Origin::new("test.api", "composing-model", ""),
@@ -159,7 +159,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
         });
         recorder.resolve(
             id,
-            Ok(Outcome::Custom {
+            Ok(Answered::Custom {
                 payload: serde_json::json!(n),
             }),
         );
@@ -275,7 +275,7 @@ fn effect_record_and_log_round_trip() {
             disposition: Default::default(),
             decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
@@ -284,7 +284,7 @@ fn effect_record_and_log_round_trip() {
                 request: request(),
                 stream: false,
             },
-            outcome: Ok(Outcome::Completion(CompletionResponse::new(
+            outcome: Ok(Answered::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("hi")],
                 Usage::default(),
                 rig_core::message::Origin::new("test.api", "mock", ""),
@@ -301,7 +301,7 @@ fn effect_record_and_log_round_trip() {
             disposition: Default::default(),
             decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(2),
@@ -381,7 +381,7 @@ fn the_recorder_finds_the_newest_slot_first() {
     );
     recorder.resolve(
         id,
-        Ok(Outcome::Custom {
+        Ok(Answered::Custom {
             payload: serde_json::json!("newest"),
         }),
     );
@@ -454,13 +454,13 @@ fn two_records() -> EffectLog {
             disposition: Default::default(),
             decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
             key: HandlerKey::from("model"),
             kind: custom_kind(),
-            outcome: Ok(rig_core::effect::Outcome::Custom {
+            outcome: Ok(rig_core::effect::Answered::Custom {
                 payload: serde_json::json!({"n": 1}),
             }),
             events: None,
@@ -474,13 +474,13 @@ fn two_records() -> EffectLog {
             disposition: Default::default(),
             decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(2),
             key: HandlerKey::from("model"),
             kind: custom_kind(),
-            outcome: Ok(rig_core::effect::Outcome::Custom {
+            outcome: Ok(rig_core::effect::Answered::Custom {
                 payload: serde_json::json!({"n": 2}),
             }),
             events: None,
@@ -650,7 +650,7 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
         recorder.begin(id, key.clone(), kind(label), DispatchContext::default());
         recorder.resolve(
             id,
-            Ok(Outcome::Custom {
+            Ok(Answered::Custom {
                 payload: serde_json::json!(label),
             }),
         );
@@ -671,7 +671,7 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
             .into_outcome()
             .await;
         assert!(
-            matches!(answer.unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
+            matches!(answer.unwrap(), Answered::Custom { payload } if payload == serde_json::json!(label))
         );
     }
     let by_id = EffectLogReplayer::for_key_by_id(&log, &key).unwrap();
@@ -682,7 +682,7 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
             .into_outcome()
             .await;
         assert!(
-            matches!(answer.unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
+            matches!(answer.unwrap(), Answered::Custom { payload } if payload == serde_json::json!(label))
         );
     }
 }
@@ -694,7 +694,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     use rig_core::{
         message::{CallId, ToolCall, ToolFunction, ToolResultContent, UserContent},
         serve::{Dispatch, Serve},
-        streaming::Transcript,
+        streaming::StreamRecord,
     };
     let generated = ToolCall::new(
         CallId::from_wire(""),
@@ -718,7 +718,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         .map(AssistantContent::ToolCall)
         .collect();
     // Each call as a stream carries it: its start, its arguments, its end.
-    let events = Transcript::parse(serde_json::Value::Array(
+    let events = StreamRecord::parse(serde_json::Value::Array(
         calls
             .iter()
             .enumerate()
@@ -768,7 +768,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         request: request(),
         stream: false,
     };
-    records[0].outcome = Ok(Outcome::Completion(CompletionResponse::new(
+    records[0].outcome = Ok(Answered::Completion(CompletionResponse::new(
         choice,
         Usage::default(),
         rig_core::message::Origin::new("test.api", "test", ""),
@@ -779,7 +779,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         request: next,
         stream: false,
     };
-    records[1].outcome = Ok(Outcome::Completion(CompletionResponse::new(
+    records[1].outcome = Ok(Answered::Completion(CompletionResponse::new(
         vec![AssistantContent::text("done")],
         Usage::default(),
         rig_core::message::Origin::new("test.api", "test", ""),

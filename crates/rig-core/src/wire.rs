@@ -680,11 +680,11 @@ impl<Op: Operation<Emit = Free>> Out<'_, Op> {
     ///
     /// ```compile_fail,E0599
     /// use rig_core::operation::Completion;
-    /// use rig_core::streaming::Transcript;
+    /// use rig_core::streaming::StreamRecord;
     /// use rig_core::wire::Out;
     ///
     /// fn rebuild(out: &mut Out<'_, Completion>, recorded: serde_json::Value) {
-    ///     let Ok(transcript) = Transcript::parse(recorded) else { return };
+    ///     let Ok(transcript) = StreamRecord::parse(recorded) else { return };
     ///     for event in transcript.events() {
     ///         out.event(event.clone());
     ///     }

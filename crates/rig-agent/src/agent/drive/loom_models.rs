@@ -136,7 +136,7 @@ impl rig_core::serve::Serve for Instant {
         _kind: rig_core::effect::EffectKind,
         _dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
-        return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+        return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
             payload: serde_json::Value::Null,
         }));
     }

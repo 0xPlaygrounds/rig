@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use bevy_app::TaskPoolPlugin;
-use rig_core::effect::{EffectId, Outcome as EffectOutcome};
+use rig_core::effect::{Answered as EffectOutcome, EffectId};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolFunction, ToolName};
 use rig_core::tool::ChangeKind;

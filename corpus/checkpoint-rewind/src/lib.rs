@@ -569,7 +569,7 @@ impl Rewinder<'_, '_> {
             let stopped = message
                 .checked_sub(1)
                 .and_then(|before| conversation.entries().nth(before))
-                .is_some_and(|entry| entry.is_stopped_note());
+                .is_some_and(|entry| entry.is_stop_marker());
             let from = if stopped {
                 message.saturating_sub(1)
             } else {

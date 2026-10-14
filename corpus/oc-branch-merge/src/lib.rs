@@ -341,7 +341,7 @@ fn branch(
         ));
         return;
     }
-    let left = conversation.branch_title().to_owned();
+    let left = conversation.line_title().to_owned();
     let end = conversation.messages().len();
     if let Err(failure) = conversation.branch_off(end, name, Author::plugin(NAME)) {
         notices.write(Notice::error(args.agent, failure.to_string()));
@@ -367,7 +367,7 @@ fn switch(
         ));
         return;
     };
-    if name == conversation.branch_title() {
+    if name == conversation.line_title() {
         return;
     }
     match go_to(&mut conversation, name) {
@@ -395,7 +395,7 @@ fn merge(
         .into_iter()
         .filter(|word| *word != "--with-files")
         .collect();
-    let active = conversation.branch_title().to_owned();
+    let active = conversation.line_title().to_owned();
     let (source, target) = match words.as_slice() {
         [source] => (*source, active.as_str()),
         [source, "into", target] => (*source, *target),
@@ -597,7 +597,7 @@ fn answered(
         note,
     };
     let merging = pending.merging();
-    if conversation.branch_title() == pending.target {
+    if conversation.line_title() == pending.target {
         deliver(&accepted, merging, &mut commands);
     } else if busy {
         commands.spawn((accepted, merging));
@@ -709,7 +709,7 @@ fn append_elsewhere(
     let Ok(value) = serde_json::to_value(&record) else {
         return;
     };
-    let home = conversation.branch_title().to_owned();
+    let home = conversation.line_title().to_owned();
     if let Err(why) = go_to(conversation, target) {
         notices.write(Notice::error(agent, why));
         return;

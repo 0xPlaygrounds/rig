@@ -19,7 +19,7 @@ use futures::{StreamExt, channel::oneshot};
 
 use crate::{
     completion::UnsupportedOption,
-    effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
+    effect::{Answered, EffectId, EffectKind, HandlerDescriptor},
     error::{ErrorKind, ErrorReport},
     streaming::{Item, Relayed, StreamEvent, StreamEvents},
     tool::Touches,
@@ -361,7 +361,7 @@ pub trait Observe: Send + Sync {
     /// The completed handler response, or the fold of a streaming handler's
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>);
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>);
     /// Whether streamed items are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
     /// One item pulled from the original handler stream. This is recording
@@ -379,7 +379,7 @@ pub trait Observe: Send + Sync {
     fn stream_item(
         &mut self,
         item: &Result<Relayed, ErrorReport>,
-        outcome: Option<&Result<Outcome, ErrorReport>>,
+        outcome: Option<&Result<Answered, ErrorReport>>,
     ) {
         if self.keep_events() {
             match item {
@@ -422,13 +422,13 @@ impl StreamTap {
     pub fn observe(
         &mut self,
         item: &Result<Relayed, ErrorReport>,
-    ) -> Option<Result<Outcome, ErrorReport>> {
+    ) -> Option<Result<Answered, ErrorReport>> {
         if self.finished {
             return None;
         }
         let outcome = match item {
             Ok(Relayed::Origin(_) | Relayed::Item(_)) => None,
-            Ok(Relayed::Done(response)) => Some(Ok(Outcome::Completion((**response).clone()))),
+            Ok(Relayed::Done(response)) => Some(Ok(Answered::Completion((**response).clone()))),
             Err(report) => Some(Err(report.clone())),
         };
         self.finished = outcome.is_some();
@@ -446,21 +446,21 @@ pub fn stream_truncated() -> ErrorReport {
 /// An answer, or an owned stream whose execution belongs to the driver.
 pub enum Reply {
     /// The completed unary answer or a setup error.
-    Outcome(Result<Outcome, ErrorReport>),
+    Outcome(Result<Answered, ErrorReport>),
     /// Events, including any frames after the first terminal record.
     Stream(StreamEvents),
 }
 
 impl Reply {
     /// Fold a stream to its first outcome, or return the unary answer.
-    pub async fn into_outcome(self) -> Result<Outcome, ErrorReport> {
+    pub async fn into_outcome(self) -> Result<Answered, ErrorReport> {
         self.folded_outcome(None).await
     }
 
     pub(crate) async fn folded_outcome(
         self,
         folded: Option<Folded>,
-    ) -> Result<Outcome, ErrorReport> {
+    ) -> Result<Answered, ErrorReport> {
         match self {
             Self::Outcome(outcome) => outcome,
             Self::Stream(mut stream) => {
@@ -485,7 +485,7 @@ impl Reply {
         match self {
             Self::Stream(stream) => stream,
             Self::Outcome(outcome) => Box::pin(futures::stream::iter(match outcome {
-                Ok(Outcome::Completion(response)) => {
+                Ok(Answered::Completion(response)) => {
                     match crate::operation::completion::events_of(&response) {
                         Ok(items) => std::iter::once(Ok(Relayed::Origin(response.origin.clone())))
                             .chain(items.into_iter().map(|item| Ok(Relayed::Item(item))))
@@ -515,8 +515,8 @@ impl Reply {
             };
         }
         let original = match &self {
-            Self::Outcome(Ok(Outcome::Completion(response))) => {
-                Some(Ok(Outcome::Completion(response.clone())))
+            Self::Outcome(Ok(Answered::Completion(response))) => {
+                Some(Ok(Answered::Completion(response.clone())))
             }
             _ => None,
         };
@@ -567,7 +567,7 @@ impl Reply {
 
 // A layer and the recorder at its immediate inner boundary use the same fold.
 // Each outer boundary gets its own slot: a verdict can change that view.
-pub(crate) type Folded = Arc<Mutex<Option<Result<Outcome, ErrorReport>>>>;
+pub(crate) type Folded = Arc<Mutex<Option<Result<Answered, ErrorReport>>>>;
 
 fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     value
@@ -751,7 +751,7 @@ struct Observed {
 }
 
 impl Observed {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
         if !self.told {
             self.told = true;
             self.observer.outcome(outcome);
@@ -761,7 +761,7 @@ impl Observed {
     fn item(
         &mut self,
         item: &Result<Relayed, ErrorReport>,
-        outcome: Option<&Result<Outcome, ErrorReport>>,
+        outcome: Option<&Result<Answered, ErrorReport>>,
     ) {
         let outcome = outcome.filter(|_| !self.told);
         self.told |= outcome.is_some();
@@ -775,7 +775,7 @@ impl Drop for Observed {
     }
 }
 
-fn wrong_stream_answer(other: &Outcome) -> ErrorReport {
+fn wrong_stream_answer(other: &Answered) -> ErrorReport {
     ErrorReport::new(
         ErrorKind::Internal,
         format!(
@@ -800,14 +800,14 @@ pub fn cancelled() -> ErrorReport {
 pub struct SinkClosed;
 
 /// A single-use answer owned by an external responder.
-pub struct Resolver(oneshot::Sender<Result<Outcome, ErrorReport>>);
+pub struct Resolver(oneshot::Sender<Result<Answered, ErrorReport>>);
 
 /// Return a resolver and the answer future a handler must await.
 /// Dropping the resolver without answering reports the established
 /// unanswered-handler error; dropping the future closes the resolver.
 pub fn deferred() -> (
     Resolver,
-    impl Future<Output = Result<Outcome, ErrorReport>> + Send + 'static,
+    impl Future<Output = Result<Answered, ErrorReport>> + Send + 'static,
 ) {
     let (sender, receiver) = oneshot::channel();
     (Resolver(sender), async move {
@@ -822,7 +822,7 @@ pub fn deferred() -> (
 
 impl Resolver {
     /// Answer once. A late answer is discarded and reports closure.
-    pub fn resolve(self, outcome: Result<Outcome, ErrorReport>) -> Result<(), SinkClosed> {
+    pub fn resolve(self, outcome: Result<Answered, ErrorReport>) -> Result<(), SinkClosed> {
         self.0.send(outcome).map_err(|_| SinkClosed)
     }
 
@@ -836,7 +836,7 @@ impl Resolver {
 pub async fn serve_inline(
     handler: &ErasedHandler,
     kind: EffectKind,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Answered, ErrorReport> {
     serve_inline_with(handler, kind, Vec::new()).await
 }
 
@@ -845,7 +845,7 @@ pub async fn serve_inline_with(
     handler: &ErasedHandler,
     kind: EffectKind,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Answered, ErrorReport> {
     let mut dispatch = Dispatch::new(EffectId::from_raw(0), false);
     for scope in scopes {
         dispatch = dispatch.with_scope(scope);

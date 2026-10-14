@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_core::conversation::{Author, Change, Conversation, Lineage, Recorded};
+use rig_core::conversation::{Author, Change, ChangeRecord, Conversation, Lineage};
 
 use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
@@ -176,7 +176,7 @@ impl Book {
         store: &dyn Store,
         name: &str,
         conversation: &mut Conversation,
-    ) -> Vec<Recorded> {
+    ) -> Vec<ChangeRecord> {
         let Some(log) = self.opened(name, None) else {
             return stamp_all(conversation.take_unsaved());
         };
@@ -186,7 +186,7 @@ impl Book {
         let changes = if continues {
             unsaved
         } else {
-            vec![Recorded {
+            vec![ChangeRecord {
                 change: Change::Reset {
                     state: Box::new(conversation.view()),
                 },
@@ -216,7 +216,12 @@ impl Book {
     }
 
     /// Queues `recorded`, its images stored as blobs, for the log `name`.
-    fn queue(&mut self, store: &dyn Store, name: &str, recorded: &Recorded) -> Result<(), String> {
+    fn queue(
+        &mut self,
+        store: &dyn Store,
+        name: &str,
+        recorded: &ChangeRecord,
+    ) -> Result<(), String> {
         let stored = store_change(&recorded.change, store)
             .map_err(|failure| format!("storing an image failed: {failure}"))?;
         let change = stored.as_ref().unwrap_or(&recorded.change);
@@ -451,11 +456,11 @@ impl Writer {
 
     /// Queues the unsaved changes of `conversation` for the log `log` and
     /// empties its outbox: the changes, each stamped with when it was made
-    /// ([`Recorded::at`]). When the conversation does not continue the log
+    /// ([`ChangeRecord::at`]). When the conversation does not continue the log
     /// ([`Conversation::continues`]), as when a value made elsewhere
     /// replaced it, one [`Change::Reset`] to the whole value is queued
     /// instead. Either way the conversation then continues the log.
-    pub fn save(&self, log: &str, conversation: &mut Conversation) -> Vec<Recorded> {
+    pub fn save(&self, log: &str, conversation: &mut Conversation) -> Vec<ChangeRecord> {
         let mut inner = self.inner();
         let Inner { store, book } = &mut *inner;
         match store {
@@ -561,9 +566,9 @@ pub(crate) fn set_aside_tail(store: &dyn Store, log: &str, kept: u64) -> Result<
 }
 
 /// `changes`, each stamped with now unless it says when it was made.
-fn stamp_all(changes: Vec<Recorded>) -> Vec<Recorded> {
+fn stamp_all(changes: Vec<ChangeRecord>) -> Vec<ChangeRecord> {
     let now = now_ms();
-    let stamp = |recorded: Recorded| Recorded {
+    let stamp = |recorded: ChangeRecord| ChangeRecord {
         at: Some(recorded.at.unwrap_or(now)),
         ..recorded
     };

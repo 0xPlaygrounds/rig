@@ -871,7 +871,7 @@ pub(crate) async fn stream_reply(
     reply: Reply,
     feed: Sender<Fed>,
     wake: Wake,
-) -> Result<effect::Outcome, ErrorReport> {
+) -> Result<effect::Answered, ErrorReport> {
     let mut events = reply.into_stream();
     while let Some(item) = events.next().await {
         let event = match item {
@@ -881,7 +881,7 @@ pub(crate) async fn stream_reply(
             Ok(Relayed::Done(response)) => {
                 // The call may be gone; the reply still finishes.
                 feed.send(Fed::Item(web_time::SystemTime::now())).ok();
-                return Ok(effect::Outcome::Completion(*response));
+                return Ok(effect::Answered::Completion(*response));
             }
             Ok(Relayed::Item(item)) => item,
         };
@@ -1144,7 +1144,7 @@ pub(crate) fn commit_turn_calls(
             }
         };
         let report = match outcome {
-            Ok(effect::Outcome::Completion(response)) => {
+            Ok(effect::Answered::Completion(response)) => {
                 recovery.retries = 0;
                 let inbox = (&inboxes, &mut commands);
                 let next =

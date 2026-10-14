@@ -247,7 +247,7 @@ fn websocket_frame_to_text_maps_control_frames() {
 #[test]
 fn a_turn_records_the_response_its_events_rebuild() {
     let wire = test_wire("wss://api.openai.com/v1");
-    let reply = std::sync::Mutex::new(Shared::new(Turn::relayed("openai")));
+    let reply = std::sync::Mutex::new(Shared::new(ReplyFold::relayed("openai")));
     let mut decoder = wire.decoder();
     let mut document = wire.reassembler();
     let item = json!({

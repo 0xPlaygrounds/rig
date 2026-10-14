@@ -153,7 +153,7 @@ fn record(
     mut agents: Query<Recording>,
     mut commands: Commands,
 ) {
-    let mut changes: HashMap<Entity, Vec<&Recorded>> = HashMap::new();
+    let mut changes: HashMap<Entity, Vec<&ChangeRecord>> = HashMap::new();
     for Committed { agent, change } in committed.read() {
         changes.entry(*agent).or_default().push(change);
     }
@@ -200,7 +200,7 @@ fn record(
 
 /// Applies `change` to `shadow`, first keeping a version of it when it
 /// rewrites rather than appends.
-fn fold(shadow: &mut Chat, versions: &mut ConvVersions, change: &Recorded) {
+fn fold(shadow: &mut Chat, versions: &mut ConvVersions, change: &ChangeRecord) {
     let len = shadow.messages().len();
     let rewrites = match &change.change {
         Change::Splice { from, removed, .. } => !(removed.is_empty() && *from == len),

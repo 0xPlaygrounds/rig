@@ -30,7 +30,7 @@
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ReasoningSupport;
 use rig_harness::rig_core::completion::{CompletionResponse, FinishReason, Reasoning};
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::{Message, Text};
 use rig_tui::ratatui::style::Style;
 use rig_tui::{MarkIn, TextMark, TranscriptView};

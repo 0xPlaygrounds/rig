@@ -43,7 +43,7 @@ fn recording() -> (std::sync::Arc<Recording>, Waker) {
     (flag, waker)
 }
 
-type Receiver = oneshot::Receiver<Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>>;
+type Receiver = oneshot::Receiver<Result<rig_core::effect::Answered, rig_core::error::ErrorReport>>;
 
 fn command(id: u64) -> (Command, Receiver) {
     let (reply, receiver) = oneshot::channel();
@@ -167,7 +167,7 @@ impl Serve for Tagged {
         _kind: EffectKind,
         _dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
-        return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+        return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
             payload: serde_json::json!(self.0),
         }));
     }
@@ -201,7 +201,7 @@ fn loom_concurrent_registrations_publish_and_serve_the_same_handler() {
         let mut cx = Context::from_waker(&waker);
         assert!(pending.poll_unpin(&mut cx).is_pending());
         let _ = driver.poll_unpin(&mut cx);
-        let std::task::Poll::Ready(Ok(rig_core::effect::Outcome::Custom { payload })) =
+        let std::task::Poll::Ready(Ok(rig_core::effect::Answered::Custom { payload })) =
             pending.poll_unpin(&mut cx)
         else {
             panic!("registered handler must answer");
@@ -388,7 +388,7 @@ impl Serve for Counted {
             }
         })
         .await;
-        return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+        return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
             payload: serde_json::Value::Null,
         }));
     }
@@ -428,7 +428,7 @@ impl rig_core::serve::Recorder for Begun {
     fn resolve(
         &self,
         _id: EffectId,
-        outcome: Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        outcome: Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
     ) {
         if let Err(report) = outcome
             && report.kind != rig_core::error::ErrorKind::Cancelled

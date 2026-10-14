@@ -572,7 +572,7 @@ fn requests_stay_unwind_safe() {
     unwind_safe::<ProviderOptions>();
     unwind_safe::<CompletionRequest>();
     unwind_safe::<crate::effect::EffectKind>();
-    unwind_safe::<crate::serve::Decision>();
+    unwind_safe::<crate::serve::BeforeServe>();
 }
 
 #[test]

@@ -404,7 +404,7 @@ fn blocks_of(conversation: &Conversation, opened: &HashSet<BlockKey>) -> Vec<Blo
             Message::User { content } => {
                 for part in content {
                     match part {
-                        UserContent::Text(_) if entry.is_stopped_note() => {
+                        UserContent::Text(_) if entry.is_stop_marker() => {
                             blocks.push(Block::Stopped);
                         }
                         UserContent::Text(text) => match conversation.author(index) {

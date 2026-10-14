@@ -17,7 +17,7 @@ use std::sync::Arc;
 use corpus_confirm_destructive::ConfirmSystems;
 use corpus_plan_mode::PlanModeSystems;
 use glob::{MatchOptions, Pattern};
-use rig_core::effect::Outcome as Answered;
+use rig_core::effect::Answered;
 use rig_core::tool::ToolOutput;
 use rig_harness::prelude::*;
 use rig_tools::{Found, SearchHits, render};

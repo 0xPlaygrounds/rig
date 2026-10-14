@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::ops::ControlFlow;
 
-use rig_core::conversation::{AsideId, Author, Change, Conversation, MessageId, Recorded};
+use rig_core::conversation::{AsideId, Author, Change, ChangeRecord, Conversation, MessageId};
 use serde_json::Value;
 
 use crate::blobs::{load_images, load_images_with, messages_mut};
@@ -64,7 +64,7 @@ pub struct Unreadable {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Record {
     /// A change of the conversation, its `at` the time it was written.
-    Change(Recorded),
+    Change(ChangeRecord),
     /// A saved value set, or with `None` removed.
     State {
         /// Its key.

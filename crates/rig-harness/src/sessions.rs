@@ -591,7 +591,7 @@ fn start(
                         .map_err(|why| why.to_string())?;
                     let read = Line {
                         id: line.map_or(LineId::Active, LineId::Branch),
-                        title: conversation.branch_title().to_owned(),
+                        title: conversation.line_title().to_owned(),
                         inside: None,
                         at: 0,
                         entries: conversation.messages().len(),

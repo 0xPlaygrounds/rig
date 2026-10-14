@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 
 use bevy_log::debug;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::error::ErrorKind;
 use rig_harness::rig_core::message::ToolFunction;
 use rig_harness::rig_core::tool::ToolErrorKind;

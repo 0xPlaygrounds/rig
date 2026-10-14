@@ -52,7 +52,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use rig_core::conversation::AuthorKind;
-use rig_core::effect::{Decider, EffectKind, Outcome as EffectOutcome};
+use rig_core::effect::{Answered as EffectOutcome, Decider, EffectKind};
 use rig_ecs::inbox::Incoming;
 use rig_ecs::stage::{
     AgentPass, Decision, Effect, EffectRequest, ForAgent, IncomingMessages, Outcome, PluginEffects,

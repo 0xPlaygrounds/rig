@@ -105,7 +105,7 @@ fn a_split_holds_the_line_with_its_keys_asides_and_values() {
         })
         .collect();
     assert_eq!(keys(conversation), expected);
-    assert_eq!(conversation.branch_title(), "side");
+    assert_eq!(conversation.line_title(), "side");
     let kinds: Vec<_> = conversation
         .asides()
         .map(|(_, aside)| aside.kind.as_str())

@@ -24,7 +24,7 @@ use std::path::Path;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use glob::Pattern;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged};
 use rig_harness::rig_tools::{Shell, ShellArgs};

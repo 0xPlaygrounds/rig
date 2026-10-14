@@ -27,7 +27,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_tools::process::{KillOnDrop, Launcher, OutputLine, Spawn};

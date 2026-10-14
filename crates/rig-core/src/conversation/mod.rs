@@ -54,7 +54,10 @@ mod turn;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
-pub use branch::{ACTIVE, BRANCH, Branch, BranchError, Kept, LINE, MAIN, MergeAt, shared_prefix};
+pub use branch::{
+    ACTIVE_TITLE, BRANCH, Branch, BranchError, KeptBranch, LINE_VALUES, MAIN, MergeAt,
+    shared_prefix,
+};
 pub use lineage::Lineage;
 pub use turn::{TURN, TurnEnd, TurnRecord};
 
@@ -99,7 +102,7 @@ pub struct Conversation {
     #[serde(skip)]
     lineage: Lineage,
     #[serde(skip)]
-    unsaved: Vec<Recorded>,
+    unsaved: Vec<ChangeRecord>,
     /// The time edits are made at, set by [`dated`](Self::dated); now when
     /// `None`.
     #[serde(skip)]
@@ -366,7 +369,7 @@ impl EntryRef<'_> {
 
     /// Whether it is the [`STOPPED`] note rig puts between a request the
     /// user stopped and what came next.
-    pub fn is_stopped_note(&self) -> bool {
+    pub fn is_stop_marker(&self) -> bool {
         let by_rig = self
             .author
             .is_some_and(|author| author.kind == AuthorKind::Rig);
@@ -442,7 +445,7 @@ pub enum Change {
 
 /// A change as kept in the outbox and saved: who made it and when.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Recorded {
+pub struct ChangeRecord {
     /// The change.
     #[serde(flatten)]
     pub change: Change,
@@ -1132,7 +1135,7 @@ impl Conversation {
     /// Applies a recorded change verbatim, such as one read from a log or
     /// sent by a process that mirrors this conversation. It is not put in
     /// the outbox. Fails, changing nothing, when it does not fit.
-    pub fn apply(&mut self, change: &Recorded) -> Result<(), ApplyError> {
+    pub fn apply(&mut self, change: &ChangeRecord) -> Result<(), ApplyError> {
         let at = change.at.unwrap_or_else(|| self.now());
         self.change(&change.change, at)?;
         self.revision = self.revision.saturating_add(1);
@@ -1170,12 +1173,12 @@ impl Conversation {
     }
 
     /// The changes made that nobody has saved yet, oldest first.
-    pub fn unsaved(&self) -> &[Recorded] {
+    pub fn unsaved(&self) -> &[ChangeRecord] {
         &self.unsaved
     }
 
     /// Takes the changes made that nobody has saved yet, to save them.
-    pub fn take_unsaved(&mut self) -> Vec<Recorded> {
+    pub fn take_unsaved(&mut self) -> Vec<ChangeRecord> {
         std::mem::take(&mut self.unsaved)
     }
 
@@ -1256,7 +1259,7 @@ impl Conversation {
 
     fn log_at(&mut self, change: Change, by: Option<Author>, at: u64) {
         self.revision = self.revision.saturating_add(1);
-        self.unsaved.push(Recorded {
+        self.unsaved.push(ChangeRecord {
             change,
             by,
             at: Some(at),

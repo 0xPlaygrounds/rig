@@ -202,7 +202,7 @@ fn every_outcome_round_trips() {
         .with_model_feedback("try again");
     let outcomes = vec![
         (
-            Outcome::Completion(CompletionResponse::new(
+            Answered::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("hi")],
                 Usage::default(),
                 crate::message::Origin::new("test.api", "mock", ""),
@@ -211,31 +211,31 @@ fn every_outcome_round_trips() {
             EffectFamily::Completion,
         ),
         (
-            Outcome::ToolResult {
+            Answered::ToolResult {
                 result: ToolResult::success(ToolOutput::json(json!({"sum": 3}))),
             },
             EffectFamily::Tool,
         ),
         (
-            Outcome::ToolResult {
+            Answered::ToolResult {
                 result: ToolResult::failed(tool_error),
             },
             EffectFamily::Tool,
         ),
         (
-            Outcome::ToolResult {
+            Answered::ToolResult {
                 result: ToolResult::failed(ToolExecutionError::refused("no")),
             },
             EffectFamily::Tool,
         ),
         (
-            Outcome::ToolResult {
+            Answered::ToolResult {
                 result: ToolResult::skipped("policy"),
             },
             EffectFamily::Tool,
         ),
         (
-            Outcome::Embeddings(EmbedOutputs::Texts(EmbeddingResponse {
+            Answered::Embeddings(EmbedOutputs::Texts(EmbeddingResponse {
                 provider: "mock".into(),
                 ..EmbeddingResponse::new(vec![Embedding {
                     document: "a".into(),
@@ -245,7 +245,7 @@ fn every_outcome_round_trips() {
             EffectFamily::Embed,
         ),
         (
-            Outcome::Documents(RetrievedDocuments::Scored(vec![(
+            Answered::Documents(RetrievedDocuments::Scored(vec![(
                 0.9,
                 "d1".into(),
                 json!({"text": "cat"}),
@@ -253,11 +253,11 @@ fn every_outcome_round_trips() {
             EffectFamily::Retrieve,
         ),
         (
-            Outcome::Documents(RetrievedDocuments::Ids(vec![(0.9, "d1".into())])),
+            Answered::Documents(RetrievedDocuments::Ids(vec![(0.9, "d1".into())])),
             EffectFamily::Retrieve,
         ),
         (
-            Outcome::Custom {
+            Answered::Custom {
                 payload: json!({"ok": true}),
             },
             EffectFamily::Custom,
@@ -266,7 +266,7 @@ fn every_outcome_round_trips() {
     for (outcome, family) in outcomes {
         assert_eq!(outcome.family(), family);
         let json = serde_json::to_value(&outcome).expect("serializes");
-        let back: Outcome = serde_json::from_value(json.clone()).expect("deserializes");
+        let back: Answered = serde_json::from_value(json.clone()).expect("deserializes");
         assert_eq!(
             serde_json::to_value(&back).expect("serializes"),
             json,
@@ -304,7 +304,7 @@ fn tool_output_rejects_an_empty_wire_list() {
 #[test]
 fn a_family_reports_another_familys_outcome_as_a_mismatch() {
     let report =
-        family::Completion::unwrap(Outcome::Documents(RetrievedDocuments::Ids(Vec::new())))
+        family::Completion::unwrap(Answered::Documents(RetrievedDocuments::Ids(Vec::new())))
             .expect_err("not a completion");
     assert_eq!(report.kind, ErrorKind::Internal);
     assert!(
@@ -343,13 +343,13 @@ fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
         }
         other => panic!("expected a custom kind, got {other:?}"),
     }
-    let answer = family::Custom::<AskUser>::unwrap(Outcome::Custom {
+    let answer = family::Custom::<AskUser>::unwrap(Answered::Custom {
         payload: json!({"text": "Ada"}),
     })
     .expect("the declared answer");
     assert_eq!(answer, Reply { text: "Ada".into() });
 
-    let report = family::Custom::<AskUser>::unwrap(Outcome::Custom {
+    let report = family::Custom::<AskUser>::unwrap(Answered::Custom {
         payload: json!({"nope": 1}),
     })
     .expect_err("not a Reply");
@@ -357,7 +357,7 @@ fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
     assert!(report.message.contains(AskUser::KIND), "{}", report.message);
 
     let report =
-        family::Custom::<AskUser>::unwrap(Outcome::Documents(RetrievedDocuments::Ids(Vec::new())))
+        family::Custom::<AskUser>::unwrap(Answered::Documents(RetrievedDocuments::Ids(Vec::new())))
             .expect_err("another family");
     assert!(
         report.message.contains("expected a custom outcome"),
@@ -497,7 +497,7 @@ fn a_row_diff_names_every_difference() {
 /// handler run; set, they travel.
 #[test]
 fn a_record_carries_its_purpose_turn_times_review_disposition_and_decider_when_set() {
-    let outcome = Ok(Outcome::ToolResult {
+    let outcome = Ok(Answered::ToolResult {
         result: ToolResult::success(ToolOutput::text("raw")),
     });
     let mut record = EffectRecord::new(

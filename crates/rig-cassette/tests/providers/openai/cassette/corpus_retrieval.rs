@@ -7,7 +7,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::effect::{EffectFamily, Outcome, RetrievedDocuments};
+use rig::effect::{Answered, EffectFamily, RetrievedDocuments};
 use rig::providers::openai;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -25,10 +25,10 @@ fn first_retrieved_ids(log: &rig::cassette::effect_log::EffectLog) -> Vec<String
     log.records
         .iter()
         .find_map(|record| match &record.outcome {
-            Ok(Outcome::Documents(RetrievedDocuments::Scored(docs))) => {
+            Ok(Answered::Documents(RetrievedDocuments::Scored(docs))) => {
                 Some(docs.iter().map(|(_, id, _)| id.clone()).collect())
             }
-            Ok(Outcome::Documents(RetrievedDocuments::Ids(ids))) => {
+            Ok(Answered::Documents(RetrievedDocuments::Ids(ids))) => {
                 Some(ids.iter().map(|(_, id)| id.clone()).collect())
             }
             _ => None,

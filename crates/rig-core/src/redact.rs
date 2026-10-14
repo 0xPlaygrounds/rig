@@ -30,7 +30,7 @@ mod tests;
 /// What [`text`] and [`json`] put in place of a secret.
 pub const REDACTED: &str = "[REDACTED]";
 
-/// What kind of secret a [`Secret`] is.
+/// What kind of secret a [`SecretMatch`] is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Kind {
@@ -99,7 +99,7 @@ impl fmt::Display for Kind {
 /// A secret [`find`] found: its kind, and where it is in the text, in
 /// bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Secret {
+pub struct SecretMatch {
     /// What kind of secret it is.
     pub kind: Kind,
     /// Where it is in the text searched.
@@ -116,7 +116,7 @@ pub struct Secret {
 /// assert_eq!(found[0].kind, Kind::AwsAccessKey);
 /// assert_eq!(found[0].range, 3..23);
 /// ```
-pub fn find(input: &str) -> impl Iterator<Item = Secret> + '_ {
+pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
     let mut at = 0;
     std::iter::from_fn(move || {
         while let Some(rest) = input.get(at..) {
@@ -127,7 +127,7 @@ pub fn find(input: &str) -> impl Iterator<Item = Secret> + '_ {
                 if let Some((kind, range)) = found {
                     let range = at + range.start..at + range.end;
                     at = range.end;
-                    return Some(Secret { kind, range });
+                    return Some(SecretMatch { kind, range });
                 }
             }
             // A token's tail starts no key, so skip to the token's end.

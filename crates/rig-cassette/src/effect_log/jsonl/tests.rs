@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rig_core::effect::{EffectKind, HandlerKey, Outcome};
+use rig_core::effect::{Answered, EffectKind, HandlerKey};
 
 use super::*;
 
@@ -14,7 +14,7 @@ fn record(id: u64, key: &str) -> EffectRecord {
         disposition: Default::default(),
         decided_by: None,
         stream_origin: None,
-        tool_output: None,
+        published: None,
         parent: None,
         scope: Some(Arc::from("agent")),
         id: EffectId::from_raw(id),
@@ -23,7 +23,7 @@ fn record(id: u64, key: &str) -> EffectRecord {
             kind: Arc::from("test"),
             payload: serde_json::json!({ "ask": id }),
         },
-        outcome: Ok(Outcome::Custom {
+        outcome: Ok(Answered::Custom {
             payload: serde_json::json!({ "n": id }),
         }),
         events: None,
@@ -137,7 +137,7 @@ fn completion_of(
         disposition: Default::default(),
         decided_by: None,
         stream_origin: None,
-        tool_output: None,
+        published: None,
         parent: None,
         scope: Some(Arc::from(scope)),
         id: EffectId::from_raw(id),
@@ -146,7 +146,7 @@ fn completion_of(
             request: CompletionRequest::from(history),
             stream: true,
         },
-        outcome: Ok(Outcome::Completion(CompletionResponse::new(
+        outcome: Ok(Answered::Completion(CompletionResponse::new(
             vec![AssistantContent::text("ok")],
             Usage::default(),
             rig_core::message::Origin::new("test.api", "model", ""),
@@ -174,7 +174,7 @@ fn shell_call() -> (EffectRecord, rig_core::completion::Message) {
         name: "shell".into(),
         args: "{}".into(),
     };
-    shell.outcome = Ok(Outcome::ToolResult {
+    shell.outcome = Ok(Answered::ToolResult {
         result: ToolResult::success(ToolOutput::text(LISTING)),
     });
     let result = rig_core::completion::Message::tool_result(

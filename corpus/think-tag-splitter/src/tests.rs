@@ -5,7 +5,7 @@ use rig_harness::rig_ecs::journal::JournalPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
-use rig_harness::rig_core::streaming::Transcript;
+use rig_harness::rig_core::streaming::StreamRecord;
 
 use super::*;
 
@@ -146,7 +146,7 @@ fn think_tags_stream_as_reasoning_and_stay_out_of_the_answer() {
             _ => None,
         })
         .collect();
-    let transcript = serde_json::to_value(items).map(Transcript::parse);
+    let transcript = serde_json::to_value(items).map(StreamRecord::parse);
     assert!(matches!(transcript, Ok(Ok(_))), "{transcript:?}");
     assert_eq!(ends, split_choice(&[whole], false));
 }

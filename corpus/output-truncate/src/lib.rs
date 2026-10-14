@@ -120,7 +120,7 @@ fn cut_long_results(
     mut commands: Commands,
 ) {
     for (call, ToolRequest { call: request }, mut outcome) in &mut calls {
-        let Ok(effect::Outcome::ToolResult { result }) = &outcome.0 else {
+        let Ok(effect::Answered::ToolResult { result }) = &outcome.0 else {
             continue;
         };
         if !config.covers(request.function.name.as_str()) {

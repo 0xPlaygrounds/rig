@@ -26,10 +26,10 @@ use crate::completion::CompletionResponse;
 use crate::driver::{lock, record_request_id};
 use crate::error::{ErrorReport, ProviderError};
 pub use crate::json_utils::parse_partial_arguments;
-use crate::operation::{Completion, Turn};
+use crate::operation::{Completion, ReplyFold};
 use crate::wasm_compat::WasmBoxedStream;
 use crate::wire::{Operation, Shared};
-pub use event::{Item, Part, PartKind, SequenceError, StreamEvent, Transcript};
+pub use event::{Item, Part, PartKind, SequenceError, StreamEvent, StreamRecord};
 
 /// Unmodeled JSON payload with content-redacted `Debug` output.
 /// Serialization preserves the payload; [`Self::value`] explicitly exposes it.
@@ -195,7 +195,7 @@ impl<Op: Operation> Streamed<Op> {
 /// block keeps its provider item and the content replays canonically.
 pub fn delivered(items: &[Item<StreamEvent>]) -> Vec<crate::message::AssistantContent> {
     use crate::wire::Fold;
-    let mut turn = Turn::relayed("delivered");
+    let mut turn = ReplyFold::relayed("delivered");
     for item in items {
         if let Item::Event(event) = item
             && turn.absorb(event).is_err()
@@ -217,7 +217,7 @@ impl Streamed<Completion> {
     /// short.
     pub fn relay(label: impl Into<String>, mut events: StreamEvents) -> Self {
         let label = label.into();
-        let shared = Arc::new(Mutex::new(Shared::new(Turn::relayed(label.clone()))));
+        let shared = Arc::new(Mutex::new(Shared::new(ReplyFold::relayed(label.clone()))));
         let writer = Arc::clone(&shared);
         let reading = async_stream::stream! {
             while let Some(item) = events.next().await {
@@ -226,7 +226,7 @@ impl Streamed<Completion> {
                     let mut shared = lock(&writer);
                     match item {
                         Ok(Relayed::Origin(origin)) => {
-                            Turn::set_origin(&mut shared.fold, origin);
+                            ReplyFold::set_origin(&mut shared.fold, origin);
                             false
                         }
                         Ok(Relayed::Item(item)) => {

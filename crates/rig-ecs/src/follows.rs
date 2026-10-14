@@ -33,7 +33,7 @@ use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath, TypeRegistry};
-use rig_core::conversation::{Aside, AsideId, Author, BRANCH, Change, LINE, MessageId};
+use rig_core::conversation::{Aside, AsideId, Author, BRANCH, Change, LINE_VALUES, MessageId};
 use rig_memory::{SET_ASIDE, Versioned};
 use serde_json::{Map, Value};
 
@@ -430,7 +430,7 @@ pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Committed>
             Change::Reset { .. } => work.scan = true,
             Change::Aside {
                 aside: Some(aside), ..
-            } if [BRANCH, LINE, FOLLOWS].contains(&aside.kind.as_str()) => work.scan = true,
+            } if [BRANCH, LINE_VALUES, FOLLOWS].contains(&aside.kind.as_str()) => work.scan = true,
             _ => {}
         }
     }

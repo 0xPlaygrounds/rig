@@ -28,7 +28,7 @@
 use futures::StreamExt;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, CompletionResponse};
-use rig_harness::rig_core::effect::{EffectKind, HandlerDescriptor, Outcome as Answer, family};
+use rig_harness::rig_core::effect::{Answered as Answer, EffectKind, HandlerDescriptor, family};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::message::{Fingerprint, Message};
 use rig_harness::rig_core::providers::registry::ProviderId;

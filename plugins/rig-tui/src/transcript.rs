@@ -277,7 +277,7 @@ impl Settled {
         let child = match &record.kind {
             EffectKind::Completion { .. } => {
                 let reply = match outcome {
-                    Ok(effect::Outcome::Completion(reply)) => Some(reply),
+                    Ok(effect::Answered::Completion(reply)) => Some(reply),
                     _ => None,
                 };
                 let calls = reply.into_iter().flat_map(|reply| &reply.choice);
@@ -310,7 +310,7 @@ impl Settled {
                     let took =
                         took.map(|(end, start)| Duration::from_millis(end.saturating_sub(start)));
                     self.facts
-                        .insert(call.id.clone(), (record.tool_output.clone(), took));
+                        .insert(call.id.clone(), (record.published.clone(), took));
                 }
                 let (failed, line) = answer(Some(outcome), true);
                 Some(ChildCall {
@@ -465,7 +465,7 @@ impl CallTree {
 /// (`tool`), else a model's reply, or why it failed; neither before it
 /// has one.
 pub(crate) fn answer(
-    outcome: Option<&Result<effect::Outcome, ErrorReport>>,
+    outcome: Option<&Result<effect::Answered, ErrorReport>>,
     tool: bool,
 ) -> (bool, Option<String>) {
     let (failed, line) = match (outcome, tool) {
@@ -476,7 +476,7 @@ pub(crate) fn answer(
             (failed, Some(result.output().render()))
         }
         (Some(Err(report)), false) => (true, Some(report.message.clone())),
-        (Some(Ok(effect::Outcome::Completion(reply))), false) => (false, Some(reply.text())),
+        (Some(Ok(effect::Answered::Completion(reply))), false) => (false, Some(reply.text())),
         (Some(Ok(_)), false) => (false, None),
     };
     (
@@ -1467,7 +1467,7 @@ fn message_lines(
     let stopped = conversation
         .entries()
         .nth(at)
-        .is_some_and(|entry| entry.is_stopped_note());
+        .is_some_and(|entry| entry.is_stop_marker());
     let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
     let inside = look.inside(at);
     let inside_before = |item: usize,

@@ -30,7 +30,7 @@ use bevy_ecs::world::DeferredWorld;
 use bevy_log::{error, warn};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
-use rig_core::conversation::{Author, Recorded};
+use rig_core::conversation::{Author, ChangeRecord};
 use rig_memory::{
     LoadError, Place, Repair, Rewrite, Rewritten, SESSION, Session, Store, Versioned, Writer,
 };
@@ -209,7 +209,7 @@ pub struct Committed {
     /// The agent.
     pub agent: Entity,
     /// The change: what changed, who made it and when.
-    pub change: Recorded,
+    pub change: ChangeRecord,
 }
 
 /// Retires the agent `entity` for good: its log says so, so a restore

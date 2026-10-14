@@ -343,7 +343,7 @@ fn in_session(conversation: &mut Line, asked: &Asked) -> Result<String, String> 
                 "" => format!("split {}", lines(conversation).len()),
                 title => title.to_owned(),
             };
-            let left = conversation.branch_title().to_owned();
+            let left = conversation.line_title().to_owned();
             conversation
                 .branch_off(point, title.clone(), by())
                 .map_err(failed)?;
@@ -499,7 +499,7 @@ fn switch(world: &mut World, target: &Target, name: Option<&str>) -> Result<Stri
             conversation
                 .switch_branch(id, by())
                 .map_err(|failure| failure.to_string())?;
-            Ok(format!("Now on “{}”.", conversation.branch_title()))
+            Ok(format!("Now on “{}”.", conversation.line_title()))
         }),
     }
 }
@@ -630,7 +630,7 @@ fn compare(world: &mut World, target: &Target, name: &str) -> Result<String, Str
     let shared = shared_prefix(&ours, &other.line(None).unwrap_or_default());
     let sides = [
         (
-            conversation.branch_title().to_owned(),
+            conversation.line_title().to_owned(),
             own(&conversation, shared),
         ),
         (found.title, own(&other, shared)),

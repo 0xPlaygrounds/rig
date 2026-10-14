@@ -17,7 +17,7 @@ use bevy_ecs::system::SystemParam;
 use glob::Pattern;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Section, ToolDefinition};
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
 use schemars::JsonSchema;

@@ -88,7 +88,7 @@ pub mod prelude {
         RetryVerdict, SentTo, StreamDelta, Streamed, TurnCall,
     };
     pub use rig_core::conversation::{
-        Aside, AsideId, Author, AuthorKind, Change, Entry, EntryRef, Halt, MessageId, Recorded,
+        Aside, AsideId, Author, AuthorKind, Change, ChangeRecord, Entry, EntryRef, Halt, MessageId,
         RequestId, STOPPED, Spliced, TurnEnd, TurnRecord,
     };
     pub use rig_core::effect::Decider;

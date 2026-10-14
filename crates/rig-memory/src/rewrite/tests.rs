@@ -414,11 +414,7 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
     let kept = read.branches().into_iter().next().expect("a branch");
     let (id, stashed) = (kept.id, kept.branch);
     assert_eq!(stashed.title, "main");
-    assert_eq!(
-        read.branch_title(),
-        "about [R]",
-        "the title is rewritten too"
-    );
+    assert_eq!(read.line_title(), "about [R]", "the title is rewritten too");
     let texts: Vec<String> = stashed
         .entries
         .iter()

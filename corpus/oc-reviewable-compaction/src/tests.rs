@@ -147,7 +147,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     assert!(all.contains("Q12:") && !all.contains("Q01:"), "{all}");
     let records = history(&store, &id.unwrap_or_default()).unwrap_or_default();
     let kept_first = records.iter().any(|(_, record)| match record {
-        Record::Change(Recorded {
+        Record::Change(ChangeRecord {
             change: Change::Push { entries },
             ..
         }) => entries

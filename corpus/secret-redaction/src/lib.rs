@@ -23,10 +23,10 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 use bevy_log::warn;
 use regex::{Captures, Regex};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::redact;
-use rig_harness::rig_core::serve::{self, Intercept, Verdict as Answer};
+use rig_harness::rig_core::serve::{self, AfterServe as Answer, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness::rig_ecs::{StopTurns, WriteJournal};
@@ -431,11 +431,11 @@ impl Intercept for RedactRequest {
         &self,
         _: EffectId,
         kind: &EffectKind,
-    ) -> impl Future<Output = serve::Decision> + Send {
+    ) -> impl Future<Output = serve::BeforeServe> + Send {
         let mut kind = kind.clone();
         ready(match self.0.redact_data(&mut kind, "a model request") {
-            true => serve::Decision::Patch(kind),
-            false => serve::Decision::Proceed,
+            true => serve::BeforeServe::Patch(kind),
+            false => serve::BeforeServe::Proceed,
         })
     }
 

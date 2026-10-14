@@ -26,7 +26,7 @@ pub use handler::{
     Dispatch, ErasedHandler, HandlerFuture, Observe, Reply, Resolver, Serve, SinkClosed, StreamTap,
     cancelled, deferred, serve_inline, serve_inline_with, stream_truncated,
 };
-pub use layer::{Decision, Intercept, Layer, Verdict};
+pub use layer::{AfterServe, BeforeServe, Intercept, Layer};
 pub use record_buffer::RecordBuffer;
 pub use recorder::{DispatchContext, OpenRecord, Recorder, catch_panics};
 pub use writer::StreamWriter;

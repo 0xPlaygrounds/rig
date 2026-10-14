@@ -367,7 +367,7 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
             |EffectRecorded(record)| match (&record.kind, &record.outcome) {
                 (
                     rig_core::effect::EffectKind::Custom { kind, payload },
-                    Ok(rig_core::effect::Outcome::Custom { payload: answer }),
+                    Ok(rig_core::effect::Answered::Custom { payload: answer }),
                 ) if &**kind == SUBAGENT => Some((payload.clone(), answer.clone(), record.parent)),
                 _ => None,
             },

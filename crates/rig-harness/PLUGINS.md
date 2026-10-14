@@ -127,7 +127,7 @@ frame (an agent it started, a call it settled) runs `.after(AgentLoop)`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::tool::ToolOutput;
 
 #[derive(Default)]
@@ -983,7 +983,7 @@ fn end_with(
             let choice = vec![AssistantContent::Text(Text::new(text.clone()))];
             let made = Made::new("plugin", "submit", "submit");
             let reply = CompletionResponse::new(choice, Usage::default(), made, serde_json::Value::Null);
-            decision.decide(Decider::plugin("end-with"), Outcome(Ok(effect::Outcome::Completion(reply))));
+            decision.decide(Decider::plugin("end-with"), Outcome(Ok(effect::Answered::Completion(reply))));
         }
     }
 }
@@ -1317,7 +1317,7 @@ entries and repairs tool-call pairing, a merged entry keeping the
 first's id and author and its asides following it. **Branches** are
 other continuations kept as asides (`BRANCH`; saved, forked, rewritten):
 `branch_off(at, title, by)` keeps entries `at..` (maybe none) aside and
-goes on as `title` (`branch_title()`); `switch_branch(id, by)` brings
+goes on as `title` (`line_title()`); `switch_branch(id, by)` brings
 any kept branch back, nested too; `branches()` lists all, `line(id)`.
 `move_out(range, title, by)` keeps a range as a branch, its aside the
 pointer left where it was; `merge_branch(id, by)` brings a branch back
@@ -1334,7 +1334,7 @@ conversation unless `unsaved()` (`add_aside`, `replace_aside`,
 **Saving.** A change waits in the conversation's outbox until the kernel
 saves it to the agent's log: between the stages of every pass, at the end
 of the frame, before a tool that may change something starts, and on an
-interrupt. Each one saved is a `Committed { agent, change }`, a `Recorded`
+interrupt. Each one saved is a `Committed { agent, change }`, a `ChangeRecord`
 with the `Change` (`Push`, `Splice`, `Halt`, `Aside`, `Reset` for a value
 inserted over the component), its author (`by`) and time. A splice before
 the end costs the provider's prompt cache from there on. `Retire { entity
@@ -2012,7 +2012,7 @@ from `build` on, as the [settings](#settings) example does.
 A front shows a stopped request from its `Change::Halt { halt:
 Some(Halt::Stopped) }` (`halted()`), never from text; the reply it cut is
 an assistant entry with `StopReason::Aborted`, and the kernel's note
-after it an entry by `Author::rig()` (`EntryRef::is_stopped_note`).
+after it an entry by `Author::rig()` (`EntryRef::is_stop_marker`).
 
 ## Commands of your own
 

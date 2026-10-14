@@ -20,10 +20,10 @@ use bevy_log::warn;
 use bevy_tasks::futures_lite::future;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{EffectId, EffectKind, Outcome as Answer};
+use rig_core::effect::{Answered as Answer, EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::message::ToolName;
-use rig_core::serve::{self, Decision, ErasedHandler, Intercept};
+use rig_core::serve::{self, BeforeServe, ErasedHandler, Intercept};
 use rig_core::tool::DynamicTool;
 use rig_harness::prelude::*;
 use rig_rmcp::McpTool;
@@ -463,8 +463,8 @@ impl Intercept for Disconnected {
         "mcp-disconnected".to_owned()
     }
 
-    async fn before(&self, _: EffectId, _: &EffectKind) -> Decision {
-        Decision::Proceed
+    async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
+        BeforeServe::Proceed
     }
 
     async fn after(
@@ -472,18 +472,18 @@ impl Intercept for Disconnected {
         _: EffectId,
         _: &EffectKind,
         outcome: &Result<Answer, ErrorReport>,
-    ) -> serve::Verdict {
+    ) -> serve::AfterServe {
         let failed = match outcome {
             Ok(Answer::ToolResult { result }) => result.is_error(),
             Ok(_) => false,
             Err(_) => true,
         };
         if !failed || !self.sink.is_transport_closed() {
-            return serve::Verdict::Keep;
+            return serve::AfterServe::Keep;
         }
         let why = format!("server `{}` disconnected", self.server);
         let result = ToolResult::failed(ToolExecutionError::other(why));
-        serve::Verdict::Replace(Ok(Answer::ToolResult { result }))
+        serve::AfterServe::Replace(Ok(Answer::ToolResult { result }))
     }
 }
 

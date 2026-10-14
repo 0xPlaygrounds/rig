@@ -37,7 +37,7 @@ pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) ->
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(rig::effect::Outcome::ToolResult { result, .. }) => Some(result.output().render()),
+            Ok(rig::effect::Answered::ToolResult { result, .. }) => Some(result.output().render()),
             _ => None,
         })
         .collect()

@@ -6,13 +6,13 @@
 //! (reasoning a model wrote inside its text, tool calls written as text)
 //! numbers its own with [`Part::new`]. An item also reads back from its
 //! serialized form on its own, unchecked, so a client can decode a relayed
-//! stream as it arrives; [`Transcript::parse`] is the one place a sequence
+//! stream as it arrives; [`StreamRecord::parse`] is the one place a sequence
 //! is checked.
 //!
 //! ```
-//! use rig_core::streaming::{PartKind, StreamEvent, Transcript};
+//! use rig_core::streaming::{PartKind, StreamEvent, StreamRecord};
 //!
-//! let transcript = Transcript::parse(serde_json::json!([
+//! let transcript = StreamRecord::parse(serde_json::json!([
 //!     {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
 //!     {"item": "event", "value": {"event": "text", "part": 0, "text": "Hello"}},
 //!     {"item": "event", "value": {"event": "end", "part": 0,
@@ -33,7 +33,7 @@ use super::UnknownPayload;
 
 /// A part's position in the response's `choice`. A transform that rewrites
 /// a stream numbers the parts it emits with [`Self::new`], and keeps the
-/// order [`Transcript::parse`] checks: each part starts, grows and ends, and
+/// order [`StreamRecord::parse`] checks: each part starts, grows and ends, and
 /// parts are numbered in the order they start.
 ///
 /// ```
@@ -75,7 +75,7 @@ pub enum PartKind {
 
 /// One event of a completion stream: a part starts, grows, or ends with the
 /// content it finalized. Deserializing one event checks nothing about its
-/// order; read a sequence through [`Transcript::parse`] to check it.
+/// order; read a sequence through [`StreamRecord::parse`] to check it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum StreamEvent {
@@ -166,19 +166,19 @@ pub enum Item<E> {
 /// items opened, so a dropped item leaves a gap. Unmodeled payloads may come
 /// anywhere.
 #[derive(Debug, Clone, Default)]
-pub struct Transcript {
+pub struct StreamRecord {
     items: Vec<Item<StreamEvent>>,
     /// Each started part's kind, and whether it ended.
     parts: std::collections::BTreeMap<usize, (PartKind, bool)>,
 }
 
-impl PartialEq for Transcript {
+impl PartialEq for StreamRecord {
     fn eq(&self, other: &Self) -> bool {
         self.items == other.items
     }
 }
 
-impl Serialize for Transcript {
+impl Serialize for StreamRecord {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.items.serialize(serializer)
     }
@@ -206,7 +206,7 @@ pub enum SequenceError {
     Unclosed(usize),
 }
 
-impl Transcript {
+impl StreamRecord {
     /// Read a serialized item sequence, refusing one the writer could not
     /// have produced. Every part must have ended.
     pub fn parse(value: serde_json::Value) -> Result<Self, SequenceError> {
@@ -311,13 +311,13 @@ impl Transcript {
     }
 }
 
-impl From<Transcript> for Vec<Item<StreamEvent>> {
-    fn from(transcript: Transcript) -> Self {
+impl From<StreamRecord> for Vec<Item<StreamEvent>> {
+    fn from(transcript: StreamRecord) -> Self {
         transcript.items
     }
 }
 
-impl<'de> Deserialize<'de> for Transcript {
+impl<'de> Deserialize<'de> for StreamRecord {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = serde_json::Value::deserialize(deserializer)?;
         Self::parse_prefix(value).map_err(serde::de::Error::custom)
@@ -329,7 +329,7 @@ impl<'de> Deserialize<'de> for Transcript {
 const _: fn() = || {
     fn assert_wire<T: Clone + Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}
     assert_wire::<StreamEvent>();
-    assert_wire::<Transcript>();
+    assert_wire::<StreamRecord>();
     assert_wire::<Item<StreamEvent>>();
 };
 

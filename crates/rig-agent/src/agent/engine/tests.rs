@@ -5108,7 +5108,7 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
                 return OutcomeAction::Proceed;
             }
             self.0.fetch_add(1, SeqCst);
-            OutcomeAction::Replace(Ok(rig_core::effect::Outcome::ToolResult {
+            OutcomeAction::Replace(Ok(rig_core::effect::Answered::ToolResult {
                 result: crate::tool::ToolResult::success(crate::tool::ToolOutput::text("revived")),
             }))
         }
@@ -5803,7 +5803,7 @@ impl rig_core::serve::Serve for WrongOutcomeHandler {
         _: rig_core::effect::EffectKind,
         _: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Documents(
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Documents(
             rig_core::effect::RetrievedDocuments::Ids(Vec::new()),
         )))
     }

@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use rig_coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::tool::ToolOutput;
 use serde::Deserialize;

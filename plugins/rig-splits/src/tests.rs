@@ -147,7 +147,7 @@ fn splits_split_again_move_switch_and_merge_back() {
     assert_eq!(ids(&app, agent), first.get(..2).unwrap_or_default());
     let title = |app: &App| {
         let conversation = app.world().get::<Conversation>(agent);
-        conversation.map(|conversation| conversation.branch_title().to_owned())
+        conversation.map(|conversation| conversation.line_title().to_owned())
     };
     assert_eq!(title(&app).as_deref(), Some("blue"));
     assert_eq!(mode(&app, agent), None, "set after the split point");
@@ -421,7 +421,7 @@ fn splits_lists_the_lines_and_compare_shows_each_from_where_they_part() {
     let title = app
         .world()
         .get::<Conversation>(agent)
-        .map(|conversation| conversation.branch_title().to_owned());
+        .map(|conversation| conversation.line_title().to_owned());
     assert_eq!(title.as_deref(), Some("main"));
     std::fs::remove_dir_all(home.root()).ok();
 }

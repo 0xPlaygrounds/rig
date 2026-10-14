@@ -6,7 +6,7 @@ use std::sync::Arc;
 use futures::StreamExt;
 
 use crate::{
-    effect::{EffectKind, HandlerDescriptor, Outcome, family},
+    effect::{Answered, EffectKind, HandlerDescriptor, family},
     streaming::Relayed,
     tool::PublishedContext,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -52,7 +52,7 @@ where
         // rewritten reply.
         let events = match self.inner.handle(kind, dispatch).await {
             Reply::Stream(events) => events,
-            completion @ Reply::Outcome(Ok(Outcome::Completion(_))) => completion.into_stream(),
+            completion @ Reply::Outcome(Ok(Answered::Completion(_))) => completion.into_stream(),
             other => return other,
         };
         let mut map = (self.make)(published);

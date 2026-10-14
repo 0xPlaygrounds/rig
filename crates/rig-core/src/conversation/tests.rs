@@ -4,7 +4,7 @@ fn ids(conversation: &Conversation) -> Vec<MessageId> {
     conversation.entries().map(|entry| entry.id).collect()
 }
 
-fn fold(changes: &[Recorded]) -> Conversation {
+fn fold(changes: &[ChangeRecord]) -> Conversation {
     let mut folded = Conversation::new();
     for change in changes {
         folded
@@ -61,7 +61,7 @@ fn ids_survive_splices_and_nothing_merges() {
     assert_eq!(cut.removed, [first, second]);
     assert_eq!(conversation.index_of(second), None);
     assert_eq!(conversation.start_of(second), 0);
-    let Some(Recorded { by, .. }) = conversation.unsaved().last() else {
+    let Some(ChangeRecord { by, .. }) = conversation.unsaved().last() else {
         panic!("the cut is recorded");
     };
     assert_eq!(by.as_ref(), Some(&Author::plugin("surgeon")));
@@ -104,7 +104,7 @@ fn a_fold_of_the_outbox_equals_the_live_value() {
         .iter()
         .map(|change| serde_json::to_string(change).expect("a change serializes"))
         .collect();
-    let read: Vec<Recorded> = lines
+    let read: Vec<ChangeRecord> = lines
         .iter()
         .map(|line| serde_json::from_str(line).expect("a change reads back"))
         .collect();
@@ -122,7 +122,7 @@ fn a_fold_of_the_outbox_equals_the_live_value() {
     );
 
     let mut wrong = folded.clone();
-    let stale = Recorded {
+    let stale = ChangeRecord {
         change: Change::Splice {
             from: 0,
             to: 1,
@@ -147,14 +147,14 @@ fn a_reset_replaces_the_value_and_the_fold_numbers_as_the_live_one() {
     let mut log = Conversation::from_messages([Message::user("a"), Message::user("b")]);
     log.push(Message::user("c"));
     let replacement = Conversation::from_messages([Message::user("other")]);
-    let reset = Recorded {
+    let reset = ChangeRecord {
         change: Change::Reset {
             state: Box::new(replacement.view()),
         },
         by: Some(Author::plugin("snapshot")),
         at: None,
     };
-    let reset: Recorded =
+    let reset: ChangeRecord =
         serde_json::from_str(&serde_json::to_string(&reset).expect("serializes")).expect("reads");
     let before = log.revision();
     log.apply(&reset).expect("a reset fits anything");
@@ -242,7 +242,7 @@ fn a_reply_stopped_halfway_leaves_the_request_owed() {
     conversation.push(Message::user("never mind"));
     let notes: Vec<bool> = conversation
         .entries()
-        .map(|entry| entry.is_stopped_note())
+        .map(|entry| entry.is_stop_marker())
         .collect();
     assert_eq!(notes, [false, false, true, false]);
 }
@@ -268,7 +268,7 @@ fn a_turn_after_a_stop_is_asked_by_the_users_message() {
 
     let notes: Vec<bool> = conversation
         .asked(start)
-        .map(|entry| entry.is_stopped_note())
+        .map(|entry| entry.is_stop_marker())
         .collect();
     assert_eq!(notes, [false, true, false]);
     assert_eq!(
@@ -344,14 +344,14 @@ fn made_times_fold_as_live_survive_edits_and_resets_and_stay_out_of_equality() {
     assert_eq!(live.index_of_key(other_time), None);
     assert_eq!(keys(&fold(live.unsaved())), keys(&live));
 
-    let reset = Recorded {
+    let reset = ChangeRecord {
         change: Change::Reset {
             state: Box::new(live.view()),
         },
         by: None,
         at: Some(9_000),
     };
-    let reset: Recorded =
+    let reset: ChangeRecord =
         serde_json::from_str(&serde_json::to_string(&reset).expect("serializes")).expect("reads");
     let mut replaced = Conversation::from_messages([Message::user("x")]);
     replaced.apply(&reset).expect("a reset fits anything");
@@ -421,7 +421,7 @@ fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
         .iter()
         .map(|change| serde_json::to_string(change).expect("a change serializes"))
         .collect();
-    let read: Vec<Recorded> = lines
+    let read: Vec<ChangeRecord> = lines
         .iter()
         .map(|line| serde_json::from_str(line).expect("a change reads back"))
         .collect();

@@ -428,7 +428,7 @@ impl Replay {
 
 /// The agent a `subagent` effect's answer names.
 fn spawned_agent(record: &EffectRecord) -> Option<Arc<str>> {
-    let Ok(effect::Outcome::Custom { payload }) = &record.outcome else {
+    let Ok(effect::Answered::Custom { payload }) = &record.outcome else {
         return None;
     };
     (record.kind.name() == SUBAGENT).then_some(())?;
@@ -439,7 +439,7 @@ fn spawned_agent(record: &EffectRecord) -> Option<Arc<str>> {
 fn said(record: &EffectRecord) -> Option<Step> {
     let message = MessageRecord::read(&record.kind)?;
     let delivered = matches!(&record.outcome,
-        Ok(effect::Outcome::Custom { payload }) if payload == "delivered");
+        Ok(effect::Answered::Custom { payload }) if payload == "delivered");
     (delivered && message.author.kind == AuthorKind::User).then(|| Step {
         act: Act::Say(message),
         at_ms: recorded_at(record),
@@ -1040,7 +1040,7 @@ fn answer_from_record(
                     answers.time(effect.id(), &record);
                 }
                 decision.decide(Decider::plugin("session-replay"), Outcome(record.outcome));
-                if let Some(published) = record.tool_output {
+                if let Some(published) = record.published {
                     commands.entity(entity).insert(Published(published));
                 }
             }

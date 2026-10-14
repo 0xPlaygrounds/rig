@@ -238,7 +238,7 @@ pub struct Effect {
     /// How its first answer came.
     answered: Option<Disposition>,
     /// The first answer, which a reviewer may edit.
-    raw: Option<Result<effect::Outcome, ErrorReport>>,
+    raw: Option<Result<effect::Answered, ErrorReport>>,
     /// Who decided the answer, when the kernel applied a decision.
     decided_by: Option<Decider>,
 }
@@ -329,7 +329,7 @@ pub struct Started {
 /// tool call's answer is its result: `Outcome::from(ToolResult)`.
 #[derive(Component, Clone, Debug)]
 #[component(on_insert = answered)]
-pub struct Outcome(pub Result<effect::Outcome, ErrorReport>);
+pub struct Outcome(pub Result<effect::Answered, ErrorReport>);
 
 impl Outcome {
     /// A refusal for `why`, decided before the effect ran. A tool call's
@@ -341,7 +341,7 @@ impl Outcome {
     /// The response a model call answered with, if it did.
     pub fn completion(&self) -> Option<&CompletionResponse> {
         match &self.0 {
-            Ok(effect::Outcome::Completion(response)) => Some(response),
+            Ok(effect::Answered::Completion(response)) => Some(response),
             _ => None,
         }
     }
@@ -350,7 +350,7 @@ impl Outcome {
     /// result, or the failure as an error result.
     pub fn tool_result(&self) -> ToolResult {
         match &self.0 {
-            Ok(effect::Outcome::ToolResult { result }) => result.clone(),
+            Ok(effect::Answered::ToolResult { result }) => result.clone(),
             Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
                 "the tool answered with a {} outcome",
                 other.family()
@@ -362,7 +362,7 @@ impl Outcome {
     /// An answer of a kind of its own, rig-core's custom outcome with
     /// `payload`, such as a plugin's taking over a message.
     pub fn custom(payload: impl Into<serde_json::Value>) -> Self {
-        Self(Ok(effect::Outcome::Custom {
+        Self(Ok(effect::Answered::Custom {
             payload: payload.into(),
         }))
     }
@@ -370,12 +370,12 @@ impl Outcome {
 
 impl From<ToolResult> for Outcome {
     fn from(result: ToolResult) -> Self {
-        Self(Ok(effect::Outcome::ToolResult { result }))
+        Self(Ok(effect::Answered::ToolResult { result }))
     }
 }
 
-impl From<Result<effect::Outcome, ErrorReport>> for Outcome {
-    fn from(outcome: Result<effect::Outcome, ErrorReport>) -> Self {
+impl From<Result<effect::Answered, ErrorReport>> for Outcome {
+    fn from(outcome: Result<effect::Answered, ErrorReport>) -> Self {
         Self(outcome)
     }
 }
@@ -1356,7 +1356,7 @@ fn assemble(
         None => {
             let (key, kind) = kind_of(world, entity)?;
             EffectRecord {
-                tool_output: world
+                published: world
                     .get::<Published>(entity)
                     .map(|published| published.0.clone()),
                 id,

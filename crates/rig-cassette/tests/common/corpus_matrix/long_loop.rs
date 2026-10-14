@@ -40,7 +40,7 @@ use rig_core::effect::EffectKind;
 
 use rig_core::effect::EffectRecord;
 
-use rig_core::effect::Outcome;
+use rig_core::effect::Answered;
 
 use rig_cassette::effect_log::EffectLog;
 
@@ -715,7 +715,7 @@ pub(crate) fn turns(log: &EffectLog) -> Vec<Turn<'_>> {
 /// The calls a completion record's response asked for, in order.
 pub(crate) fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json::Value)> {
     match &record.outcome {
-        Ok(Outcome::Completion(response)) => response
+        Ok(Answered::Completion(response)) => response
             .choice
             .iter()
             .filter_map(|content| match content {
@@ -739,7 +739,7 @@ pub(crate) fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json:
 /// whether its calls ran or a call whose arguments never parse was answered
 /// with an error result.
 pub(crate) fn asked_for_calls(record: &EffectRecord) -> bool {
-    matches!(&record.outcome, Ok(Outcome::Completion(response))
+    matches!(&record.outcome, Ok(Answered::Completion(response))
         if response.choice.iter().any(|content| matches!(content, AssistantContent::ToolCall(_))))
 }
 
@@ -748,7 +748,7 @@ pub(crate) fn asked_for_calls(record: &EffectRecord) -> bool {
 /// (`assert_log` step 1 pins the two orders together).
 pub(crate) fn requested_call_ids(record: &EffectRecord) -> Vec<&rig_core::message::CallId> {
     match &record.outcome {
-        Ok(Outcome::Completion(response)) => response
+        Ok(Answered::Completion(response)) => response
             .choice
             .iter()
             .filter_map(|content| match content {
@@ -775,7 +775,7 @@ pub(crate) fn dispatched_call(record: &EffectRecord) -> (String, serde_json::Val
 
 pub(crate) fn dispatched_result(record: &EffectRecord) -> &rig_core::tool::ToolResult {
     match &record.outcome {
-        Ok(Outcome::ToolResult { result }) => result,
+        Ok(Answered::ToolResult { result }) => result,
         other => panic!("the tool outcome is published: {other:?}"),
     }
 }
@@ -789,7 +789,7 @@ pub(crate) fn request_history(record: &EffectRecord) -> &[Message] {
 
 fn usage(record: &EffectRecord) -> Option<&Usage> {
     match &record.outcome {
-        Ok(Outcome::Completion(response)) => Some(&response.usage),
+        Ok(Answered::Completion(response)) => Some(&response.usage),
         _ => None,
     }
 }
@@ -805,7 +805,7 @@ pub(crate) fn raw_usage(
     thinking: ThinkingWire,
     record: &EffectRecord,
 ) -> (Option<u64>, Option<u64>, Option<u64>) {
-    let Ok(Outcome::Completion(response)) = &record.outcome else {
+    let Ok(Answered::Completion(response)) = &record.outcome else {
         panic!("a completion record")
     };
     let raw = &response.raw;
@@ -1410,7 +1410,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                                 "report": serde_json::to_value(report).expect("the report serializes"),
                             })
                         }
-                        Ok(Outcome::Completion(response)) => {
+                        Ok(Answered::Completion(response)) => {
                             assert!(
                                 provider_errors.is_empty(),
                                 "{}: no completion failed: {provider_errors:?}",
@@ -1442,7 +1442,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                     // settles the run `Ok` with a `Length` finish, the text
                     // its answer.
                     assert!(provider_errors.is_empty());
-                    let Ok(Outcome::Completion(response)) = &last.completion.outcome else {
+                    let Ok(Answered::Completion(response)) = &last.completion.outcome else {
                         panic!("{}: the capped completion answered", cell.name)
                     };
                     assert_eq!(
@@ -1477,7 +1477,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                     // what its arguments state and answered with an error
                     // result, never run, until the turn budget ends the run.
                     assert!(provider_errors.is_empty());
-                    let Ok(Outcome::Completion(response)) = &last.completion.outcome else {
+                    let Ok(Answered::Completion(response)) = &last.completion.outcome else {
                         panic!("{}: the capped completion answered", cell.name)
                     };
                     assert!(

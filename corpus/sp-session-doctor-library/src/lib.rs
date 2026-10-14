@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rig_core::conversation::{
-    ACTIVE, Aside, AsideId, BRANCH, Branch, Conversation, Kept, LINE, TURN,
+    ACTIVE_TITLE, Aside, AsideId, BRANCH, Branch, Conversation, KeptBranch, LINE_VALUES, TURN,
 };
 use rig_core::message::Message;
 use rig_memory::{
@@ -37,7 +37,7 @@ use serde::Serialize;
 
 /// The aside kinds rig's library crates define; any other is unknown to
 /// them.
-const KNOWN: [&str; 6] = [BRANCH, ACTIVE, LINE, TURN, COMPACTED, SPLIT];
+const KNOWN: [&str; 6] = [BRANCH, ACTIVE_TITLE, LINE_VALUES, TURN, COMPACTED, SPLIT];
 
 /// What a saved session is to this build of the library.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -498,7 +498,7 @@ fn write_copy(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, Strin
 /// values, and its whole conversation.
 type Shape<'a> = (
     &'a [Message],
-    Vec<Kept>,
+    Vec<KeptBranch>,
     &'a BTreeMap<String, Versioned>,
     &'a Conversation,
 );

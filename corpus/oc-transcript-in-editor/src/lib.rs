@@ -757,7 +757,7 @@ fn undone(
     let unreadable = |why: LoadError| format!("could not read the session log: {why}");
     let mut edits = Vec::new();
     for (stamp, record) in history(store, log).map_err(unreadable)? {
-        let Record::Change(Recorded { by: Some(by), .. }) = record else {
+        let Record::Change(ChangeRecord { by: Some(by), .. }) = record else {
             continue;
         };
         if by == Author::plugin(PLUGIN) {

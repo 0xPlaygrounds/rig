@@ -128,7 +128,7 @@ impl Material {
                 .filter_map(|(_, aside)| TurnRecord::of(aside))
                 .map(|record| (record.start, record.index)),
         );
-        let active = conversation.branch_title().to_owned();
+        let active = conversation.line_title().to_owned();
         let mut history = conversation.line(None).unwrap_or_default();
         let messages: Vec<Message> = history.iter().map(|entry| entry.message.clone()).collect();
         let running = pending_calls(&messages);

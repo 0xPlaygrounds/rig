@@ -167,7 +167,7 @@ fn the_output_tool_call_carries_the_wires_ids() {
     ] {
         let log = corpus::golden(fixture);
         let call = match &log.records[0].outcome {
-            Ok(rig_core::effect::Outcome::Completion(response)) => response
+            Ok(rig_core::effect::Answered::Completion(response)) => response
                 .choice
                 .iter()
                 .find_map(|content| match content {

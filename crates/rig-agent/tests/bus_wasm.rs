@@ -24,7 +24,7 @@ use std::{
 use rig_agent::bus::{Bus, Dispatcher, EffectStream, Pending};
 use rig_core::serve::ServingPolicy;
 use rig_core::{
-    effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
+    effect::{Answered, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
     error::ErrorKind,
     serve::{Dispatch, Reply, Serve},
 };
@@ -55,7 +55,7 @@ impl Serve for Echo {
         match kind {
             EffectKind::Custom { payload, .. } => {
                 self.served.set(self.served.get() + 1);
-                Reply::Outcome(Ok(Outcome::Custom { payload }))
+                Reply::Outcome(Ok(Answered::Custom { payload }))
             }
             EffectKind::Completion { stream: true, .. } => {
                 struct Cancelled(Arc<AtomicUsize>);
@@ -142,7 +142,7 @@ async fn a_unary_dispatch_resolves_through_a_spawn_local_driver() {
         .dispatch(&HandlerKey::from("echo"), custom(7))
         .await
         .expect("served");
-    assert!(matches!(outcome, Outcome::Custom { payload: ref v } if v["n"] == 7));
+    assert!(matches!(outcome, Answered::Custom { payload: ref v } if v["n"] == 7));
     assert_eq!(served.get(), 1);
 
     // Polled once per yield with a no-op waker too: what a frame-ticked
@@ -211,5 +211,5 @@ async fn a_stream_dropped_mid_flight_is_observed_by_the_handler() {
         .dispatch(&HandlerKey::from("echo"), custom(1))
         .await
         .expect("served after the cancel");
-    assert!(matches!(outcome, Outcome::Custom { payload: _ }));
+    assert!(matches!(outcome, Answered::Custom { payload: _ }));
 }

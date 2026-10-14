@@ -273,7 +273,7 @@ const _: fn(&Registrar) = |registrar| {
             _dispatch: rig_core::serve::Dispatch,
         ) -> rig_core::serve::Reply {
             self.0.set(self.0.get() + 1);
-            return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+            return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
                 payload: serde_json::Value::Null,
             }));
         }

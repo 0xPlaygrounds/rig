@@ -19,7 +19,7 @@ pub const BRANCH: &str = "rig.branch";
 /// The kind of the aside holding the active continuation's title (a
 /// string), which only rig-core writes. It follows no entry, so it stays
 /// with the active line.
-pub const ACTIVE: &str = "rig.branch.active";
+pub const ACTIVE_TITLE: &str = "rig.branch.active";
 
 /// The active continuation's title until a branch names it.
 pub const MAIN: &str = "main";
@@ -28,11 +28,11 @@ pub const MAIN: &str = "main";
 /// `{key: value}`), which only rig-core writes: what was set on the line
 /// while it had no entry of its own. It follows no entry, so it stays with
 /// the active line, and a branch carries it as [`Branch::values`].
-pub const LINE: &str = "rig.line";
+pub const LINE_VALUES: &str = "rig.line";
 
 /// An inactive branch, as [`Conversation::branches`] lists it.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Kept {
+pub struct KeptBranch {
     /// Its aside: what [`Conversation::switch_branch`] and
     /// [`Conversation::line`] take.
     pub id: AsideId,
@@ -136,9 +136,9 @@ impl Conversation {
     /// The active continuation's title: [`MAIN`] until
     /// [`branch_off`](Self::branch_off) or
     /// [`switch_branch`](Self::switch_branch) names it.
-    pub fn branch_title(&self) -> &str {
+    pub fn line_title(&self) -> &str {
         let mut asides = self.asides.iter();
-        let title = asides.find(|(_, aside)| aside.kind == ACTIVE);
+        let title = asides.find(|(_, aside)| aside.kind == ACTIVE_TITLE);
         title
             .and_then(|(_, aside)| aside.value.as_str())
             .unwrap_or(MAIN)
@@ -146,7 +146,7 @@ impl Conversation {
 
     /// Every inactive branch, those kept inside other branches too: each
     /// comes after the one it is kept in, in the order put.
-    pub fn branches(&self) -> Vec<Kept> {
+    pub fn branches(&self) -> Vec<KeptBranch> {
         let active: Vec<MessageId> = self.meta.iter().map(|meta| meta.id).collect();
         let mut found = Vec::new();
         for (id, aside) in &self.asides {
@@ -178,7 +178,7 @@ impl Conversation {
 
     /// Keeps entries `at..`, maybe none, with the saved asides that follow
     /// them, the halt and the line values, as a branch titled as the active
-    /// continuation is ([`branch_title`](Self::branch_title)), following
+    /// continuation is ([`line_title`](Self::line_title)), following
     /// entry `at - 1`, and takes them out: the conversation goes on from
     /// that entry as the branch titled `title`. `at` may be the length: a
     /// new branch at the end, which starts with a copy of the line values
@@ -206,7 +206,7 @@ impl Conversation {
             return Err(BranchError::PartsCall);
         }
         let point = at.checked_sub(1).and_then(|at| self.id(at));
-        let left = self.branch_title().to_owned();
+        let left = self.line_title().to_owned();
         let values = self.line_values().cloned().unwrap_or_default();
         let branch = self.stash(at, left, &by)?;
         let id = self.add_aside(Aside::new(BRANCH, by.clone(), branch).after(point));
@@ -238,11 +238,11 @@ impl Conversation {
     /// let by = Author::plugin("tree");
     /// let first = conversation.branch_off(1, "blue", by.clone())?;
     /// conversation.push(Message::assistant("Blue."));
-    /// assert_eq!(conversation.branch_title(), "blue");
+    /// assert_eq!(conversation.line_title(), "blue");
     /// conversation.switch_branch(first, by)?;
     /// assert_eq!(conversation.messages().get(1), Some(&Message::assistant("Red.")));
     /// assert_eq!(conversation.id(1), red);
-    /// assert_eq!(conversation.branch_title(), "main");
+    /// assert_eq!(conversation.line_title(), "main");
     /// let kept = conversation.branches();
     /// assert_eq!(kept.iter().map(|kept| kept.branch.title.as_str()).collect::<Vec<_>>(), ["blue"]);
     /// # Ok::<(), rig_core::conversation::BranchError>(())
@@ -284,7 +284,7 @@ impl Conversation {
         let aside = self.aside(id).ok_or(BranchError::NotABranch(id))?;
         let branch = Branch::of(aside).ok_or(BranchError::NotABranch(id))?;
         let (point, at) = (aside.after, self.aside_position(aside));
-        let left = self.branch_title().to_owned();
+        let left = self.line_title().to_owned();
         self.forget_aside(id, by);
         let kept = self.stash(at, left, by)?;
         let spliced = self.restore(at.., branch.entries, by.clone());
@@ -307,12 +307,12 @@ impl Conversation {
     /// own since it parted. `None` when it has none, as most lines.
     pub fn line_values(&self) -> Option<&Map<String, Value>> {
         let mut asides = self.asides.iter();
-        let line = asides.find(|(_, aside)| aside.kind == LINE);
+        let line = asides.find(|(_, aside)| aside.kind == LINE_VALUES);
         line.and_then(|(_, aside)| aside.value.as_object())
     }
 
     /// Sets (`Some`) or removes (`None`) the active line's value `key`: one
-    /// aside of kind [`LINE`] before the first entry, replaced in place, and
+    /// aside of kind [`LINE_VALUES`] before the first entry, replaced in place, and
     /// none when the line has no values. Made by `by`.
     pub fn set_line_value(&mut self, key: &str, value: Option<Value>, by: Author) {
         let mut values = self.line_values().cloned().unwrap_or_default();
@@ -331,7 +331,7 @@ impl Conversation {
         asides.any(|(_, aside)| aside.kind == BRANCH && self.aside_position(aside) == end)
     }
 
-    /// Makes `values` the active line's values: one [`LINE`] aside, replaced
+    /// Makes `values` the active line's values: one [`LINE_VALUES`] aside, replaced
     /// in place, and none when empty.
     fn put_line_values(&mut self, values: Map<String, Value>, by: &Author) {
         if self
@@ -340,10 +340,10 @@ impl Conversation {
         {
             return;
         }
-        let known = self.asides().find(|(_, aside)| aside.kind == LINE);
+        let known = self.asides().find(|(_, aside)| aside.kind == LINE_VALUES);
         let known = known.map(|(id, _)| id);
         let empty = values.is_empty();
-        let aside = Aside::new(LINE, by.clone(), Value::Object(values));
+        let aside = Aside::new(LINE_VALUES, by.clone(), Value::Object(values));
         match known {
             Some(id) if empty => self.forget_aside(id, by),
             Some(id) => drop(self.replace_aside(id, aside)),
@@ -351,15 +351,15 @@ impl Conversation {
         }
     }
 
-    /// Titles the active continuation `title`: one [`ACTIVE`] aside,
+    /// Titles the active continuation `title`: one [`ACTIVE_TITLE`] aside,
     /// replaced in place, and none for [`MAIN`].
     fn title_branch(&mut self, title: String, by: &Author) {
-        if self.branch_title() == title {
+        if self.line_title() == title {
             return;
         }
-        let known = self.asides().find(|(_, aside)| aside.kind == ACTIVE);
+        let known = self.asides().find(|(_, aside)| aside.kind == ACTIVE_TITLE);
         let known = known.map(|(id, _)| id);
-        let aside = Aside::new(ACTIVE, by.clone(), serde_json::Value::String(title));
+        let aside = Aside::new(ACTIVE_TITLE, by.clone(), serde_json::Value::String(title));
         match known {
             Some(id) if aside.value == MAIN => self.forget_aside(id, by),
             Some(id) => drop(self.replace_aside(id, aside)),
@@ -590,7 +590,10 @@ impl Conversation {
         let shared = path.first().map_or(end, |kept| kept.at.min(end));
         let ids: HashSet<MessageId> = entries.iter().filter_map(|entry| entry.id).collect();
         let copied = |id: &AsideId, aside: &Aside| {
-            aside.saved && !on_path.contains(id) && aside.kind != ACTIVE && aside.kind != LINE
+            aside.saved
+                && !on_path.contains(id)
+                && aside.kind != ACTIVE_TITLE
+                && aside.kind != LINE_VALUES
         };
         let mut asides: Vec<(AsideId, Aside)> = self
             .asides()
@@ -610,7 +613,7 @@ impl Conversation {
                 kept.branch.halted,
             ),
             None => (
-                self.branch_title().to_owned(),
+                self.line_title().to_owned(),
                 self.line_values().cloned().unwrap_or_default(),
                 self.halted,
             ),
@@ -623,10 +626,10 @@ impl Conversation {
         };
         let mut first = Vec::new();
         if title != MAIN {
-            first.push(own(ACTIVE, Value::String(title)));
+            first.push(own(ACTIVE_TITLE, Value::String(title)));
         }
         if whole && !values.is_empty() {
-            first.push(own(LINE, Value::Object(values)));
+            first.push(own(LINE_VALUES, Value::Object(values)));
         }
         first.extend(asides);
         let state = State {
@@ -701,7 +704,7 @@ impl Conversation {
 /// Lists `branch`, kept as `id` in `inside` sharing `at` entries of
 /// `line` (the ids of the line it is kept in), then the branches kept in it.
 fn keep(
-    found: &mut Vec<Kept>,
+    found: &mut Vec<KeptBranch>,
     (id, inside, at): (AsideId, Option<AsideId>, usize),
     branch: Branch,
     line: &[MessageId],
@@ -720,7 +723,7 @@ fn keep(
             Some((*inner, at, branch))
         })
         .collect();
-    found.push(Kept {
+    found.push(KeptBranch {
         id,
         inside,
         at,
@@ -758,7 +761,7 @@ fn put_in(
 /// The branches from the active line to branch `id` in `kept`, outermost
 /// first; `None` when it is not there. Each branch's enclosing one is
 /// listed before it, so the walk only goes back.
-fn path(kept: &[Kept], id: AsideId) -> Option<Vec<&Kept>> {
+fn path(kept: &[KeptBranch], id: AsideId) -> Option<Vec<&KeptBranch>> {
     let mut path = Vec::new();
     let mut next = Some(id);
     let mut before = kept.len();

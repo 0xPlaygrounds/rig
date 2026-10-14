@@ -1,4 +1,4 @@
-use rig_core::effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Outcome};
+use rig_core::effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey};
 use rig_core::error::ErrorKind;
 
 use super::{Divergence, RecordedAnswers};
@@ -23,7 +23,7 @@ fn record(id: u64, scope: Option<&str>, kind: EffectKind, answer: &str) -> Effec
         EffectId::from_raw(id),
         HandlerKey::from("handler"),
         kind,
-        Ok(Outcome::Custom {
+        Ok(Answered::Custom {
             payload: answer.into(),
         }),
     );
@@ -33,7 +33,7 @@ fn record(id: u64, scope: Option<&str>, kind: EffectKind, answer: &str) -> Effec
 
 fn answered(record: Result<EffectRecord, Divergence>) -> Option<String> {
     match record.ok()?.outcome {
-        Ok(Outcome::Custom { payload }) => payload.as_str().map(str::to_owned),
+        Ok(Answered::Custom { payload }) => payload.as_str().map(str::to_owned),
         _ => None,
     }
 }

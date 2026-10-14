@@ -2,13 +2,13 @@ use futures::stream;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
-use rig::streaming::{Item, Transcript};
+use rig::streaming::{Item, StreamRecord};
 
 use crate::reasoning::collect_stream_stats;
 
 /// A text fragment, cut from a stream that opened its part.
 fn text(text: &str) -> Item<rig::streaming::StreamEvent> {
-    Transcript::parse_prefix(serde_json::json!([
+    StreamRecord::parse_prefix(serde_json::json!([
         {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
         {"item": "event", "value": {"event": "text", "part": 0, "text": text}},
     ]))

@@ -210,7 +210,7 @@ fn has<C: Component>(app: &App, entity: Entity) -> bool {
 }
 
 /// An outcome as it is written in a log.
-fn output(outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>) -> String {
+fn output(outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>) -> String {
     serde_json::to_string(outcome).unwrap_or_default()
 }
 
@@ -1907,7 +1907,7 @@ fn a_tools_annotations_give_its_footprint_and_what_it_publishes_lands_on_its_cal
         |record| matches!(&record.kind, EffectKind::ToolCall { name, .. } if name == "probe"),
     );
     let recorded = probe
-        .and_then(|record| record.tool_output)
+        .and_then(|record| record.published)
         .and_then(|output| output.get::<ExitStatus>().ok().flatten());
     assert_eq!(recorded, Some(ExitStatus::Exited(0)));
 }
@@ -2642,7 +2642,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
         assert_eq!(ended, Some(TurnEnd::Stopped { why: None }));
         conversation.push(Message::user("never mind"));
         let note = conversation.entries().rev().nth(1);
-        assert!(note.is_some_and(|entry| entry.is_stopped_note()));
+        assert!(note.is_some_and(|entry| entry.is_stop_marker()));
     }
     // A late release starts nothing.
     for _ in 0..3 {
@@ -3470,7 +3470,7 @@ fn a_call_knows_the_model_it_went_to_and_what_its_adapters_published() {
     );
     let recorded = model_records(&app)
         .into_iter()
-        .filter_map(|record| record.tool_output)
+        .filter_map(|record| record.published)
         .map(|output| output.get::<Rewritten>().ok().flatten())
         .collect::<Vec<_>>();
     assert_eq!(recorded, [Some(Rewritten(true))]);

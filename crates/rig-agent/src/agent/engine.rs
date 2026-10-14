@@ -14,7 +14,7 @@ use tracing::{Instrument, span::Id};
 use rig_core::error::ProviderError;
 use rig_core::{
     completion::ModelRef,
-    effect::{EffectKind, Outcome},
+    effect::{Answered, EffectKind},
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message, ToolCall, ToolFunction, ToolName},
     telemetry::SpanCombinator,
@@ -1155,7 +1155,7 @@ pub(crate) async fn settle_model_turn<M>(
     let mut replaced: Option<Vec<AssistantContent>> = None;
     match action {
         OutcomeAction::Proceed => {}
-        OutcomeAction::Replace(Ok(Outcome::Completion(replacement))) => {
+        OutcomeAction::Replace(Ok(Answered::Completion(replacement))) => {
             run.replace_accepted_turn_choice(replacement.choice.clone())?;
             replaced = Some(replacement.choice);
         }
@@ -1240,7 +1240,7 @@ pub(crate) async fn dispatch_effect(
     ctx: &HookContext,
     key: &rig_core::effect::HandlerKey,
     kind: EffectKind,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Answered, ErrorReport> {
     let scope = DispatchScope::open(runner, ctx, kind, None)
         .await
         .map_err(|(_, report)| report)?;
@@ -1254,7 +1254,7 @@ pub(crate) async fn dispatch_effect(
     }
 }
 
-pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> ErrorReport {
+pub(crate) fn wrong_outcome(expected: &str, outcome: &Answered) -> ErrorReport {
     ErrorReport::new(
         ErrorKind::Internal,
         format!(
@@ -1594,8 +1594,8 @@ pub(crate) async fn dispatch_tool_call(
     };
     let mut published: Option<crate::tool::ToolContext> = None;
     let mut executed = false;
-    let outcome: Result<Outcome, ErrorReport> = match denied {
-        Some(report) => Ok(Outcome::ToolResult {
+    let outcome: Result<Answered, ErrorReport> = match denied {
+        Some(report) => Ok(Answered::ToolResult {
             result: ToolResult::skipped(report.message),
         }),
         None => match tool_snapshot.key(tool_name) {
@@ -1608,11 +1608,11 @@ pub(crate) async fn dispatch_tool_call(
                 let published_at = pending.published_context();
                 let outcome = pending.await;
                 executed =
-                    matches!(&outcome, Ok(Outcome::ToolResult { result }) if !result.is_skipped());
+                    matches!(&outcome, Ok(Answered::ToolResult { result }) if !result.is_skipped());
                 published = published_at.and_then(|published| published.take());
                 outcome
             }
-            None => Ok(Outcome::ToolResult {
+            None => Ok(Answered::ToolResult {
                 result: ToolResult::failed(
                     crate::tool::ToolExecutionError::not_found(format!(
                         "no tool named `{tool_name}` is registered"
@@ -1631,7 +1631,7 @@ pub(crate) async fn dispatch_tool_call(
         OutcomeAction::Replace(replaced) => replaced,
     };
     let result = match outcome {
-        Ok(Outcome::ToolResult { result }) => result,
+        Ok(Answered::ToolResult { result }) => result,
         Ok(other) => ToolResult::failed(crate::tool::ToolExecutionError::other(format!(
             "the tool handler answered with a {} outcome",
             other.family()

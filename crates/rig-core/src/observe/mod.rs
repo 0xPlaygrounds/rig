@@ -18,7 +18,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    effect::{EffectFamily, EffectId, HandlerKey, Outcome},
+    effect::{Answered, EffectFamily, EffectId, HandlerKey},
     error::ErrorReport,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -234,7 +234,7 @@ pub enum OutcomeSummary {
 
 impl OutcomeSummary {
     /// The summary of an outcome.
-    pub fn of(outcome: &Result<Outcome, ErrorReport>) -> Self {
+    pub fn of(outcome: &Result<Answered, ErrorReport>) -> Self {
         match outcome {
             Ok(outcome) => Self::Ok {
                 family: outcome.family(),

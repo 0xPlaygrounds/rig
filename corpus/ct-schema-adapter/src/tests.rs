@@ -95,9 +95,9 @@ impl Intercept for StrictProvider {
         "strict-provider".to_owned()
     }
 
-    async fn before(&self, _id: EffectId, kind: &EffectKind) -> serve::Decision {
+    async fn before(&self, _id: EffectId, kind: &EffectKind) -> serve::BeforeServe {
         let EffectKind::Completion { request, .. } = kind else {
-            return serve::Decision::Proceed;
+            return serve::BeforeServe::Proceed;
         };
         self.0
             .lock()
@@ -108,10 +108,10 @@ impl Intercept for StrictProvider {
             .iter()
             .find_map(|tool| Some((tool.name.as_str(), forbidden(&tool.parameters)?)));
         match refused {
-            Some((tool, keyword)) => serve::Decision::deny(format!(
+            Some((tool, keyword)) => serve::BeforeServe::deny(format!(
                 "invalid schema for function `{tool}`: `{keyword}` is not supported"
             )),
-            None => serve::Decision::Proceed,
+            None => serve::BeforeServe::Proceed,
         }
     }
 
@@ -120,8 +120,8 @@ impl Intercept for StrictProvider {
         _id: EffectId,
         _kind: &EffectKind,
         _outcome: &Result<Answered, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
+    ) -> AfterServe {
+        AfterServe::Keep
     }
 }
 

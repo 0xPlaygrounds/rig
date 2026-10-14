@@ -1,4 +1,4 @@
-use rig_core::effect::{EffectId, EffectKind, Outcome};
+use rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::app_on;
 
@@ -11,7 +11,7 @@ fn record(id: u64, agent: &str, kind: &str, turn: u64) -> EffectRecord {
         kind: kind.into(),
         payload: rig_core::serde_json::json!({ "id": id }),
     };
-    let outcome = Ok(Outcome::Custom {
+    let outcome = Ok(Answered::Custom {
         payload: rig_core::serde_json::Value::Null,
     });
     let mut record = EffectRecord::new(EffectId::from_raw(id), "plugin".into(), kind, outcome);

@@ -10,7 +10,7 @@ use rig_cassette::effect_log::EffectLog;
 use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_core::catalog::Catalog;
 use rig_core::completion::Usage;
-use rig_core::effect::{Disposition, EffectKind, EffectRecord, FamilyDescriptor, Outcome};
+use rig_core::effect::{Answered, Disposition, EffectKind, EffectRecord, FamilyDescriptor};
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::prelude::SessionStores;
 use serde::Serialize;
@@ -331,7 +331,7 @@ fn spending(
             .map(|end| (record.started_ms.unwrap_or(end).min(end), end));
         let agent = record.scope.as_deref();
         let (model, row) = match (&record.kind, &record.outcome) {
-            (EffectKind::Completion { .. }, Ok(Outcome::Completion(response)))
+            (EffectKind::Completion { .. }, Ok(Answered::Completion(response)))
                 if record.disposition == Disposition::Ran =>
             {
                 let model = model_of(log, record).unwrap_or_else(|| {

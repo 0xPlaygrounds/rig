@@ -1,7 +1,7 @@
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_core::effect::{Decider, Disposition, EffectKind, Outcome as EffectOutcome};
+use rig_core::effect::{Answered as EffectOutcome, Decider, Disposition, EffectKind};
 use rig_ecs::agent::{Agent, Conversation};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Incoming};
 use rig_ecs::journal::SessionStore;

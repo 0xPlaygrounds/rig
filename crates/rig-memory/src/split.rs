@@ -170,7 +170,7 @@ pub fn lines(conversation: &Conversation) -> Vec<Line> {
     let kept = conversation.branches();
     let active = Line {
         id: LineId::Active,
-        title: conversation.branch_title().to_owned(),
+        title: conversation.line_title().to_owned(),
         inside: None,
         at: 0,
         entries: conversation.messages().len(),

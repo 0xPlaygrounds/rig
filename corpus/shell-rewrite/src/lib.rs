@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 use bevy_log::warn;
 use corpus_protected_paths::ProtectedPathsSystems;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
 use serde::Deserialize;
