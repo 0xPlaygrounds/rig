@@ -7,6 +7,8 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, calls, reply, run_until, scripted_models};
 use rig_subagents::SubagentsPlugin;
 
+use rig_tui::{Editor, MainEditor};
+
 use super::*;
 
 /// A tool the test answers itself, or never.
@@ -210,7 +212,13 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         .get::<Conversation>(agent)
         .map(|c| c.messages().len());
     press(&mut app, "Send the side answer to the agent");
-    assert_eq!(app.world().resource::<TuiInput>().text(), "X is Y");
+    let world = app.world_mut();
+    let input = world
+        .query_filtered::<&Editor, With<MainEditor>>()
+        .single(world)
+        .map(|editor| editor.text().to_owned())
+        .ok();
+    assert_eq!(input.as_deref(), Some("X is Y"));
     for _ in 0..3 {
         app.update();
     }

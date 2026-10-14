@@ -37,8 +37,8 @@ use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::{Block, Paragraph, Wrap};
 use rig_tui::{
     AppKeyBindingsExt, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
-    KeyScope, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiInput, TuiPanel, TuiPlugin,
-    TuiSystems,
+    KeyScope, MainInput, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiPanel,
+    TuiPlugin, TuiSystems,
 };
 use serde::Deserialize;
 
@@ -418,14 +418,17 @@ fn close_on_key(
 fn send_to_agent(
     pressed: On<KeyPressed>,
     mut chat: ResMut<SideChat>,
-    mut input: ResMut<TuiInput>,
+    input: Option<MainInput>,
     mut focus: ResMut<KeyFocus>,
     mut commands: Commands,
 ) {
     if pressed.released {
         return;
     }
-    if let Some(answer) = chat.last_answer().filter(|answer| !answer.is_empty()) {
+    if let (Some(answer), Some(mut input)) = (
+        chat.last_answer().filter(|answer| !answer.is_empty()),
+        input,
+    ) {
         input.set(answer.to_owned());
     }
     close(&mut chat, &mut commands);
