@@ -6,7 +6,7 @@ use rig_harness::harness_protocol::SessionId;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{app_in, first_agent, scratch_home};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use rig_tui::{KeyBinding, KeyFocus, KeyInput, KeyPressed, TerminalEvents, TuiInput};
+use rig_tui::{Editor, KeyBinding, KeyFocus, KeyInput, KeyPressed, MainEditor, TerminalEvents};
 
 use super::*;
 use crate::tui::Palette;
@@ -106,7 +106,12 @@ fn first(world: &mut World, filter: &str) -> Option<String> {
 fn ranks_live_entries_runs_a_pick_and_lists_it_first_next_time() {
     let home = scratch_home("command-palette");
     let (mut app, agent) = start(&home);
-    app.world_mut().resource_mut::<TuiInput>().set("my draft");
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut Editor, With<MainEditor>>();
+    let drafted = main
+        .single_mut(world)
+        .map(|mut input| input.set("my draft"));
+    assert!(drafted.is_ok(), "the default screen has a main editor");
 
     // Opened, the palette has the keys and ranks what exists as its filter
     // changes; the draft stays in the input.
@@ -160,7 +165,10 @@ fn ranks_live_entries_runs_a_pick_and_lists_it_first_next_time() {
     assert!(type_keys(&mut app, &keys).is_empty());
     app.update();
     assert!(app.world().resource::<Striped>().0);
-    assert_eq!(app.world().resource::<TuiInput>().text(), "my draft");
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&Editor, With<MainEditor>>();
+    let draft = main.single(world).map(Editor::text);
+    assert_eq!(draft.ok(), Some("my draft"));
     assert_eq!(
         first(app.world_mut(), "").as_deref(),
         Some("/zebra-stripes")
