@@ -14,7 +14,6 @@
 //! writes it), then adds the step from `N` here; a test reads every fixture
 //! with the current reader. Fixtures are never edited.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::io;
 
@@ -84,16 +83,14 @@ pub(crate) fn each_record<E>(
     let records = steps(version).filter_map(|step| step.record);
     let records: Vec<fn(Value) -> Result<Vec<Value>, String>> = records.collect();
     for (line, _, bytes) in lines.iter().skip(1) {
-        let now: Vec<Cow<'_, [u8]>> = if records.is_empty() {
-            vec![Cow::Borrowed(bytes)]
-        } else {
-            record_now(&records, bytes)
-                .map_err(|why| refuse(line, why))?
-                .into_iter()
-                .map(Cow::Owned)
-                .collect()
-        };
-        for record in now {
+        // A record no step changes costs nothing.
+        if records.is_empty() {
+            if each(line, bytes)?.is_break() {
+                return Ok(());
+            }
+            continue;
+        }
+        for record in record_now(&records, bytes).map_err(|why| refuse(line, why))? {
             if each(line, &record)?.is_break() {
                 return Ok(());
             }
