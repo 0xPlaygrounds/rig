@@ -16,7 +16,7 @@ use serde_json::Value;
 
 use crate::blobs::{named_blobs, store_change};
 use crate::format::{Body, Header, LogLines, Meta, Rewrote, parse, write_change, write_meta};
-use crate::session::{Fold, Folded, fold_lines, log_lines};
+use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
 use crate::writer::set_aside_tail;
 use crate::{LoadError, MemoryStore, Stamp, Store, now_ms};
 
@@ -456,13 +456,10 @@ pub(crate) fn map_log(
         line,
         why,
     };
-    let Some((line, _, first)) = records.next() else {
+    let Some((_, _, first)) = records.next() else {
         return Ok(None);
     };
-    let header = match parse(first) {
-        Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
-        _ => return Err(refuse(line, "no header".to_owned())),
-    };
+    let header = read_header(name, first)?;
     let mut mapped = Mapped {
         last: header.0,
         header,

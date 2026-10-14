@@ -141,26 +141,7 @@ fn read_lines(
         line,
         why,
     };
-    let (started, header) = match parse(first) {
-        Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
-        _ => {
-            let found = serde_json::from_slice::<Header>(first)
-                .ok()
-                .and_then(|header| header.format);
-            return Err(LoadError::Format {
-                log: name.to_owned(),
-                found,
-            });
-        }
-    };
-    if header.format.as_deref() != Some(FORMAT) {
-        let found = header.format;
-        let log = name.to_owned();
-        return Err(LoadError::Format { log, found });
-    }
-    if !header.lineage.is_log() {
-        return Err(refuse(1, "a header without the log's lineage".to_owned()));
-    }
+    let (started, header) = read_header(name, first)?;
     let mut last = started;
     for (line, _, bytes) in records {
         let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
@@ -180,6 +161,36 @@ fn read_lines(
         started,
         last,
     }))
+}
+
+/// The header `first`, the first line of the log `name`, read strictly:
+/// of this format, with the log's lineage.
+pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), LoadError> {
+    let (started, header) = match parse(first) {
+        Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
+        _ => {
+            let found = serde_json::from_slice::<Header>(first)
+                .ok()
+                .and_then(|header| header.format);
+            return Err(LoadError::Format {
+                log: name.to_owned(),
+                found,
+            });
+        }
+    };
+    if header.format.as_deref() != Some(FORMAT) {
+        let found = header.format;
+        let log = name.to_owned();
+        return Err(LoadError::Format { log, found });
+    }
+    if !header.lineage.is_log() {
+        return Err(LoadError::Record {
+            log: name.to_owned(),
+            line: 1,
+            why: "a header without the log's lineage".to_owned(),
+        });
+    }
+    Ok((started, header))
 }
 
 /// How a log is folded.

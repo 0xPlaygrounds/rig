@@ -12,7 +12,7 @@ use rig_core::conversation::{
 
 use crate::format::{LogLines, Meta, SESSION, write_change, write_meta};
 use crate::rewrite::{Place, Rewrite, map_aside, map_log};
-use crate::session::{Fold, Folded, fold, fold_lines, log_lines};
+use crate::session::{Fold, Folded, fold_lines, log_lines};
 use crate::{LoadError, MemoryStore, Stamp, Store};
 
 /// What [`fork`] copied beyond the records before the cut.
@@ -73,30 +73,40 @@ pub fn fork(
     before: Option<(&str, MessageId)>,
     with: &dyn Rewrite,
 ) -> Result<Forked, LoadError> {
-    let until = match before {
-        None => None,
+    // The cut log, read and folded once: for where the message was made,
+    // then as it is now.
+    let (until, mut cut) = match before {
+        None => (None, None),
         Some((log, id)) => {
-            let folded = fold(from, log, Fold::default())?;
-            let made = folded.and_then(|folded| folded.made.get(&id).copied());
+            let read = read_now(from, log)?;
+            let made = read
+                .as_ref()
+                .and_then(|(_, now)| now.made.get(&id).copied());
             let Some(made) = made else {
                 let why = format!("the log {log} made no message {id:?}");
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, why).into());
             };
-            Some(made.n)
+            (Some(made.n), read.map(|read| (log, read)))
         }
     };
     let blobs = MemoryStore::default();
-    let no_images = |_: &str| Err(io::ErrorKind::NotFound.into());
     let mut names = from.logs()?;
     names.sort();
     let mut copies: Vec<Copy> = Vec::new();
     let mut carries: Vec<Carry> = Vec::new();
     for name in names {
-        let Some(lines) = log_lines(from, &name)? else {
-            continue;
-        };
-        let Some(now) = fold_lines(&name, &lines, Fold::default(), &no_images)? else {
-            continue;
+        // Each log read once; folded as it is now only after a cut, for
+        // the asides carried.
+        let (lines, now) = match (until, cut.take_if(|(log, _)| *log == name)) {
+            (_, Some((_, (lines, now)))) => (lines, Some(now)),
+            (Some(_), None) => match read_now(from, &name)? {
+                Some((lines, now)) => (lines, Some(now)),
+                None => continue,
+            },
+            (None, None) => match log_lines(from, &name)? {
+                Some(lines) => (lines, None),
+                None => continue,
+            },
         };
         let Some(mapped) = map_log(&name, &lines, until, with, &blobs)? else {
             continue;
@@ -118,8 +128,8 @@ pub fn fork(
             }
         })?;
         let copy = copies.len();
-        if let Some(until) = until {
-            carries.extend(carried(copy, &name, &now, &folded, until, with));
+        if let (Some(until), Some(now)) = (until, &now) {
+            carries.extend(carried(copy, &name, now, &folded, until, with));
         }
         copies.push(Copy {
             next_seq: mapped.last.seq.saturating_add(1),
@@ -188,6 +198,21 @@ pub fn fork(
         }
     }
     Ok(forked)
+}
+
+/// No images: a fork copies the blobs, and its folds never read them.
+fn no_images(_: &str) -> io::Result<Vec<u8>> {
+    Err(io::ErrorKind::NotFound.into())
+}
+
+/// The log `name` of `from` and its strict fold as it is now; `None` when
+/// it holds no complete line.
+fn read_now(from: &dyn Store, name: &str) -> Result<Option<(LogLines, Folded)>, LoadError> {
+    let Some(lines) = log_lines(from, name)? else {
+        return Ok(None);
+    };
+    let now = fold_lines(name, &lines, Fold::default(), &no_images)?;
+    Ok(now.map(|now| (lines, now)))
 }
 
 /// The asides of the log `log` to carry into its copy `copy`, which ends
