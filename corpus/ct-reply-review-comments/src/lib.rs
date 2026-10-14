@@ -30,7 +30,7 @@ use rig_harness::rig_core::conversation::{
 use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_memory::{self, Record, Store};
-use rig_tui::{TranscriptItem, TranscriptView};
+use rig_tui::{MainPane, TranscriptItem, TranscriptView};
 use serde::{Deserialize, Serialize};
 
 /// The plugin's name, the author of its asides.
@@ -356,7 +356,7 @@ fn comment(
     In(args): In<CommandArgs>,
     agents: Query<(&Conversation, &AgentId)>,
     store: Option<Res<SessionStore>>,
-    view: Option<Res<TranscriptView>>,
+    view: Option<Single<&TranscriptView, With<MainPane>>>,
     answerers: Answerers,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
