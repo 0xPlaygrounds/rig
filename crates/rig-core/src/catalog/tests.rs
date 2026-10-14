@@ -596,11 +596,15 @@ fn a_spec_built_in_code_joins_the_catalog() {
         bare.with_context_window(32_768)
             .with_tools(true)
             .with_pricing(Pricing::new(0.1, 0.4).with_cache_read(0.01))
-            .with_compat(Compat::default().with_reasoning_field("reasoning_content")),
+            .with_compat(
+                Compat::default()
+                    .with_reasoning_field("reasoning_content")
+                    .with_prefill(true),
+            ),
     );
     let qwen = spec(&catalog, "ollama", "qwen3:4b");
     assert_eq!(qwen.context_window, Some(32_768));
-    assert!(qwen.tools);
+    assert!(qwen.tools && qwen.compat.prefill);
     assert_eq!(
         qwen.compat.reasoning_field.as_deref(),
         Some("reasoning_content")
@@ -621,6 +625,7 @@ fn a_spec_built_in_code_joins_the_catalog() {
     let qwen = spec(&overridden, "ollama", "qwen3:4b");
     assert_eq!(qwen.max_output_tokens, Some(8192));
     assert_eq!(qwen.context_window, Some(32_768), "kept");
+    assert!(qwen.compat.prefill, "kept");
     assert_eq!(
         qwen.pricing,
         Some(Pricing::new(0.1, 0.4).with_cache_read(0.01))
