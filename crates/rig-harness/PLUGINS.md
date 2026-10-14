@@ -7,9 +7,9 @@ types, such as the terminal view's panels from `rig_tui`.
 - [A tool](#a-tool) and [gating and reviewing its calls](#gating-and-reviewing-tool-calls), with [why a held call holds back the later ones](#a-held-call-holds-back-the-later-calls-of-its-reply); [asking the user: questions and pickers](#asking-the-user-questions-and-pickers)
 - [A slash command](#a-slash-command) and [what the user types](#what-the-user-types); [model requests](#model-requests), [what a model streams](#what-a-model-streams) and [how a turn ends](#how-a-turn-ends)
 - [Effects of a plugin's own](#effects-of-a-plugins-own) and [subagents](#subagents), with [extending `task`](#extending-task); [the effect log](#the-effect-log-reading-redacting-replaying): reading, redacting, replaying; [settings](#settings)
-- [Saved state](#saved-state-counting-every-tool-call), [changing history](#changing-history) and [rewriting saved history](#rewriting-saved-history-a-redaction), [time](#time), [the workspace, files and child processes](#the-workspace-files-and-child-processes), [sessions: their store, secrets and exiting](#sessions-their-store-secrets-and-exiting)
+- [Saved state](#saved-state-counting-every-tool-call), [changing history](#changing-history) and [rewriting saved history](#rewriting-saved-history-a-redaction), [time](#time), [the workspace, files and child processes](#the-workspace-files-and-child-processes), [sessions: their store, secrets and exiting](#sessions-their-store-secrets-and-exiting), [splits and the native session views](#splits-and-the-native-session-views) and [data on a session](#data-on-a-session)
 - [Adding to another plugin's lists](#adding-to-another-plugins-lists): `/model`, `/resume`, `/context`, `/agents`, `/usage`, `--print`; spending and budgets; [turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added), and [testing a plugin](#testing-a-plugin)
-- [Fronts, options and commands](#fronts-options-and-commands), with [commands of your own](#commands-of-your-own); [the transcript](#the-transcript-notes-looks-and-scrolling), [the status line](#the-status-line), [a terminal panel](#what-agents-do-and-say-in-a-terminal-panel), [keys and the input](#keys-and-the-input-in-the-terminal-view), [a window](#a-window)
+- [Fronts, options and commands](#fronts-options-and-commands), with [commands of your own](#commands-of-your-own); [the transcript](#the-transcript-notes-looks-and-scrolling), [the status line](#the-status-line), [a terminal panel or a second transcript](#what-agents-do-and-say-in-a-terminal-panel), [keys and the input](#keys-and-the-input-in-the-terminal-view), [a window](#a-window)
 
 A plugin is a Bevy plugin: a type implementing `Plugin + Default` in a
 crate that depends on `rig-harness`. The agent is a Bevy app, and its
@@ -431,7 +431,7 @@ pub struct Sandboxed;
 
 fn build(app: &mut App) {
     app.add_systems(AgentPass, sandbox.in_set(PrepareSystems::Edit))
-        .add_systems(AgentPass, (too_big, after_a_crash, commits).in_set(Stage::Gate));
+        .add_systems(AgentPass, (too_big, commits).in_set(Stage::Gate));
 }
 
 /// Wants the user to approve each `git commit`.
@@ -459,16 +459,6 @@ fn too_big(
             && (lines(changes) > 500 || changes.iter().any(huge))
         {
             decision.decide(Decider::plugin("too-big"), Outcome::refused("change less at once"));
-        }
-    }
-}
-
-/// A `shell` call a crash cut short: the model is told to check its work.
-fn after_a_crash(mut calls: Query<(&ToolRequest, &Interrupted, &mut Decision), Without<Outcome>>) {
-    for (request, interrupted, mut decision) in &mut calls {
-        if request.call.function.name.as_str() == "shell" && matches!(interrupted, Interrupted::Started) {
-            let answer = ToolResult::skipped("a restart cut it short: check what it did");
-            decision.decide(Decider::plugin("after-a-crash"), answer);
         }
     }
 }
@@ -701,13 +691,14 @@ use rig_harness::prelude::*;
 
 fn build(app: &mut App) {
     // Before the harness's systems that decide messages too.
-    let gate = (keep_to_self.before(CommandSystems), keep_on_stop).in_set(Stage::Gate);
-    app.add_systems(AgentPass, (review_on_reviewer.in_set(PrepareSystems::Edit), gate))
+    let gate = keep_to_self.before(CommandSystems).in_set(Stage::Gate);
+    app.add_systems(AgentPass, gate)
         .add_command("review", "Asks for a review, on the reviewing model", review)
         .add_observer(mark_review_turn);
 }
 
-/// On a message `/review` sent, and on the turn it went into.
+/// On a message `/review` sent, and on the turn it went into, for a
+/// plugin to route its calls.
 #[derive(Component)]
 struct Review;
 
@@ -730,22 +721,6 @@ fn mark_review_turn(
     }
 }
 
-/// The model that reviews.
-const REVIEWER: &str = "deepseek/deepseek-flash";
-
-/// Every call of a review's turn goes to the reviewing model.
-fn review_on_reviewer(
-    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, With<TurnCall>)>,
-    reviews: Query<(), With<Review>>,
-    models: Res<Models>,
-) {
-    for (mut call, &CallOf(turn)) in &mut calls {
-        if reviews.contains(turn) {
-            call.connection = models.connect(REVIEWER).ok();
-        }
-    }
-}
-
 /// A line that starts with `#` is the user's note to self: it never
 /// reaches the model.
 fn keep_to_self(
@@ -756,15 +731,6 @@ fn keep_to_self(
         if typed.author.kind == AuthorKind::User && typed.text().starts_with('#') {
             decision.decide(Decider::plugin("to-self"), Outcome::custom("kept"));
             notices.write(Notice::info(agent, "Noted; not sent."));
-        }
-    }
-}
-
-/// What the user stopped a turn before sending stays in the inbox.
-fn keep_on_stop(unsent: Query<(Entity, &Unsent), Added<Unsent>>, mut commands: Commands) {
-    for (message, unsent) in &unsent {
-        if matches!(unsent.ended, Some(TurnOutcome::Stopped(None))) {
-            commands.entity(message).remove::<Unsent>();
         }
     }
 }
@@ -1000,22 +966,7 @@ use rig_harness::rig_core::message::{AssistantContent, Origin as Made, Text};
 
 fn build(app: &mut App) {
     app.add_systems(AgentPass, end_with.in_set(Stage::Gate))
-        .add_systems(AgentPass, check_the_tests.in_set(Stage::Review))
-        .add_command("turns", "How each turn of the agent ended", turns);
-}
-
-/// `/turns`: how each turn ended, from the saved records.
-fn turns(In(args): In<CommandArgs>, agents: Query<&Conversation>, mut notices: MessageWriter<Notice>) {
-    let Ok(conversation) = agents.get(args.agent) else { return };
-    for (_, turn) in conversation.turns() {
-        let how = match turn.end {
-            Some(TurnEnd::Answered { .. }) => "answered".to_owned(),
-            Some(TurnEnd::Failed { why }) => format!("failed: {why}"),
-            Some(TurnEnd::Stopped { why }) => format!("stopped: {}", why.as_deref().unwrap_or("by the user")),
-            None => "running, or cut short".to_owned(),
-        };
-        notices.write(Notice::info(args.agent, format!("Turn {}: {how}", turn.index)));
-    }
+        .add_systems(AgentPass, check_the_tests.in_set(Stage::Review));
 }
 
 /// On a turn whose answer is known: the text it ends with.
@@ -1149,8 +1100,7 @@ pub struct ReviewersPlugin;
 
 impl Plugin for ReviewersPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(AgentPass, as_reviewer.in_set(Stage::Prepare))
-            .add_command("critic", "Ask a one-job critic about the last change", critic);
+        app.add_systems(AgentPass, as_reviewer.in_set(Stage::Prepare));
     }
 
     /// In `finish`, so `task` exists whatever the plugins' order.
@@ -1180,15 +1130,6 @@ fn as_reviewer(mut requests: Query<&mut SpawnSubagent, Added<Admitted>>) {
         }
     }
 }
-
-/// `/critic`: a helper that criticizes the last change, then retires.
-fn critic(In(args): In<CommandArgs>, mut commands: Commands) {
-    let critic = SpawnSubagent::helper("critic")
-        .system_prompt("You criticize code changes in three lines.")
-        .brief("Criticize the last change in this project.")
-        .once();
-    commands.spawn((critic, ForAgent(args.agent)));
-}
 ```
 
 # The effect log: reading, redacting, replaying
@@ -1201,7 +1142,8 @@ and the effect it was made under (`parent`). rig-telemetry writes them to
 the session's effect log in `Last` (`WriteJournal`) and reads them back
 through its `EffectLog`: `read()`, or `read_matching(&filter)` by agent,
 kind name (`completion`, `tool_call`, `message`, `subagent` or a plugin's)
-and turn, as written by the end of the last frame.
+and turn (`EffectFilter::default().agent(id).turn(n)`), as written by the
+end of the last frame.
 
 **Redacting.** A record holds what its effect really carried (tool output,
 file changes with the text before, the request as sent). A plugin changes
@@ -1218,29 +1160,9 @@ they start: a model call by an adapter placed outermost, the others in
 use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
 use rig_harness::rig_ecs::{StopTurns, WriteJournal};
-use rig_telemetry::{EffectFilter, EffectLog};
 
 fn build(app: &mut App) {
-    app.add_command("effects", "What the agent did in its turn N: /effects N", effects)
-        .add_systems(Last, hide_secrets.after(StopTurns).before(WriteJournal));
-}
-
-/// `/effects N`: each effect of the agent's turn `N`.
-fn effects(
-    In(args): In<CommandArgs>,
-    log: Option<Res<EffectLog>>,
-    ids: Query<&AgentId>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let (Some(log), Ok(id), Ok(turn)) = (log, ids.get(args.agent), args.args.parse()) else {
-        notices.write(Notice::error(args.agent, "/effects needs a turn number and a session log"));
-        return;
-    };
-    let filter = EffectFilter::default().agent(id.0.clone()).turn(turn);
-    for record in log.read_matching(&filter).unwrap_or_default() {
-        let line = format!("{} {} {:?}", record.id, record.kind.name(), record.disposition);
-        notices.write(Notice::info(args.agent, line));
-    }
+    app.add_systems(Last, hide_secrets.after(StopTurns).before(WriteJournal));
 }
 
 /// Takes every key-shaped secret out of every record before it is written.
@@ -1300,12 +1222,16 @@ the same way. One holding rig-core data, such as a `MessageId`, is saved
 through serde ([so](#changing-history)). A plugin says what it keeps
 (`keeps_saved::<T>()`, `keeps_files("vim")` in `PluginData.session`) as
 `Keeps` on its entity; a saved value no plugin keeps is the core's.
+`#[reflect(Component, Follows)]` instead keeps the value with the line of
+the conversation it was set on: a split, a branch switch, a move, a merge,
+a fork and a restore give the agent its line's value as of that point, or
+remove it where none was set
+([splits](#splits-and-the-native-session-views)).
 
 ```rust,no_run
 use std::collections::HashMap;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
 
 /// How often each agent called each tool, kept across restarts.
 #[derive(Component, Reflect, Default)]
@@ -1315,21 +1241,7 @@ struct ToolCounts(HashMap<String, u32>);
 fn build(app: &mut App) {
     app.register_required_components::<Agent, ToolCounts>()
         .keeps_saved::<ToolCounts>()
-        .add_observer(count)
-        .add_observer(count_the_past);
-}
-
-/// Counts the calls already in an agent's conversation when it gets its
-/// count, as a restored agent does on the first restart with the plugin.
-fn count_the_past(added: On<Add<ToolCounts>>, mut agents: Query<(&Conversation, &mut ToolCounts)>) {
-    let Ok((conversation, mut counts)) = agents.get_mut(added.entity) else { return };
-    for message in conversation.messages() {
-        if let Message::Assistant(assistant) = message {
-            for call in assistant.tool_calls() {
-                *counts.0.entry(call.function.name.as_str().to_owned()).or_default() += 1;
-            }
-        }
-    }
+        .add_observer(count);
 }
 
 /// Counts each call as the model asks for it, not again on a restart.
@@ -1344,6 +1256,38 @@ fn count(
         let name = request.call.function.name.as_str().to_owned();
         *counts.0.entry(name).or_default() += 1;
     }
+}
+```
+
+**Versions.** Every saved value carries its type's version. Never change a
+saved type's serde form without a step: `saved_upgrades::<T>(&[steps])`
+puts `T` at version `steps.len() + 1`, each step a pure function reading
+one version as the next, with a test reading a frozen JSON literal of the
+old one. A value no step reads, a newer rig's too, is set aside in the
+file (`SetAside` lists it), never dropped; `retired_saved(key)` keeps a
+deleted type's values silently. A plugin's own aside kinds bump the same
+way, `aside_upgrades(kind, steps)`, written with `Versioned::to_aside_value`
+and read with `SavedUpgrades`' `Upgrades::read_aside`; its session files
+are its own to version.
+
+```rust,no_run
+use rig_harness::prelude::*;
+use serde_json::{Value, json};
+
+/// The messages the user bookmarked, each with a label since version 2;
+/// a `MessageId` is saved through serde.
+#[derive(Component, Reflect, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+struct Bookmarks(Vec<(MessageId, String)>);
+
+fn build(app: &mut App) {
+    app.keeps_saved::<Bookmarks>().saved_upgrades::<Bookmarks>(&[bookmarks_v1_to_v2]);
+}
+
+/// Version 1 held the ids alone: `[id, …]` becomes `[[id, ""], …]`.
+fn bookmarks_v1_to_v2(old: Value) -> Result<Value, String> {
+    let ids: Vec<Value> = serde_json::from_value(old).map_err(|e| e.to_string())?;
+    Ok(Value::Array(ids.into_iter().map(|id| json!([id, ""])).collect()))
 }
 ```
 
@@ -1374,6 +1318,11 @@ other continuations kept as asides (`BRANCH`; saved, forked, rewritten):
 `branch_off(at, title, by)` keeps entries `at..` (maybe none) aside and
 goes on as `title` (`branch_title()`); `switch_branch(id, by)` brings
 any kept branch back, nested too; `branches()` lists all, `line(id)`.
+`move_out(range, title, by)` keeps a range as a branch, its aside the
+pointer left where it was; `merge_branch(id, by)` brings a branch back
+(a moved range where it was, ids kept) and `merge_line(&line, at, by)` a
+line kept elsewhere; `line_conversation(id, end)` is a line as its own
+conversation, ids kept, and `shared_prefix(a, b)` where two lines part.
 
 **Asides** never reach a model: an `Aside { kind, after, author, value }`
 follows the entry `after` and is saved, restored and forked with the
@@ -1392,39 +1341,63 @@ the end costs the provider's prompt cache from there on. `Retire { entity
 
 **Compaction** splices its summary, an entry by
 `rig_compaction::summary_author()`, in place of what it summarized
-(`summary_in(&change)` tells that splice from others). Its policy,
-rig-memory's `CompactionPolicy` in rig-compaction's `Compaction`, cuts by
-`Cut::Budget` or a plugin's `Cut::With`; `plan(..)` plans a summary call
-under a plugin's own policy, and `On<Insert<Summarized>>` sees a new one.
-An answered summary call's `Summarizing.summary` holds the text in
-`ReviewSystems::Act`, where a reviewer holds the call, replaces the text
-or sets `None` to cancel ([so](#asking-the-user-questions-and-pickers)).
-Each compaction keeps what it replaced (rig-memory's `Compacted` aside):
-`Uncompact { entity }` puts the newest one's messages back with their ids,
-as `rig_memory::undo_summary` does without the app.
+(`summary_in(&change)` tells that splice from others). Each agent has its
+own policy, `policy_of(own, &default)`: its
+`Compaction(CompactionOverrides)` knobs, a `Follows` component (saved,
+inherited by its splits), over the `[compaction]` settings
+(`CompactionDefault`), which every knob it leaves unset follows;
+`/compaction` shows and sets them. A cut is `Cut::Budget` or one a plugin
+names (`add_compaction_cut`), and `plan(..)` plans a summary call under
+any policy. An answered summary call's `Summarizing.summary` holds the
+text in `ReviewSystems::Act`, where a reviewer holds the call, replaces
+the text or sets `None` to cancel
+([so](#asking-the-user-questions-and-pickers)). Each compaction keeps what
+it replaced (rig-memory's `Compacted` aside): `Uncompact { entity }` puts
+the newest one's messages back with their ids, as
+`rig_memory::undo_summary` does without the app.
 
-**The session format** is rig-memory's (`rig-session/2`), read and written
-without an app: `Session::read(&*store)` gives each agent's conversation
-and saved values, and `session.save(&*store)` appends what changed;
-`load`/`save` keep one conversation, `history`/`as_of` show how a log got
-where it is. `fork(from, to, before, &with)` copies a session as it was
-before a message, each value through a `Rewrite` (`&Keep` for none), and
-the copied messages' asides as they are now. A session not read whole, or
-saved by an older rig, is refused unchanged (`Session::read_lenient` reads
-what it can). rig's own saved values have stable keys a program reads
-without Bevy: `SavedAgent::model()` and `title()` (`ModelChoice`,
-`AgentTitle`), and `session.main_agent()` is the one the user talks to.
-An importer opens `home.new_session()` with `SessionStores::open`, makes
-each edit at the source's time (`conversation.dated(at_ms, |c| ..)`), and
-lists it in `/resume` with `SessionMeta { title, .. }.write(&*store)`.
+**The session format** is rig-memory's (`rig-session/3`), read and written
+without an app; older ones from `rig-session/2` on read through a chain of
+pure steps (`upgrade`), the file rewritten in the newest on its first
+write, and a newer one is refused unchanged. `Session::read(&*store)`
+gives each agent's conversation and saved values, and
+`session.save(&*store)` appends what changed; `load`/`save` keep one
+conversation, `history`/`as_of` show how a log got where it is, and
+`read_line(&*store, agent, line)` reads one agent's line alone.
+`fork(from, to, before, &with)` copies a session as it was before a
+message, each value through a `Rewrite` (`&Keep` for none), and the copied
+messages' asides as they are now; `split(from, to, &SplitOf { .. })` one
+line as it reads now, ids kept; `lines(&conversation)` lists a
+conversation's lines, splits kept elsewhere too. A session not read whole
+is refused unchanged (`Session::read_lenient` reads what it can). rig's
+own saved values have stable keys a program reads without Bevy:
+`SavedAgent::model()` and `title()` (`ModelChoice`, `AgentTitle`), and
+`session.main_agent()` is the one the user talks to. An importer opens
+`home.new_session()` with `SessionStores::open`, makes each edit at the
+source's time (`conversation.dated(at_ms, |c| ..)`), and lists it in
+`/resume` with `SessionMeta { title, .. }.write(&*store)`.
 
 ```rust,no_run
+use rig_compaction::{AppCompactionExt, Compaction};
 use rig_harness::prelude::*;
+use rig_harness::rig_core::message::Message;
+use rig_harness::rig_memory::{CompactionOverrides, Cut};
 
-/// The messages the user bookmarked; a `MessageId` is saved through serde.
-#[derive(Component, Reflect, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-struct Bookmarks(Vec<MessageId>);
+fn build(app: &mut App) {
+    // Summarizes up to the last user message, which it keeps.
+    app.add_compaction_cut("before-last-user", |messages, _, _, _| {
+        messages.iter().rposition(|message| matches!(message, Message::User { .. }))
+    })
+    .add_observer(tight);
+}
+
+/// A subagent keeps 4 recent messages and cuts before the last user
+/// message; its other knobs follow `[compaction]`.
+fn tight(spawned: On<Add<SpawnedBy>>, mut commands: Commands) {
+    let cut = Some(Cut::Named("before-last-user".into()));
+    let own = CompactionOverrides { keep_recent: Some(4), cut, ..Default::default() };
+    commands.entity(spawned.entity).insert(Compaction(own));
+}
 
 /// `/undo`: the user's last message and everything after it go, unless a
 /// turn runs.
@@ -1433,15 +1406,6 @@ fn undo(In(args): In<CommandArgs>, mut agents: Query<&mut Conversation, Without<
     let last = conversation.entries().rev().find(|entry| entry.is_users_own());
     if let Some(at) = last.map(|entry| entry.index) {
         conversation.splice(at.., [], Author::plugin("undo"));
-    }
-}
-
-/// Says who rewrote an agent's history.
-fn rewrites(mut committed: MessageReader<Committed>, mut notices: MessageWriter<Notice>) {
-    for Committed { agent, change } in committed.read() {
-        if let (Change::Splice { removed, .. }, Some(by)) = (&change.change, &change.by) {
-            notices.write(Notice::info(*agent, format!("{} replaced {}", by.label(), removed.len())));
-        }
     }
 }
 ```
@@ -1642,28 +1606,6 @@ fn read_todo(
     let read = blocking(move || workspace.read_text(&path));
     commands.spawn((Todo, Running::spawn(pool, &wake, async move { read.await.unwrap_or_default() })));
 }
-
-/// The lines a chat bridge receives, here a fixed list.
-#[derive(Component)]
-struct Received;
-
-fn listen(mut commands: Commands, wake: Res<Wake>) {
-    let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
-    let lines = ["hello", "are you there?"].map(str::to_owned);
-    let lines = bevy_tasks::futures_lite::stream::iter(lines);
-    commands.spawn((Received, Running::stream(pool, &wake, lines)));
-}
-
-/// Shows each line as it comes.
-fn show(
-    line: On<Insert<Done<String>>>,
-    lines: Query<&Done<String>, With<Received>>,
-    mut notices: MessageWriter<Notice>,
-) {
-    if let Ok(Done(text)) = lines.get(line.entity) {
-        notices.write(Notice::info(None, format!("Received: {text}")));
-    }
-}
 ```
 
 # Sessions: their store, secrets and exiting
@@ -1710,16 +1652,21 @@ effect, which a holder may take as "stop waiting".
 `AppStart` says why this app started (`StartReason`): `New` for a
 session's first app (a fork's too), `Resumed`, `Reloaded` after `/reload`,
 or `Restarted` on the previous build after a rollback; a switch is `New`
-or `Resumed`. `ForkSession { before, asker }` copies this session into a
-new one in `Last`'s `ForkSessions`, after `WriteJournal`, so a file
-written `.before` it is in the copy (`SessionForked` names it and the
-`asker`; the copy names its parent and where it was cut,
-`ForkedFrom::read(&*store)`), and `DeleteSession(id)` removes another,
-its store wherever kept, finished by the next start if a crash cut it
-short (`SessionDeleted`, else `SessionDeleteFailed`). A session's name is
-a plain file in its directory (`SessionDir::name`), which rig-sessions'
-`/name` and `NameSession { session, name }` write, and `rig --resume
-<name>`, `/resume <name>` and `Home::find` look up.
+or `Resumed`. `ForkSession { from, cut, asker }` copies this session
+(`from: None`) or any saved one into a new one in `Last`'s `ForkSessions`,
+after `WriteJournal`, so a file written before it is in the copy: whole,
+as it was before a message (`ForkCut::Before`), or one line
+([`Line`](#splits-and-the-native-session-views)). `SessionForked` names
+the copy and the `asker`, `SessionForkFailed` says why not, and the copy
+names its parent (`ForkedFrom::read(&*store)`). `edit_stopped(&stores,
+&paths.0, &dir, |session| ..)` changes a saved session no rig runs under
+its lock, and `PluginData::of(&stores, &dir)` opens its plugin files.
+`DeleteSession(id)` removes another, its store wherever kept, finished by
+the next start if a crash cut it short (`SessionDeleted`, else
+`SessionDeleteFailed`). A session's name is a plain file in its directory
+(`SessionDir::name`), which rig-sessions' `/name` and `NameSession {
+session, name }` write, and `rig --resume <name>`, `/resume <name>` and
+`Home::find` look up.
 
 ```rust,no_run
 use std::io;
@@ -1738,9 +1685,7 @@ fn build(app: &mut App) {
     let bot = Front::new("bot").on_command("bot", "", "Answer in the chat");
     app.add_front(bot.session_store(|dir: &SessionDir| vault("/vault/bot", dir)))
         .add_systems(AgentPass, hold_exit.in_set(Stage::Gate))
-        .add_observer(give_up)
-        .add_command("fork", "Continue in a copy of this session", fork)
-        .add_systems(Update, switch);
+        .add_observer(give_up);
 }
 
 fn vault(root: &str, dir: &SessionDir) -> Result<Arc<dyn Store>, LoadError> {
@@ -1772,19 +1717,86 @@ fn give_up(due: On<Add<Due>>, holds: Query<(), With<NotesHold>>, mut commands: C
         commands.entity(due.entity).despawn();
     }
 }
+```
 
-/// `/fork why`: continue in a copy of this session, which keeps the reason.
-fn fork(In(args): In<CommandArgs>, data: Res<PluginData>, mut commands: Commands) {
-    if data.session.write_file("forks/why.txt", args.args.as_bytes()).is_ok() {
-        commands.trigger(ForkSession::default());
-    }
+## Splits and the native session views
+
+rig-splits splits a conversation at any entry where no call is parted (a
+user message, a reply, between tool rounds), from any branch of any saved
+session, to any depth: `/split [new] [<where>] [title]` into a branch,
+going on in the split, or with `new` into a new session it then runs;
+`/split move <first> <last> [new]` takes a range out, leaving a pointer;
+`/splits [session]` lists a session's lines; `/split switch`, `compare`
+and `merge` go to one, show it beside the active line, and bring it back
+(`<where>` is `--from <session> --agent <id> --line <line> --at
+<message>`). A plugin runs them with `RunCommand`, or does what they do:
+`ForkSession` with `ForkCut::Line { agent, line, through, take, title }`
+(a move with `take: Some(first)`), or `move_out` and `branch_off` on a
+live conversation. What must follow each line is
+[`Follows`](#saved-state-counting-every-tool-call).
+
+A `SessionPicker` on a `Picker` is the native view of the saved sessions
+(`SessionSource::Saved`, `Sessions(ids)`), a session's lines (`Lines`) or
+a line's entries (`Entries`): filled in place from tasks as they are
+read, filtered by `SessionFilter` (running ones, a project, a family, a
+text), the highlighted item previewed (`PickPreview`, which any picker
+sets as its `Highlighted` moves). Picking runs its `command` with
+`{session}`, `{agent}`, `{line}` and `{entry}` filled in, or, with none,
+puts `SessionPicked` on the entity before `Picked`; `show` labels items.
+`/resume` and `/splits` are this view; a program reads the same with
+`Home::saved_sessions()`, `Listing::read(&store)` and `read_line`.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+/// `/fork-at`: the entries of the agent's line, previewed; the one picked
+/// ends a copy of the line in a new session (`split new --at {entry}`
+/// as a `command` does the same).
+fn fork_at(In(args): In<CommandArgs>, mut commands: Commands) {
+    let source = SessionSource::Entries { session: None, agent: None, line: None };
+    let picker = Picker::new("Fork after which message?").for_agent(args.agent);
+    commands.spawn((picker, SessionPicker { source, ..Default::default() })).observe(fork);
 }
 
-/// Switches to each fork once it is written.
-fn switch(mut forked: MessageReader<SessionForked>, mut commands: Commands) {
-    for fork in forked.read() {
-        commands.trigger(Exit(ExitReason::Switch(Some(fork.to.clone()))));
-    }
+fn fork(picked: On<Picked>, chosen: Query<&SessionPicked>, mut commands: Commands) {
+    let Ok(SessionPicked { agent: Some(agent), entry: Some(through), .. }) = chosen.get(picked.entity) else { return };
+    let (agent, title) = (AgentId(agent.clone()), "fork".to_owned());
+    let cut = ForkCut::Line { agent, line: None, through: *through, take: None, title };
+    commands.trigger(ForkSession { from: None, cut, asker: None });
+}
+```
+
+## Data on a session
+
+A plugin keeps any serde value with the session under a key of its own:
+`app.saved_as::<T>("goals.goal")` logs a saved resource or agent
+component under that key, not its type's path, versioned as every saved
+value. A program without Bevy reads it typed, `Session::get::<T>(key,
+&upgrades)` (an agent's, `SavedAgent::get`), and writes a stopped
+session's through `edit_stopped`. `.listed()` also copies it into the
+session's listing (`SessionMeta.data`; keep it small), so `/resume`,
+`Listing::read` and a `SessionPicker`'s filter show and find it without
+reading a log. Splits and forks copy it as of their cut.
+
+```rust,no_run
+use rig_harness::harness_protocol::SessionDir;
+use rig_harness::prelude::*;
+use rig_harness::rig_memory::{DirStore, Session, Upgrades};
+
+/// What the session is for, shown in `/resume`.
+#[derive(Resource, Reflect, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
+struct Goal(String);
+
+fn build(app: &mut App) {
+    app.init_resource::<Goal>().saved_as::<Goal>("goals.goal").listed();
+}
+
+/// A program's read of a stopped session's goal, without Bevy.
+fn goal_of(dir: &SessionDir) -> Option<String> {
+    let store = DirStore::open(dir.path()).ok()?;
+    let session = Session::read(&store).ok()?;
+    session.get::<String>("goals.goal", &Upgrades::default())?.ok()
 }
 ```
 
@@ -2017,7 +2029,6 @@ builds the app, writes what its plugins declared and runs no frame, so
 `build` only declares, and work goes in `finish` or systems (`rig help`).
 
 ```rust,no_run
-use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 
 /// `rig stats`: how many sessions there are to resume.
@@ -2037,13 +2048,11 @@ impl Plugin for StatsPlugin {
     }
 }
 
-/// Prints the count, then exits.
-fn stats(home: Res<RigHome>, mut commands: Commands) {
-    let sessions = std::fs::read_dir(home.0.sessions()).into_iter().flatten().flatten();
-    let ids = sessions.filter_map(|dir| dir.file_name().to_str()?.parse::<SessionId>().ok());
-    // What a session spent, with `stores: Res<SessionStores>`: `stores.open(&home.0.session(id))
-    //     .ok().and_then(|s| rig_memory::SessionMeta::read(&*s)?.labels.get("spent").cloned())`
-    println!("{} saved sessions", ids.filter(|id| home.0.session(id).is_saved()).count());
+/// Prints the count and their messages, from each one's listing, then exits.
+fn stats(home: Res<RigHome>, stores: Res<SessionStores>, mut commands: Commands) {
+    let sessions = home.0.saved_sessions();
+    let listings = sessions.iter().filter_map(|(_, dir)| Some(Listing::read(&*stores.open(dir).ok()?)));
+    println!("{} saved sessions, {} messages", sessions.len(), listings.map(|it| it.meta.messages).sum::<usize>());
     commands.trigger(Exit(ExitReason::Quit));
 }
 ```
@@ -2059,16 +2068,21 @@ unless `unsaved()`; `Note::of(aside)` reads one.
 
 The terminal view draws notes, and what the conversation holds from a
 plugin (such as rig-compaction's summary), with the look
-`add_entry_renderer(plugin, ..)` gives that plugin's author. Plugins read
-and set its `TranscriptView`: the items `expanded` and `selected` (Alt+Up
-and Alt+Down select, Ctrl+O expands), the `highlights` lit, the `marks`
-(a `TextMark` label inside a reply's text or a streaming call's) and
-where it is scrolled (`top()`). `ScrollTo { agent, item, row }` scrolls
-to a `TranscriptItem` (a `Message`, a tool `Call`, a `Note`, a `Notice`),
-at a row of it or its `n`th lit match; `item: None` follows the newest
-output. `DrawnTranscript` holds the rows the last frame drew by item;
-`TranscriptLayout::lay_out` lays any agent's out so, undrawn, and
-`lay_out_conversation` a saved one, which a `ConversationPanel` shows.
+`add_entry_renderer(plugin, ..)` gives that plugin's author; other asides
+with `add_aside_renderer(kind, ..)` (rig's branch and split pointers:
+`branch_lines`, `split_lines`), a role's messages with
+`add_message_renderer(Role::User, ..)`. The transcript is a
+`TranscriptPane` ([another](#what-agents-do-and-say-in-a-terminal-panel)),
+the default screen's marked `MainPane`. Plugins read and set a pane's
+`TranscriptView` component (`MainTranscript` for the main one): the items
+`expanded` and `selected` (Alt+Up and Alt+Down select, Ctrl+O expands),
+the `highlights` lit, the `marks` (a `TextMark` label inside a reply's
+text or a streaming call's) and where it is scrolled (`top()`, placed in
+`TuiSystems::Layout`). `ScrollTo { pane, item, row }` scrolls to a
+`TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at
+a row of it or its `n`th lit match; `item: None` follows the newest
+output. A `DrawnTranscript` added to a pane holds the rows it drew by
+item; `TranscriptLayout::lay_out` lays any agent's out so, undrawn.
 
 A message's images, audio, videos and documents, the user's or the
 model's, are drawn by `add_content_renderer(ContentKind::Image, ..)`,
@@ -2076,11 +2090,12 @@ given a `ContentView` (`default_lines()` is `[image]`), each block an item
 `TranscriptItem::Content(id, index)` with its rows; `add_call_decorator`
 draws lines under every tool call, after its look, an item
 `Decoration(call, name)`. `TuiFrame`, written in `TuiSystems::Render`,
-says where the frame drew each part (`screen_row`, `covered` by an
-overlay), for a plugin that writes to the terminal itself, such as an
-image over rows its renderer left blank, and `Repaint(rect)` writes cells
-it drew over again. A test draws frames into a `TuiTestScreen::new(80,
-24)` beside `tui_view`: its `rows()`, the bytes `written()`.
+says where the frame drew each panel (`area`) and row (`screen_row`) and
+what an overlay `covered`, for a plugin that writes to the terminal
+itself, such as an image over rows its renderer left blank, and
+`Repaint(rect)` writes cells it drew over again. A test draws frames into
+a `TuiTestScreen::new(80, 24)` beside `tui_view`: its `rows()`, the bytes
+`written()`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -2088,8 +2103,8 @@ use rig_tui::ratatui::layout::Rect;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppToolRenderersExt, ContentKind, DrawnTranscript, Highlight, ItemRow, ScrollTo, TerminalWrite,
-    TranscriptItem, TranscriptView, TuiFrame, TuiSystems,
+    AppToolRenderersExt, ContentKind, DrawnTranscript, Highlight, ItemRow, MainPane, MainTranscript,
+    ScrollTo, TerminalWrite, TranscriptItem, TuiFrame, TuiSystems,
 };
 
 fn build(app: &mut App) {
@@ -2105,15 +2120,16 @@ fn build(app: &mut App) {
         // An image keeps four rows, which `place_images` draws it over.
         .add_content_renderer(ContentKind::Image, |image| [image.default_lines(), vec![Line::default(); 3]].concat())
         .add_call_decorator("took", |call| call.took.map(|it| Line::from(format!("  {it:?}"))).into_iter().collect())
-        .add_systems(PostUpdate, place_images.after(TuiSystems::Render));
+        .add_systems(PostUpdate, place_images.after(TuiSystems::Render))
+        .register_required_components::<MainPane, DrawnTranscript>();
 }
 
 /// Puts the cursor on each image's first row, unless an overlay covers its
 /// rows, where a real plugin writes the picture's escape codes.
-fn place_images(frame: Res<TuiFrame>, drawn: Res<DrawnTranscript>, mut out: MessageWriter<TerminalWrite>) {
+fn place_images(frame: Res<TuiFrame>, drawn: Single<&DrawnTranscript, With<MainPane>>, mut out: MessageWriter<TerminalWrite>) {
     for (item, rows) in drawn.items() {
         let Some(top) = frame.screen_row(&drawn, rows.start) else { continue };
-        let area = Rect { y: top, height: 4, ..frame.transcript };
+        let area = Rect { y: top, height: 4, ..drawn.area() };
         if matches!(item, TranscriptItem::Content(..)) && !frame.covered(area) {
             out.write(TerminalWrite(format!("\x1b[{};{}H", top + 1, area.x + 3).into_bytes()));
         }
@@ -2132,7 +2148,7 @@ fn mark(In(args): In<CommandArgs>, mut agents: Query<&mut Conversation>) {
 fn find(
     In(args): In<CommandArgs>,
     agents: Query<&Conversation>,
-    mut view: ResMut<TranscriptView>,
+    (mut view, pane): (MainTranscript, Single<Entity, With<MainPane>>),
     mut commands: Commands,
 ) {
     let Ok(conversation) = agents.get(args.agent) else { return };
@@ -2140,7 +2156,7 @@ fn find(
     let hit = (0..conversation.messages().len()).rev().find(typed_it);
     if let Some(id) = hit.and_then(|at| conversation.id(at)) {
         let item = Some(TranscriptItem::Message(id));
-        commands.trigger(ScrollTo { agent: args.agent, item, row: ItemRow::Lit(0) });
+        commands.trigger(ScrollTo { pane: *pane, item, row: ItemRow::Lit(0) });
     }
     let style = Style::new().on_yellow();
     view.highlights = vec![Highlight { text: args.args, style, match_case: true, ..Default::default() }];
@@ -2184,22 +2200,13 @@ use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 const MESSAGES: StatusItem = StatusItem::new("messages", Side::Left, 55, 10);
 
 fn build(app: &mut App) {
-    app.add_systems(PostUpdate, (show.in_set(StatusSystems::Show), no_cost.in_set(StatusSystems::Edit)));
+    app.add_systems(PostUpdate, show.in_set(StatusSystems::Show));
 }
 
 fn show(mut agents: Query<(&Conversation, &mut StatusItems), Changed<Conversation>>) {
     for (conversation, mut items) in &mut agents {
         let text = format!("{} messages", conversation.messages().len());
         items.show(MESSAGES.says(text, Tone::Dim));
-    }
-}
-
-/// No cost in the line: rig-telemetry's `cost` item, hidden each time it shows.
-fn no_cost(mut shown: Query<&mut StatusItems>) {
-    for mut items in &mut shown {
-        if items.iter().any(|item| item.name == "cost") {
-            items.hide("cost");
-        }
     }
 }
 ```
@@ -2216,7 +2223,8 @@ A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 (`BelowInput`), or a box over the screen (`Over`). The plugin draws it
 into its `PanelCanvas` in `TuiSystems::Draw`, run only for a frame that is
 drawn, and writes a `RequestRedraw` when its own state changed;
-`TuiScreen` is the terminal's size, `Focused` marks the agent shown.
+`TuiScreen` is the terminal's size, `Focused` marks the agent shown;
+`Within { panel, part, of }` is a column of another panel.
 
 ```rust,no_run
 use rig_activity::Activity;
@@ -2253,6 +2261,29 @@ fn draw(
 }
 ```
 
+The default screen (`DefaultScreenPlugin` in `TuiPlugin`) is made of
+widgets a plugin places too, each in a `TuiPanel`: a `TranscriptPane` of
+the agent shown (`TranscriptSource::Shown`), one live (`Agent(entity)`),
+or a conversation read from a saved session or a split (`Value`), which
+scrolls and selects with `PaneKeys` while it has the `KeyFocus`; an
+`Editor` (the main one `MainEditor`); a `StatusLine { agent }`.
+
+```rust,no_run
+use rig_harness::prelude::*;
+use rig_tui::ratatui::layout::Constraint;
+use rig_tui::{PaneKeys, Placement, TranscriptPane, TranscriptSource, TuiPanel};
+
+/// `/watch <name>`: that agent's conversation, live, beside the main one.
+fn watch(In(args): In<CommandArgs>, agents: Query<(Entity, &Name), With<Agent>>, mut commands: Commands) {
+    let Some((agent, name)) = agents.iter().find(|(_, name)| name.as_str() == args.args) else { return };
+    commands.spawn((
+        TranscriptPane::new(TranscriptSource::Agent(agent)).titled(name.as_str()),
+        TuiPanel::new(Placement::Right(Constraint::Percentage(40))),
+        PaneKeys,
+    ));
+}
+```
+
 # Keys and the input in the terminal view
 
 The terminal view (`rig_tui`) takes part in the input as data, there in
@@ -2262,11 +2293,11 @@ any run and inert without the view:
   (`KeyInput::Event`) and the actions plugins put in (`KeyInput::Action`),
   in order, done one at a time in the `TuiKeys` schedule: a system in its
   `InputSystems::Filter` reads, changes, drops or replaces the item before
-  any binding or the input sees it, with `TuiInput` and `TuiInputState`
-  (the open completion, the question or picker shown, its `selection()`)
-  as the keys before it left them; `Dispatch` does the rest. A modal
-  input is one filter, and `/` starts a slash command unless a filter or
-  binding takes it.
+  any binding or the input sees it, with the main `Editor` and
+  `TuiInputState` (the open completion, the question or picker shown, its
+  `selection()`) as the keys before it left them; `Dispatch` does the
+  rest. A modal input is one filter, and `/` starts a slash command unless
+  a filter or binding takes it.
 - **Keys.** Every key the view acts on is a `KeyBinding` entity, its own
   editing keys included. `app.add_key_binding(binding, observer)` binds a
   key or a sequence (`ctrl+x ctrl+e`), heard as `KeyPressed`
@@ -2282,11 +2313,13 @@ any run and inert without the view:
   view's), or for a command's argument, `CompletionSource::arg("model")`
   (`.at(n)`). One that looks its candidates up reads what is typed,
   `TuiInputState::typed()`, and is inserted again: an open list follows.
-- **The input.** `TuiInput` is the draft (`text()`, `set`, `insert`,
-  `take`, …). `PromptHistory` is the prompts Up and Down browse, kept in
-  `PluginData.user`: the view appends each one sent (`Sent`, which a
-  plugin writes too) in `HistorySystems::Record` and saves in
-  `HistorySystems::Save`; a system between the two filters what is kept.
+- **The input.** An `Editor` holds a draft (`text()`, `set`, `insert`,
+  `take`, …), the main one's read as `MainInput`; the keys type into a
+  panel's own while it has the `KeyFocus`. `PromptHistory` is the prompts
+  Up and Down browse, kept in `PluginData.user`: the view appends each one
+  sent (`Sent`, which a plugin writes too) in `HistorySystems::Record` and
+  saves in `HistorySystems::Save`; a system between the two filters what
+  is kept.
 - **The terminal.** `TerminalFocus` says whether it has the user's focus,
   a `TerminalWrite(bytes)` message goes to the terminal between frames,
   `CopyToClipboard(text)` copies (OSC 52 and this machine's clipboard),
@@ -2294,20 +2327,18 @@ any run and inert without the view:
   without the session's secrets, and gets its `TerminalExit`.
 
 This plugin writes the draft in `$EDITOR` on Ctrl+E, makes Ctrl+K browse
-back as Up does, keeps prompts with a secret out of the history, and
-opens its search box on `/` when the input is empty:
+back as Up does, and opens its search box on `/` when the input is empty:
 
 ```rust,no_run
 use std::path::PathBuf;
 use std::process::Command;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::redact;
 use rig_tui::crossterm::event::{Event, KeyCode};
 use rig_tui::{
-    AppKeyBindingsExt, HistorySystems, InputAction, InputSystems, KeyBinding, KeyFocus, KeyInput,
-    KeyPress, KeyPressed, PromptHistory, RunInTerminal, TerminalEvents, TerminalExit,
-    TuiInput, TuiInputState, TuiKeys,
+    AppKeyBindingsExt, InputAction, InputSystems, KeyBinding, KeyFocus, KeyInput,
+    KeyPress, KeyPressed, MainEditor, MainInput, RunInTerminal, TerminalEvents,
+    TerminalExit, TuiInputState, TuiKeys, Editor,
 };
 
 /// A program writing the draft in this file.
@@ -2319,8 +2350,7 @@ struct Draft(PathBuf);
 struct SearchBox;
 
 fn build(app: &mut App) {
-    let scrub = no_secrets.after(HistorySystems::Record).before(HistorySystems::Save);
-    app.add_systems(Update, (take_draft, scrub))
+    app.add_systems(Update, take_draft)
         .add_systems(TuiKeys, slash_searches.in_set(InputSystems::Filter))
         .add_key_binding(KeyBinding::new(KeyPress::ctrl('e'), "Write the draft in $EDITOR"), edit);
     app.world_mut().spawn((KeyBinding::new(KeyPress::ctrl('k'), "Up"), InputAction::Up));
@@ -2329,7 +2359,7 @@ fn build(app: &mut App) {
 /// `/` on an empty input gives the search box the keys; elsewhere it is typed.
 fn slash_searches(
     mut events: ResMut<TerminalEvents>,
-    (input, state): (Res<TuiInput>, Res<TuiInputState>),
+    (input, state): (Single<&Editor, With<MainEditor>>, Res<TuiInputState>),
     boxes: Query<Entity, With<SearchBox>>,
     mut focus: ResMut<KeyFocus>,
 ) {
@@ -2341,12 +2371,7 @@ fn slash_searches(
     }
 }
 
-/// A prompt with an API key in it is never saved.
-fn no_secrets(mut history: ResMut<PromptHistory>) {
-    history.entries.retain(|prompt| !redact::has_secret(prompt));
-}
-
-fn edit(_: On<KeyPressed>, input: Res<TuiInput>, mut commands: Commands) {
+fn edit(_: On<KeyPressed>, input: Single<&Editor, With<MainEditor>>, mut commands: Commands) {
     let path = std::env::temp_dir().join("rig-draft.md");
     if std::fs::write(&path, input.text()).is_err() {
         return;
@@ -2359,7 +2384,7 @@ fn edit(_: On<KeyPressed>, input: Res<TuiInput>, mut commands: Commands) {
 /// The draft as the editor left it, unless the editor failed.
 fn take_draft(
     done: Query<(Entity, &TerminalExit, &Draft), Added<TerminalExit>>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
     mut commands: Commands,
 ) {
     for (run, exit, Draft(path)) in &done {
@@ -2374,39 +2399,12 @@ fn take_draft(
 # A window
 
 `rig_harness::windowed(DefaultPlugins)` is Bevy's `DefaultPlugins` without
-what the agent already has; its winit plugin then runs the app's loop, and
-in `finish` the plugin points the agent's `Wake` at it. The crate depends
-on `bevy` at exactly the agent's version (`"=0.20.0"`, without default
-features, with `ui`). A window that is the front offers itself `on_flag`.
-
-```rust,ignore
-use std::time::Duration;
-
-use bevy::prelude::*;
-use bevy::window::ExitCondition;
-use bevy::winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent};
-use rig_harness::prelude::{Invoked, Wake};
-
-#[derive(Default)]
-pub struct DashboardPlugin;
-
-impl Plugin for DashboardPlugin {
-    fn build(&self, app: &mut App) {
-        // Beside the terminal view only; closing it leaves the agent running.
-        if app.world().get_resource::<Invoked>().is_some_and(Invoked::interactive) {
-            let window = WindowPlugin { exit_condition: ExitCondition::DontExit, ..default() };
-            // Frames when woken, and at least every second as without a window.
-            let mode = UpdateMode::reactive_low_power(Duration::from_secs(1));
-            app.add_plugins(rig_harness::windowed(DefaultPlugins.set(window)))
-                .insert_resource(WinitSettings { focused_mode: mode, unfocused_mode: mode });
-        }
-    }
-
-    fn finish(&self, app: &mut App) {
-        if let Some(proxy) = app.world().get_resource::<EventLoopProxyWrapper>() {
-            let proxy = (**proxy).clone();
-            app.insert_resource(Wake::new(move || drop(proxy.send_event(WinitUserEvent::WakeUp))));
-        }
-    }
-}
-```
+what the agent already has; its winit plugin then runs the app's loop. The
+crate depends on `bevy` at exactly the agent's version (`"=0.20.0"`,
+without default features, with `ui`). A window beside the terminal view
+(`Invoked::interactive`) sets `ExitCondition::DontExit`, so closing it
+leaves the agent running, and `WinitSettings` with
+`UpdateMode::reactive_low_power(Duration::from_secs(1))`; in `finish` it
+points the agent's `Wake` at the `EventLoopProxyWrapper`, sending
+`WinitUserEvent::WakeUp`. A window that is the front offers itself
+`on_flag`.
