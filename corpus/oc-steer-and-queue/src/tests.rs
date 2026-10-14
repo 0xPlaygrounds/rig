@@ -8,6 +8,7 @@ use rig_harness_test_support::{
 };
 
 use bevy_ecs::system::SystemState;
+use rig_tui::{Editor, MainEditor};
 
 use super::*;
 
@@ -81,8 +82,20 @@ fn finish_shell(app: &mut App, at: usize) {
 
 /// Types `text` in the terminal view's input and presses `keys`.
 fn type_and(app: &mut App, text: &str, keys: &str) {
-    app.world_mut().resource_mut::<TuiInput>().set(text);
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut Editor, With<MainEditor>>();
+    let typed = main.single_mut(world).map(|mut input| input.set(text));
+    assert!(typed.is_ok(), "the default screen has a main editor");
     press(app, keys);
+}
+
+/// The text in the terminal view's input.
+fn typed(app: &mut App) -> String {
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&Editor, With<MainEditor>>();
+    main.single(world)
+        .map(|input| input.text().to_owned())
+        .unwrap_or_default()
 }
 
 /// Steering, queueing, editing, reordering, interrupting and restarting,
@@ -156,7 +169,7 @@ fn steer_queue_edit_interrupt_and_restart() {
     run_until(&mut app, &wakes, shells(3));
     type_and(&mut app, "draft", "alt+enter");
     press(&mut app, "up e");
-    assert_eq!(app.world().resource::<TuiInput>().text(), "draft");
+    assert_eq!(typed(&mut app), "draft");
     type_and(&mut app, "X", "enter");
     press(&mut app, "up t esc");
     app.update();
@@ -192,7 +205,7 @@ fn steer_queue_edit_interrupt_and_restart() {
         [("keep this".to_owned(), PendingKind::Steer)]
     );
     assert!(app.world().resource::<Collected<Recalled>>().0.is_empty());
-    assert!(app.world().resource::<TuiInput>().is_empty());
+    assert!(typed(&mut app).is_empty());
     type_and(&mut app, "go on", "enter");
     run_until(&mut app, &wakes, ended(7));
     let said = request(&model, 9);
