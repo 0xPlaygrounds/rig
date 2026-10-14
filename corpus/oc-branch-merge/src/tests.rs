@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
@@ -83,8 +84,10 @@ fn notes(world: &World, agent: Entity) -> usize {
     let Some(conversation) = world.get::<Conversation>(agent) else {
         return 0;
     };
-    let merges = records(conversation).into_iter();
-    merges.filter(|aside| aside.kind == MERGE).count()
+    let found = lines(conversation);
+    let asides = found.iter().flat_map(|line| line.conversation.asides());
+    let merges = asides.filter(|(_, aside)| aside.kind == MERGE);
+    merges.map(|(id, _)| id).collect::<HashSet<_>>().len()
 }
 
 /// Waits for merge note number `n`.
@@ -99,12 +102,7 @@ fn merged(app: &mut App, wakes: &Receiver<()>, agent: Entity, n: usize) {
 fn line_text(app: &App, agent: Entity, name: &str) -> String {
     let found = lines_of(app, agent);
     let line = found.iter().find(|line| line.title == name);
-    let said = line.map(|line| {
-        line.said
-            .iter()
-            .map(|said| &said.message)
-            .collect::<Vec<_>>()
-    });
+    let said = line.map(|line| line.conversation.messages());
     format!("{said:?}")
 }
 
@@ -251,7 +249,8 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
     let a_ids = |app: &App| {
         let found = lines_of(app, agent);
         let a = found.iter().find(|line| line.title == "A").cloned();
-        a.map(|a| a.said.iter().map(|said| said.key).collect::<Vec<_>>())
+        let keys = |a: Line| a.conversation.entries().map(|entry| entry.key()).collect();
+        a.map(keys).unwrap_or_else(Vec::new)
     };
     let before = a_ids(&app);
     app.world_mut()
@@ -265,4 +264,9 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
     let b = line_text(&app, agent, "B");
     assert!(b.contains(MERGED) && b.contains("C summary again"), "{b}");
     assert!(!line_text(&app, agent, "C").contains(MERGED));
+    // B waits for its next request: switched to, it does not answer the
+    // note by itself.
+    run(&mut app, &wakes, agent, "switch B");
+    let halted = app.world().get::<Conversation>(agent).map(|it| it.halted());
+    assert_eq!(halted, Some(Some(Halt::Kept)));
 }

@@ -1,7 +1,8 @@
 //! OC-10: merge findings from a side branch.
 //!
-//! Branches are the conversation's own (rig-core's `branch_off`,
-//! `switch_branch`, `branches` and `line`): every inactive branch is a
+//! Branches are the conversation's own (rig-core's `branch_off` and
+//! `switch_branch`, listed by rig-memory's `lines`, each read as its own
+//! conversation with `line_conversation`): every inactive branch is a
 //! `rig.branch` aside holding its entries, so it is saved, forked,
 //! rewritten and exported with the conversation, and a branch switched
 //! back keeps its ids. `/branch <name>` starts a branch at the end of the
@@ -11,13 +12,14 @@
 //! entry that made the call, so it goes with that entry's branch.
 //! `/branches` lists every branch with its first prompt, its messages
 //! after the point it shares and the files it changed. `/merge <branch>
-//! [into <branch>] [--with-files]` finds the shared ancestor by message
-//! key, asks the agent's model to summarize what the other branch did
-//! after it (or after the last merge from it), shows the summary for review
-//! (Accept / Edit / Cancel) and, on Accept, sends one note "Merged from
-//! branch `<name>`" to the agent (`DeliveryMode::Note`), followed by an
-//! aside recording the source and the last merged message's key. A note
-//! into an inactive branch is put there directly, once no turn runs. With
+//! [into <branch>] [--with-files]` finds the shared ancestor
+//! (`shared_prefix`), asks the agent's model to summarize what the other
+//! branch did after it (or after the last merge from it), shows the
+//! summary for review (Accept / Edit / Cancel) and, on Accept, sends one
+//! note "Merged from branch `<name>`" to the agent (`DeliveryMode::Note`),
+//! followed by an aside recording the source and the last merged message's
+//! key. A note into an inactive branch is put there directly, once no turn
+//! runs, and left for that branch's next request (`Halt::Kept`). With
 //! `--with-files`, the files the source changed are offered with their
 //! hunks for per-file apply, each as the source's last change left it.
 
@@ -26,9 +28,10 @@ use std::path::PathBuf;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::conversation::{Aside, AsideId, Branch, Entry, MessageKey};
+use rig_harness::rig_core::conversation::{self, Aside, AsideId, Entry, MessageKey, shared_prefix};
 use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_core::tool::{ChangeKind, FileChange, FilesChanged};
+use rig_harness::rig_memory::{self, LineId};
 use serde::{Deserialize, Serialize};
 
 /// The author of this plugin's messages and conversation edits.
@@ -69,95 +72,68 @@ pub struct FilesRecord {
     pub files: Vec<FileChange>,
 }
 
-/// A message of a branch.
-#[derive(Clone, Debug)]
-pub struct Said {
-    /// Its key.
-    pub key: MessageKey,
-    /// The message.
-    pub message: Message,
-}
-
-/// A branch with every message on it, from the first.
+/// A branch, as a conversation of its own: its entries from the first,
+/// with their ids, and the asides that follow them.
 #[derive(Clone, Debug)]
 pub struct Line {
     /// Its name.
     pub title: String,
-    /// Its messages.
-    pub said: Vec<Said>,
+    /// Its entries and asides
+    /// ([`line_conversation`](conversation::Conversation::line_conversation)).
+    pub conversation: conversation::Conversation,
     /// Where its own messages start: after the point it branched off.
     pub own: usize,
     /// Its branch aside; `None` for the active branch.
     pub id: Option<AsideId>,
 }
 
-impl Line {
-    /// Where `aside` follows on it, after the entry it follows; `None`
-    /// when it follows an entry not on it.
-    fn position(&self, aside: &Aside) -> Option<usize> {
-        let Some(after) = aside.after else {
-            return Some(0);
-        };
-        let at = self.said.iter().position(|said| said.key.id == after);
-        at.map(|at| at.saturating_add(1))
-    }
-
-    fn index_of(&self, key: MessageKey) -> Option<usize> {
-        self.said.iter().position(|said| said.key == key)
-    }
-}
-
 /// Every branch of `conversation`: the active one first, then each kept
 /// one, those kept inside others too.
 pub fn lines(conversation: &Conversation) -> Vec<Line> {
-    let said = |id: Option<AsideId>| -> Vec<Said> {
-        let entries = conversation.line(id).unwrap_or_default().into_iter();
-        let said = entries.filter_map(|entry| {
-            let key = MessageKey {
-                made: entry.made?,
-                id: entry.id?,
-            };
-            let message = entry.message;
-            Some(Said { key, message })
-        });
-        said.collect()
+    let listed = rig_memory::lines(conversation);
+    // The active line's own messages start where the last branch kept in
+    // it parts.
+    let parts = |n: usize| {
+        let inside = listed.iter().filter(|line| line.inside == Some(n));
+        let kept = inside.filter(|line| matches!(line.id, LineId::Branch(_)));
+        kept.map(|line| line.at).max().unwrap_or_default()
     };
-    let kept = conversation.branches();
-    let top = kept.iter().filter(|kept| kept.inside.is_none());
-    let active = Line {
-        title: conversation.branch_title().to_owned(),
-        said: said(None),
-        own: top.map(|kept| kept.at).max().unwrap_or_default(),
-        id: None,
-    };
-    let kept = kept.into_iter().map(|kept| Line {
-        said: said(Some(kept.id)),
-        title: kept.branch.title,
-        own: kept.at,
-        id: Some(kept.id),
+    let found = listed.iter().enumerate().filter_map(|(n, line)| {
+        let (id, own) = match line.id {
+            LineId::Active => (None, parts(n)),
+            LineId::Branch(id) => (Some(id), line.at),
+            LineId::Session { .. } => return None,
+        };
+        let end = line.at.saturating_add(line.entries);
+        Some(Line {
+            title: line.title.clone(),
+            conversation: conversation.line_conversation(id, end)?,
+            own,
+            id,
+        })
     });
-    std::iter::once(active).chain(kept).collect()
+    found.collect()
 }
 
-/// Every aside of `conversation` that is not a branch, those kept inside
-/// branches included.
-fn records(conversation: &Conversation) -> Vec<Aside> {
-    let active = conversation.asides().map(|(_, aside)| aside.clone());
-    let kept = conversation.branches().into_iter();
-    let kept = kept.flat_map(|kept| kept.branch.asides.into_iter().map(|(_, aside)| aside));
-    active
-        .chain(kept)
-        .filter(|aside| Branch::of(aside).is_none())
-        .collect()
+/// The kept branch named `title`.
+fn kept_named(conversation: &Conversation, title: &str) -> Option<AsideId> {
+    let listed = rig_memory::lines(conversation).into_iter();
+    listed
+        .filter(|line| line.title == title)
+        .find_map(|line| match line.id {
+            LineId::Branch(id) => Some(id),
+            _ => None,
+        })
 }
 
 /// The files changed on `line` after message `from`, in order: each file
 /// with every change made to it.
-fn changes_after(records: &[Aside], line: &Line, from: usize) -> BTreeMap<String, Vec<FileChange>> {
-    let mut found: Vec<(usize, FileChange)> = records
-        .iter()
-        .filter(|aside| aside.kind == FILES && aside.after.is_some())
-        .filter_map(|aside| Some((line.position(aside)?, aside)))
+fn changes_after(line: &Line, from: usize) -> BTreeMap<String, Vec<FileChange>> {
+    let conversation = &line.conversation;
+    let mut found: Vec<(usize, FileChange)> = conversation
+        .asides()
+        .filter(|(_, aside)| aside.kind == FILES)
+        .map(|(_, aside)| (conversation.aside_position(aside), aside))
         .filter(|(at, _)| *at > from)
         .filter_map(|(at, aside)| Some((at, FilesRecord::deserialize(&aside.value).ok()?)))
         .flat_map(|(at, record)| record.files.into_iter().map(move |file| (at, file)))
@@ -170,22 +146,9 @@ fn changes_after(records: &[Aside], line: &Line, from: usize) -> BTreeMap<String
     files
 }
 
-/// How many leading messages two lines share: the index after their
-/// shared ancestor message.
-fn shared(a: &Line, b: &Line) -> usize {
-    a.said
-        .iter()
-        .zip(&b.said)
-        .take_while(|(a, b)| a.key == b.key)
-        .count()
-}
-
 /// Makes `title` the active branch.
 fn go_to(conversation: &mut Conversation, title: &str) -> Result<(), String> {
-    let found = lines(conversation);
-    let line = found.iter().find(|line| line.title == title);
-    let id = line.and_then(|line| line.id);
-    let id = id.ok_or(format!("No branch {title}."))?;
+    let id = kept_named(conversation, title).ok_or(format!("No branch {title}."))?;
     let spliced = conversation.switch_branch(id, Author::plugin(NAME));
     spliced.map(drop).map_err(|failure| failure.to_string())
 }
@@ -330,16 +293,14 @@ fn list(
     let Ok(conversation) = agents.get(args.agent) else {
         return;
     };
-    let records = records(conversation);
     let shown: Vec<String> = lines(conversation)
         .iter()
         .map(|line| {
-            let own = line.said.get(line.own..).unwrap_or_default();
-            let prompt = own.iter().find_map(|said| user_text(&said.message));
+            let messages = line.conversation.messages();
+            let own = messages.get(line.own..).unwrap_or_default();
+            let prompt = own.iter().find_map(user_text);
             let prompt = prompt.map(|text| format!(", \"{}\"", first_line(&text)));
-            let files: Vec<String> = changes_after(&records, line, line.own)
-                .into_keys()
-                .collect();
+            let files: Vec<String> = changes_after(line, line.own).into_keys().collect();
             let files = match files.is_empty() {
                 true => "none".to_owned(),
                 false => files.join(", "),
@@ -371,7 +332,8 @@ fn branch(
         ));
         return;
     };
-    let taken = lines(&conversation).iter().any(|line| line.title == name);
+    let listed = rig_memory::lines(&conversation);
+    let taken = listed.iter().any(|line| line.title == name);
     if name.is_empty() || name.contains(char::is_whitespace) || taken {
         notices.write(Notice::error(
             args.agent,
@@ -454,14 +416,16 @@ fn merge(
         notices.write(Notice::error(args.agent, format!("No branch {missing}.")));
         return;
     };
-    let ancestor = shared(from, to);
+    let entries = |line: &Line| line.conversation.line(None).unwrap_or_default();
+    let ancestor = shared_prefix(&entries(from), &entries(to));
+    let said = from.conversation.messages();
     let merging = Merging {
         agent: args.agent,
         source: source.to_owned(),
     };
     let refusal = if source == target {
         Some(format!("A branch cannot be merged into itself ({source})."))
-    } else if ancestor == from.said.len() {
+    } else if ancestor == said.len() {
         Some(format!(
             "{target} is a descendant of {source}: it has {source}'s messages already."
         ))
@@ -474,17 +438,17 @@ fn merge(
         notices.write(Notice::error(args.agent, refusal));
         return;
     }
-    let records = records(conversation);
     // After the last message the last merge from it into the target covered.
-    let merged = records
-        .iter()
-        .filter(|aside| aside.kind == MERGE && to.position(aside).is_some())
-        .filter_map(|aside| MergeRecord::deserialize(&aside.value).ok())
+    let merged = (to.conversation.asides())
+        .filter(|(_, aside)| aside.kind == MERGE)
+        .filter_map(|(_, aside)| MergeRecord::deserialize(&aside.value).ok())
         .filter(|record| record.source == source)
-        .filter_map(|record| from.index_of(record.through))
+        .filter_map(|record| from.conversation.index_of_key(record.through))
         .max();
     let start = merged.map_or(ancestor, |at| at.saturating_add(1).max(ancestor));
-    let (Some(new), Some(last)) = (from.said.get(start..), from.said.last()) else {
+    let last = said.len().checked_sub(1);
+    let last = last.and_then(|at| from.conversation.key(at));
+    let (Some(new), Some(last)) = (said.get(start..), last) else {
         return;
     };
     if new.is_empty() {
@@ -492,7 +456,7 @@ fn merge(
         notices.write(Notice::info(args.agent, nothing));
         return;
     }
-    let changed: Vec<String> = changes_after(&records, from, start).into_keys().collect();
+    let changed: Vec<String> = changes_after(from, start).into_keys().collect();
     let mut prompt = format!(
         "The branch `{source}` after the message it shares with `{target}`:\n\n{}",
         render(new)
@@ -504,7 +468,7 @@ fn merge(
         ));
     }
     let files = match with_files {
-        true => changes_after(&records, from, ancestor)
+        true => changes_after(from, ancestor)
             .into_iter()
             .filter_map(|(path, changes)| Some((path, changes.into_iter().last()?)))
             .collect(),
@@ -515,7 +479,7 @@ fn merge(
         agent: args.agent,
         source: source.to_owned(),
         target: target.to_owned(),
-        through: last.key,
+        through: last,
         changed,
         with_files,
         summary: String::new(),
@@ -753,6 +717,9 @@ fn append_elsewhere(
     let entry = Entry::new(Message::user(text)).by(author_of(&record));
     let id = conversation.push(entry);
     conversation.add_aside(Aside::new(MERGE, Author::plugin(NAME), value).after(Some(id)));
+    // Read from the branch's next request on, as a note to an idle agent
+    // is: not answered by itself when the branch is switched to.
+    conversation.halt(Halt::Kept);
     if let Err(why) = go_to(conversation, &home) {
         notices.write(Notice::error(agent, why));
     }
@@ -854,10 +821,10 @@ fn first_line(text: &str) -> &str {
 }
 
 /// `said` as the summarizer reads it.
-fn render(said: &[Said]) -> String {
+fn render(said: &[Message]) -> String {
     let mut out = Vec::new();
-    for said in said {
-        match &said.message {
+    for message in said {
+        match message {
             Message::System { content } => out.push(format!("[system] {content}")),
             Message::User { content } => {
                 for item in content {
