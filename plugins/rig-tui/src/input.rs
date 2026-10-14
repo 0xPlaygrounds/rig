@@ -13,10 +13,14 @@
 //! ```no_run
 //! use rig_harness::prelude::*;
 //! use rig_tui::crossterm::event::{Event, KeyCode};
-//! use rig_tui::{InputSystems, KeyInput, TerminalEvents, Editor, TuiInputState, TuiKeys};
+//! use rig_tui::{Editor, InputSystems, KeyInput, MainEditor, TerminalEvents, TuiInputState, TuiKeys};
 //!
 //! /// `/` on an empty input opens a search instead of a slash command.
-//! fn slash_searches(mut events: ResMut<TerminalEvents>, input: Res<Editor>, state: Res<TuiInputState>) {
+//! fn slash_searches(
+//!     mut events: ResMut<TerminalEvents>,
+//!     input: Single<&Editor, With<MainEditor>>,
+//!     state: Res<TuiInputState>,
+//! ) {
 //!     let slash = |item: &KeyInput| {
 //!         matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'))
 //!     };

@@ -430,16 +430,20 @@ pub(crate) struct Sources<'a> {
 /// reader reads what the view shows. Each layout renders and wraps the
 /// whole transcript, so lay one out when asked, not every frame. It is
 /// there in any run with the [`TuiPlugin`](crate::TuiPlugin), and takes
-/// the [`TranscriptView`] to lay out with, so a system that changes the
-/// view lays out with it too.
+/// the [`TranscriptView`] to lay out with, such as a pane's, so a system
+/// that changes the view lays out with it too.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
-/// use rig_tui::{Expanded, TranscriptLayout, TranscriptView};
+/// use rig_tui::{Expanded, MainPane, TranscriptLayout, TranscriptView};
 ///
-/// /// `/export`: the agent's transcript as the view draws it, every item
-/// /// whole, a line per row.
-/// fn export(In(args): In<CommandArgs>, layout: TranscriptLayout, view: Res<TranscriptView>) {
+/// /// `/export`: the agent's transcript as the main pane draws it, every
+/// /// item whole, a line per row.
+/// fn export(
+///     In(args): In<CommandArgs>,
+///     layout: TranscriptLayout,
+///     view: Single<&TranscriptView, With<MainPane>>,
+/// ) {
 ///     let width = view.width().unwrap_or(100);
 ///     let Some(laid_out) = layout.lay_out(&view, args.agent, width, Expanded::All) else {
 ///         return;
