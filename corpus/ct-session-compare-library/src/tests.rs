@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use rig_core::conversation::{Author, Conversation};
 use rig_core::message::{AssistantContent, Message, ToolName, ToolResultContent};
-use rig_memory::{DirStore, Keep, MODEL, SavedAgent, Session, Store, fork};
+use rig_memory::{DirStore, MODEL, NoRewrite, SavedAgent, Session, Store, fork};
 use serde_json::{Value, json};
 
 use super::*;
@@ -119,7 +119,7 @@ fn save_session(dir: &Path, rest: Vec<Message>, model: &str) -> Option<DirStore>
         conversation,
         ..SavedAgent::default()
     };
-    agent.state.insert(MODEL.to_owned(), json!(model).into());
+    agent.saved.insert(MODEL.to_owned(), json!(model).into());
     let mut session = Session {
         agents: vec![agent],
         ..Session::default()
@@ -129,7 +129,7 @@ fn save_session(dir: &Path, rest: Vec<Message>, model: &str) -> Option<DirStore>
         "models": {model: {"tokens": {}, "cost": 0.05, "unpriced": 0, "calls": 3}},
     });
     session
-        .state
+        .saved
         .insert(SESSION_SPENDING.to_owned(), spent.into());
     ok(session.save(&store))?;
     Some(store)
@@ -139,9 +139,9 @@ fn save_session(dir: &Path, rest: Vec<Message>, model: &str) -> Option<DirStore>
 /// on `model`.
 fn continue_session(store: &DirStore, messages: Vec<Message>, model: &str) -> Option<()> {
     let mut session = ok(Session::read(store))?;
-    session.state.remove(SESSION_SPENDING);
+    session.saved.remove(SESSION_SPENDING);
     let agent = session.agent_mut(AGENT)?;
-    agent.state.insert(MODEL.to_owned(), json!(model).into());
+    agent.saved.insert(MODEL.to_owned(), json!(model).into());
     agent.conversation.extend(messages);
     ok(session.save(store))
 }
@@ -166,7 +166,7 @@ fn scenario() -> Option<()> {
     // which then went on another way.
     let diverged = ok(Session::read(&opus))?.agent(AGENT)?.conversation.id(3)?;
     let local = ok(DirStore::open(&b))?;
-    ok(fork(&opus, &local, Some((AGENT, diverged)), &Keep))?;
+    ok(fork(&opus, &local, Some((AGENT, diverged)), &NoRewrite))?;
     continue_session(&local, side_b()?, "local/qwen")?;
 
     // A log a newer rig wrote: left out with a warning, not refused.

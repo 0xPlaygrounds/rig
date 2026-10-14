@@ -102,7 +102,7 @@ pub fn lines(conversation: &Conversation) -> Vec<Line> {
         let (id, own) = match line.id {
             LineId::Active => (None, parts(n)),
             LineId::Branch(id) => (Some(id), line.at),
-            LineId::Session { .. } => return None,
+            LineId::Split { .. } => return None,
         };
         let end = line.at.saturating_add(line.entries);
         Some(Line {

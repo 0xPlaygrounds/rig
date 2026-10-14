@@ -34,7 +34,7 @@ use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath, TypeRegistry};
 use rig_core::conversation::{Aside, AsideId, Author, BRANCH, Change, LINE_VALUES, MessageId};
-use rig_memory::{SET_ASIDE, Versioned};
+use rig_memory::{SHELVED, Versioned};
 use serde_json::{Map, Value};
 
 use super::agent::{Agent, AgentId, Conversation};
@@ -53,7 +53,7 @@ pub const FOLLOWS: &str = "rig.follows";
 /// Versioned like a saved value, and keyed by its type path or the stable
 /// key its plugin gives it: a line value no step reads is listed in
 /// `Shelved` and left on the line, and the next change of the component
-/// moves it to a side key (rig-memory's `SET_ASIDE`) on that line; a newer
+/// moves it to a side key (rig-memory's `SHELVED`) on that line; a newer
 /// rig's is never written over in this run. It takes the place of `Saved`
 /// for its type.
 #[derive(Clone)]
@@ -92,7 +92,7 @@ pub(crate) struct Followed(pub(crate) Vec<String>);
 
 /// The agents and keys whose line value did not read, as a saved value's:
 /// a newer rig's is held, never written over this run; one no step reads is
-/// moved to its side key ([`SET_ASIDE`]) by the next change of the
+/// moved to its side key ([`SHELVED`]) by the next change of the
 /// component, which is then kept as any is.
 #[derive(Resource, Default)]
 pub(crate) struct Unread(HashMap<(Entity, String), Unreadable>);
@@ -126,7 +126,7 @@ fn held(
             if let Some(old) = current(conversation, key)
                 && let Some(saved) = versioned(&old)
             {
-                set(conversation, &format!("{SET_ASIDE}{key}/v{}", saved.v), old);
+                set(conversation, &format!("{SHELVED}{key}/v{}", saved.v), old);
             }
             false
         }

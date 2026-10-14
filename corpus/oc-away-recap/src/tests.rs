@@ -179,7 +179,7 @@ fn a_resumed_session_is_recapped_beside_the_work() {
         "{shown}"
     );
     assert_eq!(saved_messages(&store), saved);
-    let state = Session::read(&store).map(|session| format!("{:?}", session.state));
+    let state = Session::read(&store).map(|session| format!("{:?}", session.saved));
     assert!(state.is_ok_and(|state| state.contains("Pending: run tests")));
     let agent = first_agent(resumed.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let live = resumed.world().get::<Conversation>(agent);

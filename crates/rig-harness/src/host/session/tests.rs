@@ -1295,9 +1295,9 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let stores = app.world().resource::<SessionStores>().clone();
     let value = |value: serde_json::Value| Versioned { v: 1, value };
     let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
-        read.state
+        read.saved
             .insert("goals.goal".to_owned(), value("ship".into()));
-        read.state.insert("goals.count".to_owned(), value(3.into()));
+        read.saved.insert("goals.count".to_owned(), value(3.into()));
         let agent = read.agent_mut("agent-1").ok_or("no agent")?;
         agent.conversation.push(Message::assistant("hello"));
         Ok(())
@@ -1306,7 +1306,7 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let listed = |goal: &str| BTreeMap::from([("goals.goal".to_owned(), value(goal.into()))]);
     let meta = SessionMeta::read(&*store).unwrap_or_default();
     assert_eq!(
-        (meta.title.as_str(), meta.messages, &meta.data),
+        (meta.title.as_str(), meta.messages, &meta.listed),
         ("hi", 2, &listed("ship"))
     );
     assert!(meta.updated > 1, "updated");
@@ -1316,7 +1316,7 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let rewritten = rewrite_stopped(&stores, &session, &stopped, by, &Secret);
     assert!(rewritten.is_ok());
     let meta = SessionMeta::read(&*store).unwrap_or_default();
-    assert_eq!((meta.messages, &meta.data), (2, &listed("[secret]")));
+    assert_eq!((meta.messages, &meta.listed), (2, &listed("[secret]")));
     assert!(meta.updated > 1, "updated");
     drop(app);
     fs::remove_dir_all(home.root()).ok();

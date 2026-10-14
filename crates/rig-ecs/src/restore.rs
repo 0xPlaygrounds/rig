@@ -57,7 +57,7 @@ use rig_core::conversation::{Aside, AsideId, Author};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, UserContent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
-use rig_memory::{SESSION, SET_ASIDE, Session, Unread, Upgrades, Versioned, Writer};
+use rig_memory::{SESSION, SHELVED, Session, Unread, Upgrades, Versioned, Writer};
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -292,7 +292,7 @@ pub(crate) fn restore_session(world: &mut World) {
     };
     let Session {
         agents,
-        state,
+        saved: state,
         repairs,
     } = session;
     let mut notices: Vec<Notice> = repairs
@@ -325,8 +325,8 @@ pub(crate) fn restore_session(world: &mut World) {
         let conversation = Conversation(agent.conversation);
         let id = AgentId(agent.id);
         let mut read = Vec::new();
-        for (key, value) in &agent.state {
-            match reader.read(&registry, &id.0, Some(&id), &agent.state, key, value) {
+        for (key, value) in &agent.saved {
+            match reader.read(&registry, &id.0, Some(&id), &agent.saved, key, value) {
                 Ok(value) => read.extend(value),
                 Err(failure) => {
                     let skipped = format!("Skipped saved component `{key}`: {failure}.");
@@ -382,7 +382,7 @@ pub struct SavedUpgrades(pub Upgrades);
 /// The stable keys saved types are logged and restored under instead of
 /// their type paths, such as `goals.goal` (rig-harness
 /// `AppKeepsExt::saved_as`), and which of them are listed: copied into the
-/// session's listing (rig-memory's `SessionMeta::data`) as they change.
+/// session's listing (rig-memory's `SessionMeta::listed`) as they change.
 #[derive(Resource, Default, Debug, Clone, PartialEq, Eq)]
 pub struct SavedKeys {
     /// Each key by type path.
@@ -520,7 +520,7 @@ impl SavedReader {
         key: &str,
         saved: &Versioned,
     ) -> Result<Option<(&'r ReflectComponent, Box<dyn Reflect>)>, String> {
-        if key.starts_with(SET_ASIDE) || self.retired.contains(key) {
+        if key.starts_with(SHELVED) || self.retired.contains(key) {
             return Ok(None);
         }
         let path = self.keys.path(key).unwrap_or(key);
@@ -545,7 +545,7 @@ impl SavedReader {
                     if newer {
                         writer.hold(log, key);
                     } else {
-                        writer.set_aside(log, key, saved.clone());
+                        writer.shelve(log, key, saved.clone());
                     }
                 }
                 self.set_aside.push(ShelvedValue {

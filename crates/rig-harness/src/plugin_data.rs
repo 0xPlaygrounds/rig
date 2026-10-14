@@ -22,7 +22,7 @@ use std::sync::Arc;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, SessionDir};
 use rig_core::tool::content_hash;
-use rig_memory::{DirFiles, Files, LoadError, MemoryStore};
+use rig_memory::{DirFiles, Files, MemoryStore, SessionError};
 
 use crate::host::session::SessionStores;
 
@@ -71,7 +71,7 @@ impl PluginData {
     /// # Errors
     ///
     /// When its store does not open.
-    pub fn of(stores: &SessionStores, dir: &SessionDir) -> Result<Arc<dyn Files>, LoadError> {
+    pub fn of(stores: &SessionStores, dir: &SessionDir) -> Result<Arc<dyn Files>, SessionError> {
         let store: Arc<dyn Files> = stores.open(dir)?;
         Ok(Arc::new(Within(store)))
     }

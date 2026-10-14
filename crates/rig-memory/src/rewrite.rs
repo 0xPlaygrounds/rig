@@ -3,7 +3,7 @@
 //! record, and every file of its store) through a [`Rewrite`], keeping
 //! each record where it is with its stamp. [`Strings`] maps every string,
 //! as a redaction or a path remap does; [`Messages`] maps only messages;
-//! [`Keep`] maps nothing.
+//! [`NoRewrite`] maps nothing.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
@@ -16,11 +16,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::blobs::{named_blobs, store_change};
-use crate::format::{Body, Header, LogLines, Meta, Rewrote, parse, write_change, write_meta};
+use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_change, write_meta};
 use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
 use crate::upgrade::each_record;
 use crate::writer::set_aside_tail;
-use crate::{Files, LoadError, MemoryStore, Stamp, Store, Versioned, now_ms, upgrade};
+use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned, now_ms, upgrade};
 
 /// Where a value being rewritten is kept.
 #[derive(Clone, Copy, Debug)]
@@ -124,7 +124,7 @@ pub trait Rewrite: Send + Sync {
 /// assert_eq!(rewritten.logs.len(), 1);
 /// let main = Session::read(&store)?.agents.remove(0);
 /// assert_eq!(main.conversation.messages(), [Message::user("my key is [REDACTED]")]);
-/// # Ok::<(), rig_memory::LoadError>(())
+/// # Ok::<(), rig_memory::SessionError>(())
 /// ```
 pub struct Strings<F: Fn(&mut String) -> bool + Send + Sync>(pub F);
 
@@ -160,9 +160,9 @@ impl<F: Fn(&mut Message) -> bool + Send + Sync> Rewrite for Messages<F> {
 }
 
 /// Nothing: a plain [`fork`](crate::fork).
-pub struct Keep;
+pub struct NoRewrite;
 
-impl Rewrite for Keep {
+impl Rewrite for NoRewrite {
     fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
         false
     }
@@ -470,9 +470,9 @@ pub struct RewrittenLog {
     /// Its conversation as rewritten, with images, continuing the new log.
     pub conversation: Conversation,
     /// Its saved values as rewritten, each at the version it was saved at.
-    pub state: BTreeMap<String, Versioned>,
+    pub saved: BTreeMap<String, Versioned>,
     /// The saved keys whose newest value changed; one whose value was
-    /// removed is not in `state`.
+    /// removed is not in `saved`.
     pub changed_keys: Vec<String>,
 }
 
@@ -500,8 +500,8 @@ pub(crate) fn map_log(
     until: Option<u64>,
     with: &dyn Rewrite,
     blobs: &dyn Store,
-) -> Result<Option<Mapped>, LoadError> {
-    let refuse = |line, why| LoadError::Record {
+) -> Result<Option<Mapped>, SessionError> {
+    let refuse = |line, why| SessionError::Record {
         log: name.to_owned(),
         line,
         why,
@@ -712,7 +712,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// not, and each always reads. A crash midway leaves some logs and files
 /// rewritten; running the same map again finishes it. A conversation
 /// read before the rewrite no longer continues a changed log: [`save`] of
-/// it gives [`LoadError::Changed`], and the caller reads it again.
+/// it gives [`SessionError::Changed`], and the caller reads it again.
 ///
 /// Not for a session a running [`Writer`](crate::Writer) logs to: that is
 /// [`Writer::rewrite`](crate::Writer::rewrite). Another process must not
@@ -726,7 +726,11 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// (nothing written), or a write fails.
 ///
 /// [`save`]: crate::save
-pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewritten, LoadError> {
+pub fn rewrite(
+    store: &dyn Store,
+    by: Author,
+    with: &dyn Rewrite,
+) -> Result<Rewritten, SessionError> {
     upgrade(store)?;
     let mut logs: Vec<(String, LogLines, Folded)> = Vec::new();
     for name in store.logs()? {
@@ -754,7 +758,7 @@ pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewr
         }
         let (stamp, mut header) = mapped.header;
         header.lineage = Lineage::fresh();
-        header.rewrites.push(Rewrote { t, by: by.clone() });
+        header.rewrites.push(LogRewrite { t, by: by.clone() });
         let mut bytes = Vec::with_capacity(mapped.body.len() + 256);
         write_meta(&mut bytes, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
         bytes.extend_from_slice(&mapped.body);
@@ -763,7 +767,7 @@ pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewr
             images: true,
         };
         let new = LogLines::parse(bytes);
-        let folded = fold_lines(name, &new, how, &blob)?.ok_or_else(|| LoadError::Record {
+        let folded = fold_lines(name, &new, how, &blob)?.ok_or_else(|| SessionError::Record {
             log: name.clone(),
             line: 1,
             why: "the rewritten log is empty".to_owned(),
@@ -778,7 +782,7 @@ pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewr
             log: name.clone(),
             records: mapped.records,
             conversation: folded.conversation,
-            state: folded.state,
+            saved: folded.state,
             changed_keys,
         });
         replaced.push(new.prefix(u64::MAX).to_vec());

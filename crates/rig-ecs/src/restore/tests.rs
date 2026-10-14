@@ -1008,7 +1008,7 @@ fn session_holding(key: &str, saved: rig_memory::Versioned) -> MemoryStore {
     let mut conversation = rig_core::conversation::Conversation::new();
     conversation.push(Message::user("hello"));
     writer.save("main", &mut conversation);
-    writer.state("main", key, Some(saved), true);
+    writer.save_value("main", key, Some(saved), true);
     writer.flush();
     store
 }
@@ -1038,7 +1038,7 @@ fn main_state(store: &MemoryStore) -> std::collections::BTreeMap<String, rig_mem
     let session = rig_memory::Session::read(store).unwrap_or_default();
     session
         .agent("main")
-        .map(|main| main.state.clone())
+        .map(|main| main.saved.clone())
         .unwrap_or_default()
 }
 
@@ -1100,7 +1100,7 @@ fn an_unreadable_value_is_set_aside_and_a_newer_one_held() {
     }
     app.update();
     let state = main_state(&store);
-    let side = format!("{}{path}/v1", rig_memory::SET_ASIDE);
+    let side = format!("{}{path}/v1", rig_memory::SHELVED);
     assert_eq!(state.get(&side), Some(&serde_json::json!("seven").into()));
     let now = state.get(path).map(|saved| (saved.v, saved.value.clone()));
     assert_eq!(

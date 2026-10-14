@@ -13,7 +13,7 @@ use rig_core::conversation::{
 use crate::format::{LogLines, Meta, SESSION, write_change, write_meta};
 use crate::rewrite::{Place, Rewrite, map_aside, map_log};
 use crate::session::{Fold, Folded, fold_lines, log_lines};
-use crate::{LoadError, MemoryStore, Stamp, Store};
+use crate::{MemoryStore, SessionError, Stamp, Store};
 
 /// What [`fork`] copied beyond the records before the cut.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -50,7 +50,7 @@ struct Carry {
 /// conversation by then (such as an agent spawned later). Without
 /// `before`, every log whole. A torn tail is never copied.
 ///
-/// Each copied record's values go through `with` ([`Keep`](crate::Keep)
+/// Each copied record's values go through `with` ([`NoRewrite`](crate::NoRewrite)
 /// for a plain copy), each copied log gets a lineage of its own, so a
 /// conversation of one never passes as a continuation of the other, and
 /// each is read back strictly before anything is written. After a cut,
@@ -72,7 +72,7 @@ pub fn fork(
     to: &dyn Store,
     before: Option<(&str, MessageId)>,
     with: &dyn Rewrite,
-) -> Result<Forked, LoadError> {
+) -> Result<Forked, SessionError> {
     // The cut log, read and folded once: for where the message was made,
     // then as it is now.
     let (until, mut cut) = match before {
@@ -121,7 +121,7 @@ pub fn fork(
         bytes.extend_from_slice(&mapped.body);
         let lines = LogLines::parse(bytes);
         let folded = fold_lines(&name, &lines, Fold::default(), &no_images)?.ok_or_else(|| {
-            LoadError::Record {
+            SessionError::Record {
                 log: name.clone(),
                 line: 1,
                 why: "the copied log is empty".to_owned(),
@@ -159,7 +159,7 @@ pub fn fork(
             by: carry.by,
             at: Some(stamp.t),
         };
-        let refuse = |why: String| LoadError::Record {
+        let refuse = |why: String| SessionError::Record {
             log: copy.name.clone(),
             line: usize::try_from(stamp.seq)
                 .unwrap_or(usize::MAX)
@@ -218,7 +218,7 @@ fn no_images(_: &str) -> io::Result<Vec<u8>> {
 
 /// The log `name` of `from` and its strict fold as it is now; `None` when
 /// it holds no complete line.
-fn read_now(from: &dyn Store, name: &str) -> Result<Option<(LogLines, Folded)>, LoadError> {
+fn read_now(from: &dyn Store, name: &str) -> Result<Option<(LogLines, Folded)>, SessionError> {
     let Some(lines) = log_lines(from, name)? else {
         return Ok(None);
     };

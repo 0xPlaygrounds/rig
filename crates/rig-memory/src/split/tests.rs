@@ -46,10 +46,10 @@ fn saved() -> (MemoryStore, Conversation, AsideId) {
         agents: vec![SavedAgent {
             id: "main".to_owned(),
             conversation: conversation.clone(),
-            state: BTreeMap::from([("model".to_owned(), json!("m").into())]),
+            saved: BTreeMap::from([("model".to_owned(), json!("m").into())]),
             ..SavedAgent::default()
         }],
-        state: BTreeMap::from([("theme".to_owned(), Versioned::from(json!("dark")))]),
+        saved: BTreeMap::from([("theme".to_owned(), Versioned::from(json!("dark")))]),
         repairs: Vec::new(),
     };
     assert!(session.save(&store).is_ok());
@@ -57,7 +57,7 @@ fn saved() -> (MemoryStore, Conversation, AsideId) {
     let listing = SessionMeta {
         title: "one".to_owned(),
         messages: 4,
-        data: BTreeMap::from([("goals.goal".to_owned(), Versioned::from(json!("ship")))]),
+        listed: BTreeMap::from([("goals.goal".to_owned(), Versioned::from(json!("ship")))]),
         ..SessionMeta::default()
     };
     assert!(listing.write(&store).is_ok());
@@ -117,8 +117,8 @@ fn a_split_holds_the_line_with_its_keys_asides_and_values() {
         .line_values()
         .and_then(|values| values.get("k"));
     assert_eq!(value, Some(&json!("side")));
-    assert_eq!(agent.state.get("model"), Some(&json!("m").into()));
-    assert_eq!(read.state.get("theme"), Some(&json!("dark").into()));
+    assert_eq!(agent.saved.get("model"), Some(&json!("m").into()));
+    assert_eq!(read.saved.get("theme"), Some(&json!("dark").into()));
     assert_eq!(
         copy.read_file("plugins/notes.md").ok(),
         Some(b"kept".to_vec())
@@ -126,7 +126,10 @@ fn a_split_holds_the_line_with_its_keys_asides_and_values() {
     let listing = SessionMeta::read(&copy).unwrap_or_default();
     assert_eq!(listing.title, "one");
     assert_eq!(listing.messages, line.len());
-    assert_eq!(listing.data.get("goals.goal"), Some(&json!("ship").into()));
+    assert_eq!(
+        listing.listed.get("goals.goal"),
+        Some(&json!("ship").into())
+    );
 
     let second = line.get(1).and_then(|entry| entry.id);
     let short = MemoryStore::default();
@@ -222,7 +225,7 @@ fn lines_list_branches_and_splits_as_a_tree() {
         ]
     );
     let ids: Vec<_> = listed.iter().map(|line| line.id.clone()).collect();
-    let session = LineId::Session {
+    let session = LineId::Split {
         session: "1-2".to_owned(),
         agent: "main".to_owned(),
     };

@@ -32,7 +32,7 @@ use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
 use rig_core::conversation::{Author, ChangeRecord};
 use rig_memory::{
-    LoadError, Place, Repair, Rewrite, Rewritten, SESSION, Session, Store, Versioned, Writer,
+    Place, Repair, Rewrite, Rewritten, SESSION, Session, SessionError, Store, Versioned, Writer,
 };
 use web_time::{SystemTime, UNIX_EPOCH};
 
@@ -68,7 +68,7 @@ use super::restore::{SavedReader, resource_entity, saved_type};
 /// registers any more is reported on restore and kept in the log. A value
 /// no step reads, or that no longer fits its type, is reported, listed in
 /// [`Shelved`] and not inserted; the next change of it first moves the old
-/// value to a side key (rig-memory's `SET_ASIDE`), so nothing is lost. A
+/// value to a side key (rig-memory's `SHELVED`), so nothing is lost. A
 /// value a newer rig saved is reported and never written over in this run.
 #[derive(Clone)]
 pub struct ReflectSaved {
@@ -117,7 +117,7 @@ fn log_changed<T: Component + Reflect + TypePath>(
         match serde_json::to_value(value) {
             Ok(value) => log
                 .0
-                .state(log_name, name, Some(Versioned { v, value }), starts),
+                .save_value(log_name, name, Some(Versioned { v, value }), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
@@ -125,7 +125,8 @@ fn log_changed<T: Component + Reflect + TypePath>(
         if let Ok(id) = agents.get(entity)
             && !changed.contains(entity)
         {
-            log.0.state(&id.0, name, None, !spawned.contains(entity));
+            log.0
+                .save_value(&id.0, name, None, !spawned.contains(entity));
         }
     }
 }
@@ -190,10 +191,10 @@ pub(crate) struct Opened(pub(crate) Session);
 ///
 /// # Errors
 ///
-/// The [`LoadError`] reading the session gave: a session saved by an older
+/// The [`SessionError`] reading the session gave: a session saved by an older
 /// rig, a log in another format, a record that cannot be read, or the
 /// store failing.
-pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), LoadError> {
+pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), SessionError> {
     let (writer, session) = Writer::open(store.clone())?;
     world.insert_resource(SessionStore(store));
     world.insert_resource(SessionLog(writer));
@@ -490,9 +491,9 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
         }
         let id = agent.map(|_| AgentId(log.log.clone()));
         for key in &log.changed_keys {
-            let inserted = match log.state.get(key) {
+            let inserted = match log.saved.get(key) {
                 Some(value) => reader
-                    .read(&registry, &log.log, id.as_ref(), &log.state, key, value)
+                    .read(&registry, &log.log, id.as_ref(), &log.saved, key, value)
                     .and_then(|read| {
                         let Some((component, value)) = read else {
                             return Ok(());

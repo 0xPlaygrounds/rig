@@ -65,7 +65,7 @@ pub struct Stamp {
 /// Why a session cannot be read or saved. Reading is strict: a session
 /// with any record it cannot read is refused whole, and nothing is written.
 #[derive(Debug, thiserror::Error)]
-pub enum LoadError {
+pub enum SessionError {
     /// The store failed.
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -125,13 +125,13 @@ fn refusal(log: &str, found: Option<&str>) -> String {
     )
 }
 
-impl From<LoadError> for io::Error {
+impl From<SessionError> for io::Error {
     /// The store's own error back; any other as
     /// [`io::ErrorKind::InvalidData`], so `?` works in code that returns
     /// [`io::Result`].
-    fn from(error: LoadError) -> Self {
+    fn from(error: SessionError) -> Self {
         match error {
-            LoadError::Io(error) => error,
+            SessionError::Io(error) => error,
             error => io::Error::new(io::ErrorKind::InvalidData, error),
         }
     }
@@ -207,13 +207,13 @@ pub(crate) struct Header {
     pub lineage: Lineage,
     /// Who rewrote the log in place, and when, oldest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub rewrites: Vec<Rewrote>,
+    pub rewrites: Vec<LogRewrite>,
 }
 
 /// A rewrite of a log in place ([`rewrite`](crate::rewrite)): when, and by
 /// whom, such as the plugin that redacted it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Rewrote {
+pub struct LogRewrite {
     /// When, in milliseconds since the Unix epoch.
     pub t: u64,
     /// Who.

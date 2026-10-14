@@ -305,7 +305,7 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
     let forked = MemoryStore::default();
     assert!(fork_point.is_some(), "turn 8 is in the conversation");
     let point = fork_point.map(|id| (log.as_str(), id));
-    let copied = fork(&store, &forked, point, &Keep);
+    let copied = fork(&store, &forked, point, &NoRewrite);
     assert!(copied.is_ok(), "{copied:?}");
     drop(app);
 

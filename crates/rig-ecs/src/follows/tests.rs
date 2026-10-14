@@ -4,7 +4,7 @@ use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::{Reflect, TypePath};
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author};
-use rig_memory::{Keep, MemoryStore, SET_ASIDE, fork};
+use rig_memory::{MemoryStore, NoRewrite, SHELVED, fork};
 use serde_json::json;
 
 use super::{FOLLOWS, ReflectFollows};
@@ -166,7 +166,7 @@ fn a_fork_gives_the_value_as_of_its_cut() {
     drop(app);
     let copy = MemoryStore::default();
     let cut = two.map(|two| (id.0.as_str(), two));
-    assert!(fork(&store, &copy, cut, &Keep).is_ok());
+    assert!(fork(&store, &copy, cut, &NoRewrite).is_ok());
     let mut forked = self::app(&copy);
     let agent = self::agent(&mut forked);
     assert_eq!(mode(&forked, agent).as_deref(), Some("plan"));
@@ -315,7 +315,7 @@ fn an_unreadable_value_is_set_aside_on_the_next_change() {
         Some(json!({"v": 1, "value": "build"})),
         "the change is kept"
     );
-    let side = format!("{SET_ASIDE}{key}/v1");
+    let side = format!("{SHELVED}{key}/v1");
     assert_eq!(
         line_value(&app, agent, &side),
         Some(json!({"v": 1, "value": 42})),

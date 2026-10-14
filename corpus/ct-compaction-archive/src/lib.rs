@@ -46,7 +46,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Chat;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_ecs::session_log::SessionStore;
-use rig_harness::rig_memory::{LoadError, Record, summary_author};
+use rig_harness::rig_memory::{LogRecord, SessionError, summary_author};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -212,12 +212,12 @@ pub fn read_archive(
     store: &dyn Store,
     log: &str,
     conversation: &Chat,
-) -> Result<Vec<Archived>, LoadError> {
+) -> Result<Vec<Archived>, SessionError> {
     let compaction = summary_author();
     let mut latest: HashMap<MessageId, message::Message> = HashMap::new();
     let mut condensed: Vec<(Vec<MessageId>, Vec<MessageId>)> = Vec::new();
     for (_, record) in history(store, log)? {
-        let Record::Change(recorded) = record else {
+        let LogRecord::Change(recorded) = record else {
             continue;
         };
         let in_place_by_compaction = recorded.by.as_ref() == Some(&compaction);

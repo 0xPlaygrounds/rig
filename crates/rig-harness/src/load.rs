@@ -250,7 +250,7 @@ pub struct SavedAs<'a> {
 
 impl<'a> SavedAs<'a> {
     /// The value is listed too: copied into the session's listing
-    /// (rig-memory's `SessionMeta::data`) whenever it changes, so a listing
+    /// (rig-memory's `SessionMeta::listed`) whenever it changes, so a listing
     /// and a session picker show and filter by it without opening a log.
     /// Keep listed values small.
     pub fn listed(self) -> &'a mut App {

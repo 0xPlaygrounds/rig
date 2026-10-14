@@ -26,7 +26,7 @@ use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::UserContent;
 use rig_harness::rig_core::tool::{FilesRead, content_hash};
 use rig_harness::rig_memory::{
-    self, DirStore, HeuristicTokenCounter, Keep, MODEL, SessionMeta, TokenCounter, Versioned,
+    self, DirStore, HeuristicTokenCounter, MODEL, NoRewrite, SessionMeta, TokenCounter, Versioned,
     check_name,
 };
 use serde::{Deserialize, Serialize};
@@ -183,7 +183,7 @@ pub fn snapshots(
 
 /// The snapshot `entry` is, from its listing.
 fn snapshot_of(entry: &SessionEntry) -> Option<Snapshot> {
-    let saved = entry.listing.meta.data.get(KEY)?;
+    let saved = entry.listing.meta.listed.get(KEY)?;
     serde_json::from_value(saved.value.clone()).ok()
 }
 
@@ -427,7 +427,7 @@ fn write_shared(
             let path = root.0.join(SHARED).join(&share.name);
             std::fs::remove_dir_all(&path).ok();
             let to = DirStore::open(path).map_err(|e| e.to_string())?;
-            rig_memory::fork(&*from, &to, None, &Keep).map_err(|e| e.to_string())?;
+            rig_memory::fork(&*from, &to, None, &NoRewrite).map_err(|e| e.to_string())?;
             Ok(share.name)
         });
     let outcome = match written {
@@ -552,7 +552,7 @@ fn bring_in(
     let from = DirStore::open(root.0.join(SHARED).join(name)).map_err(|e| e.to_string())?;
     let (id, dir) = home.new_session().map_err(|e| e.to_string())?;
     let copied = stores.open(&dir).map_err(|e| e.to_string()).and_then(|to| {
-        rig_memory::fork(&from, &*to, None, &Keep).map_err(|e| e.to_string())?;
+        rig_memory::fork(&from, &*to, None, &NoRewrite).map_err(|e| e.to_string())?;
         std::fs::write(dir.directory(), root.0.to_string_lossy().as_bytes())
             .map_err(|e| e.to_string())
     });
@@ -657,7 +657,7 @@ fn mark(
         };
         let value = serde_json::to_value(&it).map_err(|e| e.to_string())?;
         session
-            .state
+            .saved
             .insert(KEY.to_owned(), Versioned { v: 1, value });
         made = Some(it);
         Ok(())
@@ -678,7 +678,7 @@ fn ready(
     models: &Models,
 ) -> Result<(), String> {
     edit_stopped(stores, paths, dir, |session| {
-        session.state.remove(KEY);
+        session.saved.remove(KEY);
         let main = session
             .main_agent()
             .map(|main| (main.id.clone(), main.model()));
@@ -687,7 +687,7 @@ fn ready(
             && models.connect(&model).is_err()
             && let Some(agent) = session.agents.iter_mut().find(|agent| agent.id == id)
         {
-            agent.state.remove(MODEL);
+            agent.saved.remove(MODEL);
             notice = Some(format!(
                 "The snapshot's model {model} is unavailable; this session starts on the default model."
             ));
@@ -695,7 +695,7 @@ fn ready(
         let started = StartedFrom(Some((name.to_owned(), notice)));
         let value = serde_json::to_value(started).map_err(|e| e.to_string())?;
         session
-            .state
+            .saved
             .insert(STARTED.to_owned(), Versioned { v: 1, value });
         Ok(())
     })?;
@@ -712,8 +712,8 @@ fn relist(
     let store = stores.open(dir).map_err(|e| e.to_string())?;
     let mut meta = SessionMeta::read(&*store).unwrap_or_default();
     match value {
-        Some(value) => meta.data.insert(KEY.to_owned(), value),
-        None => meta.data.remove(KEY),
+        Some(value) => meta.listed.insert(KEY.to_owned(), value),
+        None => meta.listed.remove(KEY),
     };
     meta.write(&*store).map_err(|e| e.to_string())
 }

@@ -8,7 +8,7 @@ use rig_core::conversation::{AsideId, Author, Conversation};
 
 use crate::format::SESSION;
 use crate::session::{Fold, Folded, fold, log_lines, read_header};
-use crate::{Files, ForkedFrom, LoadError, SessionMeta, Store, main_order};
+use crate::{Files, ForkedFrom, SessionError, SessionMeta, Store, main_order};
 
 /// What a listing shows of a saved session, from its store's files alone
 /// (no log is folded).
@@ -43,7 +43,7 @@ pub fn read_line(
     store: &dyn Store,
     agent: Option<&str>,
     line: Option<AsideId>,
-) -> Result<(String, Conversation), LoadError> {
+) -> Result<(String, Conversation), SessionError> {
     let how = Fold {
         until: None,
         images: true,
@@ -69,7 +69,7 @@ pub fn read_line(
 /// the first by [`main_order`] that is not retired, as
 /// [`Session::main_agent`](crate::Session::main_agent) finds it; only its
 /// candidates are folded.
-fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, LoadError> {
+fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, SessionError> {
     let mut candidates = Vec::new();
     for name in store.logs()? {
         if name == SESSION {

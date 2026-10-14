@@ -281,7 +281,7 @@ fn load(
         .into_iter()
         .filter(|agent| !agent.conversation.messages().is_empty())
         .map(|saved| ExportedAgent {
-            model: saved_value::<ModelChoice>(&saved.state, registry).map(|choice| choice.0),
+            model: saved_value::<ModelChoice>(&saved.saved, registry).map(|choice| choice.0),
             calls: records
                 .iter()
                 .filter(|record| record.scope.as_deref() == Some(saved.id.as_str()))

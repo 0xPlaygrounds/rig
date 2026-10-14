@@ -11,7 +11,7 @@ use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
 use crate::{
-    LoadError, Repair, Rewrite, Rewritten, SET_ASIDE, Session, Stamp, Store, Versioned, now_ms,
+    Repair, Rewrite, Rewritten, SHELVED, Session, SessionError, Stamp, Store, Versioned, now_ms,
     rewrite, upgrade,
 };
 
@@ -243,7 +243,7 @@ impl Book {
     /// `None` or `null` when it was removed. With `starts`, the change
     /// starts the log. A held key is not written; a key set aside has its
     /// value moved to its side key first.
-    pub fn state(&mut self, name: &str, key: &str, value: Option<Versioned>, starts: bool) {
+    pub fn save_value(&mut self, name: &str, key: &str, value: Option<Versioned>, starts: bool) {
         let value = value.filter(|saved| !saved.value.is_null());
         let log = self.logs.get(name);
         if log.is_some_and(|log| log.held.contains(key)) {
@@ -259,7 +259,7 @@ impl Book {
             .and_then(|log| log.set_aside.remove(key));
         if let Some(saved) = set_aside {
             let side = Meta::State {
-                key: format!("{SET_ASIDE}{key}/v{}", saved.v),
+                key: format!("{SHELVED}{key}/v{}", saved.v),
                 v: saved.v,
                 value: Some(saved.value),
             };
@@ -297,10 +297,10 @@ impl Book {
             .cloned()
             .collect();
         for key in removed {
-            self.state(name, &key, None, true);
+            self.save_value(name, &key, None, true);
         }
         for (key, value) in values {
-            self.state(name, key, Some(value.clone()), true);
+            self.save_value(name, key, Some(value.clone()), true);
         }
     }
 
@@ -309,7 +309,7 @@ impl Book {
     }
 
     /// Marks the newest value of `key` in the log `name` as set aside.
-    pub fn set_aside_value(&mut self, name: &str, key: &str, saved: Versioned) {
+    pub fn shelve(&mut self, name: &str, key: &str, saved: Versioned) {
         if let Some(log) = self.logs.get_mut(name) {
             log.set_aside.insert(key.to_owned(), saved);
         }
@@ -328,7 +328,7 @@ impl Book {
         for rewritten in &rewritten.logs {
             if let Some(log) = self.logs.get_mut(&rewritten.log) {
                 log.lineage = rewritten.conversation.lineage();
-                log.state.clone_from(&rewritten.state);
+                log.state.clone_from(&rewritten.saved);
             }
         }
     }
@@ -337,7 +337,7 @@ impl Book {
     /// with one write, a subagent's log before its parent's, and the
     /// [`SESSION`] log once any is started. A failed write stops the
     /// logging.
-    pub fn flush(&mut self, store: &dyn Store) -> Result<(), LoadError> {
+    pub fn flush(&mut self, store: &dyn Store) -> Result<(), SessionError> {
         if let Some(failure) = &self.failure {
             return Err(io::Error::other(failure.clone()).into());
         }
@@ -401,7 +401,7 @@ impl Writer {
     /// # Errors
     ///
     /// As [`Session::read`], or when setting a torn tail aside fails.
-    pub fn open(store: Arc<dyn Store>) -> Result<(Self, Session), LoadError> {
+    pub fn open(store: Arc<dyn Store>) -> Result<(Self, Session), SessionError> {
         let upgraded = upgrade(&*store)?;
         let mut folded = fold_all(&*store, true)?;
         let mut repairs = repairs(&*store, &folded)?;
@@ -473,8 +473,8 @@ impl Writer {
     /// [`SESSION`], with the version of its type, when it changed; `None`
     /// or a `null` value when it was removed. With `starts`, the change
     /// starts the log.
-    pub fn state(&self, log: &str, key: &str, value: Option<Versioned>, starts: bool) {
-        self.inner().book.state(log, key, value, starts);
+    pub fn save_value(&self, log: &str, key: &str, value: Option<Versioned>, starts: bool) {
+        self.inner().book.save_value(log, key, value, starts);
     }
 
     /// Queues that the agent of the log `log` is gone for good.
@@ -485,9 +485,9 @@ impl Writer {
     /// The newest value of `key` in the log `log`, `saved`, is set aside:
     /// no step reads it. The first time `key` is written again, `saved` is
     /// first written under the side key `rig.set_aside/<key>/v<N>`
-    /// ([`SET_ASIDE`]), so it is kept and the key goes on.
-    pub fn set_aside(&self, log: &str, key: &str, saved: Versioned) {
-        self.inner().book.set_aside_value(log, key, saved);
+    /// ([`SHELVED`]), so it is kept and the key goes on.
+    pub fn shelve(&self, log: &str, key: &str, saved: Versioned) {
+        self.inner().book.shelve(log, key, saved);
     }
 
     /// Holds `key` in the log `log`: a newer rig saved its value, which
@@ -518,7 +518,7 @@ impl Writer {
     ///
     /// [`RewrittenLog::conversation`]: crate::RewrittenLog::conversation
     /// [`RewrittenLog::changed_keys`]: crate::RewrittenLog::changed_keys
-    pub fn rewrite(&self, by: Author, with: &dyn Rewrite) -> Result<Rewritten, LoadError> {
+    pub fn rewrite(&self, by: Author, with: &dyn Rewrite) -> Result<Rewritten, SessionError> {
         let mut inner = self.inner();
         let Inner { store, book } = &mut *inner;
         let Some(store) = store else {
@@ -551,7 +551,11 @@ impl Writer {
 /// file `recovered/<log>-<k>.part`, then replaces the log with the bytes
 /// before them; that file's name. A crash between the two leaves the tail
 /// in the log, set aside again by the next open.
-pub(crate) fn set_aside_tail(store: &dyn Store, log: &str, kept: u64) -> Result<String, LoadError> {
+pub(crate) fn set_aside_tail(
+    store: &dyn Store,
+    log: &str,
+    kept: u64,
+) -> Result<String, SessionError> {
     let bytes = store.read_log(log)?;
     let kept = usize::try_from(kept).unwrap_or(usize::MAX);
     let (prefix, tail) = bytes.split_at_checked(kept).unwrap_or((&bytes, &[]));

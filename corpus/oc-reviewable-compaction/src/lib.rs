@@ -20,7 +20,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{
-    CompactReason, Compacted, Cut, Record, SummaryState, estimate_tokens, undo_summary,
+    CompactReason, Compacted, Cut, LogRecord, SummaryState, estimate_tokens, undo_summary,
 };
 use serde::Deserialize;
 
@@ -396,7 +396,7 @@ fn list(store: Option<&dyn Store>, log: &str, compactions: &[Compacted]) -> Vec<
         .unwrap_or_default();
     let made = |summary| {
         records.iter().find_map(|(stamp, record)| match record {
-            Record::Change(recorded) if summary_in(&recorded.change) == Some(summary) => {
+            LogRecord::Change(recorded) if summary_in(&recorded.change) == Some(summary) => {
                 Some(clock(stamp.t))
             }
             _ => None,

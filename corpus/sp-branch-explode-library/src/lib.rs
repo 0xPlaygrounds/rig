@@ -347,11 +347,11 @@ fn fill(
             parent: None,
             started_ms: main.started_ms,
             conversation: leaf.conversation.clone(),
-            state: main.state.clone(),
+            saved: main.saved.clone(),
             retired: false,
             rewrites: Vec::new(),
         }],
-        state: source.session.state.clone(),
+        saved: source.session.saved.clone(),
         repairs: Vec::new(),
     };
     copy.save(&store)?;

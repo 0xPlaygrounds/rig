@@ -47,7 +47,7 @@
 //!    through a crash. Across logs a reader may see some rewritten and some
 //!    not; each always reads.
 //! 3. A value read before the rewrite no longer continues a changed log:
-//!    [`save`] of it gives [`LoadError::Changed`], and the caller reads it
+//!    [`save`] of it gives [`SessionError::Changed`], and the caller reads it
 //!    again.
 //! 4. Another process must not rewrite a running session; rig-memory cannot
 //!    tell, so a program checks first that nothing runs it (for a rig
@@ -71,7 +71,7 @@
 //! let resumed = load(&store, "user-123")?;
 //! assert_eq!(resumed, conversation);
 //! assert_eq!(view(resumed.messages(), &LastMessages(1)).len(), 1);
-//! # Ok::<(), rig_memory::LoadError>(())
+//! # Ok::<(), rig_memory::SessionError>(())
 //! ```
 //!
 //! [`Conversation`]: rig_core::conversation::Conversation
@@ -104,17 +104,19 @@ pub use compaction::{
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
 pub use fork::{Forked, fork};
-pub use format::{FORMAT, LoadError, OLDEST, Repair, Rewrote, SESSION, Stamp, VERSION, now_ms};
+pub use format::{
+    FORMAT, LogRewrite, OLDEST, Repair, SESSION, SessionError, Stamp, VERSION, now_ms,
+};
 pub use listing::{Listing, read_line};
 pub use meta::{ForkedFrom, META, PARENT, SessionMeta, title_of};
 pub use rewrite::{
-    Keep, Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
+    Messages, NoRewrite, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
     rewrite_file, rewrite_value,
 };
 pub use saved::{MODEL, TITLE, main_order};
-pub use session::{Record, SavedAgent, Session, Unreadable, as_of, history, load, save};
+pub use session::{LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, save};
 pub use split::{Line, LineId, SPLIT, SplitOf, SplitPointer, lines, split};
 pub use store::{Files, MemoryStore, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};
-pub use upgrade::{SET_ASIDE, Unread, Upgrade, Upgraded, Upgrades, ValueError, Versioned, upgrade};
+pub use upgrade::{SHELVED, Unread, Upgrade, Upgraded, Upgrades, ValueError, Versioned, upgrade};
 pub use writer::Writer;

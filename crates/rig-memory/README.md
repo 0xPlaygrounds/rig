@@ -33,9 +33,9 @@ agent framework, over rig-core's one `Conversation` type:
   `Messages`, or hooks of its own); each log is replaced atomically, gets a
   fresh lineage and records who rewrote it. A running writer's saves and a
   rewrite never interleave; a value read before it is refused by `save`
-  (`LoadError::Changed`); the crate docs list the whole promise. `fork`
+  (`SessionError::Changed`); the crate docs list the whole promise. `fork`
   copies a session as it was before a message through the same `Rewrite`
-  (`Keep` for none), with what the copied messages' asides say now.
+  (`NoRewrite` for none), with what the copied messages' asides say now.
 - what a session is: `SessionMeta` (what a listing shows: title, labels,
   when it changed), `ForkedFrom` (the session it was forked from), and a
   saved agent's model and title under stable keys (`SavedAgent::model`,

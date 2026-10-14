@@ -19,7 +19,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Change, Conversation as Saved};
 use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_ecs::session_log::SessionStore;
-use rig_harness::rig_memory::{LoadError, Record, as_of, history};
+use rig_harness::rig_memory::{LogRecord, SessionError, as_of, history};
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
@@ -308,7 +308,7 @@ fn before_taken_out(
     store: &dyn Store,
     log: &str,
     message: MessageId,
-) -> Result<Option<Saved>, LoadError> {
+) -> Result<Option<Saved>, SessionError> {
     let took_out = |change: &Change| match change {
         Change::Splice { removed, with, .. } => {
             removed.contains(&message) && with.iter().all(|entry| entry.id != Some(message))
@@ -321,7 +321,7 @@ fn before_taken_out(
         .iter()
         .rev()
         .find_map(|(stamp, record)| match record {
-            Record::Change(recorded) if took_out(&recorded.change) => Some(stamp.n),
+            LogRecord::Change(recorded) if took_out(&recorded.change) => Some(stamp.n),
             _ => None,
         });
     let then = last.map(|n| as_of(store, log, n)).transpose()?;

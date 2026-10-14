@@ -29,7 +29,7 @@ use rig_harness::rig_core::conversation::{
 };
 use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_ecs::session_log::SessionStore;
-use rig_harness::rig_memory::{self, Record, Store};
+use rig_harness::rig_memory::{self, LogRecord, Store};
 use rig_tui::{MainPane, TranscriptItem, TranscriptView};
 use serde::{Deserialize, Serialize};
 
@@ -248,7 +248,7 @@ fn removed_replies(conversation: &Thread, store: &dyn Store, log: &str) -> Vec<R
     let mut seen = HashSet::new();
     let mut gone = Vec::new();
     for (stamp, record) in records {
-        let Record::Change(recorded) = record else {
+        let LogRecord::Change(recorded) = record else {
             continue;
         };
         let Change::Splice { removed, .. } = recorded.change else {

@@ -264,7 +264,7 @@ fn find_line(conversation: &Line, name: &str) -> Result<rig_memory::Line, String
     let by_aside = name.parse::<AsideId>().ok();
     let found = listed.iter().find(|line| match &line.id {
         LineId::Branch(id) => Some(*id) == by_aside,
-        LineId::Session { session, .. } => session == name,
+        LineId::Split { session, .. } => session == name,
         LineId::Active => false,
     });
     let found = found.or_else(|| listed.iter().find(|line| line.title == name));
@@ -280,7 +280,7 @@ fn branch(conversation: &Line, name: Option<&str>) -> Result<Option<AsideId>, St
     match line.map(|line| line.id) {
         None | Some(LineId::Active) => Ok(None),
         Some(LineId::Branch(id)) => Ok(Some(id)),
-        Some(LineId::Session { session, .. }) => Err(format!(
+        Some(LineId::Split { session, .. }) => Err(format!(
             "that line is kept in session {session}: /split switch to it first"
         )),
     }
@@ -488,7 +488,7 @@ fn switch(world: &mut World, target: &Target, name: Option<&str>) -> Result<Stri
                 Ok(format!("Running session {session}."))
             }
         },
-        LineId::Session { session, .. } => {
+        LineId::Split { session, .. } => {
             let id: SessionId = session
                 .parse()
                 .map_err(|_| format!("`{session}` is no session id"))?;
@@ -532,7 +532,7 @@ fn merge(world: &mut World, target: &Target, name: &str) -> Result<String, Strin
             let spliced = conversation.merge_branch(id, by()).map_err(failed)?;
             Ok(merged(&spliced))
         }),
-        LineId::Session { session, agent } => {
+        LineId::Split { session, agent } => {
             let pointer = conversation.asides().find_map(|(id, aside)| {
                 let pointer: SplitPointer = (aside.kind == SPLIT)
                     .then(|| serde_json::from_value(aside.value.clone()).ok())
@@ -624,7 +624,7 @@ fn compare(world: &mut World, target: &Target, name: &str) -> Result<String, Str
                 .line_conversation(Some(*id), length)
                 .ok_or_else(|| format!("there is no line `{name}`"))?
         }
-        LineId::Session { session, agent } => split_line(world, session, agent)?,
+        LineId::Split { session, agent } => split_line(world, session, agent)?,
     };
     let ours = conversation.line(None).unwrap_or_default();
     let shared = shared_prefix(&ours, &other.line(None).unwrap_or_default());

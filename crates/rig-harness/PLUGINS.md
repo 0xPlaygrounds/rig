@@ -1366,7 +1366,7 @@ gives each agent's conversation and saved values, and
 conversation, `history`/`as_of` show how a log got where it is, and
 `read_line(&*store, agent, line)` reads one agent's line alone.
 `fork(from, to, before, &with)` copies a session as it was before a
-message, each value through a `Rewrite` (`&Keep` for none), and the copied
+message, each value through a `Rewrite` (`&NoRewrite` for none), and the copied
 messages' asides as they are now; `split(from, to, &SplitOf { .. })` one
 line as it reads now, ids kept; `lines(&conversation)` lists a
 conversation's lines, splits kept elsewhere too. A session not read whole
@@ -1675,7 +1675,7 @@ use std::sync::Arc;
 
 use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{DirStore, LoadError};
+use rig_harness::rig_memory::{DirStore, SessionError};
 
 /// Keeps every session's files on the disk mounted at `/vault`, `rig bot`
 /// runs' in `/vault/bot`, and spilled output and pasted images nowhere.
@@ -1689,7 +1689,7 @@ fn build(app: &mut App) {
         .add_observer(give_up);
 }
 
-fn vault(root: &str, dir: &SessionDir) -> Result<Arc<dyn Store>, LoadError> {
+fn vault(root: &str, dir: &SessionDir) -> Result<Arc<dyn Store>, SessionError> {
     let id = dir.id().ok_or_else(|| io::Error::other("not a session of RIG_HOME"))?;
     Ok(Arc::new(DirStore::open(format!("{root}/{id}"))?))
 }
@@ -1775,7 +1775,7 @@ component under that key, not its type's path, versioned as every saved
 value. A program without Bevy reads it typed, `Session::get::<T>(key,
 &upgrades)` (an agent's, `SavedAgent::get`), and writes a stopped
 session's through `edit_stopped` (which keeps its listing). `.listed()`
-also copies it into the session's listing (`SessionMeta.data`; keep it
+also copies it into the session's listing (`SessionMeta.listed`; keep it
 small), so `/resume`,
 `Listing::read` and a `SessionPicker`'s filter show and find it without
 reading a log. Splits and forks copy it as of their cut.

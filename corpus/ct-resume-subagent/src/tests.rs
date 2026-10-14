@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::rig_memory::{self, Keep, Session as Saved};
+use rig_harness::rig_memory::{self, NoRewrite, Session as Saved};
 use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, press, reply,
     run_until, scripted_models, tui_view,
@@ -281,7 +281,7 @@ fn a_finished_subagent_is_listed_talked_to_followed_up_forked_and_resumed() {
 
     // A fork sees it; its follow-up works on the copy.
     let copy = MemoryStore::default();
-    assert!(rig_memory::fork(&store, &copy, None, &Keep).is_ok());
+    assert!(rig_memory::fork(&store, &copy, None, &NoRewrite).is_ok());
     let main = MockCompletionModel::from_stream_turns([
         follow_up("f2", "what's the pool size?"),
         reply("8."),

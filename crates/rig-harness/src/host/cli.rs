@@ -68,7 +68,7 @@ use std::sync::Arc;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{RESERVED_COMMANDS, SessionDir, StartReason};
-use rig_memory::{LoadError, Store};
+use rig_memory::{SessionError, Store};
 
 use super::launcher::Invoked;
 use super::session::{AppStart, SessionStores};
@@ -192,7 +192,7 @@ impl Front {
     /// every plugin is built.
     pub fn session_store(
         mut self,
-        open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync + 'static,
+        open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, SessionError> + Send + Sync + 'static,
     ) -> Self {
         self.session_store = Some(SessionStores::new(open));
         self

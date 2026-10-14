@@ -387,7 +387,7 @@ fn update_meta(
                 .and_then(|(.., model)| model.map(|model| model.0.clone()))
                 .unwrap_or_default(),
             messages: main.map_or(0, |(_, conversation, ..)| conversation.messages().len()),
-            data: values.0.clone(),
+            listed: values.0.clone(),
         },
     );
     if !changed && *listed == now {

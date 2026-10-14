@@ -44,8 +44,8 @@ use rig_ecs::agent::{self, ActiveTurn, AgentId, Notice};
 use rig_ecs::restore::SavedKeys;
 use rig_ecs::session_log::{SessionRewritten, SessionStore, open_session};
 use rig_memory::{
-    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, SPLIT, Session, SessionMeta,
-    SplitOf, SplitPointer, Store, fork, load, rewrite, split,
+    DirStore, Files, ForkedFrom, NoRewrite, Rewrite, Rewritten, SPLIT, Session, SessionError,
+    SessionMeta, SplitOf, SplitPointer, Store, fork, load, rewrite, split,
 };
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
@@ -103,12 +103,12 @@ pub struct SessionStores {
 }
 
 /// How [`SessionStores`] opens a store.
-type OpenStore = dyn Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync;
+type OpenStore = dyn Fn(&SessionDir) -> Result<Arc<dyn Store>, SessionError> + Send + Sync;
 
 impl SessionStores {
     /// Stores that `open` opens.
     pub fn new(
-        open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync + 'static,
+        open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, SessionError> + Send + Sync + 'static,
     ) -> Self {
         Self {
             open: Arc::new(open),
@@ -123,7 +123,7 @@ impl SessionStores {
     ///
     /// When the store cannot be opened, such as without its key, or holds
     /// a session an older rig saved.
-    pub fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, LoadError> {
+    pub fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, SessionError> {
         Ok(Arc::new(Marking {
             inner: (self.open)(dir)?,
             dir: dir.clone(),
@@ -439,7 +439,7 @@ fn insert_plugin_data(world: &mut World) {
 /// the session it holds ([`open_session`]), before anything is written to
 /// it. A sessionless run's store never marks its session saved, whoever
 /// opens it, so a crash leaves no session for `/resume` to list.
-fn open_store(world: &mut World) -> Result<(), LoadError> {
+fn open_store(world: &mut World) -> Result<(), SessionError> {
     let store = match world.remove_resource::<SessionStore>() {
         Some(SessionStore(store)) => store,
         None => {
@@ -981,10 +981,10 @@ fn copy_cut(
     to: &str,
     agents: &mut LiveAgents<'_, '_>,
 ) -> Result<(ForkedFrom, Option<String>), String> {
-    let failed = |failure: LoadError| failure.to_string();
+    let failed = |failure: SessionError| failure.to_string();
     let (agent, line, through, take, title) = match cut {
         ForkCut::Whole => {
-            fork(source, copy, None, &Keep).map_err(failed)?;
+            fork(source, copy, None, &NoRewrite).map_err(failed)?;
             return Ok((ForkedFrom::default(), None));
         }
         ForkCut::Before(agent, message) => {
@@ -999,7 +999,7 @@ fn copy_cut(
                         typed(&conversation, conversation.index_of(*message)?)
                     }),
                 };
-            fork(source, copy, Some((&agent.0, *message)), &Keep).map_err(failed)?;
+            fork(source, copy, Some((&agent.0, *message)), &NoRewrite).map_err(failed)?;
             let parent = ForkedFrom {
                 before: Some((agent.0.clone(), *message)),
                 text: said,
@@ -1180,7 +1180,7 @@ fn delete_session(
     } else {
         session
             .mark_deleting()
-            .map_err(LoadError::from)
+            .map_err(SessionError::from)
             .and_then(|()| finish_delete(&session, &stores))
             .err()
             .map(|failure| failure.to_string())
@@ -1203,10 +1203,10 @@ fn delete_session(
 /// Removes the session in `session`, marked deleting: everything its store
 /// holds, then its directory. Running it again after a crash finishes it.
 /// A session an older rig saved has nothing outside its directory.
-fn finish_delete(session: &SessionDir, stores: &SessionStores) -> Result<(), LoadError> {
+fn finish_delete(session: &SessionDir, stores: &SessionStores) -> Result<(), SessionError> {
     match (stores.open)(session) {
         Ok(store) => store.destroy()?,
-        Err(LoadError::OldLayout) => {}
+        Err(SessionError::OldLayout) => {}
         Err(failure) => return Err(failure),
     }
     Ok(fs::remove_dir_all(session.path())?)

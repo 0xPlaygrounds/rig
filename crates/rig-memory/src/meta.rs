@@ -46,8 +46,8 @@ pub struct SessionMeta {
     /// Plugins' listed values by key, each copied here whenever it changes,
     /// so a listing shows and filters by them without opening a log; kept
     /// small.
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub data: BTreeMap<String, Versioned>,
+    #[serde(rename = "data", skip_serializing_if = "BTreeMap::is_empty")]
+    pub listed: BTreeMap<String, Versioned>,
 }
 
 impl SessionMeta {
@@ -81,13 +81,13 @@ impl SessionMeta {
         let main = agents.first();
         self.messages = main.map_or(0, |main| main.conversation.messages().len());
         self.model = main.and_then(|main| main.model()).unwrap_or_default();
-        let keys: BTreeSet<String> = listed.iter().chain(self.data.keys()).cloned().collect();
-        self.data = keys
+        let keys: BTreeSet<String> = listed.iter().chain(self.listed.keys()).cloned().collect();
+        self.listed = keys
             .into_iter()
             .filter_map(|key| {
-                let mut holders = agents.iter().map(|agent| &agent.state);
+                let mut holders = agents.iter().map(|agent| &agent.saved);
                 let value = session
-                    .state
+                    .saved
                     .get(&key)
                     .or_else(|| holders.find_map(|state| state.get(&key)))?;
                 Some((key, value.clone()))

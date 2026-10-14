@@ -22,7 +22,7 @@ impl SavedAgent {
     /// program reads an older version of a plugin's value through
     /// [`Upgrades::upgrade`](crate::Upgrades::upgrade).
     pub fn value<T: DeserializeOwned>(&self, key: &str) -> Option<Result<T, serde_json::Error>> {
-        self.state
+        self.saved
             .get(key)
             .map(|saved| T::deserialize(&saved.value))
     }
@@ -40,7 +40,7 @@ impl SavedAgent {
         key: &str,
         upgrades: &Upgrades,
     ) -> Option<Result<T, ValueError>> {
-        get(&self.state, key, upgrades)
+        get(&self.saved, key, upgrades)
     }
 
     /// Its model, `vendor/model`, when one was saved ([`MODEL`]).
@@ -85,7 +85,7 @@ impl Session {
         key: &str,
         upgrades: &Upgrades,
     ) -> Option<Result<T, ValueError>> {
-        get(&self.state, key, upgrades)
+        get(&self.saved, key, upgrades)
     }
 
     /// The main agent: the first by [`main_order`] of the agents a restore

@@ -16,7 +16,7 @@ use crate::blobs::{load_images, load_images_with, messages_mut};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, version_of};
 use crate::upgrade::{each_record, header_now};
 use crate::writer::Book;
-use crate::{LoadError, OLDEST, Repair, Rewrote, Stamp, Store, VERSION, Versioned, upgrade};
+use crate::{LogRewrite, OLDEST, Repair, SessionError, Stamp, Store, VERSION, Versioned, upgrade};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -24,7 +24,7 @@ pub struct Session {
     /// Its agents, in the order their logs were started.
     pub agents: Vec<SavedAgent>,
     /// The session's own saved values by key: the [`SESSION`] log's.
-    pub state: BTreeMap<String, Versioned>,
+    pub saved: BTreeMap<String, Versioned>,
     /// What reading it repaired or worked around.
     pub repairs: Vec<Repair>,
 }
@@ -43,12 +43,12 @@ pub struct SavedAgent {
     pub conversation: Conversation,
     /// The newest value of each of its saved values, by key, with the
     /// version it was saved at.
-    pub state: BTreeMap<String, Versioned>,
+    pub saved: BTreeMap<String, Versioned>,
     /// Whether it is gone for good: a restore skips it, and the agents it
     /// spawned.
     pub retired: bool,
     /// Who rewrote its log in place, and when, oldest first.
-    pub rewrites: Vec<Rewrote>,
+    pub rewrites: Vec<LogRewrite>,
 }
 
 /// A log [`Session::read_lenient`] could not read.
@@ -57,16 +57,16 @@ pub struct Unreadable {
     /// Its name: an agent's id, or [`SESSION`].
     pub log: String,
     /// Why it could not be read.
-    pub error: LoadError,
+    pub error: SessionError,
 }
 
 /// One record of a log, as [`history`] reads it.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Record {
+pub enum LogRecord {
     /// A change of the conversation, its `at` the time it was written.
     Change(ChangeRecord),
     /// A saved value set, or with `None` removed.
-    State {
+    Saved {
         /// Its key.
         key: String,
         /// The version of its type it was saved at.
@@ -109,7 +109,7 @@ struct Read {
 }
 
 /// The log `name` of `store` as stored; `None` when there is none.
-pub(crate) fn log_lines(store: &dyn Store, name: &str) -> Result<Option<LogLines>, LoadError> {
+pub(crate) fn log_lines(store: &dyn Store, name: &str) -> Result<Option<LogLines>, SessionError> {
     match store.read_log(name) {
         Err(failure) if failure.kind() == io::ErrorKind::NotFound => Ok(None),
         bytes => Ok(Some(LogLines::parse(bytes?))),
@@ -121,7 +121,7 @@ fn read(
     store: &dyn Store,
     name: &str,
     each: impl FnMut(Stamp, Body) -> Result<ControlFlow<()>, String>,
-) -> Result<Option<Read>, LoadError> {
+) -> Result<Option<Read>, SessionError> {
     match log_lines(store, name)? {
         Some(lines) => read_lines(name, &lines, each),
         None => Ok(None),
@@ -135,11 +135,11 @@ fn read_lines(
     name: &str,
     lines: &LogLines,
     mut each: impl FnMut(Stamp, Body) -> Result<ControlFlow<()>, String>,
-) -> Result<Option<Read>, LoadError> {
+) -> Result<Option<Read>, SessionError> {
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
-    let refuse = |line, why| LoadError::Record {
+    let refuse = |line, why| SessionError::Record {
         log: name.to_owned(),
         line,
         why,
@@ -172,14 +172,14 @@ fn read_lines(
 /// The header `first`, the first line of the log `name`, read strictly,
 /// with the format version it names: of a format from [`OLDEST`] to this
 /// one, with the log's lineage. The header is given as read in this format.
-pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header, u32), LoadError> {
+pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header, u32), SessionError> {
     let (started, header) = match parse(first) {
         Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
         _ => {
             let found = serde_json::from_slice::<Header>(first)
                 .ok()
                 .and_then(|header| header.format);
-            return Err(LoadError::Format {
+            return Err(SessionError::Format {
                 log: name.to_owned(),
                 found,
             });
@@ -189,16 +189,16 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header, u3
     let Some(version) = version.filter(|version| (OLDEST..=VERSION).contains(version)) else {
         let found = header.format;
         let log = name.to_owned();
-        return Err(LoadError::Format { log, found });
+        return Err(SessionError::Format { log, found });
     };
     if !header.lineage.is_log() {
-        return Err(LoadError::Record {
+        return Err(SessionError::Record {
             log: name.to_owned(),
             line: 1,
             why: "a header without the log's lineage".to_owned(),
         });
     }
-    let header = header_now(version, header).map_err(|why| LoadError::Record {
+    let header = header_now(version, header).map_err(|why| SessionError::Record {
         log: name.to_owned(),
         line: 1,
         why,
@@ -218,7 +218,11 @@ pub(crate) struct Fold {
 /// Folds the log `name` of `store`: every change applied in order, the
 /// newest of each saved value, whether it was retired. `None` when there
 /// is no log.
-pub(crate) fn fold(store: &dyn Store, name: &str, how: Fold) -> Result<Option<Folded>, LoadError> {
+pub(crate) fn fold(
+    store: &dyn Store,
+    name: &str,
+    how: Fold,
+) -> Result<Option<Folded>, SessionError> {
     match log_lines(store, name)? {
         Some(lines) => fold_lines(name, &lines, how, &|blob| store.blob(blob)),
         None => Ok(None),
@@ -232,7 +236,7 @@ pub(crate) fn fold_lines(
     lines: &LogLines,
     how: Fold,
     blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
-) -> Result<Option<Folded>, LoadError> {
+) -> Result<Option<Folded>, SessionError> {
     let mut conversation = Conversation::new();
     let mut made = HashMap::new();
     let mut asides_set = HashMap::new();
@@ -319,7 +323,7 @@ fn made_by(change: &Change, conversation: &Conversation) -> Vec<MessageId> {
 }
 
 /// Every log of `store`, folded, with images.
-pub(crate) fn fold_all(store: &dyn Store, images: bool) -> Result<Vec<Folded>, LoadError> {
+pub(crate) fn fold_all(store: &dyn Store, images: bool) -> Result<Vec<Folded>, SessionError> {
     let how = Fold {
         until: None,
         images,
@@ -333,7 +337,7 @@ pub(crate) fn fold_all(store: &dyn Store, images: bool) -> Result<Vec<Folded>, L
 
 /// What reading `folded`, the logs of `store` that hold a record, repaired,
 /// torn tails not set aside.
-pub(crate) fn repairs(store: &dyn Store, folded: &[Folded]) -> Result<Vec<Repair>, LoadError> {
+pub(crate) fn repairs(store: &dyn Store, folded: &[Folded]) -> Result<Vec<Repair>, SessionError> {
     let torn = torn_tails(store, folded)?.into_iter();
     let mut repairs: Vec<Repair> = torn
         .map(|(log, kept, cut)| Repair::TornTail {
@@ -359,7 +363,7 @@ pub(crate) fn repairs(store: &dyn Store, folded: &[Folded]) -> Result<Vec<Repair
 pub(crate) fn torn_tails(
     store: &dyn Store,
     folded: &[Folded],
-) -> Result<Vec<(String, u64, u64)>, LoadError> {
+) -> Result<Vec<(String, u64, u64)>, SessionError> {
     let mut torn = Vec::new();
     for log in store.logs()? {
         match folded.iter().find(|folded| folded.name == log) {
@@ -424,7 +428,7 @@ pub(crate) fn session_of(folded: Vec<Folded>, repairs: Vec<Repair>) -> Session {
     };
     for log in folded {
         if log.name == SESSION {
-            session.state = log.state;
+            session.saved = log.state;
             continue;
         }
         session.agents.push(SavedAgent {
@@ -432,7 +436,7 @@ pub(crate) fn session_of(folded: Vec<Folded>, repairs: Vec<Repair>) -> Session {
             parent: log.header.parent,
             started_ms: log.started_ms,
             conversation: log.conversation,
-            state: log.state,
+            saved: log.state,
             retired: log.retired,
             rewrites: log.header.rewrites,
         });
@@ -452,7 +456,7 @@ impl Session {
     /// When the store fails, or any log is in another format or holds a
     /// record that cannot be read or does not apply: the whole session is
     /// refused.
-    pub fn read(store: &dyn Store) -> Result<Self, LoadError> {
+    pub fn read(store: &dyn Store) -> Result<Self, SessionError> {
         let folded = fold_all(store, true)?;
         let repairs = repairs(store, &folded)?;
         Ok(session_of(folded, repairs))
@@ -467,7 +471,7 @@ impl Session {
     /// # Errors
     ///
     /// When the store cannot list its logs.
-    pub fn read_lenient(store: &dyn Store) -> Result<(Self, Vec<Unreadable>), LoadError> {
+    pub fn read_lenient(store: &dyn Store) -> Result<(Self, Vec<Unreadable>), SessionError> {
         let how = Fold {
             until: None,
             images: true,
@@ -505,11 +509,11 @@ impl Session {
     ///
     /// # Errors
     ///
-    /// [`LoadError::Changed`] when a log that holds changes moved on since
+    /// [`SessionError::Changed`] when a log that holds changes moved on since
     /// the agent's conversation was read, or holds another conversation,
     /// before anything is written; otherwise as
     /// [`Self::read`], or when a write fails.
-    pub fn save(&mut self, store: &dyn Store) -> Result<(), LoadError> {
+    pub fn save(&mut self, store: &dyn Store) -> Result<(), SessionError> {
         upgrade(store)?;
         let folded = fold_all(store, false)?;
         let had = |id: &str| folded.iter().find(|log| log.name == id);
@@ -528,13 +532,13 @@ impl Session {
             book.open_log(&agent.id, agent.parent.as_deref());
             book.save(store, &agent.id, &mut agent.conversation);
             let known = had(&agent.id).map(|log| &log.state);
-            book.states(&agent.id, known, &agent.state);
+            book.states(&agent.id, known, &agent.saved);
             if agent.retired && !had(&agent.id).is_some_and(|log| log.retired) {
                 book.retire(&agent.id);
             }
         }
         let known = had(SESSION).map(|log| &log.state);
-        book.states(SESSION, known, &self.state);
+        book.states(SESSION, known, &self.saved);
         book.flush(store)
     }
 }
@@ -546,13 +550,13 @@ fn check_continues(
     log: Option<&Folded>,
     name: &str,
     conversation: &Conversation,
-) -> Result<(), LoadError> {
+) -> Result<(), SessionError> {
     let Some(log) = log else {
         return Ok(());
     };
     let changes = log.conversation.revision();
     if changes > 0 && !conversation.continues(log.header.lineage, changes) {
-        return Err(LoadError::Changed {
+        return Err(SessionError::Changed {
             log: name.to_owned(),
         });
     }
@@ -567,7 +571,7 @@ fn check_continues(
 /// # Errors
 ///
 /// As [`Session::read`], for that log.
-pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, LoadError> {
+pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> {
     let how = Fold {
         until: None,
         images: true,
@@ -590,12 +594,12 @@ pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, LoadError> {
 /// conversation.push(Message::user("My name is Alice."));
 /// save(&store, "user-123", &mut conversation)?;
 /// assert_eq!(load(&store, "user-123")?, conversation);
-/// # Ok::<(), rig_memory::LoadError>(())
+/// # Ok::<(), rig_memory::SessionError>(())
 /// ```
 ///
 /// # Errors
 ///
-/// [`LoadError::Changed`] when `conversation` does not continue the log
+/// [`SessionError::Changed`] when `conversation` does not continue the log
 /// (the log moved on since it was loaded, or it was loaded from another
 /// log or built elsewhere) and the log holds changes, writing nothing, so
 /// no change made there is lost; otherwise as [`load`], or when a write
@@ -605,7 +609,7 @@ pub fn save(
     store: &dyn Store,
     log: &str,
     conversation: &mut Conversation,
-) -> Result<(), LoadError> {
+) -> Result<(), SessionError> {
     upgrade(store)?;
     let folded = fold(store, log, Fold::default())?;
     check_continues(folded.as_ref(), log, conversation)?;
@@ -623,7 +627,7 @@ pub fn save(
 }
 
 /// The session's `n` after the last record of every log of `store`.
-fn next_n(store: &dyn Store) -> Result<u64, LoadError> {
+fn next_n(store: &dyn Store) -> Result<u64, SessionError> {
     let mut next = 0;
     for name in store.logs()? {
         let lines = LogLines::parse(store.read_log(&name)?);
@@ -643,7 +647,7 @@ fn next_n(store: &dyn Store) -> Result<u64, LoadError> {
 /// # Errors
 ///
 /// As [`load`].
-pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, Record)>, LoadError> {
+pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, SessionError> {
     let mut records = Vec::new();
     read(store, log, |stamp, body| {
         let record = match body {
@@ -653,14 +657,14 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, Record)>, Loa
                     let _ = load_images(message, store);
                     Ok(())
                 });
-                Record::Change(recorded)
+                LogRecord::Change(recorded)
             }
-            Body::Meta(Meta::State { key, v, value }) => Record::State {
+            Body::Meta(Meta::State { key, v, value }) => LogRecord::Saved {
                 key,
                 v,
                 value: value.filter(|value| !value.is_null()),
             },
-            Body::Meta(Meta::Retired) => Record::Retired,
+            Body::Meta(Meta::Retired) => LogRecord::Retired,
             Body::Meta(Meta::Header(_)) => return Ok(ControlFlow::Continue(())),
         };
         records.push((stamp, record));
@@ -676,7 +680,7 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, Record)>, Loa
 /// # Errors
 ///
 /// As [`load`].
-pub fn as_of(store: &dyn Store, log: &str, n: u64) -> Result<Conversation, LoadError> {
+pub fn as_of(store: &dyn Store, log: &str, n: u64) -> Result<Conversation, SessionError> {
     let how = Fold {
         until: Some(n),
         images: true,

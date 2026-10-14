@@ -132,7 +132,7 @@ impl RecentSession {
                 Err(failure) => Some(failure.to_string()),
             },
         };
-        let shape = entry.listing.meta.data.get(SHAPE);
+        let shape = entry.listing.meta.listed.get(SHAPE);
         let shape = shape.and_then(|saved| serde_json::from_value(saved.value.clone()).ok());
         Some(Self {
             entry,

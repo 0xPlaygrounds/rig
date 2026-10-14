@@ -289,14 +289,20 @@ fn a_listed_value_and_the_model_are_kept_in_the_listing() {
     app.update();
     let store = app.world().resource::<SessionStore>().0.clone();
     let meta = SessionMeta::read(&*store).unwrap_or_default();
-    let goal = meta.data.get("goals.goal").map(|saved| saved.value.clone());
+    let goal = meta
+        .listed
+        .get("goals.goal")
+        .map(|saved| saved.value.clone());
     assert_eq!(goal, Some(serde_json::json!("ship the parser")));
     assert_eq!(meta.model, "openai/gpt-5");
 
     app.world_mut().resource_mut::<Goal>().0 = "ship the lexer".to_owned();
     app.update();
     let meta = SessionMeta::read(&*store).unwrap_or_default();
-    let goal = meta.data.get("goals.goal").map(|saved| saved.value.clone());
+    let goal = meta
+        .listed
+        .get("goals.goal")
+        .map(|saved| saved.value.clone());
     assert_eq!(goal, Some(serde_json::json!("ship the lexer")));
     fs::remove_dir_all(home.root()).ok();
 }

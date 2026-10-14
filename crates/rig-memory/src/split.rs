@@ -10,7 +10,7 @@ use rig_core::conversation::{AsideId, Conversation, Entry, MessageId};
 use serde::{Deserialize, Serialize};
 
 use crate::fork::copy_plugin_files;
-use crate::{Keep, LoadError, SavedAgent, Session, SessionMeta, Store, now_ms};
+use crate::{NoRewrite, SavedAgent, Session, SessionError, SessionMeta, Store, now_ms};
 
 /// The kind of the aside a line keeps after the last entry a split of it
 /// copied: a [`SplitPointer`].
@@ -65,8 +65,8 @@ pub fn split(
     from: &dyn Store,
     to: &dyn Store,
     of: &SplitOf<'_>,
-) -> Result<Conversation, LoadError> {
-    let refuse = |why: String| LoadError::from(io::Error::new(io::ErrorKind::InvalidInput, why));
+) -> Result<Conversation, SessionError> {
+    let refuse = |why: String| SessionError::from(io::Error::new(io::ErrorKind::InvalidInput, why));
     let session = Session::read(from)?;
     let agent = session
         .agent(of.agent)
@@ -104,15 +104,15 @@ pub fn split(
             parent: None,
             started_ms: agent.started_ms,
             conversation,
-            state: agent.state.clone(),
+            saved: agent.saved.clone(),
             retired: false,
             rewrites: Vec::new(),
         }],
-        state: session.state.clone(),
+        saved: session.saved.clone(),
         repairs: Vec::new(),
     };
     copy.save(to)?;
-    copy_plugin_files(from, to, &Keep)?;
+    copy_plugin_files(from, to, &NoRewrite)?;
     let written = copy.agents.into_iter().next();
     let written = written.map(|agent| agent.conversation).unwrap_or_default();
     if let Some(listing) = SessionMeta::read(from) {
@@ -154,7 +154,7 @@ pub enum LineId {
     /// A kept branch, by its aside.
     Branch(AsideId),
     /// A split kept in another session: that session and its agent.
-    Session {
+    Split {
         /// The session's id.
         session: String,
         /// The agent's id.
@@ -222,7 +222,7 @@ pub fn lines(conversation: &Conversation) -> Vec<Line> {
     }
     for (node, at, pointer) in found {
         let line = Line {
-            id: LineId::Session {
+            id: LineId::Split {
                 session: pointer.session,
                 agent: pointer.agent,
             },

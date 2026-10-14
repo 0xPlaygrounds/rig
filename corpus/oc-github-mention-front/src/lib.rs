@@ -24,7 +24,7 @@ use bevy_ecs::system::SystemParam;
 use bevy_log::{error, info, warn};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{Scope, Touches};
-use rig_harness::rig_memory::{DirStore, LoadError, Store};
+use rig_harness::rig_memory::{DirStore, SessionError, Store};
 use rig_harness::rig_tools::process::Launcher;
 use rig_reqwest::reqwest;
 use serde::Deserialize;
@@ -303,7 +303,7 @@ impl Plugin for GithubMentionPlugin {
                         .map_or_else(Launcher::default, Processes::launcher);
                     Git::new(launcher.in_dir(&root))
                         .restore(&thread, &at)
-                        .map_err(|why| LoadError::Io(std::io::Error::other(why)))?;
+                        .map_err(|why| SessionError::Io(std::io::Error::other(why)))?;
                 }
                 Ok(Arc::new(DirStore::open(at)?) as Arc<dyn Store>)
             });

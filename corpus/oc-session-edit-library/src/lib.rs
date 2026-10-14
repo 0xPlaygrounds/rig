@@ -30,7 +30,7 @@ use rig::harness_protocol::{Home, SessionDir};
 use rig_core::conversation::{Author, Conversation, Entry, pairing};
 use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
 use rig_memory::{
-    DirStore, ForkedFrom, Keep, LoadError, Messages, Repair, Rewrite, SavedAgent, Session,
+    DirStore, ForkedFrom, Messages, NoRewrite, Repair, Rewrite, SavedAgent, Session, SessionError,
     SessionMeta, fork, now_ms, rewrite,
 };
 use serde_json::Value;
@@ -67,8 +67,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<LoadError> for Error {
-    fn from(error: LoadError) -> Self {
+impl From<SessionError> for Error {
+    fn from(error: SessionError) -> Self {
         Self(error.to_string())
     }
 }
@@ -625,7 +625,7 @@ fn save(home: &Home, opened: Opened, target: Target, edit: &Edit) -> Result<Vec<
                 let to = DirStore::open(new.path())?;
                 match edit {
                     Edit::Shrink(over) => fork(&store, &to, None, &shrinker(*over))?,
-                    _ => fork(&store, &to, None, &Keep)?,
+                    _ => fork(&store, &to, None, &NoRewrite)?,
                 };
                 if let Edit::Drop(from, until) = edit {
                     let mut copy = Session::read(&to)?;

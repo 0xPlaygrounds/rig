@@ -7,7 +7,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::Conversation;
 
 use super::DirStore;
-use crate::{Files, LoadError, Session, Store, Writer, as_of, history, load, save};
+use crate::{Files, Session, SessionError, Store, Writer, as_of, history, load, save};
 
 /// A fresh directory for test `name`.
 fn scratch(name: &str) -> PathBuf {
@@ -57,8 +57,8 @@ fn a_session_saved_by_an_older_rig_is_refused_unchanged() {
     fs::write(dir.join("agent.log"), "what the agent did").expect("the text log");
     let before = snapshot(&dir);
     let refused = DirStore::open(&dir);
-    assert!(matches!(refused, Err(LoadError::OldLayout)));
-    let message = LoadError::OldLayout.to_string();
+    assert!(matches!(refused, Err(SessionError::OldLayout)));
+    let message = SessionError::OldLayout.to_string();
     assert!(message.contains("older version of rig"), "{message}");
     assert_eq!(snapshot(&dir), before);
     let _ = fs::remove_dir_all(&dir);
@@ -93,9 +93,9 @@ fn a_session_saved_in_format_1_is_refused_before_anything_is_written() {
     let before = snapshot(&dir);
     let store = Arc::new(DirStore::open(&dir).expect("the layout is this rig's"));
     let agent = "cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32";
-    let old = |refused: LoadError| {
+    let old = |refused: SessionError| {
         let message = refused.to_string();
-        let format = matches!(&refused, LoadError::Format { found: Some(found), .. } if found == "rig-session/1");
+        let format = matches!(&refused, SessionError::Format { found: Some(found), .. } if found == "rig-session/1");
         assert!(format, "{refused:?}");
         assert!(
             message.contains("older version of rig") && message.contains("rig-session/3"),

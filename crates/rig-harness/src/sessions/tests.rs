@@ -33,7 +33,7 @@ fn saved(home: &Home, n: u64, data: &[(&str, &str)]) -> SessionId {
     let meta = SessionMeta {
         title: format!("session {n}"),
         updated: n,
-        data: data
+        listed: data
             .iter()
             .map(|(key, value)| ((*key).to_owned(), json!(value).into()))
             .collect::<BTreeMap<_, _>>(),

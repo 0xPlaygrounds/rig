@@ -97,7 +97,7 @@ impl SessionEntry {
             (None, "") => format!("session {}", self.id),
             (None, title) => title.to_owned(),
         };
-        let listed = meta.data.values().map(|saved| match &saved.value {
+        let listed = meta.listed.values().map(|saved| match &saved.value {
             serde_json::Value::String(text) => title_of(text),
             value => title_of(&value.to_string()),
         });
@@ -297,7 +297,7 @@ fn default_show(item: &SessionItem<'_>) -> (String, Option<String>) {
             let detail = match &line.id {
                 LineId::Active => "active".to_owned(),
                 LineId::Branch(id) => format!("{id} · {} entries", line.entries),
-                LineId::Session { session, .. } => format!("in session {session}"),
+                LineId::Split { session, .. } => format!("in session {session}"),
             };
             let mark = match (line.moved, line.merged) {
                 (_, true) => "  · merged",
@@ -696,7 +696,7 @@ fn fill(
         (None, Some(session)) if matches!(picker.source, SessionSource::Lines { .. }) => {
             for line in &view.lines {
                 let at = match &line.id {
-                    LineId::Session { session, .. } => {
+                    LineId::Split { session, .. } => {
                         session.parse().map(|id| view.home.session(&id))
                     }
                     _ => Ok(dir(session)),
@@ -767,7 +767,7 @@ fn placeholders(command: &str, picked: &SessionPicked, paths: Option<&SessionPat
         .or_else(|| paths.and_then(|paths| paths.id()));
     let line = match &picked.line {
         Some(LineId::Branch(id)) => id.to_string(),
-        Some(LineId::Session { session, .. }) => session.clone(),
+        Some(LineId::Split { session, .. }) => session.clone(),
         Some(LineId::Active) | None => String::new(),
     };
     command

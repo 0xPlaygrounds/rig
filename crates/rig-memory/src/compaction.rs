@@ -42,8 +42,8 @@ use rig_core::conversation::{
 use rig_core::message::{ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
-use crate::session::{Record, as_of, history};
-use crate::{HeuristicTokenCounter, LoadError, Store, TokenCounter};
+use crate::session::{LogRecord, as_of, history};
+use crate::{HeuristicTokenCounter, SessionError, Store, TokenCounter};
 
 /// A summary of a conversation's older messages and the values tracked
 /// across compactions (such as the files a coding agent read). The default
@@ -639,7 +639,7 @@ pub enum UndoError {
     NotInLog,
     /// The session's log could not be read.
     #[error(transparent)]
-    Load(#[from] LoadError),
+    Load(#[from] SessionError),
 }
 
 /// Undoes the newest compaction of `conversation`, the conversation saved
@@ -670,7 +670,9 @@ pub fn undo_summary(
     let made = history(store, log)?
         .into_iter()
         .find_map(|(stamp, record)| match record {
-            Record::Change(recorded) if summary_in(&recorded.change) == Some(compacted.summary) => {
+            LogRecord::Change(recorded)
+                if summary_in(&recorded.change) == Some(compacted.summary) =>
+            {
                 Some(stamp.n)
             }
             _ => None,

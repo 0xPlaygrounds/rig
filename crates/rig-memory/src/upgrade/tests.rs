@@ -34,7 +34,7 @@ fn every_record() -> MemoryStore {
     };
     writer.start();
     let state = |log: &str, key: &str, value: Value| {
-        writer.state(log, key, Some(value.into()), true);
+        writer.save_value(log, key, Some(value.into()), true);
     };
     let mut main = Conversation::new();
     main.push(Message::User {
@@ -73,7 +73,7 @@ fn every_record() -> MemoryStore {
     );
     state("main", "a_plugin::Gone", json!(1));
     state("main", "a_plugin::Removed", json!(2));
-    writer.state("main", "a_plugin::Removed", None, true);
+    writer.save_value("main", "a_plugin::Removed", None, true);
     state(SESSION, "a_plugin::Counter", json!(3));
 
     writer.open_log("sub", Some("main"));
@@ -115,14 +115,14 @@ fn summary(session: &Session) -> Value {
     for agent in &session.agents {
         let summary = json!({
             "conversation": agent.conversation,
-            "state": agent.state,
+            "state": agent.saved,
             "parent": agent.parent,
             "retired": agent.retired,
             "title": agent.conversation.line_title(),
         });
         agents.insert(agent.id.clone(), summary);
     }
-    json!({ "agents": agents, "state": session.state })
+    json!({ "agents": agents, "state": session.saved })
 }
 
 /// Writes `store` into `dir` as a `DirStore` lays it out: `logs/`,
@@ -370,7 +370,7 @@ fn a_session_of_a_newer_format_is_refused_by_every_writer_unchanged() {
         let main = main.replacen(&format!("rig-session/{}", OLDEST_FIXTURE), &newer, 1);
         store.replace_log("main", main.as_bytes()).expect("written");
         let before = bytes(&store);
-        let newer = |refused: Result<(), crate::LoadError>| {
+        let newer = |refused: Result<(), crate::SessionError>| {
             let refused = refused.expect_err("refused");
             assert!(
                 refused.to_string().contains("a newer version of rig"),
@@ -381,7 +381,7 @@ fn a_session_of_a_newer_format_is_refused_by_every_writer_unchanged() {
         newer(Session::default().save(&store));
         let mut conversation = Conversation::from_messages([Message::user("more")]);
         newer(crate::save(&store, "sub", &mut conversation));
-        newer(crate::rewrite(&store, Author::rig(), &crate::Keep).map(drop));
+        newer(crate::rewrite(&store, Author::rig(), &crate::NoRewrite).map(drop));
         assert_eq!(bytes(&store), before, "{name}");
     }
 }
@@ -430,12 +430,12 @@ fn a_set_aside_value_moves_to_its_side_key_and_a_held_one_is_kept() {
     let (writer, _) = Writer::open(store.clone()).expect("opened");
     writer.start();
     let saved = |v, value| Some(Versioned { v, value });
-    writer.state("main", "old", saved(1, json!("unread")), true);
-    writer.state("main", "newer", saved(9, json!("from a newer rig")), true);
+    writer.save_value("main", "old", saved(1, json!("unread")), true);
+    writer.save_value("main", "newer", saved(9, json!("from a newer rig")), true);
     writer.flush();
     let (writer, _) = Writer::open(store.clone()).expect("opened");
     writer.start();
-    writer.set_aside(
+    writer.shelve(
         "main",
         "old",
         Versioned {
@@ -444,14 +444,14 @@ fn a_set_aside_value_moves_to_its_side_key_and_a_held_one_is_kept() {
         },
     );
     writer.hold("main", "newer");
-    writer.state("main", "old", saved(2, json!("new")), true);
-    writer.state("main", "old", saved(2, json!("newer still")), true);
-    writer.state("main", "newer", saved(2, json!("over it")), true);
+    writer.save_value("main", "old", saved(2, json!("new")), true);
+    writer.save_value("main", "old", saved(2, json!("newer still")), true);
+    writer.save_value("main", "newer", saved(2, json!("over it")), true);
     writer.flush();
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("the agent");
     assert_eq!(
-        main.state,
+        main.saved,
         [
             (
                 "newer".to_owned(),
@@ -468,7 +468,7 @@ fn a_set_aside_value_moves_to_its_side_key_and_a_held_one_is_kept() {
                 }
             ),
             (
-                format!("{}old/v1", super::SET_ASIDE),
+                format!("{}old/v1", super::SHELVED),
                 Versioned {
                     v: 1,
                     value: json!("unread")

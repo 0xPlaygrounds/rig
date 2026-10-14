@@ -9,7 +9,7 @@ use rig_core::conversation::{
     self, Aside, Author, AuthorKind, Change, Entry, Halt, MessageId, STOPPED,
 };
 use rig_core::message::UserContent;
-use rig_memory::{Files, MemoryStore, Record, Repair, Session, Store, history};
+use rig_memory::{Files, LogRecord, MemoryStore, Repair, Session, Store, history};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -93,7 +93,7 @@ fn logged(store: &MemoryStore, id: &str) -> Vec<&'static str> {
     records
         .into_iter()
         .filter_map(|(_, record)| match record {
-            Record::Change(recorded) => Some(kind(&recorded.change)),
+            LogRecord::Change(recorded) => Some(kind(&recorded.change)),
             _ => None,
         })
         .collect()
