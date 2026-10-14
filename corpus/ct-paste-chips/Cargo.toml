@@ -12,7 +12,11 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# An image chip's size; already in the workspace's lock with these features.
+image = { workspace = true, features = ["png", "jpeg", "gif", "webp"] }
 rig-harness = { path = "../../crates/rig-harness" }
+# The chips live in the terminal view's input.
+rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
