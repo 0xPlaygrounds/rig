@@ -2,9 +2,12 @@
 //! it shows. Each agent, and its running turn, has its [`StatusItems`], and
 //! the app its [`AppStatus`]; a plugin shows its items there by name in
 //! [`StatusSystems::Show`], and replaces or hides another plugin's in
-//! [`StatusSystems::Edit`]. A plugin that also builds without the terminal
-//! view does it behind a default `tui` cargo feature. The plugin guide has
-//! an example and the default plugins' names and places.
+//! [`StatusSystems::Edit`], as plain text in a [`Tone`] or in runs of their
+//! own styles ([`StatusItem::styled`]). A plugin that also builds without
+//! the terminal view does it behind a default `tui` cargo feature. The
+//! plugin guide has an example and the default plugins' names and places.
+//! A [`StatusLine`] draws one in a panel, for the agent shown or another,
+//! and [`line`] fits any items to a width.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -61,6 +64,10 @@ pub struct StatusItem {
     /// How narrow it may be cut, ending in `…`, when the line is too
     /// narrow, before it goes (by `keep`); 0 for an item never cut.
     pub min_width: u16,
+    /// Its text in runs of their own styles, drawn in place of `text` in
+    /// its `tone`; see [`StatusItem::styled`].
+    #[reflect(ignore)]
+    pub styled: Option<Line<'static>>,
 }
 
 impl StatusItem {
@@ -75,6 +82,7 @@ impl StatusItem {
             order,
             keep,
             min_width: 0,
+            styled: None,
         }
     }
 
@@ -90,7 +98,29 @@ impl StatusItem {
         Self {
             text: text.into(),
             tone,
-            ..*self
+            styled: None,
+            ..self.clone()
+        }
+    }
+
+    /// This item saying `line`, each run in its own style, such as a gauge
+    /// coloured by how full it is; its `text` is the line's text.
+    ///
+    /// ```
+    /// use rig_tui::ratatui::style::Stylize;
+    /// use rig_tui::ratatui::text::{Line, Span};
+    /// use rig_tui::{Side, StatusItem};
+    ///
+    /// let gauge = StatusItem::new("context", Side::Right, 40, 5);
+    /// let gauge = gauge.styled(Line::from(vec![Span::from("▮▮").red(), Span::from("▯▯").dim()]));
+    /// assert_eq!(gauge.text, "▮▮▯▯");
+    /// ```
+    pub fn styled(&self, line: Line<'static>) -> Self {
+        Self {
+            text: line.to_string(),
+            tone: Tone::Plain,
+            styled: Some(line),
+            ..self.clone()
         }
     }
 }
@@ -216,9 +246,14 @@ pub(crate) fn draw_status_lines(
         let own = agent.and_then(|agent| items.get(agent).ok());
         let turn = turn.and_then(|turn| items.get(turn.turn()).ok());
         let app = app.as_deref().map(|app| &app.0);
-        let (mut left, mut right) = status_pieces(agent.is_some(), [app, own, turn]);
-        fit(&mut left, &mut right, usize::from(area.width));
-        let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
+        let no_agent =
+            StatusItem::new("agent", Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
+        let no_agent = agent.is_none().then_some(&no_agent);
+        let items = [app, own, turn]
+            .into_iter()
+            .flatten()
+            .flat_map(StatusItems::iter);
+        let (line, usage) = self::line(items.chain(no_agent), area.width);
         let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
         let [status, meter] =
             Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)]).areas(area);
@@ -234,12 +269,13 @@ struct Piece {
     keep: u8,
     /// How narrow it may be cut; 0 for never.
     min: usize,
-    span: Span<'static>,
+    line: Line<'static>,
 }
 
 impl Piece {
-    fn new(keep: u8, span: Span<'static>) -> Self {
-        Self { keep, min: 0, span }
+    fn new(keep: u8, line: impl Into<Line<'static>>) -> Self {
+        let line = line.into();
+        Self { keep, min: 0, line }
     }
 
     /// The same piece, cut down to no fewer than `min` columns before it
@@ -250,7 +286,7 @@ impl Piece {
     }
 
     fn width(&self) -> usize {
-        self.span.width()
+        self.line.width()
     }
 
     /// Whether it can still be cut.
@@ -258,21 +294,29 @@ impl Piece {
         self.min > 0 && self.width() > self.min
     }
 
-    /// Cuts it by `over` columns, to no fewer than its `min`, ending in `…`.
+    /// Cuts it by `over` columns, to no fewer than its `min`, ending in `…`
+    /// in the style of the run it cuts.
     fn shrink(&mut self, over: usize) {
         let target = self.width().saturating_sub(over).max(self.min);
-        let mut text = String::new();
+        let mut spans: Vec<Span<'static>> = Vec::new();
         let mut width = 0;
-        for character in self.span.content.chars() {
-            let next = width + character.width().unwrap_or(0);
-            if next + 1 > target {
-                break;
+        let mut cut = Style::new();
+        'runs: for span in &self.line.spans {
+            let mut text = String::new();
+            cut = span.style;
+            for character in span.content.chars() {
+                let next = width + character.width().unwrap_or(0);
+                if next + 1 > target {
+                    spans.push(Span::styled(text, span.style));
+                    break 'runs;
+                }
+                text.push(character);
+                width = next;
             }
-            text.push(character);
-            width = next;
+            spans.push(Span::styled(text, span.style));
         }
-        text.push('…');
-        self.span.content = text.into();
+        spans.push(Span::styled("…", cut));
+        self.line.spans = spans;
     }
 }
 
@@ -333,24 +377,28 @@ fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
         if index > 0 {
             spans.push(Span::from(gap));
         }
-        spans.push(piece.span);
+        spans.extend(piece.line.spans);
     }
     Line::from(spans)
 }
 
-/// The status line's pieces, left and right: the app's items, the shown
-/// agent's and its turn's, by `order`, then name, with `no agent` where an
-/// agent's model would be when none is shown.
-fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, Vec<Piece>) {
-    let no_agent = StatusItem::new("agent", Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
-    let mut items: Vec<&StatusItem> = items
-        .into_iter()
-        .flatten()
-        .flat_map(StatusItems::iter)
-        .collect();
-    if !shown {
-        items.push(&no_agent);
-    }
+/// A status line of `items` fit to `width` columns: the items on the left,
+/// and the meter, those on the right; each by place (`order`, then name),
+/// cut or dropped by `keep` when they do not fit. A plugin drawing a status
+/// line of its own, such as in a panel, draws these two.
+pub fn line<'a>(
+    items: impl IntoIterator<Item = &'a StatusItem>,
+    width: u16,
+) -> (Line<'static>, Line<'static>) {
+    let (mut left, mut right) = pieces(items);
+    fit(&mut left, &mut right, usize::from(width));
+    (join(left, LEFT_GAP), join(right, RIGHT_GAP))
+}
+
+/// The status line's pieces of `items`, left and right, by `order`, then
+/// name.
+fn pieces<'a>(items: impl IntoIterator<Item = &'a StatusItem>) -> (Vec<Piece>, Vec<Piece>) {
+    let mut items: Vec<&StatusItem> = items.into_iter().collect();
     items.sort_by_key(|item| (item.order, item.name));
     let piece = |item: &StatusItem| {
         let style = match item.tone {
@@ -363,8 +411,11 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
             Tone::Cyan => Style::new().cyan(),
             Tone::Magenta => Style::new().magenta(),
         };
-        Piece::new(item.keep, Span::styled(item.text.clone(), style))
-            .shrinking_to(usize::from(item.min_width))
+        let line = match &item.styled {
+            Some(line) => line.clone(),
+            None => Line::from(Span::styled(item.text.clone(), style)),
+        };
+        Piece::new(item.keep, line).shrinking_to(usize::from(item.min_width))
     };
     let (left, right): (Vec<_>, Vec<_>) =
         items.into_iter().partition(|item| item.side == Side::Left);

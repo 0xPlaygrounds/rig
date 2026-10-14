@@ -58,10 +58,7 @@ fn a_plugin_replaces_or_hides_another_plugins_item_by_name() {
 const ALWAYS: u8 = u8::MAX;
 
 fn text(pieces: &[Piece], gap: &str) -> String {
-    let texts: Vec<&str> = pieces
-        .iter()
-        .map(|piece| piece.span.content.as_ref())
-        .collect();
+    let texts: Vec<String> = pieces.iter().map(|piece| piece.line.to_string()).collect();
     texts.join(gap)
 }
 
@@ -136,7 +133,7 @@ fn two_items_at_one_place_both_show_by_name() {
     let at = |name| StatusItem::new(name, Side::Left, 45, 9);
     items.show(at("plan").says("plan", Tone::Cyan));
     items.show(at("mode").says("auto", Tone::Yellow));
-    let (left, right) = status_pieces(true, [None, Some(&items), None]);
+    let (left, right) = pieces(items.iter());
     assert_eq!(text(&left, "  "), "auto  plan");
     assert!(right.is_empty());
 }
@@ -150,4 +147,51 @@ fn the_model_and_status_always_stay() {
         text(&left, "  "),
         "deepseek/deepseek-flash  thinking… (Esc stops)"
     );
+}
+
+#[test]
+fn a_status_line_shows_its_agents_items_in_their_styles() {
+    use ratatui::style::{Color, Stylize};
+    use ratatui::text::Line;
+    use rig_ecs::agent::AgentId;
+
+    use crate::tests::view_app;
+    use crate::{TuiFrame, TuiTestScreen};
+
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let helper = (Agent, AgentId("helper".to_owned()));
+    let helper = app.world_mut().spawn(helper).id();
+    let line = app
+        .world_mut()
+        .spawn(StatusLine {
+            agent: Some(helper),
+        })
+        .id();
+    let gauge = StatusItem::new("gauge", Side::Left, 10, 5);
+    let gauge = gauge.styled(Line::from(vec![
+        Span::from("▮▮").red(),
+        Span::from("▯").dim(),
+    ]));
+    if let Some(mut items) = app.world_mut().get_mut::<StatusItems>(helper) {
+        items.show(gauge);
+    }
+    if let Some(mut items) = app.world_mut().get_mut::<StatusItems>(agent) {
+        items.show(StatusItem::new("mine", Side::Left, 10, 5).says("main's", Tone::Plain));
+    }
+    app.update();
+    let world = app.world();
+    let area = world.resource::<TuiFrame>().area(line).unwrap_or_default();
+    let buffer = world.resource::<TuiTestScreen>().buffer();
+    let row: String = (area.left()..area.right())
+        .filter_map(|x| {
+            buffer
+                .cell((x, area.y))
+                .map(|cell| cell.symbol().to_owned())
+        })
+        .collect();
+    assert!(row.starts_with("▮▮▯"), "{row:?}");
+    assert!(!row.contains("main's"), "{row:?}");
+    let first = buffer.cell((area.x, area.y)).map(|cell| cell.fg);
+    assert_eq!(first, Some(Color::Red));
 }
