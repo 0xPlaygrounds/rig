@@ -6,7 +6,7 @@ use rig_core::conversation::{Aside, Author, Change, Conversation};
 use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::json;
 
-use super::{Messages, Place, Rewrite, Strings};
+use super::{Messages, Place, Rewrite, Strings, rewrite_file, rewrite_value};
 use crate::format::stamp_of;
 use crate::{
     Files, LoadError, MemoryStore, Record, Rewrote, SESSION, Session, Store, Writer, history, load,
@@ -403,4 +403,28 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
     assert_eq!(back, Some(&Message::assistant("Seen [R].")));
     save(&store, "main", &mut read).expect("saved");
     assert_eq!(load(&store, "main").expect("read"), read);
+}
+
+#[test]
+fn what_a_plugin_keeps_outside_the_store_maps_through_the_same_rewrite() {
+    let kept = MemoryStore::default();
+    kept.write_file("tui/history.jsonl", b"\"my key is sk-1\"\n\"hello\"\n")
+        .expect("written");
+    assert!(rewrite_file(&kept, "tui/history.jsonl", &redact()).expect("mapped"));
+    let mapped = kept.read_file("tui/history.jsonl").expect("read");
+    assert_eq!(mapped, b"\"my key is [R]\"\n\"hello\"\n");
+    assert!(!rewrite_file(&kept, "tui/missing.jsonl", &redact()).expect("left"));
+
+    let at = Place::File { name: "copy" };
+    let mut call = Message::user("run `echo sk-1`");
+    assert!(rewrite_value(&redact(), &at, "copy", &mut call).expect("reads back"));
+    assert_eq!(call, Message::user("run `echo [R]`"));
+    assert!(!rewrite_value(&redact(), &at, "copy", &mut call).expect("reads back"));
+    // A map that leaves the value unreadable leaves it as it was.
+    let everything = Strings(|text: &mut String| {
+        *text = "x".to_owned();
+        true
+    });
+    assert!(rewrite_value(&everything, &at, "copy", &mut call).is_err());
+    assert_eq!(call, Message::user("run `echo [R]`"));
 }

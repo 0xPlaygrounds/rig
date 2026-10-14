@@ -44,9 +44,11 @@
 //! 4. Another process must not rewrite a running session; rig-memory cannot
 //!    tell, so a program checks first that nothing runs it (for a rig
 //!    session, its `SessionDir::runs_elsewhere`).
-//! 5. Values a host keeps in memory are the host's to read again from
-//!    [`Rewritten`] (rig's kernel does it for conversations and saved
-//!    values).
+//! 5. Values a host keeps in memory, and files it keeps from the session
+//!    outside its store, are the host's to read again from [`Rewritten`]
+//!    or to map with the same [`Rewrite`] ([`rewrite_value`],
+//!    [`rewrite_file`]); rig's kernel does it for conversations and saved
+//!    values, and each plugin for what it keeps.
 //!
 //! ```
 //! use rig_core::message::Message;
@@ -95,6 +97,7 @@ pub use format::{FORMAT, LoadError, Repair, Rewrote, SESSION, Stamp, now_ms};
 pub use meta::{ForkedFrom, META, PARENT, SessionMeta, title_of};
 pub use rewrite::{
     Keep, Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
+    rewrite_file, rewrite_value,
 };
 pub use saved::{MODEL, TITLE, main_order};
 pub use session::{Record, SavedAgent, Session, Unreadable, as_of, history, load, save};

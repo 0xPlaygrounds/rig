@@ -18,7 +18,7 @@ use crate::blobs::{named_blobs, store_change};
 use crate::format::{Body, Header, LogLines, Meta, Rewrote, parse, write_change, write_meta};
 use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
 use crate::writer::set_aside_tail;
-use crate::{LoadError, MemoryStore, Stamp, Store, now_ms};
+use crate::{Files, LoadError, MemoryStore, Stamp, Store, now_ms};
 
 /// Where a value being rewritten is kept.
 #[derive(Clone, Copy, Debug)]
@@ -38,8 +38,10 @@ pub enum Place<'a> {
         /// The log.
         log: &'a str,
     },
-    /// In the store's file `name` (a JSON file, a line of a JSON-lines
-    /// file, a text file), or a host's scratch file.
+    /// In the file `name` (a JSON file, a line of a JSON-lines file, a
+    /// text file): of the store, or one a host or a plugin keeps from the
+    /// session outside it (scratch, its own data); or in a copy a host or
+    /// a plugin holds in memory of what such a file holds.
     File {
         /// The file.
         name: &'a str,
@@ -322,6 +324,51 @@ fn map_leaf(value: &mut Value, leaf: &Leaf, f: &dyn Fn(&mut String) -> bool) -> 
         }
         _ => false,
     }
+}
+
+/// `item` mapped through `with` by its serde form, as a JSON value of a
+/// file is ([`Rewrite::value`] at `at`, under `key`): whether it changed.
+/// How a host or a plugin maps what it keeps of a rewritten session, such
+/// as a copy of a tool call held in memory.
+///
+/// # Errors
+///
+/// When the mapped form no longer reads as a `T`; `item` is left as it was,
+/// and the owner drops it or keeps it unreadable to no one.
+pub fn rewrite_value<T: Serialize + DeserializeOwned>(
+    with: &dyn Rewrite,
+    at: &Place<'_>,
+    key: &str,
+    item: &mut T,
+) -> Result<bool, serde_json::Error> {
+    let mut value = serde_json::to_value(&*item)?;
+    if !with.value(at, key, &mut value) {
+        return Ok(false);
+    }
+    *item = T::deserialize(value)?;
+    Ok(true)
+}
+
+/// The file `name` of `files` through [`Rewrite::file`], written back
+/// whole ([`Files::write_file`], atomic) when it changed: whether it did.
+/// A file that is not there is left. How a host or a plugin maps a file it
+/// keeps from the session outside the session's store, such as a history
+/// of prompts.
+///
+/// # Errors
+///
+/// When the file cannot be read or written.
+pub fn rewrite_file(files: &dyn Files, name: &str, with: &dyn Rewrite) -> io::Result<bool> {
+    let mut bytes = match files.read_file(name) {
+        Ok(bytes) => bytes,
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(failure) => return Err(failure),
+    };
+    if !with.file(name, &mut bytes) {
+        return Ok(false);
+    }
+    files.write_file(name, &bytes)?;
+    Ok(true)
 }
 
 /// The generic file pass of [`Rewrite::file`].
@@ -736,9 +783,7 @@ pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewr
         store.replace_log(&log.log, bytes)?;
     }
     for name in store.files()? {
-        let mut bytes = store.read_file(&name)?;
-        if with.file(&name, &mut bytes) {
-            store.write_file(&name, &bytes)?;
+        if rewrite_file(store, &name, with)? {
             rewritten.files.push(name);
         }
     }

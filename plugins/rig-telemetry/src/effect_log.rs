@@ -24,7 +24,6 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
 use rig_cassette::effect_log::{self, LogHeader, jsonl};
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
-use rig_core::serde_json;
 use rig_ecs::WriteJournal;
 use rig_ecs::effects::Effects;
 #[cfg(feature = "tui")]
@@ -34,7 +33,7 @@ use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
 #[cfg(feature = "tui")]
 use rig_harness::prelude::AppCliExt;
-use rig_harness::rig_memory::Place;
+use rig_harness::rig_memory::{Place, rewrite_value};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -319,17 +318,12 @@ fn write_effects(
 /// `item` mapped through `with` by its serde form, as the rewrite's file
 /// pass maps a line of the log; `None` when the mapped form does not read
 /// back.
-fn mapped<T: Serialize + DeserializeOwned>(item: T, with: &dyn Rewrite) -> Option<T> {
+fn mapped<T: Serialize + DeserializeOwned>(mut item: T, with: &dyn Rewrite) -> Option<T> {
     let at = Place::File {
         name: SESSION_EFFECT_LOG,
     };
-    let Ok(mut value) = serde_json::to_value(&item) else {
-        return Some(item);
-    };
-    if !with.value(&at, SESSION_EFFECT_LOG, &mut value) {
-        return Some(item);
-    }
-    serde_json::from_value(value).ok()
+    rewrite_value(with, &at, SESSION_EFFECT_LOG, &mut item).ok()?;
+    Some(item)
 }
 
 #[cfg(test)]
