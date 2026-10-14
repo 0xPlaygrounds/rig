@@ -1226,10 +1226,8 @@ through serde ([so](#changing-history)). A plugin says what it keeps
 the conversation it was set on: a split, a branch switch, a move, a merge,
 a fork and a restore give the agent its line's value as of that point, or
 remove it where none was set
-([splits](#splits-and-the-native-session-views)). The kernel keeps it
-whenever it saves the conversations: right before `Update`, between the
-stages of each agent pass and at the end of the frame, so a line changed by
-a key or a command gives its value to `Update` in the same frame.
+([splits](#splits-and-the-native-session-views)); it is given right
+before `Update`, between agent stages and at the end of the frame.
 
 ```rust,no_run
 use std::collections::HashMap;
@@ -1776,8 +1774,7 @@ A plugin keeps any serde value with the session under a key of its own:
 component under that key, not its type's path, versioned as every saved
 value. A program without Bevy reads it typed, `Session::get::<T>(key,
 &upgrades)` (an agent's, `SavedAgent::get`), and writes a stopped
-session's through `edit_stopped`, which keeps its listing as a running
-rig does (`SessionStores::relist`, for any other writer). `.listed()`
+session's through `edit_stopped` (which keeps its listing). `.listed()`
 also copies it into the session's listing (`SessionMeta.data`; keep it
 small), so `/resume`,
 `Listing::read` and a `SessionPicker`'s filter show and find it without
@@ -2083,9 +2080,8 @@ the default screen's marked `MainPane`. Plugins read and set a pane's
 `expanded` and `selected` (Alt+Up and Alt+Down select, Ctrl+O expands),
 the `highlights` lit, the `marks` (a `TextMark` label inside a reply's
 text or a streaming call's) and where it is scrolled (`top()`, placed in
-`TuiSystems::Layout`; a panel fitted to it, such as a header shown while
-scrolled up, changes in `TuiSystems::Fit` and is drawn in the same frame). `ScrollTo { pane, item, row }` scrolls to a
-`TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at
+`TuiSystems::Layout`; a panel fitted to it changes in `TuiSystems::Fit`,
+drawn the same frame). `ScrollTo { pane, item, row }` scrolls to a `TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at
 a row of it or its `n`th lit match; `item: None` follows the newest
 output. A `DrawnTranscript` added to a pane holds the rows it drew by
 item; `TranscriptLayout::lay_out` lays any agent's out so, undrawn.
