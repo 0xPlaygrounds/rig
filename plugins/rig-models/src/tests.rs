@@ -97,7 +97,10 @@ fn model_waits_for_the_turn_a_resumed_session_continues() {
         .get::<ModelChoice>(agent)
         .map(|choice| choice.0.as_str());
     assert_eq!(chosen, Some("deepseek/deepseek-flash"));
-    assert_eq!(app.world().resource::<Told>().0.len(), 1);
+    // Said once; what the model's connection says (no key, say) is its own.
+    let told = &app.world().resource::<Told>().0;
+    let waits = told.iter().filter(|text| text.starts_with("--model "));
+    assert_eq!(waits.count(), 1, "{told:?}");
 }
 
 #[test]
