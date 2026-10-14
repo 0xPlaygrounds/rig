@@ -119,7 +119,7 @@ fn of_aside(aside: &Aside, key: &str) -> Option<Value> {
         return None;
     }
     let mut envelope = aside.value.as_object()?.clone();
-    envelope.remove("key");
+    envelope.shift_remove("key");
     let removed = envelope.get("value").is_none_or(Value::is_null);
     Some(if removed {
         Value::Null

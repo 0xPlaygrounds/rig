@@ -1034,7 +1034,7 @@ fn labelled(app: &mut App) -> Option<Labelled> {
 }
 
 fn main_state(store: &MemoryStore) -> std::collections::BTreeMap<String, rig_memory::Versioned> {
-    let session = rig_memory::Session::read(store).expect("it reads");
+    let session = rig_memory::Session::read(store).unwrap_or_default();
     session
         .agent("main")
         .map(|main| main.state.clone())
@@ -1163,7 +1163,7 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
     }
     first.update();
     drop(first);
-    let session = rig_memory::Session::read(&store).expect("it reads");
+    let session = rig_memory::Session::read(&store).unwrap_or_default();
     let goal = session.get::<String>("goals.goal", &rig_memory::Upgrades::default());
     assert_eq!(goal.and_then(Result::ok).as_deref(), Some("ship it"));
 

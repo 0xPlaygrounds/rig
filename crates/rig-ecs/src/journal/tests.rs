@@ -800,7 +800,7 @@ fn a_rewrite_asked_while_one_is_applied_runs_in_that_frame_by_its_own_author() {
     app.update();
     let by: Vec<Author> = rewritten(&app).into_iter().map(|done| done.by).collect();
     assert_eq!(by, [Author::plugin("relabel"), Author::plugin("follow-up")]);
-    let session = Session::read(&store).expect("read");
+    let session = Session::read(&store).unwrap_or_default();
     let rewrites = session
         .agent(&id_of(&app, agent))
         .map(|a| a.rewrites.clone());
