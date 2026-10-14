@@ -7333,6 +7333,278 @@ dependencies = [
 ]
 
 [[package]]
+name = "corpus-sp-branch-cherry-pick"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-branch-compare-view"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-branch-explode-library"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-memory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-changelog-fragments"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-churn-monitor"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-commit-msg-hook"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-dead-ends-ledger"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-inbox-folder"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-output-styles"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-per-agent-compaction"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-plugin-state-upgrade"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-recent-sessions-start"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-reply-prefill"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-session-doctor-library"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-memory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-session-provenance"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-session-tree-browser"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-shell-env-policy"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-structured-config-edit"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-subagent-result-cache"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-theme-files"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "corpus-subagent-policy"
 version = "0.0.0"
 dependencies = [

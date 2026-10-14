@@ -1,0 +1,16 @@
+[package]
+name = "corpus-sp-branch-explode-library"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (splits fresh held-out): SP-14: 14. Branch explode (library program) (library program)"
+
+[lints]
+workspace = true
+
+[dependencies]
+# A plain program on rig's library crates: no Bevy, no harness.
+rig-core = { workspace = true }
+rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
