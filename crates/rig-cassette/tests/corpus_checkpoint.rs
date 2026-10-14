@@ -1,6 +1,6 @@
 //! Matrix R: checkpoints and hash-checked replay.
 //!
-//! A `Checkpoint` cuts a log where a run was suspended: the position, the
+//! A `ResumePoint` cuts a log where a run was suspended: the position, the
 //! id the tail begins with, and what the driver persisted (the agent's
 //! serialized run). The continuation is `EffectLog::from_checkpoint` over
 //! the tail — a full log in the tail's place is refused by its first id —
@@ -65,7 +65,7 @@ use crate::corpus;
 use corpus::{
     Hook, LayerAt, LayerKind, LayerSpec, NESTING, NestedChild, Nesting, Output, Program, ROUTE,
 };
-use rig_cassette::effect_log::{Checkpoint, EffectLog, RequestCheck};
+use rig_cassette::effect_log::{EffectLog, RequestCheck, ResumePoint};
 use rig_core::effect::{EffectKind, HandlerKey};
 use rig_core::error::ErrorKind;
 
@@ -367,7 +367,7 @@ fn a_checkpoint_of_another_format_is_refused_by_name() {
         "resume refused: the checkpoint is format 7, this rig reads format 6"
     );
     let json = serde_json::to_string(&checkpoint).expect("serializes");
-    let restored: Checkpoint<serde_json::Value> =
+    let restored: ResumePoint<serde_json::Value> =
         serde_json::from_str(&json).expect("restores: the number is data");
     assert_eq!(restored.format, 7);
 }

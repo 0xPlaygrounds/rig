@@ -34,7 +34,7 @@
 //!   `CLAUDE.md`) from the working directory up;
 //! - [`fs`]: an atomic file write and capped text reads on this machine;
 //! - [`numbered`]: text as numbered lines, the way `read` shows a file;
-//! - [`Spill`]: where output a tool cut is kept whole, and [`Cut`]: how
+//! - [`Spill`]: where output a tool cut is kept whole, and [`OutputLimit`]: how
 //!   much of a long output is kept;
 //! - [`process`]: child processes in a process group of their own, the
 //!   [`Launcher`](process::Launcher) that says how tools start them, and
@@ -91,22 +91,22 @@ pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 /// `lines` of them and `bytes` bytes, starting at a line.
 ///
 /// ```
-/// use rig_tools::Cut;
+/// use rig_tools::OutputLimit;
 ///
-/// let cut = Cut { lines: 2, bytes: 1024 };
+/// let cut = OutputLimit { lines: 2, bytes: 1024 };
 /// assert_eq!(cut.tail("one\ntwo\nthree\n"), ("two\nthree\n", 1));
-/// let narrow = Cut { lines: 10, bytes: 7 };
+/// let narrow = OutputLimit { lines: 10, bytes: 7 };
 /// assert_eq!(narrow.tail("one\ntwo\nthree\n"), ("three\n", 2));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cut {
+pub struct OutputLimit {
     /// Most lines kept.
     pub lines: usize,
     /// Most bytes kept.
     pub bytes: usize,
 }
 
-impl Default for Cut {
+impl Default for OutputLimit {
     /// [`MAX_LINES`] lines or [`MAX_BYTES`] bytes.
     fn default() -> Self {
         Self {
@@ -116,7 +116,7 @@ impl Default for Cut {
     }
 }
 
-impl Cut {
+impl OutputLimit {
     /// The end of `text` this keeps, starting at a line, and how many lines
     /// before it were left out. When even the last line is longer than
     /// [`bytes`](Self::bytes), nothing is kept.

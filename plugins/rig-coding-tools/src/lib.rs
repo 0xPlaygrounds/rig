@@ -27,7 +27,7 @@ use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::serde::Deserialize;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, attachments};
-use rig_tools::{Cut, Delete, Edit, List, Move, Read, Search, Shell, Write};
+use rig_tools::{Delete, Edit, List, Move, OutputLimit, Read, Search, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
 
@@ -240,29 +240,29 @@ impl Plugin for ShellTool {
 }
 
 /// How much of a command's output the `shell` tool gives the model, read
-/// as each call runs: [`Cut::default`] unless set. A plugin that cuts or
+/// as each call runs: [`OutputLimit::default`] unless set. A plugin that cuts or
 /// summarizes output itself turns the cut off with `set(None)`, such as
 /// from its `finish`; the command is still killed past 10 MB of output.
 /// Shared by its clones: change it with [`set`](Self::set), not by
 /// inserting a new one.
 #[derive(Resource, Clone, Debug)]
-pub struct ShellOutput(Arc<RwLock<Option<Cut>>>);
+pub struct ShellOutput(Arc<RwLock<Option<OutputLimit>>>);
 
 impl ShellOutput {
     /// How the next call cuts its output; `None` keeps all of it.
-    pub fn cut(&self) -> Option<Cut> {
+    pub fn cut(&self) -> Option<OutputLimit> {
         *self.0.read().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Cuts every call's output from now on as `cut` says.
-    pub fn set(&self, cut: Option<Cut>) {
+    pub fn set(&self, cut: Option<OutputLimit>) {
         *self.0.write().unwrap_or_else(PoisonError::into_inner) = cut;
     }
 }
 
 impl Default for ShellOutput {
     fn default() -> Self {
-        Self(Arc::new(RwLock::new(Some(Cut::default()))))
+        Self(Arc::new(RwLock::new(Some(OutputLimit::default()))))
     }
 }
 

@@ -19,7 +19,7 @@ use serde::Deserialize;
 
 use crate::process::{KillOnDrop, Launcher, OutputLine, Process, Spawn};
 use crate::workspace::{Local, Workspace};
-use crate::{Cut, Live, Spill, blocking};
+use crate::{Live, OutputLimit, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
 /// How long output pipes may stay open after the command exits before the
@@ -29,7 +29,7 @@ const PIPE_GRACE: Duration = Duration::from_millis(100);
 /// How often the command's state is checked while no output arrives.
 const POLL: Duration = Duration::from_millis(20);
 /// Output past which the command is killed. While it runs, only what the
-/// [`Cut`] keeps is held in memory.
+/// [`OutputLimit`] keeps is held in memory.
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
 /// Runs a command with `sh -c` in its own session and process group, in its
@@ -51,7 +51,7 @@ pub struct Shell {
     /// How much of the output the result keeps; `None` keeps all of it, up
     /// to the 10 MB the command is killed at, for a host that cuts output
     /// itself.
-    pub cut: Option<Cut>,
+    pub cut: Option<OutputLimit>,
     /// Whether a `cwd` that resolves outside the launcher's directory is
     /// refused. What the command itself does is not confined: it may still
     /// `cd` anywhere.
@@ -63,7 +63,7 @@ pub struct Shell {
 
 impl Default for Shell {
     /// Started on this machine as this process starts it, nothing spilled
-    /// or reported live, output cut as [`Cut::default`] cuts it, timeouts
+    /// or reported live, output cut as [`OutputLimit::default`] cuts it, timeouts
     /// of at most ten minutes.
     fn default() -> Self {
         Self {
@@ -71,7 +71,7 @@ impl Default for Shell {
             launcher: Launcher::default(),
             live: None,
             spill: None,
-            cut: Some(Cut::default()),
+            cut: Some(OutputLimit::default()),
             confine: false,
             max_timeout: 600,
         }
@@ -117,7 +117,7 @@ impl ShellArgs {
 /// What a command printed and how it ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShellRun {
-    /// Its output, stdout and stderr interleaved, as the [`Cut`] keeps it,
+    /// Its output, stdout and stderr interleaved, as the [`OutputLimit`] keeps it,
     /// ending in a line saying how it ended.
     pub output: String,
     /// How it ended.
@@ -354,7 +354,7 @@ struct Tail {
     /// The last bytes.
     bytes: VecDeque<u8>,
     /// How much is kept; `None` keeps everything.
-    cut: Option<Cut>,
+    cut: Option<OutputLimit>,
     /// Whether earlier bytes were dropped.
     dropped: bool,
     /// Whole lines dropped before `bytes`.

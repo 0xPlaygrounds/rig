@@ -9,7 +9,7 @@ Coding tools for [Rig](https://github.com/0xPlaygrounds/rig) agents:
 | `edit`   | Several exact (or whitespace- and quote-tolerant) replacements, all or nothing, answered with a diff |
 | `search` | A regex over the tree as git ignores it, hidden files too when asked or when the glob names one; `find` returns the hits as data, `render` shows them |
 | `list`   | A directory's files as git ignores them, down to a depth, optionally matching a glob, hidden files as for `search` |
-| `shell`  | `sh -c` in its own process group, as a `Launcher` starts it, with a timeout (at most `max_timeout`, ten minutes by default) and an optional `Cut` of its output |
+| `shell`  | `sh -c` in its own process group, as a `Launcher` starts it, with a timeout (at most `max_timeout`, ten minutes by default) and an optional `OutputLimit` of its output |
 | `delete`, `move` | A file removed, or moved or renamed |
 
 Each tool carries its usage `RULES` for the system prompt, such as "use `read`,

@@ -54,7 +54,7 @@ the minimal library and the agent adapter.
 ## Effect logs and runtime integration
 
 `rig_cassette::effect_log` owns `EffectLog`, `EffectLogRecorder`,
-`EffectLogReplayer`, `Checkpoint`, `RequestCheck`, header validation and stable
+`EffectLogReplayer`, `ResumePoint`, `RequestCheck`, header validation and stable
 hashing. The log/checkpoint wire formats and fingerprint inputs are unchanged.
 The recorder implements `rig_core::serve::Recorder`; the replayer implements
 the ordinary core handler interface.

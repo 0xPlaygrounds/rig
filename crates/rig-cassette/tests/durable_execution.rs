@@ -25,7 +25,7 @@ use rig_agent::{
     tool::{Tool, ToolContext, ToolExecutionError},
 };
 use rig_cassette::effect_log::{
-    Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
+    EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck, ResumePoint,
 };
 use rig_core::{
     completion::CompletionRequest,
@@ -513,7 +513,7 @@ async fn a_hooks_decision_is_program_not_record() {
 }
 
 /// The property through a checkpoint (L9): the interruption's state and
-/// position become a `Checkpoint` beside the reference log's tail; a fresh
+/// position become a `ResumePoint` beside the reference log's tail; a fresh
 /// image loads both, `EffectLog::from_checkpoint` names the continuation,
 /// the replayers serve it under `check`, and the resumed run performs
 /// exactly the tail. The full log in the tail's place is refused by its
@@ -537,7 +537,7 @@ async fn resumes_from_a_checkpoint(
 
     // A fresh image: the checkpoint and the tail restored, the continuation
     // named, the state deserialized from the checkpoint.
-    let checkpoint: Checkpoint<serde_json::Value> =
+    let checkpoint: ResumePoint<serde_json::Value> =
         serde_json::from_str(&persisted.0).expect("a checkpoint restores");
     let tail: EffectLog = serde_json::from_str(&persisted.1).expect("the tail restores");
     let refused = EffectLog::from_checkpoint(&checkpoint, reference_log.clone())

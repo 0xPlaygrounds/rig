@@ -73,7 +73,7 @@ use rig_agent::{
     tool::{RegisteredTool, server::ToolServer},
 };
 use rig_cassette::effect_log::{
-    Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
+    EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck, ResumePoint,
 };
 use rig_core::{
     completion::{CompletionRequest, Document},
@@ -3826,7 +3826,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         serde_json::from_str::<serde_json::Value>(&state)
                             .expect("the run state is JSON"),
                     );
-                    let checkpoint: Checkpoint<serde_json::Value> = serde_json::from_str(
+                    let checkpoint: ResumePoint<serde_json::Value> = serde_json::from_str(
                         &serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
                     )
                     .expect("a checkpoint restores");

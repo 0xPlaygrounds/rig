@@ -492,7 +492,7 @@ fn two_records() -> EffectLog {
 fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     let log = two_records();
     let (checkpoint, tail) = log.checkpoint(1, serde_json::json!({"turn": 1}));
-    assert_eq!(checkpoint.format, super::CHECKPOINT_FORMAT);
+    assert_eq!(checkpoint.format, super::RESUME_POINT_FORMAT);
     assert_eq!(checkpoint.at, 1);
     assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
     assert_eq!(checkpoint.state, serde_json::json!({"turn": 1}));
@@ -501,7 +501,7 @@ fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     assert_eq!(tail.header, log.header, "the tail keeps the header");
     // Serde round trip, then the continuation.
     let json = serde_json::to_string(&checkpoint).expect("serializes");
-    let restored: super::Checkpoint<serde_json::Value> =
+    let restored: super::ResumePoint<serde_json::Value> =
         serde_json::from_str(&json).expect("restores");
     assert_eq!(restored, checkpoint);
     let continuation = EffectLog::from_checkpoint(&restored, tail).expect("the tail follows");
