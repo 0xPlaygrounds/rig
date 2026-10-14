@@ -27,7 +27,7 @@ use bevy_ecs::resource::IsResource;
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
-use bevy_log::error;
+use bevy_log::{error, warn};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
 use rig_core::conversation::{Author, Recorded};
@@ -38,7 +38,7 @@ use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::WriteJournal;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
-use super::follows::ReflectFollows;
+use super::follows::{self, Mirroring, ReflectFollows};
 use super::restore::{RetiredSaved, SavedKeys, SavedUpgrades, SetAside};
 use super::restore::{SavedReader, resource_entity, saved_type};
 
@@ -264,6 +264,11 @@ impl Drain<'_, '_> {
 /// commands and observers, in `Last` before the frame's records are
 /// written.
 pub(crate) fn save_conversations(mut drain: Drain) {
+    drain.save();
+}
+
+/// Saves what the followed components' mirrors put in the conversations.
+fn save_mirrored(mut drain: Drain) {
     drain.save();
 }
 
@@ -500,6 +505,14 @@ impl Plugin for JournalPlugin {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(Last, write_logs.in_set(WriteJournal))
+            .configure_sets(Last, Mirroring.in_set(Saving).after(follows::sync))
+            .add_systems(
+                Last,
+                (
+                    follows::sync.in_set(Saving).after(save_conversations),
+                    save_mirrored.in_set(Saving).after(Mirroring),
+                ),
+            )
             .add_observer(open_child_log)
             .init_resource::<SavedUpgrades>()
             .init_resource::<RetiredSaved>()
@@ -516,7 +529,14 @@ impl Plugin for JournalPlugin {
             .map(|registry| {
                 let registry = registry.read();
                 let saved = registry.iter_with_data::<ReflectSaved>();
-                let saved = saved.map(|(_, saved)| saved.watch);
+                let saved = saved.filter_map(|(registration, saved)| {
+                    if registration.data::<ReflectFollows>().is_none() {
+                        return Some(saved.watch);
+                    }
+                    let path = registration.type_info().type_path();
+                    warn!("{path} is both Saved and Follows; it follows its line");
+                    None
+                });
                 let follows = registry.iter_with_data::<ReflectFollows>();
                 saved
                     .chain(follows.map(|(_, follows)| follows.watch))

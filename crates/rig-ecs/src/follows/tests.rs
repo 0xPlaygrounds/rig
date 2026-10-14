@@ -1,0 +1,201 @@
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_reflect::Reflect;
+use bevy_reflect::prelude::ReflectDefault;
+use rig_core::completion::Message;
+use rig_core::conversation::{AsideId, Author};
+use rig_memory::{Keep, MemoryStore, fork};
+
+use super::{FOLLOWS, ReflectFollows};
+use crate::AgentPlugin;
+use crate::agent::{Agent, AgentId, Conversation};
+use crate::journal::tests::{edit, push_message};
+use crate::journal::{JournalPlugin, SessionStore};
+
+/// A plugin's mode, kept with the line it was set on.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
+#[reflect(Component, Follows, Default)]
+struct Mode(String);
+
+fn app(store: &MemoryStore) -> App {
+    let mut app = App::new();
+    app.set_error_handler(bevy_ecs::error::warn)
+        .add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(SessionStore::new(store.clone()));
+    app.finish();
+    app.update();
+    app
+}
+
+fn agent(app: &mut App) -> Entity {
+    let mut agents = app.world_mut().query_filtered::<Entity, With<Agent>>();
+    let agent = agents.iter(app.world()).next();
+    assert!(agent.is_some(), "an agent");
+    agent.unwrap_or(Entity::PLACEHOLDER)
+}
+
+fn mode(app: &App, agent: Entity) -> Option<String> {
+    app.world().get::<Mode>(agent).map(|mode| mode.0.clone())
+}
+
+fn set_mode(app: &mut App, agent: Entity, mode: &str) {
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(Mode(mode.to_owned()));
+    app.update();
+}
+
+fn say(app: &mut App, agent: Entity, text: &str) {
+    push_message(app.world_mut(), agent, Message::user(text));
+    app.update();
+}
+
+/// The kept branch titled `title`.
+fn branch(app: &App, agent: Entity, title: &str) -> AsideId {
+    let conversation = app.world().get::<Conversation>(agent);
+    let kept = conversation.map(|c| c.branches()).unwrap_or_default();
+    let found = kept.into_iter().find(|kept| kept.branch.title == title);
+    assert!(found.is_some(), "a branch {title}");
+    found.map_or(AsideId::default(), |kept| kept.id)
+}
+
+fn switch(app: &mut App, agent: Entity, title: &str) {
+    let id = branch(app, agent, title);
+    edit(app.world_mut(), agent, move |conversation| {
+        assert!(
+            conversation
+                .switch_branch(id, Author::plugin("tree"))
+                .is_ok()
+        );
+    });
+    app.update();
+}
+
+fn branch_off(app: &mut App, agent: Entity, at: usize, title: &'static str) {
+    edit(app.world_mut(), agent, move |conversation| {
+        assert!(
+            conversation
+                .branch_off(at, title, Author::plugin("tree"))
+                .is_ok()
+        );
+    });
+    app.update();
+}
+
+/// A value set right after a split at the end stays with the new line: going
+/// back gives the old line's value, going forward the new one's, round trip
+/// after round trip; a restore gives the active line's.
+#[test]
+fn a_value_set_after_a_split_at_the_end_stays_with_its_line() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let agent = agent(&mut app);
+    say(&mut app, agent, "one");
+    set_mode(&mut app, agent, "plan");
+    branch_off(&mut app, agent, 1, "other");
+    assert_eq!(
+        mode(&app, agent).as_deref(),
+        Some("plan"),
+        "as of the split"
+    );
+    set_mode(&mut app, agent, "build");
+    for _ in 0..2 {
+        switch(&mut app, agent, "main");
+        assert_eq!(mode(&app, agent).as_deref(), Some("plan"));
+        switch(&mut app, agent, "other");
+        assert_eq!(mode(&app, agent).as_deref(), Some("build"));
+    }
+    drop(app);
+    let mut again = self::app(&store);
+    let agent = self::agent(&mut again);
+    assert_eq!(mode(&again, agent).as_deref(), Some("build"));
+}
+
+/// A split at an earlier entry starts without the value set after it, and
+/// its own value is anchored at its first entry, so a later split there
+/// carries it; the line it left keeps its own.
+#[test]
+fn a_value_follows_a_split_mid_line_and_is_anchored_at_its_first_entry() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let agent = agent(&mut app);
+    say(&mut app, agent, "one");
+    say(&mut app, agent, "two");
+    set_mode(&mut app, agent, "plan");
+    branch_off(&mut app, agent, 1, "other");
+    assert_eq!(mode(&app, agent), None, "not set on this line");
+    set_mode(&mut app, agent, "build");
+    say(&mut app, agent, "three");
+    let conversation = app.world().get::<Conversation>(agent);
+    let anchored = conversation.is_some_and(|c| {
+        let last = c.entries().next_back().map(|entry| entry.id);
+        c.line_values().is_none()
+            && c.asides()
+                .any(|(_, a)| a.kind == FOLLOWS && a.after == last)
+    });
+    assert!(anchored, "{conversation:?}");
+    branch_off(&mut app, agent, 2, "deeper");
+    assert_eq!(mode(&app, agent).as_deref(), Some("build"));
+    switch(&mut app, agent, "main");
+    assert_eq!(mode(&app, agent).as_deref(), Some("plan"));
+    switch(&mut app, agent, "other");
+    assert_eq!(mode(&app, agent).as_deref(), Some("build"));
+}
+
+/// A fork of the session as it was before a message gives the agent the
+/// value its line had then.
+#[test]
+fn a_fork_gives_the_value_as_of_its_cut() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let agent = agent(&mut app);
+    say(&mut app, agent, "one");
+    set_mode(&mut app, agent, "plan");
+    say(&mut app, agent, "two");
+    set_mode(&mut app, agent, "build");
+    let id = app
+        .world()
+        .get::<AgentId>(agent)
+        .cloned()
+        .unwrap_or_default();
+    let two = app.world().get::<Conversation>(agent).and_then(|c| c.id(1));
+    drop(app);
+    let copy = MemoryStore::default();
+    let cut = two.map(|two| (id.0.as_str(), two));
+    assert!(fork(&store, &copy, cut, &Keep).is_ok());
+    let mut forked = self::app(&copy);
+    let agent = self::agent(&mut forked);
+    assert_eq!(mode(&forked, agent).as_deref(), Some("plan"));
+}
+
+/// An edit that takes out the entries values followed keeps one value per
+/// key, the newest, after what stands for them now.
+#[test]
+fn values_of_entries_a_splice_took_out_collapse_into_one() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let agent = agent(&mut app);
+    say(&mut app, agent, "one");
+    set_mode(&mut app, agent, "plan");
+    say(&mut app, agent, "two");
+    set_mode(&mut app, agent, "build");
+    edit(app.world_mut(), agent, |conversation| {
+        let summary = rig_core::conversation::Entry::new(Message::user("summary"));
+        conversation.splice(..2, [summary], Author::plugin("compaction"));
+    });
+    app.update();
+    let conversation = app.world().get::<Conversation>(agent);
+    let follows: Vec<_> = conversation
+        .map(|c| {
+            let summary = c.id(0);
+            c.asides()
+                .filter(|(_, aside)| aside.kind == FOLLOWS)
+                .map(|(_, aside)| (aside.after == summary, aside.value.get("value").cloned()))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(follows, [(true, Some("build".into()))]);
+    assert_eq!(mode(&app, agent).as_deref(), Some("build"));
+    branch_off(&mut app, agent, 1, "other");
+    assert_eq!(mode(&app, agent).as_deref(), Some("build"));
+}

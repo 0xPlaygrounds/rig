@@ -65,6 +65,7 @@ use web_time::SystemTime;
 
 use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn, TurnOf};
 use super::effects::Effects;
+use super::follows::{ReflectFollows, give_line_values};
 use super::inbox::{Unsent, kept};
 use super::journal::{
     Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
@@ -302,6 +303,7 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
     let mut reader = SavedReader::new(world);
+    let followed = super::follows::followed(world);
     for (key, value) in &state {
         let restored = reader.read(&registry, SESSION, None, &state, key, value);
         let restored = restored.and_then(|read| {
@@ -337,6 +339,7 @@ pub(crate) fn restore_session(world: &mut World) {
             component.insert(&mut spawned, value.as_partial_reflect(), &registry);
         }
         let entity = spawned.id();
+        give_line_values(world, &registry, &mut reader, entity, &followed);
         entities.insert(id.0, entity);
         links.push((entity, agent.parent));
     }
@@ -556,6 +559,37 @@ impl SavedReader {
         }
     }
 
+    /// The followed value `saved` of the type of path `path`, upgraded,
+    /// reflected and as JSON; a value that does not read is listed in
+    /// [`SetAside`], and left as it is in the conversation.
+    ///
+    /// # Errors
+    ///
+    /// Why it is not read.
+    pub(crate) fn read_followed(
+        &mut self,
+        registry: &TypeRegistry,
+        agent: Option<&AgentId>,
+        path: &str,
+        saved: &Versioned,
+    ) -> Result<(Box<dyn Reflect>, Value), String> {
+        let (registration, _) = saved_type(path, registry)?;
+        let read = self
+            .upgrades
+            .upgrade(path, saved.clone())
+            .map_err(|unread| unread.to_string())
+            .and_then(|value| Ok((reflected(registration, &value, registry)?, value)));
+        if let Err(why) = &read {
+            self.set_aside.push(SetAsideValue {
+                agent: agent.cloned(),
+                key: self.keys.key(path).unwrap_or(path).to_owned(),
+                saved: saved.clone(),
+                why: why.clone(),
+            });
+        }
+        read
+    }
+
     /// The type path of the values saved under `key`.
     pub(crate) fn path<'k>(&'k self, key: &'k str) -> &'k str {
         self.keys.path(key).unwrap_or(key)
@@ -585,15 +619,18 @@ fn reflected(
         .ok_or_else(|| "its saved value no longer fits".to_owned())
 }
 
-/// The registration of the saved component of the type path `path`, with
-/// the reflection that inserts and removes it.
+/// The registration of the saved or followed component of the type path
+/// `path`, with the reflection that inserts and removes it.
 pub(crate) fn saved_type<'r>(
     path: &str,
     registry: &'r TypeRegistry,
 ) -> Result<(&'r TypeRegistration, &'r ReflectComponent), String> {
     let registration = registry
         .get_with_type_path(path)
-        .filter(|registration| registration.data::<ReflectSaved>().is_some())
+        .filter(|registration| {
+            registration.data::<ReflectSaved>().is_some()
+                || registration.data::<ReflectFollows>().is_some()
+        })
         .ok_or("no plugin saves it in this build")?;
     let component = registration.data::<ReflectComponent>();
     let component = component.ok_or("it is not a reflected component")?;
