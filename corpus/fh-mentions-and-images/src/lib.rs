@@ -47,7 +47,7 @@ use rig_tools::attach::{is_image_path, is_path_reference, read_image};
 use rig_tools::workspace::{Listing, Local, Stat, Workspace};
 use rig_tools::{blocking, numbered};
 use rig_tui::{
-    AppKeyBindingsExt, InputAction, KeyBinding, KeyPress, KeyPressed, KeyScope, TuiInput,
+    AppKeyBindingsExt, InputAction, KeyBinding, KeyPress, KeyPressed, KeyScope, MainInput,
 };
 use serde::Deserialize;
 
@@ -387,7 +387,7 @@ fn paste_image(
 fn paste_read(
     read: On<Insert<Pasting>>,
     pasting: Query<&Pasting>,
-    (mut input, mut pasted, shown): (Option<ResMut<TuiInput>>, ResMut<Pasted>, Res<Shown>),
+    (mut input, mut pasted, shown): (Option<MainInput>, ResMut<Pasted>, Res<Shown>),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
