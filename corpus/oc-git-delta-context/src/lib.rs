@@ -264,11 +264,11 @@ fn saved_note(conversation: &Conversation, first: MessageId) -> Option<String> {
     let at = conversation.start_of(first);
     let after = at.checked_sub(1).and_then(|at| conversation.id(at));
     let author = Author::plugin(NAME);
-    let notes = conversation.asides().filter_map(|(_, aside)| {
+    let mut notes = conversation.asides().filter_map(|(_, aside)| {
         let mine = aside.author == author && aside.after == after;
         mine.then(|| Note::of(aside)).flatten()
     });
-    notes.last().map(|note| note.text)
+    notes.next_back().map(|note| note.text)
 }
 
 /// What changed from `was` to `now`, for the model; `None` when nothing
