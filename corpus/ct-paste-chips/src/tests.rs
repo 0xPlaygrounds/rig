@@ -8,6 +8,7 @@ use rig_harness_test_support::{
     Collected, Ended, app_in, collect, first_agent, log_ended, reply, run_until, scratch_home,
     scripted_models, tui_view,
 };
+use rig_tui::MainEditor;
 use rig_tui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
@@ -43,8 +44,15 @@ fn press(app: &mut App, keys: &str) {
     }
 }
 
+/// The main editor; an empty one without it.
+fn editor(world: &World) -> Editor {
+    let main = world.try_query_filtered::<&Editor, With<MainEditor>>();
+    main.and_then(|mut main| main.single(world).ok().cloned())
+        .unwrap_or_default()
+}
+
 fn input(app: &App) -> (String, usize) {
-    let input = app.world().resource::<TuiInput>();
+    let input = editor(app.world());
     (input.text().to_owned(), input.cursor())
 }
 
@@ -146,7 +154,11 @@ fn long_pastes_are_chips_sent_as_their_contents() {
         "{opened}"
     );
     let at = opened.find("line 7\n").unwrap_or_default() + "line 7".len();
-    app.world_mut().resource_mut::<TuiInput>().set_cursor(at);
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut Editor, With<MainEditor>>();
+    if let Ok(mut input) = main.single_mut(world) {
+        input.set_cursor(at);
+    }
     type_text(&mut app, "x");
     press(&mut app, "alt+e");
     assert_eq!(input(&app).0, typed);
@@ -169,10 +181,7 @@ fn long_pastes_are_chips_sent_as_their_contents() {
     // reads no images, then sent as an image to one that does.
     press(&mut app, "ctrl+v");
     run_until(&mut app, &wakes, |world| {
-        world
-            .resource::<TuiInput>()
-            .text()
-            .contains("[Image #3 · 1×1]")
+        editor(world).text().contains("[Image #3 · 1×1]")
     });
     type_text(&mut app, " what is it?");
     let before = warnings(&app);
