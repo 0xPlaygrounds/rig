@@ -368,8 +368,11 @@ fn watch_effect(
                 }
                 None => watching.tainted = true,
             }
-        } else if !watching.files.contains_key(&name) {
-            watching.files.insert(name, hash_of(workspace, path));
+        } else {
+            watching
+                .files
+                .entry(name)
+                .or_insert_with(|| hash_of(workspace, path));
         }
     }
 }

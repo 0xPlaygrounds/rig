@@ -288,7 +288,7 @@ fn list(world: &mut World, root: Entity, live: SessionRow) {
             .filter_map(|(_, dir)| SessionEntry::read(&dir, &stores))
             .filter(|entry| project.is_none() || entry.directory == project)
             .collect();
-        saved.sort_by(|a, b| b.updated.cmp(&a.updated));
+        saved.sort_by_key(|saved| std::cmp::Reverse(saved.updated));
         let rows = saved.into_iter().map(|entry| SessionRow {
             title: match (&entry.name, entry.listing.meta.title.as_str()) {
                 (Some(name), _) => name.clone(),

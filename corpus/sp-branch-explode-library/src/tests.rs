@@ -196,7 +196,7 @@ fn every_branch_becomes_a_session_of_its_own() {
             .collect();
         assert_eq!(pins.is_empty(), no_pin, "{pins:?}");
         if !no_pin {
-            assert_eq!(pins, [pin_json.clone()]);
+            assert_eq!(pins, std::slice::from_ref(&pin_json));
         }
         let logs = snapshot(&path.join("logs"));
         let raw = logs

@@ -776,7 +776,7 @@ fn rules_loaded(
     let Loaded(read, problems) = std::mem::replace(&mut done.0, Loaded(Vec::new(), Vec::new()));
     commands.entity(loaded.entity).despawn();
     for turns in read.iter().map(|rule| rule.keep_recent_turns) {
-        cuts.0.add(&cut_name(turns), move |messages, from, _, _| {
+        cuts.0.add(cut_name(turns), move |messages, from, _, _| {
             turns_start(messages, from, turns)
         });
     }

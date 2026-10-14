@@ -196,7 +196,7 @@ pub fn candidates(conversation: &conversation::Conversation) -> Vec<Candidate> {
                 last: last_id,
                 prompt: turn
                     .iter()
-                    .find_map(|entry| prompt_line(entry))
+                    .find_map(prompt_line)
                     .unwrap_or_else(|| "(a turn's continuation)".to_owned()),
                 leaf,
             });

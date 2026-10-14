@@ -330,7 +330,7 @@ fn browses_sessions_and_branches_and_resumes_at_a_turn() {
     let world = app.world_mut();
     let mut editors = world.query_filtered::<&rig_tui::Editor, With<MainEditor>>();
     let draft = editors.iter(world).next().map(|editor| editor.text());
-    assert_eq!(draft.as_deref(), Some("half typed"));
+    assert_eq!(draft, Some("half typed"));
     assert_eq!(app.world().resource::<Shown>().0, Some(agent));
     assert_eq!(top(&mut app), before);
 

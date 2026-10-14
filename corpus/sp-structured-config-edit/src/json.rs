@@ -155,7 +155,7 @@ impl Parser<'_> {
                 {
                     self.at += 1;
                 }
-                (self.at > start).then(|| Node::Leaf {
+                (self.at > start).then_some(Node::Leaf {
                     span: start..self.at,
                 })
             }

@@ -88,7 +88,12 @@ fn start(store: &MemoryStore, home: &Path, models: Models) -> (App, Receiver<()>
     collect::<Notice>(&mut app);
     let read = |called: On<ToolCalled<serde_json::Value>>,
                 mut calls: Query<&mut Decision, ToolCalls>| {
-        let path = called.args["path"].as_str().unwrap_or_default().to_owned();
+        let path = called
+            .args
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
         let text = format!("CONTENT OF {path}: {}", "line ".repeat(60));
         if let Ok(mut call) = calls.get_mut(called.call) {
             call.decide(Decider::plugin("test"), ToolResult::success(text.into()));
