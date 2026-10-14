@@ -1,7 +1,8 @@
-//! The saved format, `rig-session/2`: one JSON-lines log per agent, named
+//! The saved format, `rig-session/3`: one JSON-lines log per agent, named
 //! by the agent's id, plus the session's own ([`SESSION`]). Each line is a
 //! [`Stamp`] and one record: a `header` first, then `state` (a saved value
-//! by key, the latest wins, `null` removes it), `retired`, or one
+//! by key with the version of its type, `v`, not written at 1; the latest
+//! wins, `null` removes it), `retired`, or one
 //! [`Change`](rig_core::conversation::Change) of the agent's conversation
 //! (`push`, `splice`, `halt`, `aside`, `reset`) with who made it (`by`).
 //! The header's `lineage` is the log's own
@@ -11,12 +12,17 @@
 //! ([`rewrite`](crate::rewrite)) and when; each rewrite gives the log a
 //! fresh lineage.
 //!
+//! A log is written in one format, the one its header names: every record
+//! of it is of that format. Logs of an older format, from [`OLDEST`] on,
+//! read through a chain of steps ([`upgrade`](crate::upgrade)), and are
+//! rewritten in this one before anything is appended to them.
+//!
 //! A record keeps when each entry was made: a new entry was made when its
 //! record says (`t`), an entry put back as it was says so itself (`made`),
 //! and a reset's state carries each entry's.
 //!
 //! ```json
-//! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/2","log":"cd9a…","lineage":8125…}
+//! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/3","log":"cd9a…","lineage":8125…}
 //! {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"rig_ecs::agent::ToolAccess","value":"All"}
 //! {"seq":2,"n":2,"t":1791779409182,"type":"push","entries":[{"message":{…},"id":0}]}
 //! ```
@@ -30,10 +36,10 @@ use serde_json::Value;
 use web_time::{SystemTime, UNIX_EPOCH};
 
 /// The saved format a log's header names.
-pub const FORMAT: &str = "rig-session/2";
+pub const FORMAT: &str = "rig-session/3";
 
 /// The version of [`FORMAT`]: the number after `rig-session/`.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// The oldest format version this build reads.
 pub const OLDEST: u32 = 2;
@@ -97,15 +103,16 @@ pub enum LoadError {
     },
 }
 
+/// The version a log's header names in `format`, `rig-session/<N>`.
+pub(crate) fn version_of(format: &str) -> Option<u32> {
+    format.strip_prefix("rig-session/")?.parse().ok()
+}
+
 /// Why the log `log`, in format `found`, is not read.
 fn refusal(log: &str, found: Option<&str>) -> String {
-    let version = |format: &str| {
-        let version = format.strip_prefix("rig-session/")?;
-        version.parse::<u64>().ok()
-    };
-    let rig = match (found.and_then(version), version(FORMAT)) {
-        (Some(found), Some(ours)) if found < ours => "an older",
-        (Some(found), Some(ours)) if found > ours => "a newer",
+    let rig = match found.and_then(version_of) {
+        Some(found) if found < OLDEST => "an older",
+        Some(found) if found > VERSION => "a newer",
         _ => {
             let found = found.unwrap_or("(none)");
             return format!("the log `{log}` is in format {found}, not {FORMAT}");
@@ -114,7 +121,7 @@ fn refusal(log: &str, found: Option<&str>) -> String {
     let found = found.unwrap_or_default();
     format!(
         "the log `{log}` was saved by {rig} version of rig (format {found}; this rig reads \
-         {FORMAT}); it is left as it is"
+         rig-session/{OLDEST} to {FORMAT}); it is left as it is"
     )
 }
 

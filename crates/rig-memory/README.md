@@ -12,14 +12,17 @@ agent framework, over rig-core's one `Conversation` type:
   `undo_summary` puts the newest one's entries back with their ids, and
   `ClearToolOutputs`, which frees context without a model call.
   rig-harness's compaction plugin is built on it.
-- saving and resuming: the session format `rig-session/2` (one JSON-lines
+- saving and resuming: the session format `rig-session/3` (one JSON-lines
   log per agent, images kept as blobs), a `Store` trait with `MemoryStore`
   and, with feature `fs`, `DirStore`, and its `Files` half for named files
   on their own (`DirFiles` over a plain directory, where rig-harness keeps
   plugins' data per project and per user); `load`/`save` for one conversation,
   `Session` for a whole session, `Writer` for a running host, `history` and
-  `as_of`. Reading is strict: a session that cannot be read whole, or one an
-  older rig saved, is refused, and nothing is written.
+  `as_of`. Reading is strict: a session that cannot be read whole, or one a
+  newer rig saved, is refused, and nothing is written. Sessions from
+  `rig-session/2` on read through a chain of steps (`upgrade`) and are
+  rewritten in the current format the first time anything writes to them;
+  saved values carry their own version (`Versioned`, `Upgrades`).
   `Session::read_lenient` reads each log that reads and names the others,
   for readers such as an export.
 - rewriting and copying: records are appended while the session runs.

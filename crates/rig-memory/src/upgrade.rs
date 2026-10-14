@@ -8,14 +8,117 @@
 //! it, never on a read. A saved value carries its own version, which a
 //! plugin moves on with steps of its own ([`Upgrades::add`]); a value no
 //! step reads is set aside under [`SET_ASIDE`], never dropped.
+//!
+//! Every bump of the format first freezes a session the old writer wrote as
+//! `fixtures/rig-session-<N>/` (the ignored test `write_the_fixture_of_this_format`
+//! writes it), then adds the step from `N` here; a test reads every fixture
+//! with the current reader. Fixtures are never edited.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::io;
 
-use rig_core::conversation::Aside;
+use rig_core::conversation::{Aside, Author};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{LoadError, Store};
+use crate::format::{Header, LogLines, Meta, write_meta};
+use crate::session::{Fold, fold_lines, log_lines, read_header};
+use crate::writer::set_aside_tail;
+use crate::{FORMAT, LoadError, Repair, Rewrote, Store, VERSION, now_ms};
+
+/// One step of the saved format: reads a log of format `from` as format
+/// `from + 1`. Pure; a step keeps every record's stamp.
+pub(crate) struct Step {
+    /// The format it reads.
+    pub from: u32,
+    /// The header's value read as the next format's; `None` when only its
+    /// format moves on.
+    pub header: Option<fn(Value) -> Result<Value, String>>,
+    /// One record read as the next format's records: none (dropped), one,
+    /// or several; `None` when records are unchanged.
+    pub record: Option<fn(Value) -> Result<Vec<Value>, String>>,
+}
+
+/// The chain, a step from each format since [`OLDEST`](crate::OLDEST) to
+/// the next.
+///
+/// v2 → v3: a `state` record without `v` is version 1 in both; nothing
+/// else changed.
+pub(crate) const STEPS: &[Step] = &[Step {
+    from: 2,
+    header: None,
+    record: None,
+}];
+
+/// The steps that read a log of format `version` as this one.
+fn steps(version: u32) -> impl Iterator<Item = &'static Step> {
+    STEPS.iter().filter(move |step| step.from >= version)
+}
+
+/// `header`, of a log in format `version`, read in this format.
+pub(crate) fn header_now(version: u32, header: Header) -> Result<Header, String> {
+    let mut header = if steps(version).any(|step| step.header.is_some()) {
+        let mut value = serde_json::to_value(header).map_err(|error| error.to_string())?;
+        for step in steps(version).filter_map(|step| step.header) {
+            value = step(value)?;
+        }
+        Header::deserialize(value).map_err(|error| error.to_string())?
+    } else {
+        header
+    };
+    header.format = Some(FORMAT.to_owned());
+    Ok(header)
+}
+
+/// Gives `each` every record of `lines`, a log in format `version`, after
+/// its header, in this format, with its line number: the line as stored,
+/// or what the steps made of it. It stops at a `Break`; `refuse` makes the
+/// error of a step that failed.
+pub(crate) fn each_record<E>(
+    lines: &LogLines,
+    version: u32,
+    mut each: impl FnMut(usize, &[u8]) -> Result<std::ops::ControlFlow<()>, E>,
+    refuse: impl Fn(usize, String) -> E,
+) -> Result<(), E> {
+    let records = steps(version).filter_map(|step| step.record);
+    let records: Vec<fn(Value) -> Result<Vec<Value>, String>> = records.collect();
+    for (line, _, bytes) in lines.iter().skip(1) {
+        let now: Vec<Cow<'_, [u8]>> = if records.is_empty() {
+            vec![Cow::Borrowed(bytes)]
+        } else {
+            record_now(&records, bytes)
+                .map_err(|why| refuse(line, why))?
+                .into_iter()
+                .map(Cow::Owned)
+                .collect()
+        };
+        for record in now {
+            if each(line, &record)?.is_break() {
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The record `bytes` through each of `records`, as lines.
+fn record_now(
+    records: &[fn(Value) -> Result<Vec<Value>, String>],
+    bytes: &[u8],
+) -> Result<Vec<Vec<u8>>, String> {
+    let value: Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+    let mut values = vec![value];
+    for step in records {
+        let mut next = Vec::new();
+        for value in values {
+            next.extend(step(value)?);
+        }
+        values = next;
+    }
+    let line = |value: Value| serde_json::to_vec(&value).map_err(|error| error.to_string());
+    values.into_iter().map(line).collect()
+}
 
 /// The prefix of the key a saved value no step reads is moved to before its
 /// key is written again: `rig.set_aside/<key>/v<N>`. Readers skip such keys
@@ -178,6 +281,22 @@ pub enum ValueError {
 pub struct Upgraded {
     /// Each log rewritten, by name, with the format version it had.
     pub logs: Vec<(String, u32)>,
+    /// The torn tails it set aside first ([`Repair::TornTail`]).
+    pub repairs: Vec<Repair>,
+}
+
+/// Where [`upgrade`] keeps the log `log` of format `version` until every
+/// log is replaced.
+fn kept_copy(log: &str, version: u32) -> String {
+    format!("{UPGRADED}{log}.v{version}.jsonl")
+}
+
+/// The folder of the store's files [`upgrade`] keeps old logs in.
+const UPGRADED: &str = "rig/upgraded/";
+
+/// No images: an upgrade reads no blob.
+fn no_images(_: &str) -> io::Result<Vec<u8>> {
+    Err(io::ErrorKind::NotFound.into())
 }
 
 /// Rewrites every log of `store` older than this format in this format,
@@ -186,17 +305,122 @@ pub struct Upgraded {
 /// `rig/upgraded/<log>.v<N>.jsonl` and replaced atomically
 /// ([`Store::replace_log`]) with its lineage and stamps unchanged and a
 /// rewrite by rig in its header; the kept copies are removed once every log
-/// is replaced. A log already in this format is left. Nothing is written
-/// when any log fails to read or would not read back. A crash midway leaves
-/// every log whole, old or new, and the copies; the next call finishes.
+/// is replaced. A store whose logs are all in this format is left. Nothing
+/// is written when any log fails to read, is newer than this format, or
+/// would not read back. A crash midway leaves every log whole, old or new,
+/// and the copies; the next call finishes.
+///
+/// Every write of rig-memory to a session upgrades it first
+/// ([`Writer::open`](crate::Writer::open), [`Session::save`](crate::Session::save),
+/// [`save`](crate::save), [`rewrite`](crate::rewrite)); reading never does.
 ///
 /// # Errors
 ///
 /// As [`Session::read`](crate::Session::read), or when a write fails.
 pub fn upgrade(store: &dyn Store) -> Result<Upgraded, LoadError> {
-    // Every log this build reads is in its format: there is nothing older.
-    let _ = store;
-    Ok(Upgraded::default())
+    let mut names = store.logs()?;
+    names.sort();
+    let mut logs = Vec::new();
+    for name in names {
+        let Some(lines) = log_lines(store, &name)? else {
+            continue;
+        };
+        // A log holding no complete line is set aside by its writer.
+        let Some((_, _, first)) = lines.iter().next() else {
+            continue;
+        };
+        let (stamp, header, version) = read_header(&name, first)?;
+        logs.push((name, lines, stamp, header, version));
+    }
+    if logs.iter().all(|(.., version)| *version == VERSION) {
+        // What a crash after the last log was replaced left.
+        remove_kept_copies(store)?;
+        return Ok(Upgraded::default());
+    }
+
+    // Every log read strictly, and each old one written in this format and
+    // read back, before anything is written.
+    let t = now_ms();
+    let mut replaced = Vec::new();
+    for (name, lines, stamp, header, version) in logs {
+        let Some(old) = fold_lines(&name, &lines, Fold::default(), &no_images)? else {
+            continue;
+        };
+        if version == VERSION {
+            continue;
+        }
+        let mut header = header;
+        header.rewrites.push(Rewrote {
+            t,
+            by: Author::rig(),
+        });
+        let mut bytes = Vec::with_capacity(lines.prefix(u64::MAX).len() + 64);
+        write_meta(&mut bytes, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
+        let refuse = |line, why| LoadError::Record {
+            log: name.clone(),
+            line,
+            why,
+        };
+        each_record(
+            &lines,
+            version,
+            |_, record| {
+                bytes.extend_from_slice(record);
+                bytes.push(b'\n');
+                Ok(std::ops::ControlFlow::Continue(()))
+            },
+            refuse,
+        )?;
+        let new = LogLines::parse(bytes);
+        let back = fold_lines(&name, &new, Fold::default(), &no_images)?;
+        let same = back.as_ref().is_some_and(|back| {
+            back.conversation == old.conversation
+                && back.state == old.state
+                && back.retired == old.retired
+        });
+        if !same {
+            let why = format!("in {FORMAT} it would not read back the same");
+            return Err(LoadError::Record {
+                log: name,
+                line: 1,
+                why,
+            });
+        }
+        replaced.push((name, version, new, old.torn));
+    }
+
+    // Nothing was written so far.
+    let mut upgraded = Upgraded::default();
+    for (name, _, _, torn) in &replaced {
+        if let Some((kept, cut)) = *torn {
+            let file = set_aside_tail(store, name, kept)?;
+            upgraded.repairs.push(Repair::TornTail {
+                log: name.clone(),
+                kept,
+                cut,
+                set_aside: Some(file),
+            });
+        }
+    }
+    for (name, version, ..) in &replaced {
+        store.write_file(&kept_copy(name, *version), &store.read_log(name)?)?;
+    }
+    for (name, version, new, _) in &replaced {
+        store.replace_log(name, new.prefix(u64::MAX))?;
+        upgraded.logs.push((name.clone(), *version));
+    }
+    remove_kept_copies(store)?;
+    Ok(upgraded)
+}
+
+/// Removes the old logs [`upgrade`] kept.
+fn remove_kept_copies(store: &dyn Store) -> io::Result<()> {
+    for name in store.files()? {
+        if name.starts_with(UPGRADED) {
+            store.remove_file(&name)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

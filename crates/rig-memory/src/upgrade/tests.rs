@@ -8,10 +8,14 @@ use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::{Map, Value, json};
 
 use super::{Unread, Upgrade, Upgrades, Versioned};
+use crate::format::LogLines;
 use crate::{
-    Files, ForkedFrom, MemoryStore, SESSION, Session, SessionMeta, Store, SummaryState, VERSION,
-    Writer, apply_summary,
+    FORMAT, Files, ForkedFrom, MemoryStore, Repair, SESSION, Session, SessionMeta, Store,
+    SummaryState, VERSION, Writer, apply_summary,
 };
+
+/// The format of the oldest fixture, whose header a test makes newer.
+const OLDEST_FIXTURE: u32 = 2;
 
 /// Where the frozen sessions every older format wrote are kept.
 fn fixtures() -> PathBuf {
@@ -262,11 +266,122 @@ fn every_fixture() -> Vec<(String, MemoryStore, Value)> {
     found
 }
 
-/// Every session an older rig saved reads with this one as it read then.
+/// Every byte `store` holds: its logs, blobs and files, by name.
+fn bytes(store: &MemoryStore) -> Vec<(String, Vec<u8>)> {
+    let mut all = Vec::new();
+    for log in store.logs().expect("logs") {
+        all.push((format!("logs/{log}"), store.read_log(&log).expect("a log")));
+    }
+    for blob in store.blobs().expect("blobs") {
+        all.push((format!("blobs/{blob}"), store.blob(&blob).expect("a blob")));
+    }
+    for file in store.files().expect("files") {
+        all.push((
+            format!("files/{file}"),
+            store.read_file(&file).expect("a file"),
+        ));
+    }
+    all.sort();
+    all
+}
+
+/// The chain reads every format since the oldest as the next, up to this one.
 #[test]
-fn every_fixture_reads_with_the_current_reader() {
+fn the_chain_has_a_step_from_every_format_since_the_oldest() {
+    let from: Vec<u32> = super::STEPS.iter().map(|step| step.from).collect();
+    assert_eq!(from, (crate::OLDEST..VERSION).collect::<Vec<_>>());
+}
+
+/// Every session an older rig saved reads with this one as it read then,
+/// writing nothing; the first write rewrites each of its logs in this
+/// format, the same session, its torn tail set aside and no old copy left;
+/// a log of a newer format is refused by every writer, writing nothing.
+#[test]
+fn every_fixture_reads_then_upgrades_on_its_first_write() {
     for (name, store, expected) in every_fixture() {
+        let before = bytes(&store);
         let session = Session::read(&store).unwrap_or_else(|error| panic!("{name}: {error}"));
         assert_eq!(summary(&session), expected, "{name}");
+        assert_eq!(bytes(&store), before, "{name}: a read writes nothing");
+
+        let torn: Vec<Vec<u8>> = store
+            .logs()
+            .expect("logs")
+            .into_iter()
+            .map(|log| {
+                LogLines::parse(store.read_log(&log).expect("a log"))
+                    .tail()
+                    .to_vec()
+            })
+            .filter(|tail| !tail.is_empty())
+            .collect();
+        let (_, opened) = Writer::open(Arc::new(store.clone())).expect("it opens");
+        let set_aside = opened.repairs.iter().filter(|repair| {
+            matches!(
+                repair,
+                Repair::TornTail {
+                    set_aside: Some(_),
+                    ..
+                }
+            )
+        });
+        assert_eq!(
+            set_aside.count(),
+            torn.len(),
+            "{name}: {:?}",
+            opened.repairs
+        );
+        for log in store.logs().expect("logs") {
+            let bytes = store.read_log(&log).expect("a log");
+            let header = format!(r#""format":"{FORMAT}""#);
+            let header = bytes.windows(header.len()).any(|w| w == header.as_bytes());
+            assert!(header, "{name}: {log} is in {FORMAT}");
+        }
+        let upgraded = Session::read(&store).expect("it reads");
+        assert_eq!(summary(&upgraded), expected, "{name}");
+        for agent in &upgraded.agents {
+            let by: Vec<Author> = agent.rewrites.iter().map(|r| r.by.clone()).collect();
+            assert_eq!(by, [Author::rig()], "{name}: {}", agent.id);
+        }
+        let files = store.files().expect("files");
+        assert!(
+            !files.iter().any(|file| file.starts_with("rig/")),
+            "{files:?}"
+        );
+        let recovered: Vec<Vec<u8>> = files
+            .iter()
+            .filter(|file| file.starts_with("recovered/"))
+            .map(|file| store.read_file(file).expect("a file"))
+            .collect();
+        assert_eq!(recovered, torn, "{name}: the torn tail is kept");
+        // Written once: a second open changes nothing.
+        let once = bytes(&store);
+        let _ = Writer::open(Arc::new(store.clone())).expect("it opens");
+        assert_eq!(bytes(&store), once, "{name}");
+    }
+}
+
+#[test]
+fn a_session_of_a_newer_format_is_refused_by_every_writer_unchanged() {
+    for (name, store, _) in every_fixture() {
+        let main = store.read_log("main").expect("the main log");
+        let main = String::from_utf8(main).expect("text");
+        let newer = format!("rig-session/{}", VERSION + 1);
+        let main = main.replacen(&format!("rig-session/{}", OLDEST_FIXTURE), &newer, 1);
+        store.replace_log("main", main.as_bytes()).expect("written");
+        let before = bytes(&store);
+        let newer = |refused: Result<(), crate::LoadError>| {
+            let refused = refused.expect_err("refused");
+            assert!(
+                refused.to_string().contains("a newer version of rig"),
+                "{name}: {refused}"
+            );
+        };
+        newer(Writer::open(Arc::new(store.clone())).map(drop));
+        newer(Session::default().save(&store));
+        let mut conversation = Conversation::from_messages([Message::user("more")]);
+        newer(crate::save(&store, "sub", &mut conversation));
+        newer(crate::rewrite(&store, Author::rig(), &crate::Keep).map(drop));
+        assert_eq!(bytes(&store), before, "{name}");
     }
 }

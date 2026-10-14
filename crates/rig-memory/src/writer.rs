@@ -12,6 +12,7 @@ use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
 use crate::{
     LoadError, Repair, Rewrite, Rewritten, Session, Stamp, Store, Versioned, now_ms, rewrite,
+    upgrade,
 };
 
 /// One log as the writer keeps it.
@@ -345,9 +346,12 @@ impl Writer {
     }
 
     /// Opens the session in `store` to go on with it: reads it as
-    /// [`Session::read`] does, refusing an old or broken session before
+    /// [`Session::read`] does, refusing a broken session, or one older
+    /// than [`OLDEST`](crate::OLDEST) or newer than this format, before
     /// anything is written, then sets each torn tail aside in the file
-    /// `recovered/<log>-<k>.part` and cuts it off ([`Repair::TornTail`]).
+    /// `recovered/<log>-<k>.part` and cuts it off ([`Repair::TornTail`]),
+    /// and rewrites a session an older rig saved in this format
+    /// ([`upgrade`]).
     /// The session read leaves out retired agents and the agents they
     /// spawned. The writer logs to `store` once started, after its logs.
     ///
@@ -355,6 +359,7 @@ impl Writer {
     ///
     /// As [`Session::read`], or when setting a torn tail aside fails.
     pub fn open(store: Arc<dyn Store>) -> Result<(Self, Session), LoadError> {
+        let upgraded = upgrade(&*store)?;
         let mut folded = fold_all(&*store, true)?;
         let mut repairs = repairs(&*store, &folded)?;
         for repair in &mut repairs {
@@ -368,6 +373,8 @@ impl Writer {
                 *set_aside = Some(set_aside_tail(&*store, log, *kept)?);
             }
         }
+        // Set aside by the upgrade already, before it was rewritten.
+        repairs.splice(..0, upgraded.repairs);
         let book = Book::after(&folded);
         let skipped = retired(&folded);
         folded.retain(|log| !skipped.contains(&log.name));

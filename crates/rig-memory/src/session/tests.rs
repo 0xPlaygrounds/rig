@@ -57,7 +57,7 @@ fn a_saved_conversation_folds_back_to_itself() {
     );
     let log = String::from_utf8(store.read_log("agent").expect("a log")).expect("text");
     assert!(log.starts_with(r#"{"seq":0,"n":0,"#), "{log}");
-    assert!(log.contains(r#""format":"rig-session/2""#), "{log}");
+    assert!(log.contains(r#""format":"rig-session/3""#), "{log}");
     assert!(!log.contains("cG5n"), "the image data is not in the log");
 
     // A running writer's log folds back the same, with saved values.
