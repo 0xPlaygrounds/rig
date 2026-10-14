@@ -9,8 +9,9 @@
 //! needs: the session a kept fork was copied from, whose spilled output
 //! and pasted images the fork's messages name by path.
 //!
-//! The sessions come from rig-sessions' listing, and each is deleted with
-//! the harness's [`DeleteSession`]: its store wherever it is kept (logs,
+//! The sessions are the home's saved ones, read as the session picker reads
+//! them ([`SessionEntry`]), and each is deleted with the harness's
+//! [`DeleteSession`]: its store wherever it is kept (logs,
 //! plugins' data, listing) and its directory with the plain files beside
 //! the store (spilled output, pasted images). That delete is crash-safe: a
 //! session is marked deleting first, which hides it from listings and
@@ -28,6 +29,7 @@ use std::io::{self, BufRead, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use serde::Serialize;
 
@@ -298,14 +300,19 @@ struct Found {
     parent: Option<String>,
 }
 
-/// The saved sessions of `home` other than `current`, newest first, as
-/// rig-sessions lists them for `/resume`.
+/// The saved sessions of `home` other than `current`, newest first, each
+/// read as the session picker reads it.
 fn found(home: &Home, stores: &SessionStores, current: &Path) -> Vec<Found> {
-    rig_sessions::list(home, stores, current)
+    let mut sessions: Vec<(SessionEntry, SessionDir)> = home
+        .saved_sessions()
         .into_iter()
-        .map(|entry| {
-            let dir = home.session(&entry.id);
-            let parent = stores.open(&dir).ok().as_deref().and_then(ForkedFrom::read);
+        .filter(|(_, dir)| dir.path() != current)
+        .filter_map(|(_, dir)| Some((SessionEntry::read(&dir, stores)?, dir)))
+        .collect();
+    sessions.sort_by_key(|(entry, _)| std::cmp::Reverse(entry.updated));
+    sessions
+        .into_iter()
+        .map(|(entry, dir)| {
             // The directory it names, even one removed since: its sessions
             // are still one project's.
             let project = fs::read_to_string(dir.directory())
@@ -316,11 +323,14 @@ fn found(home: &Home, stores: &SessionStores, current: &Path) -> Vec<Found> {
                     id: entry.id.to_string(),
                     project,
                     bytes: bytes_under(dir.path()),
-                    updated: millis(entry.saved),
+                    updated: millis(entry.updated),
                     name: entry.name,
                 },
-                in_use: dir.runs_elsewhere(),
-                parent: parent.map(|parent| parent.session.to_string()),
+                in_use: entry.running,
+                parent: entry
+                    .listing
+                    .parent
+                    .map(|parent| parent.session.to_string()),
             }
         })
         .collect()

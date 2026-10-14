@@ -180,7 +180,8 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
             .and_then(|conversation| conversation.id(2)),
     );
     world.trigger(ForkSession {
-        before,
+        from: None,
+        cut: before.map_or(ForkCut::Whole, |(agent, id)| ForkCut::Before(agent, id)),
         asker: None,
     });
     app.update();
