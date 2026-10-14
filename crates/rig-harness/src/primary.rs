@@ -11,10 +11,11 @@ pub type PrimaryQuery<'w, 's> =
     Query<'w, 's, (Entity, &'static AgentId, Has<SpawnedBy>), With<Agent>>;
 
 /// Where an agent sorts among the agents of a session: the ones the user
-/// started first, each group by id. The first is the agent the user talks
-/// to when none is named.
+/// started first, each group by id (rig-memory's `main_order`, which a
+/// library program sorts saved agents by). The first is the agent the user
+/// talks to when none is named.
 pub fn primary_order(spawned: bool, id: &AgentId) -> (bool, &str) {
-    (spawned, id.0.as_str())
+    rig_memory::main_order(spawned, &id.0)
 }
 
 /// The agent the user talks to when none is named: the first one by

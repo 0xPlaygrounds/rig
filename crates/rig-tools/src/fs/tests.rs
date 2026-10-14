@@ -80,3 +80,34 @@ fn a_confined_tool_stays_in_its_base() {
     assert!(!dir.join("new.txt").exists());
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A change's hunks turn the text before into the text after, whatever
+/// the line endings, a missing last newline, or hunks far apart; and its
+/// unified diff shows the same lines.
+#[test]
+fn a_changes_hunks_make_the_text_after() {
+    let far: String = (1..=20).map(|line| format!("{line}\n")).collect();
+    let far_after = far
+        .replacen("2\n", "two\n", 1)
+        .replacen("19\n", "nineteen\n", 1);
+    let cases = [
+        (Some("one\r\ntwo\r\n"), Some("one\r\n2\r\n")),
+        (Some("a\rb\rc"), Some("a\rB\rc")),
+        (Some("one\ntwo"), Some("one\ntwo\nthree")),
+        (Some(far.as_str()), Some(far_after.as_str())),
+        (None, Some("new\nfile")),
+        (Some("same\n"), Some("same\n")),
+    ];
+    for (before, after) in cases {
+        let change = super::file_change("f", before, after);
+        assert_eq!(change.after_text().as_deref(), after, "{before:?}");
+        let unified = change.unified();
+        let signed = unified.split(['\n', '\r']).filter(|line| {
+            line.starts_with(['+', '-']) && !line.starts_with("+++") && !line.starts_with("---")
+        });
+        assert_eq!(signed.count(), change.added + change.removed, "{unified}");
+    }
+    let far_change = super::file_change("f", Some(&far), Some(&far_after));
+    assert_eq!(far_change.hunks.len(), 2);
+    assert_eq!(far_change.changed_lines().collect::<Vec<_>>(), [2, 19]);
+}

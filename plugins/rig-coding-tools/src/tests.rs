@@ -10,7 +10,7 @@ use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, collect, log_tool_outputs, run_until, start_call,
 };
 use rig_tools::process::{Launcher, Process, Spawn};
-use rig_tools::workspace::{Contents, Stat, Workspace};
+use rig_tools::workspace::{Contents, Listing, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
 use super::{AttachPlugin, AttachSystems, ReadTool, SharedShell, ShellOutput, ShellTool};
@@ -112,7 +112,7 @@ impl Workspace for Served {
         path.to_path_buf()
     }
 
-    fn files(&self, _: &Path, _: Option<&str>, _: bool) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
         Ok(Vec::new())
     }
 

@@ -440,9 +440,14 @@ fn record_answer(
         return;
     };
     let answer = match Answer::of(outcome) {
-        Some(Answer::Choice(id)) => id,
-        Some(Answer::Choices(ids)) => ids.join(", "),
-        Some(Answer::Text(text)) => redact::text(&text).into_owned(),
+        Some(Answer { choices, text }) => {
+            let choices = choices.join(", ");
+            match text.as_deref().map(redact::text) {
+                Some(text) if !choices.is_empty() => format!("{choices}: {text}"),
+                Some(text) => text.into_owned(),
+                None => choices,
+            }
+        }
         None => "no answer".to_owned(),
     };
     let question = format!("question \"{}\" answered: {answer}", ask.title);
@@ -467,13 +472,14 @@ fn record_answer(
 
 /// Writes that the session started, or started again.
 fn record_start(
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     mut context: Context,
     mut notices: MessageWriter<Notice>,
 ) {
-    let event = match first {
-        Some(_) => Event::SessionStart,
-        None => Event::SessionResume,
+    let event = if started.is_some_and(|started| started.0 == StartReason::New) {
+        Event::SessionStart
+    } else {
+        Event::SessionResume
     };
     let project = context.log.project.as_ref().map(|root| root.display());
     let entry = Entry {

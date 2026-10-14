@@ -4,7 +4,7 @@ use crossterm::event::KeyEventKind;
 use super::*;
 use crate::tests::{Delivered, key_events, press, type_text, typed, view_app};
 use crate::view::TuiView;
-use crate::{ArgCompletion, Placement, TuiInput, TuiPanel};
+use crate::{CompletionSource, Placement, TuiInput, TuiPanel};
 use ratatui::layout::Constraint;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 
@@ -162,7 +162,7 @@ fn a_plugins_binding_and_action_do_built_in_actions() {
     let down = KeyBinding::new(KeyPress::ctrl('o'), "Down");
     app.world_mut().spawn((down, InputAction::Down));
     app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
-    let models = ArgCompletion::new("model").candidate("a/one", "");
+    let models = CompletionSource::arg("model").candidate("a/one", "");
     app.world_mut().spawn(models.candidate("a/two", ""));
     let selected = |app: &App| {
         let view = app.world().resource::<TuiView>();

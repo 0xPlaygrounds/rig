@@ -17,8 +17,9 @@
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
 //! cutoff; a message taken over in Gate never reaches the agent, one
-//! accepted carries an answered turn on, and an accepted note its sender
-//! decides is withdrawn; a turn a plugin fails starts nothing more; an interrupt ends a
+//! accepted carries an answered turn on, and an accepted note or steering
+//! message its sender decides is withdrawn, even as the next call is
+//! built; a turn a plugin fails starts nothing more; an interrupt ends a
 //! turn at once, settling its held and streaming calls.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
@@ -49,7 +50,7 @@ use rig_core::effect::{
     Disposition, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
 };
 use rig_core::error::ErrorKind;
-use rig_core::message::{Message, ToolFunction, ToolName};
+use rig_core::message::{Message, StopReason, ToolFunction, ToolName};
 use rig_core::operation::{Completion, Finish};
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
@@ -1753,6 +1754,60 @@ fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
     assert_eq!(world.query::<&TurnCall>().iter(world).count(), 0);
 }
 
+/// Whether [`refuse_when_asked`] refuses the turns' model calls.
+#[derive(Resource, Default)]
+struct Refusing(bool);
+
+fn refuse_when_asked(
+    refusing: Res<Refusing>,
+    mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>,
+) {
+    for mut decision in calls.iter_mut().filter(|_| refusing.0) {
+        decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
+    }
+}
+
+/// Each turn is recorded in its agent's conversation with how it ended:
+/// an answer by its entry, a failure with why, the request it left halted;
+/// a note to an idle agent starts no turn and no record.
+#[test]
+fn each_turn_is_recorded_with_how_it_ended() {
+    let mut app = app();
+    app.init_resource::<Refusing>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, refuse_when_asked.in_set(Stage::Gate));
+    let model = MockCompletionModel::from_stream_turns([answer("hello")]);
+    let agent = agent_on(&mut app, &model);
+    let ended_once = |world: &mut World| world.resource::<Ended>().0.len() == 1;
+    assert!(run_until(&mut app, ended_once));
+    let world = app.world_mut();
+    let note = Deliver::new(agent, "fyi", DeliveryMode::Note).with_author(Author::plugin("check"));
+    world.trigger(note);
+    world.resource_mut::<Refusing>().0 = true;
+    world.trigger(Deliver::new(agent, "and?", DeliveryMode::Steer));
+    let ended_twice = |world: &mut World| world.resource::<Ended>().0.len() == 2;
+    assert!(run_until(&mut app, ended_twice));
+    let Some(conversation) = app.world().get::<Conversation>(agent) else {
+        return;
+    };
+    let hello = conversation
+        .entries()
+        .find(|entry| entry.message.final_answer().as_deref() == Some("hello"));
+    let records: Vec<_> = conversation
+        .turns()
+        .map(|(_, record)| (record.index, record.end))
+        .collect();
+    let failed = TurnEnd::Failed {
+        why: "not now".to_owned(),
+    };
+    let answered = TurnEnd::Answered {
+        by: hello.map(|entry| entry.id),
+    };
+    assert_eq!(records, [(0, Some(answered)), (1, Some(failed))]);
+    assert_eq!(conversation.halted(), Some(Halt::Kept));
+}
+
 #[test]
 fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
     let mut app = app();
@@ -2272,6 +2327,149 @@ fn an_accepted_note_withdrawn_by_deciding_it_is_never_delivered() {
     assert_eq!(model.request_count(), 1);
 }
 
+/// The holds a reviewer put on tool calls as they answered.
+#[derive(Resource, Default)]
+struct Reviewing(Vec<Entity>);
+
+/// Holds each tool call's answer while it is reviewed.
+fn hold_results(
+    calls: Query<Entity, (Unreviewed, ToolCalls, Added<Outcome>)>,
+    mut reviewing: ResMut<Reviewing>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        reviewing.0.push(commands.spawn(HoldOf(call)).id());
+    }
+}
+
+/// A steering message its sender takes back by deciding it is never sent,
+/// even when the turn's next call is built in the frame it was decided,
+/// and the message sent in its place goes instead.
+#[test]
+fn a_steering_message_taken_back_as_the_next_call_is_built_is_never_sent() {
+    let mut app = app();
+    app.init_resource::<Reviewing>()
+        .add_systems(AgentPass, hold_results.in_set(Stage::Review));
+    let turns = [reply(&[("look", "1")]), answer("ok"), answer("done")];
+    let model = MockCompletionModel::from_stream_turns(turns);
+    let agent = agent_on(&mut app, &model);
+    let held = |world: &mut World| !world.resource::<Reviewing>().0.is_empty();
+    assert!(run_until(&mut app, held));
+    let steer = |text: &str| (Incoming::new(text, DeliveryMode::Steer), ForAgent(agent));
+    let old = app.world_mut().spawn(steer("use tabs")).id();
+    let accepted = |world: &mut World| world.get::<Started>(old).is_some();
+    assert!(run_until(&mut app, accepted));
+    // In one frame: taken back, sent again changed, and the result let go.
+    let world = app.world_mut();
+    if let Some(mut decision) = world.get_mut::<Decision>(old) {
+        decision.decide(Decider::plugin("test"), Outcome::custom("taken back"));
+    }
+    world.spawn(steer("use spaces"));
+    for hold in std::mem::take(&mut world.resource_mut::<Reviewing>().0) {
+        world.despawn(hold);
+    }
+    let done =
+        |world: &mut World| model.request_count() == 3 && world.get::<ActiveTurn>(agent).is_none();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let sent = serde_json::to_string(&model.requests()).unwrap_or_default();
+    assert!(
+        !sent.contains("use tabs") && sent.contains("use spaces"),
+        "{sent}"
+    );
+    let said = serde_json::to_string(&conversation(&app, agent)).unwrap_or_default();
+    assert!(
+        !said.contains("use tabs") && said.contains("use spaces"),
+        "{said}"
+    );
+}
+
+/// Whether [`keep_on_stop`] keeps what a stopped turn did not send.
+#[derive(Resource, Default)]
+struct KeepUnsent(bool);
+
+/// The text each [`Recalled`] handed back.
+#[derive(Resource, Default)]
+struct RecalledTexts(Vec<String>);
+
+/// Keeps the messages a turn the user stopped did not send, when
+/// [`KeepUnsent`] says so.
+fn keep_on_stop(
+    unsent: Query<(Entity, &Unsent), Added<Unsent>>,
+    keep: Res<KeepUnsent>,
+    mut commands: Commands,
+) {
+    for (message, unsent) in &unsent {
+        if keep.0 && matches!(unsent.ended, Some(TurnOutcome::Stopped(None))) {
+            commands.entity(message).remove::<Unsent>();
+        }
+    }
+}
+
+/// What a stopped turn did not send is handed back to the user, unless a
+/// plugin keeps it in Gate, the pass the turn ended in: then it goes with
+/// the next turn's first call.
+#[test]
+fn a_message_a_stopped_turn_did_not_send_is_handed_back_unless_a_plugin_keeps_it() {
+    let mut app = app();
+    app.init_resource::<Reviewing>()
+        .init_resource::<KeepUnsent>()
+        .init_resource::<RecalledTexts>()
+        .add_systems(
+            AgentPass,
+            (
+                hold_results.in_set(Stage::Review),
+                keep_on_stop.in_set(Stage::Gate),
+            ),
+        )
+        .add_systems(
+            Last,
+            |mut read: MessageReader<Recalled>, mut texts: ResMut<RecalledTexts>| {
+                texts.0.extend(read.read().map(|it| it.text.clone()));
+            },
+        );
+    let turns = [
+        reply(&[("look", "1")]),
+        reply(&[("look", "2")]),
+        answer("done"),
+    ];
+    let model = MockCompletionModel::from_stream_turns(turns);
+    let agent = agent_on(&mut app, &model);
+    let stop_with = |app: &mut App, text: &str| {
+        let held = |world: &mut World| !world.resource::<Reviewing>().0.is_empty();
+        assert!(run_until(app, held));
+        let message = (Incoming::new(text, DeliveryMode::Steer), ForAgent(agent));
+        let message = app.world_mut().spawn(message).id();
+        assert!(run_until(app, |world| world
+            .get::<Started>(message)
+            .is_some()));
+        app.world_mut().trigger(Interrupt::new(agent));
+        app.world_mut().resource_mut::<Reviewing>().0.clear();
+        app.update();
+        message
+    };
+    stop_with(&mut app, "first steer");
+    assert_eq!(app.world().resource::<RecalledTexts>().0, ["first steer"]);
+    app.world_mut().resource_mut::<KeepUnsent>().0 = true;
+    app.world_mut()
+        .trigger(Deliver::new(agent, "again", DeliveryMode::Steer));
+    let kept = stop_with(&mut app, "second steer");
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(has::<Started>(&app, kept) && !has::<Outcome>(&app, kept));
+    assert_eq!(app.world().resource::<RecalledTexts>().0, ["first steer"]);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "and now?", DeliveryMode::Steer));
+    let done =
+        |world: &mut World| model.request_count() == 3 && world.get::<ActiveTurn>(agent).is_none();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let last = model.requests().last().map(serde_json::to_string);
+    assert!(
+        matches!(&last, Some(Ok(sent)) if sent.contains("second steer") && !sent.contains("first steer")),
+        "{last:?}"
+    );
+}
+
 /// A reply cut off at the length limit before it answered.
 fn cut_off() -> Vec<MockStreamEvent> {
     vec![
@@ -2429,6 +2627,23 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     let said = conversation(&app, agent);
     let kept = said.last().and_then(|message| message.final_answer());
     assert_eq!(kept.as_deref(), Some("The answer is"), "{said:?}");
+    // Kept as stopped, never as an answer: the request is halted, and the
+    // next message comes after the stopped note.
+    let aborted = matches!(said.last(), Some(Message::Assistant(reply))
+        if matches!(reply.stop, Some(StopReason::Aborted(_))));
+    assert!(aborted, "{said:?}");
+    let world = app.world_mut();
+    if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
+        assert_eq!(conversation.halted(), Some(Halt::Stopped));
+        let ended = conversation
+            .turns()
+            .last()
+            .and_then(|(_, record)| record.end);
+        assert_eq!(ended, Some(TurnEnd::Stopped { why: None }));
+        conversation.push(Message::user("never mind"));
+        let note = conversation.entries().rev().nth(1);
+        assert!(note.is_some_and(|entry| entry.is_stopped_note()));
+    }
     // A late release starts nothing.
     for _ in 0..3 {
         app.update();
@@ -2750,9 +2965,14 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
     let seen = app.world().resource::<Streams>();
-    // Both calls, the one that only called tools too, were stamped.
+    // Both calls, the one that only called tools too, were stamped. The
+    // tool call's last stamp and the text call's first can change in one
+    // frame, which the reader then sees in either order, so the calls go in
+    // the order their events came.
     assert_eq!(seen.stamps.len(), 2, "{:?}", seen.stamps);
-    let [(tools, tools_stamp), (text, text_stamp)] = seen.stamps.as_slice() else {
+    let mut stamps = seen.stamps.clone();
+    stamps.sort_by_key(|(call, _)| seen.events.iter().position(|(effect, _)| effect == call));
+    let [(tools, tools_stamp), (text, text_stamp)] = stamps.as_slice() else {
         return;
     };
     let of = |call: &Entity| -> Vec<&StreamEvent> {

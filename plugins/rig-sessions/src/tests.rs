@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
 use rig_ecs::journal::JournalPlugin;
-use rig_ecs::prelude::{SavedAgent, Session, Store};
+use rig_ecs::prelude::{Author, RewriteSession, SavedAgent, Session, Store, Strings};
 use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::{ForkSession, ForkedFrom, SessionForked};
 use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
@@ -79,15 +79,12 @@ fn naming_another_session_changes_only_its_title() {
     assert!(store.is_ok(), "the default store opens");
     let Ok(store) = store else { return };
     store.append_log("a1", b"").ok();
-    let before = Meta {
-        title: SessionTitle {
-            name: None,
-            typed: "Fix the parser".to_owned(),
-        },
+    let before = SessionMeta {
+        title: "Fix the parser".to_owned(),
         labels: BTreeMap::from([("spent".to_owned(), "$0.50".to_owned())]),
         updated: 1000,
     };
-    assert!(write_meta(&*store, &before).is_ok());
+    assert!(before.write(&*store).is_ok());
     let Some(mut app) = running(&home, "2-2") else {
         return;
     };
@@ -96,13 +93,8 @@ fn naming_another_session_changes_only_its_title() {
         name: "The parser".to_owned(),
     });
     app.update();
-    let after = Meta::of(&*store).unwrap_or_default();
-    assert_eq!(after.title.name.as_deref(), Some("The parser"));
-    assert_eq!(after.title.typed, before.title.typed);
-    assert_eq!(
-        (after.labels, after.updated),
-        (before.labels, before.updated)
-    );
+    assert_eq!(dir.name().as_deref(), Some("The parser"));
+    assert_eq!(SessionMeta::read(&*store), Some(before));
     assert_eq!(app.world().resource::<SessionTitle>().name, None);
     let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
     let stores = SessionStores::default();
@@ -162,15 +154,15 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
 
     let session = memory.of(dir.path());
     assert!(session.logs().is_ok_and(|logs| !logs.is_empty()));
-    let meta = Meta::of(&session).and_then(|meta| meta.title.name);
-    assert_eq!(meta.as_deref(), Some("Parser"));
+    let name = SessionTitle::read(&dir, &session).and_then(|title| title.name);
+    assert_eq!(name.as_deref(), Some("Parser"));
     let copy = home.session(&fork);
     let forked = memory.of(copy.path());
     assert!(forked.logs().is_ok_and(|logs| !logs.is_empty()));
-    let parent = ForkedFrom::of(&forked).map(|parent| parent.session);
-    assert_eq!(parent, Some(id.clone()));
+    let parent = ForkedFrom::read(&forked).map(|parent| parent.session);
+    assert_eq!(parent, Some(id.to_string()));
 
-    // On disk, only the plain markers the launcher reads.
+    // On disk, only the plain files the launcher reads.
     let plain = |dir: &SessionDir| -> Vec<String> {
         let mut names: Vec<String> = fs::read_dir(dir.path())
             .into_iter()
@@ -180,7 +172,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
         names.sort();
         names
     };
-    assert_eq!(plain(&dir), ["saved", "started"]);
+    assert_eq!(plain(&dir), ["name", "saved", "started"]);
     assert_eq!(plain(&copy), ["saved"]);
     assert!(dir.is_saved() && copy.is_saved());
 
@@ -260,15 +252,92 @@ fn a_session_resumed_as_it_was_listed_keeps_its_listing() {
         return;
     };
     let store = app.world().resource::<SessionStore>().0.clone();
-    let listed = Meta {
+    let listed = SessionMeta {
         labels: BTreeMap::from([("goal".to_owned(), "Ship it".to_owned())]),
         updated: 1000,
-        ..Meta::default()
+        ..SessionMeta::default()
     };
-    assert!(write_meta(&*store, &listed).is_ok());
+    assert!(listed.write(&*store).is_ok());
     app.world_mut().spawn(ResumeLabel::new("goal", "Ship it"));
     app.update();
     app.update();
-    assert_eq!(Meta::of(&*store).map(|meta| meta.updated), Some(1000));
+    assert_eq!(
+        SessionMeta::read(&*store).map(|meta| meta.updated),
+        Some(1000)
+    );
     fs::remove_dir_all(home.root()).ok();
+}
+
+/// A rewrite reaches the session's name and listing, in its directory
+/// (the harness maps the name file) and in memory.
+#[test]
+fn a_rewritten_session_keeps_its_rewritten_title() {
+    const SECRET: &str = "sk-123";
+    let home = home("rewrite");
+    let id = SessionId::generate();
+    let dir = home.session(&id);
+    let (mut app, _wakes) = app_in(&home, &id);
+    app.add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin));
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let said = commit_message(app.world_mut(), agent, Message::user("Fix the parser"));
+    assert_eq!(said, Ok(()));
+    app.world_mut().resource_mut::<SessionTitle>().name = Some(format!("key {SECRET}"));
+    app.update();
+    let name = || dir.name();
+    assert_eq!(name(), Some(format!("key {SECRET}")));
+
+    app.world_mut().trigger(RewriteSession {
+        by: Author::plugin("redact"),
+        with: Arc::new(Strings(|text: &mut String| {
+            let hit = text.contains(SECRET);
+            if hit {
+                *text = text.replace(SECRET, "[REDACTED]");
+            }
+            hit
+        })),
+        asker: None,
+    });
+    app.update();
+    // The next write of the listing keeps the title as rewritten.
+    app.world_mut().spawn(ResumeLabel::new("goal", "ship"));
+    app.update();
+    assert_eq!(name().as_deref(), Some("key [REDACTED]"));
+    let title = app.world().resource::<SessionTitle>().name.clone();
+    assert_eq!(title.as_deref(), Some("key [REDACTED]"));
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// The exits a session asked for.
+#[derive(Resource, Default)]
+struct Exits(Vec<ExitReason>);
+
+/// A name given in one session is kept in its directory, and `/resume`
+/// in another runs the session it names.
+#[test]
+fn resume_runs_the_session_a_name_names() {
+    let home = home("resume-name");
+    let Some(mut named) = running(&home, "1-1") else {
+        return;
+    };
+    named.world_mut().resource_mut::<SessionTitle>().name = Some("Parser".to_owned());
+    named.update();
+    let Some(mut app) = running(&home, "2-2") else {
+        return;
+    };
+    app.init_resource::<Exits>()
+        .add_observer(|exit: On<Exit>, mut exits: ResMut<Exits>| exits.0.push(exit.0.clone()));
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    for args in ["resume Parser", "resume Nobody"] {
+        world.trigger(rig_harness::commands::RunCommand::new(agent, args));
+    }
+    world.flush();
+    let exits = world.resource::<Exits>().0.clone();
+    let named: Option<SessionId> = "1-1".parse().ok();
+    let kept = named.as_ref().and_then(|id| home.session(id).name());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(kept.as_deref(), Some("Parser"));
+    assert_eq!(exits, [ExitReason::Switch(named)]);
 }

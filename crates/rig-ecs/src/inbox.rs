@@ -16,10 +16,12 @@
 //! A message delivered into a turn gets [`DeliveredIn`] that turn. An
 //! agent's inbox is the messages it accepted that are not answered yet.
 //!
-//! A turn that ends some other way hands what the user typed and was not
-//! sent back to the views as [`Recalled`], and keeps what agents and
-//! plugins sent for the next turn. The plugin guide (rig-harness's
-//! `PLUGINS.md`, "What the user types") has the full rules.
+//! What a turn ends without sending is [`Unsent`]: a plugin keeps it or
+//! takes it over, else the kernel hands what the user typed back to the
+//! views as [`Recalled`] and keeps what agents and plugins sent for the
+//! next turn. The inbox is saved with the conversation and restored after
+//! a restart. The plugin guide (rig-harness's `PLUGINS.md`, "What the user
+//! types") has the full rules.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -31,7 +33,7 @@ use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
-use rig_core::conversation::{Author, AuthorKind, Entry, Halt};
+use rig_core::conversation::{Aside, AsideId, Author, AuthorKind, Entry, Halt};
 use rig_core::effect::{EffectKind, HandlerKey};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::UserContent;
@@ -44,7 +46,8 @@ use super::agent::{
 use super::calls::Wake;
 use super::model::Connection;
 use super::stage::{
-    AgentWork, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided, failed_in,
+    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided,
+    failed_in, moved,
 };
 use super::turn::{Exiting, TurnCall, spawn_turn_call, take_outcome};
 
@@ -70,7 +73,7 @@ pub enum DeliveryMode {
 /// Content read by a message's sender, such as an image file the user
 /// named. An image goes only to a model that reads images; another model
 /// gets the rest of the message, and the user is told.
-#[derive(Reflect, Clone, Debug)]
+#[derive(Reflect, Clone, Debug, Serialize, Deserialize)]
 #[reflect(opaque, Clone, Debug)]
 pub struct Attachment {
     /// How the user knows it, such as its path.
@@ -80,8 +83,9 @@ pub struct Attachment {
 }
 
 /// One piece of a message ([`Incoming::parts`]).
-#[derive(Reflect, Clone, Debug)]
+#[derive(Reflect, Clone, Debug, Serialize, Deserialize)]
 #[reflect(Clone, Debug)]
+#[serde(rename_all = "snake_case")]
 pub enum MessagePart {
     /// Text.
     Text(String),
@@ -93,7 +97,7 @@ pub enum MessagePart {
 /// attachments in the order its author put them, by `author`, that go to
 /// the agent's model as `mode` says. An effect that moves through the
 /// stages (see the [module](self)): edit it in Prepare, take it over in
-/// Gate by deciding it ([`Decision`](super::stage::Decision)) with an
+/// Gate by deciding it ([`Decision`]) with an
 /// [`Outcome`]; once accepted, it is [`Started`] until the kernel answers
 /// it. A message with no text and no attachment is ignored.
 ///
@@ -113,8 +117,9 @@ pub enum MessagePart {
 /// sender's own, sends it: it is recorded under the effect the agent's
 /// work is recorded under ([`EffectParent`]), unless it names a parent,
 /// and the loop is woken. [`Deliver`] does the same for a sender that
-/// needs nothing else.
-#[derive(Component, Reflect, Clone, Debug)]
+/// needs nothing else. Its serde form is what its agent's conversation
+/// saves of it while it is in the inbox.
+#[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize)]
 #[component(on_add = sent)]
 #[reflect(Component, Clone, Debug)]
 #[require(Effect, Name = Name::new("message"))]
@@ -263,6 +268,63 @@ pub struct Recalled {
 #[reflect(Component, Clone, Debug)]
 pub struct DeliveredIn(pub Entity);
 
+/// On a message its agent accepted and had not sent when the turn it
+/// waited for ended, however it ended, or that a restart brought back to
+/// an idle agent. In Gate a plugin keeps it in the inbox by removing this,
+/// so it goes with the agent's next model call as its mode says, or takes
+/// it over by deciding it. Otherwise, once every plugin had its say
+/// ([`GateSystems::Fallback`](super::stage::GateSystems::Fallback)), the
+/// kernel hands the user's back to the views as one [`Recalled`] and puts
+/// the others in the conversation for the next turn. Not on exit: the
+/// inbox stays saved for the restart.
+#[derive(Component, Clone, Debug)]
+#[component(on_insert = moved::<Unsent>)]
+pub struct Unsent {
+    /// How the turn ended; `None` after a restart.
+    pub ended: Option<TurnOutcome>,
+}
+
+/// The kind of the aside that keeps a message in its agent's inbox, its
+/// value the message, saved with the conversation until it is answered.
+const INBOX_MARK: &str = "rig.inbox";
+
+/// On a message in its agent's inbox: its `rig.inbox` aside.
+#[derive(Component, Clone, Copy, Debug)]
+pub(crate) struct InboxMark(AsideId);
+
+/// Marks `message` kept in the inbox of the agent whose `conversation` it
+/// is, after the last entry.
+fn mark(conversation: &mut Conversation, message: &Incoming) -> InboxMark {
+    let after = conversation.entries().next_back().map(|entry| entry.id);
+    let value = serde_json::to_value(message).unwrap_or_default();
+    let aside = Aside::new(INBOX_MARK, Author::rig(), value).after(after);
+    InboxMark(conversation.add_aside(aside))
+}
+
+/// The messages kept in the inbox of `conversation`, with their marks.
+pub(crate) fn kept(conversation: &Conversation) -> Vec<(InboxMark, Incoming)> {
+    let marks = conversation
+        .asides()
+        .filter(|(_, aside)| aside.kind == INBOX_MARK);
+    let read = |aside: &Aside| Incoming::deserialize(&aside.value).ok();
+    marks
+        .filter_map(|(id, aside)| Some((InboxMark(id), read(aside)?)))
+        .collect()
+}
+
+/// Takes its mark off a message in the inbox once it is answered.
+pub(crate) fn unmark(
+    answered: On<Insert<Outcome>>,
+    marked: Query<(&InboxMark, &ForAgent)>,
+    mut agents: Query<&mut Conversation>,
+) {
+    if let Ok((&InboxMark(id), &ForAgent(agent))) = marked.get(answered.entity)
+        && let Ok(mut conversation) = agents.get_mut(agent)
+    {
+        conversation.remove_aside(id);
+    }
+}
+
 /// Spawns a [`Deliver`]'s message for its agent.
 pub(crate) fn on_deliver(
     deliver: On<Deliver>,
@@ -334,7 +396,8 @@ pub(crate) fn accept(
         }
         let joins = starting.get(&agent).copied();
         if busy && joins.is_none() {
-            commands.entity(entity).try_insert(Started { at });
+            let mark = mark(&mut conversation, message);
+            commands.entity(entity).try_insert((Started { at }, mark));
             continue;
         }
         let spec = connection.map(|connection| &*connection.spec);
@@ -412,39 +475,49 @@ pub(crate) fn carry_on_accepted(
 }
 
 /// The messages agents accepted and were not given yet, as the kernel
-/// reads them.
+/// reads them. A message decided is out the moment it is, though its
+/// decision becomes its [`Outcome`] only at Start.
 #[derive(SystemParam)]
 pub(crate) struct Inboxes<'w, 's> {
     work: Query<'w, 's, &'static AgentWork>,
     accepted: Query<
         'w,
         's,
-        (Entity, &'static Effect, &'static Incoming),
+        (
+            Entity,
+            &'static Effect,
+            &'static Incoming,
+            &'static Decision,
+        ),
         (With<Started>, Without<Outcome>, Without<Settled>),
     >,
-    on_the_way: Query<'w, 's, &'static Incoming, (Without<Started>, Without<Outcome>)>,
+    on_the_way:
+        Query<'w, 's, (&'static Incoming, &'static Decision), (Without<Started>, Without<Outcome>)>,
 }
 
 impl Inboxes<'_, '_> {
     /// What `agent` accepted and was not given yet, oldest first.
     pub(crate) fn of(&self, agent: Entity) -> Vec<(Entity, &Incoming)> {
         let work = self.work.get(agent).into_iter().flat_map(AgentWork::iter);
-        let mut waiting: Vec<_> = self.accepted.iter_many(work).flatten().collect();
-        waiting.sort_unstable_by_key(|(_, effect, _)| effect.id());
+        let accepted = self.accepted.iter_many(work).flatten();
+        let mut waiting: Vec<_> = accepted
+            .filter(|(.., decision)| !decision.is_decided())
+            .collect();
+        waiting.sort_unstable_by_key(|(_, effect, ..)| effect.id());
         waiting
             .into_iter()
-            .map(|(entity, _, message)| (entity, message))
+            .map(|(entity, _, message, _)| (entity, message))
             .collect()
     }
 
     /// Whether a Steer or Queue message to `agent` is on its way: spawned,
-    /// not accepted, not answered.
+    /// not accepted, not decided.
     pub(crate) fn coming(&self, agent: Entity) -> bool {
         let work = self.work.get(agent).into_iter().flat_map(AgentWork::iter);
         self.on_the_way
             .iter_many(work)
             .flatten()
-            .any(|message| message.mode != DeliveryMode::Note)
+            .any(|(message, decision)| message.mode != DeliveryMode::Note && !decision.is_decided())
     }
 }
 
@@ -470,52 +543,82 @@ pub(crate) fn carry_on(waiting: Vec<(Entity, &Incoming)>) -> Option<Vec<(Entity,
         .then_some(next)
 }
 
-/// Hands back what the user typed that a turn that just ended did not
-/// send, and puts what agents and plugins sent in the conversation, where
-/// the next turn reads it. A conversation left ending in the user's
-/// message is logged as halted, so a restore does not answer it, unless
-/// the app is [`Exiting`].
-pub(crate) fn recall_on_turn_end(
-    end: On<Remove<ActiveTurn>>,
-    mut agents: Query<(&mut Conversation, Option<&Connection>)>,
+/// Marks what the agent of a turn that just ended accepted and did not
+/// send [`Unsent`], unless the app is [`Exiting`].
+pub(crate) fn unsent_on_turn_end(
+    end: On<Remove<TurnOf>>,
+    turns: Query<(&TurnOf, Option<&TurnOutcome>)>,
     inboxes: Inboxes,
     exiting: Option<Res<Exiting>>,
+    mut commands: Commands,
+) {
+    let Ok((&TurnOf(agent), ended)) = turns.get(end.entity) else {
+        return;
+    };
+    if exiting.is_some() {
+        return;
+    }
+    for (message, _) in inboxes.of(agent) {
+        let ended = ended.cloned();
+        commands.entity(message).try_insert(Unsent { ended });
+    }
+}
+
+/// Settles each [`Unsent`] message nothing kept, holds or decided, in
+/// [`GateSystems::Fallback`](super::stage::GateSystems::Fallback): an
+/// idle agent hands the user's back to the views, joined in one
+/// [`Recalled`] in the order they were sent, and puts the others in its
+/// conversation, left halted for the next turn; a busy agent keeps them
+/// for its running turn.
+pub(crate) fn settle_unsent(
+    unsent: Query<
+        (Entity, &Effect, &Incoming, &ForAgent, &Decision),
+        (With<Unsent>, Without<Outcome>, Without<Holds>),
+    >,
+    mut agents: Query<(&mut Conversation, Option<&Connection>, Has<ActiveTurn>)>,
     mut commands: Commands,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = end.entity;
-    let Ok((mut conversation, connection)) = agents.get_mut(agent) else {
-        return;
-    };
-    let (typed, sent): (Vec<_>, Vec<_>) = inboxes
-        .of(agent)
-        .into_iter()
-        .partition(|(_, message)| message.author.kind == AuthorKind::User);
-    let spec = connection.map(|connection| &*connection.spec);
-    let conversation = &mut *conversation;
-    let into = (None, &mut commands);
-    deliver(agent, spec, sent, conversation, &mut notices, into);
-    if exiting.is_none() {
-        conversation.halt(Halt::Kept);
+    let mut unsent: Vec<_> = unsent.iter().collect();
+    unsent.sort_unstable_by_key(|(_, effect, ..)| effect.id());
+    let mut typed: HashMap<Entity, Vec<&str>> = HashMap::new();
+    for (entity, _, message, &ForAgent(agent), decision) in unsent {
+        let Ok((mut conversation, connection, busy)) = agents.get_mut(agent) else {
+            continue;
+        };
+        if decision.is_decided() {
+            continue;
+        }
+        if busy {
+            commands.entity(entity).try_remove::<Unsent>();
+        } else if message.author.kind == AuthorKind::User {
+            commands
+                .entity(entity)
+                .try_insert_if_new(handled("recalled"));
+            typed.entry(agent).or_default().push(message.text().trim());
+        } else {
+            let spec = connection.map(|connection| &*connection.spec);
+            let conversation = &mut *conversation;
+            let into = (None, &mut commands);
+            deliver(
+                agent,
+                spec,
+                [(entity, message)],
+                conversation,
+                &mut notices,
+                into,
+            );
+            conversation.halt(Halt::Kept);
+        }
     }
-    if typed.is_empty() {
-        return;
+    for (agent, typed) in typed {
+        recalled.write(Recalled {
+            agent,
+            text: typed.join("\n\n"),
+            why: None,
+        });
     }
-    for &(entity, _) in &typed {
-        commands
-            .entity(entity)
-            .try_insert_if_new(handled("recalled"));
-    }
-    let typed: Vec<&str> = typed
-        .iter()
-        .map(|(_, message)| message.text().trim())
-        .collect();
-    recalled.write(Recalled {
-        agent,
-        text: typed.join("\n\n"),
-        why: None,
-    });
 }
 
 /// What a message's record says of it, its kind's payload: its text

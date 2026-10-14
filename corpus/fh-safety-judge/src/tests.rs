@@ -188,7 +188,7 @@ fn the_judge_allows_denies_and_asks() {
         "judge-verdicts",
         &main,
         judge,
-        Some(vec![Answer::Choice("allow".into())]),
+        Some(vec![Answer::choice("allow")]),
     );
     assert!(started.is_some(), "an agent on the scripted models");
     let Some((mut app, wakes, agent)) = started else {
@@ -238,7 +238,7 @@ fn a_late_judge_asks_the_user_or_denies_headless() {
             MockCompletionModel::from_stream_turns([shell_calls(&["rm -rf build"]), reply("done")]);
         let mut judge = ScriptedJudge::routes(&[]);
         judge.hangs = true;
-        let answers = interactive.then(|| vec![Answer::Choice("allow".into())]);
+        let answers = interactive.then(|| vec![Answer::choice("allow")]);
         let started = start("judge-late", &main, judge, answers);
         assert!(started.is_some(), "an agent on the scripted models");
         let Some((mut app, wakes, _)) = started else {
@@ -275,7 +275,7 @@ fn free_text_from_the_judge_counts_as_ask() {
     let main = MockCompletionModel::from_stream_turns([shell_calls(&["make"]), reply("done")]);
     let chatty = MockCompletionModel::from_stream_turns([reply("Looks fine to me.")]);
     let judge = ScriptedJudge::routes(&[("", &chatty)]);
-    let answers = Some(vec![Answer::Choice("deny".into())]);
+    let answers = Some(vec![Answer::choice("deny")]);
     let started = start("judge-chatty", &main, judge, answers);
     assert!(started.is_some(), "an agent on the scripted models");
     let Some((mut app, wakes, _)) = started else {

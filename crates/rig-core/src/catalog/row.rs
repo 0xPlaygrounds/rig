@@ -110,6 +110,8 @@ struct Facts {
     #[serde(skip_serializing_if = "Option::is_none")]
     chat_tools_need_reasoning_off: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    prefill: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pinned: Option<Vec<Pinned>>,
 }
 
@@ -259,6 +261,7 @@ impl Row {
                 binds_context: Some(compat.binds_context),
                 prompt_cache_options: Some(compat.prompt_cache_options),
                 chat_tools_need_reasoning_off: Some(compat.chat_tools_need_reasoning_off),
+                prefill: Some(compat.prefill),
                 pinned: None,
             },
         }
@@ -458,6 +461,7 @@ impl Facts {
             chat_tools_need_reasoning_off: over
                 .chat_tools_need_reasoning_off
                 .or(self.chat_tools_need_reasoning_off),
+            prefill: over.prefill.or(self.prefill),
             pinned: over.pinned.or(self.pinned),
         }
     }
@@ -472,6 +476,7 @@ impl Facts {
             binds_context: self.binds_context.unwrap_or(false),
             prompt_cache_options: self.prompt_cache_options.unwrap_or(false),
             chat_tools_need_reasoning_off: self.chat_tools_need_reasoning_off.unwrap_or(false),
+            prefill: self.prefill.unwrap_or(false),
         }
     }
 }

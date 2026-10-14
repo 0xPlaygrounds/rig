@@ -161,7 +161,7 @@ fn rpc_commands_stream_the_turn_and_answer_requests_as_json_lines() {
         world.get::<Outcome>(ask).is_some()
     });
     let answered = app.world().get::<Outcome>(ask).and_then(Answer::of);
-    assert_eq!(answered, Some(Answer::Choice("no".to_owned())));
+    assert_eq!(answered, Some(Answer::choice("no")));
     let response = lines.find("response", |line| at(line, "id") == 8);
     assert_eq!(
         response.map(|line| at(&line, "ok").clone()),

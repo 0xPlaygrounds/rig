@@ -10,6 +10,9 @@ use rig_harness_test_support::{
     Ended, app_in, log_ended, reply, run_until, scratch_home, scripted_models,
 };
 
+use rig::harness_protocol::SessionId;
+use rig_memory::{MODEL, TITLE};
+
 use super::*;
 
 /// `result`'s value, failing the test with its error.
@@ -56,7 +59,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
     let main = SavedAgent {
         id: "main".to_owned(),
         conversation: Conversation::from_messages(messages.clone()),
-        state: [(MODEL_KEY.to_owned(), Value::from("test/model"))].into(),
+        state: [(MODEL.to_owned(), Value::from("test/model"))].into(),
         ..SavedAgent::default()
     };
     let sub = SavedAgent {
@@ -66,11 +69,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
             Message::user("Count the failed logins."),
             Message::assistant("42."),
         ]),
-        state: [(
-            "rig_subagents::Subtask".to_owned(),
-            Value::from("Count failures"),
-        )]
-        .into(),
+        state: [(TITLE.to_owned(), Value::from("Count failures"))].into(),
         ..SavedAgent::default()
     };
     let (id, dir) = home.new_session()?;
@@ -80,7 +79,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
         ..Session::default()
     };
     session.save(&store)?;
-    store.write_file(META, br#"{"name":"fix-auth"}"#)?;
+    dir.set_name(Some("fix-auth"))?;
     dir.mark_saved()?;
     Ok((id, messages))
 }
@@ -90,7 +89,9 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
 fn reopen(home: &Home, named: &str) -> Option<Vec<Message>> {
     let opened = ok(locate(home, named).and_then(open))?;
     Some(
-        main_agent(&opened.session)?
+        opened
+            .session
+            .main_agent()?
             .conversation
             .messages()
             .to_vec(),
@@ -147,6 +148,12 @@ fn lists_shrinks_drops_resumes_exports_and_refuses() {
     };
     assert_eq!(others(&small), others(&original));
     assert_eq!(small.len(), 5);
+    // The copy was forked through the shrink, so no saved record of it
+    // still holds what was cut.
+    let small_dir = ok(locate(&home, "small"));
+    let small_log = small_dir.map(|dir| dir.path().join("logs").join("main.jsonl"));
+    let small_log = small_log.and_then(|log| fs::read_to_string(log).ok());
+    assert!(small_log.is_some_and(|log| !log.contains("auth.log line 5000")));
 
     // `drop 2..2` on the original: the call goes with its result.
     let dropped = ok(edit(&home, &["fix-auth", "drop", "2..2", "--as", "cut"])).unwrap_or_default();
@@ -232,11 +239,32 @@ fn lists_shrinks_drops_resumes_exports_and_refuses() {
     );
     assert!(markdown.contains("# Subagent: Count failures"));
 
-    // A truncated session is refused, with why.
-    let log = home.session(&id).path().join("logs").join("main.jsonl");
+    // `--in-place`: the session is rewritten, its old self kept in `.bak`.
+    let in_place = ok(edit(
+        &home,
+        &["fix-auth", "shrink", "--over", "4000", "--in-place"],
+    ));
+    assert!(in_place.is_some_and(|out| out.contains(".bak")));
+    let rewritten = reopen(&home, "fix-auth").unwrap_or_default();
+    assert_eq!(result_text(rewritten.get(2)).lines().count(), 41);
+    let session = home.session(&id);
+    let log = fs::read_to_string(session.path().join("logs").join("main.jsonl"));
+    assert!(log.is_ok_and(|log| !log.contains("auth.log line 5000")));
+    let backup = session
+        .path()
+        .with_extension("bak")
+        .join("logs")
+        .join("main.jsonl");
+    assert!(fs::read_to_string(backup).is_ok_and(|log| log.contains("auth.log line 5000")));
+
+    // A truncated session is refused, with why: `cut` still holds the
+    // whole result in its history (a drop is a recorded splice), so half
+    // its log ends inside that line.
+    let cut_dir = ok(locate(&home, "cut")).map(|dir| dir.path().to_owned());
+    let log = cut_dir.unwrap_or_default().join("logs").join("main.jsonl");
     let bytes = fs::read(&log).unwrap_or_default();
     fs::write(&log, bytes.get(..bytes.len() / 2).unwrap_or_default()).ok();
-    let refused = edit(&home, &["fix-auth", "list"]);
+    let refused = edit(&home, &["cut", "list"]);
     assert!(
         refused
             .as_ref()

@@ -3,7 +3,7 @@
 //! [`ProvidedBy`] on what that plugin spawned, such as its commands,
 //! tools, prompt sections and observers. "What did plugin X add" is a
 //! query for `ProvidedBy(x)`; which plugin added a schedule's system is in
-//! [`PluginSystems`].
+//! [`PluginSystems`]; what it keeps with the session is its [`Keeps`].
 //!
 //! Every named entity, observer and schedule system a plugin adds in its
 //! `build`, `finish` and `cleanup` is attributed. What it spawns later, such as a
@@ -149,15 +149,103 @@ pub fn load<P: Plugin + Default>(app: &mut App, krate: &str, source: &str) {
     });
     let attribute = attribute(app.world_mut(), entity);
     let before = systems(app.world());
+    let outer = app.world_mut().remove_resource::<Loading>();
+    app.insert_resource(Loading(entity));
     // `Attribute` before and after it brackets its `finish` and `cleanup`
     // (and the plugins it adds), which run in the order plugins were
     // added.
     app.add_plugins(Attribute::Open(entity));
     app.add_plugins(plugin);
     app.add_plugins(Attribute::Close);
+    app.world_mut().remove_resource::<Loading>();
+    if let Some(outer) = outer {
+        app.insert_resource(outer);
+    }
     PluginSystems::record(app.world_mut(), &before, entity);
     stop_attributing(app.world_mut(), attribute);
 }
+
+/// What a plugin keeps with the session, on the entity [`load`] spawned for
+/// it: the saved values it owns, by the key the journal saves them under
+/// (the type path, such as `my_plugin::Counter`, or a stable one such as
+/// `rig::model`), and its folders of session files in
+/// [`PluginData::session`](crate::prelude::PluginData::session), such as
+/// `vim`. A plugin says so in `build`, `finish` or `cleanup`
+/// ([`AppKeepsExt`]); nothing infers it. A saved value no plugin keeps is
+/// the core's, or one whose plugin did not say.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Default, Clone, Debug)]
+pub struct Keeps {
+    /// The keys of the saved values it keeps.
+    pub saved: Vec<String>,
+    /// Its folders in the session's plugin files.
+    pub files: Vec<String>,
+}
+
+impl Keeps {
+    /// Whether the saved value of `key` is this plugin's.
+    pub fn saved(&self, key: &str) -> bool {
+        self.saved.iter().any(|saved| saved == key)
+    }
+
+    /// Whether the session file `name`, as `PluginData::session` names it
+    /// (`vim/registers.json`), is in one of this plugin's folders.
+    pub fn file(&self, name: &str) -> bool {
+        self.files.iter().any(|folder| {
+            name.strip_prefix(folder.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
+    }
+}
+
+/// Saying what a plugin keeps with the session, in its `build`, `finish`
+/// or `cleanup`, onto its [`Keeps`]. A plugin added without [`load`] has no
+/// entity to say it on, and nothing is recorded.
+pub trait AppKeepsExt {
+    /// This plugin keeps the saved value `T` (`#[reflect(.., Saved)]`).
+    fn keeps_saved<T: Component + TypePath>(&mut self) -> &mut Self;
+
+    /// This plugin keeps the session files under `folder` in
+    /// `PluginData::session`, such as `vim` for `vim/registers.json`.
+    fn keeps_files(&mut self, folder: &str) -> &mut Self;
+}
+
+impl AppKeepsExt for App {
+    fn keeps_saved<T: Component + TypePath>(&mut self) -> &mut Self {
+        keep(self.world_mut(), |keeps| &mut keeps.saved, T::type_path());
+        self
+    }
+
+    fn keeps_files(&mut self, folder: &str) -> &mut Self {
+        let folder = folder.trim_end_matches('/');
+        keep(self.world_mut(), |keeps| &mut keeps.files, folder);
+        self
+    }
+}
+
+/// Adds `what` to the list `of` of the [`Keeps`] of the plugin being
+/// built, finished or cleaned up, once.
+fn keep(world: &mut World, of: fn(&mut Keeps) -> &mut Vec<String>, what: &str) {
+    let loading = world.get_resource::<Loading>().map(|loading| loading.0);
+    let plugin = loading.or_else(|| Some(world.get_resource::<Attributing>()?.plugin));
+    let Some(mut plugin) = plugin.and_then(|plugin| world.get_entity_mut(plugin).ok()) else {
+        return;
+    };
+    if !plugin.contains::<Keeps>() {
+        plugin.insert(Keeps::default());
+    }
+    let Some(mut keeps) = plugin.get_mut::<Keeps>() else {
+        return;
+    };
+    let list = of(&mut keeps);
+    if !list.iter().any(|kept| kept == what) {
+        list.push(what.to_owned());
+    }
+}
+
+/// The plugin [`load`] is building.
+#[derive(Resource)]
+struct Loading(Entity);
 
 /// Marks each named entity and observer spawned from now on as
 /// `plugin`'s, until [`stop_attributing`].

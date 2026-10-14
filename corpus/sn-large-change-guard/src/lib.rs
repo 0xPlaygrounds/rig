@@ -382,9 +382,10 @@ fn measured(
         Ok((Some(name), false)) => name.to_string(),
         _ => "the agent".to_owned(),
     };
-    let diffs: Vec<&str> = large
+    let diffs: Vec<String> = large
         .iter()
-        .filter_map(|change| change.file.diff.as_deref())
+        .map(|change| change.file.unified())
+        .filter(|diff| !diff.is_empty())
         .collect();
     let ask = Ask::new(format!("{who}: {line}"))
         .body(format!(
@@ -434,7 +435,9 @@ fn answered(
             commands.entity(ask).remove::<HoldOf>();
             return;
         }
-        Some(Answer::Text(reason)) if !reason.trim().is_empty() => Some(format!(
+        Some(Answer {
+            text: Some(reason), ..
+        }) if !reason.trim().is_empty() => Some(format!(
             "The user denied this large change: {}. Their reason: {}",
             guard.line,
             reason.trim()

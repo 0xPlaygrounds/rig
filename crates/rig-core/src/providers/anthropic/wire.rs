@@ -603,6 +603,8 @@ impl crate::completion::ReplayTarget for Messages {
             assistant_images: false,
             tool_result_images: images,
             tools: true,
+            // Thinking replays only with its signature.
+            foreign_reasoning: false,
         }
     }
 

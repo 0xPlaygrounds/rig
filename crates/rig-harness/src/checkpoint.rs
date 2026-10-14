@@ -6,7 +6,8 @@
 //! agent's [`WorkDir`] (else the [`ProjectRoot`]) just before and just
 //! after it runs and publishes the difference as its `FilesChanged`, each
 //! change with the [`FileState`] of each side and, where the content was
-//! kept, its diff. A reviewer reads them as any tool's facts:
+//! kept, its hunks, the text before and so the text after. A reviewer
+//! reads them as any tool's facts:
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -16,7 +17,8 @@
 //!     for published in &calls {
 //!         let changes = published.0.get::<FilesChanged>().ok().flatten();
 //!         for change in changes.map(|it| it.0).unwrap_or_default() {
-//!             // change.path, change.kind, change.before, change.after, change.diff
+//!             // change.path, change.kind, change.hunks, change.before_text,
+//!             // change.after_text(), change.unified()
 //!         }
 //!     }
 //! }
@@ -24,14 +26,16 @@
 //!
 //! The state before a turn's first checkpointed call is kept
 //! ([`TurnCheckpoint::first`]), to tell what the whole turn changed or read
-//! a file as it was ([`Snapshot::content`]). Each call's snapshots start
-//! from the newest one taken of its directory in the run, in any turn, so
-//! a scan hashes again only what changed. In a git work tree on this
-//! machine a snapshot is a tree written with a private index and object
-//! directory in the session's [`Scratch`], so the user's repository is
-//! never written to; elsewhere it is a scan of the workspace's files, whose
-//! content is kept in the scratch for the run. `[checkpoints] enabled =
-//! false` in `settings.toml` turns it off ([`Checkpoints`]).
+//! a file as it was ([`Snapshot::content`]), and so is the state before
+//! each checkpointed call ([`CallCheckpoint::before`], on the call). Each
+//! call's snapshots start from the newest one taken of its directory in
+//! the run, in any turn, so a scan hashes again only what changed. In a
+//! git work tree on this machine a snapshot is a tree written with a
+//! private index and object directory in the session's [`Scratch`], so the
+//! user's repository is never written to; elsewhere it is a scan of the
+//! workspace's files, whose content is kept in the scratch for the run.
+//! `[checkpoints] enabled = false` in `settings.toml` turns it off
+//! ([`Checkpoints`]).
 //!
 //! What it reports is what changed while the call ran, not who changed it:
 //! a write by another process in that time, such as the user's editor, is
@@ -59,6 +63,7 @@ use rig_ecs::prelude::{
 use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
 
+use crate::approval::ApprovalSystems;
 use crate::host::session::Scratch;
 use crate::per_call::base;
 use crate::preview::PreviewSystems;
@@ -132,9 +137,25 @@ impl TurnCheckpoint {
     }
 }
 
-/// On a call wrapped in a [`Checkpointed`], so it is wrapped once.
-#[derive(Component)]
-struct Checkpointing;
+/// On a call wrapped in a [`Checkpointed`] (so it is wrapped once): the
+/// snapshot taken just before it ran.
+#[derive(Component, Clone, Debug, Default)]
+pub struct CallCheckpoint {
+    before: Arc<Mutex<Option<Snapshot>>>,
+}
+
+impl CallCheckpoint {
+    /// The files as they were just before the call ran, once it started:
+    /// compare a later snapshot with it ([`Snapshot::changes_since`]), or
+    /// read a file as the call found it ([`Snapshot::content`], when the
+    /// session has a scratch to keep it).
+    pub fn before(&self) -> Option<Snapshot> {
+        self.before
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
 
 /// Wraps every tool call that may write anywhere in a [`Checkpointed`].
 /// [`RigHarnessPlugins`](crate::RigHarnessPlugins) adds it; a small test
@@ -159,6 +180,7 @@ impl Plugin for CheckpointPlugin {
             checkpoint
                 .after(GateSystems::After)
                 .after(PreviewSystems)
+                .after(ApprovalSystems)
                 .before(Stage::Start)
                 .run_if(|checkpoints: Res<Checkpoints>| checkpoints.enabled),
         )
@@ -190,7 +212,7 @@ fn checkpoint(
             Option<&ForAgent>,
             Option<&CallOf>,
         ),
-        (ToolCalls, Undecided, Without<Checkpointing>),
+        (ToolCalls, Undecided, Without<CallCheckpoint>),
     >,
     turns: Query<&TurnCheckpoint>,
     dirs: Query<&WorkDir>,
@@ -223,6 +245,7 @@ fn checkpoint(
             None => TurnCheckpoint::default(),
         };
         let (root, _) = base(agent.map(|agent| agent.0), &dirs, &root);
+        let checkpoint = CallCheckpoint::default();
         let wrapped = Checkpointed {
             inner: handler.0.0.clone(),
             workspace: workspace.0.clone(),
@@ -233,9 +256,10 @@ fn checkpoint(
                 also: also.as_ref().map(|also| also.0.clone()).unwrap_or_default(),
             },
             first: shared.first,
+            before: checkpoint.before.clone(),
         };
         *handler = CallHandler(Handler(ErasedHandler::new(wrapped)));
-        commands.entity(call).insert(Checkpointing);
+        commands.entity(call).insert(checkpoint);
     }
 }
 

@@ -776,10 +776,8 @@ fn answered(
         ));
     };
     if let Some(Review(plan)) = review_of {
-        let field = match answer.as_ref().and_then(|answer| match answer {
-            Answer::Choice(choice) => Some(choice.as_str()),
-            Answer::Text(_) | Answer::Choices(_) => None,
-        }) {
+        let choice = answer.as_ref().and_then(|answer| answer.choices.first());
+        let field = match choice.map(String::as_str) {
             Some("publish") => return job(plan, Action::Publish),
             Some("commit") => return job(plan, Action::CommitOnly),
             Some("title") => Field::Title,
@@ -799,7 +797,7 @@ fn answered(
         commands.spawn((ask, ForAgent(agent), Editing(plan.clone(), field)));
     } else if let Some(Editing(plan, field)) = editing {
         let mut plan = plan.clone();
-        if let Some(Answer::Text(text)) = answer {
+        if let Some(text) = answer.and_then(|answer| answer.text) {
             edit(&mut plan, *field, text.trim(), agent, &mut notices);
         }
         commands.spawn((review(&plan), ForAgent(agent), Review(plan)));

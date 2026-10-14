@@ -6,22 +6,22 @@ use std::sync::Arc;
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Home, SessionDir, SessionId};
+use rig::harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
-use rig_ecs::AgentPlugin;
 use rig_ecs::agent::{AgentId, Conversation, Notice};
-use rig_ecs::journal::{JournalPlugin, SessionStore};
+use rig_ecs::journal::{JournalPlugin, RewriteSession, SessionStore};
+use rig_ecs::{AgentPlugin, WriteJournal};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::{DirStore, load, save};
+use rig_memory::{DirStore, Files, MemoryStore, Store, Strings, load, save};
 
 use super::{
-    DeleteSession, FirstStart, ForkSession, ForkedFrom, Scratch, SessionDeleteFailed,
+    AppStart, DeleteSession, ForkSession, ForkSessions, ForkedFrom, Scratch, SessionDeleteFailed,
     SessionDeleted, SessionForked, SessionPaths, SessionPlugin, SessionStores, first_typed,
-    log_layer, typed,
+    log_layer, rewrite_stopped, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
-use crate::host::launcher::LauncherRun;
+use crate::host::launcher::{Invoked, LauncherRun};
 use crate::plugin_data::PluginData;
 use crate::services::RigHome;
 
@@ -99,7 +99,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
         .insert_resource(SessionPaths(session.clone()))
         .insert_resource(SessionStore::new(store))
         .add_plugins(SessionPlugin)
-        .add_systems(Last, watch.after(super::fork_sessions));
+        .add_systems(Last, watch.after(ForkSessions));
     app.world_mut().trigger(ForkSession::default());
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
@@ -115,11 +115,11 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     // The copy names the session it came from, and is saved, so it can be
     // resumed.
     let parent = ForkedFrom {
-        session: id.clone(),
+        session: id.to_string(),
         before: None,
         text: None,
     };
-    let parent_of = |session: &SessionDir| dir_store(session).as_ref().and_then(ForkedFrom::of);
+    let parent_of = |session: &SessionDir| dir_store(session).as_ref().and_then(ForkedFrom::read);
     assert_eq!(parent_of(&copy), Some(parent));
     assert_eq!(parent_of(&session), None);
     assert!(copy.is_saved());
@@ -184,7 +184,7 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
             .insert_resource(SessionPaths(here_dir.clone()))
             .insert_resource(stores.clone())
             .add_plugins(SessionPlugin)
-            .add_systems(Last, watch.after(super::fork_sessions));
+            .add_systems(Last, watch.after(ForkSessions));
         drop(std::panic::take_hook());
         app
     };
@@ -211,18 +211,9 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
     fs::remove_dir_all(home.root()).ok();
 }
 
-/// A session an older rig saved is refused before the harness writes
-/// anything: resuming a copy of one leaves every byte of its directory as
-/// it was, its text log included, and what the refused run logged goes to
-/// the launcher's run directory.
-#[test]
-fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
-    let home = scratch_home("rig-session-older");
-    let Ok(id) = "1700000000-23".parse::<SessionId>() else {
-        return;
-    };
-    let session = home.session(&id);
-    fs::create_dir_all(session.path()).ok();
+/// The layout and logs rig wrote before `rig-session/1`: `<agent>.jsonl`
+/// at the top of the session directory, and its blobs.
+fn write_old_layout(session: &SessionDir) {
     let mut log = None;
     for line in include_str!("../../../../rig-memory/src/dir/baseline-session.txt").lines() {
         if let Some(name) = line.strip_prefix("=== ") {
@@ -237,46 +228,86 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
             fs::write(path, bytes).ok();
         }
     }
-    fs::write(session.log(), "what the agent did\n").ok();
-    for marker in [session.started(), session.path().join("saved")] {
-        fs::write(marker, b"").ok();
-    }
-    fs::write(
-        session.directory(),
-        home.root().to_string_lossy().as_bytes(),
-    )
-    .ok();
-    let before = snapshot(session.path());
-    assert!(session.is_saved() && before.len() > 4, "{before:?}");
-    let run = home.run(1);
-    fs::create_dir_all(run.path()).ok();
+}
 
-    let mut app = App::new();
-    app.insert_resource(RigHome(home.clone()))
-        .insert_resource(SessionPaths(session.clone()))
-        .insert_resource(LauncherRun(run.clone()));
-    let layer = log_layer(&mut app);
-    let file = app.world().resource::<super::TextLog>().file.clone();
-    std::io::Write::write_all(&mut super::LogWriter(file), b"this run\n").ok();
-    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
-        .add_plugins(SessionPlugin);
-    drop(std::panic::take_hook());
-    app.finish();
-    app.update();
-    app.update();
-    let stored = app.world().contains_resource::<SessionStore>();
-    let data = app.world().contains_resource::<PluginData>();
-    drop((app, layer));
-    assert!(!stored, "the refused session has no store");
-    assert!(
-        data,
-        "a refused run has plugin data, its session's in memory"
-    );
-    assert_eq!(snapshot(session.path()), before);
-    let refusal = fs::read_to_string(run.refusal()).unwrap_or_default();
-    assert!(refusal.contains("older version of rig"), "{refusal}");
-    let logged = fs::read_to_string(run.log()).unwrap_or_default();
-    assert!(logged.starts_with("this run\n"), "{logged}");
+/// A session saved in format `rig-session/1`, in this rig's layout.
+fn write_format_1(session: &SessionDir) {
+    let mut file = None;
+    for line in include_str!("../../../../rig-memory/src/dir/session-1.txt").lines() {
+        if let Some(path) = line.strip_prefix("=== ") {
+            let path = session.path().join(path);
+            path.parent().map(fs::create_dir_all);
+            fs::write(&path, b"").ok();
+            file = Some(path);
+        } else if let Some(path) = &file {
+            let mut bytes = fs::read(path).unwrap_or_default();
+            bytes.extend_from_slice(format!("{line}\n").as_bytes());
+            fs::write(path, bytes).ok();
+        }
+    }
+}
+
+/// A session an older rig saved is refused before the harness writes
+/// anything: resuming a copy of one, in the layout before `rig-session/1`
+/// or in that format, leaves every byte of its directory as it was, its
+/// text log included, and what the refused run logged goes to the
+/// launcher's run directory.
+#[test]
+fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
+    let older: [(&str, fn(&SessionDir)); 2] = [
+        ("1700000000-23", write_old_layout),
+        ("1700000000-24", write_format_1),
+    ];
+    let home = scratch_home("rig-session-older");
+    for (id, write) in older {
+        let Ok(id) = id.parse::<SessionId>() else {
+            return;
+        };
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        write(&session);
+        fs::write(session.log(), "what the agent did\n").ok();
+        for marker in [session.started(), session.path().join("saved")] {
+            fs::write(marker, b"").ok();
+        }
+        fs::write(
+            session.directory(),
+            home.root().to_string_lossy().as_bytes(),
+        )
+        .ok();
+        let before = snapshot(session.path());
+        assert!(session.is_saved() && before.len() > 4, "{before:?}");
+        let run = home.run(1);
+        fs::create_dir_all(run.path()).ok();
+
+        let mut app = App::new();
+        app.insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .insert_resource(LauncherRun(run.clone()));
+        let layer = log_layer(&mut app);
+        let file = app.world().resource::<super::TextLog>().file.clone();
+        std::io::Write::write_all(&mut super::LogWriter(file), b"this run\n").ok();
+        app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+            .add_plugins(SessionPlugin);
+        drop(std::panic::take_hook());
+        app.finish();
+        app.update();
+        app.update();
+        let stored = app.world().contains_resource::<SessionStore>();
+        let data = app.world().contains_resource::<PluginData>();
+        drop((app, layer));
+        assert!(!stored, "the refused session has no store");
+        assert!(
+            data,
+            "a refused run has plugin data, its session's in memory"
+        );
+        assert_eq!(snapshot(session.path()), before);
+        let refusal = fs::read_to_string(run.refusal()).unwrap_or_default();
+        assert!(refusal.contains("older version of rig"), "{refusal}");
+        let logged = fs::read_to_string(run.log()).unwrap_or_default();
+        assert!(logged.starts_with("this run\n"), "{logged}");
+        fs::remove_dir_all(run.path()).ok();
+    }
     fs::remove_dir_all(home.root()).ok();
 }
 
@@ -297,7 +328,7 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
         .insert_resource(SessionPaths(session.clone()))
         .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
         .add_plugins(SessionPlugin)
-        .add_systems(Last, watch.after(super::fork_sessions));
+        .add_systems(Last, watch.after(ForkSessions));
     if let Some(store) = dir_store(&session) {
         app.insert_resource(SessionStore::new(store));
     }
@@ -331,10 +362,11 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     assert_eq!(forked.as_ref().and_then(|forked| forked.asker), Some(asker));
     let parent = forked.and_then(|forked| {
         let copy = dir_store(&home.session(&forked.to))?;
-        ForkedFrom::of(&copy)
+        ForkedFrom::read(&copy)
     });
     let text = parent.as_ref().and_then(|parent| parent.text.as_deref());
     assert_eq!(text, Some("two"), "{parent:?}");
+    let before = before.map(|(agent, message)| (agent.0, message));
     assert_eq!(parent.and_then(|parent| parent.before), before);
     drop(std::panic::take_hook());
     std::fs::remove_dir_all(&root).ok();
@@ -379,8 +411,85 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// A front whose runs keep no session never takes a resumed one, such as
+/// `rig -r X --export Y`: its run is refused and the session stays. A
+/// `/reload` of its own run is no resume.
 #[test]
-fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
+fn a_sessionless_front_refuses_a_resumed_session_and_keeps_it() {
+    let home = scratch_home("rig-sessionless-resumed");
+    let run = |reason: StartReason| {
+        let id: SessionId = "1700000000-9".parse().ok()?;
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        fs::write(session.started(), b"").ok();
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .insert_resource(AppStart(reason))
+            .add_plugins(SessionPlugin)
+            .add_front(Front::new("export").headless().sessionless());
+        let refusal = crate::host::cli::refusal(&mut app);
+        app.world_mut().write_message(AppExit::Success);
+        app.update();
+        Some((refusal, session.path().exists()))
+    };
+    let resumed = run(StartReason::Resumed);
+    let reloaded = run(StartReason::Reloaded);
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+    let why = "the front `export` keeps no session, so it cannot resume one";
+    assert_eq!(resumed, Some((Some(why.to_owned()), true)));
+    assert_eq!(reloaded, Some((None, false)));
+}
+
+/// A front with a store of its own keeps the session of a run it takes
+/// there, such as `rig -r X reply` with a chat thread's store; any other
+/// run keeps its session as [`SessionStores`] does.
+#[test]
+fn a_fronts_own_store_keeps_only_the_sessions_of_its_runs() {
+    let home = scratch_home("rig-front-store");
+    let run = |command: Option<&str>| {
+        let id: SessionId = "1700000000-11".parse().ok()?;
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        let thread = MemoryStore::default();
+        let opened = thread.clone();
+        let reply = Front::new("reply")
+            .on_command("reply", "", "Answer a thread")
+            .session_store(move |_| Ok(Arc::new(opened.clone())));
+        let invoked = Invoked {
+            args: Invocation {
+                command: command.map(str::to_owned),
+                ..Invocation::default()
+            },
+            terminal: false,
+        };
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .insert_resource(invoked)
+            .add_plugins(SessionPlugin)
+            .add_front(reply)
+            .add_front(Front::new("print").headless());
+        app.finish();
+        let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+        let store = app.world().get_resource::<SessionStore>()?.0.clone();
+        save(&*store, "agent-1", &mut said).ok()?;
+        let kept_in_thread = !thread.logs().ok()?.is_empty();
+        Some((app.runs_front("reply"), kept_in_thread))
+    };
+    let reply = run(Some("reply"));
+    let print = run(None);
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(reply, Some((true, true)));
+    assert_eq!(print, Some((false, false)));
+}
+
+#[test]
+fn a_new_session_and_a_fork_start_new_and_a_second_start_resumes() {
     let root = std::env::temp_dir().join(format!("rig-first-{}", std::process::id()));
     let home = Home::at(&root);
     let id: SessionId = "1700000000-3"
@@ -396,21 +505,27 @@ fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
             .add_plugins(SessionPlugin)
-            .add_systems(Last, watch.after(super::fork_sessions));
+            .add_systems(Last, watch.after(ForkSessions));
         app.finish();
         app.update();
         app
     };
+    let reason = |app: &App| {
+        app.world()
+            .get_resource::<AppStart>()
+            .map(|started| started.0)
+    };
     let mut first = start(&session);
-    assert!(first.world().contains_resource::<FirstStart>());
-    assert!(!start(&session).world().contains_resource::<FirstStart>());
+    assert_eq!(reason(&first), Some(StartReason::New));
+    // A started session is resumed, whatever else, without a launcher.
+    assert_eq!(reason(&start(&session)), Some(StartReason::Resumed));
     first.world_mut().trigger(ForkSession::default());
     first.update();
     let fork = first.world().resource::<Seen>().forked.first().cloned();
     assert!(fork.is_some(), "the session was forked");
     if let Some(fork) = fork {
         let fork = start(&home.session(&fork.to));
-        assert!(fork.world().contains_resource::<FirstStart>());
+        assert_eq!(reason(&fork), Some(StartReason::New));
     }
     drop(std::panic::take_hook());
     std::fs::remove_dir_all(&root).ok();
@@ -433,7 +548,7 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
             .insert_resource(SessionPaths(session.clone()))
             .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
             .add_plugins(SessionPlugin)
-            .add_systems(Last, watch.after(super::fork_sessions));
+            .add_systems(Last, watch.after(ForkSessions));
         if let Some(store) = dir_store(&session) {
             app.insert_resource(SessionStore::new(store));
         }
@@ -581,4 +696,141 @@ fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
     assert_eq!(typed(&conversation, 2), None);
     assert_eq!(typed(&conversation, 4).as_deref(), Some("and test"));
     assert_eq!(first_typed(&conversation).as_deref(), Some("fix it"));
+}
+
+/// The frame a plugin's system last wrote the session's store in.
+#[derive(Resource, Default)]
+struct Frame(u32);
+
+/// Writes the frame's number into a plugin file of the session's store.
+fn note_frame(mut frame: ResMut<Frame>, store: Res<SessionStore>) {
+    frame.0 += 1;
+    let text = frame.0.to_string();
+    store
+        .0
+        .write_file("plugins/notes/frame", text.as_bytes())
+        .ok();
+}
+
+#[test]
+fn a_fork_has_what_a_plugin_wrote_before_it_in_its_frame() {
+    let home = scratch_home("rig-session-fork-order");
+    let id: SessionId = "1700000000-3"
+        .parse()
+        .unwrap_or_else(|_| SessionId::generate());
+    let session = home.session(&id);
+    fs::create_dir_all(session.path()).ok();
+    let Some(store) = dir_store(&session) else {
+        return;
+    };
+    let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+    assert!(save(&store, "agent-1", &mut said).is_ok());
+    let mut app = App::new();
+    app.init_resource::<Seen>()
+        .init_resource::<Frame>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session))
+        .insert_resource(SessionStore::new(store))
+        .add_plugins(SessionPlugin)
+        .add_systems(
+            Last,
+            (
+                note_frame.after(WriteJournal).before(ForkSessions),
+                watch.after(ForkSessions),
+            ),
+        );
+    app.update();
+    app.world_mut().trigger(ForkSession::default());
+    app.update();
+    let forked = app.world().resource::<Seen>().forked.first().cloned();
+    let copy = forked.and_then(|forked| dir_store(&home.session(&forked.to)));
+    let noted = copy.and_then(|copy| copy.read_file("plugins/notes/frame").ok());
+    assert_eq!(noted.as_deref(), Some(&b"2"[..]), "the fork's frame");
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Replaces `sk-123` with `[REDACTED]` wherever a session keeps it.
+fn redact() -> Strings<impl Fn(&mut String) -> bool + Send + Sync> {
+    Strings(|text: &mut String| {
+        let hit = text.contains("sk-123");
+        if hit {
+            *text = text.replace("sk-123", "[REDACTED]");
+        }
+        hit
+    })
+}
+
+/// Whether a file under `dir` holds `sk-123`, and which.
+fn secret_in(dir: &Path) -> Vec<PathBuf> {
+    let files = snapshot(dir).into_iter();
+    let holds = |bytes: &Vec<u8>| bytes.windows(6).any(|w| w == b"sk-123");
+    files
+        .filter(|(_, bytes)| bytes.as_ref().is_some_and(holds))
+        .map(|(path, _)| path)
+        .collect()
+}
+
+#[test]
+fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
+    let home = scratch_home("rig-session-rewrite-scratch");
+    let ids = ["1700000000-4", "1700000000-5"].map(|id| id.parse::<SessionId>());
+    let [Ok(id), Ok(other)] = ids else {
+        return;
+    };
+    let (session, stopped) = (home.session(&id), home.session(&other));
+    for dir in [&session, &stopped] {
+        fs::create_dir_all(dir.path().join("spill")).ok();
+        fs::write(dir.path().join("spill/shell-1.txt"), "key sk-123\n").ok();
+        assert!(dir.set_name(Some("key sk-123")).is_ok());
+        let mut said = conversation::Conversation::from_messages([Message::user("sk-123")]);
+        let saved = dir_store(dir).map(|store| save(&store, "agent-1", &mut said));
+        assert!(saved.is_some_and(|saved| saved.is_ok()));
+    }
+    fs::write(stopped.log(), "it said sk-123\n").ok();
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()));
+    let layer = log_layer(&mut app);
+    let file = app.world().resource::<super::TextLog>().file.clone();
+    let write = |line: &str| {
+        std::io::Write::write_all(&mut super::LogWriter(file.clone()), line.as_bytes())
+    };
+    assert!(write("the key is sk-123\n").is_ok());
+    app.add_plugins((
+        TaskPoolPlugin::default(),
+        AgentPlugin,
+        JournalPlugin,
+        SessionPlugin,
+    ));
+    drop(std::panic::take_hook());
+    app.finish();
+    app.update();
+    app.world_mut().trigger(RewriteSession {
+        by: Author::plugin("redact"),
+        with: Arc::new(redact()),
+        asker: None,
+    });
+    app.update();
+    assert!(write("after\n").is_ok());
+    assert_eq!(secret_in(session.path()), Vec::<PathBuf>::new());
+    assert_eq!(session.name().as_deref(), Some("key [REDACTED]"));
+    let log = fs::read_to_string(session.log()).unwrap_or_default();
+    assert!(log.ends_with("the key is [REDACTED]\nafter\n"), "{log}");
+
+    let stores = SessionStores::default();
+    let by = || Author::plugin("redact");
+    let this = rewrite_stopped(&stores, &session, &session, by(), &redact());
+    assert!(this.is_err(), "the running session is RewriteSession's");
+    let lock = File::create(stopped.launcher_lock()).ok();
+    assert!(lock.as_ref().is_some_and(|lock| lock.try_lock().is_ok()));
+    let elsewhere = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
+    assert_eq!(elsewhere.err().as_deref(), Some("another rig runs it"));
+    assert_eq!(secret_in(stopped.path()).len(), 4, "nothing was changed");
+    drop(lock);
+    let done = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
+    assert_eq!(done.map(|done| done.logs.len()), Ok(1));
+    assert_eq!(secret_in(stopped.path()), Vec::<PathBuf>::new());
+    drop((app, layer));
+    fs::remove_dir_all(home.root()).ok();
 }

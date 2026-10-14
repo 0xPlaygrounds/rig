@@ -11,7 +11,6 @@ workspace = true
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # `$EDITOR` run with the terminal.
 rig-tui = { path = "../../plugins/rig-tui" }
@@ -20,7 +19,6 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
-rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 # The arguments of the test's `shell`.
 schemars = { workspace = true }

@@ -260,7 +260,7 @@ fn a_wait_on_the_user_and_a_subagent_nest_under_their_calls() {
         .trigger(Deliver::new(parent, "look around", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| world.resource::<Asked>().0);
     std::thread::sleep(Duration::from_millis(500));
-    let yes = Answer::Choice("yes".to_owned());
+    let yes = Answer::choice("yes");
     assert!(answer_open(app.world_mut(), "Run guarded?", &yes));
     run_until(&mut app, &wakes, |world| {
         let turns = &world.resource::<Timelines>().turns;

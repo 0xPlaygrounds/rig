@@ -263,6 +263,41 @@ fn blocks_from_the_first_unfinished_item_on_replay_canonically() {
     assert_eq!(natives, [true, false, false], "{choice:?}");
 }
 
+/// A call still open when the provider ends the reply is reported as
+/// unfinished, with the arguments that came; a finished call beside it is
+/// not, and the report survives a round trip through JSON.
+#[test]
+fn a_call_the_reply_ends_in_the_middle_of_is_unfinished() {
+    use crate::completion::FinishReason;
+    let fragment = |id: Option<&'static str>, arguments: &'static str| CallFragment {
+        id,
+        name: id.map(|_| "write"),
+        arguments: Some(arguments),
+    };
+    let decoded = write_on_wire(None, stop(FinishReason::Length), |out| {
+        out.fragment(Some(0), fragment(Some("done"), r#"{"path":"a"}"#))?;
+        out.finish(0)?;
+        out.fragment(Some(1), fragment(Some("cut"), r#"{"path":"b","text":"hal"#))
+    });
+    let cut = response(decoded);
+    let unfinished: Vec<String> = cut
+        .unfinished_calls()
+        .map(|call| call.id.wire().into_owned())
+        .collect();
+    assert_eq!(unfinished, ["cut"]);
+    let again: CompletionResponse =
+        serde_json::from_value(serde_json::to_value(&cut).expect("serializes"))
+            .expect("deserializes");
+    assert_eq!(again.unfinished_calls().count(), 1);
+    assert_eq!(again, cut);
+
+    let whole = write_on_wire(None, stop(FinishReason::ToolCalls), |out| {
+        out.fragment(Some(0), fragment(Some("done"), r#"{"path":"a"}"#))?;
+        out.finish(0)
+    });
+    assert_eq!(response(whole).unfinished_calls().count(), 0);
+}
+
 #[test]
 fn a_call_sent_without_an_id_keeps_its_item_only_where_the_item_has_an_id_slot() {
     use crate::completion::FinishReason;

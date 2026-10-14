@@ -6,9 +6,11 @@ use rig_core::completion::Message;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
-    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, Subtask, answered,
+    AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Report, Request, SubagentSystems, Subtask,
+    answered,
 };
 use rig_harness::prelude::*;
+use rig_harness::rig_memory::{Place, rewrite_value};
 
 /// The report on a request a restart cut short.
 const INTERRUPTED: &str = "Interrupted: the session restarted before the subagent answered.";
@@ -27,12 +29,47 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
+        .configure_sets(
+            AgentPass,
+            SubagentSystems::StopRestored
+                .after(GateSystems::After)
+                .before(ApprovalSystems)
+                .before(GateSystems::Fallback),
+        )
         .add_systems(
             AgentPass,
-            stop_restored
-                .after(GateSystems::After)
-                .before(GateSystems::Fallback),
+            stop_restored.in_set(SubagentSystems::StopRestored),
+        )
+        .add_message::<SessionRewritten>()
+        .add_systems(
+            Update,
+            follow_rewrites.run_if(on_message::<SessionRewritten>),
         );
+}
+
+/// Maps each finished subagent's answer through the rewrites of the
+/// session, as its conversation was, and inserts it again when they
+/// changed it: it reports nothing more, as it owes no request.
+fn follow_rewrites(
+    mut rewritten: MessageReader<SessionRewritten>,
+    agents: Query<(Entity, &AgentId, &Lifecycle)>,
+    mut commands: Commands,
+) {
+    let done = rewritten.read().filter(|done| done.result.is_ok());
+    let maps: Vec<_> = done.map(|done| done.with.clone()).collect();
+    for (agent, id, lifecycle) in &agents {
+        let Lifecycle::Finished(text) = lifecycle else {
+            continue;
+        };
+        let (mut text, mut changed) = (text.clone(), false);
+        let at = Place::Unsaved { log: &id.0 };
+        for with in &maps {
+            changed |= matches!(rewrite_value(&**with, &at, "report", &mut text), Ok(true));
+        }
+        if changed {
+            commands.entity(agent).insert(Lifecycle::Finished(text));
+        }
+    }
 }
 
 /// An agent as the subagent tools see it.
@@ -40,7 +77,8 @@ pub(super) fn add(app: &mut App) {
 pub(super) struct AgentData {
     pub(super) entity: Entity,
     pub(super) id: &'static AgentId,
-    pub(super) subtask: Option<&'static Subtask>,
+    pub(super) subtask: Has<Subtask>,
+    pub(super) title: Option<&'static AgentTitle>,
     pub(super) peers: Has<Peers>,
     pub(super) busy: Has<ActiveTurn>,
     pub(super) lifecycle: Option<&'static Lifecycle>,
@@ -84,8 +122,8 @@ impl Agents<'_, '_> {
     pub(super) fn author(&self, agent: Entity) -> Option<Author> {
         let agent = self.agents.get(agent).ok()?;
         let author = Author::agent(agent.id.clone(), None);
-        Some(match agent.subtask {
-            Some(subtask) => author.titled(subtask.0.clone()),
+        Some(match agent.title.filter(|_| agent.subtask) {
+            Some(title) => author.titled(title.0.clone()),
             None => author,
         })
     }
@@ -189,19 +227,17 @@ impl Agents<'_, '_> {
     }
 }
 
-/// Names a subagent or a helper by its title, when it is spawned or
-/// restored.
+/// Names an agent by its title, such as a subagent or a helper when it is
+/// spawned or restored.
 fn name_subagent(
-    inserted: On<Insert<(Subtask, Helper)>>,
-    titles: Query<AnyOf<(&Subtask, &Helper)>>,
+    inserted: On<Insert<AgentTitle>>,
+    titles: Query<&AgentTitle>,
     mut commands: Commands,
 ) {
-    let title = match titles.get(inserted.entity) {
-        Ok((Some(Subtask(title)), _) | (_, Some(Helper(title)))) => title,
-        _ => return,
-    };
-    let name = Name::new(title.clone());
-    commands.entity(inserted.entity).insert(name);
+    if let Ok(AgentTitle(title)) = titles.get(inserted.entity) {
+        let name = Name::new(title.clone());
+        commands.entity(inserted.entity).insert(name);
+    }
 }
 
 /// Gives a subagent its role as a prompt section of its own when it is
@@ -343,8 +379,8 @@ pub(super) struct Considered;
 /// reports each request as interrupted, unless a plugin claimed any of the
 /// turn's restored work in Gate: held, decided or superseded one of its
 /// calls, or ended the turn. It looks at each restored turn once, after
-/// every gate of the pass its calls are admitted in, before the kernel's
-/// own answers.
+/// every gate of the pass its calls are admitted in, before the user is
+/// asked to approve any of them and the kernel's own answers.
 pub(super) fn stop_restored(
     turns: Query<
         (Entity, &TurnOf, &Calls),

@@ -145,7 +145,7 @@ fn the_first_edit_waits_for_the_users_choice() {
         output(&app, "1").contains("modified a"),
         "the read ran unasked"
     );
-    let stash = Answer::Choice("stash".to_owned());
+    let stash = Answer::choice("stash");
     assert!(answer_open(app.world_mut(), &title(1), &stash));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
@@ -191,7 +191,7 @@ fn the_first_edit_waits_for_the_users_choice() {
         waiting(world) == 3 && asked(world) == 1
     });
     assert_eq!(waiting(app.world()), 3);
-    let go_on = Answer::Choice("continue".to_owned());
+    let go_on = Answer::choice("continue");
     assert!(answer_open(app.world_mut(), &title(1), &go_on));
     let edited = [b, c, d];
     run_until(&mut app, &wakes, |_| {

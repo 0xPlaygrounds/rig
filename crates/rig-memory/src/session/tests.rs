@@ -5,8 +5,8 @@ use rig_core::conversation::{Aside, Author, Change, Conversation, Entry, Halt};
 use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::json;
 
-use super::{Record, SavedAgent, Session, as_of, fork, history, load, save};
-use crate::{Files, LoadError, MemoryStore, Repair, Store, Writer};
+use super::{Record, SavedAgent, Session, as_of, history, load, save};
+use crate::{Files, Keep, LoadError, MemoryStore, Repair, Store, Writer, fork};
 
 /// A conversation with an image, an authored entry, a splice that keeps an
 /// id, a stopped request, and a saved and an unsaved aside.
@@ -57,7 +57,7 @@ fn a_saved_conversation_folds_back_to_itself() {
     );
     let log = String::from_utf8(store.read_log("agent").expect("a log")).expect("text");
     assert!(log.starts_with(r#"{"seq":0,"n":0,"#), "{log}");
-    assert!(log.contains(r#""format":"rig-session/1""#), "{log}");
+    assert!(log.contains(r#""format":"rig-session/2""#), "{log}");
     assert!(!log.contains("cG5n"), "the image data is not in the log");
 
     // A running writer's log folds back the same, with saved values.
@@ -76,7 +76,7 @@ fn a_saved_conversation_folds_back_to_itself() {
     assert_eq!(main.conversation, live);
     assert_eq!(main.state, [("mode".to_owned(), json!("plan"))].into());
     assert_eq!(session.state, [("theme".to_owned(), json!("dark"))].into());
-    assert_eq!(main.stamps.len(), live.messages().len());
+    assert!(main.rewrites.is_empty());
 }
 
 #[test]
@@ -146,7 +146,7 @@ fn only_the_conversation_a_log_holds_continues_it() {
 
     // A fork's log is its own.
     let forked = MemoryStore::default();
-    fork(&store, &forked, None).expect("forked");
+    fork(&store, &forked, None, &Keep).expect("forked");
     let mut theirs = load(&forked, "a").expect("loaded");
     theirs.push(Message::assistant("theirs"));
     save(&forked, "a", &mut theirs).expect("saved");
@@ -243,6 +243,90 @@ fn a_torn_tail_is_reported_then_set_aside() {
     assert_eq!(load(&*store, "main").expect("loaded"), conversation);
 }
 
+/// A log whose first write was cut short holds no record yet: reading
+/// reports it torn whole, and opening it to write sets it aside, so the
+/// header written next starts a line and the session still reads.
+#[test]
+fn a_log_holding_only_a_torn_first_line_is_set_aside_before_it_is_written() {
+    let store = Arc::new(MemoryStore::default());
+    store
+        .append_log("main", br#"{"seq":0,"n":0,"t":1,"ty"#)
+        .expect("torn");
+    let session = Session::read(&*store).expect("read");
+    assert!(session.agent("main").is_none());
+    let torn = Repair::TornTail {
+        log: "main".to_owned(),
+        kept: 0,
+        cut: 24,
+        set_aside: None,
+    };
+    assert_eq!(session.repairs, [torn]);
+
+    let (writer, session) = Writer::open(store.clone()).expect("opened");
+    assert!(matches!(
+        session.repairs.as_slice(),
+        [Repair::TornTail {
+            kept: 0,
+            set_aside: Some(_),
+            ..
+        }]
+    ));
+    assert_eq!(
+        store.read_file("recovered/main-1.part").expect("set aside"),
+        br#"{"seq":0,"n":0,"t":1,"ty"#
+    );
+    writer.start();
+    let mut conversation = Conversation::from_messages([Message::user("hello")]);
+    writer.save("main", &mut conversation);
+    writer.flush();
+    assert_eq!(load(&*store, "main").expect("loaded"), conversation);
+}
+
+/// The library saves set a torn last line aside before they append, as
+/// [`Writer::open`] does, so the next record starts a line of its own.
+#[test]
+fn the_library_saves_set_a_torn_tail_aside_before_they_append() {
+    let tear = br#"{"seq":2,"n":"#;
+
+    // `save` onto a log whose last record was cut short.
+    let store = MemoryStore::default();
+    let mut conversation = Conversation::from_messages([Message::user("hello")]);
+    save(&store, "main", &mut conversation).expect("saved");
+    store.append_log("main", tear).expect("torn");
+    conversation.push(Message::assistant("hi"));
+    save(&store, "main", &mut conversation).expect("saved after the tear");
+    assert_eq!(load(&store, "main").expect("loaded"), conversation);
+    assert_eq!(
+        store.read_file("recovered/main-1.part").expect("set aside"),
+        tear
+    );
+
+    // `save` onto a log whose first write was cut short.
+    let store = MemoryStore::default();
+    store.append_log("main", tear).expect("torn");
+    save(&store, "main", &mut conversation).expect("saved after the tear");
+    assert_eq!(load(&store, "main").expect("loaded"), conversation);
+    assert_eq!(
+        store.read_file("recovered/main-1.part").expect("set aside"),
+        tear
+    );
+
+    // `Session::save` onto a log whose last record was cut short.
+    store.append_log("main", tear).expect("torn");
+    let mut session = Session::read(&store).expect("read");
+    if let Some(agent) = session.agent_mut("main") {
+        agent.conversation.push(Message::user("again"));
+    }
+    session.save(&store).expect("saved after the tear");
+    let read = Session::read(&store).expect("read again");
+    assert_eq!(read.repairs, []);
+    assert_eq!(read.agent("main"), session.agent("main"));
+    assert_eq!(
+        store.read_file("recovered/main-2.part").expect("set aside"),
+        tear
+    );
+}
+
 #[test]
 fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
     let store = MemoryStore::default();
@@ -336,7 +420,7 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
     );
 
     let forked = MemoryStore::default();
-    fork(&store, &forked, Some(("main", three))).expect("forked");
+    fork(&store, &forked, Some(("main", three)), &Keep).expect("forked");
     let read = Session::read(&forked).expect("read");
     let ids: Vec<&str> = read.agents.iter().map(|agent| agent.id.as_str()).collect();
     assert_eq!(ids, ["main"], "the subagent came later");
@@ -347,6 +431,6 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
     assert_eq!(forked.files().expect("files"), ["plugins/notes.json"]);
 
     let whole = MemoryStore::default();
-    fork(&store, &whole, None).expect("forked");
+    fork(&store, &whole, None, &Keep).expect("forked");
     assert_eq!(Session::read(&whole).expect("read").agents.len(), 2);
 }

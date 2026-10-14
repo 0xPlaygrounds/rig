@@ -149,7 +149,7 @@ fn edits_runs_edits_and_asks_before_shell_also_for_a_subagent() {
     assert_eq!(model.request_count(), 1);
 
     // The user answers Deny, and the model reads the denial.
-    let deny = Answer::Choice("deny".to_owned());
+    let deny = Answer::choice("deny");
     assert!(answer_open(app.world_mut(), shell_asked, &deny));
     run_until(&mut app, &wakes, |world| {
         model.request_count() == 2 && idle(world, agent)

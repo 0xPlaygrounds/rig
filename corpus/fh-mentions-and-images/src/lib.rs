@@ -44,7 +44,7 @@ use rig_harness::rig_core::tool::{
     FileRead, FilesRead, ToolContext, ToolExecutionError, content_hash,
 };
 use rig_tools::attach::{is_image_path, is_path_reference, read_image};
-use rig_tools::workspace::{Local, Stat, Workspace};
+use rig_tools::workspace::{Listing, Local, Stat, Workspace};
 use rig_tools::{blocking, numbered};
 use rig_tui::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyPress, KeyPressed, KeyScope, TuiInput,
@@ -253,7 +253,7 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
 /// what `.gitignore` leaves out), one per line, within `max_bytes`.
 fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<String, String> {
     let files = workspace
-        .files(path, None, false)
+        .files(path, None, Listing::Visible)
         .map_err(|failure| failure.to_string())?;
     let mut list = String::new();
     for (at, file) in files.iter().enumerate() {

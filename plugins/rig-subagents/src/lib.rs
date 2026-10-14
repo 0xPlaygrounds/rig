@@ -104,6 +104,9 @@ pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
 pub enum SubagentSystems {
     /// Refuses a request deeper than [`SubagentPolicy`] allows.
     Gate,
+    /// Stops the restored turn of an agent that owed reports, after
+    /// every gate and before approvals and the kernel's own answers.
+    StopRestored,
 }
 pub use tools::{MESSAGE, TASK, WAIT};
 
@@ -116,7 +119,11 @@ pub struct SubagentsPlugin;
 
 impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate));
+        app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate))
+            .keeps_saved::<Subtask>()
+            .keeps_saved::<Helper>()
+            .keeps_saved::<Peers>()
+            .keeps_saved::<OpenRequests>();
         spawn::add(app);
         tools::add(app);
         lifecycle::add(app);
@@ -125,16 +132,17 @@ impl Plugin for SubagentsPlugin {
     }
 }
 
-/// On a subagent: its task's short title, which names it.
-#[derive(Component, Reflect, Clone, Debug, Default)]
+/// On a subagent: it runs a task, whose short title is its
+/// [`AgentTitle`], which names it.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Saved, Default, Clone, Debug)]
-pub struct Subtask(pub String);
+pub struct Subtask;
 
-/// On a helper a plugin spawned ([`Role::Helper`]): its title, which names
-/// it.
-#[derive(Component, Reflect, Clone, Debug, Default)]
+/// On a helper a plugin spawned ([`Role::Helper`]); its title is its
+/// [`AgentTitle`], which names it.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Saved, Default, Clone, Debug)]
-pub struct Helper(pub String);
+pub struct Helper;
 
 /// On a message: it is an agent's report on requests it was sent; its
 /// author names the agent and the last request.
@@ -191,7 +199,8 @@ pub enum Lifecycle {
     /// on; it reports nothing meanwhile.
     WaitingOn(Entity),
     /// Its turn ended with this answer and nothing it asked is open: the
-    /// answer is its report on every request it owes.
+    /// answer is its report on every request it owes. A rewrite of the
+    /// session that changes it inserts it again, mapped.
     Finished(String),
 }
 

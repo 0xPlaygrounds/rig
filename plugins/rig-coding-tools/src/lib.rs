@@ -20,8 +20,8 @@ use rig_harness::prelude::{
     Added, Admitted, AgentPass, App, AppPerCallExt, AppSettingsExt, Attachment, AuthorKind,
     Commands, Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs,
     MessagePart, MessageWriter, Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot,
-    ProjectWorkspace, Query, Res, Resource, Running, SystemSet, Tool, ToolOptions, Wake, WorkDir,
-    blocking,
+    ProjectWorkspace, Query, Res, Resource, Running, Started, SystemSet, Tool, ToolOptions, Wake,
+    Without, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::serde::Deserialize;
@@ -359,9 +359,10 @@ impl From<Result<Attached, ToolExecutionError>> for ReadFiles {
 /// Reads the files each user's message names into its attachments as it
 /// comes in, with a notice about each that could not be, and a warning
 /// about each that is not there: inline in this machine's workspace, else
-/// as work off the main thread that holds the message.
+/// as work off the main thread that holds the message. A message a restart
+/// put back in the inbox ([`Started`]) has them already.
 fn attach(
-    mut typed: Query<(Entity, &mut Incoming, &ForAgent), Added<Admitted>>,
+    mut typed: Query<(Entity, &mut Incoming, &ForAgent), (Added<Admitted>, Without<Started>)>,
     dirs: Query<&WorkDir>,
     workspace: Res<ProjectWorkspace>,
     root: Res<ProjectRoot>,

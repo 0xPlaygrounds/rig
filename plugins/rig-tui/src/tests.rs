@@ -6,6 +6,23 @@ use rig_harness::prelude::*;
 
 use super::*;
 
+/// What a redaction of `secret` writes once the session is rewritten.
+pub(crate) fn redacted(secret: &'static str) -> SessionRewritten {
+    use rig_harness::rig_memory::{Rewritten, Strings};
+    let with = Strings(move |text: &mut String| {
+        let hit = text.contains(secret);
+        if hit {
+            *text = text.replace(secret, "[REDACTED]");
+        }
+        hit
+    });
+    SessionRewritten {
+        asker: None,
+        with: std::sync::Arc::new(with),
+        result: Ok(Rewritten::default()),
+    }
+}
+
 /// The frames a panel drew.
 #[derive(Resource, Default)]
 struct Drawn(usize);
@@ -113,11 +130,10 @@ pub(crate) fn drawn_rows(
                 return Vec::new();
             };
             shown.streaming = streaming.clone();
-            let (renderers, entry_renderers) = layout.looks();
+            let renderers = layout.looks.by_kind();
             let sources = Sources {
                 view: &transcript_view,
                 renderers: &renderers,
-                entry_renderers: &entry_renderers,
                 facts: layout.facts(),
                 whole: false,
                 note_cut: drawn.is_some(),
@@ -132,7 +148,7 @@ pub(crate) fn drawn_rows(
             }
             let selected = transcript_view.selected.as_ref();
             let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
-            view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
+            view.items = crate::render::selectable(visible.marks);
             TranscriptView::note_drawn(&mut transcript_view, visible.top, 80);
             lines
         };
@@ -223,12 +239,12 @@ fn typed_keys_edit_the_input_and_enter_sends_it() {
 fn a_commands_argument_completes_to_a_contributed_candidate() {
     let (mut app, _) = view_app();
     app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
-    let models = ArgCompletion::new("/model")
+    let models = CompletionSource::arg("/model")
         .candidate("openai/gpt-5", "")
         .candidate("acme/fast", "no key");
     app.world_mut().spawn(models);
     app.world_mut()
-        .spawn(ArgCompletion::new("other").candidate("acme/other", ""));
+        .spawn(CompletionSource::arg("other").candidate("acme/other", ""));
     type_text(&mut app, "/model acme/");
     press(&mut app, "tab");
     assert_eq!(typed(&app), "/model acme/fast ");

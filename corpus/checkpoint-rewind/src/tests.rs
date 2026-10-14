@@ -51,7 +51,7 @@ fn start(home: &Home, session: &SessionId, model: &MockCompletionModel) -> (App,
     let (mut app, wakes) = app_in(home, session);
     app.insert_resource(ProjectRoot(repo(home)))
         .insert_resource(scripted_models([("test/model", model)]))
-        .insert_resource(Answers::new([Answer::Choice("yes".to_owned())]))
+        .insert_resource(Answers::new([Answer::choice("yes")]))
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
@@ -131,7 +131,7 @@ fn rewind_restores_files_and_conversation_without_touching_the_branch() {
     let picked = item(&mut app, "change a");
     assert!(picked.is_some(), "a picker with turn 2's message");
     let (picker, index) = picked.unwrap_or((Entity::PLACEHOLDER, 0));
-    let chosen = Some(Chosen::Item(index));
+    let chosen = Some(Chosen::item(index));
     app.world_mut().trigger(Pick::person(picker, chosen));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Collected<Recalled>>().0.is_empty()

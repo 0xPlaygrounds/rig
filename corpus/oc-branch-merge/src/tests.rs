@@ -64,20 +64,32 @@ fn run(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) {
     wakes.try_iter().count();
 }
 
-fn branches(app: &App, agent: Entity) -> Branches {
+fn lines_of(app: &App, agent: Entity) -> Vec<Line> {
     app.world()
-        .get::<Branches>(agent)
-        .cloned()
+        .get::<Conversation>(agent)
+        .map(lines)
         .unwrap_or_default()
 }
 
-/// Waits for merge number `n` to be applied.
+fn active(app: &App, agent: Entity) -> String {
+    app.world()
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.branch_title().to_owned())
+        .unwrap_or_default()
+}
+
+/// How many merge notes there are on all branches.
+fn notes(world: &World, agent: Entity) -> usize {
+    let Some(conversation) = world.get::<Conversation>(agent) else {
+        return 0;
+    };
+    let merges = records(conversation).into_iter();
+    merges.filter(|aside| aside.kind == MERGE).count()
+}
+
+/// Waits for merge note number `n`.
 fn merged(app: &mut App, wakes: &Receiver<()>, agent: Entity, n: usize) {
-    run_until(app, wakes, |world| {
-        world
-            .get::<Branches>(agent)
-            .is_some_and(|branches| branches.merges.len() >= n)
-    });
+    run_until(app, wakes, |world| notes(world, agent) >= n);
     for _ in 0..3 {
         app.update();
     }
@@ -85,11 +97,15 @@ fn merged(app: &mut App, wakes: &Receiver<()>, agent: Entity, n: usize) {
 
 /// The text of branch `name`'s messages.
 fn line_text(app: &App, agent: Entity, name: &str) -> String {
-    let Some(conversation) = app.world().get::<Conversation>(agent) else {
-        return String::new();
-    };
-    let live = entries(conversation);
-    format!("{:?}", branches(app, agent).line(name, Some(&live)))
+    let found = lines_of(app, agent);
+    let line = found.iter().find(|line| line.title == name);
+    let said = line.map(|line| {
+        line.said
+            .iter()
+            .map(|said| &said.message)
+            .collect::<Vec<_>>()
+    });
+    format!("{said:?}")
 }
 
 fn last_request(model: &MockCompletionModel) -> String {
@@ -134,6 +150,7 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
         reply("- fourth turn: nothing new"),
         reply("C reply"),
         reply("- C summary"),
+        reply("- C summary again"),
     ]);
     let id = SessionId::generate();
     let (mut app, wakes) = start(&home, &id);
@@ -141,8 +158,7 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
     if let Some(connection) = connect(&model) {
         app.world_mut().entity_mut(agent).insert(connection);
     }
-    *app.world_mut().resource_mut::<Answers>() =
-        Answers::new([Answer::Choice("accept".to_owned())]);
+    *app.world_mut().resource_mut::<Answers>() = Answers::new([Answer::choice("accept")]);
 
     ask(&mut app, &wakes, agent, "first shared");
     ask(&mut app, &wakes, agent, "second shared");
@@ -153,10 +169,8 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
     ask(&mut app, &wakes, agent, "why is CI flaky?");
     ask(&mut app, &wakes, agent, "run the tests serially");
     ask(&mut app, &wakes, agent, "anything else?");
-    assert_eq!(fs::read_to_string(&x).ok().as_deref(), Some("fixed\n"));
     run(&mut app, &wakes, agent, "switch A");
-    // A never wrote x.rs: the switch put it back as A has it.
-    assert_eq!(fs::read_to_string(&x).ok().as_deref(), Some("broken\n"));
+    assert_eq!(active(&app, agent), "A");
 
     run(&mut app, &wakes, agent, "merge B");
     merged(&mut app, &wakes, agent, 1);
@@ -178,27 +192,21 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
         "{next}"
     );
 
-    // A fourth turn on B; the second merge summarizes it alone.
+    // A fourth turn on B; the second merge summarizes it alone. The user
+    // put x.rs back on A, so B's x.rs is offered and applied.
     run(&mut app, &wakes, agent, "switch B");
     ask(&mut app, &wakes, agent, "a fourth question");
     run(&mut app, &wakes, agent, "switch A");
-    let written = branches(&app, agent)
-        .get("B")
-        .and_then(|b| b.files.first().cloned());
-    let written = written.map(|record| record.path).unwrap_or_default();
+    fs::write(&x, "broken\n").ok();
+    let written = x.to_string_lossy().into_owned();
     let mut answers = app.world_mut().resource_mut::<Answers>();
-    answers
-        .script
-        .push_back(Answer::Choice("accept".to_owned()));
-    answers.script.push_back(Answer::Choices(vec![written]));
+    answers.script.push_back(Answer::choice("accept"));
+    answers.script.push_back(Answer::choices(vec![written]));
     run(&mut app, &wakes, agent, "merge B --with-files");
     merged(&mut app, &wakes, agent, 2);
     let summarizer = last_request(&model);
     assert!(summarizer.contains("a fourth question"), "{summarizer}");
     assert!(!summarizer.contains("why is CI flaky?"), "{summarizer}");
-    run_until(&mut app, &wakes, |world| {
-        world.resource::<Answers>().asked.len() >= 3
-    });
     run_until(&mut app, &wakes, |_| {
         fs::read_to_string(&x).is_ok_and(|it| it == "fixed\n")
     });
@@ -210,9 +218,7 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
     ask(&mut app, &wakes, agent, "try C");
     let refused = errors(&app).len();
     let mut answers = app.world_mut().resource_mut::<Answers>();
-    answers
-        .script
-        .push_back(Answer::Choice("cancel".to_owned()));
+    answers.script.push_back(Answer::choice("cancel"));
     run(&mut app, &wakes, agent, "merge C into B");
     run_until(&mut app, &wakes, |world| {
         world.resource::<Answers>().asked.len() >= 4
@@ -220,30 +226,43 @@ fn a_side_branch_is_merged_as_one_note_and_only_once_per_message() {
     assert_eq!(errors(&app).len(), refused, "{:?}", errors(&app));
     run(&mut app, &wakes, agent, "merge B into C");
     run(&mut app, &wakes, agent, "merge B into B");
-    let errors = errors(&app);
-    let refusals = errors.get(refused..).unwrap_or_default();
+    let said = errors(&app);
+    let refusals = said.get(refused..).unwrap_or_default();
     let descendant = refusals.iter().any(|it| it.contains("descendant"));
-    assert!(refusals.len() == 2 && descendant, "{errors:?}");
+    assert!(refusals.len() == 2 && descendant, "{said:?}");
 
-    // Reloaded, the notes are on A alone.
+    // Reloaded, the notes are on A alone, B kept inside C's line.
     drop(app);
     let (mut app, wakes) = start(&home, &id);
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    run_until(&mut app, &wakes, |world| {
-        world
-            .get::<Branches>(agent)
-            .is_some_and(|branches| branches.list.len() == 4)
-    });
-    assert_eq!(branches(&app, agent).active, "C");
+    run_until(&mut app, &wakes, |world| notes(world, agent) == 2);
+    assert_eq!(active(&app, agent), "C");
     let a = line_text(&app, agent, "A");
     assert_eq!(a.matches(MERGED).count(), 2, "{a}");
     for other in ["main", "B", "C"] {
         let line = line_text(&app, agent, other);
         assert!(!line.contains(MERGED), "{other}: {line}");
     }
-}
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(BranchMergePlugin);
+    // A note into a kept branch goes there with its ids, and C stays on.
+    if let Some(connection) = connect(&model) {
+        app.world_mut().entity_mut(agent).insert(connection);
+    }
+    let a_ids = |app: &App| {
+        let found = lines_of(app, agent);
+        let a = found.iter().find(|line| line.title == "A").cloned();
+        a.map(|a| a.said.iter().map(|said| said.key).collect::<Vec<_>>())
+    };
+    let before = a_ids(&app);
+    app.world_mut()
+        .resource_mut::<Answers>()
+        .script
+        .push_back(Answer::choice("accept"));
+    run(&mut app, &wakes, agent, "merge C into B");
+    merged(&mut app, &wakes, agent, 3);
+    assert_eq!(active(&app, agent), "C");
+    assert_eq!(a_ids(&app), before);
+    let b = line_text(&app, agent, "B");
+    assert!(b.contains(MERGED) && b.contains("C summary again"), "{b}");
+    assert!(!line_text(&app, agent, "C").contains(MERGED));
 }

@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_core::tool::{ChangeKind, ContentHash, FilesChanged, Tool, ToolContext, content_hash};
 
-use super::{Contents, Stat, Workspace};
+use super::{Contents, Listing, Stat, Workspace};
 use crate::process::{Launcher, Process, Spawn};
 use crate::{
     Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Read, ReadArgs, Replacement, Search,
@@ -84,7 +84,7 @@ impl Workspace for Memory {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, _: bool) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
         let suffix = glob.map(|glob| glob.trim_start_matches('*'));
         Ok(self
             .files()

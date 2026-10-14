@@ -166,8 +166,8 @@ fn the_files_a_turn_created_are_offered_deleted_and_restored() {
     );
 
     // Tick scratch.py only, then delete it.
-    answer::<StrayPicker>(&mut app, Chosen::Items(vec![1]));
-    answer::<StrayActions>(&mut app, Chosen::Item(0));
+    answer::<StrayPicker>(&mut app, Chosen::items([1]));
+    answer::<StrayActions>(&mut app, Chosen::item(0));
     let told = |world: &World| {
         world
             .get::<Strays>(agent)
@@ -202,7 +202,7 @@ fn the_files_a_turn_created_are_offered_deleted_and_restored() {
     let batch = picker(app.world(), RESTORE_TITLE).map(|(entity, _)| entity);
     app.world_mut().trigger(Pick::person(
         batch.unwrap_or(Entity::PLACEHOLDER),
-        Some(Chosen::Item(0)),
+        Some(Chosen::item(0)),
     ));
     run_until(&mut app, &wakes, |_| dir.join("scratch.py").exists());
     let back = fs::read_to_string(dir.join("scratch.py")).ok();

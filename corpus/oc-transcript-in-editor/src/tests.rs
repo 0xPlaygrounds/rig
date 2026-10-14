@@ -45,6 +45,7 @@ fn start(
     app.insert_resource(scripted_models([("test/model", model)]))
         .insert_resource(RigHome(Home::at(home.to_path_buf())))
         .insert_resource(Scratch(Some(home.join("scratch"))))
+        .insert_resource(EditorTerminal)
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
@@ -111,6 +112,11 @@ fn messages(app: &App, agent: Entity) -> String {
     serde_json::to_string(&messages).unwrap_or_default()
 }
 
+fn ids(app: &App, agent: Entity) -> Vec<MessageId> {
+    let conversation = app.world().get::<Conversation>(agent);
+    conversation.map_or_else(Vec::new, |it| it.entries().map(|entry| entry.id).collect())
+}
+
 fn paired(app: &App, agent: Entity) -> bool {
     let conversation = app.world().get::<Conversation>(agent);
     conversation.is_some_and(|it| it.validate().is_ok())
@@ -157,6 +163,7 @@ fn the_conversation_is_edited_in_the_editor_validated_kept_and_undone() {
     ask(&mut app, &wakes, agent, "Find the bug.");
     ask(&mut app, &wakes, agent, "Third question.");
     let before = messages(&app, agent);
+    let before_ids = ids(&app, agent);
     assert!(
         before.contains("Turn three answer") && before.contains("build log line 4999"),
         "{before}"
@@ -253,6 +260,10 @@ skip { next }
         "Restored",
     );
     let undone = messages(&app, agent);
+    assert!(
+        ids(&app, agent).starts_with(&before_ids),
+        "the messages put back keep their ids"
+    );
     for wanted in [
         "Third question",
         "Turn three answer",
@@ -266,7 +277,7 @@ skip { next }
 
     // Deleting only the result asks; "delete both" takes the call too.
     app.world_mut()
-        .insert_resource(Answers::new([Answer::Choice(DELETE_BOTH.to_owned())]));
+        .insert_resource(Answers::new([Answer::choice(DELETE_BOTH)]));
     let drop_result = script(
         &home,
         "drop-result.sh",

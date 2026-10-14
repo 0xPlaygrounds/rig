@@ -1,4 +1,4 @@
-//! The saved format, `rig-session/1`: one JSON-lines log per agent, named
+//! The saved format, `rig-session/2`: one JSON-lines log per agent, named
 //! by the agent's id, plus the session's own ([`SESSION`]). Each line is a
 //! [`Stamp`] and one record: a `header` first, then `state` (a saved value
 //! by key, the latest wins, `null` removes it), `retired`, or one
@@ -7,10 +7,16 @@
 //! The header's `lineage` is the log's own
 //! [`Lineage`](rig_core::conversation::Lineage), chosen when it was
 //! started, so a conversation saved to it can be told from one that only
-//! has as many changes.
+//! has as many changes. Its `rewrites` say who rewrote the log in place
+//! ([`rewrite`](crate::rewrite)) and when; each rewrite gives the log a
+//! fresh lineage.
+//!
+//! A record keeps when each entry was made: a new entry was made when its
+//! record says (`t`), an entry put back as it was says so itself (`made`),
+//! and a reset's state carries each entry's.
 //!
 //! ```json
-//! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/1","log":"cd9a…","lineage":8125…}
+//! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/2","log":"cd9a…","lineage":8125…}
 //! {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"rig_ecs::agent::ToolAccess","value":"All"}
 //! {"seq":2,"n":2,"t":1791779409182,"type":"push","entries":[{"message":{…},"id":0}]}
 //! ```
@@ -24,7 +30,7 @@ use serde_json::Value;
 use web_time::{SystemTime, UNIX_EPOCH};
 
 /// The saved format a log's header names.
-pub const FORMAT: &str = "rig-session/1";
+pub const FORMAT: &str = "rig-session/2";
 
 /// The log of the session's own saved values, beside the agents' logs.
 pub const SESSION: &str = "session";
@@ -57,8 +63,9 @@ pub enum LoadError {
         "this session was saved by an older version of rig, whose format this one does not read"
     )]
     OldLayout,
-    /// A log's header names another format, or none.
-    #[error("the log {log} is in format {}, not {FORMAT}", found.as_deref().unwrap_or("(none)"))]
+    /// A log's header names another format, or none: one an older or a
+    /// newer rig saved, which this one does not read; it is left as it is.
+    #[error("{}", refusal(.log, .found.as_deref()))]
     Format {
         /// The log.
         log: String,
@@ -66,7 +73,7 @@ pub enum LoadError {
         found: Option<String>,
     },
     /// A record cannot be read, or its change does not apply.
-    #[error("the log {log} cannot be read at line {line}: {why}")]
+    #[error("the log `{log}` cannot be read at line {line}: {why}")]
     Record {
         /// The log.
         log: String,
@@ -77,11 +84,32 @@ pub enum LoadError {
     },
     /// The log moved on since the conversation saved to it was read: saving
     /// would lose the changes made there.
-    #[error("the log {log} changed since it was read")]
+    #[error("the log `{log}` changed since it was read")]
     Changed {
         /// The log.
         log: String,
     },
+}
+
+/// Why the log `log`, in format `found`, is not read.
+fn refusal(log: &str, found: Option<&str>) -> String {
+    let version = |format: &str| {
+        let version = format.strip_prefix("rig-session/")?;
+        version.parse::<u64>().ok()
+    };
+    let rig = match (found.and_then(version), version(FORMAT)) {
+        (Some(found), Some(ours)) if found < ours => "an older",
+        (Some(found), Some(ours)) if found > ours => "a newer",
+        _ => {
+            let found = found.unwrap_or("(none)");
+            return format!("the log `{log}` is in format {found}, not {FORMAT}");
+        }
+    };
+    let found = found.unwrap_or_default();
+    format!(
+        "the log `{log}` was saved by {rig} version of rig (format {found}; this rig reads \
+         {FORMAT}); it is left as it is"
+    )
 }
 
 impl From<LoadError> for io::Error {
@@ -131,13 +159,13 @@ impl fmt::Display for Repair {
                 set_aside,
                 ..
             } => {
-                write!(f, "the log {log} ended in a line cut short ({cut} bytes)")?;
+                write!(f, "the log `{log}` ended in a line cut short ({cut} bytes)")?;
                 match set_aside {
                     Some(file) => write!(f, ", set aside in {file}"),
                     None => Ok(()),
                 }
             }
-            Self::LostImage { log, why } => write!(f, "an image of the log {log} is lost: {why}"),
+            Self::LostImage { log, why } => write!(f, "an image of the log `{log}` is lost: {why}"),
         }
     }
 }
@@ -164,6 +192,19 @@ pub(crate) struct Header {
     /// saved to it carries.
     #[serde(default)]
     pub lineage: Lineage,
+    /// Who rewrote the log in place, and when, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rewrites: Vec<Rewrote>,
+}
+
+/// A rewrite of a log in place ([`rewrite`](crate::rewrite)): when, and by
+/// whom, such as the plugin that redacted it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Rewrote {
+    /// When, in milliseconds since the Unix epoch.
+    pub t: u64,
+    /// Who.
+    pub by: Author,
 }
 
 impl Header {
@@ -174,6 +215,7 @@ impl Header {
             log: log.to_owned(),
             parent: parent.map(str::to_owned),
             lineage: Lineage::fresh(),
+            rewrites: Vec::new(),
         }
     }
 }

@@ -31,7 +31,7 @@ mod native;
 pub use citation::{Citation, DocumentRange, Source, SourceLocation, Span};
 
 pub use identity::{CallId, EmptyCallId, EmptyToolName, LocalCallId, ProviderCallId, ToolName};
-pub use native::{Api, Fingerprint, Native, Opaque, Origin, StopReason};
+pub use native::{Api, Blob, Fingerprint, Native, Opaque, Origin, StopReason};
 
 /// One assistant turn.
 ///

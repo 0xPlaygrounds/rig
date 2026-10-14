@@ -11,7 +11,6 @@ workspace = true
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 # What the run says in the CI log.
 bevy_log = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }

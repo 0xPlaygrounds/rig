@@ -227,6 +227,26 @@ fn a_stopped_request_gets_its_note_and_halts_clear() {
     assert!(conversation.awaits_model());
 }
 
+/// A reply stopped halfway is kept aborted and never read, so the user's
+/// message is still owed an answer: a stop halts it, and the next message
+/// comes after the stopped note.
+#[test]
+fn a_reply_stopped_halfway_leaves_the_request_owed() {
+    use crate::message::{AssistantContent, AssistantMessage};
+    let partial = vec![AssistantContent::text("The answer is")];
+    let aborted = AssistantMessage::aborted(None, partial, "stopped by the user");
+    let mut conversation =
+        Conversation::from_messages([Message::user("what is it?"), Message::Assistant(aborted)]);
+    assert!(conversation.awaits_model());
+    assert!(conversation.halt(Halt::Stopped));
+    conversation.push(Message::user("never mind"));
+    let notes: Vec<bool> = conversation
+        .entries()
+        .map(|entry| entry.is_stopped_note())
+        .collect();
+    assert_eq!(notes, [false, false, true, false]);
+}
+
 /// The turn after a stopped one answers the stopped reply's results and
 /// rig's note before the user's message: the request is the user's.
 #[test]
@@ -292,4 +312,256 @@ fn edit_each_rewrites_in_place_as_one_change() {
             .is_empty()
     );
     assert!(conversation.unsaved().is_empty());
+}
+
+/// Each entry keeps when it was made: an entry spliced back changed keeps
+/// its time, a fold of the outbox and a reset (through its serde form)
+/// give the same times, and equality leaves them out.
+#[test]
+fn made_times_fold_as_live_survive_edits_and_resets_and_stay_out_of_equality() {
+    let keys = |conversation: &Conversation| -> Vec<MessageKey> {
+        conversation.entries().map(|entry| entry.key()).collect()
+    };
+    let mut live = Conversation::new();
+    live.dated(1_000, |conversation| {
+        conversation.extend([Message::user("a"), Message::assistant("b")]);
+    });
+    let first = live.key(0).expect("a key");
+    assert_eq!(first.made, 1_000);
+    let mut edited = live.entry(0).expect("entry 0");
+    edited.message = Message::user("a, edited");
+    let fresh = Entry::new(Message::user("new"));
+    live.dated(2_000, |conversation| {
+        conversation.splice(0..1, [edited, fresh], Author::plugin("edit"))
+    });
+    assert_eq!(live.key(0), Some(first), "an edited entry keeps its time");
+    assert_eq!(live.key(1).map(|key| key.made), Some(2_000));
+    assert_eq!(live.index_of_key(first), Some(0));
+    let other_time = MessageKey {
+        made: 3,
+        id: first.id,
+    };
+    assert_eq!(live.index_of_key(other_time), None);
+    assert_eq!(keys(&fold(live.unsaved())), keys(&live));
+
+    let reset = Recorded {
+        change: Change::Reset {
+            state: Box::new(live.view()),
+        },
+        by: None,
+        at: Some(9_000),
+    };
+    let reset: Recorded =
+        serde_json::from_str(&serde_json::to_string(&reset).expect("serializes")).expect("reads");
+    let mut replaced = Conversation::from_messages([Message::user("x")]);
+    replaced.apply(&reset).expect("a reset fits anything");
+    assert_eq!(keys(&replaced), keys(&live));
+
+    let mut later = Conversation::new();
+    later.dated(5_000, |conversation| {
+        conversation.extend([Message::user("a"), Message::assistant("b")]);
+    });
+    let now = Conversation::from_messages([Message::user("a"), Message::assistant("b")]);
+    assert_eq!(later, now);
+    assert_ne!(keys(&later), keys(&now));
+}
+
+/// Entries put back with `restore` keep their ids and made-times, an aside
+/// that followed one follows it again, and a fold of the outbox (read back
+/// from text) accepts them. `splice` still gives such entries new ids, and
+/// `restore` gives one to an id held outside the range. `set_entries`
+/// replaces only the range that changed.
+#[test]
+fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
+    let keys = |conversation: &Conversation| -> Vec<MessageKey> {
+        conversation.entries().map(|entry| entry.key()).collect()
+    };
+    let mut live = Conversation::new();
+    live.dated(1_000, |conversation| {
+        conversation.extend([
+            Message::user("a"),
+            Message::assistant("b"),
+            Message::user("c"),
+            Message::assistant("d"),
+        ]);
+    });
+    let before = keys(&live);
+    let note = Aside::new("note", Author::plugin("rate"), serde_json::Value::Null);
+    let note = live.add_aside(note.after(live.id(2)));
+    let originals: Vec<Entry> = (1..3).filter_map(|at| live.entry(at)).collect();
+    let summary = Entry::new(Message::user("summary"));
+    live.splice(1..3, [summary], Author::plugin("compact"));
+    assert_eq!(live.aside_position(live.aside(note).expect("the note")), 1);
+
+    let copies = live
+        .clone()
+        .splice(1..2, originals.clone(), Author::plugin("x"));
+    assert!(copies.restored.is_empty() && copies.changed.iter().all(|id| id.0 >= 5));
+    let outsider = live.entry(0).expect("entry 0");
+    let mut with = originals.clone();
+    with.push(outsider);
+    let undone = live.dated(2_000, |conversation| {
+        conversation.restore(1..2, with, Author::plugin("undo"))
+    });
+    let restored: Vec<MessageId> = originals.iter().filter_map(|entry| entry.id).collect();
+    assert_eq!(undone.restored, restored);
+    assert_eq!(undone.removed, [MessageId(4)]);
+    let mut now = keys(&live);
+    let copy = now.remove(3);
+    assert_eq!(now, before, "a, b, c and d as they were");
+    assert_eq!(
+        (copy.id, copy.made),
+        (MessageId(5), 2_000),
+        "the outsider is new"
+    );
+    assert_eq!(live.aside_position(live.aside(note).expect("the note")), 3);
+
+    let lines: Vec<String> = live
+        .unsaved()
+        .iter()
+        .map(|change| serde_json::to_string(change).expect("a change serializes"))
+        .collect();
+    let read: Vec<Recorded> = lines
+        .iter()
+        .map(|line| serde_json::from_str(line).expect("a change reads back"))
+        .collect();
+    let folded = fold(&read);
+    assert_eq!(folded, live);
+    assert_eq!(keys(&folded), keys(&live));
+
+    let mut wanted: Vec<Entry> = (0..3).filter_map(|at| live.entry(at)).collect();
+    if let Some(last) = wanted.last_mut() {
+        last.message = Message::user("c, edited");
+    }
+    let revision = live.revision();
+    let set = live.set_entries(wanted.clone(), Author::plugin("editor"));
+    assert_eq!(set.changed, [MessageId(2)]);
+    assert_eq!(set.removed, [MessageId(5), MessageId(3)]);
+    assert_eq!(live.revision(), revision + 1, "one change");
+    assert_eq!(
+        live.set_entries(wanted, Author::plugin("editor")),
+        Spliced::default()
+    );
+}
+
+/// `normalize` saves the repair with ids kept: an aside on a merged entry
+/// follows the entry it went into, one on a dropped entry follows the
+/// entry before it, each move by the normalizer, and a fold of the outbox
+/// equals the live value.
+#[test]
+fn normalize_keeps_ids_and_reanchors_asides() {
+    use crate::message::{CallId, ToolName};
+    let ghost = Message::tool_result(
+        CallId::from_wire("ghost"),
+        ToolName::new("add").expect("a tool name"),
+        "3",
+    );
+    let mut live = Conversation::from_messages([
+        Message::user("q"),
+        Message::assistant("a"),
+        ghost,
+        Message::assistant("b"),
+    ]);
+    let before = ids(&live);
+    let at = |index: usize| before.get(index).copied();
+    let aside = |kind: &str, after| {
+        Aside::new(kind, Author::plugin("rate"), serde_json::Value::Null).after(after)
+    };
+    let rating = live.add_aside(aside("rating", at(3)));
+    let note = live.add_aside(aside("note", at(2)));
+    let scratch = live.add_aside(aside("scratch", at(3)).unsaved());
+    let saved = live.take_unsaved();
+
+    let normalized = live.normalize(Author::plugin("tidy"));
+    assert_eq!(
+        normalized.merged,
+        at(1).zip(at(3)).into_iter().collect::<Vec<_>>()
+    );
+    assert_eq!(normalized.dropped, at(2).into_iter().collect::<Vec<_>>());
+    assert_eq!(
+        ids(&live),
+        [at(0), at(1)].into_iter().flatten().collect::<Vec<_>>()
+    );
+    for aside in [rating, note, scratch] {
+        assert_eq!(live.aside(aside).and_then(|aside| aside.after), at(1));
+    }
+    let moves = live
+        .unsaved()
+        .iter()
+        .filter(|recorded| matches!(recorded.change, Change::Aside { .. }));
+    assert!(
+        moves.clone().count() == 2
+            && moves
+                .clone()
+                .all(|recorded| recorded.by == Some(Author::plugin("tidy")))
+    );
+    let mut all = saved;
+    all.extend(live.unsaved().iter().cloned());
+    assert_eq!(fold(&all), live);
+}
+
+/// `reread` takes what the log holds, lineage and revision too, and keeps
+/// the value's unsaved asides with their ids; it is refused while the
+/// value has unsaved changes.
+#[test]
+fn reread_takes_the_log_and_keeps_unsaved_asides() {
+    let mut live = Conversation::from_messages([Message::user("my secret")]);
+    let note = Aside::new("note", Author::plugin("n"), serde_json::json!("secret"));
+    let note = live.add_aside(note);
+    let scratch = Aside::new("scratch", Author::rig(), serde_json::Value::Null).unsaved();
+    let scratch = live.add_aside(scratch);
+    let mut log = fold(live.unsaved());
+    log.edit_each(Author::plugin("redact"), |_| {
+        Some(Message::user("my [redacted]"))
+    });
+    let redacted = Aside::new("note", Author::plugin("n"), serde_json::json!("[redacted]"));
+    log.replace_aside(note, redacted.clone());
+    let changes = u64::try_from(log.take_unsaved().len()).unwrap_or_default();
+    log.continue_log(Lineage::fresh(), changes);
+
+    assert!(live.reread(log.clone()).is_err(), "unsaved changes");
+    live.take_unsaved();
+    live.reread(log.clone()).expect("reread");
+    assert_eq!(live, log);
+    assert_eq!(
+        (live.lineage(), live.revision()),
+        (log.lineage(), log.revision())
+    );
+    assert_eq!(live.aside(note), Some(&redacted));
+    assert!(live.aside(scratch).is_some_and(|aside| !aside.saved));
+    let next = live.add_aside(Aside::new("next", Author::rig(), serde_json::Value::Null));
+    assert!(next > scratch);
+}
+
+/// A turn record opens after the last entry, numbered after the last one,
+/// and ends once: a record already ended, or none, is left alone. The
+/// records fold back from the outbox.
+#[test]
+fn turn_records_open_numbered_and_end_once() {
+    let mut conversation = Conversation::from_messages([Message::user("hi")]);
+    let asked = conversation.id(0).expect("the request");
+    let first = conversation.open_turn();
+    assert_eq!((first.index, first.start, first.end), (0, asked, None));
+    let answer = conversation.push(Message::assistant("hello"));
+    assert!(conversation.end_turn(TurnEnd::Answered { by: Some(answer) }));
+    assert!(!conversation.end_turn(TurnEnd::Failed { why: "late".into() }));
+    conversation.push(Message::user("and?"));
+    assert_eq!(conversation.open_turn().index, 1);
+    assert!(conversation.end_turn(TurnEnd::Stopped { why: None }));
+
+    let records: Vec<_> = conversation.turns().map(|(_, record)| record).collect();
+    let ends: Vec<_> = records.iter().map(|record| record.end.clone()).collect();
+    let stopped = Some(TurnEnd::Stopped { why: None });
+    assert_eq!(
+        ends,
+        [Some(TurnEnd::Answered { by: Some(answer) }), stopped]
+    );
+    let second = records
+        .get(1)
+        .and_then(|record| conversation.request(record.start));
+    assert_eq!(
+        second.map(|entry| entry.message),
+        Some(&Message::user("and?"))
+    );
+    assert_eq!(fold(&conversation.take_unsaved()), conversation);
 }

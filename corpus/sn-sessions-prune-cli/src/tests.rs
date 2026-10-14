@@ -6,10 +6,11 @@ use rig_core::message::{Message, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness::host::exit::ExitPlugin;
+use rig_harness::rig_memory::SessionMeta;
 use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
-use rig_sessions::{Meta, NameSession, SessionsPlugin, write_meta};
+use rig_sessions::{NameSession, SessionsPlugin};
 
 use super::*;
 
@@ -74,9 +75,9 @@ fn age(home: &Home, id: &SessionId, days: u64) {
     let Ok(store) = SessionStores::default().open(&home.session(id)) else {
         return;
     };
-    let mut meta = Meta::of(&*store).unwrap_or_default();
+    let mut meta = SessionMeta::read(&*store).unwrap_or_default();
     meta.updated = millis(SystemTime::now()).saturating_sub(days * DAY);
-    write_meta(&*store, &meta).ok();
+    meta.write(&*store).ok();
 }
 
 /// Runs `rig sessions <words>` without a terminal: how it exits and what it
@@ -200,8 +201,8 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
             let store = SessionStores::default().open(&home.session(id));
             store
                 .ok()
-                .and_then(|store| ForkedFrom::of(&*store))
-                .is_some_and(|from| from.session == s5)
+                .and_then(|store| ForkedFrom::read(&*store))
+                .is_some_and(|from| from.session == s5.to_string())
         });
     assert!(s6.is_some(), "S5 was forked");
     let Some(s6) = s6 else {

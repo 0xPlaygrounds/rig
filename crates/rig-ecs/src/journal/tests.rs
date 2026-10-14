@@ -13,7 +13,8 @@ use rig_memory::{Files, MemoryStore, Record, Repair, Session, Store, history};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Committed, JournalPlugin, ReflectSaved, Retire, SessionRestored, SessionStore, open_session,
+    Committed, JournalPlugin, ReflectSaved, Retire, RewriteSession, SessionRestored,
+    SessionRewritten, SessionStore, open_session,
 };
 use crate::AgentPlugin;
 use crate::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
@@ -648,4 +649,112 @@ fn a_message_from_another_author_is_its_own_entry() {
         })
         .unwrap_or_default();
     assert_eq!(authors, [Some(AuthorKind::Plugin("ci".to_owned()))]);
+}
+
+/// How many times a `Bookmark` was inserted.
+#[derive(Resource, Default)]
+struct Inserted(u32);
+
+/// Every rewrite reported so far.
+fn rewritten(app: &App) -> Vec<SessionRewritten> {
+    let rewritten = app.world().resource::<Messages<SessionRewritten>>();
+    let mut cursor = rewritten.get_cursor();
+    cursor.read(rewritten).cloned().collect()
+}
+
+#[test]
+fn a_session_rewritten_live_keeps_no_secret_in_its_logs_conversations_or_saved_values() {
+    const SECRET: &str = "sk-123";
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    first.init_resource::<Inserted>().add_observer(
+        |_: On<Insert<Bookmark>>, mut inserted: ResMut<Inserted>| {
+            inserted.0 += 1;
+        },
+    );
+    let Some(&agent) = agents(&mut first).first() else {
+        return;
+    };
+    edit(first.world_mut(), agent, |conversation| {
+        conversation.push(Message::user(format!("my key is {SECRET}")));
+        conversation.push(Message::assistant("noted"));
+        let draft = Aside::new("draft", Author::plugin("notes"), SECRET.into()).unsaved();
+        conversation.add_aside(draft);
+    });
+    let at = first
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|c| c.id(0));
+    let Some(at) = at else {
+        return;
+    };
+    let label = format!("where {SECRET} came up");
+    first
+        .world_mut()
+        .entity_mut(agent)
+        .insert(Bookmark { at, label });
+    first.update();
+    first.world_mut().resource_mut::<Inserted>().0 = 0;
+
+    let asker = first.world_mut().spawn_empty().id();
+    first.world_mut().trigger(RewriteSession {
+        by: Author::plugin("redact"),
+        with: Arc::new(rig_memory::Strings(|text: &mut String| {
+            let hit = text.contains(SECRET);
+            if hit {
+                *text = text.replace(SECRET, "[REDACTED]");
+            }
+            hit
+        })),
+        asker: Some(asker),
+    });
+    first.update();
+    let reports = rewritten(&first);
+    assert_eq!(reports.len(), 1);
+    let Some(report) = reports.first() else {
+        return;
+    };
+    assert_eq!(report.asker, Some(asker));
+    let logs_changed = report.result.as_ref().map(|done| done.logs.len());
+    assert_eq!(logs_changed, Ok(1));
+    let holds_secret = |bytes: &[u8]| bytes.windows(SECRET.len()).any(|w| w == SECRET.as_bytes());
+    assert!(logs(&store).iter().all(|(_, bytes)| !holds_secret(bytes)));
+    let world = first.world();
+    assert_eq!(
+        messages(&first, agent),
+        [
+            Message::user("my key is [REDACTED]"),
+            Message::assistant("noted")
+        ]
+    );
+    let draft = world
+        .get::<Conversation>(agent)
+        .and_then(|c| c.asides().map(|(_, aside)| aside.value.clone()).next());
+    assert_eq!(
+        draft,
+        Some("[REDACTED]".into()),
+        "an unsaved aside is mapped too"
+    );
+    let label = world.get::<Bookmark>(agent).map(|mark| mark.label.clone());
+    assert_eq!(label.as_deref(), Some("where [REDACTED] came up"));
+    assert_eq!(world.resource::<Inserted>().0, 1, "inserted again once");
+
+    // The writer goes on with the rewritten log: no reset, nothing old.
+    push_message(first.world_mut(), agent, Message::user("next"));
+    first.update();
+    let id = id_of(&first, agent);
+    assert_eq!(logged(&store, &id), ["push", "push", "push"]);
+    assert!(logs(&store).iter().all(|(_, bytes)| !holds_secret(bytes)));
+    drop(first);
+
+    let mut second = app(&store);
+    let Some(&agent) = agents(&mut second).first() else {
+        return;
+    };
+    assert_eq!(messages(&second, agent).len(), 3);
+    let label = second
+        .world()
+        .get::<Bookmark>(agent)
+        .map(|m| m.label.clone());
+    assert_eq!(label.as_deref(), Some("where [REDACTED] came up"));
 }

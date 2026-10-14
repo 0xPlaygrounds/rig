@@ -1786,8 +1786,7 @@ pub struct WireProbe {
 impl rig_core::http_client::HttpMiddleware for WireProbe {
     fn before_request_headers<'a>(
         &'a self,
-        _method: &'a rig_core::http_client::Method,
-        _uri: &'a rig_core::http_client::Uri,
+        _exchange: rig_core::http_client::Exchange<'a>,
         headers: &'a mut rig_core::http_client::HeaderMap,
     ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<()>> {
         Box::pin(async move {
@@ -1803,8 +1802,7 @@ impl rig_core::http_client::HttpMiddleware for WireProbe {
 
     fn before_request_body<'a>(
         &'a self,
-        _method: &'a rig_core::http_client::Method,
-        _uri: &'a rig_core::http_client::Uri,
+        _exchange: rig_core::http_client::Exchange<'a>,
         headers: &'a rig_core::http_client::HeaderMap,
         body: bytes::Bytes,
     ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<bytes::Bytes>>
@@ -1825,8 +1823,7 @@ impl rig_core::http_client::HttpMiddleware for WireProbe {
 
     fn after_response<'a>(
         &'a self,
-        _method: &'a rig_core::http_client::Method,
-        _uri: &'a rig_core::http_client::Uri,
+        _exchange: rig_core::http_client::Exchange<'a>,
         status: rig_core::http_client::StatusCode,
         _headers: &'a rig_core::http_client::HeaderMap,
     ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<()>> {

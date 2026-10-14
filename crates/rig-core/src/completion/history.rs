@@ -113,23 +113,34 @@ pub struct Accepts {
     pub tool_result_images: bool,
     /// Tool calls and their results.
     pub tools: bool,
+    /// Another model's reasoning text as reasoning: the wire has a place for
+    /// reasoning that carries no provider item or signature, such as Chat
+    /// Completions' `reasoning_content` field. Read only for a request that
+    /// asks for it ([`CompletionRequest::foreign_reasoning`]).
+    ///
+    /// [`CompletionRequest::foreign_reasoning`]: field@crate::completion::CompletionRequest::foreign_reasoning
+    pub foreign_reasoning: bool,
 }
 
 impl Accepts {
-    /// A model that reads every kind of content.
+    /// A model that reads every kind of content, and another model's
+    /// reasoning as text.
     pub const ALL: Self = Self {
         user_images: true,
         assistant_images: true,
         tool_result_images: true,
         tools: true,
+        foreign_reasoning: false,
     };
 
-    /// A model that reads text and tools but no images.
+    /// A model that reads text and tools but no images, and another model's
+    /// reasoning as text.
     pub const TEXT: Self = Self {
         user_images: false,
         assistant_images: false,
         tool_result_images: false,
         tools: true,
+        foreign_reasoning: false,
     };
 }
 
@@ -448,7 +459,9 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   provider items. Its reasoning and blank text are dropped unless they
 ///   still hold a current provider item.
 /// - Any other turn keeps only canonical fields: provider items are cleared,
-///   reasoning becomes plain text (redacted or empty reasoning is dropped),
+///   reasoning becomes plain text, or stays reasoning when the request asks
+///   for it and the model reads it ([`Accepts::foreign_reasoning`]);
+///   redacted or empty reasoning is dropped;
 ///   [`Opaque`](crate::message::Opaque) items are dropped and call ids go
 ///   through [`ReplayTarget::normalize_tool_call_id`], made distinct when two
 ///   calls would share one.
@@ -479,6 +492,11 @@ pub(crate) struct Request<'a> {
     pub(crate) tools: bool,
     /// The fingerprint of its tools and system prompt ([`context_of`]).
     pub(crate) context: Option<crate::message::Fingerprint>,
+    /// Whether it asks for other models' reasoning as reasoning
+    /// ([`CompletionRequest::foreign_reasoning`]).
+    ///
+    /// [`CompletionRequest::foreign_reasoning`]: field@crate::completion::CompletionRequest::foreign_reasoning
+    pub(crate) foreign_reasoning: bool,
 }
 
 impl Default for Request<'_> {
@@ -488,6 +506,7 @@ impl Default for Request<'_> {
             stored: false,
             tools: true,
             context: None,
+            foreign_reasoning: false,
         }
     }
 }
@@ -561,6 +580,7 @@ pub(crate) fn adapt_for(
     };
     let mut accepts = target.accepts(model);
     accepts.tools &= request.tools;
+    accepts.foreign_reasoning &= request.foreign_reasoning;
     let hosted = hosted_pairs(history, target, &same);
     let last_turn = history
         .iter()
@@ -1059,7 +1079,11 @@ fn assistant(
                         if reasoning.redacted || reasoning.text.trim().is_empty() {
                             return None;
                         }
-                        AssistantContent::Text(Text::new(reasoning.text))
+                        if accepts.foreign_reasoning {
+                            AssistantContent::Reasoning(reasoning)
+                        } else {
+                            AssistantContent::Text(Text::new(reasoning.text))
+                        }
                     }
                     AssistantContent::Opaque(_) => return None,
                     AssistantContent::Image(_) if !accepts.assistant_images => {

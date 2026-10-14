@@ -353,8 +353,9 @@ fn open(review: &mut HunkReview, agent: Entity, root: &Path, commands: &mut Comm
                   mut commands: Commands,
                   mut reviews: Query<&mut HunkReview>,
                   mut notices: MessageWriter<Notice>| {
-                match (&picked.chosen, index) {
-                    (Some(Chosen::Text(comment)), Some(index)) => {
+                let comment = picked.chosen.as_ref().map(|chosen| &chosen.text);
+                match (comment, index) {
+                    (Some(Some(comment)), Some(index)) => {
                         let line = format!("review revert {index} {comment}");
                         commands.trigger(RunCommand::new(agent, line));
                     }

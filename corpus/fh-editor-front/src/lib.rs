@@ -629,7 +629,7 @@ fn receive(
                 let Some(entity) = Entity::try_from_bits(id) else {
                     continue;
                 };
-                let chosen = choice.map(Chosen::Item).or(text.map(Chosen::Text));
+                let chosen = choice.map(Chosen::item).or(text.map(Chosen::text));
                 // A picker's command runs for the shown agent: this window's.
                 if agent.is_some() {
                     shown.0 = agent;

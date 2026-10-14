@@ -11,7 +11,7 @@ use rig_core::tool::{FileChange, content_hash};
 
 use crate::fs::Previous;
 use crate::process::{Launcher, Process, Spawn};
-use crate::workspace::{Contents, Stat, Workspace, is_hidden};
+use crate::workspace::{Contents, Listing, Stat, Workspace};
 
 /// A [`Workspace`] over another that reads through to it and keeps every
 /// write, removal and rename to itself: run a file tool on it to learn what
@@ -76,10 +76,10 @@ impl Overlay {
 
     /// What the writes kept here would do to the files of the workspace
     /// under it, in the order each file was first touched: created,
-    /// modified or deleted, with its diff and the [`FileState`] of each
-    /// side (the [`FileState::unread`] size of a file too large to read). A
-    /// file written back as it was, or created and removed again, is no
-    /// change.
+    /// modified or deleted, with its hunks, its text before and the
+    /// [`FileState`] of each side (the [`FileState::unread`] size of a file
+    /// too large to read). A file written back as it was, or created and
+    /// removed again, is no change.
     ///
     /// [`FileState`]: rig_core::tool::FileState
     /// [`FileState::unread`]: rig_core::tool::FileState::unread
@@ -204,10 +204,10 @@ impl Workspace for Overlay {
     }
 
     /// The files under it, as listed there, without those removed here,
-    /// then the files created here that are not hidden or in a `target`
-    /// directory unless `all` (ignore files are not read for them).
-    fn files(&self, root: &Path, glob: Option<&str>, all: bool) -> io::Result<Vec<PathBuf>> {
-        let listed = self.inner.files(root, glob, all)?;
+    /// then the files created here that `listing` keeps by their names
+    /// ([`Listing::keeps`]; ignore files are not read for them).
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
+        let listed = self.inner.files(root, glob, listing)?;
         let matcher = glob
             .map(|glob| OverrideBuilder::new(root).add(glob)?.build())
             .transpose()
@@ -220,11 +220,7 @@ impl Workspace for Overlay {
                 .any(|(kept, bytes)| kept == path && bytes.is_none())
         };
         let created = kept.iter().filter_map(|(path, bytes)| {
-            let below = path.strip_prefix(root).ok()?;
-            let visible = all
-                || !below
-                    .iter()
-                    .any(|part| part == "target" || is_hidden(Path::new(part)));
+            let visible = listing.keeps(path.strip_prefix(root).ok()?);
             let matches = matcher
                 .as_ref()
                 .is_none_or(|matcher| matcher.matched(path, false).is_whitelist());

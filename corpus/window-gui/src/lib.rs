@@ -600,7 +600,7 @@ fn submit(
     if let Some(entity) = dialogs.open.first().map(|dialog| dialog.entity)
         && pickers.get(entity).is_ok_and(|picker| picker.free_text)
     {
-        let chosen = Some(Chosen::Text(text.trim().to_owned()));
+        let chosen = Some(Chosen::text(text.trim().to_owned()));
         commands.trigger(Pick::person(entity, chosen));
         return;
     }
@@ -634,7 +634,7 @@ fn toggle(toggle: On<Toggle>, mut transcript: ResMut<GuiTranscript>) {
 
 fn choose(choose: On<Choose>, dialogs: Res<GuiDialogs>, mut commands: Commands) {
     if let Some(dialog) = dialogs.open.first() {
-        let chosen = Some(Chosen::Item(choose.item));
+        let chosen = Some(Chosen::item(choose.item));
         commands.trigger(Pick::person(dialog.entity, chosen));
     }
 }

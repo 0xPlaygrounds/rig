@@ -339,6 +339,8 @@ impl ReplayTarget for Converse {
             assistant_images: false,
             tool_result_images: images,
             tools: true,
+            // Converse replays reasoning only with its signature.
+            foreign_reasoning: false,
         }
     }
 

@@ -11,9 +11,8 @@ workspace = true
 [dependencies]
 # A placement's bytes in a terminal escape.
 base64 = { workspace = true }
-# Named by the Bevy derives.
+# Combining run conditions.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 # Decoding an image for its size and its half-block preview; already in the
 # workspace's lock.
 image = { workspace = true, features = ["png", "jpeg", "gif", "webp"] }
@@ -21,9 +20,9 @@ rig-harness = { path = "../../crates/rig-harness" }
 # The images are drawn in the terminal view's transcript.
 rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

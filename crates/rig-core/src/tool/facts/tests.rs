@@ -8,7 +8,16 @@ fn published_facts_read_back_with_a_stable_shape() {
     let changed = FilesChanged(vec![
         FileChange::created("new.rs", 4),
         FileChange::modified("lib.rs", 2, 1)
-            .with_diff("@@ -1 +1,2 @@\n-a\n+b\n+c\n")
+            .with_hunks(vec![Hunk {
+                old: Lines { start: 1, count: 1 },
+                new: Lines { start: 1, count: 2 },
+                lines: vec![
+                    HunkLine::Removed("a\n".to_owned()),
+                    HunkLine::Added("b\n".to_owned()),
+                    HunkLine::Added("c\n".to_owned()),
+                ],
+            }])
+            .with_before_text("a\n")
             .with_before(FileState {
                 bytes: 2,
                 lines: Some(1),
@@ -17,6 +26,8 @@ fn published_facts_read_back_with_a_stable_shape() {
             .with_after(FileState::unread(4)),
         FileChange::deleted("old.rs", 9),
     ]);
+    let lib = changed.0.get(1).and_then(FileChange::after_text);
+    assert_eq!(lib.as_deref(), Some("b\nc\n"));
     let read = FilesRead(vec![
         FileRead::new("/work/a.rs", ContentHash("aa".to_owned())),
         FileRead::new("/work/b.rs", ContentHash("bb".to_owned())).with_lines(LinesShown {
@@ -62,7 +73,9 @@ fn published_facts_read_back_with_a_stable_shape() {
             "files_changed": [
                 {"path": "new.rs", "kind": "created", "added": 4, "removed": 0},
                 {"path": "lib.rs", "kind": "modified", "added": 2, "removed": 1,
-                 "diff": "@@ -1 +1,2 @@\n-a\n+b\n+c\n", "before": {"bytes": 2, "lines": 1, "hash": "beef"},
+                 "hunks": [{"old": {"start": 1, "count": 1}, "new": {"start": 1, "count": 2},
+                            "lines": ["-a\n", "+b\n", "+c\n"]}],
+                 "before_text": "a\n", "before": {"bytes": 2, "lines": 1, "hash": "beef"},
                  "after": {"bytes": 4}},
                 {"path": "old.rs", "kind": "deleted", "added": 0, "removed": 9},
             ],

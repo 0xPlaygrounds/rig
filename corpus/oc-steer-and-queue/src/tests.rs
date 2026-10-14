@@ -7,6 +7,8 @@ use rig_harness_test_support::{
     run_until, scripted_models, tui_view,
 };
 
+use bevy_ecs::system::SystemState;
+
 use super::*;
 
 /// The `shell` calls the model made, which the test answers when it
@@ -58,11 +60,9 @@ fn last(said: &[String]) -> &str {
     said.last().map(String::as_str).unwrap_or_default()
 }
 
-fn pending(app: &App, agent: Entity) -> Vec<(String, PendingKind)> {
-    let items = app
-        .world()
-        .get::<PendingMessages>(agent)
-        .map(|p| p.items.clone());
+fn pending(app: &mut App, agent: Entity) -> Vec<(String, PendingKind)> {
+    let mut state = SystemState::<PendingMessages>::new(app.world_mut());
+    let items = state.get(app.world()).map(|p| p.of(agent));
     let items = items.unwrap_or_default();
     items
         .into_iter()
@@ -85,8 +85,8 @@ fn type_and(app: &mut App, text: &str, keys: &str) {
     press(app, keys);
 }
 
-/// Steering, queueing, editing, interrupting and restarting, as the
-/// spec's scripted test runs them.
+/// Steering, queueing, editing, reordering, interrupting and restarting,
+/// as the spec's scripted test runs them.
 #[test]
 fn steer_queue_edit_interrupt_and_restart() {
     let model = MockCompletionModel::from_stream_turns([
@@ -114,7 +114,7 @@ fn steer_queue_edit_interrupt_and_restart() {
     type_and(&mut app, "use the v2 API", "enter");
     app.update();
     assert_eq!(
-        pending(&app, agent),
+        pending(&mut app, agent),
         [("use the v2 API".to_owned(), PendingKind::Steer)]
     );
     finish_shell(&mut app, 0);
@@ -126,7 +126,7 @@ fn steer_queue_edit_interrupt_and_restart() {
     let steered = ends.find("use the v2 API");
     assert!(result.zip(steered).is_some_and(|(r, s)| r < s), "{said:?}");
     assert!(!ends.contains("interrupted"), "{said:?}");
-    assert!(pending(&app, agent).is_empty());
+    assert!(pending(&mut app, agent).is_empty());
 
     // Alt+Enter queues: each queued message is a later turn of its own,
     // in order, after the turn's answer.
@@ -135,7 +135,7 @@ fn steer_queue_edit_interrupt_and_restart() {
     type_and(&mut app, "then update docs", "alt+enter");
     type_and(&mut app, "and bump version", "alt+enter");
     app.update();
-    assert_eq!(pending(&app, agent).len(), 2);
+    assert_eq!(pending(&mut app, agent).len(), 2);
     finish_shell(&mut app, 1);
     run_until(&mut app, &wakes, ended(4));
     assert_eq!(model.request_count(), 6);
@@ -148,7 +148,7 @@ fn steer_queue_edit_interrupt_and_restart() {
     assert!(third.iter().all(|m| !m.contains("and bump version")));
     let fourth = request(&model, 5);
     assert!(last(&fourth).contains("and bump version"), "{fourth:?}");
-    assert!(pending(&app, agent).is_empty());
+    assert!(pending(&mut app, agent).is_empty());
 
     // A queued message selected in the strip, edited to "X" and turned to
     // steer reaches the running turn's next request.
@@ -160,14 +160,26 @@ fn steer_queue_edit_interrupt_and_restart() {
     type_and(&mut app, "X", "enter");
     press(&mut app, "up t esc");
     app.update();
-    assert_eq!(pending(&app, agent), [("X".to_owned(), PendingKind::Steer)]);
+    assert_eq!(
+        pending(&mut app, agent),
+        [("X".to_owned(), PendingKind::Steer)]
+    );
+    // A second steering message moved before it: the kernel sends both,
+    // in the new order.
+    type_and(&mut app, "Y", "enter");
+    app.update();
+    press(&mut app, "up k esc");
+    app.update();
+    let steer = |text: &str| (text.to_owned(), PendingKind::Steer);
+    assert_eq!(pending(&mut app, agent), [steer("Y"), steer("X")]);
     finish_shell(&mut app, 2);
     run_until(&mut app, &wakes, ended(5));
     let said = request(&model, 7);
-    assert!(last(&said).contains("\"X\""), "{said:?}");
+    let (y, x) = (last(&said).find("\"Y\""), last(&said).find("\"X\""));
+    assert!(y.zip(x).is_some_and(|(y, x)| y < x), "{said:?}");
 
-    // Esc with a steering message pending: it comes back joined in the
-    // input, and the next turn starts with it.
+    // Esc with a steering message pending: it stays pending, not handed
+    // back, and the next turn starts with it.
     type_and(&mut app, "again", "enter");
     run_until(&mut app, &wakes, shells(4));
     type_and(&mut app, "keep this", "enter");
@@ -175,13 +187,17 @@ fn steer_queue_edit_interrupt_and_restart() {
     press(&mut app, "esc");
     run_until(&mut app, &wakes, ended(6));
     app.update();
-    let recalled = &app.world().resource::<Collected<Recalled>>().0;
-    assert!(recalled.iter().any(|r| r.text == "keep this"));
-    assert_eq!(app.world().resource::<TuiInput>().text(), "keep this");
-    press(&mut app, "enter");
+    assert_eq!(
+        pending(&mut app, agent),
+        [("keep this".to_owned(), PendingKind::Steer)]
+    );
+    assert!(app.world().resource::<Collected<Recalled>>().0.is_empty());
+    assert!(app.world().resource::<TuiInput>().is_empty());
+    type_and(&mut app, "go on", "enter");
     run_until(&mut app, &wakes, ended(7));
     let said = request(&model, 9);
-    assert!(last(&said).contains("keep this"), "{said:?}");
+    assert!(last(&said).contains("keep this\\n\\ngo on"), "{said:?}");
+    assert!(pending(&mut app, agent).is_empty());
 
     // Queued during a turn, then the process dies: after the restart the
     // message is pending, and was never sent.
@@ -193,11 +209,11 @@ fn steer_queue_edit_interrupt_and_restart() {
     let (mut app, wakes, agent) = start(&store, &model);
     run_until(&mut app, &wakes, |world| {
         world
-            .get::<PendingMessages>(agent)
-            .is_some_and(|p| !p.items.is_empty())
+            .get::<Kept>(agent)
+            .is_some_and(|kept| !kept.0.is_empty())
     });
     assert_eq!(
-        pending(&app, agent),
+        pending(&mut app, agent),
         [("later".to_owned(), PendingKind::Queued)]
     );
     let sent = model.requests();

@@ -8,13 +8,18 @@ description = "Plugin corpus (one-conversation fresh held-out): OC-01: 01. Batch
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The question's own keys in the terminal view (Space, a, n, e).
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The dialog is a panel of the terminal view.
-rig-tui = { path = "../../plugins/rig-tui" }
+# Only for ordering after its restart check (`SubagentSystems::StopRestored`).
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # `approve.toml`; already in Cargo.lock.

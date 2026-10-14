@@ -136,6 +136,59 @@ fn another_model_replays_canonical_fields_only() {
     );
 }
 
+/// A target with a place for unsigned reasoning.
+#[derive(Debug)]
+struct ReadsReasoning;
+
+impl ReplayTarget for ReadsReasoning {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
+    fn api(&self) -> Api {
+        Api::from_static("test.api")
+    }
+
+    fn provider(&self) -> &str {
+        "test"
+    }
+
+    fn model(&self) -> &str {
+        "model-a"
+    }
+
+    fn accepts(&self, _model: &str) -> Accepts {
+        Accepts {
+            foreign_reasoning: true,
+            ..Accepts::ALL
+        }
+    }
+}
+
+/// Another model's reasoning stays reasoning, without its provider item,
+/// only when the request asks for it and the target reads it; otherwise
+/// it is text (pi's rule).
+#[test]
+fn foreign_reasoning_stays_reasoning_only_when_asked_and_read() {
+    let history = vec![turn(Some(other()), vec![signed_reasoning()])];
+    let asked = Request {
+        foreign_reasoning: true,
+        ..Request::default()
+    };
+    let first = |adapted: Vec<Message>| assistant(&adapted[0]).content.clone();
+    assert_eq!(
+        first(adapt_for(&history, &ReadsReasoning, &asked)),
+        [AssistantContent::Reasoning(Reasoning::new("thinking"))]
+    );
+    let as_text = [AssistantContent::Text(Text::new("thinking"))];
+    assert_eq!(first(adapt(&history, &ReadsReasoning)), as_text);
+    assert_eq!(first(adapt_for(&history, &TARGET, &asked)), as_text);
+}
+
 /// A target whose encoder takes inline images only, and no audio, video or
 /// documents.
 #[derive(Debug)]

@@ -171,7 +171,11 @@ fn branch(
               snapshots: Snapshots<'_, '_>,
               mut commands: Commands,
               mut notices: MessageWriter<Notice>| {
-            let Some(Chosen::Item(index)) = picked.chosen else {
+            let Some(&index) = picked
+                .chosen
+                .as_ref()
+                .and_then(|chosen| chosen.items.first())
+            else {
                 return;
             };
             let (Some(&(message, _)), Ok(id)) = (typed.get(index), ids.get(agent)) else {
@@ -321,20 +325,21 @@ fn how(parent: &ForkedFrom) -> String {
 /// input line, showing its agent.
 fn arrive(
     store: Option<Res<SessionStore>>,
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     agents: PrimaryQuery,
     input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
 ) {
-    let Some(parent) = store.and_then(|store| ForkedFrom::of(&*store.0)) else {
+    let Some(parent) = store.and_then(|store| ForkedFrom::read(&*store.0)) else {
         return;
     };
     let label = format!("{} of {}", how(&parent), parent.session);
     commands.spawn(ResumeLabel::new("family", label));
-    let (Some(_), Some((agent, _)), Some(text)) = (first, parent.before, parent.text) else {
+    let first = started.is_some_and(|started| started.0 == StartReason::New);
+    let (true, Some((agent, _)), Some(text)) = (first, parent.before, parent.text) else {
         return;
     };
-    let agent = agents.iter().find(|(_, id, _)| **id == agent);
+    let agent = agents.iter().find(|(_, id, _)| id.0 == agent);
     if let Some(entity) = agent.map(|(agent, ..)| agent).or_else(|| primary(&agents)) {
         commands.trigger(Focus { entity });
     }
@@ -367,10 +372,10 @@ fn tree(
     let Some(current) = paths.id().map(|id| id.to_string()) else {
         return;
     };
-    let this = title.name.clone().unwrap_or_else(|| title.typed.clone());
+    let this = title.shown();
     let parent_of_session = |id: &SessionId| {
         let store = stores.open(&home.0.session(id)).ok()?;
-        ForkedFrom::of(&*store)
+        ForkedFrom::read(&*store)
     };
     let mut nodes: Vec<Node> = list(&home.0, &stores, paths.path())
         .into_iter()
@@ -383,11 +388,11 @@ fn tree(
     nodes.push(Node {
         id: current.clone(),
         label: format!("● this session  {this}"),
-        parent: store.and_then(|store| ForkedFrom::of(&*store.0)),
+        parent: store.and_then(|store| ForkedFrom::read(&*store.0)),
     });
     let parent_of = |id: &str| -> Option<String> {
         let node = nodes.iter().find(|node| node.id == id)?;
-        let parent = node.parent.as_ref()?.session.to_string();
+        let parent = node.parent.as_ref()?.session.clone();
         nodes.iter().any(|node| node.id == parent).then_some(parent)
     };
     let mut root = current.clone();

@@ -44,11 +44,11 @@ use rig_core::completion::{
     UnsupportedOption,
 };
 use rig_core::conversation::pairing::close_pending_with;
-use rig_core::conversation::{Author, Halt};
+use rig_core::conversation::{Author, Halt, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::{ToolCall, UserContent};
+use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, UserContent};
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
@@ -56,9 +56,8 @@ use rig_memory::now_ms;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastTurn,
-    LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
-    TurnsStarted,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastUsage,
+    Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
 };
 use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
@@ -140,10 +139,11 @@ pub struct ModelRequest {
     /// The messages of a request the kernel built, until Start puts them
     /// in the request (after the system prompt), in place of what
     /// `request.chat_history` holds: a view of its agent's conversation
-    /// (rig-core's `Conversation::view`), whose edits are never saved and
-    /// never reach the agent. A Prepare system edits it as a conversation,
-    /// so each edit names its author and the entries it kept keep their
-    /// ids: `history.splice(0..0, examples, Author::plugin("few-shot"))`.
+    /// without its asides (rig-core's `Conversation::request_view`), whose
+    /// edits are never saved and never reach the agent. A Prepare system
+    /// edits it as a conversation, so each edit names its author and the
+    /// entries it kept keep their ids:
+    /// `history.splice(0..0, examples, Author::plugin("few-shot"))`.
     /// Its [`unsaved`](rig_core::conversation::Conversation::unsaved)
     /// changes are who changed the request, and how, until Start; an id
     /// of an entry a plugin added belongs to this request alone. `None`
@@ -372,12 +372,11 @@ pub(crate) fn on_retry(
     spawn_turn_call(&mut commands, turn, agent);
 }
 
-/// Fills in a new turn's [`Turn`]: its index from its agent's count, which
-/// it bumps, and where it begins in the agent's conversation. A
-/// [`Restored`] turn is the agent's last turn carried on, with that turn's
-/// index and start. The turn is [`ForAgent`] its agent from the start, so
-/// it is part of the agent's work and its end inserts nothing but
-/// [`Settled`].
+/// Fills in a new turn's [`Turn`] from a turn record it opens in its
+/// agent's conversation. A [`Restored`] turn is the agent's last turn
+/// carried on, with that turn's record while it is open. The turn is
+/// [`ForAgent`] its agent from the start, so it is part of the agent's
+/// work and its end inserts nothing but [`Settled`].
 pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
     let Some(&TurnOf(agent)) = world.get::<TurnOf>(context.entity) else {
         return;
@@ -386,28 +385,34 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
         .commands()
         .entity(context.entity)
         .try_insert(ForAgent(agent));
-    let last = world
-        .get::<TurnsStarted>(agent)
-        .and_then(|started| started.0);
-    let carried = last.filter(|_| world.get::<Restored>(context.entity).is_some());
-    let (index, first_message) = match carried {
-        Some(last) => (last.count.saturating_sub(1), last.start),
-        None => {
-            let start = world
-                .get::<Conversation>(agent)
-                .map(|conversation| conversation.turn_start())
-                .unwrap_or_default();
-            let index = last.map_or(0, |last| last.count);
-            if let Some(mut started) = world.get_mut::<TurnsStarted>(agent) {
-                let count = index.saturating_add(1);
-                started.0 = Some(LastTurn { count, start });
-            }
-            (index, start)
-        }
+    let restored = world.get::<Restored>(context.entity).is_some();
+    let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
+        return;
+    };
+    let last = conversation.turns().next_back().map(|(_, record)| record);
+    let record = match last.filter(|record| restored && record.end.is_none()) {
+        Some(record) => record,
+        None => conversation.open_turn(),
     };
     if let Some(mut turn) = world.get_mut::<Turn>(context.entity) {
-        turn.index = index;
-        turn.first_message = first_message;
+        turn.index = record.index;
+        turn.first_message = record.start;
+    }
+}
+
+/// How `outcome` ends a turn in its record, the answer being the last
+/// entry of `conversation`.
+fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
+    match outcome {
+        TurnOutcome::Answered(_) => {
+            let last = conversation.entries().next_back();
+            let answer = last.filter(|entry| matches!(entry.message, Message::Assistant(_)));
+            TurnEnd::Answered {
+                by: answer.map(|entry| entry.id),
+            }
+        }
+        TurnOutcome::Failed(why) => TurnEnd::Failed { why: why.clone() },
+        TurnOutcome::Stopped(why) => TurnEnd::Stopped { why: why.clone() },
     }
 }
 
@@ -421,14 +426,15 @@ pub(crate) struct Ending {
     take_out: bool,
 }
 
-/// Stops a running turn at once. The text a streaming reply had sent is
-/// kept as the model's message, unless its call was superseded; every
+/// Stops a running turn at once. What a streaming reply had sent is kept
+/// as the model's message, aborted, so no model reads it again and the
+/// user's request is halted as stopped, unless its call was superseded; every
 /// tool call of the last reply gets a result, real, its [`IfStopped`] or
 /// "interrupted", and every call of the turn that has not settled is
 /// answered as interrupted and settled, whatever held it gone. The turn
-/// ends [`TurnOutcome::Stopped`]. The outcome is saved and written to the
-/// log at once, so a log that ends mid-turn always means a crash or a
-/// restart.
+/// ends [`TurnOutcome::Stopped`], in its record too. The conversation is
+/// saved and written to the log at once, so a log that ends mid-turn
+/// always means a crash or a restart.
 pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
     mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
@@ -449,19 +455,24 @@ pub(crate) fn on_interrupt(
         Ok((mut state, calls)) => (state.reply.take(), calls),
         Err(_) => (None, None),
     };
-    let aborted: String = partials
-        .iter_many(calls.into_iter().flat_map(Calls::iter))
-        .flatten()
-        .map(|partial| partial.text.as_str())
-        .collect();
-    if !aborted.trim().is_empty() {
-        conversation.push(Message::assistant(aborted));
-    }
     let reason = interrupt.reason.clone();
     let why = match &reason {
         Some(reason) => format!("interrupted: {reason}"),
         None => "interrupted by the user".to_owned(),
     };
+    let streamed = partials.iter_many(calls.into_iter().flat_map(Calls::iter));
+    let (mut reasoning, mut text) = (String::new(), String::new());
+    for partial in streamed.flatten() {
+        reasoning.push_str(&partial.reasoning);
+        text.push_str(&partial.text);
+    }
+    let reasoning = (!reasoning.trim().is_empty()).then(|| AssistantContent::reasoning(reasoning));
+    let text = (!text.trim().is_empty()).then(|| AssistantContent::text(text));
+    let content: Vec<_> = reasoning.into_iter().chain(text).collect();
+    if !content.is_empty() {
+        let aborted = AssistantMessage::aborted(None, content, why.clone());
+        conversation.push(Message::Assistant(aborted));
+    }
     let reply = reply
         .zip(calls)
         .map(|(reply, calls)| reply_calls(reply, calls, &replies));
@@ -470,6 +481,9 @@ pub(crate) fn on_interrupt(
         commit_results(&mut conversation, results);
     }
     conversation.halt(Halt::Stopped);
+    conversation.end_turn(TurnEnd::Stopped {
+        why: reason.clone(),
+    });
     let conversation = conversation.bypass_change_detection();
     committed.write_batch(save_conversation(&log, agent, id, conversation));
     log.flush();
@@ -482,8 +496,9 @@ pub(crate) fn on_interrupt(
             turn.despawn_related::<Holds>();
         }
         if let Ok(mut turn) = world.get_entity_mut(turn) {
-            turn.remove::<(TurnOf, Ending)>()
-                .insert((TurnOutcome::Stopped(reason), Settled));
+            turn.insert(TurnOutcome::Stopped(reason))
+                .remove::<(TurnOf, Ending)>()
+                .insert(Settled);
         }
     });
     notices.write(Notice::info(agent, "Interrupted."));
@@ -687,7 +702,7 @@ pub(crate) fn build_requests(
                 .try_insert_if_new(Outcome(Err(why)));
             continue;
         }
-        let history = builder.conversation.view();
+        let history = builder.conversation.request_view();
         let model = build((agent, &builder), spec, &parts, history);
         commands.entity(call.entity).try_insert(model);
     }
@@ -1438,8 +1453,9 @@ pub(crate) fn commit_replies(
 /// Ends each turn whose [`TurnOutcome`] nothing holds and whose calls all
 /// settled, in [`Stage::Commit`], before this pass's proposals are made, so
 /// Review sees each proposal first: what the kernel proposed shows its
-/// error and may take the user's unanswered message out, the turn is no
-/// longer [`TurnOf`] its agent, and it is [`Settled`].
+/// error and may take the user's unanswered message out, a message left
+/// unanswered is halted, the turn is no longer [`TurnOf`] its agent, and
+/// it is [`Settled`].
 /// An `Answered` turn waits while a message that would carry it on is on
 /// its way to its agent. Not when a Review system failed.
 pub(crate) fn end_turns(
@@ -1480,6 +1496,11 @@ pub(crate) fn end_turns(
                 drop_unanswered(agent, &mut conversation, &mut notices);
             }
         }
+        if !matches!(outcome, TurnOutcome::Answered(_)) {
+            conversation.halt(Halt::Kept);
+        }
+        let end = turn_end(outcome, &conversation);
+        conversation.end_turn(end);
         let how = match outcome {
             TurnOutcome::Answered(_) => "answered",
             TurnOutcome::Failed(_) => "failed",

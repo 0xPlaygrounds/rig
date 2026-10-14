@@ -114,7 +114,9 @@ fn drawn_choice(
     use ratatui::layout::Position;
 
     let Ok(mut terminal) = Terminal::new(TestBackend::new(120, 20));
-    let drawn = terminal.draw(|frame| super::draw_choice(frame, choosing, shown));
+    let drawn = terminal.draw(|frame| {
+        super::draw_choice(frame, choosing, shown);
+    });
     assert!(drawn.is_ok());
     let buffer = terminal.backend().buffer();
     let rows = (0..buffer.area.height).map(|y| {
@@ -136,12 +138,15 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
                 label,
                 detail: None,
                 checked: false,
+                more: None,
             })
             .into(),
         free_text: true,
+        ticks: true,
         multiple: false,
         selected: 0,
         edit: None,
+        keys: &[],
     };
     let mut choosing = Choosing {
         entity: bevy_ecs::entity::Entity::PLACEHOLDER,
@@ -150,6 +155,8 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         ticked: Vec::new(),
         scroll: 0,
         draft: None,
+        more: false,
+        touched: false,
     };
     // What is typed filters the choices and is an answer of its own.
     assert_eq!(
@@ -254,4 +261,86 @@ fn a_highlight_may_match_case_and_the_one_placed_first_wins() {
     let both = [highlight("Error:", current, true), any_case[0].clone()];
     assert_eq!(lit(&both, current), ["Error:"]);
     assert_eq!(lit(&both, rest), ["error", "ERROR"]);
+}
+
+#[test]
+fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
+    use rig_core::completion::Message;
+    use rig_harness::prelude::*;
+
+    use crate::tests::{type_text, view_app};
+    use crate::{
+        DrawnTranscript, TerminalWrite, TranscriptItem, TuiFrame, TuiInput, TuiTestScreen,
+    };
+
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(60, 20))
+        .init_resource::<DrawnTranscript>();
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(Message::user("where is the config read?"));
+    }
+    app.world_mut()
+        .write_message(TerminalWrite(b"\x1b]9;done\x07".to_vec()));
+    app.update();
+    let world = app.world();
+    let screen = world.resource::<TuiTestScreen>();
+    let rows = screen.rows();
+    assert_eq!(rows.len(), 20);
+    assert_eq!(screen.written(), b"\x1b]9;done\x07");
+    // The message's rows are on screen, where the frame says the
+    // transcript is.
+    let frame = world.resource::<TuiFrame>().clone();
+    assert_eq!((frame.screen.width, frame.screen.height), (60, 20));
+    assert!(frame.transcript.height > 0 && frame.input.y > frame.transcript.y);
+    let drawn = world.resource::<DrawnTranscript>();
+    let id = world.get::<Conversation>(agent).and_then(|c| c.id(0));
+    let message = id.and_then(|id| drawn.rows_of(&TranscriptItem::Message(id)));
+    let on_screen = message.into_iter().flatten().filter_map(|row| {
+        let at = frame.screen_row(drawn, row)?;
+        rows.get(usize::from(at))
+    });
+    let texts: Vec<&String> = on_screen.collect();
+    assert!(
+        texts
+            .iter()
+            .any(|row| row.contains("where is the config read?")),
+        "{texts:#?} in {rows:#?}"
+    );
+    assert!(frame.overlays.is_empty());
+    // A completion list covers the transcript.
+    app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
+    app.world_mut().resource_mut::<TuiInput>().set("");
+    type_text(&mut app, "/mo");
+    let frame = app.world().resource::<TuiFrame>();
+    assert_eq!(frame.overlays.len(), 1, "{frame:?}");
+    assert!(frame.covered(frame.transcript));
+}
+
+/// A repaint asks for a frame and writes its cells again, clipped to the
+/// screen, though nothing in them changed.
+#[test]
+fn a_repaint_writes_its_cells_again_on_the_next_frame() {
+    use crate::tests::view_app;
+    use crate::{Repaint, TuiTestScreen};
+    use ratatui::layout::Rect;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    app.update();
+    app.update();
+    assert!(
+        app.world()
+            .resource::<TuiTestScreen>()
+            .repainted()
+            .is_empty()
+    );
+    app.world_mut()
+        .write_message(Repaint(Rect::new(10, 3, 30, 2)));
+    app.world_mut()
+        .write_message(Repaint(Rect::new(50, 19, 30, 4)));
+    app.update();
+    assert_eq!(
+        app.world().resource::<TuiTestScreen>().repainted(),
+        [Rect::new(10, 3, 30, 2), Rect::new(50, 19, 10, 1)]
+    );
 }

@@ -18,7 +18,6 @@ rig-core = { workspace = true }
 rig-memory = { path = "../../crates/rig-memory", features = ["fs"] }
 # The `RIG_HOME` layout (`rig::harness_protocol`): std only, no Bevy.
 rig = { path = "../..", default-features = false }
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]

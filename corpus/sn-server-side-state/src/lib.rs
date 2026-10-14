@@ -264,15 +264,17 @@ fn move_chain(
 /// A fork's first start sends every agent's next request in full: the
 /// chains it copied belong to the session it was forked from.
 fn forget_on_fork(
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     store: Option<Res<SessionStore>>,
     mut chains: Query<&mut ServerChain>,
     mut done: Local<bool>,
 ) {
-    if std::mem::replace(&mut *done, true) || first.is_none() {
+    if std::mem::replace(&mut *done, true)
+        || !started.is_some_and(|started| started.0 == StartReason::New)
+    {
         return;
     }
-    if store.is_none_or(|store| ForkedFrom::of(&*store.0).is_none()) {
+    if store.is_none_or(|store| ForkedFrom::read(&*store.0).is_none()) {
         return;
     }
     for mut chain in &mut chains {

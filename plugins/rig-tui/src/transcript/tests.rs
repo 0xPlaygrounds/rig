@@ -9,7 +9,7 @@ use ratatui::text::Line;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
+    AssistantContent, AssistantMessage, CallId, Image, ToolCall, ToolFunction, ToolName,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_core::tool::ToolResult;
@@ -26,15 +26,14 @@ use rig_harness::prelude::{App, Last, Update};
 use serde_json::json;
 
 use super::{
-    Below, CallFacts, ChildCalls, EntryRenderers, Look, Part, Renderers, Scroll, StreamingCalls,
-    Transcript,
+    Below, CallFacts, ChildCalls, Look, Part, Renderers, Scroll, StreamingCalls, Transcript,
 };
 use crate::render::CallStates;
-use crate::tests::{drawn_rows, on_screen, press, view_app};
+use crate::tests::{drawn_rows, on_screen, press, redacted, view_app};
 use crate::{
-    AppToolRenderersExt, CallState, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow,
-    LineSpan, PastEffects, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem,
-    TranscriptLayout, TranscriptView,
+    AppToolRenderersExt, CallState, ContentKind, DrawnRow, DrawnTranscript, Expanded, Highlight,
+    ItemRow, LineSpan, MarkIn, PastEffects, RenderToolCall, ScrollTo, TextMark, ToolCallView,
+    TranscriptItem, TranscriptLayout, TranscriptView,
 };
 
 const WIDTH: u16 = 80;
@@ -106,11 +105,9 @@ fn drawn(
     (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
     renderers: &Renderers<'_>,
 ) -> String {
-    let entries = EntryRenderers::default();
     let (expanded, facts) = (HashSet::new(), CallFacts::default());
     let look = Look {
         renderers,
-        entries: &entries,
         calls,
         outputs,
         inside: HashMap::new(),
@@ -119,6 +116,7 @@ fn drawn(
         note_cut: false,
         facts: &facts,
         children: &ChildCalls::default(),
+        marks: &[],
     };
     // The conversation is the same each time.
     transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
@@ -202,7 +200,10 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
         let output = call.output.unwrap_or("no output").lines();
         output.map(|line| Line::from(format!("> {line}"))).collect()
     });
-    let renderers: Renderers<'_> = HashMap::from([("shell", &look)]);
+    let renderers = Renderers {
+        tools: HashMap::from([("shell", &look)]),
+        ..Renderers::default()
+    };
     let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
     let mut transcript = Transcript::default();
     let mut outputs = BTreeMap::new();
@@ -285,6 +286,68 @@ fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
         line_of(&lines, "btw: The style says so.").is_some(),
         "{lines:#?}"
     );
+}
+
+#[test]
+fn an_image_the_assistant_made_is_drawn() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("draw a cat"));
+    let reply = AssistantMessage::new(vec![AssistantContent::Image(Image::default())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let lines = on_screen(&mut app, agent, 20);
+    assert!(line_of(&lines, "[image]").is_some(), "{lines:#?}");
+}
+
+#[test]
+fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
+    use rig_core::message::UserContent;
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    // An image look that reserves a row under its label, as a plugin
+    // placing images does.
+    app.add_content_renderer(ContentKind::Image, |view| {
+        let by = if view.assistant { "model" } else { "user" };
+        vec![
+            Line::from(format!("img {} by {by}", view.index)),
+            Line::default(),
+        ]
+    })
+    .add_tool_renderer("shell", |call| vec![call.header("shell", "")])
+    .add_call_decorator("names", |call| {
+        vec![Line::from(format!("  ~ {}", call.name()))]
+    });
+    let image = UserContent::Image(Image::default());
+    let asked = Message::User {
+        content: vec![UserContent::text("look"), image],
+    };
+    say(&mut app, agent, asked);
+    let reply = AssistantMessage::new(vec![AssistantContent::Image(Image::default())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let (Ok(shell), Ok(read)) = (ToolName::new("shell"), ToolName::new("read")) else {
+        return;
+    };
+    let calls = [("c1", shell), ("c2", read)]
+        .map(|(id, name)| ToolCall::from_wire(id, ToolFunction::new(name, json!({}))));
+    let reply = calls.clone().map(AssistantContent::ToolCall);
+    say(
+        &mut app,
+        agent,
+        Message::Assistant(AssistantMessage::new(reply.to_vec())),
+    );
+    let lines = on_screen(&mut app, agent, 100);
+    for text in ["img 1 by user", "img 0 by model", "~ shell", "~ read"] {
+        assert!(line_of(&lines, text).is_some(), "{text}: {lines:#?}");
+    }
+    // The user's image is an item with its rows, the reserved one too.
+    let Some(asked) = message_id(&app, agent, 0) else {
+        return;
+    };
+    let drawn = app.world().resource::<DrawnTranscript>();
+    let rows = drawn.rows_of(&TranscriptItem::Content(asked, 1));
+    let texts: Vec<&str> = (rows.unwrap_or_default().map(|row| drawn.rows().get(row)))
+        .map(|row| row.map_or("", |row| row.text.as_str()))
+        .collect();
+    assert_eq!(texts, ["img 1 by user", ""]);
 }
 
 #[test]
@@ -895,4 +958,195 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
     world.write_message(PastEffects::new(records));
     say(&mut resumed, agent, asked);
     assert_eq!(consult_rows(&mut resumed, agent), expected);
+}
+
+/// A mark inside a saved reply's text block is drawn between the words it
+/// sits between, the bold on both sides still bold.
+#[test]
+fn a_mark_is_drawn_inside_a_replys_text_with_its_markdown_kept() {
+    use ratatui::style::Modifier;
+
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("Go on."));
+    say(
+        &mut app,
+        agent,
+        Message::assistant("**first part** and **second part**"),
+    );
+    let Some(id) = message_id(&app, agent, 1) else {
+        return;
+    };
+    // Byte 18: after "**first part** and".
+    app.world_mut().resource_mut::<TranscriptView>().marks = vec![TextMark {
+        r#in: MarkIn::Message { id, block: 0 },
+        at: 18,
+        label: "⟳".to_owned(),
+        style: Style::new(),
+    }];
+    let rows = drawn_rows(&mut app, agent, 20, Vec::new());
+    let row = rows.iter().find(|row| row.to_string().contains("⟳"));
+    assert_eq!(
+        row.map(ToString::to_string).as_deref(),
+        Some("first part and⟳ second part")
+    );
+    let bold: Vec<String> = row
+        .into_iter()
+        .flat_map(|row| row.spans.iter())
+        .filter(|span| span.style.add_modifier.contains(Modifier::BOLD))
+        .map(|span| span.content.to_string())
+        .collect();
+    assert_eq!(bold, ["first part", "second part"]);
+}
+
+/// A mark on a streaming reply is drawn in it, and gone once cleared.
+#[test]
+fn a_mark_on_a_streaming_reply_is_drawn_until_cleared() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("Go on."));
+    let world = app.world_mut();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let partial = Partial {
+        text: "so far more".to_owned(),
+        reasoning: String::new(),
+    };
+    let call = world.spawn((CallOf(turn), partial)).id();
+    world.resource_mut::<TranscriptView>().marks = vec![TextMark {
+        r#in: MarkIn::Streaming(call),
+        at: 7,
+        label: "[continued] ".to_owned(),
+        style: Style::new(),
+    }];
+    let text = |app: &mut App| -> Vec<String> {
+        let rows = drawn_rows(app, agent, 20, Vec::new());
+        rows.iter().map(ToString::to_string).collect()
+    };
+    let rows = text(&mut app);
+    assert!(
+        rows.iter().any(|row| row == "so far [continued] more"),
+        "{rows:?}"
+    );
+    app.world_mut()
+        .resource_mut::<TranscriptView>()
+        .marks
+        .clear();
+    let rows = text(&mut app);
+    assert!(rows.iter().any(|row| row == "so far more"), "{rows:?}");
+}
+
+/// Each decorator's rows under a call are an item of their own, inside the
+/// call's, holding only its lines whatever order the decorators came in;
+/// a second decorator with a name taken is not added.
+#[test]
+fn each_decorators_rows_are_an_item_inside_its_call() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    app.add_tool_renderer("shell", |call| vec![call.header("shell", "")])
+        .add_call_decorator("late", |_| {
+            vec![Line::from("  late one"), Line::from("  late two")]
+        })
+        .add_call_decorator("early", |_| vec![Line::from("  early")])
+        .add_call_decorator("early", |_| vec![Line::from("  never")]);
+    let Ok(shell) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(shell, json!({})));
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call)]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let lines = on_screen(&mut app, agent, 40);
+    assert!(line_of(&lines, "never").is_none(), "{lines:#?}");
+    let drawn = app.world().resource::<DrawnTranscript>();
+    let texts = |item: TranscriptItem| -> Vec<String> {
+        let rows = drawn.rows_of(&item).unwrap_or_default();
+        let rows = rows.filter_map(|row| drawn.rows().get(row));
+        rows.map(|row| row.text.trim().to_owned()).collect()
+    };
+    let id = CallId::from_wire("c1");
+    let decoration = |name: &str| TranscriptItem::Decoration(id.clone(), name.to_owned());
+    assert_eq!(texts(decoration("late")), ["late one", "late two"]);
+    assert_eq!(texts(decoration("early")), ["early"]);
+    let call = drawn
+        .rows_of(&TranscriptItem::Call(id.clone()))
+        .unwrap_or_default();
+    for name in ["late", "early"] {
+        let rows = drawn.rows_of(&decoration(name)).unwrap_or_default();
+        assert!(call.start <= rows.start && rows.end <= call.end, "{name}");
+    }
+}
+
+/// Every string the view keeps of the calls it knows of.
+fn call_texts(facts: &CallFacts) -> String {
+    let mut texts = String::new();
+    for settled in [&facts.run, &*facts.past] {
+        for (published, _) in settled.facts.values() {
+            texts += &serde_json::to_string(published).unwrap_or_default();
+        }
+        for call in settled.replies.values().flatten() {
+            texts += &serde_json::to_string(call).unwrap_or_default();
+        }
+        let children = settled.calls.children.values().flatten();
+        for call in children.filter_map(|child| child.call.as_ref()) {
+            texts += &serde_json::to_string(&call.call).unwrap_or_default();
+            texts += call.line.as_deref().unwrap_or_default();
+        }
+    }
+    texts
+}
+
+#[test]
+fn a_session_rewrite_reaches_every_call_and_notice_the_view_keeps() {
+    let (mut app, agent) = view_app();
+    let keep = |mut read: MessageReader<EffectRecorded>, mut records: ResMut<Records>| {
+        records
+            .0
+            .extend(read.read().map(|recorded| recorded.0.clone()));
+    };
+    app.init_resource::<Records>().add_systems(Last, keep);
+    let Ok(shell) = ToolName::new("shell") else {
+        return;
+    };
+    let call = |id: &str| {
+        let args = json!({ "command": "echo sk-9 | wc -c" });
+        ToolCall::from_wire(id, ToolFunction::new(shell.clone(), args))
+    };
+    let model = || ModelRequest::new(CompletionRequest::new(Message::user("run it")));
+    let published: rig_core::tool::ToolResultContext =
+        serde_json::from_value(json!({ "before_text": "token sk-9" })).unwrap_or_default();
+    let ran = |call: ToolCall| {
+        let output = Outcome::from(ToolResult::success("sk-9 has 5 bytes".to_owned().into()));
+        let published = rig_ecs::stage::Published(published.clone());
+        (ToolRequest { call }, ForAgent(agent), output, published)
+    };
+    // One call settles before this run (read back as a resume reads it),
+    // one in it, and one reply's call waits for its record.
+    let turn = settle(
+        &mut app,
+        None,
+        ((model(), ForAgent(agent)), reply("", vec![call("c1")])),
+    );
+    settle(&mut app, turn, ran(call("c1")));
+    let past = std::mem::take(&mut app.world_mut().resource_mut::<Records>().0);
+    app.world_mut().write_message(PastEffects::new(past));
+    let turn = settle(
+        &mut app,
+        None,
+        (
+            (model(), ForAgent(agent)),
+            reply("", vec![call("c2"), call("c3")]),
+        ),
+    );
+    settle(&mut app, turn, ran(call("c2")));
+    assert!(call_texts(app.world().resource::<CallFacts>()).contains("sk-9"));
+    let notice = rig_ecs::agent::Notice::info(agent, "Ran `echo sk-9`.");
+    app.world_mut().write_message(notice);
+    app.update();
+
+    app.world_mut().write_message(redacted("sk-9"));
+    app.update();
+    let texts = call_texts(app.world().resource::<CallFacts>());
+    assert!(!texts.contains("sk-9"), "{texts}");
+    assert!(texts.contains("echo [REDACTED] | wc -c"), "{texts}");
+    assert!(texts.contains("token [REDACTED]"), "{texts}");
+    let notices = app.world().resource::<TranscriptView>().notices();
+    let notices: Vec<&str> = notices.iter().map(|notice| notice.text.as_str()).collect();
+    assert_eq!(notices, ["Ran `echo [REDACTED]`."]);
 }

@@ -4,6 +4,15 @@
 //! fills, filters or stops saving, such as to keep secrets out of it; a
 //! [`Sent`] adds a prompt to it.
 //!
+//! A prompt is kept as typed, a slash command's included. When the session
+//! is rewritten ([`SessionRewritten`](rig_ecs::journal::SessionRewritten)), the history, in memory and in its
+//! file, goes through the same map: a redaction reaches every prompt that
+//! held what it removed, those of other sessions too, and so the
+//! `/redact <text>` line that asked for it. A command whose arguments must
+//! never be kept, even before a rewrite runs, takes them out of `entries`
+//! between [`HistorySystems::Record`] and [`HistorySystems::Save`], as
+//! below.
+//!
 //! ```no_run
 //! use rig_harness::prelude::*;
 //! use rig_tui::{HistorySystems, PromptHistory};
@@ -23,6 +32,7 @@ use std::sync::Arc;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use rig_harness::prelude::{Files, PluginData};
+use rig_harness::rig_memory::{Place, Rewrite, rewrite_file, rewrite_value};
 
 use super::jsonl::{self, Kept};
 
@@ -57,6 +67,24 @@ impl PromptHistory {
             entries: jsonl::tail(&Kept(files.clone(), HISTORY_FILE), KEPT),
             file: Some(files),
             unsaved: Vec::new(),
+        }
+    }
+}
+
+impl PromptHistory {
+    /// Maps every prompt, in memory and in the file, through `with`.
+    pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
+        let at = Place::File { name: HISTORY_FILE };
+        for prompt in self.entries.iter_mut().chain(&mut self.unsaved) {
+            // A map that leaves no string leaves no prompt.
+            if rewrite_value(with, &at, HISTORY_FILE, prompt).is_err() {
+                prompt.clear();
+            }
+        }
+        if let Some(file) = &self.file
+            && let Err(failure) = rewrite_file(&**file, HISTORY_FILE, with)
+        {
+            warn!("could not rewrite the prompt history: {failure}");
         }
     }
 }

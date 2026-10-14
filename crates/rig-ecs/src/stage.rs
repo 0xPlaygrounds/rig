@@ -55,7 +55,9 @@ use bevy_ecs::error::{BevyError, ErrorContext, ErrorHandler, FallbackErrorHandle
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
-use bevy_ecs::schedule::{LogLevel, ScheduleBuildSettings, ScheduleLabel, SingleThreadedExecutor};
+use bevy_ecs::schedule::{
+    InternedSystemSet, LogLevel, ScheduleBuildSettings, ScheduleLabel, SingleThreadedExecutor,
+};
 use bevy_ecs::world::DeferredWorld;
 use bevy_log::tracing::Instrument;
 use bevy_log::{info_span, warn};
@@ -75,7 +77,7 @@ use web_time::SystemTime;
 use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
-use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
+use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
 use super::journal::{Drain, SessionLog, millis};
 use super::restore::{Interrupted, answer_interrupted, mark_started};
 use super::tools::{
@@ -208,7 +210,8 @@ pub enum GateSystems {
     /// answered with an error, else releases its holds.
     After,
     /// The kernel's own answers once every plugin had its say, such as an
-    /// [`Interrupted`] call's. A default plugin's fallback goes between
+    /// [`Interrupted`] call's or an [`Unsent`](super::inbox::Unsent)
+    /// message's. A default plugin's fallback goes between
     /// (`.after(GateSystems::After).before(GateSystems::Fallback)`), so it
     /// sees what every plugin decided or held and the kernel has not
     /// answered yet.
@@ -686,7 +689,9 @@ pub(crate) fn build(app: &mut App) {
                     .after(GateSystems::FromRecord)
                     .before(Stage::Gate)
                     .run_if(moved_since_quiet),
-                answer_interrupted.in_set(GateSystems::Fallback),
+                (answer_interrupted, settle_unsent)
+                    .chain()
+                    .in_set(GateSystems::Fallback),
                 apply_decisions.in_set(Enter(Stage::Start)),
                 (accept, carry_on_accepted, start)
                     .chain()
@@ -705,14 +710,17 @@ pub(crate) fn build(app: &mut App) {
     // The conversations changed are saved between the stages, so a
     // `Committed` reader in a later stage of the pass sees the change, and
     // at the end of the pass.
-    let mut after: Option<Stage> = None;
+    let mut after: Option<InternedSystemSet> = None;
     for stage in Stage::ALL {
         let save = save_in_pass.before(Enter(stage));
         match after {
             Some(after) => app.add_systems(AgentPass, save.after(after)),
             None => app.add_systems(AgentPass, save),
         };
-        after = Some(stage);
+        after = Some(match stage {
+            Stage::Gate => GateSystems::Fallback.intern(),
+            stage => stage.intern(),
+        });
     }
     app.add_systems(AgentPass, save_in_pass.after(Stage::Start));
 }

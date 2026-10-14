@@ -847,7 +847,8 @@ impl crate::completion::ReplayTarget for Chat {
     /// Chat reads no images in assistant messages, images in tool results
     /// only on a dialect that says so, and tools where the dialect takes
     /// them. Which models read user images follows each provider's
-    /// documented model rules (`reads_images`).
+    /// documented model rules (`reads_images`). Another model's reasoning
+    /// goes under the model's reasoning field, when it has one.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         let quirks = &self.provider.dialect.quirks;
         let user_images = reads_images(&self.facts, &self.provider.dialect, model);
@@ -856,6 +857,7 @@ impl crate::completion::ReplayTarget for Chat {
             assistant_images: false,
             tool_result_images: user_images && quirks.supports_image_tool_results,
             tools: quirks.supports_tools,
+            foreign_reasoning: self.reasoning_field(model).is_some(),
         }
     }
 

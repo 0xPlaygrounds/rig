@@ -7,18 +7,37 @@ agent framework, over rig-core's one `Conversation` type:
   `TokenBudget`), never a tool result without its call.
 - compaction: a `CompactionPolicy` that says when (near the model's window)
   and where to cut and plans the summary request, a `SummaryState` carried
-  from one summary to the next, `apply_summary`, and `ClearToolOutputs`,
-  which frees context without a model call. rig-harness's compaction plugin
-  is built on it.
-- saving and resuming: the session format `rig-session/1` (one JSON-lines
+  from one summary to the next, `apply_summary`, which keeps what each
+  compaction replaced in a `rig.compaction` aside (`Compacted`), so
+  `undo_summary` puts the newest one's entries back with their ids, and
+  `ClearToolOutputs`, which frees context without a model call.
+  rig-harness's compaction plugin is built on it.
+- saving and resuming: the session format `rig-session/2` (one JSON-lines
   log per agent, images kept as blobs), a `Store` trait with `MemoryStore`
   and, with feature `fs`, `DirStore`, and its `Files` half for named files
   on their own (`DirFiles` over a plain directory, where rig-harness keeps
   plugins' data per project and per user); `load`/`save` for one conversation,
-  `Session` for a whole session, `Writer` for a running host, `fork`,
-  `history` and `as_of`. Reading is strict: a session that cannot be read
-  whole is refused, and nothing is written. `Session::read_lenient` reads
-  each log that reads and names the others, for readers such as an export.
+  `Session` for a whole session, `Writer` for a running host, `history` and
+  `as_of`. Reading is strict: a session that cannot be read whole, or one an
+  older rig saved, is refused, and nothing is written.
+  `Session::read_lenient` reads each log that reads and names the others,
+  for readers such as an export.
+- rewriting and copying: records are appended while the session runs.
+  Nothing is rewritten except through rig-memory: `rewrite` (or
+  `Writer::rewrite` for a running session) maps every saved record in place,
+  keeping each record's place and stamp, and every file of the store,
+  through a `Rewrite` (`Strings` for a redaction or a path remap,
+  `Messages`, or hooks of its own); each log is replaced atomically, gets a
+  fresh lineage and records who rewrote it. A running writer's saves and a
+  rewrite never interleave; a value read before it is refused by `save`
+  (`LoadError::Changed`); the crate docs list the whole promise. `fork`
+  copies a session as it was before a message through the same `Rewrite`
+  (`Keep` for none), with what the copied messages' asides say now.
+- what a session is: `SessionMeta` (what a listing shows: title, labels,
+  when it changed), `ForkedFrom` (the session it was forked from), and a
+  saved agent's model and title under stable keys (`SavedAgent::model`,
+  `title`, `Session::main_agent`), all readable without the host that wrote
+  them.
 
 With default features the crate is pure data and builds for wasm32.
 

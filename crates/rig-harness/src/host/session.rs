@@ -8,9 +8,12 @@
 //! [`SessionDeleted`] and [`SessionDeleteFailed`] tell every plugin, such as one keeping files of its
 //! own per session. Deleting is crash safe: a session marked deleting is
 //! hidden from listings, and the next start finishes it. A forked session
-//! names the session it came from ([`ForkedFrom`]). The first app a
-//! session runs, a fork's first included, has [`FirstStart`]; what the
-//! user typed in a message is [`typed`].
+//! names the session it came from ([`ForkedFrom`]). A rewrite of this
+//! session (`RewriteSession`) reaches its scratch files too, and
+//! [`rewrite_stopped`] rewrites a session no rig runs, scratch included.
+//! Why this app
+//! started, such as its session's first start or a `/reload`, is
+//! [`AppStart`]; what the user typed in a message is [`typed`].
 
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions};
@@ -30,20 +33,21 @@ use bevy_log::tracing_subscriber::{Registry, fmt};
 use bevy_log::{BoxedFmtLayer, BoxedLayer, error, warn};
 use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
-use rig::harness_protocol::{Home, SessionDir, SessionId};
+use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Conversation, EntryRef, MessageId};
+use rig_core::conversation::{Author, Conversation, MessageId};
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{self, AgentId, Notice};
-use rig_ecs::journal::{SessionStore, open_session};
-use rig_memory::{DirStore, Files, LoadError, Store, fork};
+use rig_ecs::journal::{SessionRewritten, SessionStore, open_session};
+use rig_memory::{
+    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, Store, fork, rewrite,
+};
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
-use serde::{Deserialize, Serialize};
 
-use super::cli::Cli;
+use super::cli::{self, Cli};
 use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
 use crate::plugin_data::PluginData;
@@ -70,8 +74,10 @@ impl Deref for SessionPaths {
 /// an import's, one `/resume` lists. A plugin replaces it while the app is
 /// built, such as with a store that seals what it keeps:
 /// `app.insert_resource(SessionStores::new(|dir| ..))`. Once every plugin
-/// is built, the harness opens the running session's [`SessionStore`] from
-/// it, unless one is there, and reads the session before anything is
+/// is built, the harness chooses the run's front and opens the running
+/// session's [`SessionStore`] from the front's own store
+/// ([`Front::session_store`](super::cli::Front::session_store)), else from
+/// this, unless one is there, and reads the session before anything is
 /// written; a run whose store does not open, or whose session cannot be
 /// read, is refused, and nothing of the session is changed. Every store it
 /// opens marks its session saved ([`SessionDir::mark_saved`]) the first
@@ -105,6 +111,12 @@ impl SessionStores {
             dir: dir.clone(),
             marked: AtomicBool::new(false),
         }))
+    }
+}
+
+impl Debug for SessionStores {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SessionStores")
     }
 }
 
@@ -142,8 +154,8 @@ impl Store for Marking {
         Ok(())
     }
 
-    fn truncate_log(&self, name: &str, len: u64) -> io::Result<()> {
-        self.inner.truncate_log(name, len)
+    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.inner.replace_log(name, bytes)
     }
 
     fn remove_log(&self, name: &str) -> io::Result<()> {
@@ -160,6 +172,10 @@ impl Store for Marking {
 
     fn blobs(&self) -> io::Result<Vec<String>> {
         self.inner.blobs()
+    }
+
+    fn remove_blob(&self, name: &str) -> io::Result<()> {
+        self.inner.remove_blob(name)
     }
 
     fn destroy(&self) -> io::Result<()> {
@@ -243,19 +259,26 @@ fn session_paths(world: &mut World) -> SessionPaths {
         .clone()
 }
 
-/// This app is its session's first start: no app of the session ran a
-/// whole frame before. A fork's first app has it, a `/reload` of a session
-/// started earlier does not; "a fork's first start" is [`ForkedFrom`]
-/// with it. Inserted when the session plugin is built.
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct FirstStart;
+/// Why this app started, from the launcher ([`StartReason`]), inserted
+/// when the session plugin is built unless the app has one. `New` exactly
+/// when no app of the session ran a whole frame before, whatever the
+/// launcher said: a fork's first app is `New`, and "a fork's first start"
+/// is [`ForkedFrom`] with it. Without a launcher, any other start is
+/// `Resumed`.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AppStart(pub StartReason);
+
+/// Until the end of its first frame: this app is its session's first, and
+/// marks the session started then. A refused run does not.
+#[derive(Resource)]
+struct Unmarked;
 
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, the default [`SessionStores`] and [`Scratch`], the
 /// [`SystemTimings`] (which stay empty without the log), opens the
 /// [`SessionStore`] once every plugin is built and then inserts the
 /// [`PluginData`], routes panics to the log,
-/// tells a first start ([`FirstStart`]), and forks and deletes sessions,
+/// says why the app started ([`AppStart`]), and forks and deletes sessions,
 /// finishing at startup the deletes a crash cut short.
 pub struct SessionPlugin;
 
@@ -268,12 +291,20 @@ impl Plugin for SessionPlugin {
         if !app.world().contains_resource::<Scratch>() {
             app.insert_resource(Scratch(Some(paths.path().to_owned())));
         }
-        if !paths.started().exists() {
-            app.insert_resource(FirstStart).add_systems(
+        let first = !paths.started().exists();
+        if !app.world().contains_resource::<AppStart>() {
+            let reason = match StartReason::from_env() {
+                _ if first => StartReason::New,
+                None | Some(StartReason::New) => StartReason::Resumed,
+                Some(reason) => reason,
+            };
+            app.insert_resource(AppStart(reason));
+        }
+        if first {
+            app.insert_resource(Unmarked).add_systems(
                 Last,
                 mark_started
-                    .run_if(run_once)
-                    .run_if(resource_exists::<FirstStart>)
+                    .run_if(resource_exists::<Unmarked>)
                     .before(discard_sessionless),
             );
         }
@@ -283,6 +314,7 @@ impl Plugin for SessionPlugin {
             .add_message::<SessionForked>()
             .add_message::<SessionDeleted>()
             .add_message::<SessionDeleteFailed>()
+            .add_message::<SessionRewritten>()
             .add_message::<Notice>()
             .add_observer(|fork: On<ForkSession>, mut forks: ResMut<Forks>| {
                 forks.0.push(fork.event().clone());
@@ -293,8 +325,14 @@ impl Plugin for SessionPlugin {
                 finish_deletes.run_if(not(resource_exists::<Describing>)),
             )
             .add_systems(First, timings::next_frame)
-            // A fork copies what the session logged up to this frame.
-            .add_systems(Last, fork_sessions.after(WriteJournal))
+            .configure_sets(Last, ForkSessions.after(WriteJournal))
+            .add_systems(Last, fork_sessions.in_set(ForkSessions))
+            .add_systems(
+                Last,
+                rewrite_scratch
+                    .in_set(WriteJournal)
+                    .run_if(on_message::<SessionRewritten>),
+            )
             .add_systems(
                 Last,
                 discard_sessionless
@@ -303,9 +341,9 @@ impl Plugin for SessionPlugin {
             );
     }
 
-    /// Every plugin chose the stores and the scratch place by now: opens
-    /// the session's store, or the one a test or a nested tool put in, and
-    /// reads the session; only then moves the text log where [`Scratch`]
+    /// Every plugin chose the stores and the scratch place and offered its
+    /// fronts by now: chooses the run's front, opens the session's store,
+    /// or the one a test or a nested tool put in, and reads the session; only then moves the text log where [`Scratch`]
     /// says. A session that cannot be opened or read refuses the run, and
     /// the run writes nothing into its directory (`leave_session`). A
     /// build describing itself opens none.
@@ -351,17 +389,20 @@ fn insert_plugin_data(world: &mut World) {
     world.insert_resource(data);
 }
 
-/// Opens the session's store, the one in the world or else the one
-/// [`SessionStores`] opens for [`SessionPaths`], and reads the session it
-/// holds ([`open_session`]), before anything is written to it.
+/// Opens the session's store, the one in the world or else the one the
+/// run's front or [`SessionStores`] opens for [`SessionPaths`], and reads
+/// the session it holds ([`open_session`]), before anything is written to
+/// it.
 fn open_store(world: &mut World) -> Result<(), LoadError> {
     let store = match world.remove_resource::<SessionStore>() {
         Some(SessionStore(store)) => store,
         None => {
-            let (Some(paths), Some(stores)) = (
-                world.get_resource::<SessionPaths>(),
-                world.get_resource::<SessionStores>(),
-            ) else {
+            cli::choose(world);
+            let front = world.get_resource::<Cli>().and_then(Cli::chosen);
+            let stores = front
+                .and_then(|front| front.session_store.as_ref())
+                .or_else(|| world.get_resource::<SessionStores>());
+            let (Some(paths), Some(stores)) = (world.get_resource::<SessionPaths>(), stores) else {
                 return Ok(());
             };
             stores.open(paths)?
@@ -378,27 +419,30 @@ pub(crate) fn leave_session(world: &mut World) {
     let elsewhere = world.get_resource::<LauncherRun>().map(|run| run.0.log());
     move_text_log(world, elsewhere);
     world.insert_resource(Scratch(None));
-    world.remove_resource::<FirstStart>();
+    world.remove_resource::<Unmarked>();
 }
 
 /// Marks the session started at the end of its first app's first frame.
-fn mark_started(paths: Res<SessionPaths>) {
+fn mark_started(paths: Res<SessionPaths>, mut commands: Commands) {
+    commands.remove_resource::<Unmarked>();
     if let Err(failure) = fs::write(paths.started(), b"") {
         error!("could not mark the session started: {failure}");
     }
 }
 
 /// Removes the session's directory when a sessionless front's run ends,
-/// however, once everything was written there. A run that failed first
-/// moves its text log into the launcher's run directory, where the
-/// launcher's failure message points.
+/// however, once everything was written there; never a resumed session's,
+/// which such a front refuses. A run that failed first moves its text log
+/// into the launcher's run directory, where the launcher's failure message
+/// points.
 fn discard_sessionless(
     mut exits: MessageReader<AppExit>,
-    cli: Option<Res<Cli>>,
+    (cli, start): (Option<Res<Cli>>, Option<Res<AppStart>>),
     paths: Res<SessionPaths>,
     (run, scratch): (Option<Res<LauncherRun>>, Option<Res<Scratch>>),
 ) {
-    if !cli.is_some_and(|cli| cli.sessionless()) {
+    let resumed = start.is_some_and(|start| start.0 == StartReason::Resumed);
+    if resumed || !cli.is_some_and(|cli| cli.sessionless()) {
         return;
     }
     if !exits.read().all(AppExit::is_success)
@@ -439,58 +483,149 @@ pub struct SessionForked {
     pub asker: Option<Entity>,
 }
 
-/// The session a session was forked from, and where the copy stopped,
-/// as [`ForkSession`] asked, with the text of the message it stopped
-/// before: kept in the forked session's store, so a view of a session's
-/// family reads no other session's log.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ForkedFrom {
-    /// The session it was copied from.
-    pub session: SessionId,
-    /// Where the copy stopped: an agent's id and a message's id.
-    pub before: Option<(AgentId, MessageId)>,
-    /// What the user wrote in the message the copy stopped before, its
-    /// text without attached files; `None` without `before`, or for a
-    /// message with no text of the user's.
-    pub text: Option<String>,
-}
-
-/// How [`ForkedFrom`] is written.
-#[derive(Serialize, Deserialize)]
-struct Parent {
-    session: String,
-    before: Option<(AgentId, MessageId)>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    text: Option<String>,
-}
-
-/// The file of a forked session's store that holds its [`ForkedFrom`].
-const PARENT: &str = "parent.json";
-
-impl ForkedFrom {
-    /// The session the session in `store` was forked from, if it was.
-    /// Generic, so it is passed as it is where a store is any `Files`,
-    /// such as `stores.as_deref().and_then(ForkedFrom::of)`.
-    pub fn of(store: &(impl Files + ?Sized)) -> Option<Self> {
-        let parent: Parent = serde_json::from_slice(&store.read_file(PARENT).ok()?).ok()?;
-        Some(Self {
-            session: parent.session.parse().ok()?,
-            before: parent.before,
-            text: parent.text,
-        })
+/// Rewrites the saved session in `dir`, which no rig runs, through
+/// `with`, as done by `by` (rig-memory's `rewrite`): its store opened by
+/// `stores`, then the files kept in its directory: its name
+/// ([`SessionDir::name`]), the text log and the spilled tool output. The
+/// running session, `running`, is
+/// rewritten with `RewriteSession` instead. For a plugin redacting this
+/// session's forks too:
+///
+/// ```no_run
+/// use rig_harness::harness_protocol::SessionId;
+/// use rig_harness::prelude::*;
+///
+/// fn redact_fork(
+///     fork: SessionId,
+///     (home, stores, paths): (Res<RigHome>, Res<SessionStores>, Res<SessionPaths>),
+/// ) -> Result<(), String> {
+///     let redact = Strings(|text: &mut String| {
+///         let hit = text.contains("sk-123");
+///         if hit {
+///             *text = text.replace("sk-123", "[REDACTED]");
+///         }
+///         hit
+///     });
+///     let dir = home.0.session(&fork);
+///     rewrite_stopped(&stores, &paths, &dir, Author::plugin("redact"), &redact).map(drop)
+/// }
+/// ```
+///
+/// # Errors
+///
+/// When `dir` is the running session or another rig runs it, when its
+/// store does not open or its session cannot be read (nothing written), or
+/// when a write fails.
+pub fn rewrite_stopped(
+    stores: &SessionStores,
+    running: &SessionDir,
+    dir: &SessionDir,
+    by: Author,
+    with: &dyn Rewrite,
+) -> Result<Rewritten, String> {
+    if dir.path() == running.path() {
+        return Err("it is this session, which a RewriteSession rewrites".to_owned());
     }
+    if dir.runs_elsewhere() {
+        return Err("another rig runs it".to_owned());
+    }
+    let store = stores.open(dir).map_err(|failure| failure.to_string())?;
+    let rewritten = rewrite(&*store, by, with).map_err(|failure| failure.to_string())?;
+    let scratch = Scratch(Some(dir.path().to_owned()));
+    map_spill(&scratch, with)
+        .and_then(|()| map_name(dir, with))
+        .and_then(|_| {
+            scratch
+                .log()
+                .map_or(Ok(false), |log| map_file(&log, LOG, with))
+        })
+        .map_err(|failure| format!("rewriting its scratch files failed: {failure}"))?;
+    Ok(rewritten)
+}
 
-    /// Writes it into the forked session's `store`.
-    fn write(&self, store: &dyn Files) -> Result<(), String> {
-        let parent = Parent {
-            session: self.session.to_string(),
-            before: self.before.clone(),
-            text: self.text.clone(),
-        };
-        let text = serde_json::to_vec(&parent).map_err(|failure| failure.to_string())?;
-        store
-            .write_file(PARENT, &text)
-            .map_err(|failure| failure.to_string())
+/// The text log's name to a [`Rewrite`].
+const LOG: &str = "agent.log";
+
+/// Maps the file at `path`, named `name` to `with`, through it: written
+/// beside and renamed over, so it is the old file or the new, whole;
+/// whether it changed. A file that is not there is left.
+fn map_file(path: &Path, name: &str, with: &dyn Rewrite) -> io::Result<bool> {
+    let mut bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(failure) => return Err(failure),
+    };
+    if !with.file(name, &mut bytes) {
+        return Ok(false);
+    }
+    let mut part = path.as_os_str().to_owned();
+    part.push(".part");
+    fs::write(&part, &bytes)?;
+    fs::rename(&part, path)?;
+    Ok(true)
+}
+
+/// Maps the session's name in `dir` ([`SessionDir::name`]) through
+/// `with`, as the text file `name`; whether it changed. A name mapped to
+/// blank is removed.
+fn map_name(dir: &SessionDir, with: &dyn Rewrite) -> io::Result<bool> {
+    let Some(name) = dir.name() else {
+        return Ok(false);
+    };
+    let mut bytes = name.into_bytes();
+    if !with.file("name", &mut bytes) {
+        return Ok(false);
+    }
+    dir.set_name(Some(&String::from_utf8_lossy(&bytes)))?;
+    Ok(true)
+}
+
+/// Maps every file of `scratch`'s spilled tool output through `with`,
+/// each named `spill/<file>`.
+fn map_spill(scratch: &Scratch, with: &dyn Rewrite) -> io::Result<()> {
+    let Some(spill) = scratch.spill() else {
+        return Ok(());
+    };
+    let entries = match fs::read_dir(&spill.0) {
+        Ok(entries) => entries,
+        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(failure) => return Err(failure),
+    };
+    for entry in entries {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            let name = format!("spill/{}", entry.file_name().to_string_lossy());
+            map_file(&entry.path(), &name, with)?;
+        }
+    }
+    Ok(())
+}
+
+/// Maps the files this session keeps beside its store through each
+/// rewrite of the session, in [`WriteJournal`], so the systems after it
+/// read them mapped: its name, the spilled tool output, and the text log
+/// under its lock, then logged to again where it is. Pasted images are
+/// left.
+fn rewrite_scratch(
+    mut rewritten: MessageReader<SessionRewritten>,
+    (paths, scratch): (Option<Res<SessionPaths>>, Option<Res<Scratch>>),
+    log: Option<Res<TextLog>>,
+) {
+    for rewritten in rewritten
+        .read()
+        .filter(|rewritten| rewritten.result.is_ok())
+    {
+        let with = &*rewritten.with;
+        let spilled = scratch
+            .as_deref()
+            .map_or(Ok(()), |scratch| map_spill(scratch, with));
+        let named = paths
+            .as_deref()
+            .map_or(Ok(false), |paths| map_name(paths, with));
+        let logged = log.as_deref().map_or(Ok(()), |log| log.rewrite(with));
+        if let Err(failure) = spilled.and(named.map(drop)).and(logged) {
+            error!("rewriting the session's scratch files failed: {failure}");
+        }
     }
 }
 
@@ -519,6 +654,13 @@ pub struct SessionDeleteFailed {
     /// Why it is still there.
     pub why: String,
 }
+
+/// The system in `Last` that copies the sessions [`ForkSession`] asked
+/// for, after [`WriteJournal`]: a fork copies what the session logged up
+/// to its frame, and a plugin that writes the session's store in that
+/// frame says `.before(ForkSessions)` for the fork to have it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ForkSessions;
 
 /// The forks asked for this frame.
 #[derive(Resource, Default)]
@@ -565,17 +707,12 @@ fn fork_sessions(
 }
 
 /// What the user typed in message `at` of `conversation`: the text items
-/// of a message of the user's own ([`EntryRef::is_users_own`]), never of
+/// of a message of the user's own ([`EntryRef::is_users_own`](rig_core::conversation::EntryRef::is_users_own)), never of
 /// one an agent or a plugin delivered, such as a note, nor a file
 /// attached, each trimmed, joined by a blank line; `None` when it has
 /// none.
 pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
-    let entry = EntryRef {
-        index: at,
-        id: conversation.id(at)?,
-        message: conversation.messages().get(at)?,
-        author: conversation.author(at),
-    };
+    let entry = conversation.entries().nth(at)?;
     let Message::User { content } = entry.message else {
         return None;
     };
@@ -613,16 +750,16 @@ fn fork_into(
     let store = store.ok_or("this session is not stored")?;
     let (to, target) = home.new_session().map_err(|failure| failure.to_string())?;
     let parent = ForkedFrom {
-        session: from.clone(),
-        before: before.cloned(),
+        session: from.to_string(),
+        before: before.map(|(agent, message)| (agent.0.clone(), *message)),
         text,
     };
     let before = before.map(|(agent, message)| (agent.0.as_str(), *message));
     let copied = stores
         .open(&target)
-        .and_then(|copy| fork(&*store.0, &*copy, before).map(|()| copy))
+        .and_then(|copy| fork(&*store.0, &*copy, before, &Keep).map(|_| copy))
         .map_err(|failure| failure.to_string())
-        .and_then(|copy| parent.write(&*copy))
+        .and_then(|copy| parent.write(&*copy).map_err(|failure| failure.to_string()))
         .and_then(|()| match paths.working_directory() {
             Some(directory) => {
                 fs::write(target.directory(), directory.to_string_lossy().as_bytes())
@@ -760,6 +897,21 @@ struct TextLog {
     /// appends to; `None` when this run made it.
     earlier: Option<u64>,
     file: Arc<Mutex<Option<File>>>,
+}
+
+impl TextLog {
+    /// Maps the text log through `with` under its lock, so no line is
+    /// written meanwhile, and logs to the new file.
+    fn rewrite(&self, with: &dyn Rewrite) -> io::Result<()> {
+        let Some(at) = &self.at else {
+            return Ok(());
+        };
+        let mut file = self.file.lock().unwrap_or_else(PoisonError::into_inner);
+        if map_file(at, LOG, with)? {
+            *file = OpenOptions::new().append(true).open(at).ok();
+        }
+        Ok(())
+    }
 }
 
 /// Writes a line of the text log, or drops it without a file.

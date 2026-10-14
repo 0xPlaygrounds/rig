@@ -129,6 +129,8 @@ pub struct Mention {
     pub comment: String,
     /// A review comment's file and line.
     pub place: Option<(String, Option<u64>)>,
+    /// A review comment's thread: the id of its first comment.
+    pub review_thread: Option<u64>,
 }
 
 impl Mention {
@@ -189,8 +191,18 @@ impl Mention {
                 .to_owned(),
             author,
             comment,
+            review_thread: place.as_ref().and_then(|_| {
+                let id = |at: &str| event.pointer(at).and_then(Value::as_u64);
+                id("/comment/in_reply_to_id").or_else(|| id("/comment/id"))
+            }),
             place,
         })
+    }
+
+    /// The comment of the event payload in the file `path`.
+    pub fn read(path: &Path) -> Option<Self> {
+        let bytes = fs::read(path).ok()?;
+        Self::of_event(&serde_json::from_slice(&bytes).ok()?)
     }
 
     /// The key of its thread's session on [`SESSIONS_BRANCH`].
@@ -199,7 +211,7 @@ impl Mention {
     }
 }
 
-/// The run's mention, read in `build` from the event payload.
+/// The run's mention, read from the event payload, and its configuration.
 #[derive(Resource, Clone, Debug)]
 struct Run {
     mention: Option<Mention>,
@@ -263,69 +275,74 @@ pub struct GithubMentionPlugin;
 
 impl Plugin for GithubMentionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_front(Front::new(FRONT).on_command(
-            FRONT,
-            "",
-            "Answer the GitHub comment that started this CI job",
-        ))
-        .configure_sets(AgentPass, GithubSystems.in_set(Stage::Gate))
-        .add_systems(
-            AgentPass,
-            deny_unapproved
-                .in_set(GithubSystems)
-                .run_if(resource_exists::<Run>),
-        );
-        // The session's store is chosen while plugins are built, before a
-        // front is: a run of the command keeps it per thread.
-        let ours = app
+        let env = app
             .world()
-            .get_resource::<Invoked>()
-            .and_then(Invoked::command)
-            .is_some_and(|(name, _)| name == FRONT);
-        if !ours {
-            return;
-        }
-        if !app.world().contains_resource::<GithubEnv>() {
-            app.insert_resource(GithubEnv::from_env());
-        }
-        let env = app.world().resource::<GithubEnv>().clone();
+            .get_resource::<GithubEnv>()
+            .cloned()
+            .unwrap_or_else(GithubEnv::from_env);
         let root = app
             .world()
             .get_resource::<ProjectRoot>()
             .map(|root| root.0.clone())
             .unwrap_or_default();
-        let mention = fs::read(&env.event_path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .as_ref()
-            .and_then(Mention::of_event);
-        if let Some(thread) = mention.as_ref().map(Mention::thread) {
-            let git = Git::new(Launcher::default().in_dir(&root));
-            app.insert_resource(SessionStores::new(move |dir| {
+        // A run of `rig github` keeps the thread's session, restored from
+        // `rig/sessions` into the run's session directory.
+        let processes = app.world().get_resource::<Processes>().cloned();
+        let store = Front::new(FRONT)
+            .on_command(
+                FRONT,
+                "",
+                "Answer the GitHub comment that started this CI job",
+            )
+            .session_store(move |dir| {
                 let at = dir.path().join("github-thread");
-                git.restore(&thread, &at)
-                    .map_err(|why| LoadError::Io(std::io::Error::other(why)))?;
+                let thread = Mention::read(&env.event_path).map(|mention| mention.thread());
+                if let Some(thread) = thread {
+                    let launcher = processes
+                        .as_ref()
+                        .map_or_else(Launcher::default, Processes::launcher);
+                    Git::new(launcher.in_dir(&root))
+                        .restore(&thread, &at)
+                        .map_err(|why| LoadError::Io(std::io::Error::other(why)))?;
+                }
                 Ok(Arc::new(DirStore::open(at)?) as Arc<dyn Store>)
-            }));
-        }
-        let config = RepoConfig::of(&root);
-        app.insert_resource(Run {
-            mention,
-            config,
-            root,
-        });
+            });
+        app.add_front(store)
+            .configure_sets(AgentPass, GithubSystems.in_set(Stage::Gate))
+            .add_systems(
+                AgentPass,
+                needs_approval
+                    .in_set(GithubSystems)
+                    .run_if(resource_exists::<Run>),
+            );
     }
 
     fn finish(&self, app: &mut App) {
         if !app.runs_front(FRONT) {
-            app.world_mut().remove_resource::<Run>();
             return;
         }
+        let env = app
+            .world()
+            .get_resource::<GithubEnv>()
+            .cloned()
+            .unwrap_or_else(GithubEnv::from_env);
+        let root = app
+            .world()
+            .get_resource::<ProjectRoot>()
+            .map(|root| root.0.clone())
+            .unwrap_or_default();
+        let run = Run {
+            mention: Mention::read(&env.event_path),
+            config: RepoConfig::of(&root),
+            root,
+        };
         // The model's commands never see the token.
         if let Some(processes) = app.world().get_resource::<Processes>() {
             processes.set(processes.launcher().without_env(["GITHUB_TOKEN"]));
         }
-        app.init_resource::<Progress>()
+        app.insert_resource(run)
+            .insert_resource(env)
+            .init_resource::<Progress>()
             .run_headless(None)
             .add_systems(Startup, set_up)
             .add_systems(
@@ -333,6 +350,7 @@ impl Plugin for GithubMentionPlugin {
                 (show_progress, finish_reply).chain().after(AgentLoop),
             )
             .add_observer(started)
+            .add_observer(denied)
             .add_observer(set_up_done)
             .add_observer(edited)
             .add_observer(finished)
@@ -685,17 +703,15 @@ fn ask(context: &Context) -> Result<Option<(Work, String)>, String> {
         "You were mentioned on GitHub, in {kind} #{n} of {}.\n\n# {}\n\n{}\n\n# The thread\n",
         mention.repo, mention.title, mention.body,
     );
-    let thread = api.get(&format!("/issues/{n}/comments"))?;
-    for comment in thread.as_array().into_iter().flatten() {
-        let by = comment
-            .pointer("/user/login")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let text = comment
-            .get("body")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let _ = writeln!(prompt, "\n**@{by}**: {text}");
+    let thread = api.get(&format!("/issues/{n}/comments?per_page=100"))?;
+    write_comments(&mut prompt, &thread, |_| true);
+    if let Some(root) = mention.review_thread {
+        let review = api.get(&format!("/pulls/{n}/comments?per_page=100"))?;
+        prompt.push_str("\n# The review thread\n");
+        write_comments(&mut prompt, &review, |comment| {
+            let id = |at: &str| comment.get(at).and_then(Value::as_u64);
+            id("id") == Some(root) || id("in_reply_to_id") == Some(root)
+        });
     }
     let _ = write!(
         prompt,
@@ -751,6 +767,24 @@ fn ask(context: &Context) -> Result<Option<(Work, String)>, String> {
     )))
 }
 
+/// Writes each of the `comments` that is `wanted` into `prompt`, by whom.
+fn write_comments(prompt: &mut String, comments: &Value, wanted: impl Fn(&Value) -> bool) {
+    for comment in comments
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|it| wanted(it))
+    {
+        let text = |at: &str| {
+            comment
+                .pointer(at)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        };
+        let _ = writeln!(prompt, "\n**@{}**: {}", text("/user/login"), text("/body"));
+    }
+}
+
 /// Sends the prompt once set up, or ends the run.
 fn set_up_done(
     done: On<Insert<Done<Option<Setup>>>>,
@@ -804,32 +838,44 @@ fn started(
     }
 }
 
-/// Refuses each call that may change anything, such as a `shell`
-/// command, unless `.github/rig.toml` allows it: nobody can approve it in
-/// CI.
-fn deny_unapproved(
-    mut calls: Query<(&ToolRequest, &Footprint, &mut Decision), (Undecided, ToolCalls)>,
+/// Wants each call that may change anything, such as a `shell` command,
+/// approved unless `.github/rig.toml` allows it. Nobody can answer in CI,
+/// so the harness refuses it, as it does any call another plugin wants
+/// approved.
+fn needs_approval(
+    calls: Query<(Entity, &ToolRequest, &Footprint), (Undecided, ToolCalls, Without<Approved>)>,
     run: Res<Run>,
+    mut commands: Commands,
+) {
+    for (call, request, footprint) in &calls {
+        let function = &request.call.function;
+        if matches!(footprint.0, Touches::Writes(Scope::Anything))
+            && !run
+                .config
+                .allows(function.name.as_str(), &function.arguments)
+        {
+            let why = "It may change anything, and the repository's .github/rig.toml does not \
+                       allow it ([github] allow).";
+            commands.entity(call).queue(NeedsApproval::add(FRONT, why));
+        }
+    }
+}
+
+/// Each call refused for want of approval is listed in the final reply.
+fn denied(
+    answered: On<Add<Outcome>>,
+    calls: Query<(&ToolRequest, &Outcome), With<NeedsApproval>>,
     progress: Option<ResMut<Progress>>,
 ) {
-    let Some(mut progress) = progress else { return };
-    for (request, footprint, mut decision) in &mut calls {
+    let (Ok((request, Outcome(Err(report)))), Some(mut progress)) =
+        (calls.get(answered.entity), progress)
+    else {
+        return;
+    };
+    if report.refusal {
         let call = &request.call.function;
-        let anything = matches!(footprint.0, Touches::Writes(Scope::Anything));
-        if decision.is_decided()
-            || !anything
-            || run.config.allows(call.name.as_str(), &call.arguments)
-        {
-            continue;
-        }
-        let why = "this needs approval, and nobody approves in CI: the repository's \
-                   .github/rig.toml lists what may run ([github] allow)";
-        decision.decide(Decider::plugin(FRONT), Outcome::refused(why));
-        progress.denied.push(format!(
-            "`{} {}`",
-            call.name.as_str(),
-            summary(&call.arguments)
-        ));
+        let step = format!("`{} {}`", call.name.as_str(), summary(&call.arguments));
+        progress.denied.push(step);
     }
 }
 

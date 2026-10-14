@@ -9,7 +9,7 @@ use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, first_agent, log_ended, log_tool_outputs,
     press, reply, run_until, scripted_models, tui_view,
 };
-use rig_tui::TuiInput;
+use rig_tui::{TuiInput, TuiInputState};
 use serde_json::{Value, json};
 
 use super::*;
@@ -302,7 +302,26 @@ fn hash_offers_the_open_issues_by_title() {
     run_until(&mut app, &wakes, |world| {
         world.resource::<OpenIssues>().issues.is_some()
     });
-    press(&mut app, "c r a s h tab");
+    press(&mut app, "1 4");
+    let listed: Vec<(String, String)> = app
+        .world()
+        .resource::<TuiInputState>()
+        .completion()
+        .map(|open| open.items.iter())
+        .into_iter()
+        .flatten()
+        .map(|item| (item.text.clone(), item.detail.clone()))
+        .collect();
+    let issue = |number: &str, title: &str| (number.to_owned(), title.to_owned());
+    assert_eq!(
+        listed,
+        [
+            issue("142", "Crash on empty input"),
+            issue("140", "Docs typo")
+        ],
+        "open issues by title, not the pull request"
+    );
+    press(&mut app, "tab");
     assert_eq!(app.world().resource::<TuiInput>().text(), "fix #142 ");
     assert_eq!(server.asked("/repos/acme/widget/issues"), 1, "loaded once");
 }

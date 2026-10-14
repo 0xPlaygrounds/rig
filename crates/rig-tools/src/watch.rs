@@ -23,7 +23,7 @@ use notify::{EventKind, RecursiveMode, Watcher as _};
 use rig_core::tool::{ContentHash, content_hash};
 
 use crate::MAX_FILE_BYTES;
-use crate::workspace::{Stat, Workspace, is_hidden};
+use crate::workspace::{Listing, Stat, Workspace};
 
 /// How often the default watch looks.
 const EVERY: Duration = Duration::from_secs(1);
@@ -77,17 +77,17 @@ pub(crate) fn poll<W: Workspace + ?Sized>(
     workspace: Arc<W>,
     root: &Path,
     recursive: bool,
-    all: bool,
+    listing: Listing,
 ) -> io::Result<Watch> {
     let (sender, batches) = unbounded();
     let root = root.to_path_buf();
-    let mut before = look(&*workspace, &root, recursive, all);
+    let mut before = look(&*workspace, &root, recursive, listing);
     thread::Builder::new()
         .name("rig-watch".to_owned())
         .spawn(move || {
             while !sender.is_closed() {
                 thread::sleep(EVERY);
-                let now = look(&*workspace, &root, recursive, all);
+                let now = look(&*workspace, &root, recursive, listing);
                 let changed = differences(&before, &now);
                 before = now;
                 if !changed.is_empty() && sender.unbounded_send(changed).is_err() {
@@ -98,15 +98,15 @@ pub(crate) fn poll<W: Workspace + ?Sized>(
     Ok(Watch::new(batches, ()))
 }
 
-/// The files under `root` that `workspace` lists (every one with `all`),
-/// each with its [`Mark`].
+/// The files under `root` that `workspace` lists with `listing`, each with
+/// its [`Mark`].
 fn look<W: Workspace + ?Sized>(
     workspace: &W,
     root: &Path,
     recursive: bool,
-    all: bool,
+    listing: Listing,
 ) -> BTreeMap<PathBuf, Mark> {
-    let files = workspace.files(root, None, all).unwrap_or_default();
+    let files = workspace.files(root, None, listing).unwrap_or_default();
     files
         .into_iter()
         .filter(|path| recursive || path == root || path.parent() == Some(root))
@@ -138,13 +138,13 @@ fn differences(before: &BTreeMap<PathBuf, Mark>, after: &BTreeMap<PathBuf, Mark>
 }
 
 /// [`Local`](crate::workspace::Local)'s watch: the system's file events
-/// under `root`, filtered as [`Workspace::files`] lists unless `all`, and
-/// sent in batches. A `root` that is a file is watched through its
+/// under `root`, filtered as [`Workspace::files`] lists with `listing`,
+/// and sent in batches. A `root` that is a file is watched through its
 /// directory, so a write that replaces it is seen; one that does not exist
 /// yet is looked at every second instead.
-pub(crate) fn notified(root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
+pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
     let Ok(meta) = fs::metadata(root) else {
-        return poll(Arc::new(crate::workspace::Local), root, recursive, all);
+        return poll(Arc::new(crate::workspace::Local), root, recursive, listing);
     };
     let (events, raw) = std::sync::mpsc::channel::<PathBuf>();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
@@ -169,7 +169,7 @@ pub(crate) fn notified(root: &Path, recursive: bool, all: bool) -> io::Result<Wa
         root: root.to_path_buf(),
         file,
         recursive,
-        all,
+        listing,
         ignores: Ignores::new(root),
     };
     let (sender, batches) = unbounded();
@@ -218,16 +218,16 @@ struct Filter {
     file: Option<PathBuf>,
     /// Whether directories under the root count.
     recursive: bool,
-    /// Whether ignored, hidden and `target` files count.
-    all: bool,
+    /// Which files count.
+    listing: Listing,
     /// The ignore rules, read as they are needed.
     ignores: Ignores,
 }
 
 impl Filter {
     /// Whether `path` is one the watch reports: under the root (one level
-    /// down unless recursive), no directory, and, unless `all`, a file
-    /// [`Workspace::files`] would list.
+    /// down unless recursive), no directory, and a file
+    /// [`Workspace::files`] would list with the watch's listing.
     fn keeps(&mut self, path: &Path) -> bool {
         if let Some(file) = &self.file {
             return path == file;
@@ -247,11 +247,7 @@ impl Filter {
         {
             return false;
         }
-        self.all
-            || !(below
-                .iter()
-                .any(|part| part == "target" || is_hidden(Path::new(part)))
-                || self.ignores.ignored(path))
+        self.listing == Listing::All || (self.listing.keeps(below) && !self.ignores.ignored(path))
     }
 }
 

@@ -88,7 +88,7 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_an_answered_questi
     app.update();
     advance(&mut app, Duration::from_secs(1));
     assert_eq!(recording.sent().len(), 1, "not yet: they waited 1 s");
-    let yes = Answer::Choice("yes".to_owned()).outcome();
+    let yes = Answer::choice("yes").outcome();
     app.world_mut().entity_mut(question).insert(yes);
     advance(&mut app, Duration::from_secs(2));
     let sent = [

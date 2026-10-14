@@ -3,6 +3,7 @@ use rig_harness::prelude::*;
 use super::*;
 use crate::TuiInput;
 use crate::tests::{press, type_text, view_app};
+use rig_harness::ask::Choice;
 use rig_harness::pick::{Chosen, Picked, Picker};
 
 /// What the pickers reported, in order.
@@ -69,11 +70,7 @@ fn pickers_wait_their_turn_and_say_what_was_picked() {
     assert_eq!(shown(&mut app), None);
     assert_eq!(
         app.world().resource::<Reported>().0,
-        [
-            Some(Chosen::Item(1)),
-            Some(Chosen::Text("feature".to_owned())),
-            None
-        ]
+        [Some(Chosen::item(1)), Some(Chosen::text("feature")), None]
     );
     assert_eq!(app.world().resource::<TuiInput>().text(), "");
 }
@@ -107,7 +104,7 @@ fn tab_ticks_several_items_and_enter_picks_them_in_list_order() {
     press(&mut app, "enter");
     assert_eq!(
         app.world().resource::<Reported>().0,
-        [Some(Chosen::Items(vec![0, 2]))]
+        [Some(Chosen::items([0, 2]))]
     );
     assert_eq!(app.world().resource::<Ran>().0, ["a", "c"]);
 
@@ -120,7 +117,7 @@ fn tab_ticks_several_items_and_enter_picks_them_in_list_order() {
     app.update();
     press(&mut app, "down enter");
     let answers = &app.world().resource::<Answered>().0;
-    let test = Answer::Choices(vec!["test".to_owned()]);
+    let test = Answer::choice("test");
     assert_eq!(answers, &[("Which checks?".to_owned(), Some(test))]);
 }
 
@@ -141,7 +138,7 @@ fn a_plugin_replaces_and_closes_its_own_picker() {
     press(&mut app, "down enter");
     assert_eq!(
         app.world().resource::<Reported>().0,
-        [Some(Chosen::Item(1))]
+        [Some(Chosen::item(1))]
     );
     // Despawned by its plugin, a picker closes without a report.
     let picker = app
@@ -199,8 +196,8 @@ fn the_view_answers_the_questions_of_every_agent() {
     assert_eq!(
         app.world().resource::<Answered>().0,
         [
-            answered("Run it?", Some(Answer::Choice("no".to_owned()))),
-            answered("Why not?", Some(Answer::Text("too slow".to_owned()))),
+            answered("Run it?", Some(Answer::choice("no"))),
+            answered("Why not?", Some(Answer::text("too slow"))),
             answered("Really?", None),
         ]
     );
@@ -213,9 +210,30 @@ fn the_view_answers_the_questions_of_every_agent() {
     assert_eq!(shown(&mut app).as_deref(), Some("Again?"));
     app.world_mut()
         .entity_mut(elsewhere)
-        .insert(Answer::Choice("yes".to_owned()).outcome());
+        .insert(Answer::choice("yes").outcome());
     app.update();
     assert_eq!(shown(&mut app), None);
+}
+
+#[test]
+fn a_ticked_choice_goes_with_the_note_typed() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<Answered>().add_observer(record_answers);
+    let ask = Ask::new("Allow `rm`?")
+        .choice("deny", "Deny")
+        .choice("allow", "Allow")
+        .free_text();
+    app.world_mut().spawn((ask, ForAgent(agent)));
+    app.update();
+    // One choice only: ticking Allow unticks Deny.
+    press(&mut app, "tab tab");
+    type_text(&mut app, "just once");
+    press(&mut app, "enter");
+    let noted = Answer::choice("allow").with_text("just once");
+    assert_eq!(
+        app.world().resource::<Answered>().0,
+        [("Allow `rm`?".to_owned(), Some(noted))]
+    );
 }
 
 #[test]
@@ -226,6 +244,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
         label: "fix the flaky picker test in the terminal view · ~/code/rigs",
         detail: Some("$0.42 · 3h ago"),
         checked: false,
+        more: None,
     };
     let row = item.line(40).to_string();
     assert_eq!(row.width(), 40, "{row}");
@@ -235,6 +254,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
         label: "main",
         detail: None,
         checked: false,
+        more: None,
     };
     assert_eq!(short.line(40).to_string(), "main");
 }
@@ -267,7 +287,7 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
     assert_eq!(
         app.world().resource::<Answered>().0,
         [
-            answered("PR title", Some(Answer::Text("Fix the lexer".to_owned()))),
+            answered("PR title", Some(Answer::text("Fix the lexer"))),
             answered("PR body", None),
         ]
     );
@@ -298,7 +318,7 @@ fn a_question_beside_the_work_leaves_the_keys_to_the_input() {
     let answered = |answer: &str| {
         (
             "Save rule “tabs”?".to_owned(),
-            Some(Answer::Choice(answer.to_owned())),
+            Some(Answer::choice(answer.to_owned())),
         )
     };
     assert_eq!(app.world().resource::<Answered>().0, [answered("save")]);
@@ -314,7 +334,7 @@ fn a_question_beside_the_work_leaves_the_keys_to_the_input() {
     press(&mut app, "enter");
     assert_eq!(crate::tests::typed(&app), "go on");
     let last = app.world().resource::<Answered>().0.last().cloned();
-    let text = Some(Answer::Text("only in Go".to_owned()));
+    let text = Some(Answer::text("only in Go"));
     assert_eq!(last, Some(("Save rule “tabs”?".to_owned(), text)));
 }
 
@@ -338,4 +358,105 @@ fn the_item_highlighted_is_known_by_its_place_among_all_the_items() {
     // Typing `je` leaves `jet` alone, the third item of all.
     type_text(&mut app, "je");
     assert_eq!(selection(&app), Some(2));
+}
+
+/// A question's own keys: choices that start ticked, Space unticks one and
+/// Enter answers exactly the ticked; `n` then Enter answers none; on the
+/// typed-answer row a bound character types.
+#[test]
+fn a_questions_own_keys_tick_and_enter_answers_exactly_the_ticked() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<Answered>().add_observer(record_answers);
+    let keys = ChoiceKeys(vec![
+        (KeyCode::Char(' '), ChoiceAction::Tick),
+        (KeyCode::Char('a'), ChoiceAction::TickAll),
+        (KeyCode::Char('n'), ChoiceAction::TickNone),
+    ]);
+    let ask = || {
+        Ask::new("Approve these calls?")
+            .multiple()
+            .free_text()
+            .with(Choice::new("0", "read a.rs").checked())
+            .with(
+                Choice::new("1", "write b.rs")
+                    .checked()
+                    .more("{\"path\":\"b.rs\"}"),
+            )
+    };
+    app.world_mut()
+        .spawn((ask(), keys.clone(), ForAgent(agent)));
+    app.update();
+    press(&mut app, "space enter");
+    app.world_mut()
+        .spawn((ask(), keys.clone(), ForAgent(agent)));
+    app.update();
+    press(&mut app, "n enter");
+    app.world_mut().spawn((ask(), keys, ForAgent(agent)));
+    app.update();
+    // On the typed-answer row, `a` types; the ticks go with the note.
+    press(&mut app, "down down");
+    type_text(&mut app, "a");
+    // Typing selects the first row the filter leaves; go back to the note.
+    press(&mut app, "down enter");
+    let answered = |answer: Answer| ("Approve these calls?".to_owned(), Some(answer));
+    let none: [&str; 0] = [];
+    assert_eq!(
+        app.world().resource::<Answered>().0,
+        [
+            answered(Answer::choice("1")),
+            answered(Answer::choices(none)),
+            answered(Answer::choices(["0", "1"]).with_text("a")),
+        ]
+    );
+}
+
+/// A question superseded while shown gives way to its successor, which
+/// keeps the user's ticks by choice id and ticks a new choice as it says;
+/// the old one is recorded as superseded.
+#[test]
+fn a_superseded_question_keeps_the_users_ticks() {
+    use rig_core::effect::Disposition;
+    use rig_ecs::stage::{EffectRecorded, SupersededBy};
+
+    #[derive(Resource, Default)]
+    struct Dispositions(Vec<Disposition>);
+
+    let (mut app, agent) = view_app();
+    app.init_resource::<Answered>()
+        .init_resource::<Dispositions>()
+        .add_observer(record_answers)
+        .add_systems(
+            Last,
+            |mut recorded: MessageReader<EffectRecorded>, mut seen: ResMut<Dispositions>| {
+                let records = recorded.read().map(|record| record.0.disposition);
+                seen.0.extend(records);
+            },
+        );
+    let ask = Ask::new("Approve?")
+        .multiple()
+        .with(Choice::new("0", "read a.rs").checked())
+        .with(Choice::new("1", "read b.rs").checked());
+    let old = app.world_mut().spawn((ask.clone(), ForAgent(agent))).id();
+    app.update();
+    // Untick the first, select the second.
+    press(&mut app, "tab");
+    let joined = ask.with(Choice::new("2", "write c.rs").checked());
+    let new = app.world_mut().spawn((joined, ForAgent(agent))).id();
+    app.world_mut().entity_mut(old).insert(SupersededBy(new));
+    app.update();
+    assert_eq!(
+        app.world()
+            .resource::<TuiView>()
+            .choosing
+            .as_ref()
+            .map(|c| c.entity),
+        Some(new)
+    );
+    press(&mut app, "enter");
+    assert_eq!(
+        app.world().resource::<Answered>().0,
+        [("Approve?".to_owned(), Some(Answer::choices(["1", "2"])))]
+    );
+    let seen = &app.world().resource::<Dispositions>().0;
+    assert!(seen.contains(&Disposition::Superseded), "{seen:?}");
 }

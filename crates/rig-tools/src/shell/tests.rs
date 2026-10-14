@@ -184,9 +184,9 @@ fn the_command_starts_through_the_workspace_in_the_calls_directory() {
             &self,
             root: &Path,
             glob: Option<&str>,
-            all: bool,
+            listing: crate::workspace::Listing,
         ) -> std::io::Result<Vec<PathBuf>> {
-            Local.files(root, glob, all)
+            Local.files(root, glob, listing)
         }
         fn spawn(
             &self,

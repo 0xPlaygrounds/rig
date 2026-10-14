@@ -79,7 +79,10 @@ impl Plugin for BookmarksPlugin {
             )
             .add_command("bookmarks", "List the bookmarks and jump to one", list)
             .add_entry_renderer(ORIGIN, marker)
-            .add_systems(Startup, inherit.run_if(resource_exists::<FirstStart>))
+            .add_systems(
+                Startup,
+                inherit.run_if(resource_exists_and_equals(AppStart(StartReason::New))),
+            )
             .add_systems(
                 Update,
                 (
@@ -277,7 +280,11 @@ fn open(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Some(Chosen::Item(chosen)) = &picked.chosen else {
+    let Some(chosen) = picked
+        .chosen
+        .as_ref()
+        .and_then(|chosen| chosen.items.first())
+    else {
         return;
     };
     let label = choices
@@ -348,7 +355,7 @@ fn saved_history(
     let mut before = oldest_newer(now)?;
     for _ in 0..DEPTH {
         let copy = MemoryStore::default();
-        fork(store, &copy, Some((agent, before))).ok()?;
+        fork(store, &copy, Some((agent, before)), &Keep).ok()?;
         let session = Session::read(&copy).ok()?;
         let then = session
             .agents
@@ -431,7 +438,7 @@ fn inherit(
     agents: Query<(&AgentId, &Conversation)>,
     mut bookmarks: ResMut<Bookmarks>,
 ) {
-    let Some(store) = store.filter(|store| ForkedFrom::of(&*store.0).is_some()) else {
+    let Some(store) = store.filter(|store| ForkedFrom::read(&*store.0).is_some()) else {
         return;
     };
     let handed = store.0.read_file(HANDED).ok();

@@ -98,7 +98,7 @@ fn a_retried_turn_answers_on_another_model_and_the_old_answer_can_be_picked() {
     assert_eq!(last_answer(app.world(), agent), "answer A");
 
     let world = app.world_mut();
-    let mut completions = world.query::<&rig_tui::ArgCompletion>();
+    let mut completions = world.query::<&rig_tui::CompletionSource>();
     let offered: Vec<String> = completions
         .iter(world)
         .flat_map(|completion| completion.candidates.iter().map(|item| item.text.clone()))

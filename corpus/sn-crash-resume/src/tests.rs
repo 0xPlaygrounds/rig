@@ -190,7 +190,7 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
     assert!(answer_open(
         second.world_mut(),
         TITLE,
-        &Answer::Choice("continue".into())
+        &Answer::choice("continue")
     ));
     run_until(&mut second, &wakes, |_| model.requests().len() >= 2);
 
@@ -254,7 +254,7 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
     assert!(answer_open(
         second.world_mut(),
         TITLE,
-        &Answer::Choice("discard".into())
+        &Answer::choice("discard")
     ));
     let agent = first_agent(second.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     run_until(&mut second, &wakes, |world| {
@@ -313,7 +313,7 @@ fn a_turn_killed_in_a_later_model_call_keeps_its_results_and_text() {
     assert!(answer_open(
         second.world_mut(),
         TITLE,
-        &Answer::Choice("continue".into())
+        &Answer::choice("continue")
     ));
     run_until(&mut second, &wakes, |_| model.requests().len() >= 3);
 

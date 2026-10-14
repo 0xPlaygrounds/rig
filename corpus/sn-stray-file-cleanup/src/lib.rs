@@ -350,11 +350,12 @@ fn ticked(picked: On<Picked>, offers: Query<&StrayPicker>, mut commands: Command
     let Ok(offer) = offers.get(picked.entity) else {
         return;
     };
-    let positions = match &picked.chosen {
-        Some(Chosen::Item(at)) => vec![*at],
-        Some(Chosen::Items(positions)) => positions.clone(),
-        // Closed: keep all.
-        _ => return,
+    // Closed: keep all.
+    let Some(Chosen {
+        items: positions, ..
+    }) = &picked.chosen
+    else {
+        return;
     };
     let files: Vec<Stray> = (positions.iter())
         .filter_map(|at| offer.files.get(*at).cloned())
@@ -379,12 +380,16 @@ fn act(picked: On<Picked>, actions: Query<&StrayActions>, work: Work, mut comman
         return;
     };
     let (job, files) = (Job { agent: *agent }, files.clone());
-    match picked.chosen {
-        Some(Chosen::Item(0)) => {
+    match picked
+        .chosen
+        .as_ref()
+        .and_then(|chosen| chosen.items.first())
+    {
+        Some(0) => {
             let running = work.run(move |workspace, root| trash(workspace, root, &files));
             commands.spawn((job, running));
         }
-        Some(Chosen::Item(1)) => {
+        Some(1) => {
             let running = work.run(move |workspace, root| ignore(workspace, root, &files));
             commands.spawn((job, running));
         }

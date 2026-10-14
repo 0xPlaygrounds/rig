@@ -6,15 +6,18 @@
 //! take the root's lock, a `/reload` build and its trial are per session,
 //! and the ready file is per launcher.
 //!
-//! `rig` starts a new session, and `rig --resume <id>` an earlier one, in
-//! the directory it ran in. The agent's `/new` and `/resume` leave a
+//! `rig` starts a new session, and `rig --resume <id or name>` an earlier
+//! one, in the directory it ran in. The agent's `/new` and `/resume` leave a
 //! [`SessionDir::switch`] file and exit with the reload code; the launcher
 //! then runs that session instead, in its own directory. A session left
 //! without a message, by a clean quit or a switch, leaves no directory.
+//! Each start tells the agent why it started ([`StartReason`]).
 //!
 //! The command line is read once the agent is built, against what its
 //! plugins add ([`Described::invocation`]), and the agent gets it in its
-//! canonical form ([`Invocation`]). A headless run (`--print`, stdin piped
+//! canonical form ([`Invocation`]). A plugin's command runs in a new
+//! session, or with `--resume` in that one, unless its front keeps no
+//! session, which the agent refuses. A headless run (`--print`, stdin piped
 //! in, which the agent answers as `--print` does, or a plugin's command
 //! that does not take the terminal) is not restarted on the reload code,
 //! nor run again on the previous build when its new build is rolled back;
@@ -31,8 +34,8 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
 use rig::harness_protocol::{
-    Described, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SecretInfo, SessionDir, SessionId, env,
-    secret_variable,
+    Described, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SecretInfo, SessionDir, SessionId,
+    StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, Staging, child};
@@ -55,14 +58,21 @@ pub enum Start {
 
 /// Builds the agent, reads the command line `args` against it, runs it
 /// until it exits with anything but the reload code, and returns its exit
-/// code: 2 for a command line the build does not take.
-pub fn run(home: &Home, start: Start, args: &[String]) -> Result<ExitCode> {
+/// code: 2 for a command line the build does not take, or a `--resume`
+/// that names no saved session.
+pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
     let terminal = std::io::stdin().is_terminal();
     // Before the build, only whether `-p` is there: the type-ahead guard.
     let print = args.iter().any(|arg| arg == "-p" || arg == "--print");
-    let resumed = matches!(start, Start::Resume(_));
-    let (run, claimed, notice, build_failure, report) = {
+    // Before the build, `-r` as the last build reads it; the new build may
+    // read it otherwise (below).
+    let asked = last_report(home).unwrap_or_default().resume(args);
+    let start = match start_of(home, asked.as_deref()) {
+        Ok(start) => start,
+        Err(why) => return Ok(refused(&why)),
+    };
+    let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
@@ -74,25 +84,39 @@ pub fn run(home: &Home, start: Start, args: &[String]) -> Result<ExitCode> {
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
         });
-        let notice: Vec<String> = claim_notice.into_iter().chain(built).collect();
         let report = report(home, &claimed.id);
         (
             run,
             claimed,
-            (!notice.is_empty()).then(|| notice.join("\n")),
+            claim_notice,
+            built,
             failure.map(|failure| failure.details()),
             report,
         )
     };
-    let invocation = report
-        .invocation(args)
-        .and_then(|invocation| match &invocation.command {
-            Some(command) if resumed || invocation.print.is_some() => Err(format!(
-                "the command `{command}` takes neither --resume nor --print"
-            )),
-            _ => Ok(invocation),
-        });
-    let invocation = match invocation {
+    let resume = report.resume(args);
+    if resume != asked {
+        // Only the build says which of its options take a value, and so
+        // whether a word after one was `-r`.
+        let start = match start_of(home, resume.as_deref()) {
+            Ok(start) => start,
+            Err(why) => {
+                claimed.discard_if_unsaved(home);
+                return Ok(refused(&why));
+            }
+        };
+        let _lock = home::lock(home)?;
+        let (next, notice) = claim(home, start, here.as_deref())?;
+        absent(fs::rename(
+            home.staged_for(&claimed.id),
+            home.staged_for(&next.id),
+        ))?;
+        claimed.discard_if_unsaved(home);
+        (claimed, claim_notice) = (next, notice);
+    }
+    let notice: Vec<String> = claim_notice.into_iter().chain(build_notice).collect();
+    let notice = (!notice.is_empty()).then(|| notice.join("\n"));
+    let invocation = match report.invocation(args) {
         Ok(invocation) => invocation,
         Err(why) => {
             claimed.discard_if_unsaved(home);
@@ -115,6 +139,20 @@ pub fn run(home: &Home, start: Start, args: &[String]) -> Result<ExitCode> {
         notice,
         build_failure,
     )
+}
+
+/// The session `--resume` names, by id or name ([`Home::find`]), or a new
+/// one without it.
+fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, String> {
+    resume.map_or(Ok(Start::New), |session| {
+        home.find(session).map(Start::Resume)
+    })
+}
+
+/// Says why the command line is refused, and returns its exit code.
+fn refused(why: &str) -> ExitCode {
+    eprintln!("rig: {why}\nRun `rig help` for usage.");
+    ExitCode::from(2)
 }
 
 /// What the plugins of the build the launcher of `session` starts next add
@@ -171,6 +209,7 @@ fn launch(
     // The session the agent switched away from to start this one, which a
     // refused start goes back to.
     let mut switched_from: Option<SessionId> = None;
+    let mut reason = claimed.reason;
     loop {
         let left = switched_from.take();
         let session = claimed.id.clone();
@@ -200,6 +239,7 @@ fn launch(
             .env(env::SESSION, session.as_str())
             .env(env::LAUNCHER, &launcher)
             .env(env::RUN, run.path())
+            .env(env::START, reason.as_str())
             .env_remove(env::NOTICE)
             .env_remove(env::BUILD_FAILURE)
             .envs(&answers);
@@ -241,8 +281,13 @@ fn launch(
         if reload && !headless {
             if let Some(target) = take_switch(&directory)? {
                 (claimed, notice) = switch(home, claimed, target)?;
-                switched_from = (claimed.id != session).then_some(session);
             }
+            reason = if claimed.id == session {
+                StartReason::Reloaded
+            } else {
+                claimed.reason
+            };
+            switched_from = (claimed.id != session).then_some(session);
             kept_screen = true;
             continue;
         }
@@ -258,6 +303,7 @@ fn launch(
             };
             let (previous, _) = switch(home, claimed, back)?;
             claimed = previous;
+            reason = claimed.reason;
             if claimed.id != session {
                 // Told in the session it went back to, so nothing is kept.
                 absent(fs::remove_file(run.log()))?;
@@ -309,6 +355,7 @@ fn launch(
         }
         kept_screen = false;
         notice = Some(message);
+        reason = StartReason::Restarted;
     }
 }
 
@@ -372,6 +419,8 @@ fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Opti
 /// The session this launcher runs, held locked while it lives.
 struct Claimed {
     id: SessionId,
+    /// Why its first start starts it: `New` or `Resumed`.
+    reason: StartReason,
     /// The directory the session runs in, when known and still there.
     directory: Option<PathBuf>,
     _lock: File,
@@ -416,20 +465,25 @@ impl Claimed {
 /// locked, and the line the agent shows about it. Call it holding
 /// [`home::lock`].
 fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Option<String>)> {
-    let (id, lock, notice) = match start {
+    let (id, lock, notice, reason) = match start {
         Start::Resume(id) => {
             if !home.session(&id).is_saved() {
                 return Err(format!("session {id} has no saved conversation").into());
             }
             let lock = home::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is open in another rig"))?;
-            (id, lock, Some("Resumed the session.".to_owned()))
+            (
+                id,
+                lock,
+                Some("Resumed the session.".to_owned()),
+                StartReason::Resumed,
+            )
         }
         Start::New => {
             let (id, _) = home.new_session()?;
             let lock = home::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is already running"))?;
-            (id, lock, None)
+            (id, lock, None, StartReason::New)
         }
     };
     let session = home.session(&id);
@@ -445,6 +499,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
     Ok((
         Claimed {
             id,
+            reason,
             directory,
             _lock: lock,
         },

@@ -1,0 +1,33 @@
+[package]
+name = "corpus-ct-session-finder"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (conversation-over-time fresh held-out): CT-12: 12. Session finder"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+# The pool the search's stream runs on.
+bevy_tasks = { workspace = true }
+# A session's date in the results.
+chrono = { workspace = true }
+# The channel the search thread sends its results through.
+futures = { workspace = true }
+# The query, matched ignoring case.
+regex = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# A session's name, and switching to another session.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+# Copying a message, and scrolling to it in a resumed session.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

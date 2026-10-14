@@ -43,7 +43,7 @@ impl Plugin for ModelsPlugin {
             "Pick the reasoning setting, or set it with /effort <level>",
             effort,
         )
-        .add_systems(First, choose_invoked_model.run_if(run_once));
+        .add_systems(First, choose_invoked_model);
         #[cfg(feature = "tui")]
         tui::add(app);
     }
@@ -88,19 +88,37 @@ impl ModelItem {
 pub struct ModelLabel(pub String);
 
 /// Gives the agent the user talks to the model `--model` names, once the
-/// session is restored and a remembered model given, so `--model` wins.
+/// session is restored and a remembered model given, so `--model` wins;
+/// a turn the restored session continues ends first, as a model is not
+/// changed under a running turn, and the agent is told so.
 fn choose_invoked_model(
     invoked: Option<Res<Invoked>>,
-    agents: PrimaryQuery,
+    (agents, busy): (PrimaryQuery, Query<Has<ActiveTurn>>),
+    mut waited: Local<Option<bool>>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
-    let model = invoked.and_then(|invoked| invoked.args.model.clone());
-    if let (Some(model), Some(agent)) = (model, primary(&agents)) {
-        commands.trigger(SetModel {
-            entity: agent,
-            model,
-        });
+    if *waited == Some(true) {
+        return;
     }
+    let model = invoked.and_then(|invoked| invoked.args.model.clone());
+    let (Some(model), Some(agent)) = (model, primary(&agents)) else {
+        *waited = Some(true);
+        return;
+    };
+    if busy.get(agent).unwrap_or_default() {
+        if waited.is_none() {
+            let text = format!("--model {model} applies once the continued turn ends.");
+            notices.write(Notice::info(agent, text));
+        }
+        *waited = Some(false);
+        return;
+    }
+    *waited = Some(true);
+    commands.trigger(SetModel {
+        entity: agent,
+        model,
+    });
 }
 
 /// `/model vendor/model` sets the agent's model, and `/model <name>` runs

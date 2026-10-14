@@ -1,7 +1,10 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-use super::{PluginEntity, PluginSource, ProvidedBy, load};
+use bevy_reflect::prelude::*;
+use rig_ecs::journal::ReflectSaved;
+
+use super::{AppKeepsExt, Keeps, PluginEntity, PluginSource, ProvidedBy, load};
 
 /// Spawns a named entity in `build`, one in `finish`, and one at startup
 /// that it attributes itself.
@@ -67,4 +70,67 @@ fn what_a_plugin_spawns_in_build_and_finish_is_its_own() {
     assert_eq!(by("later"), Some(spawner));
     assert_eq!(by("other's"), Some(other));
     assert_eq!(by("unattributed"), None);
+}
+
+/// A saved agent component under a stable key.
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Saved)]
+#[type_path = "counter"]
+#[type_name = "count"]
+struct Count(u32);
+
+/// A saved resource.
+#[derive(Resource, Reflect, Default)]
+#[reflect(Resource, Saved)]
+struct Totals(u32);
+
+/// Keeps a count and session files in `build`, says the folder twice, and
+/// loads `Inner` in the middle of its build.
+#[derive(Default)]
+struct Outer;
+
+impl Plugin for Outer {
+    fn build(&self, app: &mut App) {
+        app.keeps_saved::<Count>();
+        load::<Inner>(app, "inner", "version 1");
+        app.keeps_files("counter/").keeps_files("counter");
+    }
+}
+
+/// Keeps a resource, said in `finish`.
+#[derive(Default)]
+struct Inner;
+
+impl Plugin for Inner {
+    fn build(&self, _app: &mut App) {}
+
+    fn finish(&self, app: &mut App) {
+        app.keeps_saved::<Totals>();
+    }
+}
+
+#[test]
+fn what_a_plugin_keeps_is_on_its_entity_under_the_saved_key() {
+    let mut app = App::new();
+    load::<Outer>(&mut app, "outer", "version 1");
+    // Added without `load`: no entity to say it on.
+    app.add_plugins(|app: &mut App| {
+        app.keeps_saved::<Count>();
+    });
+    app.finish();
+    app.cleanup();
+    let world = app.world_mut();
+    let outer = world.resource::<PluginEntity<Outer>>().entity();
+    let inner = world.resource::<PluginEntity<Inner>>().entity();
+    let keeps = |plugin| world.get::<Keeps>(plugin).cloned().unwrap_or_default();
+    let (outer, inner) = (keeps(outer), keeps(inner));
+    assert_eq!(outer.saved, ["counter::count"]);
+    assert_eq!(outer.files, ["counter"]);
+    assert_eq!(inner.saved, [Totals::type_path()]);
+    assert!(inner.files.is_empty());
+    assert!(outer.saved("counter::count") && !inner.saved("counter::count"));
+    assert!(outer.file("counter/3.json") && outer.file("counter/a/b"));
+    assert!(!outer.file("counters/3.json") && !outer.file("counter"));
+    let mut kept = world.query::<&Keeps>();
+    assert_eq!(kept.iter(world).count(), 2);
 }

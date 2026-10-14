@@ -17,7 +17,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use http::{Request, Response};
 
-use super::middleware::HttpMiddleware;
+use super::middleware::{Exchange, HttpMiddleware};
 use super::{HttpClientExt, LazyBody, MultipartForm, Result, StreamingResponse};
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
@@ -132,14 +132,16 @@ impl DynHttpClient {
         parts: &mut http::request::Parts,
         body: Bytes,
     ) -> Result<Bytes> {
-        for mw in &self.middleware {
-            mw.before_request_headers(&parts.method, &parts.uri, &mut parts.headers)
-                .await?;
-        }
+        self.apply_header_middleware(parts).await?;
+        let exchange = Exchange {
+            method: &parts.method,
+            uri: &parts.uri,
+            extensions: &parts.extensions,
+        };
         let mut body = body;
         for mw in &self.middleware {
             body = mw
-                .before_request_body(&parts.method, &parts.uri, &parts.headers, body)
+                .before_request_body(exchange, &parts.headers, body)
                 .await?;
         }
         Ok(body)
@@ -149,24 +151,61 @@ impl DynHttpClient {
     /// serialized body to hand to the body hooks).
     async fn apply_header_middleware(&self, parts: &mut http::request::Parts) -> Result<()> {
         for mw in &self.middleware {
-            mw.before_request_headers(&parts.method, &parts.uri, &mut parts.headers)
+            let exchange = Exchange {
+                method: &parts.method,
+                uri: &parts.uri,
+                extensions: &parts.extensions,
+            };
+            mw.before_request_headers(exchange, &mut parts.headers)
                 .await?;
         }
         Ok(())
     }
 
-    /// Run the response hooks in attachment order.
-    async fn apply_response_middleware(
+    /// Send `parts` and `body` through `send`, then run the response hooks
+    /// in attachment order on its reply: a response, or an error that kept
+    /// a non-success reply's status and headers. A hook's error fails a
+    /// response with that error; an error reply stops at a failing hook and
+    /// still fails with its own error.
+    async fn observe<T, B, F>(
         &self,
-        method: &http::Method,
-        uri: &http::Uri,
-        status: http::StatusCode,
-        headers: &http::HeaderMap,
-    ) -> Result<()> {
-        for mw in &self.middleware {
-            mw.after_response(method, uri, status, headers).await?;
+        parts: http::request::Parts,
+        body: T,
+        send: impl FnOnce(Request<T>) -> F,
+    ) -> Result<Response<B>>
+    where
+        F: Future<Output = Result<Response<B>>>,
+    {
+        let (method, uri, extensions) = (
+            parts.method.clone(),
+            parts.uri.clone(),
+            parts.extensions.clone(),
+        );
+        let exchange = Exchange {
+            method: &method,
+            uri: &uri,
+            extensions: &extensions,
+        };
+        let error = match send(Request::from_parts(parts, body)).await {
+            Ok(response) => {
+                for mw in &self.middleware {
+                    mw.after_response(exchange, response.status(), response.headers())
+                        .await?;
+                }
+                return Ok(response);
+            }
+            Err(error) => error,
+        };
+        if let (Some(status), Some(headers)) =
+            (error.non_success_status(), error.non_success_headers())
+        {
+            for mw in &self.middleware {
+                if mw.after_response(exchange, status, headers).await.is_err() {
+                    break;
+                }
+            }
         }
-        Ok(())
+        Err(error)
     }
 }
 
@@ -191,12 +230,8 @@ impl HttpClientExt for DynHttpClient {
         let (mut parts, body) = req.map(Into::into).into_parts();
         async move {
             let body = this.apply_request_middleware(&mut parts, body).await?;
-            let (method, uri) = (parts.method.clone(), parts.uri.clone());
             let response = this
-                .inner
-                .send_bytes(Request::from_parts(parts, body))
-                .await?;
-            this.apply_response_middleware(&method, &uri, response.status(), response.headers())
+                .observe(parts, body, |request| this.inner.send_bytes(request))
                 .await?;
             Ok(convert_body::<U>(response))
         }
@@ -214,12 +249,10 @@ impl HttpClientExt for DynHttpClient {
         let (mut parts, body) = req.into_parts();
         async move {
             this.apply_header_middleware(&mut parts).await?;
-            let (method, uri) = (parts.method.clone(), parts.uri.clone());
             let response = this
-                .inner
-                .send_multipart_bytes(Request::from_parts(parts, body))
-                .await?;
-            this.apply_response_middleware(&method, &uri, response.status(), response.headers())
+                .observe(parts, body, |request| {
+                    this.inner.send_multipart_bytes(request)
+                })
                 .await?;
             Ok(convert_body::<U>(response))
         }
@@ -235,14 +268,10 @@ impl HttpClientExt for DynHttpClient {
         let (mut parts, body) = req.map(Into::into).into_parts();
         async move {
             let body = self.apply_request_middleware(&mut parts, body).await?;
-            let (method, uri) = (parts.method.clone(), parts.uri.clone());
-            let response = self
-                .inner
-                .send_streaming_bytes(Request::from_parts(parts, body))
-                .await?;
-            self.apply_response_middleware(&method, &uri, response.status(), response.headers())
-                .await?;
-            Ok(response)
+            self.observe(parts, body, |request| {
+                self.inner.send_streaming_bytes(request)
+            })
+            .await
         }
     }
 }

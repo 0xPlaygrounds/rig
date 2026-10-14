@@ -1,8 +1,8 @@
 use rig_harness::prelude::*;
 
 use super::super::view::TuiView;
-use crate::ArgCompletion;
-use crate::tests::{press, scratch, type_text, typed, view_app};
+use crate::tests::{press, scratch, type_text, typed as typed_text, view_app};
+use crate::{CompletionKind, CompletionSource, TuiInputState};
 
 /// Whether a completion list is open.
 fn open(app: &App) -> bool {
@@ -15,13 +15,13 @@ fn a_completed_argument_does_not_open_the_list_for_the_next_word() {
     app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
     app.add_command("pair", "Two arguments", |_: In<CommandArgs>| {});
     app.world_mut()
-        .spawn(ArgCompletion::new("model").candidate("acme/fast", ""));
+        .spawn(CompletionSource::arg("model").candidate("acme/fast", ""));
     app.world_mut()
-        .spawn(ArgCompletion::new("pair").at(1).candidate("second", ""));
+        .spawn(CompletionSource::arg("pair").at(1).candidate("second", ""));
     type_text(&mut app, "/model acme");
     assert!(open(&app));
     press(&mut app, "tab");
-    assert_eq!(typed(&app), "/model acme/fast ");
+    assert_eq!(typed_text(&app), "/model acme/fast ");
     assert!(!open(&app));
     type_text(&mut app, " ");
     assert!(!open(&app));
@@ -31,6 +31,33 @@ fn a_completed_argument_does_not_open_the_list_for_the_next_word() {
     assert!(!open(&app));
     type_text(&mut app, "first ");
     assert!(open(&app));
+}
+
+#[test]
+fn a_marker_source_completes_a_word_anywhere_and_follows_its_lookup() {
+    let (mut app, _) = view_app();
+    let issues = app.world_mut().spawn(CompletionSource::marker('#')).id();
+    type_text(&mut app, "fixes #14");
+    // Nothing matches yet, but a lookup sees what is typed.
+    assert!(!open(&app));
+    let typed = app.world().resource::<TuiInputState>().typed();
+    assert_eq!(typed, Some((CompletionKind::Marker('#'), "14")));
+    // The lookup's answer opens the list without another key.
+    let found = CompletionSource::marker('#')
+        .candidate("142", "Crash on empty input")
+        .candidate("7", "Unrelated");
+    app.world_mut().entity_mut(issues).insert(found);
+    app.update();
+    assert!(open(&app));
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "fixes #142 ");
+    // `/` and `@` stay the view's own.
+    app.world_mut()
+        .spawn(CompletionSource::marker('@').candidate("nobody", ""));
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "/mod");
+    let typed = app.world().resource::<TuiInputState>().typed();
+    assert_eq!(typed, Some((CompletionKind::Command, "mod")));
 }
 
 #[test]

@@ -38,15 +38,22 @@ fn a_delete_stays_in_its_base_and_publishes_the_deleted_file() {
     let (deleted, changed) = run("a.txt");
     assert_eq!(deleted.ok().as_deref(), Some("Deleted a.txt."));
     let path = base.join("a.txt").to_string_lossy().into_owned();
+    let changes = changed.map(|changed| changed.0).unwrap_or_default();
     assert_eq!(
-        changed.map(|changed| changed.0),
-        Some(vec![
-            FileChange::deleted(&path, 2)
-                .with_diff(format!(
-                    "--- {path}\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-one\n-two\n"
-                ))
-                .with_before(FileState::of(b"one\ntwo\n"))
-        ])
+        changes.iter().map(FileChange::unified).collect::<Vec<_>>(),
+        [format!(
+            "--- {path}\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-one\n-two\n"
+        )]
+    );
+    let without_hunks = |change: FileChange| FileChange {
+        hunks: Vec::new(),
+        ..change
+    };
+    assert_eq!(
+        changes.into_iter().map(without_hunks).collect::<Vec<_>>(),
+        [FileChange::deleted(&path, 2)
+            .with_before_text("one\ntwo\n")
+            .with_before(FileState::of(b"one\ntwo\n"))]
     );
     assert!(!base.join("a.txt").exists());
     assert!(run("sub").0.is_err());

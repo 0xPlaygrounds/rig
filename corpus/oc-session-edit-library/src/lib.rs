@@ -11,11 +11,14 @@
 //! session-edit <session> export --markdown <file>
 //! ```
 //!
-//! `<session>` is a session's directory, its id in the default session
-//! store (`$RIG_HOME/sessions`), or its name there. An edit is saved as a
-//! new session (`--as`, the default), forked with rig-memory's [`fork`]
-//! and listed for `rig --resume <id>`, or in place (`--in-place`), after a
-//! copy of the session's directory to `<dir>.bak`.
+//! `<session>` is a session's directory, or its id or name in the default
+//! session store (`$RIG_HOME/sessions`, found with [`Home::find`]). An
+//! edit is saved as a new session (`--as`, the default), forked with
+//! rig-memory's [`fork`], or in place (`--in-place`), after a copy of the
+//! session's directory to `<dir>.bak`. A shrink rewrites every saved copy
+//! of each result ([`rewrite`], or the fork's transform), so the edited
+//! session's history no longer holds what was cut; a drop is a recorded
+//! splice of the main conversation.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -23,24 +26,14 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use rig::harness_protocol::{Home, SessionDir, SessionId};
+use rig::harness_protocol::{Home, SessionDir};
 use rig_core::conversation::{Author, Conversation, Entry, pairing};
 use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
-use rig_memory::{DirStore, Files, LoadError, Repair, SavedAgent, Session, fork, now_ms};
-use serde_json::{Map, Value};
-
-/// The saved value an agent's model is kept under: the type path of
-/// rig-ecs's `ModelChoice`, which saves it as `"vendor/model"`.
-pub const MODEL_KEY: &str = "rig_ecs::model::ModelChoice";
-
-/// The saved values rig-subagents names a spawned agent by: the type paths
-/// of its `Subtask` and `Helper`, each saved as the title.
-pub const SUBAGENT_NAME_KEYS: [&str; 2] = ["rig_subagents::Subtask", "rig_subagents::Helper"];
-
-/// The file of a session's store that rig-sessions lists it by: its name
-/// (`name`), the start of its first message (`title`), labels and when it
-/// was updated.
-pub const META: &str = "meta.json";
+use rig_memory::{
+    DirStore, ForkedFrom, Keep, LoadError, Messages, Repair, Rewrite, SavedAgent, Session,
+    SessionMeta, fork, now_ms, rewrite,
+};
+use serde_json::Value;
 
 /// The lines a shrunk tool result keeps at each end.
 pub const KEEP_LINES: usize = 20;
@@ -103,10 +96,15 @@ enum Target {
 /// What the program was asked.
 enum Command {
     List,
+    Export(PathBuf),
+    Edit(Edit),
+}
+
+/// A change of the session.
+enum Edit {
     Shrink(usize),
     Drop(usize, usize),
     Rename(String),
-    Export(PathBuf),
 }
 
 /// Runs `session-edit` with `args` (without the program's name) against
@@ -147,15 +145,12 @@ pub fn run(args: &[String], home: &Home, out: &mut dyn Write) -> Result<(), Erro
     }
     let command = match (command.as_str(), words.as_slice()) {
         ("list", []) => Command::List,
-        ("shrink", []) => Command::Shrink(over.ok_or("shrink needs --over <chars>")?),
+        ("shrink", []) => Command::Edit(Edit::Shrink(over.ok_or("shrink needs --over <chars>")?)),
         ("drop", [range]) => {
             let (from, to) = parse_range(range)?;
-            Command::Drop(from, to)
+            Command::Edit(Edit::Drop(from, to))
         }
-        ("rename", [name]) => {
-            target = target.or_else(|| Some(Target::As(Some((*name).to_owned()))));
-            Command::Rename((*name).to_owned())
-        }
+        ("rename", [name]) => Command::Edit(Edit::Rename((*name).to_owned())),
         ("export", []) => Command::Export(markdown.ok_or("export needs --markdown <file>")?),
         _ => return Err(USAGE.into()),
     };
@@ -168,17 +163,9 @@ pub fn run(args: &[String], home: &Home, out: &mut dyn Write) -> Result<(), Erro
                 .map_err(|why| format!("cannot write {}: {why}", file.display()))?;
             write(out, &format!("exported to {}", file.display()))
         }
-        edit => {
+        Command::Edit(edit) => {
             let target = target.unwrap_or(Target::As(None));
-            let report = save(home, opened, target, |session, meta| match &edit {
-                Command::Shrink(over) => Ok(shrink_all(session, *over)),
-                Command::Drop(from, to) => drop_range(main_of(session)?, *from, *to),
-                Command::Rename(name) => {
-                    meta.insert("name".to_owned(), Value::String(name.clone()));
-                    Ok(vec![format!("named the session {name}")])
-                }
-                Command::List | Command::Export(_) => Ok(Vec::new()),
-            })?;
+            let report = save(home, opened, target, &edit)?;
             write(out, &report.join("\n"))
         }
     }
@@ -202,42 +189,33 @@ struct Opened {
     dir: SessionDir,
     store: DirStore,
     session: Session,
-    /// Its listing ([`META`]); empty when it has none.
-    meta: Map<String, Value>,
+    /// Its listing ([`SessionMeta`]); empty when it has none.
+    meta: SessionMeta,
 }
 
-/// The session `arg` names: a directory, an id under `home`, or the name
-/// of one session under `home`.
+impl Opened {
+    /// What the session is listed as: its name ([`SessionDir::name`]),
+    /// else the start of its first message.
+    fn shown(&self) -> Option<String> {
+        let title = Some(self.meta.title.clone()).filter(|title| !title.is_empty());
+        self.dir.name().or(title)
+    }
+}
+
+/// The session `arg` names: a directory, or the id or name of a saved
+/// session under `home`.
 fn locate(home: &Home, arg: &str) -> Result<SessionDir, Error> {
     let path = Path::new(arg);
     if path.is_dir() {
         return Ok(SessionDir::at(path));
     }
-    if let Ok(id) = arg.parse::<SessionId>()
-        && home.session(&id).path().is_dir()
-    {
-        return Ok(home.session(&id));
-    }
-    let entries = fs::read_dir(home.sessions()).into_iter().flatten();
-    let named: Vec<SessionDir> = entries
-        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
-        .map(|id: SessionId| home.session(&id))
-        .filter(|dir| {
-            let store = DirStore::open(dir.path());
-            store.is_ok_and(|store| name_of(&meta_of(&store)) == Some(arg))
-        })
-        .collect();
-    match named.as_slice() {
-        [dir] => Ok(dir.clone()),
-        [] => Err(Error(format!(
-            "no session {arg}: it is no directory, nor the id or name of a session in {}",
+    let id = home.find(arg).map_err(|why| {
+        format!(
+            "no session {arg}: it is no directory, and {why} in {}",
             home.sessions().display()
-        ))),
-        many => Err(Error(format!(
-            "{} sessions are named {arg}; give its id",
-            many.len()
-        ))),
-    }
+        )
+    })?;
+    Ok(home.session(&id))
 }
 
 /// Reads the session in `dir` whole, strictly: a session cut short, in
@@ -260,7 +238,7 @@ fn open(dir: SessionDir) -> Result<Opened, Error> {
     if session.agents.is_empty() {
         return Err(refuse("it holds no saved conversation".to_owned()));
     }
-    let meta = meta_of(&store);
+    let meta = SessionMeta::read(&store).unwrap_or_default();
     Ok(Opened {
         dir,
         store,
@@ -269,61 +247,31 @@ fn open(dir: SessionDir) -> Result<Opened, Error> {
     })
 }
 
-/// The listing of the session in `store`; empty when it has none.
-fn meta_of(store: &dyn Files) -> Map<String, Value> {
-    let read = store.read_file(META).ok();
-    let meta = read.and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
-    match meta {
-        Some(Value::Object(meta)) => meta,
-        _ => Map::new(),
-    }
-}
-
-/// What the session is listed as: its name, else the start of its first
-/// message.
-fn name_of(meta: &Map<String, Value>) -> Option<&str> {
-    let text = |key: &str| {
-        meta.get(key)
-            .and_then(Value::as_str)
-            .filter(|t| !t.is_empty())
-    };
-    text("name").or_else(|| text("title"))
-}
-
-/// The main agent: the first the user started that is not retired.
-fn main_agent(session: &Session) -> Option<&SavedAgent> {
-    let mut roots = session.agents.iter().filter(|a| a.parent.is_none());
-    roots.find(|agent| !agent.retired)
-}
-
 /// The main agent's conversation, to change it.
 fn main_of(session: &mut Session) -> Result<&mut Conversation, Error> {
-    let id = main_agent(session).map(|agent| agent.id.clone());
+    let id = session.main_agent().map(|agent| agent.id.clone());
     let agent = id.and_then(|id| session.agent_mut(&id));
     let agent = agent.ok_or("the session has no main conversation")?;
     Ok(&mut agent.conversation)
 }
 
-/// What a spawned agent is called: its task's title, else its id.
-fn agent_name(agent: &SavedAgent) -> &str {
-    let titled = SUBAGENT_NAME_KEYS
-        .iter()
-        .find_map(|key| agent.state.get(*key));
-    titled.and_then(Value::as_str).unwrap_or(&agent.id)
+/// What a spawned agent is called: its title, else its id.
+fn agent_name(agent: &SavedAgent) -> String {
+    agent.title().unwrap_or_else(|| agent.id.clone())
 }
 
 /// The `list` output.
 fn list(opened: &Opened) -> String {
     let session = &opened.session;
-    let main = main_agent(session);
+    let main = session.main_agent();
     let messages = main
         .map(|agent| agent.conversation.messages())
         .unwrap_or_default();
-    let model = main.and_then(|agent| agent.state.get(MODEL_KEY)?.as_str());
+    let model = main.and_then(SavedAgent::model);
     let mut lines = vec![
         format!("session: {}", opened.dir.path().display()),
-        format!("name: {}", name_of(&opened.meta).unwrap_or("(unnamed)")),
-        format!("model: {}", model.unwrap_or("(unknown)")),
+        format!("name: {}", opened.shown().as_deref().unwrap_or("(unnamed)")),
+        format!("model: {}", model.as_deref().unwrap_or("(unknown)")),
         format!("messages: {}", messages.len()),
     ];
     for (at, message) in messages.iter().enumerate() {
@@ -430,12 +378,17 @@ fn result_size(content: &[ToolResultContent]) -> usize {
         .sum()
 }
 
-/// Shrinks every tool result over `over` characters in every agent's
-/// conversation; what it did.
-fn shrink_all(session: &mut Session, over: usize) -> Vec<String> {
+/// What a shrink of every tool result over `over` characters will do to
+/// each agent's conversation as it is now.
+fn shrink_report(session: &Session, over: usize) -> Vec<String> {
     let mut report = Vec::new();
-    for agent in &mut session.agents {
-        let (results, lines) = shrink(&mut agent.conversation, over);
+    for agent in &session.agents {
+        let (results, lines) = agent
+            .conversation
+            .messages()
+            .iter()
+            .map(|message| shrink(&mut message.clone(), over))
+            .fold((0, 0), |(results, lines), (r, l)| (results + r, lines + l));
         if results > 0 {
             let whose = match agent.parent {
                 None => "the conversation".to_owned(),
@@ -455,40 +408,39 @@ fn shrink_all(session: &mut Session, over: usize) -> Vec<String> {
     report
 }
 
-/// Replaces each text of each tool result over `over` characters with its
-/// first and last [`KEEP_LINES`] lines and a marker, as one change; the
-/// results shrunk and the lines removed.
-fn shrink(conversation: &mut Conversation, over: usize) -> (usize, usize) {
+/// The shrink as a rewrite of every message a session keeps, in every
+/// record of every log.
+fn shrinker(over: usize) -> impl Rewrite {
+    Messages(move |message: &mut Message| shrink(message, over).0 > 0)
+}
+
+/// Replaces each text of each tool result of `message` over `over`
+/// characters with its first and last [`KEEP_LINES`] lines and a marker;
+/// the results shrunk and the lines removed.
+fn shrink(message: &mut Message, over: usize) -> (usize, usize) {
     let (mut results, mut lines) = (0, 0);
-    conversation.edit_each(Author::plugin(AUTHOR), |entry| {
-        let Message::User { content } = entry.message else {
-            return None;
+    let Message::User { content } = message else {
+        return (results, lines);
+    };
+    for part in content {
+        let UserContent::ToolResult(result) = part else {
+            continue;
         };
-        let mut changed = false;
-        let content = content
-            .iter()
-            .map(|part| match part {
-                UserContent::ToolResult(result) if result_size(&result.content) > over => {
-                    let mut result = result.clone();
-                    let mut cut_any = false;
-                    for item in &mut result.content {
-                        if let ToolResultContent::Text(text) = item
-                            && let Some((short, removed)) = cut_lines(&text.text)
-                        {
-                            text.text = short;
-                            lines += removed;
-                            cut_any = true;
-                        }
-                    }
-                    results += usize::from(cut_any);
-                    changed |= cut_any;
-                    UserContent::ToolResult(result)
-                }
-                part => part.clone(),
-            })
-            .collect();
-        changed.then_some(Message::User { content })
-    });
+        if result_size(&result.content) <= over {
+            continue;
+        }
+        let mut cut_any = false;
+        for item in &mut result.content {
+            if let ToolResultContent::Text(text) = item
+                && let Some((short, removed)) = cut_lines(&text.text)
+            {
+                text.text = short;
+                lines += removed;
+                cut_any = true;
+            }
+        }
+        results += usize::from(cut_any);
+    }
     (results, lines)
 }
 
@@ -565,8 +517,9 @@ fn is_empty(message: &Message) -> bool {
 
 /// Removes messages `from..=to` of `conversation`, and every call whose
 /// result they held and every result of a call they held, wherever it
-/// is, as one change; what it removed. Refused, changing nothing, when
-/// the range is outside the conversation or the rest would not pair.
+/// is, as one change ([`Conversation::set_entries`], so the entries kept
+/// keep their ids); what it removed. Refused, changing nothing, when the
+/// range is outside the conversation or the rest would not pair.
 fn drop_range(
     conversation: &mut Conversation,
     from: usize,
@@ -583,23 +536,18 @@ fn drop_range(
     let dropped = messages.get(from..=to).unwrap_or_default();
     let calls: HashSet<CallId> = dropped.iter().flat_map(call_ids).collect();
     let mut report = Vec::new();
-    let mut touched: Option<(usize, usize)> = None;
-    let mut after: Vec<Option<Entry>> = Vec::with_capacity(len);
-    for (at, message) in messages.iter().enumerate() {
-        let entry = conversation.entry(at);
-        let change = if (from..=to).contains(&at) {
-            let tools = tool_names(message).join(", ");
+    let mut kept = Vec::with_capacity(len);
+    for (at, entry) in (0..len).filter_map(|at| Some((at, conversation.entry(at)?))) {
+        if (from..=to).contains(&at) {
+            let tools = tool_names(&entry.message).join(", ");
             let tools = if tools.is_empty() {
                 tools
             } else {
                 format!(" of {tools}")
             };
-            report.push(format!(
-                "removed message {at} ({}{tools})",
-                role_of(message)
-            ));
-            Some(None)
-        } else if let Some((stripped, taken)) = strip(message, &calls) {
+            let role = role_of(&entry.message);
+            report.push(format!("removed message {at} ({role}{tools})"));
+        } else if let Some((stripped, taken)) = strip(&entry.message, &calls) {
             report.extend(
                 taken
                     .iter()
@@ -607,61 +555,42 @@ fn drop_range(
             );
             if is_empty(&stripped) {
                 report.push(format!("removed message {at}, which held nothing else"));
-                Some(None)
             } else {
-                Some(entry.clone().map(|entry| Entry {
+                kept.push(Entry {
                     message: stripped,
                     ..entry
-                }))
+                });
             }
         } else {
-            None
-        };
-        match change {
-            Some(replaced) => {
-                touched = Some(touched.map_or((at, at), |(first, _)| (first, at)));
-                after.push(replaced);
-            }
-            None => after.push(entry),
+            kept.push(entry);
         }
     }
-    let Some((first, last)) = touched else {
-        return Ok(report);
-    };
-    let rest: Vec<Message> = after
-        .iter()
-        .flatten()
-        .map(|entry| entry.message.clone())
-        .collect();
+    let rest: Vec<Message> = kept.iter().map(|entry| entry.message.clone()).collect();
     pairing::validate(&rest).map_err(|why| {
         format!(
             "dropping {from}..{to} would leave the conversation broken ({why}); drop a wider range"
         )
     })?;
-    let with: Vec<Entry> = after
-        .into_iter()
-        .skip(first)
-        .take(last + 1 - first)
-        .flatten()
-        .collect();
-    conversation.splice(first..=last, with, Author::plugin(AUTHOR));
+    conversation.set_entries(kept, Author::plugin(AUTHOR));
     Ok(report)
 }
 
-/// Saves the edit `edit` of `opened` to `target`; what it did, then where
-/// it went. Nothing is written when the edit is refused.
-fn save(
-    home: &Home,
-    opened: Opened,
-    target: Target,
-    edit: impl Fn(&mut Session, &mut Map<String, Value>) -> Result<Vec<String>, Error>,
-) -> Result<Vec<String>, Error> {
+/// Saves `edit` of `opened` to `target`; what it did, then where it
+/// went. Nothing is written when the edit is refused.
+fn save(home: &Home, opened: Opened, target: Target, edit: &Edit) -> Result<Vec<String>, Error> {
+    let shown = opened.shown();
     let Opened {
         dir,
         store,
         mut session,
-        mut meta,
+        meta,
     } = opened;
+    // Done on the session as read first, so a refused edit writes nothing.
+    let mut report = match edit {
+        Edit::Shrink(over) => shrink_report(&session, *over),
+        Edit::Drop(from, to) => drop_range(main_of(&mut session)?, *from, *to)?,
+        Edit::Rename(name) => vec![format!("named the session {name}")],
+    };
     match target {
         Target::InPlace => {
             if dir.runs_elsewhere() {
@@ -669,57 +598,73 @@ fn save(
                     "rig is running this session; quit it before editing it in place".into(),
                 );
             }
-            let mut report = edit(&mut session, &mut meta)?;
             let backup = backup(dir.path())?;
-            session.save(&store)?;
+            match edit {
+                Edit::Shrink(over) => {
+                    rewrite(&store, Author::plugin(AUTHOR), &shrinker(*over))?;
+                }
+                Edit::Drop(..) => session.save(&store)?,
+                Edit::Rename(name) => dir.set_name(Some(name))?,
+            }
             write_meta(&store, meta)?;
             report.push(format!(
                 "saved in place; the session as it was is in {}",
                 backup.display()
             ));
-            Ok(report)
         }
         Target::As(name) => {
-            let name = name.unwrap_or_else(|| {
-                let base = name_of(&meta).map(str::to_owned);
-                let base = base.or_else(|| dir.id().map(|id| id.to_string()));
-                format!("{} (edited)", base.unwrap_or_else(|| "session".to_owned()))
-            });
+            let name = match edit {
+                Edit::Rename(renamed) => renamed.clone(),
+                _ => name.unwrap_or_else(|| {
+                    let base = shown.or_else(|| dir.id().map(|id| id.to_string()));
+                    format!("{} (edited)", base.unwrap_or_else(|| "session".to_owned()))
+                }),
+            };
             let (id, new) = home.new_session()?;
             let made = (|| {
                 let to = DirStore::open(new.path())?;
-                fork(&store, &to, None)?;
+                match edit {
+                    Edit::Shrink(over) => fork(&store, &to, None, &shrinker(*over))?,
+                    _ => fork(&store, &to, None, &Keep)?,
+                };
+                if let Edit::Drop(from, until) = edit {
+                    let mut copy = Session::read(&to)?;
+                    drop_range(main_of(&mut copy)?, *from, *until)?;
+                    copy.save(&to)?;
+                }
+                if let Some(parent) = dir.id() {
+                    let session = parent.to_string();
+                    let forked = ForkedFrom {
+                        session,
+                        before: None,
+                        text: None,
+                    };
+                    forked.write(&to)?;
+                }
                 if let Ok(directory) = fs::read(dir.directory()) {
                     fs::write(new.directory(), directory)?;
                 }
-                let mut session = Session::read(&to)?;
-                meta.insert("name".to_owned(), Value::String(name.clone()));
-                let report = edit(&mut session, &mut meta)?;
-                session.save(&to)?;
                 write_meta(&to, meta)?;
+                new.set_name(Some(&name))?;
                 new.mark_saved()?;
-                Ok::<_, Error>(report)
+                Ok::<_, Error>(())
             })();
-            let mut report = match made {
-                Ok(report) => report,
-                Err(why) => {
-                    fs::remove_dir_all(new.path()).ok();
-                    return Err(why);
-                }
-            };
+            if let Err(why) = made {
+                fs::remove_dir_all(new.path()).ok();
+                return Err(why);
+            }
             report.push(format!(
                 "saved as session {id} ({name}); resume it with: rig --resume {id}"
             ));
-            Ok(report)
         }
     }
+    Ok(report)
 }
 
 /// Keeps `meta` as the session's listing, updated now.
-fn write_meta(store: &dyn Files, mut meta: Map<String, Value>) -> Result<(), Error> {
-    meta.insert("updated".to_owned(), Value::from(now_ms()));
-    let bytes = serde_json::to_vec_pretty(&Value::Object(meta)).map_err(io::Error::from)?;
-    store.write_file(META, &bytes)?;
+fn write_meta(store: &DirStore, mut meta: SessionMeta) -> Result<(), Error> {
+    meta.updated = now_ms();
+    meta.write(store)?;
     Ok(())
 }
 
@@ -763,10 +708,10 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
 fn markdown_of(opened: &Opened) -> String {
     let session = &opened.session;
     let mut text = String::new();
-    let name = name_of(&opened.meta).unwrap_or("Session");
-    let main = main_agent(session);
+    let name = opened.shown().unwrap_or_else(|| "Session".to_owned());
+    let main = session.main_agent();
     text.push_str(&format!("# {name}\n\n"));
-    if let Some(model) = main.and_then(|agent| agent.state.get(MODEL_KEY)?.as_str()) {
+    if let Some(model) = main.and_then(SavedAgent::model) {
         text.push_str(&format!("Model: `{model}`\n\n"));
     }
     if let Some(main) = main {

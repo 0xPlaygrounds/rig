@@ -102,3 +102,40 @@ fn json_redacts_every_string_and_a_cut_off_key_to_the_end() {
         })
     );
 }
+
+/// A value assigned to a secret-named variable is redacted with the name
+/// kept; a count, a reference, a short value and a name that only holds a
+/// secret word are not secrets, and a known key keeps its own kind.
+#[test]
+fn a_value_assigned_to_a_secret_name_is_redacted_and_counts_are_not() {
+    let line = "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY region=us-east-1";
+    assert_eq!(
+        text(line),
+        "AWS_SECRET_ACCESS_KEY=[REDACTED] region=us-east-1"
+    );
+    assert_eq!(
+        text(r#"{"DB_PASSWORD": "correct horse battery", "GITHUB_TOKEN": 'abcdefgh'}"#),
+        r#"{"DB_PASSWORD": "[REDACTED]", "GITHUB_TOKEN": '[REDACTED]'}"#
+    );
+    assert_eq!(
+        text("?API_KEY=abcdefghij&page=2"),
+        "?API_KEY=[REDACTED]&page=2"
+    );
+    for kept in [
+        "MAX_TOKENS=4096",
+        "TOKEN_COUNT=12345678",
+        "MAX_TOKENS_PER_CALL=unlimited",
+        "TOKEN_BUDGET=generous-enough",
+        "GH_TOKEN=$GITHUB_TOKEN",
+        "API_KEY=short",
+        "my_token=abcdefghijk",
+        "API_KEY=[REDACTED]",
+        "API_KEY=‹SECRET_1›",
+    ] {
+        assert_eq!(text(kept), kept);
+    }
+    let shaped: Vec<Kind> = find("GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789")
+        .map(|secret| secret.kind)
+        .collect();
+    assert_eq!(shaped, [Kind::GitHubToken]);
+}

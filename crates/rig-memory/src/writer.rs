@@ -5,13 +5,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_core::conversation::{Change, Conversation, Lineage, Recorded};
+use rig_core::conversation::{Author, Change, Conversation, Lineage, Recorded};
 use serde_json::Value;
 
 use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
-use crate::{LoadError, Repair, Session, Stamp, Store, now_ms};
+use crate::{LoadError, Repair, Rewrite, Rewritten, Session, Stamp, Store, now_ms, rewrite};
 
 /// One log as the writer keeps it.
 #[derive(Default)]
@@ -42,6 +42,9 @@ pub(crate) struct Book {
     /// dropped.
     failure: Option<String>,
     logs: HashMap<String, Log>,
+    /// The logs that end in a torn line, each with the bytes before it: the
+    /// line is set aside before anything is written after it.
+    torn: HashMap<String, u64>,
 }
 
 impl Book {
@@ -71,6 +74,13 @@ impl Book {
             book.next_n = book.next_n.max(log.next_n);
         }
         book
+    }
+
+    /// Sets aside the torn line each log of `torn` ends in, given with the
+    /// bytes before it, as [`set_aside_tail`] does, before that log is next
+    /// written.
+    pub fn set_aside(&mut self, torn: impl IntoIterator<Item = (String, u64)>) {
+        self.torn.extend(torn);
     }
 
     /// Numbers the next record `n` or later.
@@ -266,6 +276,17 @@ impl Book {
         self.meta(name, &Meta::Retired);
     }
 
+    /// Goes on after `rewritten`: each rewritten log with its new lineage
+    /// and its saved values as rewritten, its counts unchanged.
+    fn rewritten(&mut self, rewritten: &Rewritten) {
+        for rewritten in &rewritten.logs {
+            if let Some(log) = self.logs.get_mut(&rewritten.log) {
+                log.lineage = rewritten.conversation.lineage();
+                log.state.clone_from(&rewritten.state);
+            }
+        }
+    }
+
     /// Writes every queued record to `store`: each started log's records
     /// with one write, a subagent's log before its parent's, and the
     /// [`SESSION`] log once any is started. A failed write stops the
@@ -287,7 +308,12 @@ impl Book {
             let Some(log) = self.logs.get_mut(&name) else {
                 continue;
             };
-            if let Err(failure) = store.append_log(&name, &log.pending) {
+            let set_aside = self
+                .torn
+                .remove(&name)
+                .map_or(Ok(()), |kept| set_aside_tail(store, &name, kept).map(drop));
+            let written = set_aside.and_then(|()| Ok(store.append_log(&name, &log.pending)?));
+            if let Err(failure) = written {
                 let failure = format!("writing the log {name} failed: {failure}");
                 self.failure = Some(failure.clone());
                 return Err(io::Error::other(failure).into());
@@ -328,7 +354,7 @@ impl Writer {
     /// As [`Session::read`], or when setting a torn tail aside fails.
     pub fn open(store: Arc<dyn Store>) -> Result<(Self, Session), LoadError> {
         let mut folded = fold_all(&*store, true)?;
-        let mut repairs = repairs(&folded);
+        let mut repairs = repairs(&*store, &folded)?;
         for repair in &mut repairs {
             if let Repair::TornTail {
                 log,
@@ -403,6 +429,43 @@ impl Writer {
         self.inner().book.retire(log);
     }
 
+    /// Rewrites the session's saved history through `with`, as done by
+    /// `by` ([`rewrite`]), under this writer's lock, so no save interleaves:
+    /// what it queued is written first; the logs and files are rewritten;
+    /// the writer then goes on with each rewritten log's lineage and saved
+    /// values, its counts unchanged, so it neither writes a reset for a
+    /// conversation reread from [`Rewritten`] nor writes a saved value the
+    /// rewrite already holds again. Once logging stopped
+    /// ([`failure`](Self::failure)), it still rewrites what the store holds
+    /// and stays stopped. A writer without a store rewrites nothing.
+    ///
+    /// The host then rereads what it keeps in memory: each agent's
+    /// conversation from [`RewrittenLog::conversation`], each saved value
+    /// in [`RewrittenLog::changed_keys`]. A log not started yet (only saved
+    /// values that do not start a log) is not in the store, so it is not
+    /// rewritten.
+    ///
+    /// # Errors
+    ///
+    /// As [`rewrite`].
+    ///
+    /// [`RewrittenLog::conversation`]: crate::RewrittenLog::conversation
+    /// [`RewrittenLog::changed_keys`]: crate::RewrittenLog::changed_keys
+    pub fn rewrite(&self, by: Author, with: &dyn Rewrite) -> Result<Rewritten, LoadError> {
+        let mut inner = self.inner();
+        let Inner { store, book } = &mut *inner;
+        let Some(store) = store else {
+            return Ok(Rewritten::default());
+        };
+        if book.failure.is_none() {
+            // A failed write stops the logging; the rewrite still runs.
+            let _ = book.flush(&**store);
+        }
+        let rewritten = rewrite(&**store, by, with)?;
+        book.rewritten(&rewritten);
+        Ok(rewritten)
+    }
+
     /// Writes every queued record: each started log's records with one
     /// write, a subagent's log before its parent's, so a parent never
     /// refers to a subagent message that is not stored, and the [`SESSION`]
@@ -418,20 +481,20 @@ impl Writer {
 }
 
 /// Copies the bytes of the log `log` after its first `kept` to the free
-/// file `recovered/<log>-<k>.part`, then cuts them off; that file's name.
-fn set_aside_tail(store: &dyn Store, log: &str, kept: u64) -> Result<String, LoadError> {
+/// file `recovered/<log>-<k>.part`, then replaces the log with the bytes
+/// before them; that file's name. A crash between the two leaves the tail
+/// in the log, set aside again by the next open.
+pub(crate) fn set_aside_tail(store: &dyn Store, log: &str, kept: u64) -> Result<String, LoadError> {
     let bytes = store.read_log(log)?;
-    let tail = usize::try_from(kept)
-        .ok()
-        .and_then(|kept| bytes.get(kept..))
-        .unwrap_or_default();
+    let kept = usize::try_from(kept).unwrap_or(usize::MAX);
+    let (prefix, tail) = bytes.split_at_checked(kept).unwrap_or((&bytes, &[]));
     let files = store.files()?;
     let name = (1..=files.len() + 1)
         .map(|k| format!("recovered/{log}-{k}.part"))
         .find(|name| !files.contains(name))
         .unwrap_or_default();
     store.write_file(&name, tail)?;
-    store.truncate_log(log, kept)?;
+    store.replace_log(log, prefix)?;
     Ok(name)
 }
 

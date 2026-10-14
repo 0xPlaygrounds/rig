@@ -8,7 +8,7 @@ use rig_ecs::journal::SessionStore;
 use rig_ecs::stage::{EffectRecorded, ForAgent, Outcome, Started};
 use rig_memory::MemoryStore;
 
-use super::{Answer, Answerer, Answerers, Ask, AskPlugin};
+use super::{Answer, Answerer, Answerers, Ask, AskPlugin, Choice};
 use crate::commands::CommandPlugin;
 use crate::pick::{Chosen, Pick, PickPlugin};
 
@@ -50,7 +50,7 @@ fn a_question_is_an_open_effect_recorded_with_its_answer() {
     let question = app.world_mut().spawn((ask.clone(), ForAgent(agent))).id();
     app.update();
     assert!(app.world().entity(question).contains::<Started>());
-    let answer = Answer::Choice("later".to_owned());
+    let answer = Answer::choice("later");
     app.world_mut()
         .entity_mut(question)
         .insert(answer.outcome());
@@ -98,7 +98,7 @@ fn the_users_next_line_answers_a_question_that_takes_text() {
     let outcome = app.world().get::<Outcome>(question);
     assert_eq!(
         outcome.and_then(Answer::of),
-        Some(Answer::Text("it deletes the cache".to_owned()))
+        Some(Answer::text("it deletes the cache"))
     );
     assert!(app.world().get::<Outcome>(beside).is_none());
     // The answer never reached the model's conversation, and no turn started.
@@ -123,10 +123,10 @@ fn a_questions_record_names_who_answered_it() {
     let auto = world.spawn((Ask::yes_no("Write?"), ForAgent(agent))).id();
     app.update();
     let world = app.world_mut();
-    world.trigger(Pick::person(asked, Some(Chosen::Item(0))));
+    world.trigger(Pick::person(asked, Some(Chosen::item(0))));
     world.trigger(Pick {
         entity: auto,
-        chosen: Some(Chosen::Item(1)),
+        chosen: Some(Chosen::item(1)),
         by: Decider::plugin("auto-approve"),
     });
     app.update();
@@ -164,4 +164,21 @@ fn a_front_answers_for_its_agent_or_for_all() {
     assert!(can(&mut app, Some(one)) && !can(&mut app, Some(other)) && !can(&mut app, None));
     app.world_mut().spawn(Answerer::default());
     assert!(can(&mut app, Some(other)) && can(&mut app, None));
+}
+
+/// A choice that starts ticked and says more round-trips through serde, and
+/// a choice saved before either existed still reads.
+#[test]
+fn a_choice_keeps_its_tick_and_more_through_serde() {
+    let choice = Choice::new("1", "write a.rs")
+        .checked()
+        .more("{\"path\":\"a.rs\"}");
+    let saved = serde_json::to_value(&choice).ok();
+    let read = saved.and_then(|value| serde_json::from_value::<Choice>(value).ok());
+    assert_eq!(read, Some(choice));
+    let old = serde_json::json!({ "id": "yes", "label": "Yes" });
+    assert_eq!(
+        serde_json::from_value::<Choice>(old).ok(),
+        Some(Choice::new("yes", "Yes"))
+    );
 }

@@ -170,7 +170,7 @@ fn a_refused_switch_goes_back_to_the_session_it_left() {
         };
         let (left, refused) = (saved()?, saved()?);
         let agent = format!(
-            "echo \"$RIG_SESSION $RIG_NOTICE\" >> \"$RIG_HOME/started\"
+            "echo \"$RIG_SESSION $RIG_START $RIG_NOTICE\" >> \"$RIG_HOME/started\"
 touch \"$RIG_RUN/ready\"
 [ \"$RIG_SESSION\" = {refused} ] && echo 'rig: too old.' > \"$RIG_RUN/refusal\" && exit 2
 [ -e \"$RIG_HOME/switched\" ] && exit 0
@@ -200,10 +200,56 @@ exit 75"
     if let Ok((code, started, left, refused)) = back {
         assert_eq!(code, ExitCode::SUCCESS);
         let expected = format!(
-            "{left} \n{refused} Resumed the session.\n{left} Could not switch sessions: too old.\n"
+            "{left} resumed \n{refused} resumed Resumed the session.\n\
+             {left} resumed Could not switch sessions: too old.\n"
         );
         assert_eq!(started, expected);
     }
+}
+
+/// Each start says why it started: a new session, a `/reload` of it, a
+/// `/new`, then the previous build after the new one stopped during
+/// startup.
+#[cfg(unix)]
+#[test]
+fn each_start_says_why_it_started() {
+    let home = builds("reasons", "", "");
+    let starts = home::hold_run(&home).and_then(|run| {
+        let agent = format!(
+            "#!/bin/sh
+echo \"$RIG_START\" >> \"$RIG_HOME/starts\"
+case $(wc -l < \"$RIG_HOME/starts\") in
+1) touch \"$RIG_RUN/ready\"; exit 75 ;;
+2) touch \"$RIG_RUN/ready\"; cp \"$0\" {staged}; : > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"; exit 75 ;;
+3) exit 1 ;;
+esac
+touch \"$RIG_RUN/ready\"",
+            staged = home.staged().display(),
+        );
+        for build in [home.staged(), home.good()] {
+            fs::write(build, &agent)?;
+        }
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        let code = launch(
+            &home,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            None,
+            None,
+        )?;
+        Ok((code, fs::read_to_string(home.root().join("starts"))?))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let starts = starts.map_err(|failure| failure.to_string());
+    assert_eq!(
+        starts,
+        Ok((
+            ExitCode::SUCCESS,
+            "new\nreloaded\nnew\nrestarted\n".to_owned()
+        ))
+    );
 }
 
 /// A build that describes itself as adding the command `name`.

@@ -6,39 +6,44 @@
 //! subagents and branches, and every plugin's saved values and session
 //! files, exactly as a restore reads them), the project-relative paths and
 //! current contents of the files the session's tools changed, and a
-//! [`Manifest`]. Secrets found by rig-core's `redact` shapes or as
-//! environment-looking assignments (`AWS_SECRET_ACCESS_KEY=…`) are asked
-//! about first (redact, keep or cancel); with nobody to ask the bundle is
-//! refused unless `--allow-secrets`.
+//! [`Manifest`]. Secrets that rig-core's `redact` finds (key shapes and
+//! assignments such as `AWS_SECRET_ACCESS_KEY=…`), through a rig-memory
+//! rewrite of a copy of the store, are asked about first (redact, keep or
+//! cancel); with nobody to ask the bundle is refused unless
+//! `--allow-secrets`.
 //!
 //! `rig bundle open <file> [--project <dir>] [--replace] [--apply|--keep|--apply-file <path>…]`
 //! and `/unbundle <file> …` import a bundle as a new saved session of the
-//! project: every string of its logs and files that names the original
-//! project root is remapped to the new one, the bundled files are written
-//! as chosen when they differ on disk or the project is at another commit,
-//! plugins named in the manifest that are not installed are listed (their
-//! saved values stay in the logs for a later build), and an agent whose
-//! model cannot be reached here falls back to the default model.
+//! project: rig-memory's `fork` copies the bundled store through a
+//! [`Rewrite`] that remaps every path under the original project root to
+//! the new one and drops a model this build cannot reach (its agent takes
+//! the default model); the bundled files are written as chosen when they
+//! differ on disk or the project is at another commit; plugins named in
+//! the manifest that are not installed are listed (their saved values and
+//! files stay in the session for a later build).
 
 #[cfg(test)]
 mod tests;
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use bevy_reflect::TypePath;
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use rig_core::redact;
-use rig_harness::harness_protocol::{SessionDir, SessionId};
+use rig_harness::harness_protocol::{SessionDir, SessionId, VERSION};
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_memory::{FORMAT, MemoryStore, Session, Store, fork, now_ms};
+use rig_harness::rig_memory::{
+    MODEL, MemoryStore, Place, Rewrite, SavedAgent, Session, SessionMeta, Store, Strings,
+    check_name, fork, now_ms, rewrite,
+};
 use rig_harness::rig_tools::process::Launcher;
-use rig_sessions::{Meta, SessionTitle, write_meta};
+use rig_sessions::SessionTitle;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -68,6 +73,8 @@ impl Plugin for SessionBundlePlugin {
     fn build(&self, app: &mut App) {
         let front = Front::new(COMMAND).sessionless();
         app.register_type::<BundleOrigin>()
+            .keeps_saved::<BundleOrigin>()
+            .keeps_files("session-bundle")
             .init_resource::<BundleOrigin>()
             .init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
@@ -123,15 +130,15 @@ pub struct Manifest {
     pub format: String,
     /// The bundle's own id: the session and when it was written.
     pub id: String,
-    /// The session log format of the bundled store, as rig-memory names it
-    /// (the harness exposes no rig version).
-    pub session_format: String,
+    /// The version of rig that wrote it.
+    pub rig_version: String,
     /// The bundled session's id.
     pub session: String,
     /// The bundled session's name or title.
     pub name: String,
-    /// The plugins of the build that wrote it.
-    pub plugins: Vec<String>,
+    /// The plugins of the build that wrote it that keep saved values or
+    /// session files of the session (their [`Keeps`]), each with what.
+    pub plugins: BTreeMap<String, Kept>,
     /// The models its agents used, as `vendor/model`.
     pub models: Vec<String>,
     /// The project root it worked in.
@@ -146,18 +153,23 @@ pub struct Manifest {
     pub files: Vec<String>,
 }
 
-/// A bundle in memory: the manifest, the session's store and the changed
-/// project files.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// What a plugin keeps of a bundled session.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct Kept {
+    /// The keys of its saved values.
+    pub saved: Vec<String>,
+    /// Its session files, as the store names them (`plugins/vim/…`).
+    pub files: Vec<String>,
+}
+
+/// A bundle in memory: the manifest, a copy of the session's store and the
+/// changed project files.
+#[derive(Clone, Default)]
 pub struct Bundle {
     /// What it says about itself.
     pub manifest: Manifest,
-    /// Each log of the store, by name.
-    pub logs: BTreeMap<String, Vec<u8>>,
-    /// Each blob of the store, by name.
-    pub blobs: BTreeMap<String, Vec<u8>>,
-    /// Each file of the store, by name.
-    pub store_files: BTreeMap<String, Vec<u8>>,
+    /// The session's logs, blobs and files, byte for byte.
+    pub store: MemoryStore,
     /// Each changed project file, by project-relative path.
     pub files: BTreeMap<String, Vec<u8>>,
 }
@@ -179,16 +191,18 @@ impl Bundle {
             archive.append_data(&mut header, name, bytes)
         };
         add(MANIFEST, &serde_json::to_vec_pretty(&self.manifest)?)?;
-        let parts = [
-            (LOGS, &self.logs),
-            (BLOBS, &self.blobs),
-            (FILES, &self.store_files),
-            (PROJECT, &self.files),
-        ];
-        for (prefix, entries) in parts {
-            for (name, bytes) in entries {
-                add(&format!("{prefix}{name}"), bytes)?;
-            }
+        let store = &self.store;
+        for name in store.logs()? {
+            add(&format!("{LOGS}{name}"), &store.read_log(&name)?)?;
+        }
+        for name in store.blobs()? {
+            add(&format!("{BLOBS}{name}"), &store.blob(&name)?)?;
+        }
+        for name in store.files()? {
+            add(&format!("{FILES}{name}"), &store.read_file(&name)?)?;
+        }
+        for (name, bytes) in &self.files {
+            add(&format!("{PROJECT}{name}"), bytes)?;
         }
         archive.into_inner()?.finish()?.flush()
     }
@@ -208,26 +222,25 @@ impl Bundle {
             let name = entry.path()?.to_string_lossy().into_owned();
             let mut bytes = Vec::new();
             entry.read_to_end(&mut bytes)?;
+            let store = &bundle.store;
+            let placed = |prefix: &str| -> io::Result<Option<String>> {
+                let Some(rest) = name.strip_prefix(prefix) else {
+                    return Ok(None);
+                };
+                check_name(rest)?;
+                Ok(Some(rest.to_owned()))
+            };
             if name == MANIFEST {
                 manifest = Some(serde_json::from_slice::<Manifest>(&bytes)?);
-                continue;
-            }
-            let parts = [
-                (LOGS, &mut bundle.logs),
-                (BLOBS, &mut bundle.blobs),
-                (FILES, &mut bundle.store_files),
-                (PROJECT, &mut bundle.files),
-            ];
-            let mut placed = false;
-            for (prefix, entries) in parts {
-                if let Some(rest) = name.strip_prefix(prefix) {
-                    rig_harness::rig_memory::check_name(rest)?;
-                    entries.insert(rest.to_owned(), bytes);
-                    placed = true;
-                    break;
-                }
-            }
-            if !placed {
+            } else if let Some(log) = placed(LOGS)? {
+                store.append_log(&log, &bytes)?;
+            } else if let Some(blob) = placed(BLOBS)? {
+                store.put_blob(&blob, &bytes)?;
+            } else if let Some(file) = placed(FILES)? {
+                store.write_file(&file, &bytes)?;
+            } else if let Some(file) = placed(PROJECT)? {
+                bundle.files.insert(file, bytes);
+            } else {
                 return Err(io::Error::other(format!("{name} is no part of a bundle")));
             }
         }
@@ -239,56 +252,97 @@ impl Bundle {
         Ok(bundle)
     }
 
-    /// Where it holds secrets: `log <name>`, `session file <name>` or
-    /// `project file <path>`.
-    pub fn secrets(&self) -> Vec<String> {
-        let mut found = Vec::new();
-        let parts = [
-            ("log", &self.logs),
-            ("session file", &self.store_files),
-            ("project file", &self.files),
-        ];
-        for (kind, entries) in parts {
-            for (name, bytes) in entries {
-                if map_bytes(bytes, &redacted).is_some() {
-                    found.push(format!("{kind} {name}"));
-                }
+    /// The same bundle with every secret replaced by `[REDACTED]`, and
+    /// where it found them: `log <name>`, `session file <name>` or
+    /// `project file <path>`. The store's copy is rewritten through
+    /// rig-memory, so the redaction is recorded in each changed log.
+    ///
+    /// # Errors
+    ///
+    /// When the store cannot be read or rewritten.
+    pub fn redacted(&self) -> Result<(Self, Vec<String>), String> {
+        let store = copy(&self.store).map_err(|failure| failure.to_string())?;
+        let rewritten = rewrite(
+            &store,
+            Author::plugin("session-bundle"),
+            &Strings(redact_text),
+        )
+        .map_err(|failure| failure.to_string())?;
+        let mut found: Vec<String> = rewritten
+            .logs
+            .iter()
+            .map(|log| format!("log {}", log.log))
+            .chain(
+                rewritten
+                    .files
+                    .iter()
+                    .map(|file| format!("session file {file}")),
+            )
+            .collect();
+        let mut files = self.files.clone();
+        for (path, bytes) in &mut files {
+            let Ok(mut text) = String::from_utf8(bytes.clone()) else {
+                continue;
+            };
+            if redact_text(&mut text) {
+                *bytes = text.into_bytes();
+                found.push(format!("project file {path}"));
             }
         }
-        found
+        let bundle = Self {
+            manifest: self.manifest.clone(),
+            store,
+            files,
+        };
+        Ok((bundle, found))
+    }
+}
+
+/// A copy of everything `from` keeps.
+fn copy(from: &dyn Store) -> io::Result<MemoryStore> {
+    let to = MemoryStore::default();
+    for name in from.logs()? {
+        to.append_log(&name, &from.read_log(&name)?)?;
+    }
+    for name in from.blobs()? {
+        to.put_blob(&name, &from.blob(&name)?)?;
+    }
+    for name in from.files()? {
+        to.write_file(&name, &from.read_file(&name)?)?;
+    }
+    Ok(to)
+}
+
+/// What an import does to every value it copies: each path under the
+/// original project root is remapped to the new one, and a model this
+/// build cannot reach is dropped, so its agent takes the default.
+struct Import<F: Fn(&mut String) -> bool + Send + Sync> {
+    remap: Strings<F>,
+    unusable: Vec<String>,
+}
+
+impl<F: Fn(&mut String) -> bool + Send + Sync> Rewrite for Import<F> {
+    fn message(&self, at: &Place<'_>, message: &mut rig_core::message::Message) -> bool {
+        self.remap.message(at, message)
     }
 
-    /// The same bundle with every secret replaced by `[REDACTED]`.
-    pub fn redact(mut self) -> Self {
-        for entries in [&mut self.logs, &mut self.store_files, &mut self.files] {
-            for bytes in entries.values_mut() {
-                if let Some(clean) = map_bytes(bytes, &redacted) {
-                    *bytes = clean;
-                }
-            }
-        }
-        self
+    fn aside(&self, at: &Place<'_>, aside: &mut rig_core::conversation::Aside) -> bool {
+        self.remap.aside(at, aside)
     }
 
-    /// The bundled store with every string naming the original project
-    /// root remapped to `root`.
-    fn store_at(&self, root: &Path) -> io::Result<MemoryStore> {
-        let from = self.manifest.project_root.to_string_lossy().into_owned();
-        let to = root.to_string_lossy().into_owned();
-        let remap = |text: &str| remap(text, &from, &to);
-        let store = MemoryStore::default();
-        for (name, bytes) in &self.logs {
-            let bytes = map_bytes(bytes, &remap).unwrap_or_else(|| bytes.clone());
-            store.append_log(name, &bytes)?;
+    fn value(&self, at: &Place<'_>, key: &str, value: &mut Value) -> bool {
+        let unusable = value
+            .as_str()
+            .is_some_and(|model| self.unusable.iter().any(|gone| gone == model));
+        if key == MODEL && unusable {
+            *value = Value::Null;
+            return true;
         }
-        for (name, bytes) in &self.blobs {
-            store.put_blob(name, bytes)?;
-        }
-        for (name, bytes) in &self.store_files {
-            let bytes = map_bytes(bytes, &remap).unwrap_or_else(|| bytes.clone());
-            store.write_file(name, &bytes)?;
-        }
-        Ok(store)
+        self.remap.value(at, key, value)
+    }
+
+    fn text(&self, at: &Place<'_>, text: &mut String) -> bool {
+        self.remap.text(at, text)
     }
 }
 
@@ -354,7 +408,7 @@ pub enum FileChoice {
 }
 
 /// An import of a bundle into a project, before the files are chosen.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Plan {
     /// The bundle.
     pub bundle: Bundle,
@@ -425,7 +479,6 @@ struct Here<'a> {
 fn import(plan: &Plan, choice: &FileChoice, here: &Here<'_>) -> Result<BundleImported, String> {
     let fail = |failure: &dyn std::fmt::Display| failure.to_string();
     let manifest = &plan.bundle.manifest;
-    let staged = plan.bundle.store_at(&plan.target).map_err(|f| fail(&f))?;
     let (session, dir) = match plan
         .replace
         .then(|| imported_before(here, &manifest.id))
@@ -445,7 +498,7 @@ fn import(plan: &Plan, choice: &FileChoice, here: &Here<'_>) -> Result<BundleImp
         }
         None => here.home.new_session().map_err(|f| fail(&f))?,
     };
-    let written = write_session(&staged, &dir, plan, here);
+    let written = write_session(&dir, plan, here);
     let notes = match written {
         Ok(notes) => notes,
         Err(why) => {
@@ -453,14 +506,15 @@ fn import(plan: &Plan, choice: &FileChoice, here: &Here<'_>) -> Result<BundleImp
             return Err(why);
         }
     };
+    let missing_plugins = manifest
+        .plugins
+        .keys()
+        .filter(|plugin| !here.installed.contains(plugin))
+        .cloned()
+        .collect();
     let mut imported = BundleImported {
         session,
-        missing_plugins: manifest
-            .plugins
-            .iter()
-            .filter(|plugin| !here.installed.contains(plugin))
-            .cloned()
-            .collect(),
+        missing_plugins,
         applied: Vec::new(),
         kept: Vec::new(),
         notes,
@@ -506,24 +560,42 @@ fn imported_before(here: &Here<'_>, id: &str) -> Option<(SessionId, SessionDir)>
         })
 }
 
-/// Writes the staged store into the session at `dir`, as a fork does (each
-/// log gets a lineage of its own), with the store's other files, the
-/// marker, the working directory and its `/resume` listing; a model this
-/// build cannot reach is dropped, so its agent takes the default. What the
-/// user should know.
-fn write_session(
-    staged: &MemoryStore,
-    dir: &SessionDir,
-    plan: &Plan,
-    here: &Here<'_>,
-) -> Result<Vec<String>, String> {
+/// Copies the bundled session into the session at `dir` with rig-memory's
+/// `fork` (each log a lineage of its own) through [`Import`], with the
+/// store's other files, the marker, the working directory and its
+/// `/resume` listing. What the user should know.
+fn write_session(dir: &SessionDir, plan: &Plan, here: &Here<'_>) -> Result<Vec<String>, String> {
     let fail = |failure: &dyn std::fmt::Display| failure.to_string();
     let manifest = &plan.bundle.manifest;
+    let staged = &plan.bundle.store;
+    let unusable: Vec<String> = manifest
+        .models
+        .iter()
+        .filter(|model| {
+            !here
+                .models
+                .is_some_and(|models| models.connect(model).is_ok())
+        })
+        .cloned()
+        .collect();
+    let notes = unusable
+        .iter()
+        .map(|model| format!("{model} is not available here: its agents use the default model."))
+        .collect();
+    let (from, to) = (
+        manifest.project_root.to_string_lossy().into_owned(),
+        plan.target.to_string_lossy().into_owned(),
+    );
+    let with = Import {
+        remap: Strings(move |text: &mut String| remap(text, &from, &to)),
+        unusable,
+    };
     let store = here.stores.open(dir).map_err(|f| fail(&f))?;
-    fork(staged, &*store, None).map_err(|f| fail(&f))?;
+    fork(staged, &*store, None, &with).map_err(|f| fail(&f))?;
     for name in staged.files().map_err(|f| fail(&f))? {
         if !name.starts_with("plugins/") {
-            let bytes = staged.read_file(&name).map_err(|f| fail(&f))?;
+            let mut bytes = staged.read_file(&name).map_err(|f| fail(&f))?;
+            with.file(&name, &mut bytes);
             store.write_file(&name, &bytes).map_err(|f| fail(&f))?;
         }
     }
@@ -532,55 +604,29 @@ fn write_session(
         .write_file(MARKER, marker.to_string().as_bytes())
         .map_err(|f| fail(&f))?;
     fs::write(dir.directory(), plan.target.to_string_lossy().as_bytes()).map_err(|f| fail(&f))?;
-    let mut notes = Vec::new();
-    let mut session = Session::read(&*store).map_err(|f| fail(&f))?;
-    let key = ModelChoice::type_path();
-    for agent in &mut session.agents {
-        let Some(model) = agent.state.get(key).and_then(model_of) else {
-            continue;
-        };
-        let usable = here
-            .models
-            .is_some_and(|models| models.connect(&model).is_ok());
-        if !usable {
-            agent.state.remove(key);
-            notes.push(format!(
-                "{model} is not available here: agent {} uses the default model.",
-                agent.id
-            ));
-        }
-    }
-    session.save(&*store).map_err(|f| fail(&f))?;
-    let mut meta = Meta::of(&*store).unwrap_or_default();
-    if meta.title.name.is_none() && meta.title.typed.is_empty() {
-        meta.title = SessionTitle {
-            name: Some(manifest.name.clone()),
-            ..meta.title
-        };
+    let mut meta = SessionMeta::read(&*store).unwrap_or_default();
+    if meta.title.is_empty() && dir.name().is_none() {
+        dir.set_name(Some(&manifest.name)).map_err(|f| fail(&f))?;
     }
     meta.labels.insert(
         "bundle".to_owned(),
         format!("from {}", manifest.project_root.display()),
     );
     meta.updated = now_ms();
-    write_meta(&*store, &meta).map_err(|f| fail(&f))?;
+    meta.write(&*store).map_err(|f| fail(&f))?;
     Ok(notes)
-}
-
-/// A saved `ModelChoice` value's model.
-fn model_of(value: &Value) -> Option<String> {
-    let model = value.as_str().or_else(|| value.get(0)?.as_str())?;
-    Some(model.to_owned())
 }
 
 /// Records where the session started, on its first start.
 fn record_origin(
-    first: Option<Res<FirstStart>>,
+    started: Option<Res<AppStart>>,
     root: Res<ProjectRoot>,
     processes: Option<Res<Processes>>,
     mut origin: ResMut<BundleOrigin>,
 ) {
-    if first.is_none() || !origin.project_root.is_empty() {
+    if !started.is_some_and(|started| started.0 == StartReason::New)
+        || !origin.project_root.is_empty()
+    {
         return;
     }
     let launcher = processes.map_or_else(Launcher::default, |processes| processes.launcher());
@@ -634,6 +680,12 @@ fn track_changes(
     }
 }
 
+/// The key of every saved value of `saved`, its own and its agents'.
+fn saved_keys(saved: &Session) -> BTreeSet<String> {
+    let agents = saved.agents.iter().flat_map(|agent| agent.state.keys());
+    saved.state.keys().chain(agents).cloned().collect()
+}
+
 /// What `/bundle` reads of the app.
 #[derive(bevy_ecs::system::SystemParam)]
 struct Running<'w, 's> {
@@ -642,7 +694,7 @@ struct Running<'w, 's> {
     title: Option<Res<'w, SessionTitle>>,
     root: Res<'w, ProjectRoot>,
     origin: Res<'w, BundleOrigin>,
-    plugins: Query<'w, 's, &'static Name, With<PluginSource>>,
+    plugins: Query<'w, 's, (&'static Name, &'static Keeps)>,
 }
 
 impl Running<'_, '_> {
@@ -650,23 +702,10 @@ impl Running<'_, '_> {
     fn bundle(&self) -> Result<Bundle, String> {
         let store = self.store.as_ref().ok_or("this session is not stored")?;
         let store = &*store.0;
-        let fail = |failure: io::Error| failure.to_string();
-        let mut bundle = Bundle::default();
-        for name in store.logs().map_err(fail)? {
-            bundle
-                .logs
-                .insert(name.clone(), store.read_log(&name).map_err(fail)?);
-        }
-        for name in store.blobs().map_err(fail)? {
-            bundle
-                .blobs
-                .insert(name.clone(), store.blob(&name).map_err(fail)?);
-        }
-        for name in store.files().map_err(fail)? {
-            bundle
-                .store_files
-                .insert(name.clone(), store.read_file(&name).map_err(fail)?);
-        }
+        let mut bundle = Bundle {
+            store: copy(store).map_err(|failure| failure.to_string())?,
+            ..Bundle::default()
+        };
         for path in &self.origin.changed {
             // A file the session deleted is not bundled.
             if let Ok(bytes) = fs::read(self.root.0.join(path)) {
@@ -675,19 +714,35 @@ impl Running<'_, '_> {
         }
         let session = self.paths.as_ref().and_then(|paths| paths.id());
         let session = session.map(|id| id.to_string()).unwrap_or_default();
-        let name = self.title.as_ref().and_then(|title| {
-            let name = title.name.clone().unwrap_or_else(|| title.typed.clone());
-            (!name.is_empty()).then_some(name)
+        let name = self.title.as_deref().map(SessionTitle::shown);
+        let name = name.filter(|name| !name.is_empty()).map(str::to_owned);
+        let saved =
+            Session::read_lenient(store).map_or_else(|_| Session::default(), |(saved, _)| saved);
+        let models: BTreeSet<String> = saved.agents.iter().filter_map(SavedAgent::model).collect();
+        let keys = saved_keys(&saved);
+        let files = bundle
+            .store
+            .files()
+            .map_err(|failure| failure.to_string())?;
+        let plugins = self.plugins.iter().filter_map(|(name, keeps)| {
+            let kept = Kept {
+                saved: keys
+                    .iter()
+                    .filter(|key| keeps.saved(key))
+                    .cloned()
+                    .collect(),
+                files: files
+                    .iter()
+                    .filter(|file| {
+                        file.strip_prefix("plugins/")
+                            .is_some_and(|file| keeps.file(file))
+                    })
+                    .cloned()
+                    .collect(),
+            };
+            let keeps_some = !kept.saved.is_empty() || !kept.files.is_empty();
+            keeps_some.then(|| (name.as_str().to_owned(), kept))
         });
-        let saved = Session::read_lenient(store)
-            .map(|(saved, _)| saved)
-            .unwrap_or_default();
-        let key = ModelChoice::type_path();
-        let models: BTreeSet<String> = saved
-            .agents
-            .iter()
-            .filter_map(|agent| model_of(agent.state.get(key)?))
-            .collect();
         let created_ms = now_ms();
         let root = match self.origin.project_root.as_str() {
             "" => self.root.0.clone(),
@@ -696,14 +751,10 @@ impl Running<'_, '_> {
         bundle.manifest = Manifest {
             format: BUNDLE_FORMAT.to_owned(),
             id: format!("{session}-{created_ms}"),
-            session_format: FORMAT.to_owned(),
+            rig_version: VERSION.to_owned(),
             name: name.unwrap_or_else(|| format!("session-{session}")),
             session,
-            plugins: self
-                .plugins
-                .iter()
-                .map(|name| name.as_str().to_owned())
-                .collect(),
+            plugins: plugins.collect(),
             models: models.into_iter().collect(),
             project_root: root,
             created_ms,
@@ -737,12 +788,14 @@ impl Running<'_, '_> {
     }
 }
 
-/// On an `Ask` about secrets: the bundle waiting for the answer.
+/// On an `Ask` about secrets: the bundle waiting for the answer, as it is
+/// and redacted.
 #[derive(Component)]
 struct SecretsAsk {
     agent: Entity,
     path: PathBuf,
-    bundle: Box<Bundle>,
+    bundle: Bundle,
+    redacted: Bundle,
 }
 
 /// `/bundle [path] [--allow-secrets]`.
@@ -757,8 +810,11 @@ fn bundle_command(
     let words: Vec<&str> = args.args.split_whitespace().collect();
     let allow = words.contains(&"--allow-secrets");
     let path = words.iter().find(|word| !word.starts_with("--")).copied();
-    let bundle = match running.bundle() {
-        Ok(bundle) => bundle,
+    let found = running
+        .bundle()
+        .and_then(|bundle| Ok((bundle.redacted()?, bundle)));
+    let ((redacted, secrets), bundle) = match found {
+        Ok(found) => found,
         Err(why) => {
             notices.write(Notice::error(
                 args.agent,
@@ -768,9 +824,8 @@ fn bundle_command(
         }
     };
     let path = running.path(path, &bundle.manifest);
-    let secrets = bundle.secrets();
     if secrets.is_empty() || allow {
-        finish_bundle(args.agent, &path, bundle, &mut notices, &mut written);
+        finish_bundle(args.agent, path, &bundle, &mut notices, &mut written);
     } else if answerers.can_answer(Some(args.agent)) {
         let ask = Ask::new("The bundle holds secrets")
             .body(format!("Found in: {}.", secrets.join(", ")))
@@ -780,7 +835,8 @@ fn bundle_command(
         let pending = SecretsAsk {
             agent: args.agent,
             path,
-            bundle: Box::new(bundle),
+            bundle,
+            redacted,
         };
         commands.spawn((ask, ForAgent(args.agent), pending));
     } else {
@@ -797,12 +853,12 @@ fn bundle_command(
 /// Writes `bundle` to `path` and says so.
 fn finish_bundle(
     agent: Entity,
-    path: &Path,
-    bundle: Bundle,
+    path: PathBuf,
+    bundle: &Bundle,
     notices: &mut MessageWriter<Notice>,
     written: &mut MessageWriter<BundleWritten>,
 ) {
-    match bundle.write(path) {
+    match bundle.write(&path) {
         Ok(()) => {
             notices.write(Notice::info(
                 agent,
@@ -810,12 +866,12 @@ fn finish_bundle(
             ));
             written.write(BundleWritten {
                 agent,
-                path: path.to_owned(),
-                manifest: bundle.manifest,
+                path,
+                manifest: bundle.manifest.clone(),
             });
         }
         Err(failure) => {
-            fs::remove_file(path).ok();
+            fs::remove_file(&path).ok();
             notices.write(Notice::error(
                 agent,
                 format!("Could not bundle: {failure}."),
@@ -832,27 +888,17 @@ fn answered_secrets(
     mut written: MessageWriter<BundleWritten>,
 ) {
     for (ask, outcome, pending) in &asks {
-        let bundle = (*pending.bundle).clone();
-        match Answer::of(outcome) {
-            Some(answer) if answer.is("redact") => {
-                finish_bundle(
-                    pending.agent,
-                    &pending.path,
-                    bundle.redact(),
-                    &mut notices,
-                    &mut written,
-                );
+        let bundle = match Answer::of(outcome) {
+            Some(answer) if answer.is("redact") => Some(&pending.redacted),
+            Some(answer) if answer.is("keep") => Some(&pending.bundle),
+            _ => None,
+        };
+        match bundle {
+            Some(bundle) => {
+                let path = pending.path.clone();
+                finish_bundle(pending.agent, path, bundle, &mut notices, &mut written);
             }
-            Some(answer) if answer.is("keep") => {
-                finish_bundle(
-                    pending.agent,
-                    &pending.path,
-                    bundle,
-                    &mut notices,
-                    &mut written,
-                );
-            }
-            _ => {
+            None => {
                 notices.write(Notice::info(pending.agent, "Not bundled."));
             }
         }
@@ -1085,7 +1131,7 @@ fn answered_files(
     for (ask, outcome, pending) in &asks {
         commands.entity(ask).remove::<FilesAsk>();
         let choice = match Answer::of(outcome) {
-            Some(Answer::Choices(chosen)) if pending.each => FileChoice::Only(chosen),
+            Some(Answer { choices, .. }) if pending.each => FileChoice::Only(choices),
             Some(answer) if answer.is("apply") => FileChoice::Apply,
             Some(answer) if answer.is("keep") => FileChoice::Keep,
             Some(answer) if answer.is("each") => {
@@ -1111,70 +1157,24 @@ fn answered_files(
     }
 }
 
-/// `text` with every secret redacted: rig-core's shapes, and the value of
-/// each environment-looking assignment of a secret (`NAME=value` where the
-/// name says it is a secret, key, token or password); `None` when it has
-/// none.
-fn redacted(text: &str) -> Option<String> {
-    let shapes = redact::text(text);
-    let mut out = String::with_capacity(shapes.len());
-    let mut changed = matches!(shapes, std::borrow::Cow::Owned(_));
-    let mut rest: &str = &shapes;
-    while let Some(at) = rest.find('=') {
-        let (before, after) = rest.split_at(at);
-        let after = after.get(1..).unwrap_or_default();
-        let name_len = before
-            .chars()
-            .rev()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .count();
-        let name = before
-            .get(before.len().saturating_sub(name_len)..)
-            .unwrap_or_default();
-        let value_len = after
-            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '`' | ';' | ','))
-            .unwrap_or(after.len());
-        let value = after.get(..value_len).unwrap_or_default();
-        out.push_str(before);
-        out.push('=');
-        if secret_name(name) && !value.is_empty() && value != redact::REDACTED {
-            out.push_str(redact::REDACTED);
-            rest = after.get(value_len..).unwrap_or_default();
-            changed = true;
-        } else {
-            rest = after;
-        }
-    }
-    out.push_str(rest);
-    changed.then_some(out)
+/// Redacts every secret rig-core finds in `text`; whether it had one.
+fn redact_text(text: &mut String) -> bool {
+    let redacted = match redact::text(text) {
+        Cow::Owned(redacted) => redacted,
+        Cow::Borrowed(_) => return false,
+    };
+    *text = redacted;
+    true
 }
 
-/// Whether an environment variable named `name` holds a secret.
-fn secret_name(name: &str) -> bool {
-    const SECRET: [&str; 7] = [
-        "SECRET",
-        "TOKEN",
-        "PASSWORD",
-        "PASSWD",
-        "API_KEY",
-        "ACCESS_KEY",
-        "PRIVATE_KEY",
-    ];
-    name.len() > 2
-        && name
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-        && SECRET.iter().any(|word| name.contains(word))
-}
-
-/// `text` with every mention of the path `from`, as a whole path or the
-/// start of one, made `to`; `None` when it has none.
-fn remap(text: &str, from: &str, to: &str) -> Option<String> {
+/// Makes every mention of the path `from` in `text`, as a whole path or
+/// the start of one, `to`; whether it had one.
+fn remap(text: &mut String, from: &str, to: &str) -> bool {
     if from.is_empty() || !text.contains(from) {
-        return None;
+        return false;
     }
     let mut out = String::with_capacity(text.len());
-    let mut rest = text;
+    let mut rest = text.as_str();
     let mut changed = false;
     while let Some(at) = rest.find(from) {
         let before = rest.get(..at).unwrap_or_default();
@@ -1189,60 +1189,8 @@ fn remap(text: &str, from: &str, to: &str) -> Option<String> {
         rest = tail;
     }
     out.push_str(rest);
-    changed.then_some(out)
-}
-
-/// `bytes` with `map` applied to each string: of the JSON document, of
-/// each line of a JSON-lines file (as the session logs are), else of the
-/// text; `None` when nothing changed or it is no text.
-fn map_bytes(bytes: &[u8], map: &dyn Fn(&str) -> Option<String>) -> Option<Vec<u8>> {
-    let text = std::str::from_utf8(bytes).ok()?;
-    if let Ok(mut value) = serde_json::from_str::<Value>(text) {
-        return map_json(&mut value, map)
-            .then(|| serde_json::to_vec(&value).ok())
-            .flatten();
+    if changed {
+        *text = out;
     }
-    let lines: Vec<&str> = text.split_inclusive('\n').collect();
-    let parsed: Vec<Option<Value>> = lines
-        .iter()
-        .map(|line| serde_json::from_str(line.trim_end()).ok())
-        .collect();
-    if !lines.is_empty() && parsed.iter().all(Option::is_some) {
-        let mut out = String::with_capacity(text.len());
-        let mut changed = false;
-        for (line, value) in lines.iter().zip(parsed) {
-            let mut value = value.unwrap_or_default();
-            if map_json(&mut value, map) {
-                out.push_str(&serde_json::to_string(&value).ok()?);
-                if line.ends_with('\n') {
-                    out.push('\n');
-                }
-                changed = true;
-            } else {
-                out.push_str(line);
-            }
-        }
-        return changed.then(|| out.into_bytes());
-    }
-    map(text).map(String::into_bytes)
-}
-
-/// Applies `map` to every string of `value`; whether one changed.
-fn map_json(value: &mut Value, map: &dyn Fn(&str) -> Option<String>) -> bool {
-    match value {
-        Value::String(text) => match map(text) {
-            Some(mapped) => {
-                *text = mapped;
-                true
-            }
-            None => false,
-        },
-        Value::Array(items) => items
-            .iter_mut()
-            .fold(false, |changed, item| map_json(item, map) | changed),
-        Value::Object(fields) => fields
-            .values_mut()
-            .fold(false, |changed, item| map_json(item, map) | changed),
-        Value::Null | Value::Bool(_) | Value::Number(_) => false,
-    }
+    changed
 }

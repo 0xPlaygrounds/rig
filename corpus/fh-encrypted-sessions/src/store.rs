@@ -311,12 +311,13 @@ impl Store for CryptStore {
         self.open(Framed::Log(name), &self.inner.read_log(name)?)
     }
 
-    fn truncate_log(&self, name: &str, len: u64) -> io::Result<()> {
-        let mut plain = self.read_log(name)?;
-        plain.truncate(usize::try_from(len).map_err(io::Error::other)?);
-        let sealed = self.whole(Framed::Log(name), &plain)?;
-        self.inner.truncate_log(name, 0)?;
-        self.inner.append_log(name, &sealed)
+    fn replace_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        let sealed = self.whole(Framed::Log(name), bytes)?;
+        let replaced = self.inner.replace_log(name, &sealed);
+        if replaced.is_err() {
+            self.counts().remove(&Framed::Log(name).key());
+        }
+        replaced
     }
 
     fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
@@ -359,6 +360,10 @@ impl Store for CryptStore {
             .iter()
             .map(|hidden| Ok(open_blob(&self.crypt, &self.inner.blob(hidden)?)?.0))
             .collect()
+    }
+
+    fn remove_blob(&self, name: &str) -> io::Result<()> {
+        self.inner.remove_blob(&self.crypt.hide(name))
     }
 
     fn destroy(&self) -> io::Result<()> {

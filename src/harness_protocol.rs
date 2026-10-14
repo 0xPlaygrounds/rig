@@ -16,6 +16,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// the staged build.
 pub const RELOAD_EXIT_CODE: u8 = 75;
 
+/// The version of rig: of this crate, the launcher and the harness they
+/// build together. It stamps generated projects, so a new launcher
+/// regenerates and rebuilds the agent; a plugin reads it to say which rig
+/// wrote something.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// The one Bevy version of the agent and of every plugin: a Bevy plugin
 /// only works with the exact Bevy version of its app.
 pub const BEVY_VERSION: &str = "0.20.0";
@@ -43,11 +49,14 @@ pub mod env {
     /// The launcher's [`RunDir`](super::RunDir), where the agent says it
     /// started.
     pub const RUN: &str = "RIG_RUN";
+    /// Why the launcher started the agent: a
+    /// [`StartReason`](super::StartReason), as text.
+    pub const START: &str = "RIG_START";
     /// What the launcher tells the agent it runs, and only that agent: a
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: [&str; 4] = [SESSION, NOTICE, BUILD_FAILURE, RUN];
+    pub const AGENT_ONLY: [&str; 5] = [SESSION, NOTICE, BUILD_FAILURE, RUN, START];
     /// Set by the launcher to a file's path: the agent builds its app,
     /// writes what its plugins add there ([`Described`](super::Described))
     /// and exits without running a frame.
@@ -146,6 +155,53 @@ impl FromStr for SessionId {
 impl fmt::Display for SessionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+/// Why the agent process started, which the launcher passes in
+/// [`env::START`]. A switch to another session (`/new`, `/resume`) starts
+/// it as `New` or `Resumed`; a crash is no reason, since the launcher
+/// never restarts a crashed agent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum StartReason {
+    /// The session's first start: a new session, `/new`, or a fork's
+    /// first start.
+    New,
+    /// A session that ran before: `rig --resume`, or `/resume` switching
+    /// to it.
+    Resumed,
+    /// The same session again after `/reload` or a plugin's reload exit.
+    Reloaded,
+    /// The same session again on the previous build, after the launcher
+    /// rolled back a new build that stopped during startup.
+    Restarted,
+}
+
+impl StartReason {
+    /// Its text in [`env::START`].
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::New => "new",
+            Self::Resumed => "resumed",
+            Self::Reloaded => "reloaded",
+            Self::Restarted => "restarted",
+        }
+    }
+
+    /// The reason in [`env::START`], or `None` when it is unset or not one.
+    pub fn from_env() -> Option<Self> {
+        std::env::var(env::START).ok()?.parse().ok()
+    }
+}
+
+impl FromStr for StartReason {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        [Self::New, Self::Resumed, Self::Reloaded, Self::Restarted]
+            .into_iter()
+            .find(|reason| reason.as_str() == text)
+            .ok_or_else(|| format!("`{text}` is not a start reason"))
     }
 }
 
@@ -338,6 +394,46 @@ impl Home {
             }
         }
     }
+
+    /// The saved session `name_or_id` names: the one with that id when it
+    /// parses as one and is saved, else the only saved session with that
+    /// [`SessionDir::name`].
+    ///
+    /// # Errors
+    ///
+    /// When no saved session has that id or name, or several have that
+    /// name: the error lists their ids.
+    pub fn find(&self, name_or_id: &str) -> Result<SessionId, String> {
+        let wanted = name_or_id.trim();
+        if let Ok(id) = wanted.parse::<SessionId>()
+            && self.session(&id).is_saved()
+        {
+            return Ok(id);
+        }
+        let mut named: Vec<SessionId> = std::fs::read_dir(self.sessions())
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
+            .filter(|id| {
+                let dir = self.session(id);
+                dir.is_saved() && dir.name().as_deref() == Some(wanted)
+            })
+            .collect();
+        named.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        match named.as_slice() {
+            [id] => Ok(id.clone()),
+            [] => Err(format!("`{wanted}` names no saved session")),
+            several => Err(format!(
+                "`{wanted}` names {} saved sessions: {}; resume one by its id",
+                several.len(),
+                several
+                    .iter()
+                    .map(SessionId::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        }
+    }
 }
 
 /// A launcher's own directory, outside every session, which lives while
@@ -390,7 +486,7 @@ impl RunDir {
 /// named here: the markers of a session an agent started in
 /// ([`Self::started`]), logged to ([`Self::is_saved`]) and being deleted
 /// ([`Self::is_deleting`]), the text log, the lock of the launcher running
-/// it, its working directory and the session to switch to.
+/// it, its working directory, its name and the session to switch to.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
@@ -490,6 +586,44 @@ impl SessionDir {
         self.0.join("directory")
     }
 
+    /// The name the user gave the session, kept as plain text in the
+    /// file `name` beside [`Self::directory`], so the launcher finds the
+    /// session by it ([`Home::find`]) without opening its store. Like the
+    /// directory, it is readable on disk when the store seals what it
+    /// keeps.
+    pub fn name(&self) -> Option<String> {
+        let text = std::fs::read_to_string(self.name_file()).ok()?;
+        let name = text.trim();
+        (!name.is_empty()).then(|| name.to_owned())
+    }
+
+    /// Names the session, or removes its name with `None` or a blank name.
+    /// The name is written beside the file and renamed over it, so a
+    /// reader sees the old name or the new one, never a part.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written or removed.
+    pub fn set_name(&self, name: Option<&str>) -> std::io::Result<()> {
+        let file = self.name_file();
+        match name.map(str::trim).filter(|name| !name.is_empty()) {
+            Some(name) => {
+                let part = self.0.join("name.part");
+                std::fs::write(&part, name)?;
+                std::fs::rename(part, file)
+            }
+            None => match std::fs::remove_file(file) {
+                Err(failure) if failure.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                removed => removed,
+            },
+        }
+    }
+
+    /// The plain-text file of [`Self::name`].
+    fn name_file(&self) -> PathBuf {
+        self.0.join("name")
+    }
+
     /// Written by the agent before it exits with [`RELOAD_EXIT_CODE`] to
     /// run another session: the [`SessionId`] to resume, or nothing for a
     /// new session. The launcher reads and removes it.
@@ -548,7 +682,10 @@ impl Invocation {
     /// `--print`, the first other word is a command, and every word after
     /// it is the command's.
     pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
-        read_args(args, |flag, _| plugin_flag(flag))
+        match read_args(args, |flag, _| plugin_flag(flag))? {
+            (invocation, None) => Ok(invocation),
+            (_, Some(_)) => Err("`--resume` is the launcher's".to_owned()),
+        }
     }
 
     /// The agent's own arguments, from the process's.
@@ -588,18 +725,19 @@ impl Invocation {
 }
 
 /// Reads a command line left to right, as [`Invocation::parse`] and
-/// [`Described::invocation`] both do; they differ in how a plugin option
-/// is read: `option` reads one, `--…`, given the words after it, from
-/// which it may take its value.
+/// [`Described`] do, into the invocation and the session `-r` names; they
+/// differ in how a plugin option is read: `option` reads one, `--…`,
+/// given the words after it, from which it may take its value.
 fn read_args<'a, S: AsRef<str>>(
     args: &'a [S],
     mut option: impl FnMut(
         &'a str,
         &mut dyn Iterator<Item = &'a str>,
     ) -> Result<(String, Option<String>), String>,
-) -> Result<Invocation, String> {
+) -> Result<(Invocation, Option<String>), String> {
     let mut print = false;
     let mut model = None;
+    let mut resume = None;
     let mut flags = Vec::new();
     let mut words: Vec<&str> = Vec::new();
     let mut args = args.iter().map(AsRef::as_ref);
@@ -613,6 +751,13 @@ fn read_args<'a, S: AsRef<str>>(
             "--" => words.extend(args.by_ref()),
             flag if flag.starts_with("--model=") => {
                 model = flag.strip_prefix("--model=").map(str::to_owned);
+            }
+            "-r" | "--resume" => {
+                let session = args.next().ok_or("--resume needs a session id or name")?;
+                resume = Some(session.to_owned());
+            }
+            flag if flag.starts_with("--resume=") => {
+                resume = flag.strip_prefix("--resume=").map(str::to_owned);
             }
             flag if flag.starts_with("--") => flags.push(option(flag, &mut args)?),
             flag if flag.starts_with('-') && flag.len() > 1 => {
@@ -632,13 +777,14 @@ fn read_args<'a, S: AsRef<str>>(
     } else {
         (None, words.next())
     };
-    Ok(Invocation {
+    let invocation = Invocation {
         print,
         model,
         flags,
         command,
         arguments: words.collect(),
-    })
+    };
+    Ok((invocation, resume))
 }
 
 /// A plugin's option, `--name` or `--name=value`: the name is lowercase
@@ -819,8 +965,8 @@ impl Described {
     }
 
     /// Reads the user's command line, without the launcher's own first
-    /// word and `--resume`, against this agent, into the canonical
-    /// [`Invocation`]. `-p` and `-m` are the launcher's; a plugin option
+    /// word, against this agent, into the canonical [`Invocation`]. `-p`,
+    /// `-m` and `-r` ([`Self::resume`]) are the launcher's; a plugin option
     /// takes a value as `--name=VALUE`, or as the next word when it takes
     /// one (`--name VALUE`); without `-p`, the first other word is a
     /// command, and every later word is its argument. An option or command
@@ -840,7 +986,8 @@ impl Described {
                 (None, Some(_)) => Err(format!("--{name} takes no value")),
                 (None, None) => Ok((name, None)),
             }
-        })?;
+        })?
+        .0;
         if let Some(command) = &invocation.command {
             if RESERVED_COMMANDS.contains(&command.as_str()) {
                 return Err(format!("`{command}` is the launcher's; put it first"));
@@ -853,6 +1000,32 @@ impl Described {
             }
         }
         Ok(invocation)
+    }
+
+    /// The session `-r <id|name>` (or `--resume`) names on the command
+    /// line `args`, read as [`Self::invocation`] reads it: wherever an
+    /// option goes, so not after `--` or among a command's words. This
+    /// build's options that take a value take the next word as theirs; an
+    /// option it does not know takes none. `None` without `-r`, or when
+    /// the command line cannot be read.
+    pub fn resume<S: AsRef<str>>(&self, args: &[S]) -> Option<String> {
+        let read = read_args(args, |flag, rest| {
+            let (name, value) = plugin_flag(flag)?;
+            let spaced = value.is_none()
+                && self
+                    .flags
+                    .iter()
+                    .any(|known| known.name == name && known.value.is_some());
+            Ok((
+                name,
+                if spaced {
+                    rest.next().map(str::to_owned)
+                } else {
+                    value
+                },
+            ))
+        });
+        read.ok().and_then(|(_, resume)| resume)
     }
 
     /// What `rig help` lists of the build: the plugins' commands, their

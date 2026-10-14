@@ -511,3 +511,110 @@ fn stages_are_ordered_with_the_tool_guards() {
         ));
     });
 }
+
+/// The subagent the recorded `task` call starts.
+const SUBAGENT_ID: &str = "sub-1";
+
+/// The kernel, the subagents and the write tool, as [`with_agents`] has
+/// them: the primary agent on `main`, every subagent on `sub`.
+fn with_subagents(app: &mut App, main: &MockCompletionModel, sub: &MockCompletionModel) {
+    with_agents(app, None);
+    app.insert_resource(Models(Connector::new(Catalog::default())));
+    let (main, sub) = (connect(main), connect(sub));
+    app.add_observer(
+        move |agent: On<Add<Agent>>,
+              spawned: Query<(), With<SpawnedBy>>,
+              mut commands: Commands| {
+            let connection = match spawned.contains(agent.entity) {
+                true => sub.clone(),
+                false => main.clone(),
+            };
+            if let Some(connection) = connection {
+                let choice = ModelChoice(connection.spec.reference());
+                commands.entity(agent.entity).insert((connection, choice));
+            }
+        },
+    );
+    rig_harness::load::<rig_subagents::SubagentsPlugin>(app, "rig-subagents", "");
+}
+
+/// The recording's subagent gets a known id, which the scripted `wait`
+/// names.
+fn known_id(mut spawns: Query<&mut rig_subagents::SpawnSubagent, Added<Admitted>>) {
+    for mut spawn in &mut spawns {
+        spawn.id = Some(AgentId(SUBAGENT_ID.to_owned()));
+    }
+}
+
+/// A session where the main agent starts a subagent with `task` and
+/// `wait`s for its report replays whole: the subagent is started again,
+/// with its recorded id, its model call answered from the record, and the
+/// wait ends when its report comes, as it did.
+#[test]
+fn a_session_that_waits_on_a_subagent_replays_whole() {
+    let home = scratch_home("session-replay-subagent");
+    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id("4-1"), id("4-2"));
+    let main = MockCompletionModel::from_stream_turns([
+        calls(
+            "c1",
+            rig_subagents::TASK,
+            serde_json::json!({ "description": "Say ok", "prompt": "Reply with ok." }),
+        ),
+        calls(
+            "c2",
+            rig_subagents::WAIT,
+            serde_json::json!({ "agent": SUBAGENT_ID }),
+        ),
+        reply("It said ok."),
+    ]);
+    let sub = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes) = app_in(&home, &recorded_id);
+    with_subagents(&mut app, &main, &sub);
+    app.add_plugins(EffectLogPlugin)
+        .add_systems(AgentPass, known_id.in_set(Stage::Prepare));
+    app.finish();
+    app.update();
+    if let Some(agent) = first_agent(app.world_mut()) {
+        let ask = Deliver::new(agent, "Ask a subagent.", DeliveryMode::Queue);
+        app.world_mut().trigger(ask);
+    }
+    run_until(&mut app, &wakes, |world| {
+        let mut agents = world.try_query_filtered::<&Conversation, Without<SpawnedBy>>();
+        agents.as_mut().is_some_and(|agents| {
+            agents.iter(world).any(|conversation| {
+                let last = conversation.messages().last();
+                let text = last.and_then(|last| serde_json::to_string(last).ok());
+                text.is_some_and(|text| text.contains("It said ok."))
+            })
+        })
+    });
+    app.update();
+    let recorded = conversation(&mut app);
+    assert!(sub.requests().len() == 1, "the subagent was not asked");
+    let recorded_dir = home.session(&recorded_id).path().to_owned();
+
+    let (empty, none) = (
+        MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new()),
+        MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new()),
+    );
+    let (mut app, wakes) = app_in(&home, &replay_id);
+    app.insert_resource(Invoked {
+        args: Invocation {
+            flags: vec![(
+                REPLAY.to_owned(),
+                Some(recorded_dir.to_string_lossy().into()),
+            )],
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .add_plugins((ExitPlugin, SessionReplayPlugin));
+    with_subagents(&mut app, &empty, &none);
+    let (status, divergences, (models, _)) = run_replay(&mut app, &wakes).unwrap_or_default();
+    let report: Vec<String> = divergences.iter().map(ToString::to_string).collect();
+    assert_eq!((status, report), (ReplayStatus::Finished, Vec::new()));
+    assert_eq!(models, 4);
+    assert_eq!(conversation(&mut app), recorded);
+    assert!(empty.requests().is_empty() && none.requests().is_empty());
+}

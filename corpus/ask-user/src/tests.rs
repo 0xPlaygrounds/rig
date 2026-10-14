@@ -81,7 +81,7 @@ fn the_turn_waits_for_the_answer_a_front_gives() {
     let ids: Vec<&str> = ask.choices.iter().map(|c| c.id.as_str()).collect();
     assert_eq!(ids, ["pg", "sqlite"]);
     // What every front's picker triggers when "sqlite" is chosen.
-    let pick = Pick::person(*question, Some(Chosen::Item(1)));
+    let pick = Pick::person(*question, Some(Chosen::item(1)));
     app.world_mut().trigger(pick);
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1

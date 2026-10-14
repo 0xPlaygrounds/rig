@@ -153,6 +153,7 @@ impl Operation for Completion {
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),
             stored,
+            foreign_reasoning: request.foreign_reasoning,
             // A conversation the provider stores holds its own tools, so a
             // continuation that declares none still calls them.
             tools: stored || target.declares_tools(&request),
@@ -274,8 +275,9 @@ pub struct Turn {
     /// complete. An item there may be the partner a later one needs, so
     /// blocks from it on replay from their canonical fields.
     first_incomplete: Option<usize>,
-    /// Whether a call was still open when the provider ended the reply.
-    unfinished_call: bool,
+    /// The calls still open when the provider ended the reply, in the
+    /// order they opened ([`CompletionResponse::unfinished_calls`]).
+    unfinished: Vec<CallId>,
     /// The call the last index-less fragment went to.
     last_call: Option<usize>,
     /// The index of the block a boundary-less wire is streaming.
@@ -500,7 +502,7 @@ impl Turn {
             call_id_slot: None,
             accept_unknown_finish: false,
             first_incomplete: None,
-            unfinished_call: false,
+            unfinished: Vec::new(),
             last_call: None,
             run: None,
             next_auto: AUTO_INDEX,
@@ -685,6 +687,17 @@ impl Turn {
         index: usize,
         closing: Closing,
     ) -> Result<(), ProviderError> {
+        self.close_block(items, index, closing).map(drop)
+    }
+
+    /// [`Self::close_item`], saying the id of the call it closed, if it
+    /// closed one.
+    fn close_block(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        closing: Closing,
+    ) -> Result<Option<CallId>, ProviderError> {
         let mut draft = self.open.remove(&index).ok_or_else(|| not_open(index))?;
         // A call streams what it has not yet: its start, if it names a tool,
         // and the argument text since its last fragment.
@@ -710,7 +723,7 @@ impl Turn {
         let content = match body {
             Body::Text(text) => {
                 if text.is_empty() && item.is_null() {
-                    return Ok(());
+                    return Ok(None);
                 }
                 // Resolved at close: a provider may cite a text before its
                 // last fragment arrives.
@@ -726,7 +739,7 @@ impl Turn {
             }
             Body::Reasoning { text, redacted } => {
                 if text.is_empty() && !redacted && item.is_null() {
-                    return Ok(());
+                    return Ok(None);
                 }
                 let reasoning = Reasoning {
                     text,
@@ -750,7 +763,7 @@ impl Turn {
                         index,
                         "the provider closed a tool call without a name; nothing can answer it"
                     );
-                    return Ok(());
+                    return Ok(None);
                 };
                 let function = arguments.function(name);
                 let (id, item) = self.distinct_call_id(id, item);
@@ -760,10 +773,10 @@ impl Turn {
                     let json = serde_json::Value::Object(function.arguments.clone()).to_string();
                     emit(items, StreamEvent::Arguments { part, json });
                 }
-                let call = ToolCall::new(id, function);
+                let call = ToolCall::new(id.clone(), function);
                 let content = with_item(AssistantContent::ToolCall(call), item);
                 emit(items, StreamEvent::End { part, content });
-                return Ok(());
+                return Ok(Some(id));
             }
         };
         if !started {
@@ -777,7 +790,7 @@ impl Turn {
             );
         }
         emit(items, StreamEvent::End { part, content });
-        Ok(())
+        Ok(None)
     }
 
     /// Edit the item of the block the wire index `index` last closed, while
@@ -985,15 +998,10 @@ impl Turn {
             } else {
                 Closing::Incomplete
             };
-            if self
-                .open
-                .get(&index)
-                .is_some_and(|draft| matches!(draft.body, Body::Call { .. }))
-            {
-                self.unfinished_call = true;
-            }
-            if let Err(error) = self.close_item(items, index, closing) {
-                items.push_back(Err(error));
+            match self.close_block(items, index, closing) {
+                Ok(Some(call)) if closing == Closing::Incomplete => self.unfinished.push(call),
+                Ok(_) => {}
+                Err(error) => items.push_back(Err(error)),
             }
         }
     }
@@ -1130,7 +1138,7 @@ impl Turn {
             match &reason {
                 None => Some("the provider ended the reply without a finish reason".to_owned()),
                 Some(FinishReason::Length) => None,
-                Some(_) if self.unfinished_call => Some(
+                Some(_) if !self.unfinished.is_empty() => Some(
                     "the provider ended the reply with a tool call it never finished".to_owned(),
                 ),
                 Some(_) => None,
@@ -1138,7 +1146,8 @@ impl Turn {
         });
         let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
             .with_optional_finish_reason(reason)
-            .accept_unknown_finish_reasons(self.accept_unknown_finish);
+            .accept_unknown_finish_reasons(self.accept_unknown_finish)
+            .with_unfinished_calls(self.unfinished.clone());
         response.error = error;
         response.provider_request_id = reported(reply.provider_request_id);
         response

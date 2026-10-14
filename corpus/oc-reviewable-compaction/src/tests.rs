@@ -74,6 +74,13 @@ fn messages(app: &App, agent: Entity) -> Vec<Message> {
         .unwrap_or_default()
 }
 
+/// The ids of the entries of `agent`.
+fn ids(app: &App, agent: Entity) -> Vec<MessageId> {
+    let conversation = app.world().get::<Conversation>(agent);
+    let ids = conversation.map(|it| it.entries().map(|entry| entry.id).collect());
+    ids.unwrap_or_default()
+}
+
 #[test]
 fn a_reviewed_compaction_is_edited_saved_and_undone() {
     let store = MemoryStore::default();
@@ -83,10 +90,10 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         reply("Answer after compaction."),
     ]);
     let answers = vec![
-        Answer::Choice("regenerate".into()),
-        Answer::Choice("edit".into()),
-        Answer::Text("SUMMARY v2 and file x.rs".into()),
-        Answer::Choice("accept".into()),
+        Answer::choice("regenerate"),
+        Answer::choice("edit"),
+        Answer::text("SUMMARY v2 and file x.rs"),
+        Answer::choice("accept"),
     ];
     let (mut app, wakes, agent) = start(&store, &model, answers);
     for turn in 1..=12 {
@@ -100,6 +107,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         .ok();
     }
     app.update();
+    let original = ids(&app, agent);
 
     // Regenerate, then Edit, then Accept.
     app.world_mut()
@@ -132,7 +140,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         reply("Answer after uncompact."),
         reply("SUMMARY v3"),
     ]);
-    let (mut app, wakes, agent) = start(&store, &model, vec![Answer::Choice("cancel".into())]);
+    let (mut app, wakes, agent) = start(&store, &model, vec![Answer::choice("cancel")]);
     ask(&mut app, &wakes, agent, "Q14: after reload");
     let (all, first) = shape(model.requests().first());
     assert!(first.contains("SUMMARY v2 and file x.rs"), "{first}");
@@ -149,7 +157,8 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     });
     assert!(kept_first, "the log keeps the original first message");
 
-    // `/uncompact`, choosing the compaction: the 12 turns, then those after.
+    // `/uncompact`, choosing the compaction: the 12 turns with their ids,
+    // then those after.
     app.world_mut().trigger(RunCommand::new(agent, "uncompact"));
     app.update();
     let world = app.world_mut();
@@ -159,9 +168,11 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         .next();
     assert!(picker.is_some(), "the compactions to choose from");
     if let Some(picker) = picker {
-        world.trigger(Pick::person(picker, Some(Chosen::Item(0))));
+        world.trigger(Pick::person(picker, Some(Chosen::item(0))));
     }
     app.update();
+    let restored = ids(&app, agent);
+    assert_eq!(restored.get(..original.len()), Some(original.as_slice()));
     ask(&mut app, &wakes, agent, "Q15: after uncompact");
     let (all, _) = shape(model.requests().get(1));
     assert!(!all.contains("SUMMARY"), "{all}");
@@ -177,4 +188,9 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     until_ended(&mut app, &wakes, ended + 1);
     assert_eq!(model.requests().len(), 3, "the summary was asked for");
     assert_eq!(messages(&app, agent), before);
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ReviewableCompactionPlugin);
 }

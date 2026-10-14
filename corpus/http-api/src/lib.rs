@@ -302,8 +302,8 @@ fn choose(id: u64, choice: &Value, (asks, pickers): &Choosable, commands: &mut C
         _ => None,
     };
     let chosen = match (index, choice) {
-        (Some(index), _) => Some(Chosen::Item(index)),
-        (None, Value::String(text)) if free_text => Some(Chosen::Text(text.clone())),
+        (Some(index), _) => Some(Chosen::item(index)),
+        (None, Value::String(text)) if free_text => Some(Chosen::text(text.clone())),
         (None, Value::Null) => None,
         _ => return Reply::error(400, "no such choice"),
     };

@@ -3,10 +3,12 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
 use rig_coding_tools::{ReadTool, ShellTool};
-use rig_core::error::ErrorKind;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::approval::ApprovalPlugin;
+use rig_harness::ask::AskPlugin;
+use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_on, connect, first_agent, log_ended, press, reply, run_until, tui_view,
+    Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, run_until, tui_view,
 };
 use serde_json::json;
 
@@ -35,7 +37,7 @@ fn keep_result(
     }
 }
 
-/// How many dialogs opened.
+/// How many questions this plugin asked.
 #[derive(Resource, Default)]
 struct Opened(usize);
 
@@ -95,6 +97,9 @@ fn start(
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
+            AskPlugin,
+            ApprovalPlugin,
+            PickPlugin,
             ReadTool,
             ShellTool,
             ApprovalBatchingPlugin,
@@ -125,21 +130,19 @@ fn output(app: &App, id: &str) -> String {
         .unwrap_or_default()
 }
 
+#[cfg(feature = "tui")]
 fn rows(app: &mut App) -> Vec<String> {
     let mut batches = app.world_mut().query::<&ApprovalBatch>();
     batches
         .iter(app.world())
-        .flat_map(|batch| {
-            batch
-                .rows()
-                .map(|row| row.summary.clone())
-                .collect::<Vec<_>>()
-        })
+        .flat_map(|batch| batch.rows.iter().map(|row| row.summary.clone()))
         .collect()
 }
 
+/// The terminal view answers with the question's own keys (`tui`).
+#[cfg(feature = "tui")]
 #[test]
-fn one_dialog_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
+fn one_question_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
     let dir = project("terminal");
     let model = MockCompletionModel::from_stream_turns([
         reply_one(),
@@ -157,7 +160,7 @@ fn one_dialog_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
         world.resource::<Results>().0.contains_key("read") && world.resource::<Opened>().0 > 0
     });
 
-    // The read ran before any answer; one dialog holds the three commands.
+    // The read ran before any answer; one question holds the three commands.
     assert!(
         output(&app, "read").contains('x'),
         "{}",
@@ -166,8 +169,9 @@ fn one_dialog_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
     assert_eq!(app.world().resource::<Opened>().0, 1);
     assert_eq!(rows(&mut app), ["rm a.txt", "rm b.txt", "git push"]);
 
-    // Untick `rm b.txt`, type a note, confirm.
-    press(&mut app, "down space tab k e e p space b enter");
+    // In the terminal view, every row starts ticked: untick `rm b.txt`
+    // with Space, type a note for it, answer.
+    rig_harness_test_support::press(&mut app, "down space k e e p space b enter");
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1
     });
@@ -182,7 +186,7 @@ fn one_dialog_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
     assert_eq!(pushed.trim(), "push");
     assert_eq!(app.world().resource::<Opened>().0, 1);
 
-    // Reply 2's dialog, interrupted: both calls cancelled, nothing removed.
+    // Reply 2's question, interrupted: both calls cancelled, nothing removed.
     app.world_mut()
         .trigger(Deliver::new(agent, "and the rest", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| world.resource::<Opened>().0 == 2);
@@ -199,18 +203,18 @@ fn one_dialog_for_a_reply_denies_the_unticked_and_an_interrupt_cancels() {
             .map(|e| e.kind);
         assert_eq!(
             kind,
-            Some(ErrorKind::Cancelled),
+            Some(rig_core::error::ErrorKind::Cancelled),
             "{id}: {:?}",
             results.get(id)
         );
     }
     assert!(dir.join("b.txt").exists() && dir.join("README.md").exists());
-    assert!(rows(&mut app).is_empty(), "the dialog is still open");
+    assert!(rows(&mut app).is_empty(), "the question is still open");
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
-fn with_nobody_to_answer_every_held_call_is_denied_without_a_dialog() {
+fn with_nobody_to_answer_every_call_needing_approval_is_denied_without_a_question() {
     let dir = project("headless");
     let model = MockCompletionModel::from_stream_turns([reply_one(), reply("Nothing removed.")]);
     let (mut app, wakes, agent) = start(&dir, &model, false);
@@ -228,7 +232,7 @@ fn with_nobody_to_answer_every_held_call_is_denied_without_a_dialog() {
     );
     for id in ["rm-a", "rm-b", "push"] {
         assert!(
-            output(&app, id).contains(HEADLESS),
+            output(&app, id).contains("nobody can answer"),
             "{id}: {}",
             output(&app, id)
         );

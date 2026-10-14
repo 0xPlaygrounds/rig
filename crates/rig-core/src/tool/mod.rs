@@ -29,7 +29,7 @@ pub use contextual::{
 };
 pub use facts::{
     ChangeKind, ContentHash, ExitStatus, FileChange, FileRead, FileState, FilesChanged, FilesRead,
-    KeptEnd, LinesShown, OutputCut, content_hash,
+    Hunk, HunkLine, KeptEnd, Lines, LinesShown, OutputCut, content_hash,
 };
 pub use footprint::{Scope, Touches};
 pub use managed::{ManagedToolSink, ManagedToolToken};

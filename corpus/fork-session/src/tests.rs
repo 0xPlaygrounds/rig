@@ -118,7 +118,7 @@ fn branch_before_two(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &
     };
     app.world_mut().trigger(Picked {
         entity: picker,
-        chosen: Some(Chosen::Item(two)),
+        chosen: Some(Chosen::item(two)),
     });
     true
 }
@@ -126,7 +126,7 @@ fn branch_before_two(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &
 /// The session `session` of `home` was forked from, as its store says.
 fn parent_of(home: &Home, session: &SessionId) -> Option<ForkedFrom> {
     let store = SessionStores::default().open(&home.session(session)).ok()?;
-    ForkedFrom::of(&*store)
+    ForkedFrom::read(&*store)
 }
 
 /// The session forked from another in `home`, once one is written.
@@ -164,7 +164,7 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
     let parent = parent_of(&home, &branched);
     assert_eq!(
         parent.map(|parent| (parent.session, parent.text)),
-        Some((id.clone(), Some("two".to_owned())))
+        Some((id.to_string(), Some("two".to_owned())))
     );
 
     // The branch holds turn one and the count as of then; "two" waits in
@@ -259,7 +259,7 @@ fn a_branch_with_its_files_switches_once_they_are_back() {
     assert!(answer_open(
         app.world_mut(),
         question,
-        &Answer::Choice("yes".to_owned())
+        &Answer::choice("yes")
     ));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Exits>().0.is_empty()

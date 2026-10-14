@@ -103,7 +103,7 @@ const ROW_KEYS: [&str; 12] = [
 const REVIEW_KEYS: [&str; 3] = ["from", "source", "note"];
 
 /// The facts a reviewed row may set under `rig`, as rig-core reads them.
-const RIG_KEYS: [&str; 13] = [
+const RIG_KEYS: [&str; 14] = [
     "format",
     "reasoning_default",
     "reasoning_control",
@@ -117,6 +117,7 @@ const RIG_KEYS: [&str; 13] = [
     "binds_context",
     "prompt_cache_options",
     "chat_tools_need_reasoning_off",
+    "prefill",
 ];
 
 /// The row keys a row may pin, in the order `rig.pinned` lists them: the

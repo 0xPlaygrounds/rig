@@ -223,9 +223,10 @@ and is saved with the session.
 Ask it why the build failed and it can read the log, fix the cause, and
 reload.
 
-The session is written as it happens. Each agent, subagents included, has an
-append-only log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings,
-usage and compactions; images are stored once in `blobs/`, and `files/meta.json`
+The session is written as it happens. Each agent, subagents included, has a
+log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings, usage and
+compactions, appended to as it runs and rewritten only through rig-memory (a
+plugin's redaction, say, keeps each record's place and time); images are stored once in `blobs/`, and `files/meta.json`
 caches what `/resume` lists. A session saved by an older rig, in another
 format, is refused when resumed, and nothing of it is changed. A tool call that may change something starts
 only once the reply that asked for it, and a mark that it started, are on
@@ -244,7 +245,8 @@ the longest timeout a `shell` call may ask for (ten minutes by default).
 Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
 cost, directory, age) and resumes the one picked, in its own directory;
-and `rig --resume <id>` resumes a given one, such as after a crash.
+`rig --resume <id or name>` (or `/resume <id or name>`) resumes a given one,
+such as after a crash.
 
 A ChatGPT subscription can pay for the model
 calls instead of an API key: `/login chatgpt` opens your browser on the
@@ -269,7 +271,11 @@ is used instead when set. `rig -p /login` signs in without the terminal view.
 Typing while the agent works is fine: Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits
 for) and Tab queues a follow-up that is sent when the turn would end. Both
-wait under the transcript; Esc stops the turn and puts them back in the input.
+wait under the transcript; Esc stops the turn and puts them back in the input
+(a plugin may keep them for the next turn instead), and what the reply had
+streamed stays in the transcript, saved as stopped, and is not sent to the
+model again. Messages still waiting when the agent exits come back when the
+session is resumed.
 `@path` to a PNG, JPEG, GIF or WebP file attaches the image when the model
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
@@ -303,10 +309,12 @@ and exits: the answer goes to stdout, failures to stderr, and the exit code is
 in follows the prompt (`git diff | rig -p "review this"`), and piped in
 without `-p` it is the prompt: `rig` runs the terminal view only on an
 interactive terminal. `-m vendor/model` picks the model (else the session's,
-else the first one with a key; in the terminal view too), and `-r <id>`
-resumes a given session instead of starting a new one. A plugin may keep such
-a run going, sending the agent work over time (`KeepRunning`); each answer is
-then printed as it comes.
+else the first one with a key; in the terminal view too), and `-r <id or name>`
+resumes a given session instead of starting a new one; it goes wherever an
+option goes, but not among a command's words or after `--`, and
+`rig -r <id or name> <command>` runs a plugin's command in that session. A
+plugin may keep such a run going, sending the agent work over time
+(`KeepRunning`); each answer is then printed as it comes.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
@@ -331,7 +339,7 @@ Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
-plugins' data across sessions in `data/` (the prompt history `data/tui/history.jsonl`) and per project in `projects/`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, `files/` (`meta.json`, the effect log `effects.jsonl`, plugins' files),
+plugins' data across sessions in `data/` (the prompt history `data/tui/history.jsonl`) and per project in `projects/`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, the name `/name` gave it in `name`, `files/` (`meta.json`, the effect log `effects.jsonl`, plugins' files),
 `spill/` (the whole output of a `shell` call that was cut, which the model reads
 by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
@@ -492,7 +500,8 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 
 `rig::conversation` (from `rig-core`) is the one conversation type. Enabling
 `features = ["memory"]` adds `rig::memory`, the `rig-memory` crate: windows,
-compaction, and saving and resuming conversations.
+compaction, and saving, resuming, rewriting and forking conversations and
+sessions.
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.

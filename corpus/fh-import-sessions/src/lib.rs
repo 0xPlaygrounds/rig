@@ -33,7 +33,7 @@ use rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_core::message::{Message, Origin as MadeBy};
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
-use rig_sessions::{Meta, SessionTitle, title_of, write_meta};
+use rig_harness::rig_memory::{SessionMeta, title_of};
 use serde::{Deserialize, Serialize};
 
 use parse::{Parsed, Step, StepKind};
@@ -560,17 +560,14 @@ fn write(
     if let Some(cwd) = &parsed.cwd {
         fs::write(dir.directory(), cwd.to_string_lossy().as_bytes())?;
     }
-    let mut meta = Meta::of(store).unwrap_or_default();
-    if meta.title.typed.is_empty() {
-        meta.title = SessionTitle {
-            typed: first_line(parsed),
-            ..meta.title
-        };
+    let mut meta = SessionMeta::read(store).unwrap_or_default();
+    if meta.title.is_empty() {
+        meta.title = first_line(parsed);
     }
     meta.labels
         .insert("imported".to_owned(), format!("from {}", source.label()));
     meta.updated = meta.updated.max(parsed.span().1);
-    write_meta(store, &meta)?;
+    meta.write(store)?;
     Ok(added)
 }
 

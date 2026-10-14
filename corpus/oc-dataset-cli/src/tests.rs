@@ -186,6 +186,8 @@ fn exports_the_matching_sessions_as_chat_lines() {
     ];
     let run = dataset(&home, &project, &args);
     assert_eq!(run.status, 0, "{run:?}");
+    let dropped = "turns dropped: 1 (failed 0, stopped 1, cut short 0)";
+    assert!(run.stdout.contains(dropped), "{run:?}");
     let written = std::fs::read_to_string(project.join("out/dataset.jsonl")).unwrap_or_default();
     assert!(!written.contains("abc123"), "{written}");
     assert!(written.contains(dataset::REDACTED), "{written}");
@@ -239,7 +241,9 @@ fn exports_the_matching_sessions_as_chat_lines() {
         "{c_text}"
     );
     assert!(
-        !c_text.contains("Wait for it.") && !c_text.contains("tool_calls"),
+        !c_text.contains("Wait for it.")
+            && !c_text.contains("tool_calls")
+            && !c_text.contains(r#""role":"tool""#),
         "{c_text}"
     );
 

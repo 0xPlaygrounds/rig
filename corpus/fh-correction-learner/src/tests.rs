@@ -95,11 +95,7 @@ fn answer(
     file: &Path,
     done: impl Fn(&str) -> bool,
 ) {
-    assert!(answer_open(
-        app.world_mut(),
-        TITLE,
-        &Answer::Choice(choice.into())
-    ));
+    assert!(answer_open(app.world_mut(), TITLE, &Answer::choice(choice)));
     run_until(app, wakes, |_| {
         done(&fs::read_to_string(file).unwrap_or_default())
     });

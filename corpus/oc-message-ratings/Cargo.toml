@@ -11,7 +11,6 @@ workspace = true
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-sessions = { path = "../../plugins/rig-sessions" }

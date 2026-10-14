@@ -445,9 +445,9 @@ fn run(rpc: &mut Rpc, command: Command) -> Result<(), String> {
                 _ => return Err("no such request".to_owned()),
             };
             let chosen = match (choice, text) {
-                (Some(index), _) if index < count => Chosen::Item(index),
+                (Some(index), _) if index < count => Chosen::item(index),
                 (Some(_), _) => return Err("no such choice".to_owned()),
-                (None, Some(text)) if free_text => Chosen::Text(text),
+                (None, Some(text)) if free_text => Chosen::text(text),
                 _ => return Err("the answer needs a choice".to_owned()),
             };
             rpc.commands.trigger(Pick::person(entity, Some(chosen)));

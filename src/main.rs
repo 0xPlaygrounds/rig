@@ -4,21 +4,21 @@
 //! build that crashes during startup is rolled back to the last one that
 //! worked. It uses only std.
 //!
-//! Its own first words (`build`, `plugin`, `help`) and `--resume` are read
-//! before the build; the rest of the command line once the agent is built,
-//! against the commands and options its plugins add (`rig help` lists
-//! them).
+//! Its own first words (`build`, `plugin`, `help`) are read before the
+//! build; the rest of the command line, `--resume` included, once the
+//! agent is built, against the commands and options its plugins add (`rig
+//! help` lists them).
 
 mod launcher;
 
 use std::process::ExitCode;
 
 use launcher::plugin::USAGE as PLUGIN_USAGE;
-use launcher::run::{Start, last_report};
+use launcher::run::last_report;
 use rig::harness_protocol::{Described, Home, INVOCATION_USAGE};
 
 const USAGE: &str = "\
-Usage: rig [-r <id>] [options] [-p prompt…] | rig [options] <command> [args…]
+Usage: rig [-r <id|name>] [options] [-p prompt…] | rig [options] <command> [args…]
        | rig build | rig plugin <command> | rig help [command]
 
   rig                    Build the agent if needed and run it in a new session.
@@ -30,8 +30,11 @@ Usage: rig [-r <id>] [options] [-p prompt…] | rig [options] <command> [args…
 
 const SESSION: &str = "
 Session:
-  -r, --resume <id>      Resume the session <id>, in the directory it ran in.
-                         In the agent, /resume lists the sessions.
+  -r, --resume <id|name>
+                         Resume the session with that id, or the one /name
+                         gave that name, in the directory it ran in; it goes
+                         wherever an option goes. In the agent, /resume
+                         lists the sessions.
 
 Mode:
 ";
@@ -72,13 +75,7 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }
         ["help", command] => Ok(help(&home, command)),
-        _ => match resume(&args) {
-            Ok((start, rest)) => launcher::run::run(&home, start, rest),
-            Err(failure) => {
-                eprintln!("rig: {failure}\nRun `rig help` for usage.");
-                return ExitCode::from(2);
-            }
-        },
+        _ => launcher::run::run(&home, &args),
     };
     result.unwrap_or_else(|failure| {
         eprintln!("error: {failure}");
@@ -118,18 +115,4 @@ fn help(home: &Home, command: &str) -> ExitCode {
         }
     }
     ExitCode::SUCCESS
-}
-
-/// The session to run, from `--resume <id>` before everything else, and
-/// the rest of the command line.
-fn resume(args: &[String]) -> Result<(Start, &[String]), String> {
-    Ok(match args {
-        [flag, id, rest @ ..] if flag == "-r" || flag == "--resume" => {
-            (Start::Resume(id.parse()?), rest)
-        }
-        [flag] if flag == "-r" || flag == "--resume" => {
-            return Err(format!("{flag} needs a session id"));
-        }
-        rest => (Start::New, rest),
-    })
 }

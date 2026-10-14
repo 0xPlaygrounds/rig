@@ -19,14 +19,15 @@
 //! signature, a redacted block's data, a Responses item's
 //! `encrypted_content`) verbatim as the block's provider item, stream only
 //! its readable summary, and replay the item in place to the model that
-//! made it and as plain reasoning text (or nothing) to any other. This
-//! plugin adds what the library cannot know:
+//! made it. This plugin adds the rest:
 //!
-//! - a blob whose message was edited, or whose earlier history changed,
-//!   is dropped from the request instead of being sent stale: each blob's
-//!   message is anchored, as it is committed, by a fingerprint of the
-//!   conversation up to it, kept as an aside, and a request whose history
-//!   no longer matches it goes without the blob;
+//! - every request asks for other models' reasoning to go as reasoning
+//!   where its model reads it (`foreign_reasoning`), as plain text
+//!   otherwise, never with its blob;
+//! - a blob whose message was edited, whose earlier history changed, or
+//!   that was never anchored, is left out instead of being sent stale:
+//!   each blob's message is anchored, as it is committed, by a fingerprint
+//!   of the conversation up to it, kept as an aside;
 //! - a request the provider rejects over a reasoning blob is sent again
 //!   once, without any blob, with a notice;
 //! - the transcript and the effect log show `[encrypted reasoning, N bytes]`
@@ -37,8 +38,11 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{
     Catalog, Compat, ModelFacts, ModelSpec, Provide, ReasoningSupport, Transport,
 };
+use rig_harness::rig_core::effect::{EffectKind, Outcome as EffectOutcome};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_core::message::{Fingerprint, Message as ChatMessage};
+use rig_harness::rig_core::message::{
+    Api, AssistantMessage, Fingerprint, Message as ChatMessage, Native,
+};
 use rig_harness::rig_core::providers::anthropic::wire::{AnthropicConfig, compatible};
 use rig_harness::rig_core::providers::openai::wire::{Auth, Dialect, OpenAIConfig, Route};
 use rig_harness::rig_core::providers::registry::{ConnectError, ProviderConfig, ProviderId};
@@ -54,12 +58,6 @@ pub const NAME: &str = "opaque-reasoning";
 /// the fingerprint of the conversation up to and including it when it
 /// was committed.
 pub const ANCHOR: &str = "opaque-reasoning.anchor";
-
-/// The keys of a reasoning item that hold its blob.
-const BLOB_KEYS: [&str; 3] = ["signature", "data", "encrypted_content"];
-
-/// The item types whose blob keys are blobs.
-const REASONING_TYPES: [&str; 3] = ["thinking", "redacted_thinking", "reasoning"];
 
 /// Registers the configured providers and keeps their reasoning blobs
 /// correct across tool calls, resumes, model switches and history edits.
@@ -83,12 +81,13 @@ impl Plugin for OpaqueReasoningPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (anchor_blobs, drop_stale_blobs)
+                    (anchor_blobs, prepare_requests)
                         .chain()
                         .in_set(OpaqueReasoningSystems),
                     retry_without_blobs.in_set(ReviewSystems::Act),
                 ),
             )
+            .add_observer(follow_successor::<WithoutBlobs>)
             .add_systems(Last, hide_blobs.after(StopTurns).before(WriteJournal))
             .add_systems(Startup, report_problems);
     }
@@ -135,7 +134,7 @@ pub struct ProviderEntry {
     /// Its API root.
     pub base_url: String,
     /// The wire it speaks.
-    pub api: Api,
+    pub api: Wire,
     /// The variable holding its key; none for an endpoint that needs none.
     pub key_env: Option<String>,
     /// Its model ids.
@@ -148,7 +147,7 @@ pub struct ProviderEntry {
 /// The wire a provider speaks.
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum Api {
+pub enum Wire {
     /// Anthropic Messages: thinking blocks with a signature, redacted
     /// thinking with its data.
     Anthropic,
@@ -206,13 +205,13 @@ impl Gateway {
     fn config(&self, key: &str) -> ProviderConfig {
         let vendor = self.id.vendor();
         match self.entry.api {
-            Api::Anthropic => ProviderConfig::Anthropic(
+            Wire::Anthropic => ProviderConfig::Anthropic(
                 AnthropicConfig::with_key(&compatible(vendor, "", "", None), key)
                     .with_base_url(&self.entry.base_url),
             ),
-            Api::OpenaiResponses | Api::OpenaiChat => {
+            Wire::OpenaiResponses | Wire::OpenaiChat => {
                 let route = match self.entry.api {
-                    Api::OpenaiResponses => Route::Responses,
+                    Wire::OpenaiResponses => Route::Responses,
                     _ => Route::Chat,
                 };
                 let mut config = OpenAIConfig::with_key(&Dialect::gateway(vendor, "", ""), key);
@@ -248,49 +247,62 @@ impl Provide for Gateway {
     }
 }
 
-/// The bytes of a reasoning item's blob, when it holds one.
-fn blob_bytes(item: &Value) -> usize {
-    BLOB_KEYS
-        .iter()
-        .filter_map(|key| item.get(key)?.as_str())
-        .map(str::len)
-        .sum()
+/// What a log or an export shows in place of a blob of `bytes` bytes.
+fn placeholder(bytes: usize) -> String {
+    format!("[encrypted reasoning, {bytes} bytes]")
+}
+
+/// `message` as an assistant turn, with the wire that made it, which
+/// spells its blobs.
+fn turn(message: &ChatMessage) -> Option<(&AssistantMessage, &Api)> {
+    let ChatMessage::Assistant(turn) = message else {
+        return None;
+    };
+    Some((turn, &turn.origin.as_ref()?.api))
+}
+
+/// The provider item of a reasoning block.
+fn native(block: &AssistantContent) -> Option<&Native> {
+    match block {
+        AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
+        _ => None,
+    }
 }
 
 /// The bytes of the blobs `message` carries.
 pub fn blobs_in(message: &ChatMessage) -> usize {
-    let ChatMessage::Assistant(turn) = message else {
+    let Some((turn, api)) = turn(message) else {
         return 0;
     };
     turn.content
         .iter()
-        .filter_map(|block| match block {
-            AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
-            _ => None,
-        })
-        .map(|native| blob_bytes(&native.item))
+        .filter_map(native)
+        .filter_map(|native| native.reasoning_blob(api))
+        .map(|blob| blob.value.len())
         .sum()
 }
 
-/// Takes every blob out of `message`: its reasoning then replays from its
-/// text, or not at all to the model that made it. Whether it had any.
-pub fn drop_blobs(message: &mut ChatMessage) -> bool {
-    let ChatMessage::Assistant(turn) = message else {
-        return false;
-    };
-    let mut dropped = false;
+/// `message` with every reasoning item that holds a blob taken out, so its
+/// reasoning replays from its text, or not at all to the model that made
+/// it; `None` when it holds no blob.
+pub fn without_blobs(message: &ChatMessage) -> Option<ChatMessage> {
+    if blobs_in(message) == 0 {
+        return None;
+    }
+    let (turn, api) = turn(message)?;
+    let mut turn = turn.clone();
+    let api = api.clone();
     for block in &mut turn.content {
         if let AssistantContent::Reasoning(reasoning) = block
             && reasoning
                 .native
                 .as_ref()
-                .is_some_and(|native| blob_bytes(&native.item) > 0)
+                .is_some_and(|native| native.reasoning_blob(&api).is_some())
         {
             reasoning.native = None;
-            dropped = true;
         }
     }
-    dropped
+    Some(ChatMessage::Assistant(turn))
 }
 
 /// The fingerprint of `messages[..=i]`, for each `i`.
@@ -327,8 +339,7 @@ fn anchor_blobs(mut committed: MessageReader<Committed>, mut agents: Query<&mut 
             let author = Author::plugin(NAME);
             let anchor = Aside::new(ANCHOR, author.clone(), json!({ "prefix": prefix }));
             conversation.add_aside(anchor.after(Some(id)));
-            let title = format!("[encrypted reasoning, {bytes} bytes]");
-            conversation.add_aside(Note::new(title, "").aside(author, Some(id)));
+            conversation.add_aside(Note::new(placeholder(bytes), "").aside(author, Some(id)));
         }
     }
 }
@@ -345,50 +356,42 @@ fn anchors(conversation: &Conversation) -> Vec<(MessageId, Fingerprint)> {
         .collect()
 }
 
-/// Drops from each request the blobs of a message that was edited, or
-/// whose earlier history changed, since it was committed.
-fn drop_stale_blobs(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls)>,
+/// On a model call that goes without any blob: one the provider rejected
+/// over a blob, sent again. Once is enough.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+pub struct WithoutBlobs;
+
+/// Lets each request send other models' reasoning as reasoning where its
+/// model reads it, and takes out the blobs of a message that was edited,
+/// whose earlier history changed, or that was never anchored, since it was
+/// committed; every blob from a call marked [`WithoutBlobs`].
+fn prepare_requests(
+    mut calls: Query<
+        (&mut ModelRequest, &ForAgent, Has<WithoutBlobs>),
+        (Added<Admitted>, ModelCalls),
+    >,
     agents: Query<&Conversation>,
 ) {
-    for (mut call, &ForAgent(agent)) in &mut calls {
-        let Ok(anchors) = agents.get(agent).map(anchors) else {
-            continue;
-        };
-        let Some(history) = call.history.as_ref().filter(|_| !anchors.is_empty()) else {
-            continue;
-        };
-        let now = prefixes(history.messages());
-        let stale: Vec<usize> = history
-            .entries()
-            .filter(|entry| blobs_in(entry.message) > 0)
-            .filter(|entry| {
-                anchors
-                    .iter()
-                    .find(|(id, _)| *id == entry.id)
-                    .is_some_and(|(_, prefix)| now.get(entry.index) != Some(prefix))
-            })
-            .map(|entry| entry.index)
-            .collect();
-        if stale.is_empty() {
-            continue;
-        }
+    for (mut call, &ForAgent(agent), without) in &mut calls {
+        let call = &mut *call;
+        call.request.foreign_reasoning = true;
         let Some(history) = call.history.as_mut() else {
             continue;
         };
-        for at in stale {
-            if let Some(mut entry) = history.entry(at) {
-                drop_blobs(&mut entry.message);
-                history.splice(at..=at, [entry], Author::plugin(NAME));
+        let anchors = agents.get(agent).map(anchors).unwrap_or_default();
+        let now = prefixes(history.messages());
+        history.edit_each(Author::plugin(NAME), |entry| {
+            let anchored = anchors
+                .iter()
+                .any(|(id, prefix)| *id == entry.id && now.get(entry.index) == Some(prefix));
+            if anchored && !without {
+                return None;
             }
-        }
+            without_blobs(entry.message)
+        });
     }
 }
-
-/// On a model call sent again without its blobs: once is enough.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-pub struct BlobsDropped;
 
 /// Whether `report` is a provider rejecting a request over a reasoning
 /// blob. Providers say so only in their error text.
@@ -413,54 +416,28 @@ fn rejects_blob(report: &ErrorReport) -> bool {
 }
 
 /// Sends a model call the provider rejected over a reasoning blob again,
-/// once, with every blob taken out.
+/// once, without any blob.
 fn retry_without_blobs(
     failed: Query<
-        (
-            Entity,
-            &Outcome,
-            &ModelRequest,
-            &Effect,
-            &ForAgent,
-            Option<&CallOf>,
-            Has<TurnCall>,
-        ),
+        (Entity, &Outcome, &ModelRequest, &ForAgent),
         (
             Unreviewed,
             ModelCalls,
             Without<SupersededBy>,
-            Without<BlobsDropped>,
+            Without<WithoutBlobs>,
         ),
     >,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, outcome, request, effect, &ForAgent(agent), of, turn_call) in &failed {
+    for (call, outcome, sent, &ForAgent(agent)) in &failed {
         let Err(report) = &outcome.0 else { continue };
-        if !rejects_blob(report) {
+        let carried = sent.request.chat_history.iter().any(|m| blobs_in(m) > 0);
+        if !carried || !rejects_blob(report) {
             continue;
         }
-        let mut retry = request.clone();
-        let mut dropped = false;
-        for message in &mut retry.request.chat_history {
-            dropped |= drop_blobs(message);
-        }
-        if !dropped {
-            continue;
-        }
-        let mut successor = commands.spawn((
-            retry,
-            ForAgent(agent),
-            Effect::child_of(effect.parent),
-            BlobsDropped,
-        ));
-        if turn_call {
-            successor.insert(TurnCall);
-        }
-        if let Some(&CallOf(turn)) = of {
-            successor.insert(CallOf(turn));
-        }
-        successor.add_related::<SupersededBy>(&[call]);
+        commands.entity(call).insert(WithoutBlobs);
+        commands.queue(resend(call));
         let why = report.message.lines().next().unwrap_or_default();
         notices.write(Notice::warn(
             agent,
@@ -469,45 +446,70 @@ fn retry_without_blobs(
     }
 }
 
-/// `value`, a record's JSON, with every reasoning blob replaced by its
-/// size.
-fn hide(value: &mut Value) -> bool {
-    let mut hidden = false;
-    if let Value::Object(fields) = value {
-        let reasoning = fields
-            .get("type")
-            .and_then(Value::as_str)
-            .is_some_and(|kind| REASONING_TYPES.contains(&kind));
-        for (key, field) in fields.iter_mut() {
-            let blob =
-                key == "encrypted_content" || (reasoning && BLOB_KEYS.contains(&key.as_str()));
-            match field {
-                Value::String(text) if blob && !text.is_empty() => {
-                    *text = format!("[encrypted reasoning, {} bytes]", text.len());
-                    hidden = true;
-                }
-                other => hidden |= hide(other),
-            }
-        }
-    } else if let Value::Array(items) = value {
-        for item in items {
-            hidden |= hide(item);
-        }
+/// Puts the placeholder in place of `native`'s blob, as `api` spells it.
+fn hide_item(native: &mut Native, api: &Api) {
+    let Some(blob) = native.reasoning_blob(api) else {
+        return;
+    };
+    let (key, shown) = (blob.key, placeholder(blob.value.len()));
+    if let Some(value) = native.item.pointer_mut(key) {
+        *value = Value::String(shown);
     }
-    hidden
 }
 
-/// Takes every reasoning blob out of the effect records before they are
-/// written to the log.
+/// Hides the blobs of every item of `document`, a provider's reply as
+/// `api` spells it.
+fn hide_in_document(document: &mut Value, api: &Api) {
+    match document {
+        Value::Object(_) => {
+            let item = std::mem::take(document);
+            let mut native = Native {
+                item,
+                fingerprint: Fingerprint::of(&()),
+            };
+            hide_item(&mut native, api);
+            *document = native.item;
+            if let Value::Object(fields) = document {
+                fields
+                    .values_mut()
+                    .for_each(|field| hide_in_document(field, api));
+            }
+        }
+        Value::Array(items) => items
+            .iter_mut()
+            .for_each(|item| hide_in_document(item, api)),
+        _ => {}
+    }
+}
+
+/// Hides the blobs of `content`, made over `api`.
+fn hide_in(content: &mut [AssistantContent], api: &Api) {
+    for block in content {
+        if let AssistantContent::Reasoning(reasoning) = block
+            && let Some(native) = reasoning.native.as_mut()
+        {
+            hide_item(native, api);
+        }
+    }
+}
+
+/// Puts the placeholder in place of every reasoning blob of the model
+/// calls' records before they are written to the log.
 fn hide_blobs(mut records: MessageMutator<EffectRecorded>) {
     for EffectRecorded(record) in records.read() {
-        let Ok(mut json) = serde_json::to_value(&*record) else {
-            continue;
-        };
-        if hide(&mut json)
-            && let Ok(clean) = serde_json::from_value(json)
-        {
-            *record = clean;
+        if let EffectKind::Completion { request, .. } = &mut record.kind {
+            for message in &mut request.chat_history {
+                if let ChatMessage::Assistant(turn) = message
+                    && let Some(api) = turn.origin.as_ref().map(|origin| origin.api.clone())
+                {
+                    hide_in(&mut turn.content, &api);
+                }
+            }
+        }
+        if let Ok(EffectOutcome::Completion(response)) = &mut record.outcome {
+            let api = response.origin.api.clone();
+            hide_in(&mut response.choice, &api);
+            hide_in_document(&mut response.raw, &api);
         }
     }
 }

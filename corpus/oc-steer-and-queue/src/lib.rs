@@ -1,38 +1,38 @@
 //! OC-19: steer or queue messages while the agent works.
 //!
-//! **Any front.** What the user sends a busy agent is a pending message of
-//! one of two kinds, kept per agent in its saved [`PendingMessages`]:
+//! **Any front.** What the user sends a busy agent waits as a pending
+//! message of one of two kinds:
 //!
-//! - **Steer** (`DeliveryMode::Steer`, Enter in the terminal view): handed
-//!   to the kernel at once, which gives it to the running turn's next model
-//!   call, after the reply's running tool calls settle, without stopping
-//!   them; a turn that would end with it waiting carries on with it.
-//! - **Queued** (`DeliveryMode::Queue`, Alt+Enter): taken over from the
-//!   kernel, whose own queue gives everything queued in one step of the
-//!   same turn. Each queued message instead starts a new turn of its own
-//!   once a turn ends answered, one per turn, in order. An interrupted or
-//!   failed turn leaves them queued.
+//! - **Steer** (`DeliveryMode::Steer`, Enter in the terminal view): the
+//!   kernel's own. It waits in the agent's inbox for the running turn's
+//!   next model call, after the reply's running tool calls settle, without
+//!   stopping them; a turn that would end with it waiting carries on with
+//!   it, and the inbox is saved.
+//! - **Queued** (`DeliveryMode::Queue`, Alt+Enter): taken over in Gate,
+//!   because the kernel's queue gives everything queued in one step of the
+//!   same turn. The plugin keeps it in the agent's saved [`Kept`], and
+//!   each one starts a new turn of its own once a turn ends answered, one
+//!   per turn, in order. A stopped or failed turn leaves them queued.
 //!
-//! [`EditPending`] edits, deletes, toggles or moves a pending message from
-//! any front; a steering message the kernel holds is taken back first (by
-//! deciding its `Incoming`) and handed again as it is now. A steering
-//! message the kernel does not hold, as after a restart, is handed to the
-//! next running turn, or joins the start of the user's next message to an
-//! idle agent. After a crash or a restart pending messages show again,
-//! unsent: a queued one waits for a turn to end answered.
+//! When the user stops a turn, and when a restart brings the inbox back to
+//! an idle agent, the user's unsent steering messages ([`Unsent`]) are
+//! taken over into [`Kept`] too: they join the start of the user's next
+//! message, in order, as the guide's "With the user's next message" says.
+//! A steering message kept while the agent is busy goes to the kernel.
 //!
-//! An interrupted turn hands the steering messages the kernel held back to
-//! the views, joined in order (the kernel's `Recalled`): the terminal view
-//! puts them in the input, so the next Enter starts the next turn with
-//! them. The plugin cannot keep them pending instead (see the report).
+//! [`PendingMessages`] lists an agent's pending messages and
+//! [`EditPending`] edits, deletes, toggles or moves one, from any front; a
+//! changed steering message the kernel holds is taken back (decided) with
+//! those after it and sent again as it is now.
 //!
 //! **The terminal view.** Alt+Enter queues while the shown agent is busy
-//! and sends while it is idle. A strip above the status line lists the
-//! pending messages with their kind; Up on an empty input selects them:
-//! Up and Down move, `e` edits in the input (Enter saves, Esc cancels),
-//! `d` deletes, `t` toggles the kind, `k` and `j` move it up and down, Esc
-//! or Enter leaves.
+//! (the view's Tab) and sends while it is idle. A strip above the status
+//! line lists the pending messages with their kind; Up on an empty input
+//! selects them: Up and Down move, `e` edits in the input (Enter saves, Esc
+//! cancels), `d` deletes, `t` toggles the kind, `k` and `j` move it up and
+//! down, Esc or Enter leaves.
 
+use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
@@ -40,68 +40,47 @@ use rig_tui::ratatui::style::{Modifier, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
-    Focused, InputSystems, KeyInput, PanelCanvas, Placement, RequestRedraw, Sent, TerminalEvents,
-    TuiInput, TuiInputState, TuiKeys, TuiPanel, TuiPlugin, TuiSystems,
+    Focused, InputAction, InputSystems, KeyInput, PanelCanvas, Placement, RequestRedraw,
+    TerminalEvents, TuiInput, TuiInputState, TuiKeys, TuiPanel, TuiPlugin, TuiSystems,
 };
-use serde::{Deserialize, Serialize};
 
-/// Who decides a steering message the plugin takes back, or a queued one
-/// it takes over.
+/// Who decides the messages the plugin takes over.
 const NAME: &str = "steer-and-queue";
 
 /// When a pending message goes to the agent.
-#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PendingKind {
-    /// At the running turn's next model call.
+    /// At the running turn's next model call, or with the user's next
+    /// message to an idle agent.
     Steer,
     /// As a new turn of its own, after a turn ends answered.
     Queued,
 }
 
-/// A message the user sent a busy agent that has not reached its model.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// A message the user sent that has not reached the model.
+#[derive(Reflect, Clone, Debug, PartialEq, Eq)]
 pub struct Pending {
-    /// Its id among the agent's pending messages.
-    pub id: u64,
     /// What it says.
     pub text: String,
     /// When it goes.
     pub kind: PendingKind,
 }
 
-/// An agent's pending messages, in the order they go; kept with the
-/// session.
+/// The pending messages the plugin keeps for an agent, in order, saved
+/// with the session: the queued ones, and steering ones for the user's
+/// next message. The steering messages for a running turn are the
+/// kernel's inbox.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Saved, Default)]
-pub struct PendingMessages {
-    /// The messages, in order.
-    pub items: Vec<Pending>,
-    /// The id the next one gets.
-    pub next: u64,
-}
+pub struct Kept(pub Vec<Pending>);
 
-impl PendingMessages {
-    /// Adds `text` of `kind` at the end; its id.
-    fn push(&mut self, text: String, kind: PendingKind) -> u64 {
-        let id = self.next;
-        self.next += 1;
-        self.items.push(Pending { id, text, kind });
-        id
-    }
-
-    /// The position of the message `id`.
-    fn position(&self, id: u64) -> Option<usize> {
-        self.items.iter().position(|item| item.id == id)
-    }
-}
-
-/// A change to one of an agent's pending messages, from any front.
+/// A change to an agent's pending message, from any front.
 #[derive(EntityEvent, Clone, Debug)]
 pub struct EditPending {
     /// The agent.
     pub entity: Entity,
-    /// The message's [`Pending::id`].
-    pub id: u64,
+    /// The message's place in [`PendingMessages::of`].
+    pub at: usize,
     /// What changes.
     pub change: PendingChange,
 }
@@ -109,7 +88,7 @@ pub struct EditPending {
 /// What [`EditPending`] changes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PendingChange {
-    /// Its text becomes this.
+    /// Its text becomes this; an empty text deletes it.
     Text(String),
     /// It is deleted.
     Delete,
@@ -119,18 +98,59 @@ pub enum PendingChange {
     Move(bool),
 }
 
-/// On a message the plugin keeps as pending: the agent and the
-/// [`Pending::id`] it stands for.
-#[derive(Component, Clone, Copy, Debug)]
-struct Adopted {
-    agent: Entity,
-    id: u64,
+/// A message the agent accepted and has not sent yet, as the guide reads
+/// the inbox.
+type Inboxed<'a> = (Entity, &'a Effect, &'a Incoming, &'a ForAgent, &'a Decision);
+
+/// The inbox: accepted, not answered.
+type InboxFilter = (With<Started>, Without<Outcome>);
+
+/// The user's steering messages `agent` holds, oldest first, from the
+/// `inbox`.
+fn steering<'a>(agent: Entity, inbox: impl Iterator<Item = Inboxed<'a>>) -> Vec<(Entity, Pending)> {
+    let mut held: Vec<_> = inbox
+        .filter(|(_, _, message, to, decision)| {
+            to.0 == agent && typed(message) && !decision.is_decided()
+        })
+        .filter(|(_, _, message, ..)| message.mode == DeliveryMode::Steer)
+        .map(|(entity, effect, message, ..)| (effect.id(), entity, steer(message.text())))
+        .collect();
+    held.sort_unstable_by_key(|(id, ..)| *id);
+    held.into_iter()
+        .map(|(_, entity, pending)| (entity, pending))
+        .collect()
 }
 
-/// On an adopted message the plugin took back from the kernel.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct TakenBack;
+/// Whether `message` is the user's own text, not a slash command.
+fn typed(message: &Incoming) -> bool {
+    message.author.kind == AuthorKind::User && message.command().is_none()
+}
+
+fn steer(text: &str) -> Pending {
+    Pending {
+        text: text.trim().to_owned(),
+        kind: PendingKind::Steer,
+    }
+}
+
+/// An agent's pending messages, for any front.
+#[derive(SystemParam)]
+pub struct PendingMessages<'w, 's> {
+    inbox: Query<'w, 's, Inboxed<'static>, InboxFilter>,
+    kept: Query<'w, 's, &'static Kept>,
+}
+
+impl PendingMessages<'_, '_> {
+    /// `agent`'s pending messages in the order they go: the steering
+    /// messages the kernel holds, then those the plugin keeps.
+    pub fn of(&self, agent: Entity) -> Vec<Pending> {
+        let held = steering(agent, self.inbox.iter()).into_iter();
+        let kept = self.kept.get(agent).into_iter().flat_map(|kept| &kept.0);
+        held.map(|(_, pending)| pending)
+            .chain(kept.cloned())
+            .collect()
+    }
+}
 
 /// Steers and queues messages to busy agents, in any front, and in the
 /// terminal view.
@@ -142,13 +162,14 @@ impl Plugin for SteerQueuePlugin {
         if !app.is_plugin_added::<TuiPlugin>() {
             app.add_plugins(TuiPlugin);
         }
-        app.register_required_components::<Agent, PendingMessages>()
+        let gate = (take_queued, keep_unsent).chain();
+        app.register_required_components::<Agent, Kept>()
             .init_resource::<Strip>()
             .add_systems(
                 AgentPass,
                 (
-                    adopt.in_set(Stage::Gate).after(AskSystems),
-                    join_held.in_set(PrepareSystems::Input),
+                    gate.in_set(Stage::Gate).after(AskSystems),
+                    join_kept.in_set(PrepareSystems::Input),
                 ),
             )
             .add_systems(Update, hand_steering.before(AgentLoop))
@@ -161,199 +182,196 @@ impl Plugin for SteerQueuePlugin {
                     draw_strip.in_set(TuiSystems::Draw),
                 ),
             )
-            .add_observer(settled)
+            .add_observer(next_queued)
             .add_observer(edit);
     }
 }
 
-/// Keeps each message the user sends a busy agent as pending: a steering
-/// one goes on to the kernel, a queued one is taken over.
-fn adopt(
+/// Takes over each message the user queues for a busy agent, in the order
+/// they were sent.
+fn take_queued(
     mut messages: Query<
-        (Entity, &Incoming, &ForAgent, &mut Decision),
-        (Undecided, IncomingMessages, Without<Adopted>),
+        (&Effect, &Incoming, &ForAgent, &mut Decision),
+        (Undecided, IncomingMessages),
     >,
-    mut agents: Query<&mut PendingMessages, With<ActiveTurn>>,
-    mut commands: Commands,
+    mut agents: Query<&mut Kept, With<ActiveTurn>>,
 ) {
-    for (message, incoming, &ForAgent(agent), mut decision) in &mut messages {
-        let typed = incoming.author.kind == AuthorKind::User && incoming.command().is_none();
-        if !typed || decision.is_decided() {
-            continue;
-        }
-        let Ok(mut pending) = agents.get_mut(agent) else {
-            continue;
-        };
-        let text = incoming.text().trim().to_owned();
-        match incoming.mode {
-            DeliveryMode::Steer => {
-                let id = pending.push(text, PendingKind::Steer);
-                commands.entity(message).insert(Adopted { agent, id });
-            }
-            DeliveryMode::Queue => {
-                pending.push(text, PendingKind::Queued);
-                decision.decide(Decider::plugin(NAME), Outcome::custom("queued"));
-            }
-            DeliveryMode::Note => {}
+    let mut queued: Vec<_> = messages
+        .iter_mut()
+        .filter(|(_, message, _, decision)| {
+            typed(message) && message.mode == DeliveryMode::Queue && !decision.is_decided()
+        })
+        .collect();
+    queued.sort_unstable_by_key(|(effect, ..)| effect.id());
+    for (_, message, &ForAgent(agent), mut decision) in queued {
+        if let Ok(mut kept) = agents.get_mut(agent) {
+            kept.0.push(Pending {
+                text: message.text().trim().to_owned(),
+                kind: PendingKind::Queued,
+            });
+            decision.decide(Decider::plugin(NAME), Outcome::custom("queued"));
         }
     }
 }
 
-/// The steering messages of `pending` the kernel does not hold, given the
-/// ids it holds.
-fn held<'a>(pending: &'a PendingMessages, live: &[u64]) -> impl Iterator<Item = &'a Pending> {
-    pending
-        .items
-        .iter()
-        .filter(move |item| item.kind == PendingKind::Steer && !live.contains(&item.id))
-}
-
-/// The ids of `agent`'s pending messages the kernel holds.
-fn live_ids(live: &Query<&Adopted, LiveFilter>, agent: Entity) -> Vec<u64> {
-    live.iter()
-        .filter(|adopted| adopted.agent == agent)
-        .map(|adopted| adopted.id)
-        .collect()
-}
-
-/// Adopted messages the kernel holds: not settled, not taken back.
-type LiveFilter = (Without<TakenBack>, Without<Settled>, Without<Outcome>);
-
-/// Hands a busy agent each steering message the kernel does not hold, as
-/// a turn starts or the pending messages change.
-fn hand_steering(
-    agents: Query<
-        (Entity, &PendingMessages),
-        (
-            With<ActiveTurn>,
-            Or<(Changed<PendingMessages>, Added<ActiveTurn>)>,
-        ),
-    >,
-    live: Query<&Adopted, LiveFilter>,
-    mut commands: Commands,
+/// Takes over the user's steering messages a turn the user stopped did not
+/// send, or a restart brought back to an idle agent: kept, in order, for
+/// the user's next message.
+fn keep_unsent(
+    mut unsent: Query<(&Unsent, &Effect, &Incoming, &ForAgent, &mut Decision), Added<Unsent>>,
+    mut agents: Query<&mut Kept>,
 ) {
-    for (agent, pending) in &agents {
-        let live = live_ids(&live, agent);
-        for item in held(pending, &live) {
-            commands.spawn((
-                Incoming::new(item.text.clone(), DeliveryMode::Steer),
-                ForAgent(agent),
-                Adopted { agent, id: item.id },
-            ));
+    let mut unsent: Vec<_> = unsent
+        .iter_mut()
+        .filter(|(unsent, _, message, _, decision)| {
+            matches!(unsent.ended, None | Some(TurnOutcome::Stopped(None)))
+                && typed(message)
+                && message.mode == DeliveryMode::Steer
+                && !decision.is_decided()
+        })
+        .collect();
+    unsent.sort_unstable_by_key(|(_, effect, ..)| effect.id());
+    for (_, _, message, &ForAgent(agent), mut decision) in unsent {
+        if let Ok(mut kept) = agents.get_mut(agent) {
+            // After the steering messages kept before, ahead of the queue.
+            let at = kept
+                .0
+                .iter()
+                .take_while(|item| item.kind == PendingKind::Steer)
+                .count();
+            kept.0.insert(at, steer(message.text()));
+            decision.decide(Decider::plugin(NAME), Outcome::custom("kept"));
         }
     }
 }
 
-/// The user's message to an idle agent starts with the steering messages
-/// the kernel does not hold, joined in order.
-fn join_held(
+/// The user's next message to an idle agent starts with the steering
+/// messages kept for it, joined in order.
+fn join_kept(
     mut messages: Query<
         (&mut Incoming, &ForAgent),
-        (Added<Admitted>, Without<Adopted>, Without<Outcome>),
+        (Added<Admitted>, Without<Started>, Without<Outcome>),
     >,
-    mut agents: Query<&mut PendingMessages, Without<ActiveTurn>>,
-    live: Query<&Adopted, LiveFilter>,
+    mut agents: Query<&mut Kept, Without<ActiveTurn>>,
 ) {
     for (mut message, &ForAgent(agent)) in &mut messages {
-        let typed = message.author.kind == AuthorKind::User && message.command().is_none();
-        let Ok(mut pending) = agents.get_mut(agent) else {
+        let Ok(mut kept) = agents.get_mut(agent) else {
             continue;
         };
-        let live = live_ids(&live, agent);
-        let joined: Vec<(u64, String)> = held(&pending, &live)
-            .map(|item| (item.id, item.text.clone()))
-            .collect();
-        if !typed || joined.is_empty() {
+        if !typed(&message) || !kept.0.iter().any(|item| item.kind == PendingKind::Steer) {
             continue;
         }
-        let mut texts: Vec<&str> = joined.iter().map(|(_, text)| text.as_str()).collect();
-        let typed_text = message.text().trim().to_owned();
-        texts.push(&typed_text);
+        let (steering, queued): (Vec<_>, Vec<_>) = std::mem::take(&mut kept.0)
+            .into_iter()
+            .partition(|item| item.kind == PendingKind::Steer);
+        kept.0 = queued;
+        let mut texts: Vec<String> = steering.into_iter().map(|item| item.text).collect();
+        texts.push(message.text().trim().to_owned());
         *message.text_mut() = texts.join("\n\n");
-        pending
-            .items
-            .retain(|item| !joined.iter().any(|(id, _)| *id == item.id));
     }
 }
 
-/// An adopted message that settled is no longer pending, unless the plugin
-/// took it back: delivered, or handed back to the views. A turn that ended
-/// answered starts the agent's first queued message.
-fn settled(
-    settled: On<Add<Settled>>,
-    adopted: Query<&Adopted, Without<TakenBack>>,
-    turns: Query<(&TurnOutcome, &ForAgent)>,
-    mut agents: Query<(&mut PendingMessages, Has<ActiveTurn>)>,
-    live: Query<&Adopted, LiveFilter>,
+/// Gives a busy agent's kernel the steering messages the plugin keeps for
+/// it, in order.
+fn hand_steering(
+    mut agents: Query<
+        (Entity, &mut Kept),
+        (With<ActiveTurn>, Or<(Changed<Kept>, Added<ActiveTurn>)>),
+    >,
     mut commands: Commands,
 ) {
-    if let Ok(&Adopted { agent, id }) = adopted.get(settled.entity) {
-        if let Ok((mut pending, _)) = agents.get_mut(agent)
-            && let Some(at) = pending.position(id)
-        {
-            pending.items.remove(at);
+    for (agent, mut kept) in &mut agents {
+        if !kept.0.iter().any(|item| item.kind == PendingKind::Steer) {
+            continue;
         }
-        return;
+        kept.0.retain(|item| {
+            let queued = item.kind == PendingKind::Queued;
+            if !queued {
+                let message = Incoming::new(item.text.clone(), DeliveryMode::Steer);
+                commands.spawn((message, ForAgent(agent)));
+            }
+            queued
+        });
     }
+}
+
+/// A turn that ended answered starts its idle agent's first queued
+/// message.
+fn next_queued(
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    mut agents: Query<&mut Kept, Without<ActiveTurn>>,
+    mut commands: Commands,
+) {
     let Ok((TurnOutcome::Answered(_), &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let Ok((pending, busy)) = agents.get(agent) else {
+    let Ok(mut kept) = agents.get_mut(agent) else {
         return;
     };
-    let live = live_ids(&live, agent);
-    let next = pending
-        .items
+    let Some(at) = kept
+        .0
         .iter()
-        .find(|item| item.kind == PendingKind::Queued);
-    let sending = pending
-        .items
-        .iter()
-        .any(|item| item.kind == PendingKind::Queued && live.contains(&item.id));
-    if let Some(next) = next
-        && !busy
-        && !sending
-    {
-        commands.spawn((
-            Incoming::new(next.text.clone(), DeliveryMode::Steer),
-            ForAgent(agent),
-            Adopted { agent, id: next.id },
-        ));
-    }
+        .position(|item| item.kind == PendingKind::Queued)
+    else {
+        return;
+    };
+    let next = kept.0.remove(at);
+    commands.spawn((
+        Incoming::new(next.text, DeliveryMode::Steer),
+        ForAgent(agent),
+    ));
 }
 
-/// Applies an [`EditPending`], taking the agent's steering messages the
-/// kernel holds back where they change; [`hand_steering`] hands them again.
+/// Applies an [`EditPending`] to the agent's list. When the steering
+/// messages the kernel holds are no longer the list's first, unchanged,
+/// they are all taken back and kept, and [`hand_steering`] sends them
+/// again.
 fn edit(
     edit: On<EditPending>,
-    mut agents: Query<&mut PendingMessages>,
-    mut live: Query<(Entity, &Adopted, &mut Decision), (IncomingMessages, LiveFilter)>,
-    mut commands: Commands,
+    mut inbox: Query<(Entity, &Effect, &Incoming, &ForAgent, &mut Decision), InboxFilter>,
+    mut agents: Query<&mut Kept>,
 ) {
-    let (agent, id) = (edit.entity, edit.id);
-    let Ok(mut pending) = agents.get_mut(agent) else {
+    let agent = edit.entity;
+    let Ok(mut kept) = agents.get_mut(agent) else {
         return;
     };
-    let Some(at) = pending.position(id) else {
+    let held = steering(agent, inbox.iter());
+    let mut list: Vec<Pending> = held.iter().map(|(_, pending)| pending.clone()).collect();
+    list.extend(kept.0.iter().cloned());
+    if !change(&mut list, edit.at, &edit.change) {
         return;
-    };
-    // The messages whose kernel copy goes: the edited one, or every one
-    // when the order changes.
-    let all = matches!(edit.change, PendingChange::Move(_));
-    match &edit.change {
-        PendingChange::Text(text) if text.trim().is_empty() => {
-            pending.items.remove(at);
+    }
+    let unchanged =
+        list.len() >= held.len() && held.iter().zip(&list).all(|((_, was), now)| was == now);
+    if unchanged {
+        kept.0 = list.split_off(held.len());
+        return;
+    }
+    for (message, _) in held {
+        if let Ok((.., mut decision)) = inbox.get_mut(message) {
+            decision.decide(Decider::plugin(NAME), Outcome::custom("taken back"));
         }
-        PendingChange::Text(text) => {
-            if let Some(item) = pending.items.get_mut(at) {
+    }
+    kept.0 = list;
+}
+
+/// Applies `change` to the message `at` of `list`; whether there was one.
+fn change(list: &mut Vec<Pending>, at: usize, change: &PendingChange) -> bool {
+    if at >= list.len() {
+        return false;
+    }
+    match change {
+        PendingChange::Text(text) if !text.trim().is_empty() => {
+            if let Some(item) = list.get_mut(at) {
                 item.text = text.trim().to_owned();
             }
         }
-        PendingChange::Delete => {
-            pending.items.remove(at);
+        PendingChange::Text(_) | PendingChange::Delete => {
+            list.remove(at);
         }
         PendingChange::Toggle => {
-            if let Some(item) = pending.items.get_mut(at) {
+            if let Some(item) = list.get_mut(at) {
                 item.kind = match item.kind {
                     PendingKind::Steer => PendingKind::Queued,
                     PendingKind::Queued => PendingKind::Steer,
@@ -363,27 +381,22 @@ fn edit(
         PendingChange::Move(earlier) => {
             let to = match earlier {
                 true => at.checked_sub(1),
-                false => Some(at + 1).filter(|to| *to < pending.items.len()),
+                false => Some(at + 1).filter(|to| *to < list.len()),
             };
             if let Some(to) = to {
-                pending.items.swap(at, to);
+                list.swap(at, to);
             }
         }
     }
-    for (message, adopted, mut decision) in &mut live {
-        if adopted.agent == agent && (all || adopted.id == id) {
-            commands.entity(message).insert(TakenBack);
-            decision.decide(Decider::Person, Outcome::custom("taken back"));
-        }
-    }
+    true
 }
 
 /// What the terminal view's strip shows selected, and the message being
-/// edited in the input.
+/// edited in the input, as it was.
 #[derive(Resource, Default)]
 struct Strip {
     selected: Option<usize>,
-    editing: Option<u64>,
+    editing: Option<Pending>,
 }
 
 /// The strip of pending messages above the status line.
@@ -397,21 +410,14 @@ fn spawn_strip(mut commands: Commands) {
     ));
 }
 
-/// The pending messages of the agent shown, and whether it is busy.
-type ShownAgent<'a> = (Entity, &'a PendingMessages, Has<ActiveTurn>);
-
 /// The strip's keys, Alt+Enter, and editing a message in the input.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a key filter reads the view's input and state"
-)]
 fn strip_keys(
     mut events: ResMut<TerminalEvents>,
     mut input: ResMut<TuiInput>,
     state: Res<TuiInputState>,
     mut strip: ResMut<Strip>,
-    shown: Query<ShownAgent, With<Focused>>,
-    mut sent: MessageWriter<Sent>,
+    shown: Query<(Entity, Has<ActiveTurn>), With<Focused>>,
+    pending: PendingMessages,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
@@ -422,21 +428,27 @@ fn strip_keys(
         return;
     }
     let (code, modifiers) = (key.code, key.modifiers);
-    let Some((agent, pending, busy)) = shown.iter().next() else {
+    let Some((agent, busy)) = shown.iter().next() else {
         return;
     };
+    let list = pending.of(agent);
     let plain = modifiers.difference(KeyModifiers::SHIFT).is_empty();
     let quiet =
         state.completion().is_none() && state.picking().is_none() && state.answering().is_none();
-    let change = |id, change| EditPending {
-        entity: agent,
-        id,
-        change,
+    let mut change = |at, change| {
+        commands.trigger(EditPending {
+            entity: agent,
+            at,
+            change,
+        });
     };
-    if let Some(id) = strip.editing {
+    if let Some(was) = &strip.editing {
         match code {
+            // The message, wherever it is now; gone if it was sent.
             KeyCode::Enter if modifiers.is_empty() => {
-                commands.trigger(change(id, PendingChange::Text(input.take())));
+                if let Some(at) = list.iter().position(|item| item == was) {
+                    change(at, PendingChange::Text(input.take()));
+                }
             }
             KeyCode::Esc => {
                 input.take();
@@ -451,56 +463,55 @@ fn strip_keys(
     if let Some(selected) = strip.selected {
         events.0.remove(0);
         redraw.write(RequestRedraw);
-        let count = pending.items.len();
-        let Some(item) = pending.items.get(selected.min(count.saturating_sub(1))) else {
+        let last = list.len().saturating_sub(1);
+        let selected = selected.min(last);
+        let Some(item) = list.get(selected) else {
             strip.selected = None;
             return;
         };
-        let id = item.id;
         strip.selected = match code {
             KeyCode::Up => Some(selected.saturating_sub(1)),
-            KeyCode::Down => Some(selected + 1).filter(|next| *next < count),
+            KeyCode::Down => Some((selected + 1).min(last)),
             KeyCode::Char('e') => {
                 input.set(item.text.clone());
-                strip.editing = Some(id);
+                strip.editing = Some(item.clone());
                 None
             }
             KeyCode::Char('d') => {
-                commands.trigger(change(id, PendingChange::Delete));
-                (count > 1).then_some(selected)
+                change(selected, PendingChange::Delete);
+                (last > 0).then_some(selected)
             }
             KeyCode::Char('t') => {
-                commands.trigger(change(id, PendingChange::Toggle));
+                change(selected, PendingChange::Toggle);
                 Some(selected)
             }
             KeyCode::Char('k') => {
-                commands.trigger(change(id, PendingChange::Move(true)));
+                change(selected, PendingChange::Move(true));
                 Some(selected.saturating_sub(1))
             }
             KeyCode::Char('j') => {
-                commands.trigger(change(id, PendingChange::Move(false)));
-                Some((selected + 1).min(count.saturating_sub(1)))
+                change(selected, PendingChange::Move(false));
+                Some((selected + 1).min(last))
             }
             KeyCode::Esc | KeyCode::Enter => None,
             _ => Some(selected),
         };
         return;
     }
-    let alt_enter = code == KeyCode::Enter && modifiers == KeyModifiers::ALT;
-    if alt_enter && quiet && !input.text().trim().is_empty() {
-        events.0.remove(0);
-        let text = input.take();
-        sent.write(Sent(text.clone()));
-        let mode = match busy {
-            true => DeliveryMode::Queue,
-            false => DeliveryMode::Steer,
+    if code == KeyCode::Enter && modifiers == KeyModifiers::ALT && quiet {
+        // The view's own actions: Tab queues while busy, Send sends.
+        let action = match busy {
+            true => InputAction::Tab,
+            false => InputAction::Send,
         };
-        commands.trigger(Deliver::new(agent, text, mode));
+        if let Some(first) = events.0.first_mut() {
+            *first = KeyInput::Action(action);
+        }
         return;
     }
-    if code == KeyCode::Up && plain && quiet && input.is_empty() && !pending.items.is_empty() {
+    if code == KeyCode::Up && plain && quiet && input.is_empty() && !list.is_empty() {
         events.0.remove(0);
-        strip.selected = Some(pending.items.len().saturating_sub(1));
+        strip.selected = Some(list.len().saturating_sub(1));
         redraw.write(RequestRedraw);
     }
 }
@@ -508,9 +519,13 @@ fn strip_keys(
 /// The strip takes a row per pending message of the agent shown.
 fn size_strip(
     mut panels: Query<&mut TuiPanel, With<StripPanel>>,
-    shown: Query<&PendingMessages, With<Focused>>,
+    shown: Query<Entity, With<Focused>>,
+    pending: PendingMessages,
 ) {
-    let rows = shown.iter().next().map_or(0, |pending| pending.items.len());
+    let rows = shown
+        .iter()
+        .next()
+        .map_or(0, |agent| pending.of(agent).len());
     let placement = Placement::Bottom(Constraint::Length(u16::try_from(rows).unwrap_or(u16::MAX)));
     for mut panel in &mut panels {
         if panel.placement != placement {
@@ -523,14 +538,15 @@ fn size_strip(
 /// one highlighted, the one being edited marked.
 fn draw_strip(
     mut panels: Query<&mut PanelCanvas, With<StripPanel>>,
-    shown: Query<&PendingMessages, With<Focused>>,
+    shown: Query<Entity, With<Focused>>,
+    pending: PendingMessages,
     strip: Res<Strip>,
 ) {
-    let Some(pending) = shown.iter().next() else {
+    let Some(agent) = shown.iter().next() else {
         return;
     };
     let lines: Vec<Line> = pending
-        .items
+        .of(agent)
         .iter()
         .enumerate()
         .map(|(at, item)| {
@@ -538,7 +554,7 @@ fn draw_strip(
                 PendingKind::Steer => "steer ",
                 PendingKind::Queued => "queued",
             };
-            let mark = match strip.editing == Some(item.id) {
+            let mark = match strip.editing.as_ref() == Some(item) {
                 true => "✎",
                 false => "⏵",
             };

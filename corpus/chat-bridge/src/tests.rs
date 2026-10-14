@@ -180,7 +180,7 @@ fn a_thread_gets_its_own_agent_its_answers_and_its_questions() {
     fake.say("T1", "U1", "no", false);
     app.update();
     let answer = app.world().get::<Outcome>(ask).and_then(Answer::of);
-    assert_eq!(answer, Some(Answer::Choice("no".to_owned())));
+    assert_eq!(answer, Some(Answer::choice("no")));
     drop(app);
 
     // A restart keeps the thread's agent, and its questions.

@@ -15,7 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::fs::io_error;
-use crate::workspace::{Local, Stat, Workspace};
+use crate::workspace::{Listing, Local, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
 /// Most matches a search returns.
@@ -60,6 +60,10 @@ pub struct SearchArgs {
     pub path: Option<String>,
     /// Only files matching this glob, such as `*.rs`.
     pub glob: Option<String>,
+    /// Also hidden files and directories (named with a leading `.`), such
+    /// as `.github/`; files git ignores stay out.
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 impl SearchArgs {
@@ -69,6 +73,7 @@ impl SearchArgs {
             pattern: pattern.into(),
             path: None,
             glob: None,
+            hidden: false,
         }
     }
 
@@ -82,6 +87,21 @@ impl SearchArgs {
     pub fn glob(mut self, glob: impl Into<String>) -> Self {
         self.glob = Some(glob.into());
         self
+    }
+
+    /// The same search, in hidden files too.
+    pub fn hidden(mut self) -> Self {
+        self.hidden = true;
+        self
+    }
+
+    /// Which files it searches.
+    pub fn listing(&self) -> Listing {
+        match self.hidden {
+            true => Listing::Hidden,
+            false => Listing::Visible,
+        }
+        .for_glob(self.glob.as_deref())
     }
 }
 
@@ -149,8 +169,8 @@ impl Tool for Search {
     fn description(&self) -> String {
         format!(
             "Search file contents with a regular expression (Rust regex syntax). Skips files \
-             ignored by git, hidden files and target directories. Returns `path:line: text`, \
-             at most {MAX_MATCHES} matches."
+             ignored by git, target directories and, unless hidden is set or the glob names \
+             one, hidden files. Returns `path:line: text`, at most {MAX_MATCHES} matches."
         )
     }
 
@@ -214,8 +234,8 @@ pub fn render(found: &Found) -> String {
 }
 
 /// Searches as [`Search`] does, in `workspace`, and returns the matches as
-/// data: the [files](Workspace::files) under the searched path that git
-/// does not ignore and that are not hidden or in a `target` directory, each
+/// data: the [files](Workspace::files) under the searched path that its
+/// [listing](SearchArgs::listing) keeps, each
 /// of at most [`MAX_FILE_BYTES`] and read as UTF-8. Blocks: run it on a
 /// thread of its own ([`blocking`]).
 ///
@@ -227,7 +247,7 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         .map_err(|error| ToolExecutionError::invalid_args(format!("bad pattern: {error}")))?;
     let root = args.path.as_deref().unwrap_or(".");
     let files = workspace
-        .files(Path::new(root), args.glob.as_deref(), false)
+        .files(Path::new(root), args.glob.as_deref(), args.listing())
         .map_err(|error| match error.kind() {
             ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
             _ => io_error(root, error),

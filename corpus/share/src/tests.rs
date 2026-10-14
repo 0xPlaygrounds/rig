@@ -93,7 +93,7 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
     let settings = format!("[share]\ntarget = \"http\"\nurl = \"{url}\"\n");
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
-    let confirm = Answer::Choice("share".to_owned());
+    let confirm = Answer::choice("share");
     app.insert_resource(Settings::from_toml(&settings))
         .insert_resource(Answers::new([confirm.clone(), confirm]))
         .init_resource::<Bodies>()

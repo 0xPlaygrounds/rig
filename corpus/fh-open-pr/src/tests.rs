@@ -169,9 +169,9 @@ fn publish_commits_only_the_sessions_file_and_opens_the_edited_pr() {
     assert!(dir.is_some(), "a repository fixture");
     let dir = dir.unwrap_or_default();
     let answers = vec![
-        Answer::Choice("title".to_owned()),
-        Answer::Text("Add a.txt for the docs".to_owned()),
-        Answer::Choice("publish".to_owned()),
+        Answer::choice("title"),
+        Answer::text("Add a.txt for the docs"),
+        Answer::choice("publish"),
     ];
     let (prompt, notices) = session(&dir, answers, "Opened");
     assert!(
@@ -211,7 +211,7 @@ fn cancel_leaves_no_branch_commit_or_push() {
     let dir = fixture("cancel");
     assert!(dir.is_some(), "a repository fixture");
     let dir = dir.unwrap_or_default();
-    session(&dir, vec![Answer::Choice("cancel".to_owned())], "Cancelled");
+    session(&dir, vec![Answer::choice("cancel")], "Cancelled");
     assert_eq!(
         remote(&dir, &["branch", "--format=%(refname:short)"]),
         "main"
@@ -234,10 +234,7 @@ fn an_open_pr_gets_the_push_and_its_description_not_a_second_pr() {
     assert!(dir.is_some(), "a repository fixture");
     let dir = dir.unwrap_or_default();
     fs::write(dir.join("existing"), "").ok();
-    let answers = vec![
-        Answer::Choice("publish".to_owned()),
-        Answer::Choice("yes".to_owned()),
-    ];
+    let answers = vec![Answer::choice("publish"), Answer::choice("yes")];
     session(&dir, answers, "Updated the description");
     let log = fs::read_to_string(dir.join("gh.log")).unwrap_or_default();
     assert!(!log.contains("pr\ncreate\n"), "{log}");

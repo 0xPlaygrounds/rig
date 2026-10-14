@@ -11,19 +11,20 @@ use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::prelude::SessionStores;
 use rig_harness::rig_core::completion::Message;
-use rig_harness::rig_core::conversation::{Change, Conversation, EntryRef, Halt, MessageId};
+use rig_harness::rig_core::conversation::{Conversation, EntryRef, TurnEnd};
 use rig_harness::rig_core::effect::{EffectKind, EffectRecord, FamilyDescriptor};
-use rig_harness::rig_core::message::{
-    AssistantContent, StopReason, ToolResultContent, UserContent,
-};
+use rig_harness::rig_core::message::{AssistantContent, ToolResultContent, UserContent};
 use rig_harness::rig_core::redact;
-use rig_harness::rig_memory::{Record, SavedAgent, Session, Store, history};
+use rig_harness::rig_memory::{SavedAgent, Session};
 use serde_json::{Map, Value, json};
 
 use crate::Options;
 
 /// What `--redact` puts in place of a secret.
 pub const REDACTED: &str = "<REDACTED>";
+
+/// The purpose rig gives the model requests of an agent's turns.
+const TURN: &str = "turn";
 
 /// Names whose `NAME=value` value `--redact` replaces, as their ends,
 /// upper-cased.
@@ -41,7 +42,30 @@ pub struct Export {
     /// The sessions left out, each with why.
     pub skipped: Vec<Skipped>,
     /// The turns `--exclude-errors` dropped.
-    pub dropped_turns: usize,
+    pub dropped: Dropped,
+}
+
+/// The turns `--exclude-errors` dropped, by how they ended.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Dropped {
+    /// The turns that failed.
+    pub failed: usize,
+    /// The turns that were stopped.
+    pub stopped: usize,
+    /// The turns an exit or a crash cut short.
+    pub cut_short: usize,
+}
+
+impl Dropped {
+    fn add(&mut self, other: Self) {
+        self.failed += other.failed;
+        self.stopped += other.stopped;
+        self.cut_short += other.cut_short;
+    }
+
+    fn total(self) -> usize {
+        self.failed + self.stopped + self.cut_short
+    }
 }
 
 /// A session an export left out.
@@ -51,17 +75,6 @@ pub struct Skipped {
     pub session: SessionId,
     /// Why it was left out.
     pub why: String,
-}
-
-/// How a turn ended, as its agent's log shows it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Ending {
-    /// The model answered.
-    Answered,
-    /// It failed, or the run ended before it did.
-    Failed,
-    /// It was stopped.
-    Stopped,
 }
 
 impl Export {
@@ -74,7 +87,7 @@ impl Export {
             match session_lines(options, &dir, stores) {
                 Ok((lines, dropped)) => {
                     export.matched += 1;
-                    export.dropped_turns += dropped;
+                    export.dropped.add(dropped);
                     export
                         .lines
                         .extend(lines.into_iter().map(|line| (id.clone(), line)));
@@ -123,12 +136,16 @@ impl Export {
             .map(|(_, line)| line.len().div_ceil(4))
             .sum();
         let mut text = format!(
-            "sessions read: {}\nsessions matched: {}\nlines: {}\nturns dropped: {}\n\
+            "sessions read: {}\nsessions matched: {}\nlines: {}\n\
+             turns dropped: {} (failed {}, stopped {}, cut short {})\n\
              tokens (estimate): {tokens}\nskipped: {}\n",
             self.read,
             self.matched,
             self.lines.len(),
-            self.dropped_turns,
+            self.dropped.total(),
+            self.dropped.failed,
+            self.dropped.stopped,
+            self.dropped.cut_short,
             self.skipped.len(),
         );
         for skipped in &self.skipped {
@@ -159,7 +176,7 @@ fn session_lines(
     options: &Options,
     dir: &SessionDir,
     stores: &SessionStores,
-) -> Result<(Vec<String>, usize), String> {
+) -> Result<(Vec<String>, Dropped), String> {
     if let Some(wanted) = &options.project {
         let project = std::fs::read_to_string(dir.directory()).unwrap_or_default();
         let project = real(Path::new(project.trim_end_matches('\n')));
@@ -179,9 +196,8 @@ fn session_lines(
         .unwrap_or_default();
     let records = &log.records;
     let main = session
-        .agents
-        .iter()
-        .find(|agent| agent.parent.is_none() && !agent.conversation.messages().is_empty())
+        .main_agent()
+        .filter(|main| !main.conversation.messages().is_empty())
         .ok_or("no conversation")?;
     if let Some(log) = unreadable.first() {
         return Err(format!("log {} cannot be read: {}", log.log, log.error));
@@ -201,13 +217,13 @@ fn session_lines(
     }
     let session_id = dir.id().map(|id| id.to_string()).unwrap_or_default();
     let mut lines = Vec::new();
-    let mut dropped = 0;
+    let mut dropped = Dropped::default();
     for agent in &session.agents {
         let is_main = agent.id == main.id;
         if !is_main && agent.parent.is_none() || agent.conversation.messages().is_empty() {
             continue;
         }
-        let (mut line, kept, gone) = agent_line(&*store, agent, records, options);
+        let (mut line, kept, gone) = agent_line(agent, records, options);
         if is_main && kept < options.min_turns {
             return Err(format!("{kept} turns, fewer than --min-turns"));
         }
@@ -225,21 +241,21 @@ fn session_lines(
         if options.redact {
             redact_json(&mut line);
         }
-        dropped += gone;
+        dropped.add(gone);
         lines.push(line.to_string());
     }
     Ok((lines, dropped))
 }
 
-/// The models the agent `agent`'s requests went to, as the log's header
-/// names their handlers (`provider/name`) and by name alone, in the order
-/// first seen.
+/// The models that answered the agent `agent`'s turns, as the log's
+/// header names their handlers (`provider/name`) and by name alone, in the
+/// order first seen.
 fn answered_by(log: &EffectLog, agent: &str) -> Vec<String> {
     let mut models = Vec::new();
     for record in log
         .records
         .iter()
-        .filter(|r| r.scope.as_deref() == Some(agent))
+        .filter(|r| r.scope.as_deref() == Some(agent) && r.purpose.as_deref() == Some(TURN))
     {
         let handler = log.header.handlers.iter().find(|h| h.key == record.key);
         let Some(FamilyDescriptor::Completion { model, .. }) = handler.map(|h| &h.family) else {
@@ -261,14 +277,13 @@ fn answered_by(log: &EffectLog, agent: &str) -> Vec<String> {
 /// The agent's line without its metadata, how many turns it keeps, and
 /// how many it dropped.
 fn agent_line(
-    store: &dyn Store,
     agent: &SavedAgent,
     records: &[EffectRecord],
     options: &Options,
-) -> (Map<String, Value>, usize, usize) {
+) -> (Map<String, Value>, usize, Dropped) {
     let conversation = &agent.conversation;
     let entries: Vec<EntryRef<'_>> = conversation.entries().collect();
-    let turns = turns(&entries, &halts(store, &agent.id));
+    let (before, turns) = turns(conversation);
     let requests: Vec<_> = records
         .iter()
         .filter(|record| record.scope.as_deref() == Some(agent.id.as_str()))
@@ -282,7 +297,7 @@ fn agent_line(
     let last = requests
         .iter()
         .rev()
-        .find(|(purpose, _)| *purpose == Some("turn"))
+        .find(|(purpose, _)| *purpose == Some(TURN))
         .or(requests.last());
     let system: Vec<&str> = last
         .into_iter()
@@ -295,20 +310,32 @@ fn agent_line(
     if !system.is_empty() {
         messages.push(json!({ "role": "system", "content": system.join("\n\n") }));
     }
-    let (mut kept, mut dropped) = (0, 0);
-    for (range, ending) in turns {
-        if options.exclude_errors && ending != Ending::Answered {
-            dropped += 1;
-            continue;
+    let (mut kept, mut dropped) = (0, Dropped::default());
+    let mut ranges = Vec::with_capacity(turns.len() + 1);
+    ranges.push(0..before);
+    for (range, how) in turns {
+        let count = match how {
+            Some(TurnEnd::Answered { .. }) => None,
+            Some(TurnEnd::Failed { .. }) => Some(&mut dropped.failed),
+            Some(TurnEnd::Stopped { .. }) => Some(&mut dropped.stopped),
+            None => Some(&mut dropped.cut_short),
+        };
+        match count {
+            Some(count) if options.exclude_errors => *count += 1,
+            _ => {
+                kept += 1;
+                ranges.push(range);
+            }
         }
-        kept += 1;
+    }
+    for range in ranges {
         for entry in entries.get(range).unwrap_or_default() {
             chat_messages(entry.message, options.keep_reasoning, &mut messages);
         }
     }
     // Every tool the agent's turn requests offered, by name.
     let mut tools: BTreeMap<String, Value> = BTreeMap::new();
-    for (_, request) in requests.iter().filter(|(p, _)| *p == Some("turn")) {
+    for (_, request) in requests.iter().filter(|(p, _)| *p == Some(TURN)) {
         for tool in &request.tools {
             tools
                 .entry(tool.name.as_str().to_owned())
@@ -327,89 +354,40 @@ fn agent_line(
     (line, kept, dropped)
 }
 
-/// Where the agent's log halted its conversation, by the message it
-/// ended with: rig records a halt when a turn ends without an answer, as
-/// stopped or kept for later (a failure).
-fn halts(store: &dyn Store, agent: &str) -> BTreeMap<MessageId, Halt> {
-    let mut halts = BTreeMap::new();
-    let mut folded = Conversation::new();
-    for (_, record) in history(store, agent).unwrap_or_default() {
-        let Record::Change(recorded) = record else {
-            continue;
-        };
-        if folded.apply(&recorded).is_err() {
-            break;
-        }
-        if let Change::Halt { halt: Some(halt) } = recorded.change
-            && let Some(last) = folded.entries().next_back()
-        {
-            halts.insert(last.id, halt);
-        }
-    }
-    halts
-}
-
-/// The conversation's turns: where each is in `entries`, and how it ended.
-/// A turn begins with a request after an answer, a stopped note or a
-/// halted message; the steering and tool results in between are its own.
-fn turns(
-    entries: &[EntryRef<'_>],
-    halts: &BTreeMap<MessageId, Halt>,
-) -> Vec<(Range<usize>, Ending)> {
-    let mut starts = Vec::new();
-    let mut previous: Option<&EntryRef<'_>> = None;
-    for (at, entry) in entries.iter().enumerate() {
-        let begins = previous.is_none_or(|before| {
-            entry.is_request()
-                && (before.is_stopped_note() || halts.contains_key(&before.id) || answers(before))
+/// Where the entries before the first turn end, and each turn by its
+/// record ([`TurnRecord`](rig_harness::rig_core::conversation::TurnRecord)):
+/// where its entries are and how it ended (`None` when an exit or a crash
+/// cut it short). A turn's entries run from the request that asked for it
+/// to where the next turn's begin. A turn that answers a request a stopped
+/// or failed turn left unanswered begins after it: that request stays with
+/// the turn it was sent for.
+fn turns(conversation: &Conversation) -> (usize, Vec<(Range<usize>, Option<TurnEnd>)>) {
+    let entries: Vec<EntryRef<'_>> = conversation.entries().collect();
+    let mut begins = Vec::new();
+    let mut floor = 0;
+    for (_, record) in conversation.turns() {
+        let begin = conversation.index_of(record.start).map(|at| {
+            let from = at.max(floor);
+            let asked = entries.get(from..).unwrap_or_default().iter();
+            let mut asked = asked.take_while(|entry| matches!(entry.message, Message::User { .. }));
+            asked
+                .position(EntryRef::is_request)
+                .map_or(from, |request| from + request)
         });
-        if begins {
-            starts.push(at);
+        if let Some(begin) = begin {
+            floor = begin + 1;
         }
-        previous = Some(entry);
+        begins.push((begin, record.end));
     }
-    let ends = starts.iter().skip(1).copied().chain([entries.len()]);
-    starts
-        .iter()
-        .zip(ends)
-        .map(|(&start, end)| {
-            let turn = entries.get(start..end).unwrap_or_default();
-            (start..end, ending(turn, halts))
-        })
-        .collect()
-}
-
-/// Whether the entry is a model's answer: an assistant message that calls
-/// no tool.
-fn answers(entry: &EntryRef<'_>) -> bool {
-    matches!(entry.message, Message::Assistant(reply)
-        if !reply.content.iter().any(|block| matches!(block, AssistantContent::ToolCall(_))))
-}
-
-/// How the turn of `entries` ended.
-fn ending(entries: &[EntryRef<'_>], halts: &BTreeMap<MessageId, Halt>) -> Ending {
-    let halt = entries
-        .iter()
-        .filter_map(|entry| halts.get(&entry.id))
-        .next_back();
-    if entries.iter().any(EntryRef::is_stopped_note) || halt == Some(&Halt::Stopped) {
-        return Ending::Stopped;
+    let mut end = entries.len();
+    let mut turns = Vec::with_capacity(begins.len());
+    for (begin, how) in begins.into_iter().rev() {
+        let begin = begin.unwrap_or(end);
+        turns.push((begin..end, how));
+        end = begin;
     }
-    if halt.is_some() {
-        return Ending::Failed;
-    }
-    let Some(last) = entries.last() else {
-        return Ending::Failed;
-    };
-    match last.message {
-        Message::Assistant(reply) => match &reply.stop {
-            Some(StopReason::Aborted(_)) => Ending::Stopped,
-            Some(StopReason::Error(_)) => Ending::Failed,
-            _ if answers(last) => Ending::Answered,
-            _ => Ending::Failed,
-        },
-        _ => Ending::Failed,
-    }
+    turns.reverse();
+    (end, turns)
 }
 
 /// `message` in OpenAI chat format, onto `out`: a user message's tool

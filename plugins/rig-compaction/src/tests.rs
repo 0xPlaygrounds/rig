@@ -588,6 +588,122 @@ fn a_turn_asks_for_at_most_per_turn_summaries() {
     );
 }
 
+/// A review of a summary call, holding it until the test decides.
+#[derive(Component)]
+struct Reviewing(Entity);
+
+/// On a summary call the test decided.
+#[derive(Component)]
+struct Reviewed;
+
+/// Holds each answered summary call for review, as a plugin asking the
+/// user would.
+fn hold_for_review(
+    calls: Query<Entity, (With<Summarizing>, Unreviewed, Without<Reviewed>)>,
+    asked: Query<&Reviewing>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        if asked.iter().all(|Reviewing(it)| *it != call) {
+            commands.spawn((Reviewing(call), HoldOf(call)));
+        }
+    }
+}
+
+/// Decides the summary under review: sets it to `summary` and lets it go.
+fn decide(app: &mut App, wakes: &Receiver<()>, summary: Option<&str>) {
+    let held = |world: &mut World| world.query::<&Reviewing>().iter(world).next().map(|r| r.0);
+    run_until(app, wakes, |world| {
+        world.iter_entities().any(|e| e.contains::<Reviewing>())
+    });
+    let world = app.world_mut();
+    let call = held(world);
+    assert!(call.is_some(), "a summary is held for review");
+    let Some(call) = call else {
+        return;
+    };
+    let read = world
+        .get::<Summarizing>(call)
+        .and_then(|it| it.summary.clone());
+    assert!(
+        read.is_some_and(|read| read.contains("## Goal")),
+        "the model's summary"
+    );
+    if let Some(mut summarizing) = world.get_mut::<Summarizing>(call) {
+        summarizing.summary = summary.map(str::to_owned);
+    }
+    world.entity_mut(call).insert(Reviewed);
+    let review: Vec<Entity> = world
+        .query_filtered::<Entity, With<Reviewing>>()
+        .iter(world)
+        .collect();
+    for entity in review {
+        world.despawn(entity);
+    }
+}
+
+#[test]
+fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nThe first draft."),
+        reply("## Goal\nThe second draft."),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(3));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    app.update();
+    let original = entries(app.world(), agent);
+    let compact = |app: &mut App| {
+        let focus = String::new();
+        app.world_mut().trigger(Compact {
+            entity: agent,
+            focus,
+        });
+    };
+    let ended = |count: usize| move |world: &World| world.resource::<Ended>().0.len() == count;
+
+    // Cancelled: nothing replaced.
+    compact(&mut app);
+    decide(&mut app, &wakes, None);
+    run_until(&mut app, &wakes, ended(1));
+    assert_eq!(entries(app.world(), agent), original);
+
+    // Edited: the reviewer's text is the summary, and the context is
+    // measured again.
+    if let Some(mut last) = app.world_mut().get_mut::<LastUsage>(agent) {
+        *last = LastUsage(Some(Usage::new().total_tokens(900_000)));
+    }
+    compact(&mut app);
+    decide(&mut app, &wakes, Some("## Goal\nThe reviewed summary."));
+    run_until(&mut app, &wakes, ended(2));
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+    let summary = live.first().map(|entry| format!("{:?}", entry.message));
+    assert!(summary.is_some_and(|it| it.contains("The reviewed summary.")));
+    let context = app
+        .world()
+        .get::<LastUsage>(agent)
+        .and_then(LastUsage::context);
+    assert!(
+        context.is_some_and(|tokens| tokens < 900_000),
+        "{context:?}"
+    );
+    let state = |app: &App| app.world().get::<Summarized>(agent).map(|it| it.0.clone());
+    assert!(state(&app).is_some_and(|it| it.summary.contains("reviewed")));
+
+    // Undone: the messages are back with their ids, and the state before.
+    app.update();
+    app.world_mut().trigger(Uncompact { entity: agent });
+    app.update();
+    assert_eq!(entries(app.world(), agent), original);
+    assert_eq!(state(&app), Some(SummaryState::default()));
+}
+
 #[test]
 fn the_compaction_notice_says_it_or_they_by_how_many_messages_were_kept() {
     let one = compacted_text((1, 100), (1, 38), 500);

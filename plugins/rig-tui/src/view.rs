@@ -2,8 +2,8 @@
 //! harness's [`Shown`]), the input's completion, scrolling, the pickers and questions waiting to be
 //! shown, and the transcript as plugins read and steer it
 //! ([`TranscriptView`]): what is expanded and selected, the text lit,
-//! where it is scrolled, and recent notices, which are kept in the
-//! session's [`PluginData`] for the next build.
+//! where it is scrolled, and recent notices, which a reload keeps in the
+//! session's [`PluginData`] for the build it starts.
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -13,6 +13,7 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use ratatui::style::Style;
 use rig_core::completion::Message;
+use rig_core::conversation;
 use rig_core::message::CallId;
 use serde::{Deserialize, Serialize};
 
@@ -28,11 +29,13 @@ use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
 use rig_harness::prelude::{ExitReason, PluginData};
 use rig_harness::primary::Shown;
+use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 
-/// Notices kept for display, and read back by the next build.
+/// Notices kept for display, and for the build a reload starts.
 const KEPT_NOTICES: usize = 200;
 
-/// The file of the session's [`PluginData`] that keeps the notices shown.
+/// The file of the session's [`PluginData`] that keeps the notices shown
+/// for the build a reload starts, until it reads them.
 const NOTICES_FILE: &str = "tui/notices.jsonl";
 
 /// The file of the session's [`PluginData`] that keeps what was typed and
@@ -51,7 +54,7 @@ pub struct Focus {
 /// The terminal view's state. Never saved and never read by the core.
 #[derive(Resource, Default)]
 pub(crate) struct TuiView {
-    /// The open `/` or `@` completion list.
+    /// The open completion list.
     pub(crate) completion: Option<Completion>,
     /// Where the token starts whose completion was closed with Esc.
     pub(crate) dismissed: Option<usize>,
@@ -86,6 +89,15 @@ pub enum TranscriptItem {
     Note(AsideId),
     /// A notice, by its index in [`TranscriptView::notices`].
     Notice(usize),
+    /// A content block of a message, an image, audio, a video or a
+    /// document, by the message's id and the block's place in it
+    /// ([`ContentView`](crate::ContentView)).
+    Content(MessageId, usize),
+    /// The rows a call decorator drew under a call, by the call's id and
+    /// the decorator's name
+    /// ([`add_call_decorator`](crate::AppToolRenderersExt::add_call_decorator)),
+    /// inside the call's rows. Selecting moves past it.
+    Decoration(CallId, String),
 }
 
 /// The terminal view's transcript, as plugins read and steer it. A change
@@ -113,6 +125,9 @@ pub struct TranscriptView {
     /// Text lit where the transcript draws it, such as a search's
     /// matches; text a wrap splits across two rows is lit on both.
     pub highlights: Vec<Highlight>,
+    /// Labels drawn inside replies' text, such as a seam where a plugin
+    /// joined two replies. Never saved, never sent to a model.
+    pub marks: Vec<TextMark>,
     /// The item and the row of it at the top while the view is scrolled
     /// up; `None` while it follows the newest output.
     top: Option<(TranscriptItem, usize)>,
@@ -120,8 +135,52 @@ pub struct TranscriptView {
     width: Option<u16>,
     /// Recent notices, oldest first.
     notices: Vec<ShownNotice>,
-    /// Where they are kept for the next build of the session.
-    notices_file: Option<Kept>,
+}
+
+/// Whose text a [`TextMark`] is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MarkIn {
+    /// Text block `block` (its index among the content) of an assistant
+    /// message.
+    Message {
+        /// The message.
+        id: MessageId,
+        /// The text block's index among the message's content: not always
+        /// 0, as reasoning comes first when there is any.
+        block: usize,
+    },
+    /// The reply a model call is streaming (its `Partial` text), by the
+    /// call's entity.
+    Streaming(Entity),
+}
+
+/// A short label the transcript draws inside a reply's text, before byte
+/// `at` of it, markdown kept on both sides: a mark past the end goes at
+/// the end, one inside a character goes before it.
+///
+/// ```
+/// use rig_tui::ratatui::style::{Style, Stylize};
+/// use rig_tui::{MarkIn, TextMark, TranscriptView};
+///
+/// fn mark_seam(view: &mut TranscriptView, call: bevy_ecs::entity::Entity, so_far: &str) {
+///     view.marks.push(TextMark {
+///         r#in: MarkIn::Streaming(call),
+///         at: so_far.len(),
+///         label: " ⟳ continued ".into(),
+///         style: Style::new().dim(),
+///     });
+/// }
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TextMark {
+    /// Whose text it is in.
+    pub r#in: MarkIn,
+    /// The byte of the text it goes before.
+    pub at: usize,
+    /// What it shows.
+    pub label: String,
+    /// Its style.
+    pub style: Style,
 }
 
 /// Text to light in the transcript: wherever its `text` is drawn, or
@@ -362,7 +421,7 @@ impl DrawnTranscript {
     }
 
     /// The innermost item `row` belongs to, such as a call rather than
-    /// its message.
+    /// its message, or a decorator's rows rather than their call.
     pub fn item_at(&self, row: usize) -> Option<&TranscriptItem> {
         let holding = self.items.iter().filter(|(_, rows)| rows.contains(&row));
         holding
@@ -476,7 +535,7 @@ impl TranscriptSlot {
     /// follows while that is there, else after the first item of the entry
     /// that stands for it now, such as the summary of a compaction that
     /// took it out.
-    pub fn of_aside(aside: &Aside, conversation: &Conversation) -> Self {
+    pub fn of_aside(aside: &Aside, conversation: &conversation::Conversation) -> Self {
         let Some(after) = aside.after else {
             return Self::Top;
         };
@@ -535,7 +594,11 @@ impl ShownNotice {
     /// `conversation`, or `None` when it is no part of it: it is about
     /// another agent, or about every agent and was written in another's.
     /// One whose message is gone goes where that message was.
-    pub fn slot(&self, id: &AgentId, conversation: &Conversation) -> Option<TranscriptSlot> {
+    pub fn slot(
+        &self,
+        id: &AgentId,
+        conversation: &conversation::Conversation,
+    ) -> Option<TranscriptSlot> {
         if self.agent.as_ref().is_some_and(|agent| agent != id) {
             return None;
         }
@@ -559,7 +622,7 @@ impl ShownNotice {
 }
 
 /// The content items of message `index`.
-fn items(conversation: &Conversation, index: usize) -> usize {
+fn items(conversation: &conversation::Conversation, index: usize) -> usize {
     match conversation.messages().get(index) {
         Some(Message::User { content }) => content.len(),
         Some(Message::Assistant(assistant)) => assistant.content.len(),
@@ -568,7 +631,7 @@ fn items(conversation: &Conversation, index: usize) -> usize {
 }
 
 /// The end of `id`'s conversation, where a notice written now goes.
-fn anchor(id: &AgentId, conversation: &Conversation) -> Option<Anchor> {
+fn anchor(id: &AgentId, conversation: &conversation::Conversation) -> Option<Anchor> {
     let last = conversation.messages().len().checked_sub(1)?;
     Some(Anchor {
         agent: id.clone(),
@@ -644,29 +707,49 @@ impl TranscriptView {
         }
     }
 
-    /// Keeps `notice` for display and for the next build, dropping the
-    /// oldest past [`KEPT_NOTICES`].
+    /// Maps the notices shown through `with`, the map the session was
+    /// rewritten through; one the map leaves unreadable is dropped.
+    pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
+        let at = Place::File { name: NOTICES_FILE };
+        self.notices
+            .retain_mut(|notice| rewrite_value(with, &at, NOTICES_FILE, notice).is_ok());
+    }
+
+    /// Keeps `notice` for display, dropping the oldest past
+    /// [`KEPT_NOTICES`].
     fn keep(&mut self, notice: ShownNotice) {
-        if let Some(file) = &self.notices_file
-            && let Err(failure) = jsonl::append(file, [&notice])
-        {
-            warn!("could not keep a notice for the next build: {failure}");
-        }
         self.notices.push(notice);
         let excess = self.notices.len().saturating_sub(KEPT_NOTICES);
         self.notices.drain(..excess);
     }
 }
 
-/// Reads back the notices an earlier build of the session showed, and
-/// keeps the next ones in the session's [`PluginData`].
+/// Reads back the notices the build before a reload kept, once: a run
+/// started any other way, or a fork, which copies the session's files,
+/// shows none of another run's.
 pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut view: ResMut<TranscriptView>) {
     let Some(data) = data else {
         return;
     };
-    let file = Kept(data.session.clone(), NOTICES_FILE);
-    view.notices = jsonl::tail(&file, KEPT_NOTICES);
-    view.notices_file = Some(file);
+    view.notices = jsonl::tail(&Kept(data.session.clone(), NOTICES_FILE), KEPT_NOTICES);
+    data.session.remove_file(NOTICES_FILE).ok();
+}
+
+/// Keeps the notices shown for the build a reload starts.
+pub(crate) fn keep_notices(
+    reason: Option<Res<ExitReason>>,
+    data: Option<Res<PluginData>>,
+    view: Res<TranscriptView>,
+) {
+    let (Some(reason), Some(data)) = (reason, data) else {
+        return;
+    };
+    if *reason != ExitReason::Reload || view.notices.is_empty() {
+        return;
+    }
+    if let Err(failure) = jsonl::write(&Kept(data.session.clone(), NOTICES_FILE), &view.notices) {
+        warn!("could not keep the notices for the next build: {failure}");
+    }
 }
 
 /// Keeps what was typed and not sent for the build a reload starts, such

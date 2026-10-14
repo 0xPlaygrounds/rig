@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness::approval::ApprovalPlugin;
 use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::{
@@ -69,6 +70,7 @@ fn fake_api() -> Option<(String, Arc<Mutex<Vec<Request>>>)> {
 /// The fake API's answer to `method path`.
 fn route(method: &str, path: &str, accept: &str) -> (&'static str, String) {
     let path = path.strip_prefix("/repos/o/r").unwrap_or(path);
+    let path = path.split_once('?').map_or(path, |(path, _)| path);
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match (method, parts.as_slice()) {
         ("GET", ["collaborators", user, "permission"]) => {
@@ -78,6 +80,15 @@ fn route(method: &str, path: &str, accept: &str) -> (&'static str, String) {
         ("POST", ["issues", _, "comments"]) => ("201 Created", json!({ "id": 42 }).to_string()),
         ("PATCH", ["issues", "comments", _]) => ("200 OK", "{}".to_owned()),
         ("GET", ["issues", _, "comments"]) => ("200 OK", "[]".to_owned()),
+        ("GET", ["pulls", "3", "comments"]) => (
+            "200 OK",
+            json!([
+                { "id": 5, "body": "This can be None.", "user": { "login": "reviewer" } },
+                { "id": 6, "in_reply_to_id": 5, "body": "@rig handle the None case here", "user": { "login": "writer" } },
+                { "id": 8, "body": "Elsewhere.", "user": { "login": "reviewer" } },
+            ])
+            .to_string(),
+        ),
         ("GET", ["pulls", "3"]) if accept.contains("diff") => (
             "200 OK",
             "diff --git a/src/x.rs b/src/x.rs\n+pub fn x() -> Option<u8> { None }\n".to_owned(),
@@ -186,6 +197,7 @@ fn run(dir: &Path, home: &Home, api: &str, event: &Value, model: &MockCompletion
     .add_plugins((
         ServicesPlugin,
         AgentPlugin,
+        ApprovalPlugin,
         JournalPlugin,
         WriteTool,
         GithubMentionPlugin,
@@ -321,7 +333,7 @@ fn a_review_comment_gets_the_diff_and_its_place_and_commits_to_the_pull_request(
     let home = scratch_home("oc-github-review");
     let event = json!({
         "action": "created",
-        "comment": { "body": "@rig handle the None case here", "user": { "login": "writer" }, "path": "src/x.rs", "line": 12 },
+        "comment": { "id": 6, "in_reply_to_id": 5, "body": "@rig handle the None case here", "user": { "login": "writer" }, "path": "src/x.rs", "line": 12 },
         "pull_request": { "number": 3, "title": "Add x", "body": "" },
         "repository": { "full_name": "o/r" },
     });
@@ -338,7 +350,10 @@ fn a_review_comment_gets_the_diff_and_its_place_and_commits_to_the_pull_request(
         .map(|request| format!("{request:?}"))
         .unwrap_or_default();
     assert!(
-        first.contains("diff --git a/src/x.rs") && first.contains("`src/x.rs` line 12"),
+        first.contains("diff --git a/src/x.rs")
+            && first.contains("`src/x.rs` line 12")
+            && first.contains("This can be None.")
+            && !first.contains("Elsewhere."),
         "{first}"
     );
     let changed = git(

@@ -46,7 +46,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::layout::Rect;
 
 use super::clipboard::{self, Clipboard};
-use super::complete::Completion;
+use super::complete::{self, Completion, CompletionKind, CompletionSource};
 use super::editor::TuiInput;
 use super::history::{PromptHistory, Sent};
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
@@ -124,6 +124,7 @@ pub enum InputSystems {
 pub struct TuiInputState {
     scope: KeyScope,
     completion: Option<Completion>,
+    typed: Option<(CompletionKind, String)>,
     answering: Option<Entity>,
     picking: Option<Entity>,
     selection: Option<usize>,
@@ -138,10 +139,18 @@ impl TuiInputState {
         self.scope
     }
 
-    /// The open `/`, argument or `@` completion, which Up, Down, Tab, Enter
-    /// and Esc act on.
+    /// The open completion, which Up, Down, Tab, Enter and Esc act on.
     pub fn completion(&self) -> Option<&Completion> {
         self.completion.as_ref()
+    }
+
+    /// The token at the cursor that completion completes, and what is typed
+    /// of it after its marker, also while nothing matches: for a
+    /// [`CompletionSource`](crate::CompletionSource) that looks its
+    /// candidates up, such as issues matching `#14`.
+    pub fn typed(&self) -> Option<(CompletionKind, &str)> {
+        let (kind, text) = self.typed.as_ref()?;
+        Some((*kind, text))
     }
 
     /// The question answered in the input: Enter answers it, Esc refuses
@@ -293,8 +302,10 @@ pub(crate) fn note_state(
     focus: Res<KeyFocus>,
     panels: Query<(), With<TuiPanel>>,
     choices: Choices,
+    (input, sources): (Res<TuiInput>, Query<&CompletionSource>),
     mut state: ResMut<TuiInputState>,
 ) {
+    let typed = complete::typed(&input, &sources);
     let scope = match focus.0 {
         Some(panel) if panels.contains(panel) => KeyScope::Panel(panel),
         _ if transcript.selected.is_some() => KeyScope::Transcript,
@@ -315,11 +326,13 @@ pub(crate) fn note_state(
         && state.answering == answering
         && state.picking == picking
         && state.selection == selection
-        && state.completion == view.completion;
+        && state.completion == view.completion
+        && state.typed == typed;
     if !same {
         *state = TuiInputState {
             scope,
             completion: view.completion.clone(),
+            typed,
             answering,
             picking,
             selection,
@@ -597,7 +610,7 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
         .map(|choosing| choosing.entity);
     match (action, editing) {
         (Do::Send, Some(ask)) if view.completion.as_ref().is_none_or(|c| c.is_exact()) => {
-            let answer = Chosen::Text(input.take());
+            let answer = Chosen::text(input.take());
             return close(ask, Some(answer), target, context, commands);
         }
         (Do::Stop, Some(ask)) if view.completion.is_none() => {
@@ -758,7 +771,7 @@ fn answer_inline(number: usize, target: &mut Target, context: &Context, commands
     };
     if index < shown.items.len() {
         target.view.inline.remove(0);
-        commands.trigger(Pick::person(ask, Some(Chosen::Item(index))));
+        commands.trigger(Pick::person(ask, Some(Chosen::item(index))));
     } else if index == shown.items.len() && shown.free_text && target.view.choosing.is_none() {
         target.view.inline.remove(0);
         target.view.queue.insert(0, ask);

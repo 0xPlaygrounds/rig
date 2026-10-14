@@ -44,14 +44,14 @@ struct Holding(bool);
 /// Holds the implement stage's calls, so the stage runs at a restart.
 fn hold_implement(
     calls: Query<(Entity, &ForAgent), (With<TurnCall>, Undecided, Without<Held>)>,
-    helpers: Query<&rig_subagents::Helper>,
+    helpers: Query<&AgentTitle, With<rig_subagents::Helper>>,
     mut holding: ResMut<Holding>,
     mut commands: Commands,
 ) {
     for (call, &ForAgent(agent)) in &calls {
         if helpers
             .get(agent)
-            .is_ok_and(|helper| helper.0.ends_with("implement"))
+            .is_ok_and(|title| title.0.ends_with("implement"))
         {
             commands.spawn(HoldOf(call));
             commands.entity(call).insert(Held);

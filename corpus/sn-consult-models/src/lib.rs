@@ -670,7 +670,7 @@ fn show(commands: &mut Commands, asker: Entity, report: String) {
     commands
         .spawn(picker)
         .observe(move |picked: On<Picked>, mut commands: Commands| {
-            if picked.chosen == Some(Chosen::Item(0)) {
+            if picked.chosen == Some(Chosen::item(0)) {
                 let note = Deliver::new(asker, report.clone(), DeliveryMode::Note);
                 commands.trigger(note.with_author(Author::user().titled("consult")));
             }

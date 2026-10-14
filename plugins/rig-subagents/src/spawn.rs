@@ -59,6 +59,11 @@ pub struct SpawnSubagent {
     /// For a helper: it does one job ([`once`](Self::once)).
     #[serde(default)]
     pub once: bool,
+    /// The new agent's id, a fresh one when `None`; refused when an agent
+    /// has it. A replay gives the recorded agent's, so what names the
+    /// agent (a task's answer, a `wait`) reads as it was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<AgentId>,
     /// What other plugins carry on the request, such as the arguments they
     /// added to `task`'s parameters (`ToolDef`), which a `task` call puts
     /// here by name; read it in Prepare or Review. Recorded with the rest.
@@ -93,6 +98,7 @@ impl SpawnSubagent {
             system_prompt: None,
             peers: false,
             once: false,
+            id: None,
             extra: Map::new(),
         }
     }
@@ -181,6 +187,7 @@ pub(super) struct Brief(pub(super) Deliver);
 
 pub(super) fn add(app: &mut App) {
     app.add_setting::<SubagentPolicy>("subagents")
+        .keeps_saved::<Once>()
         .add_observer(spawn_requested)
         .add_observer(follow_successor::<SpawnSubagent>)
         .add_observer(follow_successor::<TaskCall>)
@@ -314,7 +321,7 @@ fn spawn_requested(
         Option<&TaskCall>,
         &mut Decision,
     )>,
-    parents: Query<Parent>,
+    (parents, taken): (Query<Parent>, Query<&AgentId>),
     lineage: Query<&SpawnedBy>,
     tools: Query<&ToolDef>,
     (models, policy, wake): (Res<Models>, Res<SubagentPolicy>, Res<Wake>),
@@ -345,7 +352,13 @@ fn spawn_requested(
             return;
         }
     };
-    let (title, id) = (request.title.trim().to_owned(), AgentId::default());
+    let id = request.id.clone().unwrap_or_default();
+    if taken.iter().any(|taken| *taken == id) {
+        let why = format!("an agent with the id `{}` exists", id.0);
+        decision.decide(Decider::plugin("rig-subagents"), Outcome::refused(why));
+        return;
+    }
+    let title = request.title.trim().to_owned();
     let mut child = commands.spawn_empty();
     // Before the model choice, so connecting it keeps this connection.
     if let Some(connection) = connection.filter(|_| model == Some(&choice)) {
@@ -381,7 +394,8 @@ fn spawn_requested(
     match request.role {
         Role::Task => {
             child.insert((
-                Subtask(title),
+                Subtask,
+                AgentTitle(title),
                 OpenRequests(vec![Request {
                     id: asked,
                     asker: caller.clone(),
@@ -392,7 +406,7 @@ fn spawn_requested(
             child.insert_if(Peers, || request.peers);
         }
         Role::Helper => {
-            child.insert(Helper(title));
+            child.insert((Helper, AgentTitle(title)));
             child.insert_if(Once, || request.once);
         }
     }

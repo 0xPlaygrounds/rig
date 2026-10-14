@@ -4,6 +4,7 @@ use std::sync::mpsc::Receiver;
 use rig_core::catalog::ModelSpec;
 use rig_core::providers::registry::ProviderId;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
     Ended, MemoryStore, app_in, app_on, commit_message, first_agent, log_ended, press, reply,
     run_until, scratch_home, scripted_models, tui_view,

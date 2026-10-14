@@ -56,6 +56,8 @@
 
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
+pub mod agent_title;
+pub mod approval;
 pub mod ask;
 pub mod checkpoint;
 pub mod clock;
@@ -80,7 +82,9 @@ pub mod watch;
 pub mod workspace;
 
 pub use describe::run;
-pub use load::{PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, load};
+pub use load::{
+    AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, load,
+};
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
 /// that reads it.
@@ -130,21 +134,25 @@ pub mod prelude {
 
     pub use bevy_app::OnAppExitSystems;
 
+    pub use crate::agent_title::AgentTitle;
+    pub use crate::approval::{ApprovalReason, ApprovalSystems, Approved, NeedsApproval};
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
-    pub use crate::checkpoint::{CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint};
+    pub use crate::checkpoint::{
+        CallCheckpoint, CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint,
+    };
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
     };
-    pub use crate::harness_protocol::Home;
+    pub use crate::harness_protocol::{Home, StartReason};
     pub use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded, KeepRunning};
     pub use crate::host::cli::{AppCliExt, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        DeleteSession, FirstStart, ForkSession, ForkedFrom, LogEvents, Logged, Scratch,
+        AppStart, DeleteSession, ForkSession, ForkSessions, LogEvents, Logged, Scratch,
         SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
-        first_typed, typed,
+        first_typed, rewrite_stopped, typed,
     };
     pub use crate::note::Note;
     pub use crate::per_call::{AppPerCallExt, Place};
@@ -161,9 +169,10 @@ pub mod prelude {
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
-        HeadlessPlugins, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides,
-        RigHarnessPlugins,
+        AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,
+        Provides, RigHarnessPlugins,
     };
+    pub use rig_memory::ForkedFrom;
     pub use rig_tools::{Spill, blocking};
 }
 
@@ -173,7 +182,8 @@ pub mod prelude {
 /// session logs, the launcher protocol with the plugins' options and
 /// fronts ([`host`]), slash commands ([`commands`]), why the app exits,
 /// wall-clock wakes ([`clock`]),
-/// file watches ([`watch`]), questions for the user ([`ask`]), pickers
+/// file watches ([`watch`]), questions for the user ([`ask`]) and their
+/// approval of what plugins want approved ([`approval`]), pickers
 /// with the agent the user looks at ([`pick`]), previews of what a tool
 /// call would leave on disk ([`preview`]) and what every call that may
 /// write anywhere changed ([`checkpoint`]).
@@ -194,6 +204,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(clock::ClockPlugin)
             .add(watch::WatchPlugin)
             .add(ask::AskPlugin)
+            .add(approval::ApprovalPlugin)
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
             .add(preview::PreviewPlugin)

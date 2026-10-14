@@ -142,7 +142,7 @@ fn an_override_wins_field_by_field() {
     let base = models_dev(SAMPLE).expect("parses");
     let overrides = Catalog::from_overrides(
         r#"{"anthropic": {"models": {
-            "claude-x": {"limit": {"output": 128000}, "cost": {"input": 5}, "rig": {"binds_context": true}},
+            "claude-x": {"limit": {"output": 128000}, "cost": {"input": 5}, "rig": {"binds_context": true, "prefill": true}},
             "claude-y": {"name": "Claude Y", "reasoning": false, "tool_call": true, "modalities": {"input": ["text"]}}
         }}}"#,
         &base,
@@ -156,6 +156,7 @@ fn an_override_wins_field_by_field() {
     let pricing = claude.pricing.expect("priced");
     assert_eq!((pricing.input, pricing.output), (5.0, 15.0));
     assert!(claude.compat.binds_context && claude.compat.adaptive_thinking);
+    assert!(claude.compat.prefill);
     assert_eq!(
         claude.reasoning.default_effort(),
         Some(Effort::High),
@@ -595,11 +596,15 @@ fn a_spec_built_in_code_joins_the_catalog() {
         bare.with_context_window(32_768)
             .with_tools(true)
             .with_pricing(Pricing::new(0.1, 0.4).with_cache_read(0.01))
-            .with_compat(Compat::default().with_reasoning_field("reasoning_content")),
+            .with_compat(
+                Compat::default()
+                    .with_reasoning_field("reasoning_content")
+                    .with_prefill(true),
+            ),
     );
     let qwen = spec(&catalog, "ollama", "qwen3:4b");
     assert_eq!(qwen.context_window, Some(32_768));
-    assert!(qwen.tools);
+    assert!(qwen.tools && qwen.compat.prefill);
     assert_eq!(
         qwen.compat.reasoning_field.as_deref(),
         Some("reasoning_content")
@@ -620,6 +625,7 @@ fn a_spec_built_in_code_joins_the_catalog() {
     let qwen = spec(&overridden, "ollama", "qwen3:4b");
     assert_eq!(qwen.max_output_tokens, Some(8192));
     assert_eq!(qwen.context_window, Some(32_768), "kept");
+    assert!(qwen.compat.prefill, "kept");
     assert_eq!(
         qwen.pricing,
         Some(Pricing::new(0.1, 0.4).with_cache_read(0.01))
@@ -683,6 +689,27 @@ fn a_spec_row_overrides_what_the_spec_knows() {
         "an unknown limit is kept"
     );
     assert!(claude.pricing.is_some(), "unknown prices are kept");
+}
+
+/// Claude models before 4.6 continue a prefilled reply; later ones refuse
+/// it (Anthropic's prompting guide), and a gateway row carries the fact.
+#[test]
+fn the_catalog_says_which_models_continue_a_prefill() {
+    let catalog = Catalog::builtin();
+    for (vendor, model, prefill) in [
+        ("anthropic", "claude-haiku-4-5", true),
+        ("anthropic", "claude-sonnet-4-5", true),
+        ("vertexai", "claude-sonnet-4-5@20250929", true),
+        ("anthropic", "claude-opus-4-6", false),
+        ("anthropic", "claude-opus-5-5", false),
+        ("openai", "gpt-5", false),
+    ] {
+        assert_eq!(
+            spec(catalog, vendor, model).compat.prefill,
+            prefill,
+            "{vendor}/{model}"
+        );
+    }
 }
 
 /// A gateway row of a Claude model carries the Anthropic model's wire facts

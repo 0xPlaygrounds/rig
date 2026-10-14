@@ -226,11 +226,8 @@ fn a_summary_takes_the_place_of_what_it_summarized_by_id() {
     let kept: Vec<MessageId> = conversation.entries().map(|entry| entry.id).collect();
     assert_eq!(kept, ids, "clearing keeps every id");
     let last = |conversation: &mut Conversation| {
-        let change = conversation
-            .take_unsaved()
-            .pop()
-            .map(|recorded| recorded.change);
-        change.and_then(|change| summary_in(&change))
+        let mut changes = conversation.take_unsaved().into_iter().rev();
+        changes.find_map(|recorded| summary_in(&recorded.change))
     };
     assert_eq!(last(&mut conversation), None, "clearing is no compaction");
 
@@ -250,4 +247,50 @@ fn a_summary_takes_the_place_of_what_it_summarized_by_id() {
     // Once the kept message is gone, a summary replaces nothing.
     conversation.splice(1.., [], Author::plugin("other"));
     assert_eq!(apply_summary(&mut conversation, upto, &state), None);
+}
+
+#[test]
+fn compactions_are_undone_newest_first_with_their_ids_and_states() {
+    use crate::{MemoryStore, load, save};
+
+    let store = MemoryStore::default();
+    let mut conversation = load(&store, "agent").expect("loaded");
+    for text in ["one", "two", "three", "four"] {
+        conversation.push(Message::user(text));
+    }
+    let original = conversation.clone();
+    let state = |summary: &str| SummaryState {
+        summary: summary.to_owned(),
+        tracked: Vec::new(),
+    };
+    // The first summarizes "one" and "two", the second it and "three".
+    let upto = conversation.id(2);
+    apply_summary(&mut conversation, upto, &state("first")).expect("applied");
+    save(&store, "agent", &mut conversation).expect("saved");
+    let upto = conversation.id(2);
+    apply_summary(&mut conversation, upto, &state("second")).expect("applied");
+    save(&store, "agent", &mut conversation).expect("saved");
+    assert_eq!(conversation.messages().len(), 2);
+    assert_eq!(Compacted::of(&conversation).count(), 2);
+
+    let by = Author::plugin("undo");
+    let undone = undo_summary(&mut conversation, &store, "agent", by.clone()).expect("undone");
+    assert_eq!(undone.state, state("first"));
+    assert_eq!(undone.restored.len(), 2, "the first summary and \"three\"");
+    assert_eq!(conversation.messages().len(), 3);
+    save(&store, "agent", &mut conversation).expect("saved");
+    let undone = undo_summary(&mut conversation, &store, "agent", by.clone()).expect("undone");
+    assert_eq!(undone.state, SummaryState::default());
+    assert_eq!(conversation.messages(), original.messages());
+    let ids = |conversation: &Conversation| -> Vec<MessageId> {
+        conversation.entries().map(|entry| entry.id).collect()
+    };
+    assert_eq!(ids(&conversation), ids(&original));
+    assert_eq!(Compacted::of(&conversation).count(), 0);
+    assert!(matches!(
+        undo_summary(&mut conversation, &store, "agent", by),
+        Err(UndoError::Nothing)
+    ));
+    save(&store, "agent", &mut conversation).expect("saved");
+    assert_eq!(load(&store, "agent").expect("loaded"), conversation);
 }

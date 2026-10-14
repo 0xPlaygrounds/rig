@@ -152,6 +152,7 @@ fn on_task(
         system_prompt: None,
         peers: args.peers,
         once: false,
+        id: None,
         extra: args.extra.clone(),
     };
     let mut spawned = commands.spawn((
@@ -176,11 +177,11 @@ fn on_task(
 fn send_briefs(
     briefs: Query<(Entity, &Brief, &SpawnedBy)>,
     families: Query<&Spawned>,
-    peers: Query<(&AgentId, &Subtask, Has<Brief>), With<Peers>>,
+    peers: Query<(&AgentId, &AgentTitle, Has<Brief>), (With<Peers>, With<Subtask>)>,
     mut commands: Commands,
 ) {
-    let named = |(id, subtask, _): (&AgentId, &Subtask, bool)| {
-        format!("`{}` (\"{}\")", id.short(), subtask.0)
+    let named = |(id, title, _): (&AgentId, &AgentTitle, bool)| {
+        format!("`{}` (\"{}\")", id.short(), title.0)
     };
     for (child, Brief(brief), parent) in &briefs {
         let mut brief = brief.clone();
@@ -256,8 +257,7 @@ impl Agents<'_, '_> {
         let (spawned, parent) = me.family;
         // Its subagents, not the helpers plugins spawned for it.
         let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
-        let children =
-            children.filter(|&child| self.agents.get(child).is_ok_and(|a| a.subtask.is_some()));
+        let children = children.filter(|&child| self.agents.get(child).is_ok_and(|a| a.subtask));
         let peer = |agent: &AgentDataItem| {
             agent.peers && agent.family.1.map(|of| of.0) == parent.map(|of| of.0)
         };
@@ -274,7 +274,10 @@ impl Agents<'_, '_> {
                 reach.push(Reachable {
                     entity,
                     id: agent.id.clone(),
-                    title: agent.subtask.map(|subtask| subtask.0.clone()),
+                    title: agent
+                        .title
+                        .filter(|_| agent.subtask)
+                        .map(|title| title.0.clone()),
                     asked,
                 });
             }

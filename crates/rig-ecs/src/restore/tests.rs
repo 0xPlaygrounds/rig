@@ -17,7 +17,7 @@ use crate::agent::{
     TurnOf, TurnOutcome,
 };
 use crate::effects::Handler;
-use crate::inbox::{Deliver, DeliveryMode};
+use crate::inbox::{Deliver, DeliveryMode, Incoming, Recalled, Unsent};
 use crate::journal::tests::{edit, push_message};
 use crate::journal::{
     Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
@@ -25,8 +25,8 @@ use crate::journal::{
 use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::{INTERRUPTED, Interrupted, Restored};
 use crate::stage::{
-    AgentPass, Decision, HoldOf, Outcome, PrepareSystems, Settled, Stage, Started, Undecided,
-    Unreviewed,
+    AgentPass, Decision, ForAgent, HoldOf, Outcome, PrepareSystems, Settled, Stage, Started,
+    Undecided, Unreviewed,
 };
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
@@ -138,6 +138,10 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     assert_eq!(before.len(), 6, "{before:?}");
     let newest = serde_json::json!({ "read": 4 });
     assert_eq!(before.get(ToolCounts::type_path()), Some(&newest));
+    // The model is saved under the key a library program reads, as a string.
+    assert_eq!(ModelChoice::type_path(), rig_memory::MODEL);
+    let model = serde_json::json!("ollama/deepseek-v4-flash");
+    assert_eq!(before.get(rig_memory::MODEL), Some(&model));
     let id = first.world().get::<AgentId>(agent).cloned();
     drop(first);
     let gone = r#"{"seq":99,"n":99,"t":0,"type":"state","key":"a_plugin::Gone","value":1}"#;
@@ -207,7 +211,8 @@ fn a_restored_model_that_cannot_be_used_is_reported_once() {
 fn every_change_the_log_records_is_committed() {
     let mut app = app(&MemoryStore::default());
     // No model answers it, and a reviewer takes that as final, so the
-    // message is taken out; a note is left halted.
+    // message is taken out, between the turn's record opening and ending;
+    // a note is left halted.
     let finally = |calls: Query<Entity, (Unreviewed, With<TurnCall>)>, mut commands: Commands| {
         for call in &calls {
             commands.entity(call).insert(RetryVerdict(Verdict::Final));
@@ -236,7 +241,7 @@ fn every_change_the_log_records_is_committed() {
         });
     assert_eq!(
         changes.collect::<Vec<_>>(),
-        ["push", "splice", "push", "halt"]
+        ["push", "aside", "splice", "aside", "push", "halt"]
     );
 }
 
@@ -330,8 +335,8 @@ impl Store for Full {
     fn append_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
         Err(io::Error::other("disk full"))
     }
-    fn truncate_log(&self, _: &str, _: u64) -> io::Result<()> {
-        Ok(())
+    fn replace_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Err(io::Error::other("disk full"))
     }
     fn remove_log(&self, _: &str) -> io::Result<()> {
         Ok(())
@@ -344,6 +349,9 @@ impl Store for Full {
     }
     fn blobs(&self) -> io::Result<Vec<String>> {
         Ok(Vec::new())
+    }
+    fn remove_blob(&self, _: &str) -> io::Result<()> {
+        Ok(())
     }
     fn destroy(&self) -> io::Result<()> {
         Ok(())
@@ -658,10 +666,8 @@ fn restart_after(
     assert!(run_until(&mut app, ended));
     let said = said(&mut app);
     // Every mark goes with the results.
-    let agent = first_agent(&mut app);
-    let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
-    let marks = conversation.map(|conversation| conversation.asides().count());
-    assert_eq!(marks, Some(0), "{said}");
+    let marks = aside_kinds(&mut app);
+    assert!(!marks.iter().any(|kind| kind == "rig.call"), "{said}");
     (app, said, store)
 }
 
@@ -687,10 +693,8 @@ fn a_restart_answers_what_a_crash_interrupted_after_every_gate() {
     app.update();
     let saved = rig_memory::Session::read(&store).map(|session| session.agents);
     let marks = saved.map(|agents| {
-        agents
-            .iter()
-            .map(|it| it.conversation.asides().count())
-            .sum()
+        let asides = agents.iter().flat_map(|it| it.conversation.asides());
+        asides.filter(|(_, aside)| aside.kind == "rig.call").count()
     });
     assert_eq!(marks.ok(), Some(0usize));
 }
@@ -793,9 +797,17 @@ fn a_turn_a_crash_cut_short_carries_on_where_it_began() {
             .map(|entry| entry.id)
     });
     assert!(go.is_some());
-    // The same, first turn, carried on from the message that started it.
+    // The same, first turn, carried on from the message that started it,
+    // its one record left open by the crash and closed by the restart.
     let began = &app.world().resource::<Began>().0;
     assert_eq!(began.first().copied(), go.map(|go| (0, go)), "{began:?}");
+    let records = conversation
+        .into_iter()
+        .flat_map(|conversation| conversation.turns());
+    let records: Vec<_> = records
+        .map(|(_, record)| (record.index, Some(record.start), record.end.is_some()))
+        .collect();
+    assert_eq!(records, [(0, go, true)]);
 }
 
 /// The holds a gate put on restored calls while it asked someone.
@@ -871,4 +883,93 @@ fn a_read_that_finished_before_a_crash_keeps_its_result() {
         decided,
         &[("look".to_owned(), rig.clone()), ("wait".to_owned(), rig)]
     );
+}
+
+/// Keeps every message a turn did not send in the inbox.
+fn keep_unsent(unsent: Query<Entity, Added<Unsent>>, mut commands: Commands) {
+    for message in &unsent {
+        commands.entity(message).remove::<Unsent>();
+    }
+}
+
+/// A session that exited with "also the docs" in its agent's inbox: while
+/// a gate held the agent's `touch` call, or, `stopped`, after the user
+/// stopped that turn and a plugin kept the message.
+fn pending_at_exit(stopped: bool) -> MemoryStore {
+    let store = MemoryStore::default();
+    let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([vec![
+        call("t1", "touch"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_systems(AgentPass, (hold_touches, keep_unsent).in_set(Stage::Gate));
+    });
+    let Some(agent) = first_agent(&mut app) else {
+        return store;
+    };
+    let world = app.world_mut();
+    world.trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    let held = |world: &World| !world.resource::<Gated>().0.is_empty();
+    assert!(run_until(&mut app, held));
+    let steer = Incoming::new("also the docs", DeliveryMode::Steer);
+    let message = app.world_mut().spawn((steer, ForAgent(agent))).id();
+    assert!(run_until(&mut app, |world| {
+        world.get::<Started>(message).is_some()
+    }));
+    if stopped {
+        app.world_mut().trigger(Interrupt::new(agent));
+        app.update();
+    }
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    store
+}
+
+/// The kinds of the asides of the first agent's conversation.
+fn aside_kinds(app: &mut App) -> Vec<String> {
+    let agent = first_agent(app);
+    let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
+    let asides = conversation.into_iter().flat_map(|it| it.asides());
+    asides.map(|(_, aside)| aside.kind.clone()).collect()
+}
+
+#[test]
+fn a_message_in_the_inbox_at_exit_goes_with_the_restored_turns_next_call() {
+    let store = pending_at_exit(false);
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |_| {});
+    let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended));
+    let sent = serde_json::to_string(&model.requests()).unwrap_or_default();
+    assert!(sent.contains("also the docs"), "{sent}");
+    // Given once, its mark gone with it.
+    assert_eq!(said(&mut app).matches("also the docs").count(), 1);
+    assert!(!aside_kinds(&mut app).iter().any(|kind| kind == "rig.inbox"));
+}
+
+/// The text each [`Recalled`] handed back.
+#[derive(Resource, Default)]
+struct RecalledTexts(Vec<String>);
+
+#[test]
+fn a_message_kept_for_an_idle_agent_comes_back_to_the_user_after_a_restart() {
+    let store = pending_at_exit(true);
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut app = tools_app(&store, &model, |app| {
+        app.init_resource::<RecalledTexts>().add_systems(
+            Last,
+            |mut read: MessageReader<Recalled>, mut texts: ResMut<RecalledTexts>| {
+                texts.0.extend(read.read().map(|it| it.text.clone()));
+            },
+        );
+    });
+    let recalled = |world: &World| !world.resource::<RecalledTexts>().0.is_empty();
+    assert!(run_until(&mut app, recalled));
+    assert_eq!(app.world().resource::<RecalledTexts>().0, ["also the docs"]);
+    assert!(!said(&mut app).contains("also the docs"));
+    assert_eq!(model.request_count(), 0);
 }

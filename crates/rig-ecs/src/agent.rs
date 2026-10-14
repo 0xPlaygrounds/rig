@@ -20,15 +20,7 @@ use super::turn::{NO_MODEL, Recovery, start_turn};
 /// [`ModelChoice`](super::model::ModelChoice) until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
-#[require(
-    AgentId,
-    Conversation,
-    Effort,
-    LastUsage,
-    SystemPrompt,
-    ToolAccess,
-    TurnsStarted
-)]
+#[require(AgentId, Conversation, Effort, LastUsage, SystemPrompt, ToolAccess)]
 pub struct Agent;
 
 /// The agent's stable id, used in its log's name, effect scopes and logs.
@@ -237,13 +229,14 @@ impl ToolAccess {
 pub struct TurnOf(pub Entity);
 
 /// Where a turn stands, on the turn. The kernel fills it in when the turn
-/// is spawned and keeps it.
+/// is spawned, from the turn's record in its agent's conversation
+/// ([`TurnRecord`](conversation::TurnRecord)), and keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[component(on_add = start_turn)]
 #[reflect(Component, Default)]
 pub struct Turn {
     /// How many turns its agent started before this one, over the whole
-    /// session: the agent's count is saved with it.
+    /// session.
     pub index: u64,
     /// Where the turn begins in its agent's [`Conversation`]: the id of
     /// the user's message it answers, or, when the conversation does not
@@ -260,23 +253,6 @@ pub struct Turn {
     /// keep it open but are never committed as tool results.
     #[reflect(ignore)]
     pub reply: Option<EffectId>,
-}
-
-/// How many turns the agent started and where the last one began, so a
-/// restart carries that turn on. Saved with the session, as `null` before
-/// the first.
-#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
-pub(crate) struct TurnsStarted(pub(crate) Option<LastTurn>);
-
-/// The agent's last turn, in [`TurnsStarted`].
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub(crate) struct LastTurn {
-    /// How many turns the agent started, the next turn's [`Turn::index`].
-    pub(crate) count: u64,
-    /// Its [`Turn::first_message`].
-    pub(crate) start: MessageId,
 }
 
 /// The agent's running turn. An agent with it is busy.
@@ -306,7 +282,10 @@ pub struct CallOf(pub Entity);
 #[relationship_target(relationship = CallOf, linked_spawn)]
 pub struct Calls(Vec<Entity>);
 
-/// Text streamed so far by an in-flight model call, for views.
+/// Text streamed so far by an in-flight model call, for views. A plugin
+/// that continues a reply in a successor call may start the successor's
+/// `Partial` with the text so far: views show one growing reply, and a
+/// stop saves what the user saw.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct Partial {

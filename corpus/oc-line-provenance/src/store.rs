@@ -1,9 +1,13 @@
 //! The project's provenance records: which tool call wrote each line of
 //! each file an agent changed, carried forward through every later change.
+//! They are kept as a log that only grows, one [`Logged`] line per call
+//! or forget, so sessions working in one project at once never lose each
+//! other's, and folded into a [`ProvenanceStore`] when asked.
 
 use std::collections::BTreeMap;
 
-use rig_harness::prelude::MessageId;
+use rig_harness::rig_core::conversation::MessageKey;
+use rig_harness::rig_core::tool::{ChangeKind, FileChange, Hunk, HunkLine};
 use serde::{Deserialize, Serialize};
 use similar::{DiffTag, TextDiff};
 
@@ -12,18 +16,15 @@ use similar::{DiffTag, TextDiff};
 pub struct Record {
     /// The session's id.
     pub session: String,
-    /// The session's name, set with `/name`, when it had one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_name: Option<String>,
     /// The agent's name.
     pub agent: String,
     /// The agent's stable id: the name of its log in the session.
     pub agent_id: String,
     /// The turn, counted from 1 over the session.
     pub turn: u64,
-    /// Where the turn begins in the agent's conversation.
+    /// The message that asked for the turn, in the agent's conversation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub first_message: Option<MessageId>,
+    pub asked: Option<MessageKey>,
     /// What the user typed to start the turn (the root agent's turn, for
     /// a subagent's call).
     pub prompt: String,
@@ -33,15 +34,6 @@ pub struct Record {
     pub call_id: String,
     /// When the call settled, in milliseconds since the Unix epoch.
     pub at_ms: u64,
-}
-
-impl Record {
-    /// The session as it is shown: its name, else the start of its id.
-    pub fn session_label(&self) -> &str {
-        self.session_name
-            .as_deref()
-            .unwrap_or_else(|| self.session.get(..8).unwrap_or(&self.session))
-    }
 }
 
 /// Where a line came from: the record of the call that wrote it, and
@@ -76,7 +68,23 @@ pub struct Span {
     pub origin: Option<LineOrigin>,
 }
 
-/// Every provenance record of a project, kept in its `PluginData`.
+/// One line of a project's provenance log.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Logged {
+    /// A tool call changed these files, each by its path from the project
+    /// root.
+    Changed {
+        /// Who made the call, where and why.
+        record: Record,
+        /// What it changed, with each file's text before and its hunks.
+        changes: Vec<(String, FileChange)>,
+    },
+    /// The user dropped the records of the session this identifies.
+    Forgot(String),
+}
+
+/// Every provenance record of a project, folded from its log: a record's
+/// key is its call's place in the log, so it never changes.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProvenanceStore {
     /// The tool calls, by key.
@@ -86,29 +94,44 @@ pub struct ProvenanceStore {
 }
 
 impl ProvenanceStore {
-    /// Keeps `record`, returning its key.
-    pub fn add(&mut self, record: Record) -> u64 {
-        let key = self
-            .records
-            .last_key_value()
-            .map_or(0, |(key, _)| key.saturating_add(1));
-        self.records.insert(key, record);
-        key
+    /// The store a log's lines make, in order. A file a change does not
+    /// say the text of (over the tool's read limit, or not UTF-8) is not
+    /// tracked from then on; a line that does not read is skipped.
+    pub fn fold(log: &[u8]) -> Self {
+        let mut store = Self::default();
+        let logged = log
+            .split(|byte| *byte == b'\n')
+            .filter_map(|line| serde_json::from_slice(line).ok());
+        for (key, logged) in (0..).zip(logged) {
+            match logged {
+                Logged::Changed { record, changes } => {
+                    for (path, change) in &changes {
+                        store.agent_changed(path, change, key);
+                    }
+                    store.records.insert(key, record);
+                    store.prune();
+                }
+                Logged::Forgot(session) => {
+                    store.forget(&session);
+                }
+            }
+        }
+        store
     }
 
     /// The file at `path` is now `now` (`None`: gone), changed by the user:
     /// a line of an agent's they changed keeps its origin, marked; a line
-    /// they added is no agent's. Whether anything changed.
-    pub fn user_changed(&mut self, path: &str, now: Option<&str>) -> bool {
+    /// they added is no agent's.
+    pub fn user_changed(&mut self, path: &str, now: Option<&str>) {
         let Some(file) = self.files.get_mut(path) else {
-            return false;
+            return;
         };
         let Some(now) = now else {
             self.files.remove(path);
-            return true;
+            return;
         };
         if file.text == now {
-            return false;
+            return;
         }
         file.lines = carry(&file.text, &file.lines, now, &|was| {
             was.map(|origin| LineOrigin {
@@ -118,19 +141,27 @@ impl ProvenanceStore {
         });
         now.clone_into(&mut file.text);
         self.prune();
-        true
     }
 
-    /// The call of `record` turned the file at `path` from `before` into
-    /// `after` (`None`: deleted): what differs from `before` is its. A
-    /// tracked file that is not `before` any more was changed by the user
-    /// first.
-    pub fn agent_changed(&mut self, path: &str, before: &str, after: Option<&str>, record: u64) {
-        self.user_changed(path, Some(before));
-        let Some(after) = after else {
+    /// The call of `record` made `change` to the file at `path`: the lines
+    /// it added are its, the others keep their origin. A tracked file that
+    /// was not what the change found had been changed by the user first.
+    /// When the change does not say the text before and after, the file's
+    /// lines are not known any more and it is not tracked.
+    fn agent_changed(&mut self, path: &str, change: &FileChange, record: u64) {
+        let before = match change.kind {
+            ChangeKind::Deleted => {
+                self.files.remove(path);
+                return;
+            }
+            ChangeKind::Created => Some(""),
+            ChangeKind::Modified => change.before_text.as_deref(),
+        };
+        let (Some(before), Some(after)) = (before, change.after_text()) else {
             self.files.remove(path);
             return;
         };
+        self.user_changed(path, Some(before));
         let file = self
             .files
             .entry(path.to_owned())
@@ -142,14 +173,13 @@ impl ProvenanceStore {
             record,
             changed_by_you: false,
         });
-        file.lines = carry(&file.text, &file.lines, after, &|_| written);
-        after.clone_into(&mut file.text);
-        self.prune();
+        file.lines = through(&file.lines, &change.hunks, written);
+        file.text = after;
     }
 
-    /// Drops the records of the session named or identified by `session`
-    /// (its id or the start of it, or its name): their lines then report
-    /// no agent. How many records went.
+    /// Drops the records of the session `session` identifies (its id or
+    /// the start of it): their lines then report no agent. How many
+    /// records went.
     pub fn forget(&mut self, session: &str) -> usize {
         let gone: Vec<u64> = self
             .records
@@ -157,7 +187,6 @@ impl ProvenanceStore {
             .filter(|(_, record)| {
                 record.session == session
                     || (session.len() >= 4 && record.session.starts_with(session))
-                    || record.session_name.as_deref() == Some(session)
             })
             .map(|(key, _)| *key)
             .collect();
@@ -203,11 +232,48 @@ impl ProvenanceStore {
         spans
     }
 
-    /// Stops tracking files no agent's line is left in.
+    /// Stops tracking files no agent's line is left in, and drops the
+    /// records no line is left of.
     fn prune(&mut self) {
         self.files
             .retain(|_, file| file.lines.iter().any(Option::is_some));
+        let kept: std::collections::BTreeSet<u64> = self
+            .files
+            .values()
+            .flat_map(|file| file.lines.iter().flatten())
+            .map(|origin| origin.record)
+            .collect();
+        self.records.retain(|key, _| kept.contains(key));
     }
+}
+
+/// The origins of the lines after a change, given those before it and
+/// its hunks: a kept line keeps its origin, an added one is `written`.
+fn through(
+    origins: &[Option<LineOrigin>],
+    hunks: &[Hunk],
+    written: Option<LineOrigin>,
+) -> Vec<Option<LineOrigin>> {
+    let at = |line: usize| origins.get(line).copied().flatten();
+    let mut carried = Vec::with_capacity(origins.len());
+    let mut old = 0;
+    for hunk in hunks {
+        let start = hunk.old.start.saturating_sub(1).max(old);
+        carried.extend((old..start).map(at));
+        old = start;
+        for line in &hunk.lines {
+            match line {
+                HunkLine::Same(_) => {
+                    carried.push(at(old));
+                    old += 1;
+                }
+                HunkLine::Removed(_) => old += 1,
+                HunkLine::Added(_) => carried.push(written),
+            }
+        }
+    }
+    carried.extend((old..origins.len().max(old)).map(at));
+    carried
 }
 
 /// The origins of `new`'s lines, given `old`'s: an unchanged line keeps

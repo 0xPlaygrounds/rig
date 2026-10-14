@@ -675,9 +675,20 @@ fn a_restored_subagent_whose_work_a_plugin_claims_is_not_stopped() {
             Message::user("Go."),
         );
         assert!(asked.is_ok(), "{asked:?}");
-        session.task("ta");
+        let child = session.task("ta");
         session.app.update();
+        let named = session.app.world().get::<Name>(child);
+        assert_eq!(named.map(Name::as_str), Some("ta"));
         drop(session);
+        // A library program reads the subagent's title and finds the main
+        // agent by the keys and the order the harness uses.
+        assert_eq!(AgentTitle::type_path(), rig_harness::rig_memory::TITLE);
+        let saved = rig_harness::rig_memory::Session::read(&store);
+        let saved = saved.as_ref().ok();
+        let main = saved.and_then(|saved| saved.main_agent());
+        assert!(main.is_some_and(|main| main.parent.is_none()));
+        let sub = saved.and_then(|saved| saved.agents.iter().find(|agent| agent.parent.is_some()));
+        assert_eq!(sub.and_then(|sub| sub.title()).as_deref(), Some("ta"));
 
         // A plugin that asks the person first holds the restored calls.
         let session = Session::with(&store, None, |app| {
@@ -691,4 +702,28 @@ fn a_restored_subagent_whose_work_a_plugin_claims_is_not_stopped() {
             .any(|(request, _, text)| *request == "ta" && text.starts_with("Interrupted"));
         assert_eq!(interrupted, !claimed, "{reports:?}");
     }
+}
+
+#[test]
+fn a_session_rewrite_reaches_a_finished_subagents_answer() {
+    let store = MemoryStore::default();
+    let mut session = Session::new(&store, None);
+    let world = session.app.world_mut();
+    let done = Lifecycle::Finished("the token is sk-9".to_owned());
+    let child = world.spawn((Agent, Subtask, done)).id();
+    let redact = Strings(|text: &mut String| {
+        let hit = text.contains("sk-9");
+        if hit {
+            *text = text.replace("sk-9", "[REDACTED]");
+        }
+        hit
+    });
+    world.write_message(SessionRewritten {
+        asker: None,
+        with: std::sync::Arc::new(redact),
+        result: Ok(Rewritten::default()),
+    });
+    session.app.update();
+    let finished = Lifecycle::Finished("the token is [REDACTED]".to_owned());
+    assert_eq!(session.app.world().get::<Lifecycle>(child), Some(&finished));
 }

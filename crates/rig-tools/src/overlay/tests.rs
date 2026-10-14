@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rig_core::tool::{ChangeKind, Tool, ToolContext, ToolExecutionError, content_hash};
 
 use super::Overlay;
-use crate::workspace::{Local, Workspace};
+use crate::workspace::{Listing, Local, Workspace};
 use crate::{Edit, EditArgs, Read, ReadArgs, Replacement, Write, WriteArgs};
 
 /// What `tool` answers to `args`.
@@ -83,15 +83,18 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
             (ChangeKind::Created, 1, 0, None, Some(content_hash(b"b\n"))),
         ]
     );
-    let files = overlay.files(&dir, Some("*.rs"), false).unwrap_or_default();
+    let files = overlay
+        .files(&dir, Some("*.rs"), Listing::Visible)
+        .unwrap_or_default();
     assert_eq!(files, [dir.join("a.rs"), dir.join("new/b.rs")]);
     std::fs::remove_dir_all(dir).ok();
 }
 
 /// A previewed change says how large each side of the file is, and a
-/// deletion carries its diff, so a guard need not read the file again.
+/// deletion carries its hunks and text, so a guard need not read the file
+/// again.
 #[test]
-fn an_overlay_change_gives_each_side_and_a_deletions_diff() {
+fn an_overlay_change_gives_each_side_and_a_deletions_text() {
     let dir = std::env::temp_dir().join(format!("rig-tools-overlay-states-{}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).ok();
@@ -106,13 +109,11 @@ fn an_overlay_change_gives_each_side_and_a_deletions_diff() {
     let deleted = changes.first();
     let lines = deleted.and_then(|it| it.before.as_ref()?.lines);
     assert_eq!(lines, Some(3));
-    let diff = deleted
-        .and_then(|it| it.diff.as_deref())
-        .unwrap_or_default();
-    let removed = diff
-        .lines()
-        .filter(|line| line.starts_with('-') && !line.starts_with("---"));
-    assert_eq!(removed.count(), 3);
+    let hunks = deleted.map(|it| it.hunks.as_slice()).unwrap_or_default();
+    let removed = hunks.iter().flat_map(|hunk| &hunk.lines);
+    assert_eq!(removed.filter(|line| line.sign() == '-').count(), 3);
+    let text = deleted.and_then(|it| it.before_text.as_deref());
+    assert_eq!(text, Some("a\nb\nc\n"));
     let created = changes.get(1);
     assert_eq!(
         created.and_then(|it| Some(it.after.as_ref()?.bytes)),

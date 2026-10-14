@@ -11,7 +11,7 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
-use rig_tui::ArgCompletion;
+use rig_tui::CompletionSource;
 use serde::{Deserialize, Serialize};
 
 /// How long an answer's excerpt in `/alternatives` is, in characters.
@@ -211,7 +211,7 @@ fn complete(
     completions: Query<Entity, With<RetryCompletions>>,
     mut commands: Commands,
 ) {
-    let force = ArgCompletion::new("retry-with").candidate("--force", "even if files changed");
+    let force = CompletionSource::arg("retry-with").candidate("--force", "even if files changed");
     let completion = models
         .0
         .reachable()

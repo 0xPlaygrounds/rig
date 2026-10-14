@@ -9,7 +9,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::prelude::*;
 use rig_harness_test_support::{Ended, MemoryStore, app_on, connect, log_ended, reply, run_until};
 use rig_tools::process::{Launcher, Process, Spawn};
-use rig_tools::workspace::{Contents, Stat, Workspace};
+use rig_tools::workspace::{Contents, Listing, Stat, Workspace};
 
 use rig_harness::commands::RunCommand;
 use rig_harness::harness_protocol::Home;
@@ -259,7 +259,7 @@ impl Workspace for Remote {
         path.to_path_buf()
     }
 
-    fn files(&self, _: &Path, _: Option<&str>, _: bool) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
         Ok(Vec::new())
     }
 

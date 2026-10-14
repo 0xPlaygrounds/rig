@@ -31,11 +31,14 @@ use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message,
     UnsupportedOption,
 };
-use rig_core::conversation::{Author, Change, Conversation, Entry, MessageId, Spliced};
+use rig_core::conversation::{
+    Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
+};
 use rig_core::message::{ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
-use crate::{HeuristicTokenCounter, TokenCounter};
+use crate::session::{Record, as_of, history};
+use crate::{HeuristicTokenCounter, LoadError, Store, TokenCounter};
 
 /// A summary of a conversation's older messages and the values tracked
 /// across compactions (such as the files a coding agent read). The default
@@ -466,7 +469,9 @@ impl CompactionPolicy {
 /// Puts the summary of `state` in place of the messages of
 /// `conversation` before `upto` (every message with `None`), earlier
 /// summaries included: one user entry by [`summary_author`], a splice it
-/// makes. `None`, changing nothing, when `upto` was taken out meanwhile or
+/// makes, followed by an aside of kind [`COMPACTED`] that says what it
+/// replaced ([`Compacted`]), so [`undo_summary`] can put that back.
+/// `None`, changing nothing, when `upto` was taken out meanwhile or
 /// `state` has no summary.
 pub fn apply_summary(
     conversation: &mut Conversation,
@@ -478,7 +483,121 @@ pub fn apply_summary(
         Some(upto) => conversation.index_of(upto)?,
     };
     let summary = Entry::new(Message::user(state.message()?)).by(summary_author());
-    Some(conversation.splice(..end, [summary], summary_author()))
+    let spliced = conversation.splice(..end, [summary], summary_author());
+    if let Some(&summary) = spliced.changed.first() {
+        let compacted = Compacted {
+            summary,
+            replaced: spliced.removed.clone(),
+            state: state.clone(),
+        };
+        let value = serde_json::to_value(compacted).unwrap_or_default();
+        let aside = Aside::new(COMPACTED, summary_author(), value).after(Some(summary));
+        conversation.add_aside(aside);
+    }
+    Some(spliced)
+}
+
+/// The kind of the aside [`apply_summary`] puts after each summary.
+pub const COMPACTED: &str = "rig.compaction";
+
+/// What a compaction replaced, kept with the conversation in an aside of
+/// kind [`COMPACTED`] by [`summary_author`] after its summary: the newest
+/// one is what [`undo_summary`] puts back.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Compacted {
+    /// The summary's entry.
+    pub summary: MessageId,
+    /// The entries it replaced, earlier summaries included, in order.
+    pub replaced: Vec<MessageId>,
+    /// The state it put in, which the next compaction builds on.
+    pub state: SummaryState,
+}
+
+impl Compacted {
+    /// The record of every compaction of `conversation` not undone, oldest
+    /// first, each with its aside.
+    pub fn of(conversation: &Conversation) -> impl Iterator<Item = (AsideId, Self)> + '_ {
+        let author = summary_author();
+        let records = conversation.asides();
+        let ours =
+            records.filter(move |(_, aside)| aside.kind == COMPACTED && aside.author == author);
+        ours.filter_map(|(id, aside)| Some((id, serde_json::from_value(aside.value.clone()).ok()?)))
+    }
+}
+
+/// What [`undo_summary`] did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Uncompacted {
+    /// The entries put back in place of the summary, with their ids.
+    pub restored: Vec<MessageId>,
+    /// The summary state now: the compaction's before it, or the state
+    /// before any.
+    pub state: SummaryState,
+}
+
+/// Why [`undo_summary`] put nothing back.
+#[derive(Debug, thiserror::Error)]
+pub enum UndoError {
+    /// The conversation has no compaction left to undo.
+    #[error("there is no compaction to undo")]
+    Nothing,
+    /// The newest compaction's summary is no longer in the conversation.
+    #[error("its summary is no longer in the conversation")]
+    SummaryGone,
+    /// The session's log does not hold what it replaced, such as before
+    /// the compaction was saved.
+    #[error("the session's log does not hold what it replaced")]
+    NotInLog,
+    /// The session's log could not be read.
+    #[error(transparent)]
+    Load(#[from] LoadError),
+}
+
+/// Undoes the newest compaction of `conversation`, the conversation saved
+/// in the log `log` of `store`: the entries its summary replaced, read
+/// from that log as they were just before it, are put back in the
+/// summary's place with their ids ([`Conversation::restore`] by `by`), and
+/// its [`Compacted`] aside goes. Entries added after the summary stay
+/// after them. Undone one after another, compactions come back newest
+/// first, each with the summary it built on.
+///
+/// # Errors
+///
+/// [`UndoError`], changing nothing.
+pub fn undo_summary(
+    conversation: &mut Conversation,
+    store: &dyn Store,
+    log: &str,
+    by: Author,
+) -> Result<Uncompacted, UndoError> {
+    let (aside, compacted) = Compacted::of(conversation)
+        .last()
+        .ok_or(UndoError::Nothing)?;
+    let at = conversation
+        .index_of(compacted.summary)
+        .ok_or(UndoError::SummaryGone)?;
+    // The splice that made the summary, the first naming it: later ones
+    // put it back.
+    let made = history(store, log)?
+        .into_iter()
+        .find_map(|(stamp, record)| match record {
+            Record::Change(recorded) if summary_in(&recorded.change) == Some(compacted.summary) => {
+                Some(stamp.n)
+            }
+            _ => None,
+        });
+    let before = as_of(store, log, made.ok_or(UndoError::NotInLog)?)?;
+    let originals: Option<Vec<Entry>> = (compacted.replaced.iter())
+        .map(|id| before.entry(before.index_of(*id)?))
+        .collect();
+    let originals = originals.ok_or(UndoError::NotInLog)?;
+    let restored = conversation.restore(at..=at, originals, by).restored;
+    conversation.remove_aside(aside);
+    let state = Compacted::of(conversation).last().map(|(_, it)| it.state);
+    Ok(Uncompacted {
+        restored,
+        state: state.unwrap_or_default(),
+    })
 }
 
 /// What a [`Summarizer`] asks the model.

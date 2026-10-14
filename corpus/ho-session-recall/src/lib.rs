@@ -25,8 +25,8 @@ use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_core::tool::ToolOutput;
-use rig_harness::rig_memory::DirStore;
-use rig_sessions::Meta;
+use rig_harness::rig_memory::{DirStore, SessionMeta};
+use rig_sessions::SessionTitle;
 use rig_tools::attach::attached_file;
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
@@ -457,11 +457,10 @@ fn stamp(session: &Path) -> Stamp {
 /// The session's name, date and directory, from its listing cache in
 /// `store`.
 fn info(session: &SessionDir, store: &dyn Files, id: &str, stamp: Stamp) -> Info {
-    let meta = Meta::of(store);
-    let name = meta.as_ref().and_then(|meta| {
-        let typed = Some(meta.title.typed.clone()).filter(|typed| !typed.is_empty());
-        meta.title.name.clone().or(typed)
-    });
+    let meta = SessionMeta::read(store);
+    let title = SessionTitle::read(session, store);
+    let name = title.as_ref().map(SessionTitle::shown);
+    let name = name.filter(|name| !name.is_empty()).map(str::to_owned);
     let directory = fs::read_to_string(session.directory())
         .ok()
         .map(|text| PathBuf::from(text.trim_end_matches('\n')));
@@ -832,8 +831,11 @@ fn found(
     let excerpts: Vec<String> = hits.into_iter().map(|hit| hit.excerpt).collect();
     commands.spawn(picker).observe(
         move |picked: On<Picked>, mut commands: Commands, mut notices: MessageWriter<Notice>| {
-            if let Some(Chosen::Item(index)) = picked.chosen
-                && let Some(excerpt) = excerpts.get(index)
+            if let Some(index) = picked
+                .chosen
+                .as_ref()
+                .and_then(|chosen| chosen.items.first())
+                && let Some(excerpt) = excerpts.get(*index)
             {
                 commands
                     .entity(agent)

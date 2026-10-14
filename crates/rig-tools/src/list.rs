@@ -14,11 +14,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::fs::io_error;
-use crate::workspace::{Local, Workspace};
+use crate::workspace::{Listing, Local, Workspace};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Lists the files under a directory, as far down as asked, honouring
-/// `.gitignore`: one path per line below the listed directory, and each
+/// `.gitignore` ([`Listing::Visible`], or [`Listing::Hidden`] when asked or
+/// when the glob names a hidden path): one path per line below the listed directory, and each
 /// directory deeper than the listing goes once, as `dir/`. Publishes what
 /// it listed ([`FilesListed`]) and, when the list was cut, [`OutputCut`].
 #[derive(Clone, Debug)]
@@ -55,6 +56,10 @@ pub struct ListArgs {
     pub depth: Option<usize>,
     /// Only files matching this glob, such as `*.rs`.
     pub glob: Option<String>,
+    /// Also hidden files and directories (named with a leading `.`), such
+    /// as `.github/`; files git ignores stay out.
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 impl ListArgs {
@@ -76,6 +81,21 @@ impl ListArgs {
     pub fn glob(mut self, glob: impl Into<String>) -> Self {
         self.glob = Some(glob.into());
         self
+    }
+
+    /// The same listing, hidden files included.
+    pub fn hidden(mut self) -> Self {
+        self.hidden = true;
+        self
+    }
+
+    /// Which files it lists.
+    pub fn listing(&self) -> Listing {
+        match self.hidden {
+            true => Listing::Hidden,
+            false => Listing::Visible,
+        }
+        .for_glob(self.glob.as_deref())
     }
 }
 
@@ -108,8 +128,9 @@ impl Tool for List {
     fn description(&self) -> String {
         format!(
             "List the files under a directory, sorted, one path per line below it. Skips files \
-             ignored by git, hidden files and target directories. With depth, directories \
-             below that depth are listed once as `dir/`. At most {MAX_LINES} lines or {} KB.",
+             ignored by git, target directories and, unless hidden is set or the glob names \
+             one, hidden files. With depth, directories below that depth are listed once as \
+             `dir/`. At most {MAX_LINES} lines or {} KB.",
             MAX_BYTES / 1024
         )
     }
@@ -160,7 +181,7 @@ fn list(
 ) -> Result<(String, FilesListed, Option<OutputCut>), ToolExecutionError> {
     let shown = root.to_string_lossy();
     let files = workspace
-        .files(root, args.glob.as_deref(), false)
+        .files(root, args.glob.as_deref(), args.listing())
         .map_err(|error| match error.kind() {
             ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
             _ => io_error(&shown, error),

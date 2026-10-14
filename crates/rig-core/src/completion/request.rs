@@ -10,7 +10,7 @@
 //! ```
 
 use super::message::{
-    AssistantContent, AssistantMessage, DocumentMediaType, Origin, StopReason, ToolCall,
+    AssistantContent, AssistantMessage, CallId, DocumentMediaType, Origin, StopReason, ToolCall,
 };
 use super::options::{
     CacheRetention, GenerationOptions, OnUnsupported, Reasoning, ServiceTier, Verbosity,
@@ -335,6 +335,10 @@ pub struct CompletionResponse {
     /// through [`Self::accepts_unknown_finish_reasons`].
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     accepts_unknown_finish_reasons: bool,
+    /// The calls the provider ended the reply in the middle of. Read
+    /// through [`Self::unfinished_calls`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    unfinished_calls: Vec<CallId>,
     /// Provider response document for typed inspection through deserialization.
     /// Parsed wire types may omit unmodeled fields. This data does not override
     /// normalized fields; callers constructing responses must supply it.
@@ -372,6 +376,7 @@ impl CompletionResponse {
             provider_request_id: None,
             finish_reason: None,
             accepts_unknown_finish_reasons: false,
+            unfinished_calls: Vec::new(),
             raw,
         }
     }
@@ -437,6 +442,22 @@ impl CompletionResponse {
     /// [`CompletionRequest::accept_unknown_finish_reasons`]: field@CompletionRequest::accept_unknown_finish_reasons
     pub fn accepts_unknown_finish_reasons(&self) -> bool {
         self.accepts_unknown_finish_reasons
+    }
+
+    /// The tool calls the provider ended the reply in the middle of (their
+    /// arguments as far as they came), in the order they opened, such as a
+    /// call cut by [`FinishReason::Length`]. Empty when every call in
+    /// [`Self::choice`] was finished.
+    pub fn unfinished_calls(&self) -> impl Iterator<Item = &ToolCall> {
+        self.tool_calls()
+            .filter(|call| self.unfinished_calls.contains(&call.id))
+    }
+
+    /// The same response, `calls` (ids of calls in [`Self::choice`]) being
+    /// the ones the provider ended the reply in the middle of.
+    pub fn with_unfinished_calls(mut self, calls: impl IntoIterator<Item = CallId>) -> Self {
+        self.unfinished_calls = calls.into_iter().collect();
+        self
     }
 
     /// Accept, or refuse, [`FinishReason::Other`] as a normal stop in
@@ -596,6 +617,8 @@ struct CompletionResponseRepr {
     finish_reason: Option<FinishReason>,
     #[serde(default)]
     accepts_unknown_finish_reasons: bool,
+    #[serde(default)]
+    unfinished_calls: Vec<CallId>,
     raw: serde_json::Value,
 }
 
@@ -610,6 +633,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             provider_request_id,
             finish_reason,
             accepts_unknown_finish_reasons,
+            unfinished_calls,
             raw,
         } = repr;
         use crate::provider_response::reported;
@@ -621,6 +645,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
         response.aborted = aborted;
         response.provider_request_id = reported(provider_request_id);
         response.accepts_unknown_finish_reasons = accepts_unknown_finish_reasons;
+        response.unfinished_calls = unfinished_calls;
         response
     }
 }
@@ -1210,6 +1235,13 @@ pub struct CompletionRequest {
     /// [`FinishReason::ContentFilter`] still fails the turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub accept_unknown_finish_reasons: bool,
+    /// Send other models' reasoning in the history as reasoning where the
+    /// target reads it ([`Accepts::foreign_reasoning`]), instead of as plain
+    /// text, the default (pi's rule). Defaults to `false`.
+    ///
+    /// [`Accepts::foreign_reasoning`]: crate::completion::Accepts::foreign_reasoning
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub foreign_reasoning: bool,
     /// Portable generation options. Precedence, lowest first: the mapped
     /// options, then [`Self::provider_options`], then `additional_params`.
     #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
@@ -1455,6 +1487,7 @@ impl CompletionRequest {
             output_schema: None,
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
+            foreign_reasoning: false,
             options: GenerationOptions::default(),
             provider_options: ProviderOptions::default(),
             cache_points: Vec::new(),

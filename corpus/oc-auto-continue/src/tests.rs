@@ -7,9 +7,10 @@ use rig_core::operation::Finish;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, log_ended,
-    log_tool_outputs, reply, run_until, scripted_models,
+    log_tool_outputs, reply, run_until, scripted_models, tui_view,
 };
 use rig_telemetry::{TurnSpending, UsagePlugin};
+use rig_tui::{Focus, TuiTestScreen};
 use serde_json::json;
 
 use super::*;
@@ -43,13 +44,16 @@ fn run_turn(model: &MockCompletionModel, root: PathBuf, ask: &str) -> (App, Enti
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Ended>()
-        .add_observer(log_ended);
+        .add_observer(log_ended)
+        .insert_resource(TuiTestScreen::new(80, 30));
+    tui_view(&mut app);
     collect::<Notice>(&mut app);
     let agent = app
         .world_mut()
         .spawn((Agent, ModelChoice("test/model".to_owned())))
         .id();
     app.finish();
+    app.cleanup();
     app.update();
     app.world_mut()
         .trigger(Deliver::new(agent, ask, DeliveryMode::Steer));
@@ -71,6 +75,13 @@ fn answers(world: &World, agent: Entity) -> Vec<AssistantMessage> {
             _ => None,
         })
         .collect()
+}
+
+/// Where the seams' marks are: in a saved message's text, at a byte.
+fn marks(world: &World) -> Vec<Option<usize>> {
+    let marks = world.resource::<TranscriptView>().marks.iter();
+    let at = |mark: &TextMark| matches!(mark.r#in, MarkIn::Message { .. }).then_some(mark.at);
+    marks.map(at).collect()
 }
 
 /// The text blocks of `answer`, joined.
@@ -126,6 +137,15 @@ fn a_cut_reply_is_continued_and_joined_at_the_seam() {
         .first()
         .map(|it| (it.calls, it.tokens.input_tokens, it.tokens.output_tokens));
     assert_eq!(tokens, Some((2, Some(230), Some(30))), "{spent:?}");
+    // The seam is marked where the continuation began, its repeat said once.
+    assert_eq!(marks(app.world()), [Some(30)]);
+    app.world_mut().trigger(Focus { entity: agent });
+    app.update();
+    let screen = app.world().resource::<TuiTestScreen>().rows().join("\n");
+    assert!(
+        screen.contains("parse  (continued) 2. validate 3. emit."),
+        "{screen}"
+    );
 }
 
 #[test]
@@ -133,6 +153,8 @@ fn a_cut_write_is_never_run_and_asked_for_again() {
     let content = "line 1\nline 2\nline 3\n";
     let model = MockCompletionModel::from_stream_turns([
         vec![
+            // A complete call before the cut one is kept and runs once.
+            MockStreamEvent::tool_call("w0", "write", json!({ "path": "a.txt", "content": "a" })),
             MockStreamEvent::tool_call_name_delta("w1", "write"),
             MockStreamEvent::tool_call_arguments_delta(
                 "w1",
@@ -151,21 +173,27 @@ fn a_cut_write_is_never_run_and_asked_for_again() {
     let (app, agent) = run_turn(&model, root.clone(), "Write big.txt.");
 
     let written = std::fs::read_to_string(root.join("big.txt")).unwrap_or_default();
+    let first = std::fs::read_to_string(root.join("a.txt")).unwrap_or_default();
     std::fs::remove_dir_all(&root).ok();
-    assert_eq!(written, content);
-    let ran: Vec<&String> = app.world().resource::<ToolOutputs>().0.keys().collect();
-    assert_eq!(ran, ["w2"]);
-    let stored: Vec<String> = answers(app.world(), agent)
+    assert_eq!((written.as_str(), first.as_str()), (content, "a"));
+    let mut ran: Vec<&String> = app.world().resource::<ToolOutputs>().0.keys().collect();
+    ran.sort();
+    assert_eq!(ran, ["w0", "w2"]);
+    let stored: Vec<Vec<String>> = answers(app.world(), agent)
         .iter()
-        .flat_map(|answer| answer.content.clone())
-        .filter_map(|block| match block {
-            AssistantContent::ToolCall(call) => Some(call.id.to_string()),
-            _ => None,
+        .map(|answer| {
+            let calls = answer.content.iter().filter_map(|block| match block {
+                AssistantContent::ToolCall(call) => Some(call.id.to_string()),
+                _ => None,
+            });
+            calls.collect()
         })
         .collect();
-    assert_eq!(stored, ["w2"]);
+    // One message for the joined reply, the kept call first; then the answer.
+    assert_eq!(stored, [vec!["w0", "w2"], vec![]]);
     let second = format!("{:?}", model.requests().get(1));
     assert!(second.contains("several `edit` calls"), "{second}");
+    assert!(second.contains("(write) were kept"), "{second}");
 }
 
 #[test]
@@ -181,17 +209,7 @@ fn a_reply_cut_too_often_is_kept_with_a_notice() {
     let notices = &app.world().resource::<Collected<Notice>>().0;
     let told = format!("{notices:?}");
     assert!(told.contains("kept as it is"), "{told}");
-}
-
-#[test]
-fn the_overlap_at_a_seam_is_said_once() {
-    assert_eq!(join_at_seam("a b c", "d e"), "a b cd e");
-    assert_eq!(
-        join_at_seam("ends with café", "café au lait"),
-        "ends with café au lait"
-    );
-    // Shorter than the least overlap: kept.
-    assert_eq!(join_at_seam("hello", "lo"), "hellolo");
+    assert_eq!(marks(app.world()), [Some(6), Some(12), Some(20)]);
 }
 
 #[test]

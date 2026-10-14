@@ -305,7 +305,7 @@ fn found(home: &Home, stores: &SessionStores, current: &Path) -> Vec<Found> {
         .into_iter()
         .map(|entry| {
             let dir = home.session(&entry.id);
-            let parent = stores.open(&dir).ok().as_deref().and_then(ForkedFrom::of);
+            let parent = stores.open(&dir).ok().as_deref().and_then(ForkedFrom::read);
             // The directory it names, even one removed since: its sessions
             // are still one project's.
             let project = fs::read_to_string(dir.directory())
@@ -317,7 +317,7 @@ fn found(home: &Home, stores: &SessionStores, current: &Path) -> Vec<Found> {
                     project,
                     bytes: bytes_under(dir.path()),
                     updated: millis(entry.saved),
-                    name: entry.meta.title.name,
+                    name: entry.name,
                 },
                 in_use: dir.runs_elsewhere(),
                 parent: parent.map(|parent| parent.session.to_string()),
