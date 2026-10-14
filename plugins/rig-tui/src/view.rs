@@ -13,6 +13,7 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use ratatui::style::Style;
 use rig_core::completion::Message;
+use rig_core::conversation;
 use rig_core::message::CallId;
 use serde::{Deserialize, Serialize};
 
@@ -534,7 +535,7 @@ impl TranscriptSlot {
     /// follows while that is there, else after the first item of the entry
     /// that stands for it now, such as the summary of a compaction that
     /// took it out.
-    pub fn of_aside(aside: &Aside, conversation: &Conversation) -> Self {
+    pub fn of_aside(aside: &Aside, conversation: &conversation::Conversation) -> Self {
         let Some(after) = aside.after else {
             return Self::Top;
         };
@@ -593,7 +594,11 @@ impl ShownNotice {
     /// `conversation`, or `None` when it is no part of it: it is about
     /// another agent, or about every agent and was written in another's.
     /// One whose message is gone goes where that message was.
-    pub fn slot(&self, id: &AgentId, conversation: &Conversation) -> Option<TranscriptSlot> {
+    pub fn slot(
+        &self,
+        id: &AgentId,
+        conversation: &conversation::Conversation,
+    ) -> Option<TranscriptSlot> {
         if self.agent.as_ref().is_some_and(|agent| agent != id) {
             return None;
         }
@@ -617,7 +622,7 @@ impl ShownNotice {
 }
 
 /// The content items of message `index`.
-fn items(conversation: &Conversation, index: usize) -> usize {
+fn items(conversation: &conversation::Conversation, index: usize) -> usize {
     match conversation.messages().get(index) {
         Some(Message::User { content }) => content.len(),
         Some(Message::Assistant(assistant)) => assistant.content.len(),
@@ -626,7 +631,7 @@ fn items(conversation: &Conversation, index: usize) -> usize {
 }
 
 /// The end of `id`'s conversation, where a notice written now goes.
-fn anchor(id: &AgentId, conversation: &Conversation) -> Option<Anchor> {
+fn anchor(id: &AgentId, conversation: &conversation::Conversation) -> Option<Anchor> {
     let last = conversation.messages().len().checked_sub(1)?;
     Some(Anchor {
         agent: id.clone(),

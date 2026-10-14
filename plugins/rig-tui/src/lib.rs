@@ -62,6 +62,7 @@
 
 mod clipboard;
 mod complete;
+mod conversation_panel;
 pub mod diff;
 mod editor;
 mod history;
@@ -88,6 +89,7 @@ use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
+pub use conversation_panel::ConversationPanel;
 pub use crossterm;
 pub use editor::TuiInput;
 pub use history::{HistorySystems, PromptHistory, Sent};
@@ -266,6 +268,7 @@ pub fn add_view(app: &mut App) {
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
                 transcript::note_effects.in_set(TuiSystems::Prepare),
+                conversation_panel::draw_panels.in_set(TuiSystems::Draw),
                 (
                     complete::follow_input,
                     transcript::follow_streams,

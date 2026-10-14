@@ -18,6 +18,7 @@ use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 use unicode_width::UnicodeWidthChar;
 
 use super::complete::Completion;
+use super::conversation_panel::ConversationPanel;
 use super::editor::{Layout as InputLayout, TuiInput};
 use super::keys::KeyFocus;
 use super::markdown;
@@ -38,6 +39,7 @@ use super::view::{
     TranscriptView, TuiView,
 };
 use super::wrap::wrap_all;
+use rig_core::conversation;
 use rig_core::message::{CallId, ToolCall};
 use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
@@ -96,6 +98,7 @@ pub(crate) fn needs_redraw(
             Changed<EntryRenderer>,
             Changed<ContentRenderer>,
             Changed<CallDecorator>,
+            Changed<ConversationPanel>,
         )>,
     >,
     partials: Query<(), Changed<Partial>>,
@@ -340,8 +343,10 @@ impl CallStates<'_, '_> {
 /// An agent, as its transcript draws it.
 pub(crate) struct ShownAgent<'a> {
     pub(crate) entity: Entity,
-    pub(crate) id: &'a AgentId,
-    pub(crate) conversation: &'a Conversation,
+    /// Its id; `None` for a conversation no agent of this app holds,
+    /// which shows no notices.
+    pub(crate) id: Option<&'a AgentId>,
+    pub(crate) conversation: &'a conversation::Conversation,
     /// Whether its conversation changed since the last frame.
     pub(crate) changed: bool,
     /// The messages it accepted and has not sent yet, in the order they
@@ -359,6 +364,32 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) notes: Vec<ShownNote<'a>>,
     /// The calls under each of its tool calls that started any.
     pub(crate) children: ChildCalls,
+}
+
+impl<'a> ShownAgent<'a> {
+    /// `conversation`, which no agent of this app holds, drawn as
+    /// `entity`'s: no live parts, no notices.
+    pub(crate) fn value(conversation: &'a conversation::Conversation, entity: Entity) -> Self {
+        Self {
+            entity,
+            id: None,
+            conversation,
+            changed: true,
+            inbox: Vec::new(),
+            calls: BTreeMap::new(),
+            outputs: BTreeMap::new(),
+            partial: None,
+            streaming: Vec::new(),
+            notes: conversation
+                .asides()
+                .filter_map(|(id, aside)| {
+                    let note = Note::of(aside)?;
+                    Some(ShownNote { id, aside, note })
+                })
+                .collect(),
+            children: ChildCalls::default(),
+        }
+    }
 }
 
 /// An effect not settled yet, a tool or model call or any other, as
@@ -476,6 +507,35 @@ impl TranscriptLayout<'_, '_> {
         Some(transcript.laid_out(Some(agent), &parts, &view.highlights, 0..0))
     }
 
+    /// `conversation`, a value no agent of this app holds (such as a saved
+    /// session read with `rig_memory::Session::read`), laid out as
+    /// [`lay_out`](Self::lay_out) lays out an agent's: the same order,
+    /// renderers and wrapping, with no live calls, notices or facts, and
+    /// the matches of `view`'s highlights counted. Its marks and expanded
+    /// items name messages by id, which another conversation's messages
+    /// may share: lay out with a view of its own.
+    pub fn lay_out_conversation(
+        &self,
+        view: &TranscriptView,
+        conversation: &conversation::Conversation,
+        width: u16,
+        expanded: Expanded,
+    ) -> DrawnTranscript {
+        let shown = ShownAgent::value(conversation, Entity::PLACEHOLDER);
+        let renderers = self.looks.by_kind();
+        let facts = CallFacts::default();
+        let sources = Sources {
+            view,
+            renderers: &renderers,
+            facts: &facts,
+            whole: expanded == Expanded::All,
+            note_cut: true,
+        };
+        let mut transcript = Transcript::default();
+        let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
+        transcript.laid_out(None, &parts, &view.highlights, 0..0)
+    }
+
     /// The agent `entity` as its transcript draws it, its conversation
     /// `changed` since the last frame or not; `None` when it is no agent.
     pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownAgent<'_>> {
@@ -501,7 +561,7 @@ impl TranscriptLayout<'_, '_> {
         inbox.sort_by_key(|(effect, _)| effect.id());
         Some(ShownAgent {
             entity,
-            id,
+            id: Some(id),
             conversation,
             changed,
             inbox: inbox.into_iter().map(|(_, message)| message).collect(),
@@ -592,8 +652,13 @@ pub(crate) fn lay_out_transcript(
         children: &shown.children,
         marks: &view.marks,
     };
-    for (at, notice) in view.notices().iter().enumerate() {
-        let before = match notice.slot(shown.id, conversation) {
+    let notices = shown.id.map(|id| (id, view.notices()));
+    let notices = notices.into_iter().flat_map(|(id, notices)| {
+        let notices = notices.iter().enumerate();
+        notices.map(move |(at, notice)| (id, at, notice))
+    });
+    for (id, at, notice) in notices {
+        let before = match notice.slot(id, conversation) {
             None => continue,
             Some(TranscriptSlot::Top) => 0,
             Some(TranscriptSlot::After(index)) => index + 1,

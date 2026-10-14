@@ -18,6 +18,7 @@ use bevy_ecs::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Line;
 use rig_core::completion::{AssistantContent, Message};
+use rig_core::conversation;
 use rig_core::error::ErrorReport;
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
 use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
@@ -35,7 +36,7 @@ use super::view::{
 };
 use super::wrap::wrap;
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
-use rig_ecs::agent::{AgentId, Conversation, NoticeLevel, Partial};
+use rig_ecs::agent::{AgentId, NoticeLevel, Partial};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_ecs::stage::{EffectRecorded, Outcome};
 use rig_ecs::tools::ToolRequest;
@@ -877,7 +878,7 @@ impl Transcript {
     pub(crate) fn update(
         &mut self,
         agent: Entity,
-        conversation: &Conversation,
+        conversation: &conversation::Conversation,
         changed: bool,
         look: &Look<'_>,
         width: u16,
@@ -1384,7 +1385,7 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
 /// reply's calls are not drawn after all of its calls.
 fn message_lines(
     message: &Message,
-    (conversation, at): (&Conversation, usize),
+    (conversation, at): (&conversation::Conversation, usize),
     previous: Option<&Message>,
     next: Option<&Message>,
     look: &Look<'_>,
