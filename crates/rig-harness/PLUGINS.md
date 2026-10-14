@@ -1210,10 +1210,9 @@ records before they are written with `MessageMutator<EffectRecorded>` in
 [rewrites](#rewriting-saved-history-a-redaction) those written. rig-core's
 `redact` finds keys and tokens by their shapes (`json`, `text`).
 
-**Replaying.** A replayer answers effects from a recorded session's log
-before they start: a model call with an adapter placed outermost, every
-other effect in `GateSystems::FromRecord`, as rig-cassette's
-`RecordedAnswers` does (its docs say how it pairs agents and exits).
+**Replaying.** A replayer answers effects from a recorded log before
+they start: a model call by an adapter placed outermost, the others in
+`GateSystems::FromRecord` (rig-cassette's `RecordedAnswers` pairs agents).
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1451,25 +1450,26 @@ fn rewrites(mut committed: MessageReader<Committed>, mut notices: MessageWriter<
 
 Records are appended while the session runs. Nothing is rewritten except
 through rig-memory: a `RewriteSession { by, with, asker }` maps every
-saved record in place, keeping each record's place and stamp, and the
-agents' conversations and saved values become the rewritten ones. `with`
-is a `Rewrite`: `Strings` maps every string (a redaction, a path remap),
-`rig_memory::Messages` only messages, or its own hooks per message,
-aside, saved value, text and file. It runs at the end of the frame,
-blocking it, over every agent's log, the store's files, the scratch files
-and the session's name; a saved value that changed is inserted again
-(`On<Insert<T>>` sees it), and `SessionRewritten` says what changed. It
-cannot reach what a model was sent, a running turn's request, messages
-waiting in a live inbox (it reaches their saved marks), or a copy a
-plugin keeps (a `Conversation` copied before and put back is saved whole
-again). Another session, stopped, is `rewrite_stopped(&stores, &paths,
-&dir, by, &with)`; a program without an app calls
-`rig_memory::rewrite(&store, by, &with)` on one not `runs_elsewhere()`.
+saved record in place (keeping its place and stamp), the store's files,
+the scratch files and the name, at the end of the frame (blocking it); the
+agents' conversations follow, a saved value that changed is inserted again
+(`On<Insert<T>>` sees it), and `SessionRewritten` says what changed.
+`with` is a `Rewrite`: `Strings` maps every string (a redaction, a path
+remap), `rig_memory::Messages` only messages, or its own hooks per
+message, aside, saved value, text and file. It cannot reach what a model
+was sent, a running turn's request or messages waiting in a live inbox (it
+reaches their saved marks). What a plugin keeps elsewhere (memory, its
+project or user files) it maps on `SessionRewritten` with the same `with`
+(`rig_memory::rewrite_value`, `rewrite_file`), as the default plugins do
+(the prompt history, its `/redact <text>` lines too, calls, notices, the
+activity feed); a `Conversation` copied before and put back is saved
+whole. A stopped session is `rewrite_stopped(&stores, &paths, &dir, by,
+&with)`; a program without an app calls `rig_memory::rewrite(&store, by,
+&with)` on one not `runs_elsewhere()`.
 
 ```rust,no_run
-use std::sync::Arc;
-
 use rig_harness::prelude::*;
+use rig_harness::rig_memory::{self, Place};
 
 fn build(app: &mut App) {
     app.add_command("redact", "Take a text out of everything saved: /redact <text>", redact)
@@ -1481,17 +1481,17 @@ fn redact(In(args): In<CommandArgs>, mut commands: Commands) {
     let secret = args.args;
     let with = Strings(move |text: &mut String| {
         let hit = !secret.is_empty() && text.contains(&secret);
-        if hit {
-            *text = text.replace(&secret, "[REDACTED]");
-        }
+        if hit { *text = text.replace(&secret, "[REDACTED]") }
         hit
     });
-    commands.trigger(RewriteSession { by: Author::plugin("redact"), with: Arc::new(with), asker: None });
+    commands.trigger(RewriteSession { by: Author::plugin("redact"), with: std::sync::Arc::new(with), asker: None });
 }
 
-/// Says how it went.
-fn redacted(mut done: MessageReader<SessionRewritten>, mut notices: MessageWriter<Notice>) {
-    for SessionRewritten { result, .. } in done.read() {
+/// Says how it went, and maps what it keeps (`told`) with the same `with`.
+fn redacted(mut done: MessageReader<SessionRewritten>, mut told: Local<Vec<String>>, mut notices: MessageWriter<Notice>) {
+    for SessionRewritten { result, with, .. } in done.read() {
+        let at = Place::File { name: "told" };
+        told.retain_mut(|text| rig_memory::rewrite_value(&**with, &at, "told", text).is_ok());
         let text = result.as_ref().map_or_else(String::clone, |it| format!("{} logs rewritten", it.logs.len()));
         notices.write(Notice::info(None, text));
     }

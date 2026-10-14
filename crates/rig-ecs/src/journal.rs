@@ -327,8 +327,9 @@ pub struct RewriteSession {
 
 /// A [`RewriteSession`] done, or why not, in the frame it ran, before
 /// [`WriteJournal`]. The owners of what the kernel does not keep re-read
-/// or map theirs on it, with the same `with`: the effect log's writer,
-/// the session's listing, the scratch files.
+/// or map theirs on it, with the same `with` (rig-memory's
+/// `rewrite_value`, `rewrite_file`): the effect log's writer, the scratch
+/// files, and every plugin's copies, in memory or in files of its own.
 #[derive(Message, Clone)]
 pub struct SessionRewritten {
     /// Who asked, as [`RewriteSession`] said.
