@@ -8,7 +8,7 @@ use rig_harness_test_support::{
     tui_view,
 };
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use rig_tui::{DrawnRow, TuiInput};
+use rig_tui::{DrawnRow, Editor, MainEditor};
 
 use super::*;
 
@@ -63,7 +63,26 @@ fn search(app: &mut App, keys: impl IntoIterator<Item = KeyCode>) {
 }
 
 fn input(app: &App) -> &str {
-    app.world().resource::<TuiInput>().text()
+    let world = app.world();
+    let main = world.try_query_filtered::<&Editor, With<MainEditor>>();
+    let editor = main.and_then(|mut main| main.single(world).ok());
+    editor.map_or("", Editor::text)
+}
+
+/// The main pane's view, as it is now.
+fn main_view(app: &App) -> TranscriptView {
+    let world = app.world();
+    let main = world.try_query_filtered::<&TranscriptView, With<MainPane>>();
+    let view = main.and_then(|mut main| main.single(world).ok());
+    view.cloned().unwrap_or_default()
+}
+
+/// Changes the main pane's view.
+fn edit_view(app: &mut App, edit: impl FnOnce(&mut TranscriptView)) {
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut TranscriptView, With<MainPane>>();
+    let edited = main.single_mut(world).map(|mut view| edit(&mut view));
+    assert!(edited.is_ok(), "the default screen has a main pane");
 }
 
 /// The terminal reports `keys`; one frame handles them.
@@ -83,7 +102,7 @@ fn typed(text: &str) -> Vec<KeyCode> {
 /// `agent`'s transcript as the view lays it out with its items
 /// `expanded`, `width` columns wide.
 fn laid_out(app: &mut App, agent: Entity, expanded: Expanded, width: u16) -> DrawnTranscript {
-    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
+    let lay_out = move |layout: TranscriptLayout, view: Single<&TranscriptView, With<MainPane>>| {
         layout.lay_out(&view, agent, width, expanded)
     };
     let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
@@ -173,7 +192,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     // the reading of a selected item.
     rig_harness_test_support::press(&mut app, "/");
     assert_eq!((counter(&mut app), input(&app)), (None, "/"));
-    app.world_mut().resource_mut::<TranscriptView>().selected = Some(call.clone());
+    edit_view(&mut app, |view| view.selected = Some(call.clone()));
     let keys = [KeyCode::Backspace, KeyCode::Char('x'), KeyCode::Backspace];
     press(&mut app, keys.into_iter().chain([KeyCode::Char('/')]));
     assert_eq!((counter(&mut app), input(&app)), (None, "/"));
@@ -183,7 +202,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     // With an item of the transcript selected, `/` opens the search.
     // Lower case finds it: the view expands the call, lights the match
     // and scrolls to its row; Enter takes it.
-    app.world_mut().resource_mut::<TranscriptView>().selected = Some(call.clone());
+    edit_view(&mut app, |view| view.selected = Some(call.clone()));
     rig_harness_test_support::press(&mut app, "/");
     assert_eq!(
         (counter(&mut app).as_deref(), input(&app)),
@@ -193,7 +212,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     keys.push(KeyCode::Enter);
     press(&mut app, keys);
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
-    let view = app.world().resource::<TranscriptView>();
+    let view = main_view(&app);
     assert!(view.expanded.contains(&call));
     let spans = view.highlights.iter().flat_map(|lit| &lit.spans);
     let spans: Vec<Option<&TranscriptItem>> = spans.map(|span| span.item.as_ref()).collect();
@@ -212,20 +231,17 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     // gives the keys back to the input, still stopping nothing.
     press(&mut app, [KeyCode::Esc]);
     assert_eq!(counter(&mut app), None);
-    let view = app.world().resource::<TranscriptView>();
+    let view = main_view(&app);
     assert!(view.highlights.is_empty() && view.expanded.contains(&call));
     assert_eq!(app.world().resource::<Scrolls>().0.len(), scrolled);
     press(&mut app, [KeyCode::Esc]);
-    let view = app.world().resource::<TranscriptView>();
+    let view = main_view(&app);
     assert_eq!(view.selected, None);
     assert_eq!(
         (input(&app), app.world().resource::<Interrupts>().0),
         ("", 0)
     );
-    app.world_mut()
-        .resource_mut::<TranscriptView>()
-        .expanded
-        .clear();
+    edit_view(&mut app, |view| view.expanded.clear());
 
     // A capital letter makes the search match case. What arrives while
     // searching is searched too, with no key pressed.
@@ -284,7 +300,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     // Esc without Enter: what the search expanded collapses and the view
     // scrolls back to where it was, following the newest output.
     press(&mut app, [KeyCode::Esc]);
-    let view = app.world().resource::<TranscriptView>();
+    let view = main_view(&app);
     assert!(view.highlights.is_empty() && view.expanded.is_empty());
     let last = app.world().resource::<Scrolls>().0.last().cloned();
     assert_eq!(last, Some((None, ItemRow::Top(0))));
