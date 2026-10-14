@@ -8,7 +8,7 @@ use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, app_in, connect, first_agent, log_ended, press, reply, run_until,
     scratch_home, tui_view,
 };
-use rig_tui::{TranscriptItem, TranscriptView};
+use rig_tui::{MainPane, TranscriptItem, TranscriptView};
 
 use super::*;
 
@@ -169,7 +169,12 @@ fn revisions_switch_whole_continuations_nest_and_survive_a_restart() {
         .get::<Conversation>(agent)
         .and_then(|it| it.id(0));
     let selected = message.map(TranscriptItem::Message);
-    app.world_mut().resource_mut::<TranscriptView>().selected = selected;
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut TranscriptView, With<MainPane>>();
+    let picked = main
+        .single_mut(world)
+        .map(|mut view| view.selected = selected);
+    assert!(picked.is_ok(), "the default screen has a main pane");
     app.world_mut().insert_resource(Shown(Some(agent)));
     press(&mut app, "right");
     for _ in 0..3 {

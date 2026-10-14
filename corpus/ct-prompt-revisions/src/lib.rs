@@ -644,7 +644,7 @@ mod tui {
     use rig_tui::ratatui::text::Line;
     use rig_tui::{
         AppKeyBindingsExt, AppToolRenderersExt, KeyBinding, KeyPress, KeyPressed, KeyScope,
-        TranscriptItem, TranscriptView,
+        MainPane, TranscriptItem, TranscriptView,
     };
 
     use super::{NAME, slots};
@@ -675,7 +675,7 @@ mod tui {
     ) -> Option<(usize, usize, usize)> {
         let id = match view.selected.as_ref()? {
             TranscriptItem::Message(id) => *id,
-            TranscriptItem::Note(aside) => conversation.aside(*aside)?.after?,
+            TranscriptItem::Aside(aside) => conversation.aside(*aside)?.after?,
             _ => return None,
         };
         let at = conversation.index_of(id)?;
@@ -704,7 +704,7 @@ mod tui {
 
     fn previous(
         pressed: On<KeyPressed>,
-        view: Res<TranscriptView>,
+        view: Single<&TranscriptView, With<MainPane>>,
         agents: Query<&Conversation>,
         mut commands: Commands,
     ) {
@@ -715,7 +715,7 @@ mod tui {
 
     fn next(
         pressed: On<KeyPressed>,
-        view: Res<TranscriptView>,
+        view: Single<&TranscriptView, With<MainPane>>,
         agents: Query<&Conversation>,
         mut commands: Commands,
     ) {
@@ -726,7 +726,7 @@ mod tui {
 
     fn edit(
         pressed: On<KeyPressed>,
-        view: Res<TranscriptView>,
+        view: Single<&TranscriptView, With<MainPane>>,
         agents: Query<&Conversation>,
         mut commands: Commands,
     ) {
