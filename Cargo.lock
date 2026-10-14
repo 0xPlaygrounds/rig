@@ -16891,6 +16891,7 @@ dependencies = [
  "rig-print",
  "rig-reload",
  "rig-sessions",
+ "rig-splits",
  "rig-subagents",
  "rig-telemetry",
  "rig-tui",
@@ -17349,6 +17350,23 @@ dependencies = [
  "rig-harness-test-support",
  "rig-tools",
  "rig-tui",
+]
+
+[[package]]
+name = "rig-splits"
+version = "0.44.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-compaction",
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-memory",
+ "rig-tui",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

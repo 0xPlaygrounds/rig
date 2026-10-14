@@ -1,0 +1,42 @@
+[package]
+name = "rig-splits"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "A rig-harness plugin: splitting a conversation at any entry into a branch or a new session, moving a range out, and listing, switching to, comparing and merging back its splits."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# Two lines compared side by side in the terminal view. An app without the
+# terminal view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The slash commands, the session picker and the operations on any saved
+# session.
+rig-harness = { path = "../../crates/rig-harness" }
+# Splits into a new session, their pointers and a session's lines.
+rig-memory = { path = "../../crates/rig-memory", default-features = false }
+# The summarizer a merge back as one summary entry writes with.
+rig-compaction = { path = "../rig-compaction", default-features = false }
+rig-tui = { path = "../rig-tui", optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# The app on a session store and the scripted model the tests run on.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
