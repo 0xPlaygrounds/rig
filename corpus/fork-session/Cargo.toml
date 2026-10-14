@@ -17,7 +17,7 @@ checkpoints = ["dep:corpus-checkpoint-rewind"]
 bevy_ecs = { workspace = true }
 corpus-checkpoint-rewind = { path = "../checkpoint-rewind", optional = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The sessions' titles and `/resume` labels, and the listing `/tree` walks.
+# Naming a fork, and `/resume` (which the `/tree` picker runs).
 rig-sessions = { path = "../../plugins/rig-sessions" }
 rig-tools = { path = "../../crates/rig-tools" }
 # The pickers, the input line, and showing the branched agent.

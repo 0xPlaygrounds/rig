@@ -5,6 +5,7 @@ use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::sessions::SessionPickerPlugin;
 use rig_harness_test_support::{app_in, connect, first_agent, reply, run_until, scratch_home};
 use rig_tui::{Editor, MainEditor};
 
@@ -37,9 +38,14 @@ fn start(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
 fn start_with(home: &Home, id: &SessionId, more: impl FnOnce(&mut App)) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_in(home, id);
     app.world_mut().spawn((Editor::default(), MainEditor));
-    app.add_plugins((AgentPlugin, JournalPlugin, ForkSessionPlugin))
-        .register_required_components::<Agent, Turns>()
-        .add_observer(count);
+    app.add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        ForkSessionPlugin,
+        SessionPickerPlugin,
+    ))
+    .register_required_components::<Agent, Turns>()
+    .add_observer(count);
     more(&mut app);
     app.finish();
     app.update();
@@ -170,12 +176,24 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
 
     // The branch holds turn one and the count as of then; "two" waits in
     // the input.
-    let (mut app, _) = start(&home, &branched);
+    let (mut app, wakes) = start(&home, &branched);
     assert_eq!(
         state(&mut app),
         (vec!["one".to_owned(), "r1".to_owned()], Some(1))
     );
     assert_eq!(input(&mut app), "two");
+
+    // `/tree` lists the family: the branch, and the original it came from.
+    let tree =
+        Deliver::new(agent_of(&mut app), "/tree", DeliveryMode::Queue).with_author(Author::user());
+    app.world_mut().trigger(tree);
+    run_until(&mut app, &wakes, |world| details(world).len() == 2);
+    let came = format!("branch before “two” of {id}");
+    let details = details(app.world());
+    assert!(
+        details.iter().any(|detail| detail.ends_with(&came)),
+        "{details:?}"
+    );
     drop(app);
     // Only its first start fills the input.
     let (mut app, _) = start(&home, &branched);
@@ -271,6 +289,22 @@ fn a_branch_with_its_files_switches_once_they_are_back() {
     assert_eq!(app.world().resource::<Exits>().0, [ExitReason::Switch(to)]);
     drop(app);
     fs::remove_dir_all(home.root()).ok();
+}
+
+/// The app's first agent, or a placeholder for none.
+fn agent_of(app: &mut App) -> Entity {
+    first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER)
+}
+
+/// The details of the session picker's items.
+fn details(world: &World) -> Vec<String> {
+    let pickers = world
+        .iter_entities()
+        .filter(|entity| entity.contains::<SessionPicker>());
+    let items = pickers
+        .filter_map(|entity| entity.get::<Picker>())
+        .flat_map(|picker| &picker.items);
+    items.filter_map(|item| item.detail.clone()).collect()
 }
 
 /// What the main input line holds.
