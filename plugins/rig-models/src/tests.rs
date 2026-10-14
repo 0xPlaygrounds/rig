@@ -56,6 +56,50 @@ fn the_agent_starts_on_the_model_named_with_model() {
     assert_eq!(chosen, ["deepseek/deepseek-flash"]);
 }
 
+/// Every notice written so far.
+#[derive(Resource, Default)]
+struct Told(Vec<String>);
+
+#[test]
+fn model_waits_for_the_turn_a_resumed_session_continues() {
+    let mut app = App::new();
+    app.insert_resource(Invoked {
+        args: Invocation {
+            model: Some("deepseek/deepseek-flash".to_owned()),
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .add_plugins((AgentPlugin, ModelsPlugin))
+    .init_resource::<Told>()
+    .add_systems(
+        Last,
+        |mut read: MessageReader<Notice>, mut told: ResMut<Told>| {
+            told.0.extend(read.read().map(|notice| notice.text.clone()));
+        },
+    );
+    // The continued turn, there before the first frame.
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    let turn = world.spawn(TurnOf(agent)).id();
+    app.update();
+    let told = &app.world().resource::<Told>().0;
+    assert_eq!(
+        told,
+        &["--model deepseek/deepseek-flash applies once the continued turn ends."]
+    );
+    assert_eq!(app.world().get::<ModelChoice>(agent), None);
+    app.world_mut().entity_mut(turn).despawn();
+    app.update();
+    app.update();
+    let chosen = app
+        .world()
+        .get::<ModelChoice>(agent)
+        .map(|choice| choice.0.as_str());
+    assert_eq!(chosen, Some("deepseek/deepseek-flash"));
+    assert_eq!(app.world().resource::<Told>().0.len(), 1);
+}
+
 #[test]
 fn model_with_a_contributed_name_runs_its_command() {
     let (mut app, agent) = routed();
