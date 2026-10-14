@@ -100,18 +100,18 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload);
-    app.world_mut().resource_mut::<TuiInput>().set("/tools");
+    crate::tests::edit(&mut app, |input| input.set("/tools"));
     assert!(app.world_mut().run_system_once(keep_draft).is_ok());
     drop(app);
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
-    assert_eq!(app.world().resource::<TuiInput>().text(), "/tools");
+    assert_eq!(crate::tests::input(&app).text(), "/tools");
     // Once: the build after this one starts empty.
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
-    assert!(app.world().resource::<TuiInput>().is_empty());
+    assert!(crate::tests::input(&app).is_empty());
 }
 
 /// Adds `message` to `agent`'s conversation.

@@ -18,7 +18,7 @@ use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 use unicode_width::UnicodeWidthChar;
 
 use super::complete::Completion;
-use super::editor::{Layout as InputLayout, TuiInput};
+use super::editor::{Editor, Layout as InputLayout, MainEditor};
 use super::keys::KeyFocus;
 use super::pane::{PaneState, TranscriptPane};
 use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel};
@@ -84,7 +84,7 @@ pub(crate) fn needs_redraw(
         Res<CallFacts>,
         Res<StreamingCalls>,
     ),
-    (input, focus, shown): (Res<TuiInput>, Res<KeyFocus>, Res<Shown>),
+    (focus, shown): (Res<KeyFocus>, Res<Shown>),
     changed: Query<
         (),
         Or<(
@@ -100,9 +100,15 @@ pub(crate) fn needs_redraw(
             Changed<AsideRenderer>,
             Changed<MessageRenderer>,
             Changed<MessageDecorator>,
+        )>,
+    >,
+    widgets: Query<
+        (),
+        Or<(
             Changed<TranscriptPane>,
             Changed<TranscriptView>,
             Changed<PaneState>,
+            Changed<Editor>,
         )>,
     >,
     partials: Query<(), Changed<Partial>>,
@@ -126,7 +132,7 @@ pub(crate) fn needs_redraw(
         RemovedComponents<StatusItems>,
         RemovedComponents<Holds>,
         RemovedComponents<ToolProgress>,
-        RemovedComponents<TranscriptPane>,
+        (RemovedComponents<TranscriptPane>, RemovedComponents<Editor>),
         RemovedLooks,
     ),
     mut paced: Local<Paced>,
@@ -137,7 +143,8 @@ pub(crate) fn needs_redraw(
         + removed.1.read().count()
         + removed.2.read().count()
         + removed.3.read().count()
-        + removed.4.read().count()
+        + removed.4.0.read().count()
+        + removed.4.1.read().count()
         > 0
         || removed.5.any();
     let changed = requested
@@ -146,7 +153,7 @@ pub(crate) fn needs_redraw(
         || notices.is_changed()
         || facts.is_changed()
         || shown.is_changed()
-        || input.is_changed()
+        || !widgets.is_empty()
         || focus.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
         || test.is_some_and(|test| test.is_changed())
@@ -219,7 +226,7 @@ pub(crate) fn frame_due(frame: Res<FrameLayout>) -> bool {
 /// the transcript what they leave.
 pub(crate) fn layout(
     screens: (Option<Res<Tui>>, Option<Res<TuiTestScreen>>),
-    (input, view): (Res<TuiInput>, Res<TuiView>),
+    (input, view): (Query<&Editor, With<MainEditor>>, Res<TuiView>),
     mut frame: ResMut<FrameLayout>,
     mut panels: Query<(Entity, &TuiPanel, &mut PanelCanvas)>,
 ) {
@@ -232,6 +239,7 @@ pub(crate) fn layout(
         return;
     };
     let screen = Rect::new(0, 0, size.width, size.height);
+    let input = input.single().ok().cloned().unwrap_or_default();
     let rows = input.layout(size.width.saturating_sub(2));
     let input_height = rows.rows.len().clamp(1, INPUT_LINES);
     let mut panels: Vec<_> = panels.iter_mut().collect();
@@ -1008,7 +1016,12 @@ pub(crate) fn render(
     (mut tui, mut test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
     mut drew: ResMut<TuiFrame>,
     mut view: ResMut<TuiView>,
-    (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
+    (typed, focus, choices, shown_agent): (
+        Query<&Editor, With<MainEditor>>,
+        Res<KeyFocus>,
+        Choices,
+        Res<Shown>,
+    ),
     mut frame_layout: ResMut<FrameLayout>,
     active: Query<&ActiveTurn>,
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
@@ -1071,7 +1084,10 @@ pub(crate) fn render(
         frame.render_widget(usage, meter);
         let hint = match &edit {
             Some(_) => " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses ",
-            None => input_hint(turn.is_some(), typed.is_empty(), focus.0.is_some()),
+            None => {
+                let empty = typed.single().is_ok_and(Editor::is_empty);
+                input_hint(turn.is_some(), empty, focus.0.is_some())
+            }
         };
         let mut block = Block::bordered().title_bottom(Line::from(hint).dim().right_aligned());
         let mut body = None;

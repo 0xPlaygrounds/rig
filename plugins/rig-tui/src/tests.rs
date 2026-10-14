@@ -197,9 +197,27 @@ pub(crate) fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
     on_screen(app, agent, 1000)
 }
 
+/// The main editor; an empty one without it.
+pub(crate) fn input(app: &App) -> &Editor {
+    static NONE: std::sync::LazyLock<Editor> = std::sync::LazyLock::new(Default::default);
+    let world = app.world();
+    let main = world.try_query_filtered::<&Editor, With<MainEditor>>();
+    let main = main.and_then(|mut main| main.single(world).ok());
+    main.unwrap_or(&NONE)
+}
+
+/// Edits the main editor with `edit`.
+pub(crate) fn edit(app: &mut App, edit: impl FnOnce(&mut Editor)) {
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut Editor, With<MainEditor>>();
+    if let Ok(mut input) = main.single_mut(world) {
+        edit(&mut input);
+    }
+}
+
 /// The input's text.
 pub(crate) fn typed(app: &App) -> String {
-    app.world().resource::<TuiInput>().text().to_owned()
+    input(app).text().to_owned()
 }
 
 #[test]
@@ -311,11 +329,12 @@ fn a_frame_with_nothing_typed_changes_nothing_the_redraw_check_reads() {
     app.init_resource::<ChangedLastFrame>().add_systems(
         bevy_app::Last,
         |view: Res<crate::view::TuiView>,
-         input: Res<crate::editor::TuiInput>,
+         input: Query<Ref<Editor>>,
          transcript: Query<Ref<TranscriptView>>,
          mut changed: ResMut<ChangedLastFrame>| {
             let transcript = transcript.iter().any(|view| view.is_changed());
-            changed.0 = view.is_changed() || input.is_changed() || transcript;
+            let input = input.iter().any(|input| input.is_changed());
+            changed.0 = view.is_changed() || input || transcript;
         },
     );
     app.update();
@@ -341,9 +360,6 @@ fn a_key_typed_leaves_the_transcript_view_unchanged() {
     );
     app.update();
     type_text(&mut app, "a");
-    assert_eq!(
-        app.world().resource::<crate::editor::TuiInput>().text(),
-        "a"
-    );
+    assert_eq!(input(&app).text(), "a");
     assert!(!app.world().resource::<TranscriptChanged>().0);
 }

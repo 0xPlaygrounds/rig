@@ -193,15 +193,16 @@ fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument_once_t
         })
     });
     let (mut app, agent) = routed();
-    app.insert_resource(Models(connector))
-        .init_resource::<rig_tui::TuiInput>();
+    app.insert_resource(Models(connector));
+    let input = (rig_tui::Editor::default(), rig_tui::MainEditor);
+    let input = app.world_mut().spawn(input).id();
     app.update();
     let mut completions = app.world_mut().query::<&rig_tui::CompletionSource>();
     // Listing the catalog waits for the input to be a `/model` command.
     assert_eq!(completions.iter(app.world()).count(), 0);
-    app.world_mut()
-        .resource_mut::<rig_tui::TuiInput>()
-        .set("/model rig");
+    if let Some(mut input) = app.world_mut().get_mut::<rig_tui::Editor>(input) {
+        input.set("/model rig");
+    }
     app.update();
     run(&mut app, agent, "model");
     let world = app.world_mut();

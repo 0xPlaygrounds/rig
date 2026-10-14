@@ -1,11 +1,22 @@
 //! The input editor: multiline text with a cursor and emacs-style editing
-//! keys. It is the [`TuiInput`] resource, so a plugin reads and edits the
-//! draft as the keys do (a template, a dictated message, the text an
-//! editor wrote), and `is_changed` on it says the draft was edited. Up and
-//! Down move between lines and, from the first or last line, through the
-//! [`PromptHistory`](crate::PromptHistory), saving the draft as pi's
-//! editor does
+//! keys. An [`Editor`] is a component, so a panel can hold one; the default
+//! screen's is the [`MainEditor`], which [`MainInput`] reads, and a plugin
+//! reads and edits its draft as the keys do (a template, a dictated
+//! message, the text an editor wrote): `is_changed` on it says the draft
+//! was edited. Up and Down move between lines and, from the first or last
+//! line, through the [`PromptHistory`](crate::PromptHistory), saving the
+//! draft as pi's editor does
 //! (`references/pi/packages/tui/src/components/editor.ts:344-347,457-470`).
+//!
+//! ```no_run
+//! use rig_harness::prelude::*;
+//! use rig_tui::MainInput;
+//!
+//! /// Puts a template in the input.
+//! fn template(mut input: MainInput) {
+//!     input.set("Review the diff for:\n- ");
+//! }
+//! ```
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
@@ -16,13 +27,15 @@ use unicode_width::UnicodeWidthChar;
 /// The prompt before the first line of the input.
 const PROMPT: &str = "› ";
 
-/// The terminal view's input: the text being typed, with its cursor, and
-/// where it is in the prompt history while Up and Down browse it. It is
-/// there in any run, empty unless the view runs. Enter sends what it holds
-/// to the agent shown.
-#[derive(Resource, Reflect, Default)]
-#[reflect(Resource, Default)]
-pub struct TuiInput {
+/// A text being typed, with its cursor, and where it is in the prompt
+/// history while Up and Down browse it. The keys type into the
+/// [`MainEditor`], or into the editor of the panel with the
+/// [`KeyFocus`](crate::KeyFocus); Enter sends the main one's text to the
+/// agent shown. In a panel placed at the top, the bottom or below the
+/// input, it is as tall as its text, up to ten lines.
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Default)]
+pub struct Editor {
     text: String,
     /// A byte offset in `text`, on a character boundary.
     cursor: usize,
@@ -32,6 +45,17 @@ pub struct TuiInput {
     draft: String,
 }
 
+/// Marks the editor the keys type into while no panel has the
+/// [`KeyFocus`](crate::KeyFocus), whose text Enter sends to the agent
+/// shown, and which a recalled message or a reload's draft comes back to:
+/// the default screen's. An app that builds its own screen marks its own.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct MainEditor;
+
+/// The main editor's text, to read or edit. A system with it is skipped
+/// when there is no such editor, as in an app without the default screen.
+pub type MainInput<'w, 's> = Single<'w, 's, &'static mut Editor, With<MainEditor>>;
+
 /// The input laid out to a width: its rows and where the cursor is.
 pub(crate) struct Layout {
     pub(crate) rows: Vec<Line<'static>>,
@@ -39,7 +63,7 @@ pub(crate) struct Layout {
     pub(crate) cursor_column: usize,
 }
 
-impl TuiInput {
+impl Editor {
     /// The text.
     pub fn text(&self) -> &str {
         &self.text

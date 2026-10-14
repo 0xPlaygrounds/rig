@@ -51,7 +51,8 @@
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well, each doing an
 //! [`InputAction`], which a plugin may also put among the keys), the keys for a
-//! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
+//! panel ([`KeyFocus`]), the draft in the input ([`MainInput`], an
+//! [`Editor`] a panel may hold too), the
 //! candidates completion lists ([`CompletionSource`]), the frame's
 //! keys before any binding sees them ([`TerminalEvents`], filtered one at
 //! a time in [`InputSystems::Filter`] of [`TuiKeys`], with
@@ -101,7 +102,7 @@ use rig_harness::rig_memory::SPLIT;
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
 pub use crossterm;
-pub use editor::TuiInput;
+pub use editor::{Editor, MainEditor, MainInput};
 pub use history::{HistorySystems, PromptHistory, Sent};
 pub use input::{InputSystems, KeyInput, TerminalEvents, TuiInputState, TuiKeys};
 pub use keys::{
@@ -160,7 +161,6 @@ impl Plugin for TuiPlugin {
             .init_resource::<transcript::CallFacts>()
             .init_resource::<transcript::StreamingCalls>()
             .init_resource::<TuiScreen>()
-            .init_resource::<TuiInput>()
             .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
             .init_resource::<TerminalEvents>()
@@ -210,6 +210,8 @@ impl Plugin for TuiPlugin {
             MainPane,
             PaneKeys,
         ));
+        app.world_mut()
+            .spawn((Name::new("tui:input"), Editor::default(), MainEditor));
     }
 
     /// Owns the terminal when the run is the terminal view's: any other

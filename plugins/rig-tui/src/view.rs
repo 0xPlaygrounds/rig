@@ -18,7 +18,7 @@ use rig_core::message::CallId;
 use serde::{Deserialize, Serialize};
 
 use super::complete::Completion;
-use super::editor::TuiInput;
+use super::editor::{Editor, MainEditor};
 use super::jsonl::{self, Kept};
 use super::keys::KeyPress;
 use super::pane::{PaneState, TranscriptPane, TranscriptSource};
@@ -785,14 +785,15 @@ pub(crate) fn keep_notices(
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
     data: Option<Res<PluginData>>,
-    (input, view): (Res<TuiInput>, Option<Res<TuiView>>),
+    (input, view): (Query<&Editor, With<MainEditor>>, Option<Res<TuiView>>),
 ) {
     let (Some(reason), Some(data)) = (reason, data) else {
         return;
     };
     let answering = view.as_deref().and_then(|view| view.choosing.as_ref());
     let draft = answering.and_then(|choosing| choosing.draft.as_deref());
-    let text = draft.unwrap_or(input.text());
+    let typed = input.single().ok().map(Editor::text);
+    let text = draft.or(typed).unwrap_or_default();
     if *reason != ExitReason::Reload || text.is_empty() {
         return;
     }
@@ -802,8 +803,11 @@ pub(crate) fn keep_draft(
 }
 
 /// Puts back in the input what the build before a reload kept.
-pub(crate) fn load_draft(data: Option<Res<PluginData>>, mut input: ResMut<TuiInput>) {
-    let Some(data) = data else {
+pub(crate) fn load_draft(
+    data: Option<Res<PluginData>>,
+    mut input: Query<&mut Editor, With<MainEditor>>,
+) {
+    let (Some(data), Ok(mut input)) = (data, input.single_mut()) else {
         return;
     };
     if let Ok(text) = data.session.read_file(DRAFT_FILE) {
@@ -906,7 +910,7 @@ pub(crate) fn recall_messages(
     agents: Query<(&AgentId, &Conversation)>,
     shown: Res<Shown>,
     (mut view, mut notices): (ResMut<TuiView>, ResMut<Notices>),
-    mut input: ResMut<TuiInput>,
+    mut input: Query<&mut Editor, With<MainEditor>>,
 ) {
     for recalled in recalled.read() {
         if shown.0 != Some(recalled.agent) {
@@ -922,6 +926,9 @@ pub(crate) fn recall_messages(
             });
             view.refused = Some(recalled.text.clone());
         }
+        let Ok(mut input) = input.single_mut() else {
+            continue;
+        };
         let typed = input.take();
         let text = if typed.trim().is_empty() {
             recalled.text.clone()

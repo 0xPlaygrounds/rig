@@ -41,7 +41,7 @@ use rig_harness::pick::{Chosen, Picker};
 use rig_tools::shorten;
 use unicode_width::UnicodeWidthStr;
 
-use super::editor::TuiInput;
+use super::editor::{Editor, MainEditor};
 use super::view::TuiView;
 
 /// Lines a page key moves.
@@ -299,7 +299,7 @@ fn carried(choosing: Choosing, old: &Ask, new: &Ask, entity: Entity) -> Choosing
 /// work waits in its own list.
 pub(crate) fn queue_choices(
     mut view: ResMut<TuiView>,
-    mut input: ResMut<TuiInput>,
+    mut input: Query<&mut Editor, With<MainEditor>>,
     pickers: Query<Entity, Added<Picker>>,
     replaced: Query<(), Changed<Picker>>,
     asks: Query<(Entity, &Effect, &Ask), Added<Ask>>,
@@ -355,13 +355,16 @@ pub(crate) fn queue_choices(
     if front == before && !restart {
         return;
     }
-    show_first(&mut view, &choices, &mut input);
+    let mut main = input.single_mut().ok();
+    let mut none = Editor::default();
+    let input = main.as_deref_mut().unwrap_or(&mut none);
+    show_first(&mut view, &choices, input);
 }
 
 /// Shows the first of the queue still open, from the start. A question
 /// answered in the input takes the input, keeping the draft, which comes
 /// back when it closes.
-pub(crate) fn show_first(view: &mut TuiView, choices: &Choices, input: &mut TuiInput) {
+pub(crate) fn show_first(view: &mut TuiView, choices: &Choices, input: &mut Editor) {
     if let Some(Choosing {
         draft: Some(draft), ..
     }) = view.choosing.take()

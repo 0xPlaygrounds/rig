@@ -269,7 +269,7 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     use rig_harness::prelude::*;
 
     use crate::tests::{type_text, view_app};
-    use crate::{TerminalWrite, TranscriptItem, TuiFrame, TuiInput, TuiTestScreen};
+    use crate::{TerminalWrite, TranscriptItem, TuiFrame, TuiTestScreen};
 
     let (mut app, agent) = view_app();
     app.insert_resource(TuiTestScreen::new(60, 20));
@@ -310,7 +310,7 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     assert!(frame.overlays.is_empty());
     // A completion list covers the transcript.
     app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
-    app.world_mut().resource_mut::<TuiInput>().set("");
+    crate::tests::edit(&mut app, |input| input.set(""));
     type_text(&mut app, "/mo");
     let frame = app.world().resource::<TuiFrame>();
     assert_eq!(frame.overlays.len(), 1, "{frame:?}");

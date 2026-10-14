@@ -13,10 +13,10 @@
 //! ```no_run
 //! use rig_harness::prelude::*;
 //! use rig_tui::crossterm::event::{Event, KeyCode};
-//! use rig_tui::{InputSystems, KeyInput, TerminalEvents, TuiInput, TuiInputState, TuiKeys};
+//! use rig_tui::{InputSystems, KeyInput, TerminalEvents, Editor, TuiInputState, TuiKeys};
 //!
 //! /// `/` on an empty input opens a search instead of a slash command.
-//! fn slash_searches(mut events: ResMut<TerminalEvents>, input: Res<TuiInput>, state: Res<TuiInputState>) {
+//! fn slash_searches(mut events: ResMut<TerminalEvents>, input: Res<Editor>, state: Res<TuiInputState>) {
 //!     let slash = |item: &KeyInput| {
 //!         matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'))
 //!     };
@@ -47,7 +47,7 @@ use ratatui::layout::Rect;
 
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, Completion, CompletionKind, CompletionSource};
-use super::editor::TuiInput;
+use super::editor::{Editor, MainEditor};
 use super::history::{PromptHistory, Sent};
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
 use super::pane::{MainPane, PaneState};
@@ -278,11 +278,9 @@ pub(crate) fn run_keys(world: &mut World) {
         }
         done += 1;
         world.resource_mut::<TerminalEvents>().0.push(item);
-        let text = world
-            .get_resource::<TuiInput>()
-            .map(|input| input.text().to_owned());
+        let text = main_text(world);
         world.run_schedule(TuiKeys);
-        let typed = world.get_resource::<TuiInput>().map(TuiInput::text) != text.as_deref();
+        let typed = main_text(world) != text;
         if typed {
             let mut main = world.query_filtered::<&mut TranscriptView, With<MainPane>>();
             for mut transcript in main.iter_mut(world) {
@@ -298,6 +296,13 @@ pub(crate) fn run_keys(world: &mut World) {
     }
 }
 
+/// The main editor's text.
+fn main_text(world: &mut World) -> Option<String> {
+    let mut main = world.query_filtered::<&Editor, With<MainEditor>>();
+    let text = main.single(world).ok().map(Editor::text);
+    text.map(str::to_owned)
+}
+
 /// Notes the [`TuiInputState`] for the next key's filters, and after the
 /// frame's keys.
 pub(crate) fn note_state(
@@ -305,10 +310,10 @@ pub(crate) fn note_state(
     focus: Res<KeyFocus>,
     panels: Query<(), With<TuiPanel>>,
     choices: Choices,
-    (input, sources): (Res<TuiInput>, Query<&CompletionSource>),
+    (input, sources): (Query<&Editor, With<MainEditor>>, Query<&CompletionSource>),
     mut state: ResMut<TuiInputState>,
 ) {
-    let typed = complete::typed(&input, &sources);
+    let typed = (input.single().ok()).and_then(|input| complete::typed(input, &sources));
     let scope = match focus.0 {
         Some(panel) if panels.contains(panel) => KeyScope::Panel(panel),
         _ if reading(&main) => KeyScope::Transcript,
@@ -399,7 +404,7 @@ pub(crate) struct Context<'a, 'w, 's> {
 /// plugins rerun on its changes.
 pub(crate) struct Target<'a> {
     view: &'a mut TuiView,
-    input: &'a mut TuiInput,
+    input: &'a mut Editor,
     pane: Option<(Mut<'a, TranscriptView>, Mut<'a, PaneState>)>,
 }
 
@@ -414,6 +419,17 @@ type Panes<'w, 's> = Query<
         Has<MainPane>,
     ),
 >;
+
+/// The editors, which the keys type into.
+type Editors<'w, 's> = Query<'w, 's, (Entity, &'static mut Editor, Has<MainEditor>)>;
+
+/// The editor the keys type into: the panel's with the keys, else the main
+/// one.
+fn keyed_editor(editors: &Editors, focus: Option<Entity>) -> Option<Entity> {
+    let focused = focus.filter(|entity| editors.contains(*entity));
+    let main = || editors.iter().find(|(.., main)| *main);
+    focused.or_else(|| main().map(|(entity, ..)| entity))
+}
 
 /// The pane the keys act on: the one with the keys, else the main one.
 fn keyed_pane(panes: &Panes, focus: Option<Entity>) -> Option<Entity> {
@@ -431,7 +447,7 @@ fn keyed_pane(panes: &Panes, focus: Option<Entity>) -> Option<Entity> {
 pub(crate) fn read_input(
     mut events: ResMut<TerminalEvents>,
     (mut view, mut panes, shown): (ResMut<TuiView>, Panes, Res<Shown>),
-    mut input: ResMut<TuiInput>,
+    mut editors: Editors,
     mut keymap: Keymap,
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
@@ -464,7 +480,16 @@ pub(crate) fn read_input(
         history: &history.entries,
         choices: &choices,
     };
+    // Keys typed with no editor to take them go nowhere.
+    let mut none = Editor::default();
     for item in std::mem::take(&mut events.0) {
+        let editor = keyed_editor(&editors, keymap.focus.0);
+        let in_panel = editor.is_some() && editor == keymap.focus.0;
+        let mut found = editor.and_then(|editor| editors.get_mut(editor).ok());
+        let input: &mut Editor = match &mut found {
+            Some((_, editor, _)) => &mut **editor,
+            None => &mut none,
+        };
         let pane = keyed_pane(&panes, keymap.focus.0);
         let reading = panes
             .iter()
@@ -475,7 +500,7 @@ pub(crate) fn read_input(
                 let pane = pane.and_then(|pane| panes.get_mut(pane).ok());
                 let mut target = Target {
                     view: &mut view,
-                    input: &mut input,
+                    input,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
                 act(action, &mut target, &context, &mut commands);
@@ -501,19 +526,19 @@ pub(crate) fn read_input(
                         commands.trigger(Pick::person(entity, chosen));
                         // The next one takes the keys that follow.
                         view.queue.retain(|&queued| queued != entity);
-                        pick::show_first(&mut view, &choices, &mut input);
+                        pick::show_first(&mut view, &choices, input);
                     }
                     continue;
                 }
                 let pane = pane.and_then(|pane| panes.get_mut(pane).ok());
                 let mut target = Target {
                     view: &mut view,
-                    input: &mut input,
+                    input,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
                 pressed(
                     key,
-                    reading,
+                    (reading, in_panel),
                     &mut target,
                     &mut keymap,
                     &context,
@@ -529,10 +554,10 @@ pub(crate) fn read_input(
                         .push_str(text.lines().next().unwrap_or_default());
                     choosing.selected = 0;
                 }
-                None if matches!(keymap.scope(reading), KeyScope::Panel(_)) => {}
+                None if !in_panel && matches!(keymap.scope(reading), KeyScope::Panel(_)) => {}
                 // A dropped image file becomes `@path`, which attaches it.
                 None => match clipboard::dropped_image(&text) {
-                    Some(path) => clipboard::type_path(&mut input, &path),
+                    Some(path) => clipboard::type_path(input, &path),
                     None => input.insert(&text),
                 },
             },
@@ -553,11 +578,12 @@ pub(crate) fn read_input(
 
 /// Handles a key pressed with no picker or question shown: a binding's,
 /// the next of a binding of several, else a character typed into the
-/// input. With a panel focused, Esc that it does not bind gives the keys
-/// back to the input.
+/// input, or into the editor of the panel with the keys (`in_panel`). With
+/// a panel focused, Esc that it does not bind gives the keys back to the
+/// input.
 fn pressed(
     key: KeyEvent,
-    reading: bool,
+    (reading, in_panel): (bool, bool),
     target: &mut Target,
     keymap: &mut Keymap,
     context: &Context,
@@ -583,7 +609,7 @@ fn pressed(
         }
         match scope {
             KeyScope::Panel(_) if press.code == KeyCode::Esc => keymap.focus.0 = None,
-            KeyScope::Panel(_) => {}
+            KeyScope::Panel(_) if !in_panel => {}
             _ => {
                 if let Some(character) = press.typed() {
                     input.insert_char(character);
@@ -839,7 +865,7 @@ fn answer_inline(number: usize, target: &mut Target, context: &Context, commands
 /// pane the keys act on follows the newest output.
 pub(crate) fn send(
     view: &mut TuiView,
-    input: &mut TuiInput,
+    input: &mut Editor,
     pane: Option<&mut PaneState>,
     agent: Option<Entity>,
     commands: &mut Commands,
@@ -867,7 +893,7 @@ pub(crate) fn send(
 }
 
 /// Puts the selected completion in place of the token being completed.
-fn accept_completion(view: &mut TuiView, input: &mut TuiInput) {
+fn accept_completion(view: &mut TuiView, input: &mut Editor) {
     let Some(completion) = view.completion.take() else {
         return;
     };

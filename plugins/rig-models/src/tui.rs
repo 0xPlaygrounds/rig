@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
 use rig_harness::rig_core::providers::registry::ProviderId;
-use rig_tui::{CompletionSource, Side, StatusItem, StatusItems, StatusSystems, Tone, TuiInput};
+use rig_tui::{
+    CompletionSource, Editor, MainEditor, Side, StatusItem, StatusItems, StatusSystems, Tone,
+};
 
 use super::{ModelItem, ModelLabel};
 
@@ -127,7 +129,7 @@ fn complete_models(
     items: Query<&ModelItem>,
     changed: Query<(), Changed<ModelItem>>,
     mut gone: RemovedComponents<ModelItem>,
-    input: Option<Res<TuiInput>>,
+    input: Option<Single<&Editor, With<MainEditor>>>,
     completions: Query<Entity, With<ModelCompletions>>,
     mut current: Local<bool>,
     mut commands: Commands,

@@ -4,7 +4,7 @@ use crossterm::event::KeyEventKind;
 use super::*;
 use crate::tests::{Delivered, key_events, press, type_text, typed, view_app};
 use crate::view::TuiView;
-use crate::{CompletionSource, Placement, TuiInput, TuiPanel};
+use crate::{CompletionSource, Placement, TuiPanel};
 use ratatui::layout::Constraint;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 
@@ -73,7 +73,7 @@ fn a_binding_reads_and_edits_the_input_before_it_is_sent() {
     // A template key: the draft is wrapped in a request for a review.
     app.add_key_binding(
         KeyBinding::new(KeyPress::alt('r'), "Ask for a review"),
-        |_: On<KeyPressed>, mut input: ResMut<TuiInput>| {
+        |_: On<KeyPressed>, mut input: crate::MainInput| {
             let draft = input.take();
             input.set(format!("Review this: {draft}"));
             input.set_cursor(0);
@@ -181,13 +181,13 @@ fn a_plugins_binding_and_action_do_built_in_actions() {
     press(&mut app, "ctrl+o");
     assert_eq!(selected(&app), Some(1));
     // Without one, it moves the cursor a line down.
-    app.world_mut().resource_mut::<TuiInput>().set("ab\ncd");
-    app.world_mut().resource_mut::<TuiInput>().set_cursor(1);
+    crate::tests::edit(&mut app, |input| input.set("ab\ncd"));
+    crate::tests::edit(&mut app, |input| input.set_cursor(1));
     app.update();
     press(&mut app, "ctrl+o");
-    assert_eq!(app.world().resource::<TuiInput>().cursor(), 4);
+    assert_eq!(crate::tests::input(&app).cursor(), 4);
     // Put among the keys, it is done too.
     crate::tests::push(&mut app, crate::KeyInput::Action(InputAction::LineStart));
     app.update();
-    assert_eq!(app.world().resource::<TuiInput>().cursor(), 3);
+    assert_eq!(crate::tests::input(&app).cursor(), 3);
 }

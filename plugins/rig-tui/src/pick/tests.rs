@@ -1,7 +1,6 @@
 use rig_harness::prelude::*;
 
 use super::*;
-use crate::TuiInput;
 use crate::tests::{press, type_text, view_app};
 use rig_harness::ask::Choice;
 use rig_harness::pick::{Chosen, Picked, Picker};
@@ -72,7 +71,7 @@ fn pickers_wait_their_turn_and_say_what_was_picked() {
         app.world().resource::<Reported>().0,
         [Some(Chosen::item(1)), Some(Chosen::text("feature")), None]
     );
-    assert_eq!(app.world().resource::<TuiInput>().text(), "");
+    assert_eq!(crate::tests::input(&app).text(), "");
 }
 
 #[test]
@@ -150,7 +149,7 @@ fn a_plugin_replaces_and_closes_its_own_picker() {
     app.update();
     assert_eq!(shown(&mut app), None);
     type_text(&mut app, "hi");
-    assert_eq!(app.world().resource::<TuiInput>().text(), "hi");
+    assert_eq!(crate::tests::input(&app).text(), "hi");
 }
 
 /// Each question answered, by title, with its answer: `None` for one
