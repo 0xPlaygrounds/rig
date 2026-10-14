@@ -23,7 +23,7 @@ use super::jsonl::{self, Kept};
 use super::keys::KeyPress;
 use super::pane::{PaneState, TranscriptPane, TranscriptSource};
 use super::panel::Focused;
-use super::pick::Choosing;
+use super::pick::PickerState;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
@@ -61,8 +61,6 @@ pub(crate) struct TuiView {
     /// The pickers and questions to show, in the order they came; the
     /// first is shown over the transcript and takes the keys.
     pub(crate) queue: Vec<Entity>,
-    /// The one shown, with what is typed in it.
-    pub(crate) choosing: Option<Choosing>,
     /// The keys pressed so far of a binding of several.
     pub(crate) pending: Vec<KeyPress>,
     /// A refused command put back in the input: sent again unchanged, it
@@ -785,13 +783,14 @@ pub(crate) fn keep_notices(
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
     data: Option<Res<PluginData>>,
-    (input, view): (Query<&Editor, With<MainEditor>>, Option<Res<TuiView>>),
+    (input, showing): (Query<&Editor, With<MainEditor>>, Query<&PickerState>),
 ) {
     let (Some(reason), Some(data)) = (reason, data) else {
         return;
     };
-    let answering = view.as_deref().and_then(|view| view.choosing.as_ref());
-    let draft = answering.and_then(|choosing| choosing.draft.as_deref());
+    let draft = showing
+        .iter()
+        .find_map(|choosing| choosing.draft.as_deref());
     let typed = input.single().ok().map(Editor::text);
     let text = draft.or(typed).unwrap_or_default();
     if *reason != ExitReason::Reload || text.is_empty() {

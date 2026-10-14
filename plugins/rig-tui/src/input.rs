@@ -52,7 +52,7 @@ use super::history::{PromptHistory, Sent};
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
 use super::pane::{MainPane, PaneState};
 use super::panel::{TuiPanel, TuiScreen};
-use super::pick::{self, Choices};
+use super::pick::{self, Choices, PickerState, Showing};
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Interrupt, Notice};
@@ -314,6 +314,7 @@ fn main_text(world: &mut World) -> Option<String> {
 /// frame's keys.
 pub(crate) fn note_state(
     (view, main): (Res<TuiView>, Query<&TranscriptView, With<MainPane>>),
+    showing: Query<(Entity, &PickerState)>,
     focus: Res<KeyFocus>,
     panels: Query<(), With<TuiPanel>>,
     choices: Choices,
@@ -332,12 +333,12 @@ pub(crate) fn note_state(
         _ if reading(&main) => KeyScope::Transcript,
         _ => KeyScope::Input,
     };
-    let choosing = view.choosing.as_ref();
-    let answering = choosing.filter(|c| c.draft.is_some()).map(|c| c.entity);
-    let picker = choosing.filter(|c| c.draft.is_none());
-    let picking = picker.map(|c| c.entity);
-    let selection = picker.and_then(|choosing| {
-        let shown = choices.shown(choosing.entity)?;
+    let choosing = showing.iter().next();
+    let answering = choosing.filter(|(_, c)| c.draft.is_some()).map(|(e, _)| e);
+    let picker = choosing.filter(|(_, c)| c.draft.is_none());
+    let picking = picker.map(|(e, _)| e);
+    let selection = picker.and_then(|(entity, choosing)| {
+        let shown = choices.shown(entity)?;
         match shown.rows(&choosing.filter).get(choosing.selected) {
             Some(&pick::Row::Item(index)) => Some(index),
             _ => None,
@@ -462,7 +463,7 @@ fn keyed_pane(panes: &Panes, focus: Option<Entity>) -> Option<Entity> {
 pub(crate) fn read_input(
     mut events: ResMut<TerminalEvents>,
     (mut view, mut panes, shown): (ResMut<TuiView>, Panes, Res<Shown>),
-    mut editors: Editors,
+    (mut editors, mut showing): (Editors, Showing),
     mut keymap: Keymap,
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
@@ -518,7 +519,7 @@ pub(crate) fn read_input(
                     input,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
-                act(action, &mut target, &context, &mut commands);
+                act(action, &mut target, (&context, &showing), &mut commands);
                 continue;
             }
         };
@@ -528,20 +529,16 @@ pub(crate) fn read_input(
             }
             Event::Key(key) => {
                 // A question answered in the input leaves the keys to it.
-                let picking = view
-                    .choosing
-                    .as_mut()
-                    .filter(|choosing| choosing.draft.is_none());
-                if let Some(choosing) = picking {
-                    let Some(shown) = choices.shown(choosing.entity) else {
-                        continue;
-                    };
-                    if let Some(chosen) = pick::choice_key(key, choosing, &shown) {
-                        let entity = choosing.entity;
+                let picking = showing.iter_mut().find(|(_, c)| c.draft.is_none());
+                if let Some((entity, mut choosing)) = picking {
+                    let shown = choices.shown(entity);
+                    let chosen =
+                        shown.and_then(|shown| pick::choice_key(key, &mut choosing, &shown));
+                    if let Some(chosen) = chosen {
                         commands.trigger(Pick::person(entity, chosen));
                         // The next one takes the keys that follow.
                         view.queue.retain(|&queued| queued != entity);
-                        pick::show_first(&mut view, &choices, input);
+                        pick::show_first(&view, &choices, (&showing, input), &mut commands);
                     }
                     continue;
                 }
@@ -556,14 +553,14 @@ pub(crate) fn read_input(
                     (reading, in_panel),
                     &mut target,
                     &mut keymap,
-                    &context,
+                    (&context, &showing),
                     &mut commands,
                 );
             }
             // A paste arrives whole, newlines included, so it is not sent
             // line by line. A panel with the keys reads it from the event.
-            Event::Paste(text) => match view.choosing.as_mut().filter(|c| c.draft.is_none()) {
-                Some(choosing) => {
+            Event::Paste(text) => match showing.iter_mut().find(|(_, c)| c.draft.is_none()) {
+                Some((_, mut choosing)) => {
                     choosing
                         .filter
                         .push_str(text.lines().next().unwrap_or_default());
@@ -601,7 +598,7 @@ fn pressed(
     (reading, in_panel): (bool, bool),
     target: &mut Target,
     keymap: &mut Keymap,
-    context: &Context,
+    (context, showing): (&Context, &Showing),
     commands: &mut Commands,
 ) {
     let Target { view, input, .. } = target;
@@ -641,7 +638,7 @@ fn pressed(
         return;
     }
     match action {
-        Some(action) => act(*action, target, context, commands),
+        Some(action) => act(*action, target, (context, showing), commands),
         None => commands.trigger(KeyPressed {
             entity,
             agent: context.agent,
@@ -677,22 +674,26 @@ fn released(
 /// Does what a built-in key does. With a turn running, Enter steers it and
 /// Tab queues a follow-up. Esc interrupts the agent: it stops its turn,
 /// or, idle, what a plugin stops on it, such as a rebuild.
-fn act(action: InputAction, target: &mut Target, context: &Context, commands: &mut Commands) {
+fn act(
+    action: InputAction,
+    target: &mut Target,
+    (context, showing): (&Context, &Showing),
+    commands: &mut Commands,
+) {
     use InputAction as Do;
     let Target { view, input, pane } = target;
     // A question answered in the input: Enter answers it, Esc refuses it.
-    let editing = view
-        .choosing
-        .as_ref()
-        .filter(|choosing| choosing.draft.is_some())
-        .map(|choosing| choosing.entity);
+    let editing = showing
+        .iter()
+        .find(|(_, choosing)| choosing.draft.is_some());
+    let editing = editing.map(|(entity, _)| entity);
     match (action, editing) {
         (Do::Send, Some(ask)) if view.completion.as_ref().is_none_or(|c| c.is_exact()) => {
             let answer = Chosen::text(input.take());
-            return close(ask, Some(answer), target, context, commands);
+            return close(ask, Some(answer), target, (context, showing), commands);
         }
         (Do::Stop, Some(ask)) if view.completion.is_none() => {
-            return close(ask, None, target, context, commands);
+            return close(ask, None, target, (context, showing), commands);
         }
         _ => {}
     }
@@ -803,7 +804,9 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
                 transcript.toggle(item);
             }
         }
-        Do::AnswerInline(number) => answer_inline(usize::from(number), target, context, commands),
+        Do::AnswerInline(number) => {
+            answer_inline(usize::from(number), target, (context, showing), commands);
+        }
         Do::DismissInline => {
             if let Some(&ask) = view.inline.first() {
                 view.inline.remove(0);
@@ -819,12 +822,17 @@ fn close(
     ask: Entity,
     chosen: Option<Chosen>,
     target: &mut Target,
-    context: &Context,
+    (context, showing): (&Context, &Showing),
     commands: &mut Commands,
 ) {
     commands.trigger(Pick::person(ask, chosen));
     target.view.queue.retain(|&queued| queued != ask);
-    pick::show_first(target.view, context.choices, target.input);
+    pick::show_first(
+        target.view,
+        context.choices,
+        (showing, target.input),
+        commands,
+    );
 }
 
 /// Moves the selection up or down the items of the pane laid out last:
@@ -853,7 +861,12 @@ fn select(up: bool, transcript: &mut Mut<TranscriptView>, state: &mut Mut<PaneSt
 /// Answers the question shown beside the work with its choice `number`,
 /// counted from 1, or after its choices, when it takes text, takes the
 /// input for its answer.
-fn answer_inline(number: usize, target: &mut Target, context: &Context, commands: &mut Commands) {
+fn answer_inline(
+    number: usize,
+    target: &mut Target,
+    (context, showing): (&Context, &Showing),
+    commands: &mut Commands,
+) {
     let Some(&ask) = target.view.inline.first() else {
         return;
     };
@@ -866,10 +879,15 @@ fn answer_inline(number: usize, target: &mut Target, context: &Context, commands
     if index < shown.items.len() {
         target.view.inline.remove(0);
         commands.trigger(Pick::person(ask, Some(Chosen::item(index))));
-    } else if index == shown.items.len() && shown.free_text && target.view.choosing.is_none() {
+    } else if index == shown.items.len() && shown.free_text && showing.is_empty() {
         target.view.inline.remove(0);
         target.view.queue.insert(0, ask);
-        pick::show_first(target.view, context.choices, target.input);
+        pick::show_first(
+            target.view,
+            context.choices,
+            (showing, target.input),
+            commands,
+        );
     }
 }
 

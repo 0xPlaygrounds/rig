@@ -22,7 +22,7 @@ use super::input::TuiInputState;
 use super::keys::KeyFocus;
 use super::pane::{PaneState, TranscriptPane};
 use super::panel::{self, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel};
-use super::pick::{Choices, Choosing, InlineStrip, Listing, Row};
+use super::pick::{Choices, InlineStrip, Listing, PickerState, Row};
 use super::renderers::{
     AsideRenderer, CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks,
     MessageDecorator, MessageRenderer, MessageView, Renderers, Role, ToolCallView, ToolRenderer,
@@ -46,6 +46,7 @@ use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, SentTo};
+use rig_harness::pick::{PickPreview, Picker};
 use rig_harness::prelude::{CallOutput, ToolProgress};
 use rig_harness::primary::Shown;
 
@@ -108,6 +109,9 @@ pub(crate) fn needs_redraw(
             Changed<PaneState>,
             Changed<Editor>,
             Changed<StatusLine>,
+            Changed<PickerState>,
+            Changed<PickPreview>,
+            Changed<Picker>,
         )>,
     >,
     partials: Query<(), Changed<Partial>>,
@@ -131,7 +135,11 @@ pub(crate) fn needs_redraw(
         RemovedComponents<StatusItems>,
         RemovedComponents<Holds>,
         RemovedComponents<ToolProgress>,
-        (RemovedComponents<TranscriptPane>, RemovedComponents<Editor>),
+        (
+            RemovedComponents<TranscriptPane>,
+            RemovedComponents<Editor>,
+            RemovedComponents<PickerState>,
+        ),
         RemovedLooks,
     ),
     mut paced: Local<Paced>,
@@ -144,6 +152,7 @@ pub(crate) fn needs_redraw(
         + removed.3.read().count()
         + removed.4.0.read().count()
         + removed.4.1.read().count()
+        + removed.4.2.read().count()
         > 0
         || removed.5.any();
     let changed = requested
@@ -203,6 +212,9 @@ impl RemovedLooks<'_, '_> {
 #[derive(Resource, Default)]
 pub(crate) struct FrameLayout {
     due: bool,
+    /// The box of the picker shown with a preview, its list at the left
+    /// and its preview at the right.
+    picker: Option<Rect>,
 }
 
 /// Whether [`layout`] laid out a frame that is not drawn yet: the
@@ -217,7 +229,10 @@ pub(crate) fn frame_due(frame: Res<FrameLayout>) -> bool {
 /// as tall as what it shows.
 pub(crate) fn layout(
     screens: (Option<Res<Tui>>, Option<Res<TuiTestScreen>>),
-    view: Res<TuiView>,
+    (view, previewed): (
+        Res<TuiView>,
+        Query<(Entity, &PickerState), With<PickPreview>>,
+    ),
     mut frame: ResMut<FrameLayout>,
     mut panels: Query<(
         Entity,
@@ -239,12 +254,20 @@ pub(crate) fn layout(
     let inline = u16::from(!view.inline.is_empty());
     let mut panels: Vec<_> = panels.iter_mut().collect();
     panels.sort_by_key(|(entity, ..)| panel::spawned(*entity));
-    let panels = panels.into_iter().map(|(_, panel, canvas, editor, strip)| {
-        let fits = editor.map(|editor| editor.fit_rows(screen.width));
-        (panel, fits.or(strip.then_some(inline)), canvas)
-    });
-    panel::lay_out(panels, screen);
-    frame.due = true;
+    let panels = panels
+        .into_iter()
+        .map(|(entity, panel, canvas, editor, strip)| {
+            let fits = editor.map(|editor| editor.fit_rows(screen.width));
+            (entity, panel, fits.or(strip.then_some(inline)), canvas)
+        });
+    let previewed = previewed.iter().find(|(_, state)| !state.in_input());
+    let boxed = Constraint::Percentage(90);
+    let picker = previewed.map(|(entity, _)| (entity, screen.centered(boxed, boxed)));
+    panel::lay_out(panels, screen, picker.as_slice());
+    *frame = FrameLayout {
+        due: true,
+        picker: picker.map(|(_, area)| area),
+    };
 }
 
 /// What the transcript reads of where a turn's tool calls stand.
@@ -960,34 +983,38 @@ fn light_match(
 pub(crate) fn render(
     (mut tui, mut test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
     mut drew: ResMut<TuiFrame>,
-    mut view: ResMut<TuiView>,
+    view: Res<TuiView>,
     (state, focus, choices): (Res<TuiInputState>, Res<KeyFocus>, Choices),
     mut frame_layout: ResMut<FrameLayout>,
     (panels, carets): (Query<(Entity, &TuiPanel, &PanelCanvas)>, Query<&Caret>),
+    mut showing: Query<(Entity, &mut PickerState, Option<&PickPreview>)>,
     mut repaints: MessageReader<Repaint>,
 ) -> Result {
     if !std::mem::take(&mut frame_layout.due) {
         return Ok(());
     }
     let repaint: Vec<Rect> = repaints.read().map(|repaint| repaint.0).collect();
-    // Drawing the picker keeps its scroll within its body: drawing's own
-    // bookkeeping, not a change to redraw for.
-    let view = view.bypass_change_detection();
-    // The panels at the sides, then the boxes over the screen.
-    let mut panels: Vec<_> = panels.iter().collect();
-    panels.sort_by_key(|(entity, panel, _)| {
-        let over = matches!(panel.placement, Placement::Over { .. });
-        (over, panel::spawned(*entity))
-    });
+    let picker = showing.iter().find(|(_, choosing, _)| !choosing.in_input());
+    let picker = picker.map(|(entity, ..)| entity);
+    // The panels at the sides, then the boxes over the screen, then those
+    // within another, those within the picker over it.
+    let layer = |panel: &TuiPanel| match panel.placement {
+        Placement::Over { .. } => 1,
+        Placement::Within { panel, .. } if Some(panel) == picker => 3,
+        Placement::Within { .. } => 2,
+        _ => 0,
+    };
     let keyed = state.editor().and_then(|editor| {
-        let found = panels.iter().find(|(entity, ..)| *entity == editor);
+        let found = panels.get(editor).ok();
         found.map(|(.., canvas)| canvas.area())
     });
-    let edit = view
-        .choosing
-        .as_ref()
-        .filter(|choosing| choosing.draft.is_some())
-        .and_then(|choosing| choices.shown(choosing.entity));
+    let mut panels: Vec<_> = panels.iter().collect();
+    panels.sort_by_key(|(entity, panel, _)| (layer(panel), panel::spawned(*entity)));
+    let (under, over_picker): (Vec<_>, Vec<_>) = panels
+        .into_iter()
+        .partition(|(_, panel, _)| layer(panel) < 3);
+    let edit = showing.iter().find(|(_, choosing, _)| choosing.in_input());
+    let edit = edit.and_then(|(entity, ..)| choices.shown(entity));
     let cursor = carets.iter().find_map(|caret| caret.0);
     let cursor = cursor.map(|at| MoveTo(at.x, at.y));
     let mut areas = TuiFrame::default();
@@ -995,27 +1022,41 @@ pub(crate) fn render(
         let screen = frame.area();
         let mut overlays = Vec::new();
         let mut drawn = Vec::new();
-        for (entity, panel, canvas) in &panels {
-            canvas.copy_to(frame.buffer_mut());
-            drawn.push((*entity, canvas.area()));
-            if matches!(panel.placement, Placement::Over { .. }) {
-                overlays.push(canvas.area());
-            }
+        let mut copy =
+            |frame: &mut Frame, (entity, panel, canvas): &(Entity, &TuiPanel, &PanelCanvas)| {
+                canvas.copy_to(frame.buffer_mut());
+                drawn.push((*entity, canvas.area()));
+                if layer(panel) > 0 {
+                    overlays.push(canvas.area());
+                }
+            };
+        for panel in &under {
+            copy(frame, panel);
         }
         let body = edit.as_ref().zip(keyed);
-        overlays.extend(body.and_then(|(edit, at)| draw_body(frame, edit.body, at)));
-        let shown = view
-            .choosing
-            .as_mut()
-            .filter(|choosing| choosing.draft.is_none())
-            .and_then(|choosing| Some((choices.shown(choosing.entity)?, choosing)));
+        let body = body.and_then(|(edit, at)| draw_body(frame, edit.body, at));
+        // Drawing the picker keeps its scroll within its body: drawing's
+        // own bookkeeping, not a change to redraw for.
+        let shown = picker.and_then(|picker| {
+            let (_, choosing, preview) = showing.get_mut(picker).ok()?;
+            Some((choices.shown(picker)?, choosing, preview))
+        });
+        let mut over = body.into_iter().collect::<Vec<_>>();
         match (shown, &view.completion, keyed) {
-            (Some((shown, choosing)), ..) => overlays.push(draw_choice(frame, choosing, &shown)),
+            (Some((shown, mut choosing, preview)), ..) => {
+                let preview = preview.zip(frame_layout.picker);
+                let choosing = choosing.bypass_change_detection();
+                over.push(draw_choice(frame, choosing, &shown, preview));
+                for panel in &over_picker {
+                    copy(frame, panel);
+                }
+            }
             (None, Some(completion), Some(at)) if focus.0.is_none() => {
-                overlays.extend(draw_completion(frame, completion, at));
+                over.extend(draw_completion(frame, completion, at));
             }
             _ => {}
         }
+        overlays.extend(over);
         areas = TuiFrame {
             screen,
             areas: drawn,
@@ -1185,9 +1226,21 @@ const LEAST_LIST: usize = 3;
 /// scrolled to `choosing.scroll` (kept within it), what is typed, then the
 /// rows it leaves, each with its detail at the right and, in a choice of
 /// several, its tick box; for free text, the typed answer.
-fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) -> Rect {
+fn draw_choice(
+    frame: &mut Frame,
+    choosing: &mut PickerState,
+    shown: &Listing<'_>,
+    preview: Option<(&PickPreview, Rect)>,
+) -> Rect {
     let area = frame.area();
-    let width = area.width.saturating_mul(4) / 5;
+    // With a preview, the list takes the left of its box, the preview the
+    // right: text drawn here, a conversation by its pane.
+    let boxed = preview.map(|(preview, at)| {
+        let [list, beside] =
+            Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(at);
+        (at, list, preview, beside)
+    });
+    let width = boxed.map_or(area.width.saturating_mul(4) / 5, |(_, list, ..)| list.width);
     let more = shown.more(choosing);
     let body = wrap_all(
         &plain_lines(more.unwrap_or(shown.body), Style::new()),
@@ -1201,8 +1254,18 @@ fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) 
         .unwrap_or(u16::MAX)
         .min(area.height.saturating_mul(3) / 4)
         .max(5);
-    let popup = area.centered(Constraint::Length(width), Constraint::Length(height));
+    let popup = match boxed {
+        Some((_, list, ..)) => list,
+        None => area.centered(Constraint::Length(width), Constraint::Length(height)),
+    };
     frame.render_widget(Clear, popup);
+    if let Some((_, _, PickPreview::Text(text), beside)) = boxed {
+        let wide = usize::from(beside.width.saturating_sub(2).max(1));
+        let lines = wrap_all(&plain_lines(text, Style::new()), wide);
+        frame.render_widget(Clear, beside);
+        let block = Block::bordered().title(" preview ");
+        frame.render_widget(Paragraph::new(lines).block(block), beside);
+    }
     let inner = Block::bordered().inner(popup);
     // The body takes what the typed line, a gap and the list's least
     // leave, and scrolls when that is not all of it.
@@ -1278,7 +1341,7 @@ fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) 
         list,
         &mut state,
     );
-    popup
+    boxed.map_or(popup, |(whole, ..)| whole)
 }
 
 /// The messages the agent accepted and has not sent yet, under the

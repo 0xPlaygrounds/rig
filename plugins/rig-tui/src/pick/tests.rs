@@ -20,7 +20,10 @@ struct Ran(Vec<String>);
 /// The title of the picker or question shown.
 fn shown(app: &mut App) -> Option<String> {
     let world = app.world_mut();
-    let entity = world.resource::<TuiView>().choosing.as_ref()?.entity;
+    let entity = world
+        .query_filtered::<Entity, With<PickerState>>()
+        .single(world)
+        .ok()?;
     let title = world
         .get::<Picker>(entity)
         .map(|picker| picker.title.clone());
@@ -121,23 +124,34 @@ fn tab_ticks_several_items_and_enter_picks_them_in_list_order() {
 }
 
 #[test]
-fn a_plugin_replaces_and_closes_its_own_picker() {
+fn a_picker_filled_in_batches_keeps_what_is_typed_and_selected() {
+    use rig_harness::pick::Highlighted;
+
     let (mut app, _) = view_app();
     app.init_resource::<Reported>().add_observer(report);
-    let picker = app
-        .world_mut()
-        .spawn(Picker::new("Files").item("a.rs", "").item("b.rs", ""))
-        .id();
+    let batch = |items: &[&str]| {
+        let picker = Picker::new("Files");
+        items.iter().fold(picker, |picker, item| {
+            picker.item(*item, format!("open {item}"))
+        })
+    };
+    let picker = app.world_mut().spawn(batch(&["a.rs", "b.rs", "c.md"])).id();
     app.update();
-    type_text(&mut app, "b");
-    // Replaced: the new items, and the filter starts over.
-    let replaced = Picker::new("Files").item("c.rs", "").item("d.rs", "");
-    app.world_mut().entity_mut(picker).insert(replaced);
+    type_text(&mut app, "rs");
+    press(&mut app, "down");
+    let highlighted = |app: &App| app.world().get::<Highlighted>(picker).copied();
+    assert_eq!(highlighted(&app), Some(Highlighted(1)));
+    // The next batch comes in, an item before the selected one among them.
+    let more = batch(&["a.rs", "aa.rs", "b.rs", "c.md", "d.rs"]);
+    app.world_mut().entity_mut(picker).insert(more);
     app.update();
-    press(&mut app, "down enter");
+    let state = app.world().get::<PickerState>(picker);
+    assert_eq!(state.map(PickerState::filter), Some("rs"));
+    assert_eq!(highlighted(&app), Some(Highlighted(2)));
+    press(&mut app, "enter");
     assert_eq!(
         app.world().resource::<Reported>().0,
-        [Some(Chosen::item(1))]
+        [Some(Chosen::item(2))]
     );
     // Despawned by its plugin, a picker closes without a report.
     let picker = app
@@ -240,6 +254,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
     use unicode_width::UnicodeWidthStr;
 
     let item = Item {
+        id: "",
         label: "fix the flaky picker test in the terminal view · ~/code/rigs",
         detail: Some("$0.42 · 3h ago"),
         checked: false,
@@ -250,6 +265,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
     assert!(row.ends_with(" $0.42 · 3h ago"), "{row}");
     assert!(row.starts_with("fix the flaky picker te…  "), "{row}");
     let short = Item {
+        id: "",
         label: "main",
         detail: None,
         checked: false,
@@ -443,14 +459,11 @@ fn a_superseded_question_keeps_the_users_ticks() {
     let new = app.world_mut().spawn((joined, ForAgent(agent))).id();
     app.world_mut().entity_mut(old).insert(SupersededBy(new));
     app.update();
-    assert_eq!(
-        app.world()
-            .resource::<TuiView>()
-            .choosing
-            .as_ref()
-            .map(|c| c.entity),
-        Some(new)
-    );
+    let world = app.world_mut();
+    let shown = world
+        .query_filtered::<Entity, With<PickerState>>()
+        .single(world);
+    assert_eq!(shown.ok(), Some(new));
     press(&mut app, "enter");
     assert_eq!(
         app.world().resource::<Answered>().0,
@@ -458,4 +471,42 @@ fn a_superseded_question_keeps_the_users_ticks() {
     );
     let seen = &app.world().resource::<Dispositions>().0;
     assert!(seen.contains(&Disposition::Superseded), "{seen:?}");
+}
+
+#[test]
+fn a_pickers_preview_is_drawn_beside_its_list() {
+    use rig_core::completion::Message;
+    use rig_harness::pick::PickPreview;
+
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(100, 30));
+    let picker = Picker::new("Sessions").item("fix the parser", "resume a");
+    let mut conversation = rig_core::conversation::Conversation::default();
+    conversation.push(Message::user("why does the parser drop tabs?"));
+    let preview = PickPreview::Conversation {
+        conversation,
+        at: None,
+    };
+    let picker = app.world_mut().spawn((picker, preview)).id();
+    app.update();
+    app.update();
+    let screen = |app: &App| app.world().resource::<TuiTestScreen>().rows().join("\n");
+    let drawn = screen(&app);
+    // In the right half of the picker's box, 90 columns from column 5.
+    let row = drawn
+        .lines()
+        .find(|row| row.contains("why does the parser drop tabs?"));
+    let column = row.and_then(|row| row.chars().position(|c| c == '›'));
+    assert!(column.is_some_and(|column| column > 50), "{drawn}");
+    assert!(drawn.contains("fix the parser"), "{drawn}");
+    app.world_mut()
+        .entity_mut(picker)
+        .insert(PickPreview::Text("a saved session".into()));
+    app.update();
+    app.update();
+    let drawn = screen(&app);
+    assert!(drawn.contains("a saved session"), "{drawn}");
+    assert!(!drawn.contains("why does the parser"), "{drawn}");
 }

@@ -7,7 +7,7 @@ use crate::Highlight;
 /// The screen after drawing `shown` as `choosing` says, 120 columns by
 /// 20 rows, a line per row.
 fn drawn_choice(
-    choosing: &mut super::super::pick::Choosing,
+    choosing: &mut super::super::pick::PickerState,
     shown: &super::super::pick::Listing<'_>,
 ) -> String {
     use ratatui::Terminal;
@@ -16,7 +16,7 @@ fn drawn_choice(
 
     let Ok(mut terminal) = Terminal::new(TestBackend::new(120, 20));
     let drawn = terminal.draw(|frame| {
-        super::draw_choice(frame, choosing, shown);
+        super::draw_choice(frame, choosing, shown, None);
     });
     assert!(drawn.is_ok());
     let buffer = terminal.backend().buffer();
@@ -29,13 +29,14 @@ fn drawn_choice(
 
 #[test]
 fn a_question_shows_its_body_choices_and_typed_answer() {
-    use super::super::pick::{Choosing, Item, Listing, Row};
+    use super::super::pick::{Item, Listing, PickerState, Row};
 
     let mut shown = Listing {
         title: "Allow `rm -rf build`?",
         body: "It matches `rm -rf`.\nType a reason to deny it with.",
         items: ["Deny", "Allow once", "Allow for this session"]
             .map(|label| Item {
+                id: label,
                 label,
                 detail: None,
                 checked: false,
@@ -49,8 +50,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         edit: None,
         keys: &[],
     };
-    let mut choosing = Choosing {
-        entity: bevy_ecs::entity::Entity::PLACEHOLDER,
+    let mut choosing = PickerState {
         filter: "allow".to_owned(),
         selected: 0,
         ticked: Vec::new(),
@@ -58,6 +58,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         draft: None,
         more: false,
         touched: false,
+        picked: None,
     };
     // What is typed filters the choices and is an answer of its own.
     assert_eq!(

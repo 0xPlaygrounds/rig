@@ -1,8 +1,14 @@
 //! Choices over the transcript: the pickers of [`rig_harness::pick`] and
 //! the questions ([`Ask`]) of any plugin, which the view answers for
 //! every agent. One is shown at a time, in the order they came; the next
-//! waits until it is closed. A new [`Picker`] on the same entity starts it
-//! over. The user's choice is a [`Pick`](rig_harness::pick::Pick), which the harness
+//! waits until it is closed. What the user did in the one shown is its
+//! [`PickerState`], on its entity. A new [`Picker`] on the same entity
+//! fills it in place, as a search that finds more does: what is typed
+//! stays, and so does the item selected, found again by its command, else
+//! its label. The item highlighted is [`Highlighted`] on the entity, and a
+//! plugin's [`PickPreview`] there is drawn beside the list: text, or a
+//! conversation in a [`TranscriptPane`](crate::TranscriptPane). The user's
+//! choice is a [`Pick`](rig_harness::pick::Pick), which the harness
 //! carries out.
 //!
 //! A picker or question that takes several items shows a tick box on each:
@@ -37,15 +43,17 @@ use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use rig_ecs::stage::{Effect, Outcome, Settled, SupersededBy};
 use rig_harness::ask::Ask;
-use rig_harness::pick::{Chosen, Picker};
+use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker};
 use rig_tools::shorten;
 use unicode_width::UnicodeWidthStr;
 
 use ratatui::layout::Constraint;
 
 use super::editor::{Editor, MainEditor};
+use super::pane::{TranscriptPane, TranscriptSource};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 use super::view::TuiView;
+use super::view::{ItemRow, ScrollTo, TranscriptItem};
 
 /// Lines a page key moves.
 const PAGE: usize = 10;
@@ -89,11 +97,11 @@ pub enum ChoiceAction {
     Close,
 }
 
-/// The choice shown: a [`Picker`] or an [`Ask`], what is typed to filter
-/// or answer it, and the selected row.
-pub(crate) struct Choosing {
-    /// The picker or question.
-    pub(crate) entity: Entity,
+/// What the user did in the [`Picker`] or [`Ask`] the view shows, on its
+/// entity while it is shown: what is typed to filter or answer it, the row
+/// selected, what is ticked.
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PickerState {
     /// What is typed.
     pub(crate) filter: String,
     /// The selected position among the visible rows.
@@ -112,6 +120,28 @@ pub(crate) struct Choosing {
     /// Whether ticks are in play: an item started ticked, or the user
     /// ticked or unticked one. Enter then answers exactly the ticked.
     pub(crate) touched: bool,
+    /// The item highlighted last, by its command (a choice's id) and its
+    /// label, which a picker filled again selects again.
+    pub(crate) picked: Option<(String, String)>,
+}
+
+impl PickerState {
+    /// What is typed, which filters the items or answers.
+    pub fn filter(&self) -> &str {
+        &self.filter
+    }
+
+    /// The items ticked, by their position in the list, in a choice of
+    /// several.
+    pub fn ticked(&self) -> &[usize] {
+        &self.ticked
+    }
+
+    /// Whether it is a question answered in the input rather than over the
+    /// transcript.
+    pub fn in_input(&self) -> bool {
+        self.draft.is_some()
+    }
 }
 
 /// A picker or a question, as the view lists it.
@@ -133,6 +163,8 @@ pub(crate) struct Listing<'a> {
 
 /// An item or choice of a [`Listing`].
 pub(crate) struct Item<'a> {
+    /// What names it: a picker item's command, a choice's id.
+    pub(crate) id: &'a str,
     pub(crate) label: &'a str,
     /// What is shown beside the label, such as a session's age.
     pub(crate) detail: Option<&'a str>,
@@ -162,7 +194,7 @@ impl Item<'_> {
 impl Listing<'_> {
     /// What the selected row says beyond its label, when the user asked
     /// for it.
-    pub(crate) fn more(&self, choosing: &Choosing) -> Option<&str> {
+    pub(crate) fn more(&self, choosing: &PickerState) -> Option<&str> {
         let rows = self.rows(&choosing.filter);
         match rows.get(choosing.selected) {
             Some(Row::Item(index)) if choosing.more => self.items.get(*index)?.more,
@@ -217,6 +249,7 @@ impl Choices<'_, '_> {
                     .items
                     .iter()
                     .map(|item| Item {
+                        id: &item.command,
                         label: &item.label,
                         detail: item.detail.as_deref(),
                         checked: item.checked,
@@ -244,6 +277,7 @@ fn listing<'a>(ask: &'a Ask, keys: &'a [(KeyCode, ChoiceAction)]) -> Listing<'a>
             .choices
             .iter()
             .map(|choice| Item {
+                id: &choice.id,
                 label: &choice.label,
                 detail: None,
                 checked: choice.checked,
@@ -266,9 +300,9 @@ fn listing<'a>(ask: &'a Ask, keys: &'a [(KeyCode, ChoiceAction)]) -> Listing<'a>
 }
 
 /// What the user did on the question `old` shows, carried over to its
-/// successor `new` on `entity` by choice id: ticks (a new choice ticked as
-/// it starts), what was typed, the row selected and the draft.
-fn carried(choosing: Choosing, old: &Ask, new: &Ask, entity: Entity) -> Choosing {
+/// successor `new` by choice id: ticks (a new choice ticked as it starts),
+/// what was typed, the row selected and the draft.
+fn carried(choosing: PickerState, old: &Ask, new: &Ask) -> PickerState {
     let id_at = |index: &usize| old.choices.get(*index).map(|choice| choice.id.as_str());
     let ticked: Vec<&str> = choosing.ticked.iter().filter_map(id_at).collect();
     let was = |id: &str| old.choices.iter().any(|choice| choice.id == id);
@@ -288,27 +322,31 @@ fn carried(choosing: Choosing, old: &Ask, new: &Ask, entity: Entity) -> Choosing
         other => other.copied(),
     };
     let selected = row.and_then(|row| new_rows.iter().position(|known| *known == row));
-    Choosing {
-        entity,
+    PickerState {
         ticked: ticked.map(|(index, _)| index).collect(),
         selected: selected.unwrap_or_default(),
         ..choosing
     }
 }
 
+/// The pickers and questions shown, with what the user did in them: one at
+/// most.
+pub(crate) type Showing<'w, 's> = Query<'w, 's, (Entity, &'static mut PickerState)>;
+
 /// Keeps the queue of pickers and questions in the order they came, and
 /// the first one shown: a new one waits, one closed or answered elsewhere
-/// leaves, and a replaced picker starts over. A question shown beside the
-/// work waits in its own list.
+/// leaves, a changed question's successor takes its place with what the
+/// user did, and a picker filled again keeps it. A question shown beside
+/// the work waits in its own list.
 pub(crate) fn queue_choices(
     mut view: ResMut<TuiView>,
     mut input: Query<&mut Editor, With<MainEditor>>,
-    pickers: Query<Entity, Added<Picker>>,
-    replaced: Query<(), Changed<Picker>>,
+    (pickers, filled): (Query<Entity, Added<Picker>>, Query<(), Changed<Picker>>),
     asks: Query<(Entity, &Effect, &Ask), Added<Ask>>,
-    superseded: Query<(&Ask, &SupersededBy)>,
-    every_ask: Query<&Ask>,
+    (superseded, every_ask): (Query<(&Ask, &SupersededBy)>, Query<&Ask>),
+    mut showing: Showing,
     choices: Choices,
+    mut commands: Commands,
 ) {
     let state = view.bypass_change_detection();
     // A changed question takes its place in the queue, and in front.
@@ -322,17 +360,23 @@ pub(crate) fn queue_choices(
         seen.push(*entity);
         first
     });
-    if let Some(choosing) = state.choosing.take() {
-        let old = superseded.get(choosing.entity).ok();
+    let mut before = None;
+    for (entity, shown) in &showing {
+        before = Some(entity);
+        let old = superseded.get(entity).ok();
         let new = old.and_then(|(_, by)| Some((by.0, every_ask.get(by.0).ok()?)));
-        state.choosing = Some(match (old, new) {
-            (Some((old, _)), Some((entity, new))) if choices.shown(entity).is_some() => {
-                carried(choosing, old, new, entity)
-            }
-            _ => choosing,
-        });
+        if let (Some((old, _)), Some((next, new))) = (old, new)
+            && choices.shown(next).is_some()
+        {
+            commands
+                .entity(entity)
+                .try_remove::<(PickerState, Highlighted)>();
+            commands
+                .entity(next)
+                .try_insert(carried(shown.clone(), old, new));
+            before = Some(next);
+        }
     }
-    let before = state.choosing.as_ref().map(|choosing| choosing.entity);
     let inline_before = state.inline.clone();
     let mut asked: Vec<(Entity, &Effect, &Ask)> = asks.iter().collect();
     asked.sort_by_key(|(_, effect, _)| effect.id());
@@ -354,27 +398,64 @@ pub(crate) fn queue_choices(
         view.set_changed();
     }
     let front = view.queue.first().copied();
-    let restart = front.is_some_and(|front| replaced.contains(front));
-    if front == before && !restart {
+    if front == before {
+        let refilled = front.filter(|front| filled.contains(*front));
+        let shown = refilled.and_then(|front| Some((showing.get_mut(front).ok()?, front)));
+        if let Some(((_, mut state), front)) = shown
+            && let Some(listing) = choices.shown(front)
+        {
+            refill(&mut state, &listing);
+        }
         return;
     }
     let mut main = input.single_mut().ok();
     let mut none = Editor::default();
     let input = main.as_deref_mut().unwrap_or(&mut none);
-    show_first(&mut view, &choices, input);
+    show_first(&view, &choices, (&showing, input), &mut commands);
 }
 
-/// Shows the first of the queue still open, from the start. A question
-/// answered in the input takes the input, keeping the draft, which comes
-/// back when it closes.
-pub(crate) fn show_first(view: &mut TuiView, choices: &Choices, input: &mut Editor) {
-    if let Some(Choosing {
-        draft: Some(draft), ..
-    }) = view.choosing.take()
-    {
-        input.set(draft);
+/// Selects again, in `shown` filled again, the item `state` had selected,
+/// by its command, else its label, among the rows what is typed leaves;
+/// else the row it was on, as far as there are rows.
+fn refill(state: &mut PickerState, shown: &Listing<'_>) {
+    let rows = shown.rows(&state.filter);
+    let item = |row: &Row| match row {
+        Row::Item(index) => shown.items.get(*index),
+        Row::Typed => None,
+    };
+    let picked = state.picked.as_ref();
+    let by = |same: &dyn Fn(&Item<'_>, &(String, String)) -> bool| {
+        let found = picked.and_then(|picked| {
+            rows.iter()
+                .position(|row| item(row).is_some_and(|item| same(item, picked)))
+        });
+        found
+    };
+    let found = by(&|item, (id, _)| !id.is_empty() && item.id == id)
+        .or_else(|| by(&|item, (_, label)| item.label == label));
+    let selected = found.unwrap_or(state.selected);
+    state.selected = selected.min(rows.len().saturating_sub(1));
+    state.ticked.retain(|index| *index < shown.items.len());
+}
+
+/// Shows the first of the queue still open, from the start, in place of
+/// the one `showing`. A question answered in the input takes the input,
+/// keeping the draft, which comes back when it closes.
+pub(crate) fn show_first(
+    view: &TuiView,
+    choices: &Choices,
+    (showing, input): (&Showing, &mut Editor),
+    commands: &mut Commands,
+) {
+    for (entity, shown) in showing {
+        if let Some(draft) = &shown.draft {
+            input.set(draft.clone());
+        }
+        commands
+            .entity(entity)
+            .try_remove::<(PickerState, Highlighted)>();
     }
-    view.choosing = view.queue.iter().find_map(|&entity| {
+    let first = view.queue.iter().find_map(|&entity| {
         let shown = choices.shown(entity)?;
         let draft = shown.edit.map(|initial| {
             let draft = input.take();
@@ -386,8 +467,7 @@ pub(crate) fn show_first(view: &mut TuiView, choices: &Choices, input: &mut Edit
             .filter(|(_, item)| shown.multiple && item.checked)
             .map(|(index, _)| index)
             .collect();
-        Some(Choosing {
-            entity,
+        let state = PickerState {
             filter: String::new(),
             selected: shown.selected.min(shown.items.len().saturating_sub(1)),
             touched: !ticked.is_empty(),
@@ -395,15 +475,56 @@ pub(crate) fn show_first(view: &mut TuiView, choices: &Choices, input: &mut Edit
             scroll: 0,
             draft,
             more: false,
-        })
+            picked: None,
+        };
+        Some((entity, state))
     });
+    if let Some((entity, state)) = first {
+        commands.entity(entity).try_insert(state);
+    }
+}
+
+/// Keeps [`Highlighted`] on the picker or question shown over the
+/// transcript at the item its selected row is, and none on a typed answer,
+/// and notes that item for a picker filled again, unless it was filled
+/// since: its selection is found again first.
+pub(crate) fn mark_highlighted(
+    mut showing: Query<(Entity, &mut PickerState, Option<&Highlighted>)>,
+    filled: Query<(), Changed<Picker>>,
+    choices: Choices,
+    mut commands: Commands,
+) {
+    for (entity, mut state, highlighted) in &mut showing {
+        let Some(shown) = choices.shown(entity).filter(|_| state.draft.is_none()) else {
+            continue;
+        };
+        let rows = shown.rows(&state.filter);
+        let index = match rows.get(state.selected) {
+            Some(Row::Item(index)) => Some(*index),
+            _ => None,
+        };
+        let item = index.and_then(|index| shown.items.get(index));
+        let picked = item.map(|item| (item.id.to_owned(), item.label.to_owned()));
+        if state.picked != picked && !filled.contains(entity) {
+            state.bypass_change_detection().picked = picked;
+        }
+        match index {
+            Some(index) if highlighted != Some(&Highlighted(index)) => {
+                commands.entity(entity).try_insert(Highlighted(index));
+            }
+            None if highlighted.is_some() => {
+                commands.entity(entity).try_remove::<Highlighted>();
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Handles a key in the shown choice; returns what closes it: `Some(None)`
 /// for closing without a choice.
 pub(crate) fn choice_key(
     key: KeyEvent,
-    choosing: &mut Choosing,
+    choosing: &mut PickerState,
     shown: &Listing<'_>,
 ) -> Option<Option<Chosen>> {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -454,7 +575,7 @@ pub(crate) fn choice_key(
 /// [`choice_key`] does.
 fn choice_action(
     action: ChoiceAction,
-    choosing: &mut Choosing,
+    choosing: &mut PickerState,
     shown: &Listing<'_>,
     rows: &[Row],
 ) -> Option<Option<Chosen>> {
@@ -484,7 +605,7 @@ fn choice_action(
 }
 
 /// Ticks or unticks the selected item; whether one is selected.
-fn tick(choosing: &mut Choosing, shown: &Listing<'_>, rows: &[Row]) -> bool {
+fn tick(choosing: &mut PickerState, shown: &Listing<'_>, rows: &[Row]) -> bool {
     let Some(Row::Item(index)) = rows.get(choosing.selected) else {
         return false;
     };
@@ -502,7 +623,7 @@ fn tick(choosing: &mut Choosing, shown: &Listing<'_>, rows: &[Row]) -> bool {
 /// What Enter answers: the selected row, or once ticks are in play in a
 /// choice of several, exactly the ticked items; the typed answer with the
 /// ticked items as its note's.
-fn answer(choosing: &Choosing, shown: &Listing<'_>, rows: &[Row]) -> Option<Option<Chosen>> {
+fn answer(choosing: &PickerState, shown: &Listing<'_>, rows: &[Row]) -> Option<Option<Chosen>> {
     match rows.get(choosing.selected)? {
         Row::Item(_) if choosing.touched && shown.multiple => {
             Some(Some(Chosen::items(choosing.ticked.clone())))
@@ -513,6 +634,60 @@ fn answer(choosing: &Choosing, shown: &Listing<'_>, rows: &[Row]) -> Option<Opti
             let chosen = Chosen::items(choosing.ticked.clone());
             Some(Some(chosen.with_text(choosing.filter.trim())))
         }
+    }
+}
+
+/// Marks the transcript pane that draws a picker's conversation preview.
+#[derive(Component)]
+pub(crate) struct PreviewPane;
+
+/// Keeps a transcript pane over the conversation a picker shown previews
+/// ([`PickPreview::Conversation`]) in the right of the picker's box,
+/// scrolled to its entry, and none once the picker is closed or previews
+/// something else.
+pub(crate) fn follow_previews(
+    showing: Query<(Entity, &PickerState, Ref<PickPreview>)>,
+    panes: Query<(Entity, &ChildOf), With<PreviewPane>>,
+    mut commands: Commands,
+) {
+    let previewing = |picker: Entity| {
+        let shown = showing.get(picker).ok();
+        let shown = shown.filter(|(_, state, _)| !state.in_input());
+        shown.filter(|(.., preview)| matches!(**preview, PickPreview::Conversation { .. }))
+    };
+    for (pane, of) in &panes {
+        if previewing(of.parent()).is_none() {
+            commands.entity(pane).despawn();
+        }
+    }
+    for (picker, _, preview) in &showing {
+        let PickPreview::Conversation { conversation, at } = &*preview else {
+            continue;
+        };
+        let pane = panes.iter().find(|(_, of)| of.parent() == picker);
+        if previewing(picker).is_none() || pane.is_some() && !preview.is_changed() {
+            continue;
+        }
+        let source = TranscriptSource::Value(conversation.clone());
+        let shown = TranscriptPane::new(source).titled("preview");
+        let pane = match pane {
+            Some((pane, _)) => commands.entity(pane).insert(shown).id(),
+            None => {
+                let within = Placement::Within {
+                    panel: picker,
+                    part: 1,
+                    of: 2,
+                };
+                let spawned = (shown, TuiPanel::new(within), PreviewPane, ChildOf(picker));
+                commands.spawn(spawned).id()
+            }
+        };
+        let item = at.map(TranscriptItem::Message);
+        commands.trigger(ScrollTo {
+            pane,
+            item,
+            row: ItemRow::Top(0),
+        });
     }
 }
 

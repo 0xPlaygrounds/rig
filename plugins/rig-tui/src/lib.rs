@@ -114,7 +114,7 @@ pub use pane::{MainPane, MainTranscript, PaneKeys, TranscriptPane, TranscriptSou
 pub use panel::{
     Focused, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel, TuiScreen, TuiSystems,
 };
-pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip};
+pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerState};
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout, TuiFrame};
 pub use renderers::{
@@ -266,7 +266,9 @@ pub fn add_view(app: &mut App) {
                 )
                     .chain()
                     .before(input::run_keys),
-                input::note_state.after(input::run_keys),
+                (pick::mark_highlighted, input::note_state)
+                    .chain()
+                    .after(input::run_keys),
             ),
         )
         .add_systems(
@@ -285,6 +287,8 @@ pub fn add_view(app: &mut App) {
                 // frame, and so does a question asked there.
                 (
                     pick::queue_choices,
+                    pick::mark_highlighted,
+                    pick::follow_previews,
                     keys::arm_inline_keys,
                     view::collect_notices,
                 )

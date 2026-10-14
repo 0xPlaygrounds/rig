@@ -127,6 +127,17 @@ pub enum Placement {
     /// What the other panels leave, such as the default screen's
     /// transcript; several such panels share it.
     Rest,
+    /// Column `part` (from 0) of `of` equal columns of another panel, or
+    /// of the picker shown, such as a preview beside a picker's list or
+    /// two transcripts compared side by side; drawn over it.
+    Within {
+        /// The panel, or the picker's entity.
+        panel: Entity,
+        /// Which column.
+        part: u16,
+        /// How many columns.
+        of: u16,
+    },
 }
 
 /// Where a [`TuiPanel`] is drawn this frame and what was drawn there. The
@@ -206,27 +217,33 @@ pub(super) fn below_rows(asked: impl IntoIterator<Item = u16>, mut room: u16) ->
         .collect()
 }
 
-/// A panel to lay out: where it goes, how many rows it fits its content
-/// in when it does (an editor, a strip) in place of its placement's size,
-/// and its canvas.
-pub(super) type ToLayOut<'a> = (&'a TuiPanel, Option<u16>, Mut<'a, PanelCanvas>);
+/// A panel to lay out: its entity, where it goes, how many rows it fits its
+/// content in when it does (an editor, a strip) in place of its
+/// placement's size, and its canvas.
+pub(super) type ToLayOut<'a> = (Entity, &'a TuiPanel, Option<u16>, Mut<'a, PanelCanvas>);
 
 /// Lays the panels out on `screen`, in the order given: those below the
 /// input first, stacked at the bottom while what they leave keeps the
 /// rows the others fit their content in and the least a transcript
 /// takes; then each other one takes its side of what is left (one that
 /// fits its content as many rows as that takes), a box goes over the
-/// screen, and those that take the rest share what is left.
-pub(super) fn lay_out<'a>(panels: impl Iterator<Item = ToLayOut<'a>>, screen: Rect) {
+/// screen, those that take the rest share what is left, and those within
+/// another take their column of it, or of a box of `boxes` (the picker
+/// shown).
+pub(super) fn lay_out<'a>(
+    panels: impl Iterator<Item = ToLayOut<'a>>,
+    screen: Rect,
+    boxes: &[(Entity, Rect)],
+) {
     let panels: Vec<ToLayOut<'a>> = panels.collect();
     let fitted: u16 = panels
         .iter()
-        .filter(|(panel, ..)| !matches!(panel.placement, Placement::BelowInput(_)))
-        .filter_map(|(_, fits, _)| *fits)
+        .filter(|(_, panel, ..)| !matches!(panel.placement, Placement::BelowInput(_)))
+        .filter_map(|(_, _, fits, _)| *fits)
         .sum();
     let asked = panels
         .iter()
-        .filter_map(|(panel, fits, _)| match panel.placement {
+        .filter_map(|(_, panel, fits, _)| match panel.placement {
             Placement::BelowInput(size) => Some(fits.unwrap_or(rows_of(size, screen.height))),
             _ => None,
         });
@@ -236,12 +253,17 @@ pub(super) fn lay_out<'a>(panels: impl Iterator<Item = ToLayOut<'a>>, screen: Re
     let [mut main, mut below] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(total)]).areas(screen);
     let mut below_rows = below_rows.into_iter();
-    let mut rest = Vec::new();
-    for (panel, fits, mut canvas) in panels {
+    let (mut rest, mut within) = (Vec::new(), Vec::new());
+    let mut areas: Vec<(Entity, Rect)> = boxes.to_vec();
+    for (entity, panel, fits, mut canvas) in panels {
         let fit = |size| fits.map_or(size, Constraint::Length);
         let area = match panel.placement {
             Placement::Rest => {
-                rest.push(canvas);
+                rest.push((entity, canvas));
+                continue;
+            }
+            Placement::Within { panel, part, of } => {
+                within.push((panel, (part, of), canvas));
                 continue;
             }
             Placement::Over { width, height } => screen.centered(width, height),
@@ -271,9 +293,20 @@ pub(super) fn lay_out<'a>(panels: impl Iterator<Item = ToLayOut<'a>>, screen: Re
         };
         // Drawing changes only the buffer: not a change to redraw for.
         canvas.bypass_change_detection().reset(area);
+        areas.push((entity, area));
     }
-    for mut canvas in rest {
+    for (entity, mut canvas) in rest {
         canvas.bypass_change_detection().reset(main);
+        areas.push((entity, main));
+    }
+    for (host, (part, of), mut canvas) in within {
+        let host = areas.iter().find(|(entity, _)| *entity == host);
+        let host = host.map_or(Rect::default(), |(_, area)| *area);
+        let columns = Layout::horizontal(vec![Constraint::Fill(1); usize::from(of.max(1))]);
+        let column = columns.split(host).get(usize::from(part)).copied();
+        canvas
+            .bypass_change_detection()
+            .reset(column.unwrap_or_default());
     }
 }
 
