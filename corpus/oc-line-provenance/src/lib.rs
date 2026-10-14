@@ -12,8 +12,8 @@
 //! Each line's origin is carried forward through every later change, by
 //! the change's hunks for an agent's and by a line diff against the text
 //! last seen for the user's, so it follows code that moves. A change the
-//! user made between turns is found at each turn's start (and before an
-//! agent's change to the file, and when asked): a line of an agent's they
+//! user made is found where the text an agent's change found, or the file
+//! when asked, is not what was last seen: a line of an agent's they
 //! changed is marked "changed by you", a line they added is no agent's.
 //!
 //! - `/provenance <file>[:<line>[-<line>]]` lists the lines in runs of one
@@ -31,13 +31,13 @@ use bevy_log::warn;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
-use rig_harness::rig_core::tool::FilesChanged;
+use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
 use rig_harness::rig_memory::{Session, now_ms};
 use rig_tui::{ConversationPanel, KeyFocus, TranscriptItem};
 use std::collections::HashMap;
 
 mod store;
-pub use store::{LineOrigin, ProvenanceStore, Record, Span, TrackedFile};
+pub use store::{LineOrigin, Logged, ProvenanceStore, Record, Span, TrackedFile};
 
 #[cfg(test)]
 mod tests;
@@ -45,8 +45,8 @@ mod tests;
 /// The slash command, the command-line command, and the author of notes.
 pub const NAME: &str = "provenance";
 
-/// The store's file in the project's plugin data.
-pub const STORE: &str = "line-provenance/store.json";
+/// The log's file in the project's plugin data, a [`Logged`] per line.
+pub const STORE: &str = "line-provenance/log.jsonl";
 
 /// Its usage.
 const USAGE: &str = "<file>[:<line>[-<line>]] [--json] | --forget <session>";
@@ -60,7 +60,6 @@ impl Plugin for LineProvenancePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
-            .add_observer(turn_started)
             .add_observer(call_settled)
             .add_command(
                 NAME,
@@ -92,21 +91,21 @@ pub struct ProvenanceRun {
     pub status: u8,
 }
 
-/// The project's store, as last saved; empty when there is none yet.
+/// The project's store, folded from its log; empty when there is none yet.
 pub fn load(data: &PluginData) -> ProvenanceStore {
-    data.project
-        .read_file(STORE)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default()
+    let log = data.project.read_file(STORE).unwrap_or_default();
+    ProvenanceStore::fold(&log)
 }
 
-/// Saves the project's store.
-fn save(data: &PluginData, store: &ProvenanceStore) {
-    let saved = serde_json::to_vec(store)
+/// Adds a line to the project's log.
+fn append(data: &PluginData, logged: &Logged) {
+    let appended = serde_json::to_vec(logged)
         .map_err(std::io::Error::from)
-        .and_then(|bytes| data.project.write_file(STORE, &bytes));
-    if let Err(why) = saved {
+        .and_then(|mut line| {
+            line.push(b'\n');
+            data.project.append_file(STORE, &line)
+        });
+    if let Err(why) = appended {
         warn!("line provenance not saved: {why}");
     }
 }
@@ -124,32 +123,6 @@ fn key(root: &Path, path: &Path) -> String {
         .map(|part| part.as_os_str().to_string_lossy())
         .collect();
     parts.join("/")
-}
-
-/// At each turn's start, what the user changed since in the files agents
-/// wrote.
-fn turn_started(
-    _: On<Add<TurnOf>>,
-    data: Option<Res<PluginData>>,
-    root: Res<ProjectRoot>,
-    workspace: Res<ProjectWorkspace>,
-) {
-    let Some(data) = data else {
-        return;
-    };
-    if workspace.0.host().is_some() {
-        return;
-    }
-    let mut store = load(&data);
-    let paths: Vec<String> = store.files.keys().cloned().collect();
-    let mut changed = false;
-    for path in paths {
-        let now = workspace.0.read_text(&root.0.join(&path)).ok();
-        changed |= store.user_changed(&path, now.as_deref());
-    }
-    if changed {
-        save(&data, &store);
-    }
 }
 
 /// The agents, as a record names them and finds their prompt.
@@ -208,19 +181,20 @@ fn call_settled(
         call_id: request.call.id.to_string(),
         at_ms: now_ms(),
     };
-    let mut store = load(&data);
-    let key_of = store.add(record);
-    for change in &changes {
-        let path = root.0.join(&change.path);
-        let name = key(&root.0, &path);
-        if !store.agent_changed(&name, change, key_of) {
-            warn!(
-                "line provenance: {} does not say {name}'s text, so its lines are not tracked",
-                request.call.id
-            );
-        }
-    }
-    save(&data, &store);
+    let changes = changes
+        .into_iter()
+        .map(|change| {
+            let name = key(&root.0, &root.0.join(&change.path));
+            if change.kind != ChangeKind::Deleted && change.after_text().is_none() {
+                warn!(
+                    "line provenance: {} does not say {name}'s text, so its lines are not tracked",
+                    request.call.id
+                );
+            }
+            (name, change)
+        })
+        .collect();
+    append(&data, &Logged::Changed { record, changes });
 }
 
 /// What the user typed to start the turn of `agent` that began at
@@ -340,9 +314,7 @@ impl Asking<'_> {
         let name = key(&self.root.0, &file);
         let now = self.workspace.0.read_text(&file).ok();
         let mut store = load(data);
-        if store.user_changed(&name, now.as_deref()) {
-            save(data, &store);
-        }
+        store.user_changed(&name, now.as_deref());
         let total = now.as_deref().map_or(0, |text| text.lines().count());
         let spans = store.spans(&name, total, range);
         let sessions = spans
@@ -375,9 +347,8 @@ impl Asking<'_> {
             .as_ref()
             .and_then(|home| home.0.find(session).ok())
             .map_or_else(|| session.to_owned(), |id| id.to_string());
-        let mut store = load(data);
-        let gone = store.forget(&id);
-        save(data, &store);
+        let gone = load(data).forget(&id);
+        append(data, &Logged::Forgot(id));
         format!("Forgot {gone} changes of session {session}.")
     }
 }

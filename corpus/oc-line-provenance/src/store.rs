@@ -1,5 +1,8 @@
 //! The project's provenance records: which tool call wrote each line of
 //! each file an agent changed, carried forward through every later change.
+//! They are kept as a log that only grows, one [`Logged`] line per call
+//! or forget, so sessions working in one project at once never lose each
+//! other's, and folded into a [`ProvenanceStore`] when asked.
 
 use std::collections::BTreeMap;
 
@@ -65,40 +68,70 @@ pub struct Span {
     pub origin: Option<LineOrigin>,
 }
 
-/// Every provenance record of a project, kept in its `PluginData`.
+/// One line of a project's provenance log.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Logged {
+    /// A tool call changed these files, each by its path from the project
+    /// root.
+    Changed {
+        /// Who made the call, where and why.
+        record: Record,
+        /// What it changed, with each file's text before and its hunks.
+        changes: Vec<(String, FileChange)>,
+    },
+    /// The user dropped the records of the session this identifies.
+    Forgot(String),
+}
+
+/// Every provenance record of a project, folded from its log: a record's
+/// key is its call's place in the log, so it never changes.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProvenanceStore {
     /// The tool calls, by key.
     pub records: BTreeMap<u64, Record>,
     /// The files agents wrote lines of, by path from the project root.
     pub files: BTreeMap<String, TrackedFile>,
-    /// The next record's key; a dropped record's key is never reused.
-    #[serde(default)]
-    pub next: u64,
 }
 
 impl ProvenanceStore {
-    /// Keeps `record`, returning its key.
-    pub fn add(&mut self, record: Record) -> u64 {
-        let key = self.next;
-        self.next = key.saturating_add(1);
-        self.records.insert(key, record);
-        key
+    /// The store a log's lines make, in order. A file a change does not
+    /// say the text of (over the tool's read limit, or not UTF-8) is not
+    /// tracked from then on; a line that does not read is skipped.
+    pub fn fold(log: &[u8]) -> Self {
+        let mut store = Self::default();
+        let logged = log
+            .split(|byte| *byte == b'\n')
+            .filter_map(|line| serde_json::from_slice(line).ok());
+        for (key, logged) in (0..).zip(logged) {
+            match logged {
+                Logged::Changed { record, changes } => {
+                    for (path, change) in &changes {
+                        store.agent_changed(path, change, key);
+                    }
+                    store.records.insert(key, record);
+                    store.prune();
+                }
+                Logged::Forgot(session) => {
+                    store.forget(&session);
+                }
+            }
+        }
+        store
     }
 
     /// The file at `path` is now `now` (`None`: gone), changed by the user:
     /// a line of an agent's they changed keeps its origin, marked; a line
-    /// they added is no agent's. Whether anything changed.
-    pub fn user_changed(&mut self, path: &str, now: Option<&str>) -> bool {
+    /// they added is no agent's.
+    pub fn user_changed(&mut self, path: &str, now: Option<&str>) {
         let Some(file) = self.files.get_mut(path) else {
-            return false;
+            return;
         };
         let Some(now) = now else {
             self.files.remove(path);
-            return true;
+            return;
         };
         if file.text == now {
-            return false;
+            return;
         }
         file.lines = carry(&file.text, &file.lines, now, &|was| {
             was.map(|origin| LineOrigin {
@@ -108,26 +141,25 @@ impl ProvenanceStore {
         });
         now.clone_into(&mut file.text);
         self.prune();
-        true
     }
 
     /// The call of `record` made `change` to the file at `path`: the lines
     /// it added are its, the others keep their origin. A tracked file that
     /// was not what the change found had been changed by the user first.
-    /// `false` when the change does not say the text before and after, so
-    /// the file's lines are not known any more and it is not tracked.
-    pub fn agent_changed(&mut self, path: &str, change: &FileChange, record: u64) -> bool {
+    /// When the change does not say the text before and after, the file's
+    /// lines are not known any more and it is not tracked.
+    fn agent_changed(&mut self, path: &str, change: &FileChange, record: u64) {
         let before = match change.kind {
             ChangeKind::Deleted => {
                 self.files.remove(path);
-                return true;
+                return;
             }
             ChangeKind::Created => Some(""),
             ChangeKind::Modified => change.before_text.as_deref(),
         };
         let (Some(before), Some(after)) = (before, change.after_text()) else {
             self.files.remove(path);
-            return false;
+            return;
         };
         self.user_changed(path, Some(before));
         let file = self
@@ -143,8 +175,6 @@ impl ProvenanceStore {
         });
         file.lines = through(&file.lines, &change.hunks, written);
         file.text = after;
-        self.prune();
-        true
     }
 
     /// Drops the records of the session `session` identifies (its id or
