@@ -2965,9 +2965,14 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
     let seen = app.world().resource::<Streams>();
-    // Both calls, the one that only called tools too, were stamped.
+    // Both calls, the one that only called tools too, were stamped. The
+    // tool call's last stamp and the text call's first can change in one
+    // frame, which the reader then sees in either order, so the calls go in
+    // the order their events came.
     assert_eq!(seen.stamps.len(), 2, "{:?}", seen.stamps);
-    let [(tools, tools_stamp), (text, text_stamp)] = seen.stamps.as_slice() else {
+    let mut stamps = seen.stamps.clone();
+    stamps.sort_by_key(|(call, _)| seen.events.iter().position(|(effect, _)| effect == call));
+    let [(tools, tools_stamp), (text, text_stamp)] = stamps.as_slice() else {
         return;
     };
     let of = |call: &Entity| -> Vec<&StreamEvent> {
