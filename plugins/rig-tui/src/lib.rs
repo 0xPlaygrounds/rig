@@ -208,6 +208,7 @@ impl Plugin for TuiViewPlugin {
                 (
                     TuiSystems::Prepare,
                     TuiSystems::Layout,
+                    TuiSystems::Fit,
                     TuiSystems::Draw.run_if(render::frame_due),
                     TuiSystems::Render.run_if(render::frame_due),
                 )
@@ -302,6 +303,18 @@ pub fn add_view(app: &mut App) {
                 history::save.in_set(HistorySystems::Save),
             ),
         )
+        // One thread: the panels, then the panes in what they leave.
+        .edit_schedule(render::LayOut, |layout| {
+            layout.set_executor(SingleThreadedExecutor::new());
+        })
+        .add_systems(
+            render::LayOut,
+            (
+                render::layout.run_if(terminal::has_screen.and_then(render::needs_redraw)),
+                pane::lay_out_panes.run_if(render::frame_due),
+            )
+                .chain(),
+        )
         .add_systems(
             PostUpdate,
             (
@@ -320,11 +333,13 @@ pub fn add_view(app: &mut App) {
                 (
                     complete::follow_input,
                     transcript::follow_streams,
-                    render::layout.run_if(terminal::has_screen.and_then(render::needs_redraw)),
-                    pane::lay_out_panes.run_if(render::frame_due),
+                    render::lay_out_frame,
                 )
                     .chain()
                     .in_set(TuiSystems::Layout),
+                render::lay_out_fitted
+                    .after(TuiSystems::Fit)
+                    .before(TuiSystems::Draw),
                 (
                     terminal::report_releases.run_if(resource_exists::<terminal::Tui>),
                     render::render,

@@ -2083,7 +2083,8 @@ the default screen's marked `MainPane`. Plugins read and set a pane's
 `expanded` and `selected` (Alt+Up and Alt+Down select, Ctrl+O expands),
 the `highlights` lit, the `marks` (a `TextMark` label inside a reply's
 text or a streaming call's) and where it is scrolled (`top()`, placed in
-`TuiSystems::Layout`). `ScrollTo { pane, item, row }` scrolls to a
+`TuiSystems::Layout`; a panel fitted to it, such as a header shown while
+scrolled up, changes in `TuiSystems::Fit` and is drawn in the same frame). `ScrollTo { pane, item, row }` scrolls to a
 `TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at
 a row of it or its `n`th lit match; `item: None` follows the newest
 output. A `DrawnTranscript` added to a pane holds the rows it drew by

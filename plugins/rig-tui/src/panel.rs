@@ -45,9 +45,20 @@ pub enum TuiSystems {
     /// its [`TuiPanel`]s here, such as a placement that depends on the
     /// [`TuiScreen`].
     Prepare,
-    /// The view decides whether to draw a frame, and lays out the input,
-    /// the status line, the panels and the transcript.
+    /// The view decides whether to draw a frame and lays it out: first
+    /// every panel by its placement (the input, the status line, the
+    /// plugins' panels), then each [`TranscriptPane`](crate::TranscriptPane)
+    /// in what its panel got, its rows laid out and its scroll placed
+    /// ([`TranscriptView::top`](crate::TranscriptView::top),
+    /// [`DrawnTranscript`](crate::DrawnTranscript)).
     Layout,
+    /// After the frame is laid out and every pane's scroll placed: a plugin
+    /// fits its [`TuiPanel`]s to what the panes show here, such as a header
+    /// shown while a pane is scrolled up. When a panel was spawned or
+    /// changed here, the view lays the frame out again, panels then panes,
+    /// before [`Draw`](Self::Draw), so the frame that placed the scroll
+    /// draws the panel fitted to it.
+    Fit,
     /// Plugins draw their panels into their [`PanelCanvas`]. Runs only for
     /// a frame that is drawn.
     Draw,

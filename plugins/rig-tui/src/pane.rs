@@ -198,7 +198,8 @@ fn bind_pane_keys(mut world: DeferredWorld, context: HookContext) {
 /// placed at its height, its [`TranscriptView::top`] and width noted (a
 /// change to either changes the view), and its [`DrawnTranscript`] set.
 /// In [`TuiSystems::Layout`](crate::TuiSystems::Layout), after the panels
-/// are laid out.
+/// are laid out, and again with them after
+/// [`TuiSystems::Fit`](crate::TuiSystems::Fit) when a panel changed there.
 pub(crate) fn lay_out_panes(
     from: TranscriptLayout,
     shown: Res<Shown>,

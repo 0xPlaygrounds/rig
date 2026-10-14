@@ -5,7 +5,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::SystemParam;
 use crossterm::cursor::MoveTo;
 use ratatui::Frame;
@@ -222,6 +224,44 @@ pub(crate) struct FrameLayout {
 /// [`render`].
 pub(crate) fn frame_due(frame: Res<FrameLayout>) -> bool {
     frame.due
+}
+
+/// The view's layout of a frame: the panels ([`layout`]), then the panes
+/// in what they leave, each scroll placed
+/// ([`lay_out_panes`](crate::pane::lay_out_panes)). Run in
+/// [`TuiSystems::Layout`](crate::TuiSystems::Layout) ([`lay_out_frame`]),
+/// and again after [`TuiSystems::Fit`](crate::TuiSystems::Fit) when a
+/// panel changed there ([`lay_out_fitted`]).
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct LayOut;
+
+/// When [`lay_out_frame`] last ran [`LayOut`].
+#[derive(Resource, Default)]
+pub(crate) struct LaidOutAt(Option<Tick>);
+
+/// Lays out the frame ([`LayOut`]), in
+/// [`TuiSystems::Layout`](crate::TuiSystems::Layout).
+pub(crate) fn lay_out_frame(world: &mut World) {
+    if world.try_run_schedule(LayOut).is_ok() {
+        let now = world.change_tick();
+        world.insert_resource(LaidOutAt(Some(now)));
+    }
+}
+
+/// Lays out the frame again when a panel was spawned or changed since
+/// [`lay_out_frame`], in [`TuiSystems::Fit`](crate::TuiSystems::Fit), so
+/// a panel fitted to a pane's scroll is drawn in the frame that placed it.
+pub(crate) fn lay_out_fitted(world: &mut World, panels: &mut QueryState<Ref<TuiPanel>>) {
+    let Some(at) = world.get_resource::<LaidOutAt>().and_then(|laid| laid.0) else {
+        return;
+    };
+    let now = world.read_change_tick();
+    let fitted = panels
+        .iter(world)
+        .any(|panel| panel.last_changed().is_newer_than(at, now));
+    if fitted {
+        world.try_run_schedule(LayOut).ok();
+    }
 }
 
 /// Lays out a frame: every panel by its placement, in the order spawned

@@ -146,3 +146,68 @@ fn a_panes_scroll_and_width_are_placed_before_plugins_draw() {
     app.update();
     assert!(seen(&app).is_some_and(|(.., changed)| !changed));
 }
+
+/// A header panel shown while the main pane is scrolled up.
+#[derive(Component)]
+struct Header;
+
+/// Shows the header while the main pane is scrolled up: a row, else none.
+fn fit_header(
+    views: Query<&TranscriptView, With<crate::MainPane>>,
+    mut headers: Query<&mut TuiPanel, With<Header>>,
+) {
+    let scrolled = views.iter().any(|view| view.top().is_some());
+    let rows = u16::from(scrolled);
+    for mut panel in &mut headers {
+        panel.set_if_neq(TuiPanel::new(Placement::Top(Constraint::Length(rows))));
+    }
+}
+
+#[test]
+fn a_panel_fitted_to_a_panes_scroll_is_laid_out_in_the_same_frame() {
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(60, 20)).add_systems(
+        PostUpdate,
+        (
+            fit_header.in_set(TuiSystems::Fit),
+            (|mut headers: Query<&mut crate::PanelCanvas, With<Header>>| {
+                for mut canvas in &mut headers {
+                    canvas.render(Line::raw("HEADER"));
+                }
+            })
+            .in_set(TuiSystems::Draw),
+        ),
+    );
+    let header = app
+        .world_mut()
+        .spawn((Header, TuiPanel::new(Placement::Top(Constraint::Length(0)))))
+        .id();
+    for index in 0..30 {
+        if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+            conversation.push(Message::user(format!("question {index}")));
+        }
+    }
+    app.update();
+    app.update();
+    let pane = main_pane(app.world());
+    let area = |app: &App| app.world().resource::<TuiFrame>().area(pane);
+    let before = area(&app).map(|area| (area.y, area.height));
+    assert_eq!(before.map(|(y, _)| y), Some(0));
+    let item = app.world().get::<Conversation>(agent).and_then(|c| c.id(3));
+    let item = item.map(TranscriptItem::Message);
+    app.world_mut().trigger(ScrollTo {
+        pane,
+        item: item.clone(),
+        row: ItemRow::Top(0),
+    });
+    app.update();
+    // The frame the scroll was placed in draws the header, the pane below.
+    let rows = rows_in(&app, header);
+    assert_eq!(
+        rows.iter().map(|row| row.trim_end()).collect::<Vec<_>>(),
+        ["HEADER"]
+    );
+    let shrunk = before.map(|(y, height)| (y.saturating_add(1), height.saturating_sub(1)));
+    assert_eq!(area(&app).map(|area| (area.y, area.height)), shrunk);
+    assert_eq!(main_view(&app).top().cloned(), item.map(|item| (item, 0)));
+}
