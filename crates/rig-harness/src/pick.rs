@@ -36,6 +36,7 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
+use rig_core::conversation::{Conversation, MessageId};
 use rig_core::effect::Decider;
 use rig_ecs::stage::{Decision, Outcome, Settled};
 
@@ -183,6 +184,30 @@ impl Chosen {
         positions.dedup();
         positions
     }
+}
+
+/// The position of the item a front highlights in a [`Picker`], set by the
+/// front on the picker's entity as the highlight moves, so a plugin can
+/// preview that item ([`PickPreview`]).
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Clone, Debug, Default, PartialEq)]
+pub struct Highlighted(pub usize);
+
+/// What a front shows beside a [`Picker`] of the plugin's, previewing the
+/// highlighted item ([`Highlighted`]): text, or a conversation drawn as a
+/// transcript, scrolled to entry `at` when given. Any plugin sets it on its
+/// picker and replaces it as the highlight moves.
+#[derive(Component, Clone, Debug, PartialEq)]
+pub enum PickPreview {
+    /// Plain text.
+    Text(String),
+    /// A conversation, such as a saved session's line.
+    Conversation {
+        /// The conversation.
+        conversation: Conversation,
+        /// The entry to show first; the end with `None`.
+        at: Option<MessageId>,
+    },
 }
 
 /// A front triggers it on a [`Picker`] or an open [`Ask`] when the user

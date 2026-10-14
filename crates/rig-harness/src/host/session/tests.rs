@@ -116,8 +116,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     // resumed.
     let parent = ForkedFrom {
         session: id.to_string(),
-        before: None,
-        text: None,
+        ..ForkedFrom::default()
     };
     let parent_of = |session: &SessionDir| dir_store(session).as_ref().and_then(ForkedFrom::read);
     assert_eq!(parent_of(&copy), Some(parent));

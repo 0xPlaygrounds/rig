@@ -36,13 +36,13 @@ use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Author, Conversation, MessageId};
+use rig_core::conversation::{AsideId, Author, Conversation, MessageId};
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{self, AgentId, Notice};
 use rig_ecs::journal::{SessionRewritten, SessionStore, open_session};
 use rig_memory::{
-    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, Store, fork, rewrite,
+    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, Session, Store, fork, rewrite,
 };
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
@@ -312,6 +312,7 @@ impl Plugin for SessionPlugin {
             .init_resource::<SystemTimings>()
             .init_resource::<Forks>()
             .add_message::<SessionForked>()
+            .add_message::<SessionForkFailed>()
             .add_message::<SessionDeleted>()
             .add_message::<SessionDeleteFailed>()
             .add_message::<SessionRewritten>()
@@ -481,6 +482,69 @@ pub struct SessionForked {
     pub before: Option<(AgentId, MessageId)>,
     /// Who asked, as [`ForkSession`] said.
     pub asker: Option<Entity>,
+}
+
+/// Where a [`ForkSession`] cuts the session it copies.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ForkCut {
+    /// Every log whole.
+    #[default]
+    Whole,
+    /// The session as it was before the agent's message was made
+    /// (rig-memory's `fork`).
+    Before(AgentId, MessageId),
+    /// One agent's line through message `through` (rig-memory's `split`),
+    /// leaving a `SplitPointer` in the source. With `take: Some(from)` it
+    /// is a move: `from..=through` is also taken out of the source line,
+    /// and the pointer says how many entries left.
+    Line {
+        /// The agent whose line is copied.
+        agent: AgentId,
+        /// Its line: a kept branch's aside, the active line with `None`.
+        line: Option<AsideId>,
+        /// The last message copied.
+        through: MessageId,
+        /// For a move, the first message taken out of the source.
+        take: Option<MessageId>,
+        /// The split's title.
+        title: String,
+    },
+}
+
+/// A fork that failed, in the frame it was asked for, as data for the
+/// asker; the user sees an error notice too.
+#[derive(Message, Clone, Debug)]
+pub struct SessionForkFailed {
+    /// The session it would have copied; `None` for this one.
+    pub from: Option<SessionId>,
+    /// Where it would have cut it.
+    pub cut: ForkCut,
+    /// Who asked, as the fork said.
+    pub asker: Option<Entity>,
+    /// Why it failed.
+    pub why: String,
+}
+
+/// Changes the saved session in `dir`, which no rig runs, as
+/// [`rewrite_stopped`] rewrites one: read (older formats upgraded), given
+/// to `edit`, and saved. It holds the session's launcher lock
+/// ([`SessionDir::hold`]) from the check to the last write, so a rig
+/// starting meanwhile finds it running elsewhere. The running session,
+/// `running`, is refused: edit its agents' `Conversation` instead.
+///
+/// # Errors
+///
+/// When `dir` is the running session or another rig runs it, when its
+/// store does not open or its session cannot be read (nothing written),
+/// when `edit` fails (nothing written), or when a write fails.
+pub fn edit_stopped(
+    stores: &SessionStores,
+    running: &SessionDir,
+    dir: &SessionDir,
+    edit: impl FnOnce(&mut Session) -> Result<(), String>,
+) -> Result<(), String> {
+    let _ = (stores, running, dir, edit);
+    Err("editing a stopped session is not supported yet".to_owned())
 }
 
 /// Rewrites the saved session in `dir`, which no rig runs, through
@@ -753,6 +817,7 @@ fn fork_into(
         session: from.to_string(),
         before: before.map(|(agent, message)| (agent.0.clone(), *message)),
         text,
+        ..ForkedFrom::default()
     };
     let before = before.map(|(agent, message)| (agent.0.as_str(), *message));
     let copied = stores

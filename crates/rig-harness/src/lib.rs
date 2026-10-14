@@ -75,6 +75,7 @@ pub mod primary;
 pub mod progress;
 pub mod secrets;
 pub mod services;
+pub mod sessions;
 pub mod settings;
 pub mod successor;
 pub mod timings;
@@ -150,19 +151,22 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        AppStart, DeleteSession, ForkSession, ForkSessions, LogEvents, Logged, Scratch,
-        SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
-        first_typed, rewrite_stopped, typed,
+        AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, LogEvents, Logged, Scratch,
+        SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
+        SessionStores, edit_stopped, first_typed, rewrite_stopped, typed,
     };
     pub use crate::note::Note;
     pub use crate::per_call::{AppPerCallExt, Place};
-    pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
+    pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
     pub use crate::plugin_data::PluginData;
     pub use crate::preview::{Preview, PreviewPlugin, PreviewSystems, Previewed};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
+    pub use crate::sessions::{
+        SessionEntry, SessionFilter, SessionItem, SessionPicked, SessionPicker, SessionSource,
+    };
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};
     pub use crate::timings::{PluginTimings, SystemTimings};
@@ -172,7 +176,7 @@ pub mod prelude {
         AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,
         Provides, RigHarnessPlugins,
     };
-    pub use rig_memory::ForkedFrom;
+    pub use rig_memory::{ForkedFrom, Listing, SplitPointer};
     pub use rig_tools::{Spill, blocking};
 }
 
@@ -184,7 +188,8 @@ pub mod prelude {
 /// wall-clock wakes ([`clock`]),
 /// file watches ([`watch`]), questions for the user ([`ask`]) and their
 /// approval of what plugins want approved ([`approval`]), pickers
-/// with the agent the user looks at ([`pick`]), previews of what a tool
+/// with the agent the user looks at ([`pick`]) and the native session
+/// views over them ([`sessions`]), previews of what a tool
 /// call would leave on disk ([`preview`]) and what every call that may
 /// write anywhere changed ([`checkpoint`]).
 /// Everything else is a plugin `plugins.toml` lists, which can leave it
@@ -206,6 +211,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(ask::AskPlugin)
             .add(approval::ApprovalPlugin)
             .add(pick::PickPlugin)
+            .add(sessions::SessionPickerPlugin)
             .add(progress::ProgressPlugin)
             .add(preview::PreviewPlugin)
             .add(checkpoint::CheckpointPlugin)
