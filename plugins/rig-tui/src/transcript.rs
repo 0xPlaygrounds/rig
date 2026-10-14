@@ -30,7 +30,8 @@ use super::renderers::{
     ToolCallView, excerpt, result_style, result_text,
 };
 use super::view::{
-    Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, ShownNotice, TranscriptItem,
+    Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, ShownNotice, TextMark,
+    TranscriptItem,
 };
 use super::wrap::wrap;
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
@@ -597,6 +598,8 @@ pub(crate) struct Look<'a> {
     pub(crate) facts: &'a CallFacts,
     /// The calls under each tool call that started any.
     pub(crate) children: &'a ChildCalls,
+    /// The labels drawn inside replies' text.
+    pub(crate) marks: &'a [TextMark],
 }
 
 /// What is drawn inside a message, before one of its items.
@@ -662,6 +665,13 @@ impl Look<'_> {
         (lines, cut)
     }
 
+    /// The marks in `text`, each with the span it draws.
+    pub(crate) fn marks_in(&self, text: MarkIn) -> Vec<(usize, ratatui::text::Span<'static>)> {
+        let marks = self.marks.iter().filter(|mark| mark.r#in == text);
+        let span = |mark: &TextMark| ratatui::text::Span::styled(mark.label.clone(), mark.style);
+        marks.map(|mark| (mark.at, span(mark))).collect()
+    }
+
     /// The notices and notes inside message `index`.
     fn inside(&self, index: usize) -> &[(usize, Inside<'_>)] {
         self.inside.get(&index).map_or(&[], Vec::as_slice)
@@ -710,6 +720,10 @@ impl Look<'_> {
         (self.whole, self.note_cut).hash(hasher);
         id.map(|id| self.is_expanded(&TranscriptItem::Message(id)))
             .hash(hasher);
+        let marks = self.marks.iter();
+        marks
+            .filter(|mark| matches!(mark.r#in, MarkIn::Message { id: of, .. } if Some(of) == id))
+            .for_each(|mark| mark.hash(hasher));
         if let Message::Assistant(assistant) = message {
             for item in assistant.content.iter() {
                 if let AssistantContent::ToolCall(call) = item {
@@ -737,6 +751,7 @@ impl Look<'_> {
         self.calls.hash(&mut hasher);
         self.outputs.hash(&mut hasher);
         (self.whole, self.note_cut).hash(&mut hasher);
+        self.marks.hash(&mut hasher);
         // Sets in no order: a sum of each one's hash.
         let unordered = |item: &dyn Fn(&mut DefaultHasher)| {
             let mut hasher = DefaultHasher::new();
@@ -1456,7 +1471,12 @@ fn message_lines(
                 match item {
                     AssistantContent::Text(text) => {
                         lines.push(Line::default());
-                        lines.extend(markdown::render(&text.text));
+                        let marks =
+                            id.map(|id| look.marks_in(MarkIn::Message { id, block: item_at }));
+                        lines.extend(markdown::render_marked(
+                            &text.text,
+                            &marks.unwrap_or_default(),
+                        ));
                     }
                     AssistantContent::Reasoning(reasoning) => {
                         lines.extend(plain_lines(&reasoning.text, Style::new().dim().italic()));

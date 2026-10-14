@@ -26,6 +26,80 @@ pub fn render(text: &str) -> Vec<Line<'static>> {
     writer.finish()
 }
 
+/// The first of the private-use characters [`render_marked`] stands
+/// marks in with.
+const SENTINEL: u32 = 0xE000;
+
+/// The most marks one text takes: the private-use area's size.
+const MOST_MARKS: usize = 0x1900;
+
+/// `text` as markdown, as [`render`] draws it, with each of `marks` drawn
+/// before its byte: past the end at the end, inside a character before
+/// it. Each mark stands in the text as a private-use character while it
+/// is rendered, so markdown on both sides of it is kept.
+pub(crate) fn render_marked(text: &str, marks: &[(usize, Span<'static>)]) -> Vec<Line<'static>> {
+    if marks.is_empty() {
+        return render(text);
+    }
+    let mut placed: Vec<(usize, usize)> = marks
+        .iter()
+        .take(MOST_MARKS)
+        .enumerate()
+        .map(|(index, (at, _))| {
+            let mut at = (*at).min(text.len());
+            while !text.is_char_boundary(at) {
+                at = at.saturating_sub(1);
+            }
+            (at, index)
+        })
+        .collect();
+    placed.sort_by_key(|(at, _)| *at);
+    let mut marked = String::with_capacity(text.len() + 3 * placed.len());
+    let mut from = 0;
+    for (at, index) in &placed {
+        marked.push_str(text.get(from..*at).unwrap_or_default());
+        let code = SENTINEL.saturating_add(u32::try_from(*index).unwrap_or(u32::MAX));
+        marked.extend(char::from_u32(code));
+        from = *at;
+    }
+    marked.push_str(text.get(from..).unwrap_or_default());
+    let mark_of = |ch: char| {
+        let index = u32::from(ch).checked_sub(SENTINEL)?;
+        marks
+            .get(usize::try_from(index).ok()?)
+            .map(|(_, span)| span)
+    };
+    let swap = |span: Span<'static>| -> Vec<Span<'static>> {
+        if !span.content.chars().any(|ch| mark_of(ch).is_some()) {
+            return vec![span];
+        }
+        let mut spans = Vec::new();
+        let mut run = String::new();
+        for ch in span.content.chars() {
+            match mark_of(ch) {
+                Some(mark) => {
+                    if !run.is_empty() {
+                        spans.push(Span::styled(std::mem::take(&mut run), span.style));
+                    }
+                    spans.push(mark.clone());
+                }
+                None => run.push(ch),
+            }
+        }
+        if !run.is_empty() {
+            spans.push(Span::styled(run, span.style));
+        }
+        spans
+    };
+    render(&marked)
+        .into_iter()
+        .map(|line| {
+            let spans = line.spans.into_iter().flat_map(swap).collect::<Vec<_>>();
+            Line { spans, ..line }
+        })
+        .collect()
+}
+
 /// A list being written: the next item's number, or `None` for bullets.
 struct List {
     next: Option<u64>,

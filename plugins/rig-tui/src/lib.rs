@@ -112,7 +112,7 @@ pub use terminal::{
 pub use transcript::PastEffects;
 pub use view::{
     Continuation, DrawnLine, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, LineSpan,
-    ScrollTo, ShownNotice, TranscriptItem, TranscriptSlot, TranscriptView,
+    MarkIn, ScrollTo, ShownNotice, TextMark, TranscriptItem, TranscriptSlot, TranscriptView,
 };
 
 /// The terminal view's name as a front.

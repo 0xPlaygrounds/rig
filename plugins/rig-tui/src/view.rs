@@ -117,6 +117,9 @@ pub struct TranscriptView {
     /// Text lit where the transcript draws it, such as a search's
     /// matches; text a wrap splits across two rows is lit on both.
     pub highlights: Vec<Highlight>,
+    /// Labels drawn inside replies' text, such as a seam where a plugin
+    /// joined two replies. Never saved, never sent to a model.
+    pub marks: Vec<TextMark>,
     /// The item and the row of it at the top while the view is scrolled
     /// up; `None` while it follows the newest output.
     top: Option<(TranscriptItem, usize)>,
@@ -126,6 +129,52 @@ pub struct TranscriptView {
     notices: Vec<ShownNotice>,
     /// Where they are kept for the next build of the session.
     notices_file: Option<Kept>,
+}
+
+/// Whose text a [`TextMark`] is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MarkIn {
+    /// Text block `block` (its index among the content) of an assistant
+    /// message.
+    Message {
+        /// The message.
+        id: MessageId,
+        /// The text block's index among the message's content: not always
+        /// 0, as reasoning comes first when there is any.
+        block: usize,
+    },
+    /// The reply a model call is streaming (its `Partial` text), by the
+    /// call's entity.
+    Streaming(Entity),
+}
+
+/// A short label the transcript draws inside a reply's text, before byte
+/// `at` of it, markdown kept on both sides: a mark past the end goes at
+/// the end, one inside a character goes before it.
+///
+/// ```
+/// use rig_tui::ratatui::style::{Style, Stylize};
+/// use rig_tui::{MarkIn, TextMark, TranscriptView};
+///
+/// fn mark_seam(view: &mut TranscriptView, call: bevy_ecs::entity::Entity, so_far: &str) {
+///     view.marks.push(TextMark {
+///         r#in: MarkIn::Streaming(call),
+///         at: so_far.len(),
+///         label: " ⟳ continued ".into(),
+///         style: Style::new().dim(),
+///     });
+/// }
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TextMark {
+    /// Whose text it is in.
+    pub r#in: MarkIn,
+    /// The byte of the text it goes before.
+    pub at: usize,
+    /// What it shows.
+    pub label: String,
+    /// Its style.
+    pub style: Style,
 }
 
 /// Text to light in the transcript: wherever its `text` is drawn, or

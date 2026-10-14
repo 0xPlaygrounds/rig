@@ -32,7 +32,7 @@ use super::transcript::{
     Transcript, live_call, notice_lines, plain_lines,
 };
 use super::view::{
-    Continuation, DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot,
+    Continuation, DrawnTranscript, Highlight, MarkIn, ShownNotice, TranscriptItem, TranscriptSlot,
     TranscriptView, TuiView,
 };
 use super::wrap::wrap_all;
@@ -349,8 +349,8 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) calls: BTreeMap<CallId, CallState>,
     /// The output so far of its running calls that report it.
     pub(crate) outputs: BTreeMap<CallId, String>,
-    /// The reply streaming in, if any.
-    pub(crate) partial: Option<&'a Partial>,
+    /// The reply streaming in, if any, and the call streaming it.
+    pub(crate) partial: Option<(Entity, &'a Partial)>,
     /// The tool calls it streams.
     pub(crate) streaming: Vec<ToolCall>,
     /// The notes in its conversation, in the order put.
@@ -505,7 +505,7 @@ impl TranscriptLayout<'_, '_> {
             inbox: inbox.into_iter().map(|(_, message)| message).collect(),
             calls: self.calls.of(calls.into_iter().flat_map(Calls::iter)),
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
-            partial: partial.map(|(_, partial)| partial),
+            partial,
             streaming: streaming.map(|(_, call)| call.clone()).collect(),
             notes: conversation
                 .asides()
@@ -588,6 +588,7 @@ pub(crate) fn lay_out_transcript(
         note_cut: sources.note_cut,
         facts: sources.facts,
         children: &shown.children,
+        marks: &view.marks,
     };
     for (at, notice) in view.notices().iter().enumerate() {
         let before = match notice.slot(shown.id, conversation) {
@@ -638,11 +639,12 @@ pub(crate) fn lay_out_transcript(
             notice_lines(notice, &mut extra, &mut marks);
         }
         if index == count {
-            if let Some(partial) = shown.partial {
+            if let Some((call, partial)) = shown.partial {
                 extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
                 if !partial.text.is_empty() {
                     extra.push(Line::default());
-                    extra.extend(markdown::render(&partial.text));
+                    let marks = look.marks_in(MarkIn::Streaming(call));
+                    extra.extend(markdown::render_marked(&partial.text, &marks));
                 }
             }
             for call in &shown.streaming {

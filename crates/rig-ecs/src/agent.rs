@@ -282,7 +282,10 @@ pub struct CallOf(pub Entity);
 #[relationship_target(relationship = CallOf, linked_spawn)]
 pub struct Calls(Vec<Entity>);
 
-/// Text streamed so far by an in-flight model call, for views.
+/// Text streamed so far by an in-flight model call, for views. A plugin
+/// that continues a reply in a successor call may start the successor's
+/// `Partial` with the text so far: views show one growing reply, and a
+/// stop saves what the user saw.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct Partial {

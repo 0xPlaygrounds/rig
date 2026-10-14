@@ -32,8 +32,8 @@ use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
     AppToolRenderersExt, CallState, ContentKind, DrawnRow, DrawnTranscript, Expanded, Highlight,
-    ItemRow, LineSpan, PastEffects, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem,
-    TranscriptLayout, TranscriptView,
+    ItemRow, LineSpan, MarkIn, PastEffects, RenderToolCall, ScrollTo, TextMark, ToolCallView,
+    TranscriptItem, TranscriptLayout, TranscriptView,
 };
 
 const WIDTH: u16 = 80;
@@ -116,6 +116,7 @@ fn drawn(
         note_cut: false,
         facts: &facts,
         children: &ChildCalls::default(),
+        marks: &[],
     };
     // The conversation is the same each time.
     transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
@@ -957,4 +958,77 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
     world.write_message(PastEffects::new(records));
     say(&mut resumed, agent, asked);
     assert_eq!(consult_rows(&mut resumed, agent), expected);
+}
+
+/// A mark inside a saved reply's text block is drawn between the words it
+/// sits between, the bold on both sides still bold.
+#[test]
+fn a_mark_is_drawn_inside_a_replys_text_with_its_markdown_kept() {
+    use ratatui::style::Modifier;
+
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("Go on."));
+    say(
+        &mut app,
+        agent,
+        Message::assistant("**first part** and **second part**"),
+    );
+    let Some(id) = message_id(&app, agent, 1) else {
+        return;
+    };
+    // Byte 18: after "**first part** and".
+    app.world_mut().resource_mut::<TranscriptView>().marks = vec![TextMark {
+        r#in: MarkIn::Message { id, block: 0 },
+        at: 18,
+        label: "⟳".to_owned(),
+        style: Style::new(),
+    }];
+    let rows = drawn_rows(&mut app, agent, 20, Vec::new());
+    let row = rows.iter().find(|row| row.to_string().contains("⟳"));
+    assert_eq!(
+        row.map(ToString::to_string).as_deref(),
+        Some("first part and⟳ second part")
+    );
+    let bold: Vec<String> = row
+        .into_iter()
+        .flat_map(|row| row.spans.iter())
+        .filter(|span| span.style.add_modifier.contains(Modifier::BOLD))
+        .map(|span| span.content.to_string())
+        .collect();
+    assert_eq!(bold, ["first part", "second part"]);
+}
+
+/// A mark on a streaming reply is drawn in it, and gone once cleared.
+#[test]
+fn a_mark_on_a_streaming_reply_is_drawn_until_cleared() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("Go on."));
+    let world = app.world_mut();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let partial = Partial {
+        text: "so far more".to_owned(),
+        reasoning: String::new(),
+    };
+    let call = world.spawn((CallOf(turn), partial)).id();
+    world.resource_mut::<TranscriptView>().marks = vec![TextMark {
+        r#in: MarkIn::Streaming(call),
+        at: 7,
+        label: "[continued] ".to_owned(),
+        style: Style::new(),
+    }];
+    let text = |app: &mut App| -> Vec<String> {
+        let rows = drawn_rows(app, agent, 20, Vec::new());
+        rows.iter().map(ToString::to_string).collect()
+    };
+    let rows = text(&mut app);
+    assert!(
+        rows.iter().any(|row| row == "so far [continued] more"),
+        "{rows:?}"
+    );
+    app.world_mut()
+        .resource_mut::<TranscriptView>()
+        .marks
+        .clear();
+    let rows = text(&mut app);
+    assert!(rows.iter().any(|row| row == "so far more"), "{rows:?}");
 }
