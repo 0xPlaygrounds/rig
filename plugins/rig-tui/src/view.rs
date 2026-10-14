@@ -29,6 +29,7 @@ use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
 use rig_harness::prelude::{ExitReason, PluginData};
 use rig_harness::primary::Shown;
+use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 
 /// Notices kept for display, and read back by the next build.
 const KEPT_NOTICES: usize = 200;
@@ -705,6 +706,15 @@ impl TranscriptView {
         if !self.expanded.remove(&item) {
             self.expanded.insert(item);
         }
+    }
+
+    /// Maps the notices shown through `with`, the map the session was
+    /// rewritten through (the file they are kept in is the session's, which
+    /// the rewrite mapped); one the map leaves unreadable is dropped.
+    pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
+        let at = Place::File { name: NOTICES_FILE };
+        self.notices
+            .retain_mut(|notice| rewrite_value(with, &at, NOTICES_FILE, notice).is_ok());
     }
 
     /// Keeps `notice` for display and for the next build, dropping the

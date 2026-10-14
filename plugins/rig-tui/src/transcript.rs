@@ -42,7 +42,14 @@ use rig_ecs::stage::{EffectRecorded, Outcome};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, SentTo, StreamDelta};
 use rig_harness::note::Note;
+use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 use rig_tools::attach::attached_file;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+/// The effect log's file in the session's store: the calls the view knows
+/// of are copies of its records.
+const EFFECT_LOG: &str = "effects.jsonl";
 
 /// An item's rows (or lines) within a part.
 pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
@@ -92,6 +99,17 @@ impl CallFacts {
     fn take_past(&mut self, past: Arc<Settled>) {
         self.past = past;
         self.changed();
+    }
+
+    /// Maps what it knows through `with`, the map the session was
+    /// rewritten through: the calls and what they published are copies of
+    /// the effect log's records.
+    pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
+        let mut changed = self.run.rewrite(with);
+        changed |= Arc::make_mut(&mut self.past).rewrite(with);
+        if changed {
+            self.changed();
+        }
     }
 
     /// Notes that the agent with the id `agent` is called `name`; whether
@@ -237,7 +255,7 @@ impl ChildCalls {
 /// Effects that settled, as the view keeps them: what each tool call
 /// published and how long it ran, by call id, and which calls each
 /// effect started.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct Settled {
     facts: HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>,
     calls: CallTree,
@@ -313,6 +331,31 @@ impl Settled {
         true
     }
 
+    /// Maps every call and what each published through `with`, at the
+    /// effect log's place; one the map leaves unreadable is forgotten.
+    /// Whether anything changed.
+    fn rewrite(&mut self, with: &dyn Rewrite) -> bool {
+        let mut changed = false;
+        for (facts, _) in self.facts.values_mut() {
+            changed |= map_or_forget(with, facts);
+        }
+        for calls in self.replies.values_mut() {
+            let before = calls.len();
+            calls.retain_mut(|call| {
+                let mapped = map_copy(with, call);
+                changed |= !matches!(mapped, Ok(false));
+                mapped.is_ok()
+            });
+            changed |= calls.len() != before;
+        }
+        let children = self.calls.children.values_mut().flatten();
+        for call in children.filter_map(|child| child.call.as_mut()) {
+            changed |= map_or_forget(with, &mut call.call);
+            changed |= map_or_forget(with, &mut call.line);
+        }
+        changed
+    }
+
     /// The call of its parent model call's reply a tool call's `record`
     /// is: the first unclaimed one of that tool with these arguments, else
     /// of that tool (a plugin may have changed the arguments); one made
@@ -344,11 +387,37 @@ impl Settled {
     }
 }
 
+/// `item`, a copy of what the effect log keeps, mapped through `with` at
+/// the log's place: whether it changed, or why it no longer reads.
+fn map_copy<T: Serialize + DeserializeOwned>(
+    with: &dyn Rewrite,
+    item: &mut T,
+) -> Result<bool, serde_json::Error> {
+    let at = Place::File { name: EFFECT_LOG };
+    rewrite_value(with, &at, EFFECT_LOG, item)
+}
+
+/// `item` mapped as [`map_copy`] maps it, or forgotten (`None`) when it no
+/// longer reads: whether it changed.
+fn map_or_forget<T: Serialize + DeserializeOwned>(
+    with: &dyn Rewrite,
+    item: &mut Option<T>,
+) -> bool {
+    match item.as_mut().map(|value| map_copy(with, value)) {
+        None | Some(Ok(false)) => false,
+        Some(Ok(true)) => true,
+        Some(Err(_)) => {
+            *item = None;
+            true
+        }
+    }
+}
+
 /// Effects by the effect that started them (its `parent`), each with its
 /// own effect id and, for a tool or model call, the call; the effect each
 /// one was started by; and each tool call's agent (by id) and call id, by
 /// its effect.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct CallTree {
     children: HashMap<EffectId, Vec<Child>>,
     parents: HashMap<EffectId, EffectId>,
@@ -358,6 +427,7 @@ pub(crate) struct CallTree {
 }
 
 /// An effect under the one that started it.
+#[derive(Clone)]
 struct Child {
     id: EffectId,
     /// The call it is; `None` when calls only go through it.

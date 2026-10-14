@@ -5,7 +5,7 @@
 //! [`Sent`] adds a prompt to it.
 //!
 //! A prompt is kept as typed, a slash command's included. When the session
-//! is rewritten ([`SessionRewritten`]), the history, in memory and in its
+//! is rewritten ([`SessionRewritten`](rig_ecs::journal::SessionRewritten)), the history, in memory and in its
 //! file, goes through the same map: a redaction reaches every prompt that
 //! held what it removed, those of other sessions too, and so the
 //! `/redact <text>` line that asked for it. A command whose arguments must
@@ -31,7 +31,6 @@ use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use rig_ecs::journal::SessionRewritten;
 use rig_harness::prelude::{Files, PluginData};
 use rig_harness::rig_memory::{Place, Rewrite, rewrite_file, rewrite_value};
 
@@ -74,7 +73,7 @@ impl PromptHistory {
 
 impl PromptHistory {
     /// Maps every prompt, in memory and in the file, through `with`.
-    fn rewrite(&mut self, with: &dyn Rewrite) {
+    pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
         let at = Place::File { name: HISTORY_FILE };
         for prompt in self.entries.iter_mut().chain(&mut self.unsaved) {
             // A map that leaves no string leaves no prompt.
@@ -87,17 +86,6 @@ impl PromptHistory {
         {
             warn!("could not rewrite the prompt history: {failure}");
         }
-    }
-}
-
-/// Maps the history through each rewrite of the session, before this
-/// frame's prompts are recorded.
-pub(crate) fn follow_rewrites(
-    mut rewritten: MessageReader<SessionRewritten>,
-    mut history: ResMut<PromptHistory>,
-) {
-    for done in rewritten.read().filter(|done| done.result.is_ok()) {
-        history.rewrite(&*done.with);
     }
 }
 

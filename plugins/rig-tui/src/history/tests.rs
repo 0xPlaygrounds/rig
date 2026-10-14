@@ -1,7 +1,7 @@
 use bevy_app::prelude::*;
 
 use super::*;
-use crate::tests::{press, type_text, typed, view_app};
+use crate::tests::{press, redacted, type_text, typed, view_app};
 
 #[test]
 fn up_and_down_browse_the_history_a_plugin_supplies() {
@@ -41,23 +41,6 @@ fn a_prompt_filtered_out_before_the_save_never_reaches_the_file() {
     );
     // Read back by the next session.
     assert_eq!(PromptHistory::load(files).entries, ["hello", "bye"]);
-}
-
-/// What a redaction of `secret` writes once the session is rewritten.
-pub(crate) fn redacted(secret: &'static str) -> SessionRewritten {
-    use rig_harness::rig_memory::{Rewritten, Strings};
-    let with = Strings(move |text: &mut String| {
-        let hit = text.contains(secret);
-        if hit {
-            *text = text.replace(secret, "[REDACTED]");
-        }
-        hit
-    });
-    SessionRewritten {
-        asker: None,
-        with: Arc::new(with),
-        result: Ok(Rewritten::default()),
-    }
 }
 
 #[test]
