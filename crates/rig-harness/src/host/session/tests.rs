@@ -15,7 +15,8 @@ use rig_ecs::journal::{JournalPlugin, RewriteSession, SessionStore};
 use rig_ecs::{AgentPlugin, WriteJournal};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{
-    DirStore, Files, MemoryStore, SPLIT, Session, SplitPointer, Store, Strings, load, save,
+    DirStore, Files, MemoryStore, SPLIT, Session, SessionMeta, SplitPointer, Store, Strings,
+    Versioned, load, save,
 };
 
 use super::{
@@ -26,6 +27,7 @@ use super::{
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitReason;
 use crate::host::launcher::{Invoked, LauncherRun};
+use crate::load::AppKeepsExt;
 use crate::plugin_data::PluginData;
 use crate::services::RigHome;
 
@@ -1231,5 +1233,90 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     assert_eq!(done.map(|done| done.logs.len()), Ok(1));
     assert_eq!(secret_in(stopped.path()), Vec::<PathBuf>::new());
     drop((app, layer));
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Saved values made secret by a rewrite; files are left.
+struct Secret;
+
+impl rig_memory::Rewrite for Secret {
+    fn value(&self, _: &rig_memory::Place<'_>, _: &str, value: &mut serde_json::Value) -> bool {
+        let hit = value.as_str() == Some("ship");
+        if hit {
+            *value = serde_json::Value::from("[secret]");
+        }
+        hit
+    }
+
+    fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
+        false
+    }
+}
+
+/// An edit and a rewrite of a stopped session keep its listing, as a
+/// running rig does: a listed value set or rewritten is listed (an unlisted
+/// one is not), the message count follows, and `updated` moves on.
+#[test]
+fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
+    let home = scratch_home("rig-stopped-listing");
+    let (Ok(here), Ok(there)) = (
+        "1700000000-41".parse::<SessionId>(),
+        "1700000000-42".parse::<SessionId>(),
+    ) else {
+        return;
+    };
+    let (session, stopped) = (home.session(&here), home.session(&there));
+    let store = fs::create_dir_all(stopped.path())
+        .ok()
+        .and_then(|()| SessionStores::default().open(&stopped).ok());
+    let Some(store) = store else {
+        return;
+    };
+    let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+    assert!(save(&*store, "agent-1", &mut said).is_ok());
+    let old = SessionMeta {
+        title: "hi".to_owned(),
+        updated: 1,
+        messages: 1,
+        ..SessionMeta::default()
+    };
+    assert!(old.write(&*store).is_ok());
+    fs::create_dir_all(session.path()).ok();
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()))
+        .add_plugins(SessionPlugin);
+    app.saved_as::<String>("goals.goal").listed();
+    let _ = app.saved_as::<u32>("goals.count");
+    drop(std::panic::take_hook());
+    app.finish();
+    app.update();
+    let stores = app.world().resource::<SessionStores>().clone();
+    let value = |value: serde_json::Value| Versioned { v: 1, value };
+    let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
+        read.state
+            .insert("goals.goal".to_owned(), value("ship".into()));
+        read.state.insert("goals.count".to_owned(), value(3.into()));
+        let agent = read.agent_mut("agent-1").ok_or("no agent")?;
+        agent.conversation.push(Message::assistant("hello"));
+        Ok(())
+    });
+    assert_eq!(edited, Ok(()));
+    let listed = |goal: &str| BTreeMap::from([("goals.goal".to_owned(), value(goal.into()))]);
+    let meta = SessionMeta::read(&*store).unwrap_or_default();
+    assert_eq!(
+        (meta.title.as_str(), meta.messages, &meta.data),
+        ("hi", 2, &listed("ship"))
+    );
+    assert!(meta.updated > 1, "updated");
+
+    assert!(old.write(&*store).is_ok());
+    let by = Author::plugin("redact");
+    let rewritten = rewrite_stopped(&stores, &session, &stopped, by, &Secret);
+    assert!(rewritten.is_ok());
+    let meta = SessionMeta::read(&*store).unwrap_or_default();
+    assert_eq!((meta.messages, &meta.data), (2, &listed("[secret]")));
+    assert!(meta.updated > 1, "updated");
+    drop(app);
     fs::remove_dir_all(home.root()).ok();
 }

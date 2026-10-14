@@ -15,6 +15,7 @@
 //! started, such as its session's first start or a `/reload`, is
 //! [`AppStart`]; what the user typed in a message is [`typed`].
 
+use std::collections::BTreeSet;
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Seek, SeekFrom};
@@ -41,9 +42,10 @@ use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{self, ActiveTurn, AgentId, Notice};
 use rig_ecs::journal::{SessionRewritten, SessionStore, open_session};
+use rig_ecs::restore::SavedKeys;
 use rig_memory::{
-    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, SPLIT, Session, SplitOf,
-    SplitPointer, Store, fork, load, rewrite, split,
+    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, SPLIT, Session, SessionMeta,
+    SplitOf, SplitPointer, Store, fork, load, rewrite, split,
 };
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
@@ -88,8 +90,17 @@ impl Deref for SessionPaths {
 /// By default
 /// a session is kept in its directory ([`DirStore`]: `logs/`, `blobs/` and
 /// `files/`), which refuses a session an older rig saved.
+///
+/// It also keeps the listing ([`SessionMeta`]) of a session no rig runs up
+/// to date as it is written ([`Self::relist`]): once every plugin is built
+/// and the app started it knows the listed keys (`saved_as(..).listed()`).
 #[derive(Resource, Clone)]
-pub struct SessionStores(Arc<OpenStore>);
+pub struct SessionStores {
+    /// How a store is opened.
+    open: Arc<OpenStore>,
+    /// The keys whose values a listing holds.
+    listed: Arc<BTreeSet<String>>,
+}
 
 /// How [`SessionStores`] opens a store.
 type OpenStore = dyn Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync;
@@ -99,7 +110,10 @@ impl SessionStores {
     pub fn new(
         open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync + 'static,
     ) -> Self {
-        Self(Arc::new(open))
+        Self {
+            open: Arc::new(open),
+            listed: Arc::default(),
+        }
     }
 
     /// The store of the session in `dir`, which marks the session saved
@@ -111,10 +125,26 @@ impl SessionStores {
     /// a session an older rig saved.
     pub fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, LoadError> {
         Ok(Arc::new(Marking {
-            inner: (self.0)(dir)?,
+            inner: (self.open)(dir)?,
             dir: dir.clone(),
             marked: AtomicBool::new(false),
         }))
+    }
+
+    /// Brings the listing of the session `session` read from or saved to
+    /// `store`, which no rig runs, up to it, as a running rig keeps its
+    /// own: its listed values, its main agent's model and message count,
+    /// and when it changed ([`SessionMeta::relist`]). Every writer of a
+    /// stopped session calls it after writing; [`edit_stopped`] and
+    /// [`rewrite_stopped`] do.
+    ///
+    /// # Errors
+    ///
+    /// When the listing cannot be written.
+    pub fn relist(&self, store: &dyn Store, session: &Session) -> io::Result<()> {
+        let mut meta = SessionMeta::read(store).unwrap_or_default();
+        meta.relist(session, &self.listed);
+        meta.write(store)
     }
 }
 
@@ -325,6 +355,7 @@ impl Plugin for SessionPlugin {
                 forks.0.push(fork.event().clone());
             })
             .add_observer(delete_session)
+            .add_systems(PreStartup, list_keys)
             .add_systems(
                 Startup,
                 finish_deletes.run_if(not(resource_exists::<Describing>)),
@@ -373,6 +404,15 @@ impl Plugin for SessionPlugin {
     }
 }
 
+/// Tells the [`SessionStores`] the listed keys, once every plugin said its
+/// own.
+fn list_keys(keys: Option<Res<SavedKeys>>, stores: Option<ResMut<SessionStores>>) {
+    if let Some(mut stores) = stores {
+        let listed = keys.map(|keys| keys.listed().clone());
+        stores.listed = Arc::new(listed.unwrap_or_default());
+    }
+}
+
 /// Inserts the [`PluginData`] of this run, unless the app has one: in the
 /// session's store when it opened, for the [`ProjectRoot`] in the
 /// [`ProjectWorkspace`].
@@ -415,7 +455,7 @@ fn open_store(world: &mut World) -> Result<(), LoadError> {
             if keeps {
                 stores.open(paths)?
             } else {
-                (stores.0)(paths)?
+                (stores.open)(paths)?
             }
         }
     };
@@ -564,7 +604,8 @@ pub struct SessionForkFailed {
 
 /// Changes the saved session in `dir`, which no rig runs, as
 /// [`rewrite_stopped`] rewrites one: read (older formats upgraded), given
-/// to `edit`, and saved. It holds the session's launcher lock
+/// to `edit`, and saved, its listing brought up to it
+/// ([`SessionStores::relist`]). It holds the session's launcher lock
 /// ([`SessionDir::hold`]) from the check to the last write, so a rig
 /// starting meanwhile finds it running elsewhere. The running session,
 /// `running`, is refused: edit its agents' `Conversation` instead.
@@ -584,7 +625,19 @@ pub fn edit_stopped(
     let store = stores.open(dir).map_err(|failure| failure.to_string())?;
     let mut session = Session::read(&*store).map_err(|failure| failure.to_string())?;
     edit(&mut session)?;
-    session.save(&*store).map_err(|failure| failure.to_string())
+    session
+        .save(&*store)
+        .map_err(|failure| failure.to_string())?;
+    relist(stores, &*store, &session);
+    Ok(())
+}
+
+/// Brings the listing of `session`, saved to `store`, up to it; a listing
+/// not written is logged, as a running rig's is, since the session is.
+fn relist(stores: &SessionStores, store: &dyn Store, session: &Session) {
+    if let Err(failure) = stores.relist(store, session) {
+        warn!("could not write a stopped session's listing: {failure}");
+    }
 }
 
 /// The launcher lock of the session in `dir`, held for an edit of it:
@@ -606,7 +659,8 @@ fn hold_stopped(running: &SessionDir, dir: &SessionDir, this: &str) -> Result<Fi
 /// `with`, as done by `by` (rig-memory's `rewrite`), holding its launcher
 /// lock throughout, as [`edit_stopped`] does: its store opened by
 /// `stores`, then the files kept in its directory: its name
-/// ([`SessionDir::name`]), the text log and the spilled tool output. The
+/// ([`SessionDir::name`]), the text log and the spilled tool output, and
+/// its listing brought up to it ([`SessionStores::relist`]). The
 /// running session, `running`, is
 /// rewritten with `RewriteSession` instead. For a plugin redacting this
 /// session's forks too:
@@ -655,6 +709,10 @@ pub fn rewrite_stopped(
                 .map_or(Ok(false), |log| map_file(&log, LOG, with))
         })
         .map_err(|failure| format!("rewriting its scratch files failed: {failure}"))?;
+    match Session::read(&*store) {
+        Ok(session) => relist(stores, &*store, &session),
+        Err(failure) => warn!("could not read a rewritten session to list it: {failure}"),
+    }
     Ok(rewritten)
 }
 
@@ -1146,7 +1204,7 @@ fn delete_session(
 /// holds, then its directory. Running it again after a crash finishes it.
 /// A session an older rig saved has nothing outside its directory.
 fn finish_delete(session: &SessionDir, stores: &SessionStores) -> Result<(), LoadError> {
-    match (stores.0)(session) {
+    match (stores.open)(session) {
         Ok(store) => store.destroy()?,
         Err(LoadError::OldLayout) => {}
         Err(failure) => return Err(failure),

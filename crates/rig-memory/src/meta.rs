@@ -7,13 +7,13 @@
 //! empty. A change that breaks that adds a `"v"` field and a step that
 //! reads the older form, as the logs' format does.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
 use rig_core::conversation::MessageId;
 use serde::{Deserialize, Serialize};
 
-use crate::{Files, Versioned};
+use crate::{Files, Session, Versioned, main_order, now_ms};
 
 /// The file of a session's store that holds its [`SessionMeta`].
 pub const META: &str = "meta.json";
@@ -65,6 +65,35 @@ impl SessionMeta {
     /// When `files` cannot write it.
     pub fn write(&self, files: &(impl Files + ?Sized)) -> io::Result<()> {
         files.write_file(META, &serde_json::to_vec_pretty(self)?)
+    }
+
+    /// Brings it up to `session`, as a running rig keeps it, for a writer
+    /// of a session no rig runs: the main agent's model and how many
+    /// messages its line holds, and each listed value (of a key in `listed`, or one it lists
+    /// already) as the session's own, else the first agent's in
+    /// [`main_order`] that has one, a value no longer there unlisted;
+    /// `updated` is now. Its title and labels are left.
+    pub fn relist(&mut self, session: &Session, listed: &BTreeSet<String>) {
+        let mut agents: Vec<_> = session.agents.iter().filter(|a| !a.retired).collect();
+        agents.sort_by(|a, b| {
+            main_order(a.parent.is_some(), &a.id).cmp(&main_order(b.parent.is_some(), &b.id))
+        });
+        let main = agents.first();
+        self.messages = main.map_or(0, |main| main.conversation.messages().len());
+        self.model = main.and_then(|main| main.model()).unwrap_or_default();
+        let keys: BTreeSet<String> = listed.iter().chain(self.data.keys()).cloned().collect();
+        self.data = keys
+            .into_iter()
+            .filter_map(|key| {
+                let mut holders = agents.iter().map(|agent| &agent.state);
+                let value = session
+                    .state
+                    .get(&key)
+                    .or_else(|| holders.find_map(|state| state.get(&key)))?;
+                Some((key, value.clone()))
+            })
+            .collect();
+        self.updated = now_ms();
     }
 }
 

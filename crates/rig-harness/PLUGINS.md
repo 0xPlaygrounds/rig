@@ -1773,8 +1773,10 @@ A plugin keeps any serde value with the session under a key of its own:
 component under that key, not its type's path, versioned as every saved
 value. A program without Bevy reads it typed, `Session::get::<T>(key,
 &upgrades)` (an agent's, `SavedAgent::get`), and writes a stopped
-session's through `edit_stopped`. `.listed()` also copies it into the
-session's listing (`SessionMeta.data`; keep it small), so `/resume`,
+session's through `edit_stopped`, which keeps its listing as a running
+rig does (`SessionStores::relist`, for any other writer). `.listed()`
+also copies it into the session's listing (`SessionMeta.data`; keep it
+small), so `/resume`,
 `Listing::read` and a `SessionPicker`'s filter show and find it without
 reading a log. Splits and forks copy it as of their cut.
 

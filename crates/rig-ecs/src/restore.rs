@@ -436,6 +436,11 @@ impl SavedKeys {
     pub fn is_listed(&self, key: &str) -> bool {
         self.listed.contains(key)
     }
+
+    /// The listed keys.
+    pub fn listed(&self) -> &BTreeSet<String> {
+        &self.listed
+    }
 }
 
 /// Saved keys no build reads any more, such as a deleted type's path: their
