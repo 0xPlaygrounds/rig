@@ -5,14 +5,16 @@ terminal: the transcript with markdown answers and diffs, a multiline input
 with history (kept in rig-harness's `PluginData`) and `/` and `@`
 completion, pickers and the questions plugins ask (`Ask`), shown one at a
 time, with items ticked (Tab) where they take several, a choice ticked with
-a note typed on it, and a long body that scrolls, and the status line, which shows the items other plugins
+a note typed on it, a choice's more shown on Right, keys of a question's
+own (`ChoiceKeys`), a question changed in place of its predecessor
+(`SupersededBy`) keeping the user's ticks, and a long body that scrolls, and the status line, which shows the items other plugins
 set (`StatusItems`, `AppStatus`), each by name, so another plugin replaces or
 hides it (`StatusSystems::Edit`). Other plugins add to it without touching
 it: a `TuiPanel` beside the transcript or over the screen, drawn by their own
 system, a renderer for their tools' calls (`AppToolRenderersExt`), which
 also sees the calls a call started through any effect, a resumed session's
 too (`ToolCallView::children`, `PastEffects`), lines under every call
-(`add_call_decorator`), a renderer for a kind of message content, such as
+(`add_call_decorator`, each one's rows an item, `TranscriptItem::Decoration`), a renderer for a kind of message content, such as
 images, the user's or the model's (`add_content_renderer`), and candidates
 for completion after a marker such as `#` or for a command's argument
 (`CompletionSource`, with what is typed in `TuiInputState::typed`). They take part
@@ -25,12 +27,14 @@ filtered in `InputSystems::Filter` of the `TuiKeys` schedule, with
 (`KeyScope::Transcript`), a program run with the
 terminal (`RunInTerminal`, such as `$EDITOR`), and their own pickers
 (rig-harness's `Picker`), which the view shows. They read and steer the
-transcript (`TranscriptView`, `ScrollTo`), where a notice is drawn
+transcript (`TranscriptView`, `ScrollTo`, labels inside replies' text as
+`TextMark`s), where a notice is drawn
 (`ShownNotice::slot`), the rows a frame drew with the matches it lit and
 the items it cut (`DrawnTranscript`), where the frame drew each part
-(`TuiFrame`, for a plugin that writes to the terminal itself), and any
-agent's transcript laid out the same way without drawing it, cut or whole
-(`TranscriptLayout`). The
+(`TuiFrame`, for a plugin that writes to the terminal itself, and
+`Repaint` to write cells it drew over again), and any agent's transcript,
+or a saved conversation, laid out the same way without drawing it, cut or
+whole (`TranscriptLayout`), or shown read-only in a box (`ConversationPanel`). The
 clipboard goes through rig-tools' `clipboard`. A crate that also builds
 without the view does so behind a default `tui` feature. ratatui and
 crossterm are re-exported as `rig_tui::ratatui` and `rig_tui::crossterm`.

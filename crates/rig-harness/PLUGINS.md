@@ -38,9 +38,8 @@ for a terminal panel) by version, and on `bevy_ecs` and `bevy_reflect` (or
 `bevy`) at the agent's exact version. The agent builds from a rig checkout
 (`RIG_SOURCE`), which a `[patch.crates-io]` table points at.
 
-`/reload` (or the `reload` tool) rebuilds and restarts in the same session
-once no turn runs; a failed build leaves the running one, a crashing one
-is rolled back.
+`/reload` (or the `reload` tool) rebuilds and restarts in the session once
+no turn runs; a failed build keeps the running one, a crash rolls back.
 
 # Finding names
 
@@ -119,8 +118,7 @@ the failed effect is `SupersededBy` (`commands.spawn(successor)
 .add_related::<SupersededBy>(&[failed])`), or sends it again
 (`commands.queue(resend(failed))`): the failed effect is recorded as
 superseded, never in the conversation. Any number of effects may name one
-successor, as a race's losers do. Work that takes time holds the outcome
-first.
+successor, as a race's losers do. Slow work holds the outcome first.
 
 **The loop's edge.** Work spawned, answered or released after `AgentLoop`
 ran waits for the next frame, so a system that does so every frame runs in
@@ -498,17 +496,16 @@ fn sandbox(
 call's `Footprint` (rig-core's `Touches`), not its tool's name, so one
 rule covers `edit`, `write`, `delete`, `move` and any plugin's tool. Its
 paths are absolute and normalized as written (`src/../x` is `x`), not
-through links: a guard strict about links compares
-`workspace.0.canonical(path)`.
+through links: a strict guard compares `workspace.0.canonical(path)`.
 
 **After every gate.** An answer that stands in for running a call (a
 cached result, a dry run) goes in `GateSystems::After` and reads
 `Decision`, so it never answers a call a gate refused. So does a group of
 calls that runs all or none, such as a patch's edits: the plugin spawns a
-child call per member, unheld (no gate sees a call held from its spawn),
-and in `After`, without `Undecided`, holds the free ones while any member
-is held or `Waiting`; then it refuses them all if one was refused or
-failed, else releases them.
+child call per member, unheld (no gate sees a call held at spawn), and in
+`After`, without `Undecided`, holds the free ones while any member is held
+or `Waiting`; then refuses all if one was refused or failed, else releases
+them.
 
 ## A held call holds back the later calls of its reply
 
@@ -547,8 +544,7 @@ recorded with its answer, and any front answers it by deciding it with an
 it in the others; `answer.is(id)` says whether it takes that choice. A
 plugin that waits on the answer spawns the `Ask` as a hold on what it asks
 about, and asks only when `Answerers::can_answer` for the agent (a front
-spawns an `Answerer`). The user's next line answers an open question that
-takes text.
+spawns an `Answerer`). The user's next line answers an open text question.
 
 A question may propose an answer to edit (`Ask::initial`), take several
 lines (`multiline`), or wait beside the work (`inline`), which the user's
@@ -563,10 +559,13 @@ despawning it closes it. A front answers it, or an open `Ask`, with
 `Pick::person(entity, chosen)`, a `Chosen { items, text }`: a picker runs
 each chosen item's command, in list order, and gets `Picked` (`None` when
 closed), a question the chosen choices with the text as their note.
-`Picker::multiple()` (`.checked(true)` ticks the last item) and
-`Ask::multiple()` take several. The terminal view ticks with Tab (one
-choice, unless several are taken), Enter on the typed text sends it as the
-ticked choices' note, and Shift+Up/Down scrolls a long body.
+`Picker::multiple()` (`.checked(true)`) and `Ask::multiple()` (with
+`.with(Choice::new(id, label).checked().more(text))`) take several. The
+terminal view ticks with Tab, shows a choice's `more` on Right, and once
+ticks are in play Enter answers just the ticked; a `ChoiceKeys` component
+adds keys of its own (`ChoiceAction::TickAll`, …). A changed `Ask` is a
+new one, with `SupersededBy(new)` on the old: the view keeps the user's
+ticks.
 
 ```rust,no_run
 use rig_compaction::{Summarizing, Uncompact};
@@ -919,9 +918,10 @@ with its id); `part` tells parallel tool calls apart. It is written in
 Arrive in order, after the call's adapters rewrote it, and kept two
 frames, so a reader in `PostUpdate` gets a reply's last events even when
 it settled that frame. A turn's call also adds its text and reasoning up
-in its `Partial`, and from its first item has a `Streamed { first, last,
-items }` beside its `Started { at }`. A delta moves no stage: a reader
-that spawns effects from it runs `.before(AgentLoop)` or calls `Wake::wake`.
+in its `Partial` (a successor continuing a reply may start it with the
+text so far), and from its first item has a `Streamed { first, last, items
+}` beside its `Started { at }`. A delta moves no stage: a reader spawning
+effects runs `.before(AgentLoop)` or calls `Wake::wake`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1684,10 +1684,10 @@ A copy lists a store's files with `files()`, and a command that rewrites a
 session skips one that `runs_elsewhere()`.
 
 **A plugin's own files** go in `PluginData`, there in every run:
-rig-memory `Files` (`write_file`, `read_file`, `files`), names starting
-with the plugin's (`vim/registers.json`). `session` is in the session's
-store, copied by a fork and removed with it, `project` this user's for
-the project (`$RIG_HOME/projects/`), and `user` every session's
+rig-memory `Files` (`write_file`, `read_file`, `files`), names led by the
+plugin's (`vim/registers.json`). `session` is in the session's store,
+copied by a fork and removed with it, `project` this user's for the
+project (`$RIG_HOME/projects/`), and `user` every session's
 (`$RIG_HOME/data/`).
 
 **Secrets.** A secret a plugin needs before the session is restored, such
@@ -1867,9 +1867,8 @@ spawns later it marks itself (`Res<PluginEntity<MyPlugin>>`). Changing how
 another plugin's tool runs is rarely a replacement: a Prepare or Gate
 system on its calls does it, a Review system changes its results, and a
 default tool may have a switch, such as `rig_coding_tools::ShellOutput`. A
-plugin's stage systems in a public set are turned off with a run
-condition (`app.configure_sets(AgentPass, AttachSystems.run_if(|| false))`
-in `finish`).
+plugin's stage systems in a public set are turned off with a run condition
+(`configure_sets(AgentPass, AttachSystems.run_if(|| false))` in `finish`).
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1898,9 +1897,8 @@ may change it, in `finish` or at any time: its `ToolDef` (the rig-core
 `ToolDefinition`: name, description, the JSON schema of its `parameters`)
 and its `ToolRules` (lines of the system prompt; edit only yours). A
 property added to another tool's `parameters` ([as for
-`task`](#extending-task)) is one the model may send; the plugin that added
-it takes it out of the call's `ToolRequest` in Prepare if the tool would
-refuse it.
+`task`](#extending-task)) is one the model may send; its plugin takes it
+out of the call's `ToolRequest` in Prepare if the tool would refuse it.
 
 # Testing a plugin
 
@@ -2010,9 +2008,8 @@ and the words after the name are `Invoked::command()`. A command whose
 front is not `on_terminal()` runs headless: the launcher passes stdin,
 stdout, stderr and the exit code through (`ExitReason::Failed(n)` exits
 with `n`) and never restarts it; `headless()` is only for runs that name
-no command or option. `rig -r <id or name> stats` runs it in that
-session; `sessionless()` leaves no session behind and refuses a resumed
-one.
+no command or option. `rig -r <id or name> stats` runs it in that session;
+`sessionless()` leaves no session behind and refuses a resumed one.
 
 The launcher learns a build's commands, options and secrets from
 `rig_harness::run(app)`, which the generated `main.rs` ends with: it
@@ -2064,23 +2061,26 @@ The terminal view draws notes, and what the conversation holds from a
 plugin (such as rig-compaction's summary), with the look
 `add_entry_renderer(plugin, ..)` gives that plugin's author. Plugins read
 and set its `TranscriptView`: the items `expanded` and `selected` (Alt+Up
-and Alt+Down select, Ctrl+O expands), the `highlights` lit and where it is
-scrolled (`top()`). `ScrollTo { agent, item, row }` scrolls to a
-`TranscriptItem` (a `Message`, a tool `Call`, a `Note`, a `Notice`), at a
-row of it or its `n`th lit match; `item: None` follows the newest output.
-`DrawnTranscript` holds the rows the last frame drew by item, and
-`TranscriptLayout::lay_out` lays any agent's out so, undrawn.
+and Alt+Down select, Ctrl+O expands), the `highlights` lit, the `marks`
+(a `TextMark` label inside a reply's text or a streaming call's) and
+where it is scrolled (`top()`). `ScrollTo { agent, item, row }` scrolls
+to a `TranscriptItem` (a `Message`, a tool `Call`, a `Note`, a `Notice`),
+at a row of it or its `n`th lit match; `item: None` follows the newest
+output. `DrawnTranscript` holds the rows the last frame drew by item;
+`TranscriptLayout::lay_out` lays any agent's out so, undrawn, and
+`lay_out_conversation` a saved one, which a `ConversationPanel` shows.
 
 A message's images, audio, videos and documents, the user's or the
 model's, are drawn by `add_content_renderer(ContentKind::Image, ..)`,
 given a `ContentView` (`default_lines()` is `[image]`), each block an item
 `TranscriptItem::Content(id, index)` with its rows; `add_call_decorator`
-draws lines under every tool call, after its look. `TuiFrame`, written in
-`TuiSystems::Render`, says where the frame drew each part (`screen_row`,
-`covered` by an overlay), for a plugin that writes to the terminal itself,
-such as an image over rows its renderer left blank. A test draws frames
-into a `TuiTestScreen::new(80, 24)` beside `tui_view`: its `rows()` and
-the bytes `written()`.
+draws lines under every tool call, after its look, an item
+`Decoration(call, name)`. `TuiFrame`, written in `TuiSystems::Render`,
+says where the frame drew each part (`screen_row`, `covered` by an
+overlay), for a plugin that writes to the terminal itself, such as an
+image over rows its renderer left blank, and `Repaint(rect)` writes cells
+it drew over again. A test draws frames into a `TuiTestScreen::new(80,
+24)` beside `tui_view`: its `rows()`, the bytes `written()`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
