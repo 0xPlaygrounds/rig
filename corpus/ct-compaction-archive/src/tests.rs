@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use rig_compaction::{Compact, Compaction, CompactionPlugin};
+use rig_compaction::{AppCompactionExt, Compact, CompactionDefault, CompactionPlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_memory::{CompactReason, Cut, Messages};
@@ -75,7 +75,8 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         "corpus-ct-compaction-archive",
         "path corpus/ct-compaction-archive",
     );
-    app.world_mut().resource_mut::<Compaction>().0.cut = Cut::With(Arc::new(keep_two_turns));
+    app.add_compaction_cut("keep-two-turns", keep_two_turns);
+    app.world_mut().resource_mut::<CompactionDefault>().0.cut = Cut::Named("keep-two-turns".into());
     app.finish();
     app.update();
     (app, wakes)
