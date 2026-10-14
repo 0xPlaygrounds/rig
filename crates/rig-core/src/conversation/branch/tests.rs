@@ -481,7 +481,6 @@ fn a_merged_branch_brings_its_entries_nested_branches_and_line_values() {
 fn a_line_copied_out_merges_back_by_appending_or_where_it_was_moved_from() {
     let by = Author::plugin("tree");
     let (mut conversation, _) = six(&by);
-    let all = keys(&conversation);
     // A line that parts at the call's result: the copy is its own.
     let side = conversation.branch_off(5, "side", by.clone());
     conversation.push(Message::assistant("six"));
@@ -546,6 +545,7 @@ fn a_line_copied_out_merges_back_by_appending_or_where_it_was_moved_from() {
 
     // A range moved into a copy comes back where it was, with its ids.
     let (mut conversation, _) = six(&by);
+    let all = keys(&conversation);
     let copy = conversation.line_conversation(None, 5);
     let pointer = conversation.move_out(2..5, "away", by.clone());
     assert!(pointer.is_ok(), "{pointer:?}");
