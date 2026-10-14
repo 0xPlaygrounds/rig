@@ -6,7 +6,8 @@ use rig_core::completion::Message;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
-    AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Report, Request, Subtask, answered,
+    AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Report, Request, SubagentSystems, Subtask,
+    answered,
 };
 use rig_harness::prelude::*;
 
@@ -27,12 +28,16 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
-        .add_systems(
+        .configure_sets(
             AgentPass,
-            stop_restored
+            SubagentSystems::StopRestored
                 .after(GateSystems::After)
                 .before(ApprovalSystems)
                 .before(GateSystems::Fallback),
+        )
+        .add_systems(
+            AgentPass,
+            stop_restored.in_set(SubagentSystems::StopRestored),
         );
 }
 

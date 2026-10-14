@@ -104,6 +104,9 @@ pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
 pub enum SubagentSystems {
     /// Refuses a request deeper than [`SubagentPolicy`] allows.
     Gate,
+    /// Stops the restored turn of an agent that owed reports, after
+    /// every gate and before approvals and the kernel's own answers.
+    StopRestored,
 }
 pub use tools::{MESSAGE, TASK, WAIT};
 
