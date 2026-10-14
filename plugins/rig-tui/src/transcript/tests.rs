@@ -544,7 +544,7 @@ fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
     let item = TranscriptItem::Call(call.id.clone());
     let drawn = |app: &mut App| {
         on_screen(app, agent, 5);
-        crate::tests::drawn(&app).clone()
+        crate::tests::drawn(app).clone()
     };
     let collapsed = drawn(&mut app);
     assert_eq!(collapsed.agent(), Some(agent));

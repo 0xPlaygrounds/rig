@@ -507,7 +507,7 @@ pub(crate) fn read_input(
         let in_panel = editor.is_some() && editor == keymap.focus.0;
         let mut found = editor.and_then(|editor| editors.get_mut(editor).ok());
         let input: &mut Editor = match &mut found {
-            Some((_, editor, _)) => &mut **editor,
+            Some((_, editor, _)) => editor,
             None => &mut none,
         };
         let pane = keyed_pane(&panes, keymap.focus.0);

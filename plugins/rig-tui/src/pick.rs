@@ -425,11 +425,10 @@ fn refill(state: &mut PickerState, shown: &Listing<'_>) {
     };
     let picked = state.picked.as_ref();
     let by = |same: &dyn Fn(&Item<'_>, &(String, String)) -> bool| {
-        let found = picked.and_then(|picked| {
+        picked.and_then(|picked| {
             rows.iter()
                 .position(|row| item(row).is_some_and(|item| same(item, picked)))
-        });
-        found
+        })
     };
     let found = by(&|item, (id, _)| !id.is_empty() && item.id == id)
         .or_else(|| by(&|item, (_, label)| item.label == label));
