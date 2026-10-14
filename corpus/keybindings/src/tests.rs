@@ -93,7 +93,10 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
     assert_eq!(model(&app, agent), Some("deepseek/deepseek-flash"));
 
     press(&mut app, "ctrl+t", agent);
-    assert_eq!(app.world().resource::<TuiInput>().text(), "Think.");
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&Editor, With<MainEditor>>();
+    let typed = main.single(world).ok().map(|input| input.text().to_owned());
+    assert_eq!(typed.as_deref(), Some("Think."));
 
     app.world_mut()
         .trigger(RunCommand::new(agent, "keys".to_owned()));
