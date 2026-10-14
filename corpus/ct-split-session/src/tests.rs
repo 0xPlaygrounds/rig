@@ -11,10 +11,10 @@ use rig_harness_test_support::{
 
 use super::*;
 
-/// A plugin's saved state that follows the conversation: the turns the
-/// agent ended.
+/// A plugin's state that follows the conversation: the turns the agent
+/// ended.
 #[derive(Component, Reflect, Default, Debug, PartialEq, Eq)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Follows, Default)]
 struct Turns(u32);
 
 fn count(
@@ -160,20 +160,32 @@ fn copy_of(home: &Home, name: &str, agent: &str) -> Option<(SessionId, SavedAgen
 }
 
 #[test]
-fn split_moves_turns_three_and_four_and_undo_puts_them_back() {
-    let home = scratch_home("ct-split-session-undo");
+fn split_moves_turns_three_and_four_undo_puts_them_back_and_the_copy_resumes() {
+    let home = scratch_home("ct-split-session");
     let id = SessionId::generate();
-    let cheap = MockCompletionModel::from_stream_turns([
+    let summaries = [
         reply("The user works on a feature."),
         reply("Topic: build cache\nThe cache key held a timestamp; it is fixed."),
-    ]);
+    ];
+    let cheap = MockCompletionModel::from_stream_turns(
+        summaries
+            .iter()
+            .chain(&summaries)
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
     let (mut app, wakes) = start(&home, &id, &cheap);
-    let main = six_turn_model(&[]);
+    let main = six_turn_model(&["r7"]);
     let found = six_turns(&mut app, &wakes, &main);
     assert!(found.is_some(), "an agent and a model");
     let Some(agent) = found else {
         return;
     };
+    let agent_id = app
+        .world()
+        .get::<AgentId>(agent)
+        .cloned()
+        .unwrap_or_default();
     let before = conversation(&app, agent);
     let before_entries: Vec<Entry> = (0..before.messages().len())
         .filter_map(|at| before.entry(at))
@@ -211,13 +223,10 @@ fn split_moves_turns_three_and_four_and_undo_puts_them_back() {
     );
     assert!(note.contains("timestamp; it is fixed"), "{note}");
     assert!(after.validate().is_ok());
+    assert_eq!(app.world().get::<Turns>(agent), Some(&Turns(6)));
 
-    // The new session: a context summary, then turns 3 and 4 verbatim.
-    let agent_id = app
-        .world()
-        .get::<AgentId>(agent)
-        .cloned()
-        .unwrap_or_default();
+    // The new session: a context summary, then turns 3 and 4 verbatim,
+    // listed as split from this one.
     let found = copy_of(&home, "cache", &agent_id.0);
     assert!(found.is_some(), "a session named cache");
     let Some((copy_id, copy)) = found else {
@@ -235,47 +244,34 @@ fn split_moves_turns_three_and_four_and_undo_puts_them_back() {
     );
     assert_eq!(copied.get(1..), before.messages().get(4..12));
     assert!(copy.conversation.validate().is_ok());
-    let line = SessionEntry::read(&home.session(&copy_id), &SessionStores::default())
-        .map(|entry| entry.label());
+    let detail = SessionEntry::read(&home.session(&copy_id), &SessionStores::default())
+        .map(|entry| entry.detail());
     assert!(
-        line.as_deref()
-            .is_some_and(|line| line.contains(&format!("split from {id}"))),
-        "{line:?}"
+        detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains(&format!("split from {id}"))),
+        "{detail:?}"
     );
 
     // Undo: the original exactly as it was, and no `cache` session.
-    say(&mut app, &wakes, agent, "/split undo", |world| {
-        world.resource::<Ended>().0.len() >= 6
-    });
-    app.update();
+    say(&mut app, &wakes, agent, "/split undo", ended(6));
     let undone = conversation(&app, agent);
     let undone_entries: Vec<Entry> = (0..undone.messages().len())
         .filter_map(|at| undone.entry(at))
         .collect();
     assert_eq!(undone_entries, before_entries, "{:#?}", notices(&app));
-    assert!(!undone.asides().any(|(_, aside)| aside.kind == MOVED));
+    assert!(
+        !undone
+            .asides()
+            .any(|(_, aside)| aside.kind == MOVED || aside.kind == SPLIT)
+    );
     assert!(
         !home.session(&copy_id).path().exists(),
         "{:#?}",
         notices(&app)
     );
-}
 
-#[test]
-fn the_next_request_reads_the_note_and_the_split_off_session_resumes() {
-    let home = scratch_home("ct-split-session-resume");
-    let id = SessionId::generate();
-    let cheap = MockCompletionModel::from_stream_turns([
-        reply("The user works on a feature."),
-        reply("Topic: build cache\nThe cache key held a timestamp; it is fixed."),
-    ]);
-    let (mut app, wakes) = start(&home, &id, &cheap);
-    let main = six_turn_model(&["r7"]);
-    let found = six_turns(&mut app, &wakes, &main);
-    assert!(found.is_some(), "an agent and a model");
-    let Some(agent) = found else {
-        return;
-    };
+    // Split again; the next request reads the note, not turns 3 and 4.
     split_with(&mut app, &wakes, agent, "/split 3 4 --name cache");
     say(&mut app, &wakes, agent, "seven", ended(7));
     let sent = main
@@ -289,12 +285,8 @@ fn the_next_request_reads_the_note_and_the_split_off_session_resumes() {
         "{sent}"
     );
 
-    // Resumed, the split-off session has its state as of turn 4 and works.
-    let agent_id = app
-        .world()
-        .get::<AgentId>(agent)
-        .cloned()
-        .unwrap_or_default();
+    // Resumed, the split-off session has the state that follows the
+    // conversation as of turn 4, and works.
     let found = copy_of(&home, "cache", &agent_id.0);
     assert!(found.is_some(), "a session named cache");
     let Some((copy_id, _)) = found else {
@@ -328,13 +320,6 @@ fn the_next_request_reads_the_note_and_the_split_off_session_resumes() {
             last.and_then(|last| last.final_answer()),
             Some("resumed".to_owned())
         );
-        let label = resumed
-            .world_mut()
-            .query::<&ResumeLabel>()
-            .iter(resumed.world())
-            .find(|label| label.tag == "split")
-            .map(|label| label.text.clone());
-        assert_eq!(label, Some(format!("split from {id}")));
     }
 
     // Both changed since: the split stays.
