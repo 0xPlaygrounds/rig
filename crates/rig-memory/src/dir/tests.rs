@@ -117,6 +117,23 @@ fn a_session_saved_in_format_1_is_refused_before_anything_is_written() {
     assert_eq!(snapshot(&dir), before);
     let _ = fs::remove_dir_all(&dir);
 
+    // A newer rig's format, and one that is not rig's, are refused too,
+    // each saying which it is.
+    for (format, says) in [
+        ("rig-session/3", "a newer version of rig"),
+        ("other/1", "is in format other/1, not rig-session/2"),
+    ] {
+        let dir = scratch(&format.replace('/', "-"));
+        write_fixture(
+            &dir,
+            &include_str!("session-1.txt").replace("rig-session/1", format),
+        );
+        let store = DirStore::open(&dir).expect("opened");
+        let refused = Session::read(&store).map(|_| ()).expect_err("refused");
+        assert!(refused.to_string().contains(says), "{refused}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     let dir = scratch("format-1-as-2");
     write_fixture(
         &dir,
