@@ -4,67 +4,61 @@
 //! typed for, labelled with its first words when no label is given;
 //! `/bookmark rm <label>` takes one away, and `/bookmarks` lists them in a
 //! picker, where choosing one scrolls the terminal view to the message and
-//! selects it. The bookmarks are a saved resource ([`Bookmarks`]), so they
-//! come back on resume; each is drawn as a transcript note after its
-//! message, which no model sees. A fork gets every bookmark of its parent
-//! that points at a message made before the fork point. A bookmark whose
-//! message a condensing took out opens the saved history around it, read
-//! from a copy of the session as it was before that condensing.
+//! selects it.
+//!
+//! A bookmark is a saved aside of kind [`KIND`] after its message: it is
+//! saved and restored with the conversation, never reaches a model, and is
+//! drawn as the marker. A fork carries the asides that follow the messages
+//! it copies, so it keeps exactly the bookmarks before its fork point. A
+//! condensing leaves the aside in place; opening it reads the agent's log
+//! as it was just before the splice that took the message out
+//! (`rig_memory::as_of`) and shows that in a transcript pane over the
+//! screen, scrolled to the message.
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::conversation::Conversation as Saved;
-use rig_harness::rig_core::message::{AssistantContent, Message, UserContent};
+use rig_harness::rig_core::conversation::{Change, Conversation as Saved};
+use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_memory::MemoryStore;
+use rig_harness::rig_memory::{LoadError, Record, as_of, history};
+use rig_tui::crossterm::event::KeyCode;
+use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppToolRenderersExt, EntryView, Focus, ItemRow, MainPane, ScrollTo, TranscriptItem,
-    TranscriptView,
+    AppToolRenderersExt, AsideView, Focus, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed,
+    KeyScope, MainPane, PaneKeys, Placement, ScrollTo, TranscriptItem, TranscriptPane,
+    TranscriptSource, TranscriptView, TuiPanel,
 };
 use serde::{Deserialize, Serialize};
 
-/// The author (a plugin name) of a bookmark's marker in the transcript.
-pub const ORIGIN: &str = "bookmark";
+/// The kind of a bookmark's aside.
+pub const KIND: &str = "bookmark";
 
-/// The author (a plugin name) of the saved history shown for a
-/// condensed-away bookmark.
-pub const HISTORY_ORIGIN: &str = "bookmark-history";
-
-/// The file of a forked session's store that holds its parent's
-/// bookmarks, written by the parent as it forks.
-const HANDED: &str = "bookmarks/forked.json";
+/// The plugin, as the author of bookmarks.
+const PLUGIN: &str = "bookmarks";
 
 /// How many words of a message label a bookmark given no label.
 const LABEL_WORDS: usize = 5;
 
-/// How many messages before and after a condensed-away one its saved
-/// history shows.
-const AROUND: usize = 3;
-
-/// How many condensings deep the saved history is looked for.
-const DEPTH: usize = 16;
-
-/// One bookmark: a message of an agent, by id.
+/// A bookmark's aside value; the aside's `after` is the message it marks.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bookmark {
     /// Its label, unique in the session.
     pub label: String,
-    /// The id of the agent whose message it marks.
-    pub agent: String,
-    /// The message it marks.
-    pub message: MessageId,
     /// When it was made, in milliseconds since the Unix epoch.
     pub at_ms: u64,
     /// The first line of the message's text.
     pub first_line: String,
 }
 
-/// The session's bookmarks, oldest first, saved with the session (through
-/// serde: a [`MessageId`] has no reflection).
-#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct Bookmarks(pub Vec<Bookmark>);
+impl Bookmark {
+    /// The bookmark `aside` holds, if it holds one.
+    pub fn of(aside: &Aside) -> Option<Self> {
+        (aside.kind == KIND)
+            .then(|| serde_json::from_value(aside.value.clone()).ok())
+            .flatten()
+    }
+}
 
 /// `/bookmark`, `/bookmarks` and the markers in the transcript.
 #[derive(Default)]
@@ -72,155 +66,136 @@ pub struct BookmarksPlugin;
 
 impl Plugin for BookmarksPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Bookmarks>()
-            .register_type::<Bookmarks>()
-            .add_message::<SessionForked>()
-            .add_command(
-                "bookmark",
-                "Bookmark the latest message: /bookmark [label], /bookmark rm <label>",
-                bookmark,
-            )
-            .add_command("bookmarks", "List the bookmarks and jump to one", list)
-            .add_entry_renderer(ORIGIN, marker)
-            .add_systems(
-                Startup,
-                inherit.run_if(resource_exists_and_equals(AppStart(StartReason::New))),
-            )
-            .add_systems(
-                Update,
-                (
-                    hand_to_forks,
-                    show_markers.run_if(
-                        resource_changed::<Bookmarks>.or_else(any_match_filter::<Added<AgentId>>),
-                    ),
-                ),
-            );
+        app.add_command(
+            "bookmark",
+            "Bookmark the latest message: /bookmark [label], /bookmark rm <label>",
+            bookmark,
+        )
+        .add_command("bookmarks", "List the bookmarks and jump to one", list)
+        .add_aside_renderer(KIND, marker);
     }
 }
 
-/// On a `/bookmarks` picker: the label of each item.
+/// On a `/bookmarks` picker: the agent and aside of each item.
 #[derive(Component)]
-struct Choices(Vec<String>);
+struct Choices(Vec<(Entity, AsideId)>);
 
-/// The notes by plugin `plugin` in `conversation`.
-fn notes_of(conversation: &Saved, plugin: &str) -> Vec<AsideId> {
-    let author = Author::plugin(plugin);
-    let notes = conversation.asides();
-    notes
-        .filter(|(_, aside)| aside.kind == Note::KIND && aside.author == author)
-        .map(|(id, _)| id)
-        .collect()
-}
-
-/// Takes the notes by plugin `plugin` out of `conversation`, marking it
-/// changed only when it held any.
-fn clear_notes(conversation: &mut Mut<Conversation>, plugin: &str) {
-    for id in notes_of(conversation, plugin) {
-        conversation.remove_aside(id);
-    }
-}
+/// On the pane showing a condensed-away bookmark's saved history.
+#[derive(Component)]
+struct HistoryPane;
 
 /// The marker's look: a line naming the bookmark.
-fn marker(entry: &EntryView<'_>) -> Vec<Line<'static>> {
+fn marker(view: &AsideView<'_>) -> Vec<Line<'static>> {
+    let label = Bookmark::of(view.aside).map(|bookmark| bookmark.label);
+    let label = label.unwrap_or_default();
     vec![Line::styled(
-        format!("◆ bookmark: {}", entry.title),
+        format!("◆ bookmark: {label}"),
         Style::new().yellow(),
     )]
 }
 
-/// The text of `message`: what the user or the model wrote, with the
-/// tools the model called.
+/// Every bookmark of every agent: the agent, the aside and the bookmark,
+/// oldest first.
+fn all<'a>(
+    agents: impl Iterator<Item = (Entity, &'a Saved)>,
+) -> Vec<(Entity, AsideId, MessageId, Bookmark)> {
+    let mut found: Vec<_> = agents
+        .flat_map(|(agent, conversation)| {
+            conversation.asides().filter_map(move |(id, aside)| {
+                Some((agent, id, aside.after?, Bookmark::of(aside)?))
+            })
+        })
+        .collect();
+    found.sort_by_key(|(_, id, _, bookmark)| (bookmark.at_ms, *id));
+    found
+}
+
+/// The text of `message`, what the user or the model wrote.
 fn text_of(message: &Message) -> String {
-    let parts: Vec<String> = match message {
-        Message::System { content } => vec![content.clone()],
+    let text = match message {
+        Message::System { content } => content.clone(),
         Message::User { content } => content
             .iter()
             .filter_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.clone()),
+                UserContent::Text(text) => Some(text.text.as_str()),
                 _ => None,
             })
-            .collect(),
-        Message::Assistant(reply) => reply
-            .content
-            .iter()
-            .filter_map(|item| match item {
-                AssistantContent::Text(text) => Some(text.text.clone()),
-                AssistantContent::ToolCall(call) => {
-                    Some(format!("[calls {}]", call.function.name.as_str()))
-                }
-                _ => None,
-            })
-            .collect(),
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Message::Assistant(reply) => reply.text(),
     };
-    parts.join("\n").trim().to_owned()
+    text.trim().to_owned()
 }
 
 /// `/bookmark [label]` and `/bookmark rm <label>`.
 fn bookmark(
     In(args): In<CommandArgs>,
-    agents: Query<(&AgentId, &Conversation)>,
-    mut bookmarks: ResMut<Bookmarks>,
+    mut agents: Query<(Entity, &mut Conversation)>,
     mut notices: MessageWriter<Notice>,
 ) {
     let words = args.args.trim();
-    if let Some(label) = words
+    let removing = words
         .strip_prefix("rm")
         .filter(|rest| rest.is_empty() || rest.starts_with(' '))
-    {
-        let label = label.trim();
-        let before = bookmarks.0.len();
-        bookmarks.0.retain(|kept| kept.label != label);
-        if bookmarks.0.len() == before {
-            notices.write(Notice::error(
-                args.agent,
-                format!("No bookmark is labelled `{label}`."),
-            ));
-        } else {
-            notices.write(Notice::info(
-                args.agent,
-                format!("Removed bookmark `{label}`."),
-            ));
+        .map(str::trim);
+    let latest = agents.get(args.agent).ok().and_then(|(_, conversation)| {
+        let at = conversation.messages().len().checked_sub(1)?;
+        Some((
+            conversation.id(at)?,
+            text_of(conversation.messages().get(at)?),
+        ))
+    });
+    let (label, latest) = match (removing, latest) {
+        (Some(label), _) => (label.to_owned(), None),
+        (None, None) => {
+            let why = "There is no message to bookmark yet.";
+            notices.write(Notice::error(args.agent, why));
+            return;
         }
-        return;
-    }
-    let Ok((id, conversation)) = agents.get(args.agent) else {
-        return;
-    };
-    let latest = conversation.messages().len().checked_sub(1);
-    let marked =
-        latest.and_then(|at| Some((conversation.id(at)?, conversation.messages().get(at)?)));
-    let Some((message, latest)) = marked else {
-        notices.write(Notice::error(
-            args.agent,
-            "There is no message to bookmark yet.",
-        ));
-        return;
-    };
-    let text = text_of(latest);
-    let label = match words {
-        "" => text
-            .split_whitespace()
-            .take(LABEL_WORDS)
-            .collect::<Vec<_>>()
-            .join(" "),
-        label => label.to_owned(),
+        (None, Some((message, text))) => {
+            let first = text.split_whitespace().take(LABEL_WORDS);
+            let label = match words {
+                "" => first.collect::<Vec<_>>().join(" "),
+                label => label.to_owned(),
+            };
+            (label, Some((message, text)))
+        }
     };
     if label.is_empty() {
-        notices.write(Notice::error(
-            args.agent,
-            "That message has no text: give a label.",
-        ));
+        let why = "Give a label: that message has no text.";
+        notices.write(Notice::error(args.agent, why));
         return;
     }
     // A label is unique in the session: reusing one moves it.
-    bookmarks.0.retain(|kept| kept.label != label);
-    bookmarks.0.push(Bookmark {
+    let taken = all(agents
+        .iter()
+        .map(|(agent, conversation)| (agent, &conversation.0)));
+    let taken = taken.into_iter().find(|(.., kept)| kept.label == label);
+    if let Some((agent, aside, ..)) = taken
+        && let Ok((_, mut conversation)) = agents.get_mut(agent)
+    {
+        conversation.remove_aside(aside);
+    }
+    let Some((message, text)) = latest else {
+        let said = match taken {
+            Some(_) => Notice::info(args.agent, format!("Removed bookmark `{label}`.")),
+            None => Notice::error(args.agent, format!("No bookmark is labelled `{label}`.")),
+        };
+        notices.write(said);
+        return;
+    };
+    let value = Bookmark {
         label: label.clone(),
-        agent: id.0.clone(),
-        message,
         at_ms: now_ms(),
         first_line: text.lines().next().unwrap_or_default().to_owned(),
-    });
+    };
+    let Ok(value) = serde_json::to_value(value) else {
+        return;
+    };
+    if let Ok((_, mut conversation)) = agents.get_mut(args.agent) {
+        let aside = Aside::new(KIND, Author::plugin(PLUGIN), value).after(Some(message));
+        conversation.add_aside(aside);
+    }
     notices.write(Notice::info(args.agent, format!("Bookmarked `{label}`.")));
 }
 
@@ -238,232 +213,149 @@ fn age(elapsed_ms: u64) -> String {
 /// agent and the first line of its message.
 fn list(
     In(args): In<CommandArgs>,
-    bookmarks: Res<Bookmarks>,
-    agents: Query<(&AgentId, &Name)>,
+    agents: Query<(Entity, &Conversation, &AgentId, Option<&Name>)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if bookmarks.0.is_empty() {
-        notices.write(Notice::info(
-            args.agent,
-            "No bookmarks yet: /bookmark [label].",
-        ));
+    let bookmarks = all(agents
+        .iter()
+        .map(|(agent, conversation, ..)| (agent, &conversation.0)));
+    if bookmarks.is_empty() {
+        let none = "No bookmarks yet: /bookmark [label].";
+        notices.write(Notice::info(args.agent, none));
         return;
     }
     let now = now_ms();
     let mut picker = Picker::new("Bookmarks").for_agent(args.agent);
-    for bookmark in &bookmarks.0 {
-        let agent = agents.iter().find(|(id, _)| id.0 == bookmark.agent);
-        let agent = agent.map_or(bookmark.agent.as_str(), |(_, name)| name.as_str());
+    for (agent, _, _, bookmark) in &bookmarks {
+        let name = agents.get(*agent).map_or("", |(_, _, id, name)| {
+            name.map_or(id.0.as_str(), Name::as_str)
+        });
         let when = age(now.saturating_sub(bookmark.at_ms));
         picker.items.push(PickItem {
             label: bookmark.label.clone(),
             command: String::new(),
-            detail: Some(format!("{when} · {agent} · {}", bookmark.first_line)),
+            detail: Some(format!("{when} · {name} · {}", bookmark.first_line)),
             checked: false,
         });
     }
-    let labels = bookmarks
-        .0
-        .iter()
-        .map(|bookmark| bookmark.label.clone())
-        .collect();
-    commands.spawn((picker, Choices(labels))).observe(open);
+    let choices = bookmarks.iter().map(|(agent, id, ..)| (*agent, *id));
+    commands
+        .spawn((picker, Choices(choices.collect())))
+        .observe(open);
 }
 
 /// Opens the bookmark chosen in a `/bookmarks` picker: shows its agent in
 /// the main pane, scrolled to its message and selected, or, when a
-/// condensing took the message out, the saved history around it after
-/// what stands for it now.
+/// condensing took the message out, the saved history around it.
 fn open(
     picked: On<Picked>,
     choices: Query<&Choices>,
-    bookmarks: Res<Bookmarks>,
-    mut agents: Query<(Entity, &AgentId, &mut Conversation)>,
-    (store, pane): (
+    agents: Query<(&AgentId, &Conversation)>,
+    (store, main, shown): (
         Option<Res<SessionStore>>,
         Option<Single<(Entity, &mut TranscriptView), With<MainPane>>>,
+        Query<Entity, With<HistoryPane>>,
     ),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Some(chosen) = picked
+    let chosen = picked
         .chosen
         .as_ref()
-        .and_then(|chosen| chosen.items.first())
-    else {
+        .and_then(|chosen| chosen.items.first());
+    let choice = chosen.and_then(|at| choices.get(picked.entity).ok()?.0.get(*at));
+    let Some(&(agent, aside)) = choice else {
         return;
     };
-    let label = choices
-        .get(picked.entity)
-        .ok()
-        .and_then(|choices| choices.0.get(*chosen));
-    let Some(bookmark) =
-        label.and_then(|label| bookmarks.0.iter().find(|kept| kept.label == *label))
-    else {
+    let Ok((id, conversation)) = agents.get(agent) else {
+        notices.write(Notice::error(None, "That bookmark's agent is gone."));
         return;
     };
-    for (_, _, mut conversation) in &mut agents {
-        clear_notes(&mut conversation, HISTORY_ORIGIN);
+    let Some(message) = conversation.aside(aside).and_then(|aside| aside.after) else {
+        return;
+    };
+    for pane in &shown {
+        commands.entity(pane).despawn();
     }
-    let found = agents.iter_mut().find(|(_, id, _)| id.0 == bookmark.agent);
-    let Some((agent, id, mut conversation)) = found else {
-        notices.write(Notice::error(
-            None,
-            format!("The agent of `{}` is gone.", bookmark.label),
-        ));
-        return;
-    };
-    let item = if conversation.index_of(bookmark.message).is_some() {
-        TranscriptItem::Message(bookmark.message)
-    } else {
-        let history = store
-            .and_then(|store| saved_history(&*store.0, &id.0, &conversation, bookmark.message));
-        let Some(history) = history else {
-            let why = format!("The saved history of `{}` cannot be read.", bookmark.label);
-            notices.write(Notice::error(agent, why));
+    let item = TranscriptItem::Message(message);
+    if conversation.index_of(message).is_some() {
+        let Some(main) = main else {
             return;
         };
-        let title = format!("Bookmark `{}`, before it was condensed", bookmark.label);
-        let note =
-            Note::new(title, history).aside(Author::plugin(HISTORY_ORIGIN), Some(bookmark.message));
-        TranscriptItem::Aside(conversation.add_aside(note.unsaved()))
-    };
-    let Some(pane) = pane else {
+        let (pane, mut view) = main.into_inner();
+        view.selected = Some(item.clone());
+        commands.trigger(Focus { entity: agent });
+        commands.trigger(ScrollTo {
+            pane,
+            item: Some(item),
+            row: ItemRow::Reveal,
+        });
+        return;
+    }
+    let then = store.map(|store| before_taken_out(&*store.0, &id.0, message));
+    let Some(Ok(Some(then))) = then else {
+        let why = "The saved history of that bookmark cannot be read.";
+        notices.write(Notice::error(agent, why));
         return;
     };
-    let (pane, mut view) = pane.into_inner();
-    if matches!(item, TranscriptItem::Aside(_)) {
-        view.expanded.insert(item.clone());
-    }
+    show_history(&mut commands, then, item);
+}
+
+/// The conversation of `log` in `store` just before the last change that
+/// took `message` out of it; `None` when none did.
+fn before_taken_out(
+    store: &dyn Store,
+    log: &str,
+    message: MessageId,
+) -> Result<Option<Saved>, LoadError> {
+    let took_out = |change: &Change| match change {
+        Change::Splice { removed, with, .. } => {
+            removed.contains(&message) && with.iter().all(|entry| entry.id != Some(message))
+        }
+        Change::Reset { state } => state.index_of(message).is_none(),
+        _ => false,
+    };
+    let records = history(store, log)?;
+    let last = records
+        .iter()
+        .rev()
+        .find_map(|(stamp, record)| match record {
+            Record::Change(recorded) if took_out(&recorded.change) => Some(stamp.n),
+            _ => None,
+        });
+    let then = last.map(|n| as_of(store, log, n)).transpose()?;
+    Ok(then.filter(|then| then.index_of(message).is_some()))
+}
+
+/// Shows `then` read-only in a pane over the screen, `item` selected at
+/// its top; Esc in it closes it.
+fn show_history(commands: &mut Commands, then: Saved, item: TranscriptItem) {
+    let over = Placement::Over {
+        width: Constraint::Percentage(90),
+        height: Constraint::Percentage(90),
+    };
+    let mut view = TranscriptView::default();
     view.selected = Some(item.clone());
-    commands.trigger(Focus { entity: agent });
+    let title = "Bookmark, as saved before it was condensed (Esc closes)";
+    let source = TranscriptPane::new(TranscriptSource::Value(then)).titled(title);
+    let pane = (source, view, TuiPanel::new(over), PaneKeys, HistoryPane);
+    let pane = commands.spawn(pane).id();
+    let close =
+        KeyBinding::new(KeyPress::key(KeyCode::Esc), "Close").in_scope(KeyScope::Panel(pane));
+    commands.spawn((close, ChildOf(pane))).observe(
+        move |pressed: On<KeyPressed>, mut commands: Commands| {
+            if !pressed.released {
+                commands.entity(pane).try_despawn();
+            }
+        },
+    );
+    commands.insert_resource(KeyFocus(Some(pane)));
     commands.trigger(ScrollTo {
         pane,
         item: Some(item),
         row: ItemRow::Reveal,
     });
-}
-
-/// The messages around `message` of agent `agent`, as the session kept
-/// them before the condensing that took it out of `now`. A copy of the
-/// session as it was before the oldest message of `now` newer than
-/// `message` was made holds it, unless an older condensing took it out
-/// too: then the copy's oldest newer message is tried, and so on.
-fn saved_history(
-    store: &dyn Store,
-    agent: &str,
-    now: &Saved,
-    message: MessageId,
-) -> Option<String> {
-    // Ids rise in the order messages were made: the oldest newer message
-    // was made after `message` and no later than what stands for it.
-    let oldest_newer = |conversation: &Saved| {
-        let ids = (0..conversation.messages().len()).filter_map(|at| conversation.id(at));
-        ids.filter(|id| *id > message).min()
-    };
-    let mut before = oldest_newer(now)?;
-    for _ in 0..DEPTH {
-        let copy = MemoryStore::default();
-        fork(store, &copy, Some((agent, before)), &Keep).ok()?;
-        let session = Session::read(&copy).ok()?;
-        let then = session
-            .agents
-            .into_iter()
-            .find(|saved| saved.id == agent)?
-            .conversation;
-        if let Some(at) = then.index_of(message) {
-            return Some(around(&then, at));
-        }
-        before = oldest_newer(&then).filter(|older| *older < before)?;
-    }
-    None
-}
-
-/// Messages `at - AROUND ..= at + AROUND` of `conversation`, the one at
-/// `at` marked.
-fn around(conversation: &Saved, at: usize) -> String {
-    let messages = conversation.messages();
-    let first = at.saturating_sub(AROUND);
-    let shown = messages.iter().enumerate().skip(first).take(2 * AROUND + 1);
-    let lines: Vec<String> = shown
-        .map(|(index, message)| {
-            let who = match message {
-                Message::Assistant(_) => "model",
-                Message::System { .. } => "system",
-                Message::User { .. } => "user",
-            };
-            let mark = if index == at { "◆ " } else { "" };
-            format!("{mark}{who}: {}", text_of(message))
-        })
-        .collect();
-    lines.join("\n\n")
-}
-
-/// Draws each bookmark as a note after its message, in place of the
-/// markers drawn before.
-fn show_markers(bookmarks: Res<Bookmarks>, mut agents: Query<(&AgentId, &mut Conversation)>) {
-    for (id, mut conversation) in &mut agents {
-        clear_notes(&mut conversation, ORIGIN);
-        for bookmark in bookmarks.0.iter().filter(|bookmark| bookmark.agent == id.0) {
-            let note = Note::new(&bookmark.label, &bookmark.first_line);
-            let marker = note.aside(Author::plugin(ORIGIN), Some(bookmark.message));
-            // The saved resource is what is kept; the markers are drawn from it.
-            conversation.add_aside(marker.unsaved());
-        }
-    }
-}
-
-/// Hands every bookmark to each fork of this session, in its store; the
-/// fork keeps those before its fork point ([`inherit`]).
-fn hand_to_forks(
-    mut forked: MessageReader<SessionForked>,
-    bookmarks: Res<Bookmarks>,
-    (stores, home): (Res<SessionStores>, Option<Res<RigHome>>),
-    mut notices: MessageWriter<Notice>,
-) {
-    for fork in forked.read() {
-        let home = home
-            .as_ref()
-            .map_or_else(Home::from_env, |home| home.0.clone());
-        let written = serde_json::to_vec(&bookmarks.0)
-            .map_err(std::io::Error::other)
-            .and_then(|json| {
-                stores
-                    .open(&home.session(&fork.to))?
-                    .write_file(HANDED, &json)
-            });
-        if let Err(failure) = written {
-            let why = format!("The fork {} did not get the bookmarks: {failure}", fork.to);
-            notices.write(Notice::error(None, why));
-        }
-    }
-}
-
-/// In a fork's first start, keeps the bookmarks its parent handed it, else
-/// those the copy restored, that point at a message made before the fork
-/// point: one its agent's copy has a message at least as new as.
-fn inherit(
-    store: Option<Res<SessionStore>>,
-    agents: Query<(&AgentId, &Conversation)>,
-    mut bookmarks: ResMut<Bookmarks>,
-) {
-    let Some(store) = store.filter(|store| ForkedFrom::read(&*store.0).is_some()) else {
-        return;
-    };
-    let handed = store.0.read_file(HANDED).ok();
-    let handed: Option<Vec<Bookmark>> = handed.and_then(|json| serde_json::from_slice(&json).ok());
-    let mut kept = handed.unwrap_or_else(|| bookmarks.0.clone());
-    kept.retain(|bookmark| {
-        let copy = agents.iter().find(|(id, _)| id.0 == bookmark.agent);
-        let newest = copy.and_then(|(_, conversation)| {
-            (0..conversation.messages().len())
-                .filter_map(|at| conversation.id(at))
-                .max()
-        });
-        newest.is_some_and(|newest| bookmark.message <= newest)
-    });
-    bookmarks.set_if_neq(Bookmarks(kept));
 }
 
 #[cfg(test)]
