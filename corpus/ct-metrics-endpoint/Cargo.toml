@@ -13,10 +13,14 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The session's `/name`, its `session` label.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+# The process's logged errors, by plugin.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }
