@@ -101,7 +101,8 @@ impl SessionEntry {
             serde_json::Value::String(text) => title_of(text),
             value => title_of(&value.to_string()),
         });
-        for text in meta.labels.values().cloned().chain(listed) {
+        let shown = meta.labels.values().cloned().chain(listed);
+        for text in shown.filter(|text| !text.is_empty()) {
             label.push_str(&format!("  · {text}"));
         }
         if let Some(directory) = &self.directory {

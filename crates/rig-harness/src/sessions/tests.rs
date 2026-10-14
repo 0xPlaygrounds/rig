@@ -59,14 +59,20 @@ fn until(app: &mut App, done: impl Fn(&mut World) -> bool) -> bool {
 
 /// A session picker over a home of more sessions than one task reads fills
 /// its picker newest first, without the running session; previews the
-/// highlighted session's line; filters on a plugin's listed value; and
-/// names the session picked.
+/// highlighted session's line; shows and filters on a plugin's listed
+/// value, an empty one adding nothing to the label; and names the session
+/// picked.
 #[test]
 fn a_session_picker_fills_previews_filters_on_listed_values_and_names_the_pick() {
     let home = scratch_home("rig-harness-session-picker");
     let goal = [("goals.goal", "ship the parser")];
+    let unset = [("goals.goal", "")];
     let ids: Vec<SessionId> = (1..=20)
-        .map(|n| saved(&home, n, if n == 7 { &goal } else { &[] }))
+        .map(|n| match n {
+            7 => saved(&home, n, &goal),
+            8 => saved(&home, n, &unset),
+            _ => saved(&home, n, &[]),
+        })
         .collect();
     let (Some(running), Some(newest), Some(goal_id)) = (ids.first(), ids.last(), ids.get(6)) else {
         return;
@@ -110,6 +116,10 @@ fn a_session_picker_fills_previews_filters_on_listed_values_and_names_the_pick()
     assert!(
         !shown.contains(&"session 1".to_owned()),
         "the running one is left out"
+    );
+    assert!(
+        shown.contains(&"session 8".to_owned()),
+        "an empty listed value adds nothing: {shown:?}"
     );
     let previewed = until(&mut app, |world| world.get::<PickPreview>(picker).is_some());
     assert!(previewed);
