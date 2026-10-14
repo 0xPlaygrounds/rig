@@ -13,8 +13,8 @@
 //!         Picker::new("Split which session?").for_agent(agent),
 //!         SessionPicker {
 //!             command: "split new --from {session}".into(),
-//!             filter: SessionFilter { running: true, ..default() },
-//!             ..default()
+//!             filter: SessionFilter { running: true, ..Default::default() },
+//!             ..Default::default()
 //!         },
 //!     ));
 //! }
