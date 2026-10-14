@@ -441,6 +441,47 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
     assert_eq!(load(&store, "main").expect("read"), read);
 }
 
+/// A rewrite reaches the saved asides a stashed branch keeps, which come
+/// back rewritten when it is switched to; a branch it finds nothing in
+/// keeps its record's bytes.
+#[test]
+fn a_rewrite_reaches_the_asides_a_stashed_branch_keeps() {
+    let store = MemoryStore::default();
+    let by = Author::plugin("tree");
+    let mut conversation = load(&store, "main").expect("loaded");
+    conversation.extend([Message::user("Hi."), Message::user("Deploy it.")]);
+    let deploy = conversation.id(1);
+    let note = Aside::new("note", by.clone(), json!("used sk-1")).after(deploy);
+    conversation.add_aside(note);
+    let secret = conversation.branch_off(1, "retry", by.clone());
+    let secret = secret.expect("branched");
+    conversation.push(Message::user("Wait."));
+    assert!(conversation.branch_off(1, "later", by.clone()).is_ok());
+    save(&store, "main", &mut conversation).expect("saved");
+    let before = logs(&store).remove("main").unwrap_or_default();
+
+    rewrite(&store, Author::plugin("redact"), &redact()).expect("rewritten");
+    let after = logs(&store).remove("main").unwrap_or_default();
+    let text = String::from_utf8_lossy(&after);
+    assert!(!text.contains("sk-1"), "{text}");
+    let waited: Vec<&[u8]> = lines(&before)
+        .into_iter()
+        .filter(|line| String::from_utf8_lossy(line).contains("Wait."))
+        .collect();
+    assert!(!waited.is_empty());
+    let kept = lines(&after);
+    assert!(waited.iter().all(|line| kept.contains(line)), "{text}");
+
+    let mut read = load(&store, "main").expect("read");
+    read.switch_branch(secret, by).expect("switched");
+    let notes: Vec<_> = read
+        .asides()
+        .filter(|(_, aside)| aside.kind == "note")
+        .map(|(_, aside)| (aside.after, aside.value.clone()))
+        .collect();
+    assert_eq!(notes, [(deploy, json!("used [R]"))]);
+}
+
 #[test]
 fn what_a_plugin_keeps_outside_the_store_maps_through_the_same_rewrite() {
     let kept = MemoryStore::default();
