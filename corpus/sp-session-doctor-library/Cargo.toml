@@ -8,6 +8,10 @@ description = "Plugin corpus (splits fresh held-out): SP-19: 19. Session doctor 
 [lints]
 workspace = true
 
+[[bin]]
+name = "session-doctor"
+path = "src/main.rs"
+
 [dependencies]
 # A plain program on rig's library crates: no Bevy, no harness.
 rig-core = { workspace = true }
