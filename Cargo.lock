@@ -7342,6 +7342,8 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
 ]
@@ -7352,10 +7354,13 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-telemetry",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7364,7 +7369,10 @@ dependencies = [
 name = "corpus-sp-branch-explode-library"
 version = "0.0.0"
 dependencies = [
+ "rig",
  "rig-core",
+ "rig-harness",
+ "rig-harness-test-support",
  "rig-memory",
  "serde",
  "serde_json",
@@ -7376,10 +7384,14 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "bevy_tasks",
+ "glob",
+ "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7390,10 +7402,13 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7418,10 +7433,13 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "rig-coding-tools",
+ "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
 ]
@@ -7431,11 +7449,14 @@ name = "corpus-sp-inbox-folder"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
+ "bevy_log",
  "bevy_reflect",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7446,12 +7467,16 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "bevy_tasks",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
  "serde",
  "serde_json",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -7460,10 +7485,13 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "bevy_tasks",
+ "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
  "serde",
  "serde_json",
 ]
@@ -7478,6 +7506,7 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7488,10 +7517,13 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "bevy_tasks",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-sessions",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7506,6 +7538,7 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7526,10 +7559,13 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "chrono",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-models",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7540,10 +7576,13 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "bevy_tasks",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-sessions",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
@@ -7554,12 +7593,17 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "glob",
+ "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -7568,12 +7612,17 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "corpus-plan-mode",
+ "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "toml_edit",
 ]
 
 [[package]]
@@ -7582,10 +7631,12 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
  "serde",
  "serde_json",
 ]
@@ -7600,8 +7651,10 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -20759,6 +20812,7 @@ dependencies = [
  "indexmap 2.14.0",
  "toml_datetime",
  "toml_parser",
+ "toml_writer",
  "winnow",
 ]
 
