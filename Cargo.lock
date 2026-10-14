@@ -5798,6 +5798,8 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
  "serde",
  "serde_json",
  "toml",
@@ -5850,6 +5852,7 @@ dependencies = [
  "rig-harness",
  "rig-harness-test-support",
  "rig-telemetry",
+ "rig-tui",
  "serde",
  "serde_json",
 ]
