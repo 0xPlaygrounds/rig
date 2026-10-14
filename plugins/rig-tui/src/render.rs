@@ -15,20 +15,20 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
-use unicode_width::UnicodeWidthChar;
 
 use super::complete::Completion;
-use super::editor::{Editor, Layout as InputLayout, MainEditor};
+use super::editor::{Caret, Editor};
+use super::input::TuiInputState;
 use super::keys::KeyFocus;
 use super::pane::{PaneState, TranscriptPane};
-use super::panel::{self, MIN_MAIN, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel};
-use super::pick::{Choices, Choosing, Listing, Row};
+use super::panel::{self, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel};
+use super::pick::{Choices, Choosing, InlineStrip, Listing, Row};
 use super::renderers::{
     AsideRenderer, CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks,
     MessageDecorator, MessageRenderer, MessageView, Renderers, Role, ToolCallView, ToolRenderer,
     UNNAMED_HOLD,
 };
-use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
+use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{Tui, TuiTestScreen};
 use super::transcript::{
     CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, ShownAside, StreamingCalls,
@@ -49,8 +49,6 @@ use rig_ecs::turn::{ModelRequest, SentTo};
 use rig_harness::prelude::{CallOutput, ToolProgress};
 use rig_harness::primary::Shown;
 
-/// Most lines the input box shows.
-const INPUT_LINES: usize = 10;
 /// Most items the completion list shows at once.
 const COMPLETION_ROWS: usize = 8;
 
@@ -109,6 +107,7 @@ pub(crate) fn needs_redraw(
             Changed<TranscriptView>,
             Changed<PaneState>,
             Changed<Editor>,
+            Changed<StatusLine>,
         )>,
     >,
     partials: Query<(), Changed<Partial>>,
@@ -200,16 +199,10 @@ impl RemovedLooks<'_, '_> {
     }
 }
 
-/// The frame [`layout`] laid out for [`render`]; `due` while one is to be
-/// drawn.
+/// Whether [`layout`] laid out a frame that [`render`] did not draw yet.
 #[derive(Resource, Default)]
 pub(crate) struct FrameLayout {
     due: bool,
-    input_rows: Option<InputLayout>,
-    input_height: usize,
-    status: Rect,
-    strip: Rect,
-    input: Rect,
 }
 
 /// Whether [`layout`] laid out a frame that is not drawn yet: the
@@ -219,16 +212,20 @@ pub(crate) fn frame_due(frame: Res<FrameLayout>) -> bool {
     frame.due
 }
 
-/// Lays out a frame: the input box grows with the input, up to a limit;
-/// the status line sits above it, and above the input the strip of a
-/// question shown beside the work; the panels below the input stack under
-/// it; the other panels take their sides of the rest, in entity order, and
-/// the transcript what they leave.
+/// Lays out a frame: every panel by its placement, in the order spawned
+/// (the default screen's first), an editor as tall as its text and a strip
+/// as tall as what it shows.
 pub(crate) fn layout(
     screens: (Option<Res<Tui>>, Option<Res<TuiTestScreen>>),
-    (input, view): (Query<&Editor, With<MainEditor>>, Res<TuiView>),
+    view: Res<TuiView>,
     mut frame: ResMut<FrameLayout>,
-    mut panels: Query<(Entity, &TuiPanel, &mut PanelCanvas)>,
+    mut panels: Query<(
+        Entity,
+        &TuiPanel,
+        &mut PanelCanvas,
+        Option<&Editor>,
+        Has<InlineStrip>,
+    )>,
 ) {
     let size = match screens {
         (Some(tui), _) => tui.terminal.size().ok(),
@@ -239,56 +236,15 @@ pub(crate) fn layout(
         return;
     };
     let screen = Rect::new(0, 0, size.width, size.height);
-    let input = input.single().ok().cloned().unwrap_or_default();
-    let rows = input.layout(size.width.saturating_sub(2));
-    let input_height = rows.rows.len().clamp(1, INPUT_LINES);
+    let inline = u16::from(!view.inline.is_empty());
     let mut panels: Vec<_> = panels.iter_mut().collect();
-    panels.sort_by_key(|(entity, ..)| *entity);
-    let asked: Vec<u16> = panels
-        .iter()
-        .filter_map(|(_, panel, _)| match panel.placement {
-            Placement::BelowInput(size) => Some(panel::rows_of(size, screen.height)),
-            _ => None,
-        })
-        .collect();
-    let strip = u16::from(!view.inline.is_empty());
-    let [above, status, strip, input, below] = split(screen, input_height, strip, &asked);
-    panel::lay_out(
-        panels.into_iter().map(|(_, panel, canvas)| (panel, canvas)),
-        above,
-        below,
-        screen,
-    );
-    *frame = FrameLayout {
-        due: true,
-        input_rows: Some(rows),
-        input_height,
-        status,
-        strip,
-        input,
-    };
-}
-
-/// The screen's rows, top to bottom: what is above the status line, the
-/// status line, `strip` rows for a question beside the work, the input box
-/// for `input_height` lines, and the panels below the input that asked
-/// for `asked` rows and fit while the transcript keeps its least.
-pub(crate) fn split(screen: Rect, input_height: usize, strip: u16, asked: &[u16]) -> [Rect; 5] {
-    let input = u16::try_from(input_height + 2).unwrap_or(3);
-    let fixed = 1 + strip + input;
-    let room = screen
-        .height
-        .saturating_sub(fixed)
-        .saturating_sub(MIN_MAIN.1);
-    let below: u16 = panel::below_rows(asked.iter().copied(), room).iter().sum();
-    Layout::vertical([
-        Constraint::Min(1),
-        Constraint::Length(1),
-        Constraint::Length(strip),
-        Constraint::Length(input),
-        Constraint::Length(below),
-    ])
-    .areas(screen)
+    panels.sort_by_key(|(entity, ..)| panel::spawned(*entity));
+    let panels = panels.into_iter().map(|(_, panel, canvas, editor, strip)| {
+        let fits = editor.map(|editor| editor.fit_rows(screen.width));
+        (panel, fits.or(strip.then_some(inline)), canvas)
+    });
+    panel::lay_out(panels, screen);
+    frame.due = true;
 }
 
 /// What the transcript reads of where a turn's tool calls stand.
@@ -995,72 +951,48 @@ fn light_match(
     true
 }
 
-/// The hint under the input box.
-fn input_hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
-    match (panel_keys, turn_running, empty) {
-        (true, ..) => " A panel has the keys · Esc gives them back ",
-        (false, true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
-        (false, false, true) => {
-            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
-        }
-        (false, false, false) => "",
-    }
-}
-
-/// Draws the frame [`layout`] laid out: every panel's canvas, the panes
-/// among them, in z-order (the sides and the rest, then the boxes over the
-/// screen), the status line and the input, then the view's own overlays
-/// over everything: the picker or question shown, the completion list and
-/// the cursor.
+/// Draws the frame [`layout`] laid out: a compositor. It copies every
+/// panel's canvas in z-order (the sides and the rest, then the boxes over
+/// the screen), then draws the view's own overlays over everything: the
+/// text of a question answered in the input above the editor with the
+/// keys, the picker or question shown, the completion list, and the caret
+/// of the editor with the keys.
 pub(crate) fn render(
     (mut tui, mut test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
     mut drew: ResMut<TuiFrame>,
     mut view: ResMut<TuiView>,
-    (typed, focus, choices, shown_agent): (
-        Query<&Editor, With<MainEditor>>,
-        Res<KeyFocus>,
-        Choices,
-        Res<Shown>,
-    ),
+    (state, focus, choices): (Res<TuiInputState>, Res<KeyFocus>, Choices),
     mut frame_layout: ResMut<FrameLayout>,
-    active: Query<&ActiveTurn>,
-    panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
-    status: (Query<&StatusItems>, Option<Res<AppStatus>>),
+    (panels, carets): (Query<(Entity, &TuiPanel, &PanelCanvas)>, Query<&Caret>),
     mut repaints: MessageReader<Repaint>,
 ) -> Result {
-    let frame_layout = std::mem::take(&mut *frame_layout);
-    let Some(input_rows) = frame_layout.input_rows else {
+    if !std::mem::take(&mut frame_layout.due) {
         return Ok(());
-    };
+    }
     let repaint: Vec<Rect> = repaints.read().map(|repaint| repaint.0).collect();
     // Drawing the picker keeps its scroll within its body: drawing's own
     // bookkeeping, not a change to redraw for.
     let view = view.bypass_change_detection();
-    let shown_agent = shown_agent.0;
-    let turn = shown_agent.and_then(|agent| active.get(agent).ok());
     // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
     panels.sort_by_key(|(entity, panel, _)| {
-        (matches!(panel.placement, Placement::Over { .. }), *entity)
+        let over = matches!(panel.placement, Placement::Over { .. });
+        (over, panel::spawned(*entity))
+    });
+    let keyed = state.editor().and_then(|editor| {
+        let found = panels.iter().find(|(entity, ..)| *entity == editor);
+        found.map(|(.., canvas)| canvas.area())
     });
     let edit = view
         .choosing
         .as_ref()
         .filter(|choosing| choosing.draft.is_some())
         .and_then(|choosing| choices.shown(choosing.entity));
-    let inline = view.inline.first().and_then(|&ask| choices.shown(ask));
-    // The cursor is shown at the input once the frame is out, when the
-    // input has the keys.
-    let mut cursor = None;
+    let cursor = carets.iter().find_map(|caret| caret.0);
+    let cursor = cursor.map(|at| MoveTo(at.x, at.y));
     let mut areas = TuiFrame::default();
     let draw_frame = |frame: &mut Frame| {
-        // A resize since the layout leaves nothing outside the screen.
         let screen = frame.area();
-        let status_area = frame_layout.status.intersection(screen);
-        let input = frame_layout.input.intersection(screen);
-        let layout = input_rows;
-        // The input box scrolls to keep the cursor in sight.
-        let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
         let mut overlays = Vec::new();
         let mut drawn = Vec::new();
         for (entity, panel, canvas) in &panels {
@@ -1070,68 +1002,23 @@ pub(crate) fn render(
                 overlays.push(canvas.area());
             }
         }
-        let agent = shown_agent.and_then(|agent| status.0.get(agent).ok());
-        let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
-        let app = status.1.as_deref().map(|app| &app.0);
-        let (mut left, mut right) = status_pieces(shown_agent.is_some(), [app, agent, turn]);
-        fit(&mut left, &mut right, usize::from(status_area.width));
-        let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
-        let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
-        let [status, meter] =
-            Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)])
-                .areas(status_area);
-        frame.render_widget(line, status);
-        frame.render_widget(usage, meter);
-        let hint = match &edit {
-            Some(_) => " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses ",
-            None => {
-                let empty = typed.single().is_ok_and(Editor::is_empty);
-                input_hint(turn.is_some(), empty, focus.0.is_some())
-            }
-        };
-        let mut block = Block::bordered().title_bottom(Line::from(hint).dim().right_aligned());
-        let mut body = None;
-        if let Some(edit) = &edit {
-            block = block.title(Line::from(format!(" {} ", edit.title)).bold());
-            body = draw_body(frame, edit.body, input);
-        }
-        frame.render_widget(
-            Paragraph::new(layout.rows)
-                .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))
-                .block(block),
-            input,
-        );
-        let strip = frame_layout.strip.intersection(screen);
-        if let Some(inline) = &inline {
-            frame.render_widget(inline_line(inline), strip);
-        }
-        overlays.extend(body);
+        let body = edit.as_ref().zip(keyed);
+        overlays.extend(body.and_then(|(edit, at)| draw_body(frame, edit.body, at)));
         let shown = view
             .choosing
             .as_mut()
             .filter(|choosing| choosing.draft.is_none())
             .and_then(|choosing| Some((choices.shown(choosing.entity)?, choosing)));
-        match shown {
-            Some((shown, choosing)) => overlays.push(draw_choice(frame, choosing, &shown)),
-            None if focus.0.is_some() => {}
-            None => {
-                if let Some(completion) = &view.completion {
-                    overlays.extend(draw_completion(frame, completion, input));
-                }
-                let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
-                let row = u16::try_from(layout.cursor_row - input_top).unwrap_or(0);
-                cursor = Some(MoveTo(
-                    input.x.saturating_add(1).saturating_add(column),
-                    input.y.saturating_add(1).saturating_add(row),
-                ));
+        match (shown, &view.completion, keyed) {
+            (Some((shown, choosing)), ..) => overlays.push(draw_choice(frame, choosing, &shown)),
+            (None, Some(completion), Some(at)) if focus.0.is_none() => {
+                overlays.extend(draw_completion(frame, completion, at));
             }
+            _ => {}
         }
         areas = TuiFrame {
             screen,
             areas: drawn,
-            status: status_area,
-            strip,
-            input,
             overlays,
         };
     };
@@ -1196,16 +1083,9 @@ pub(crate) fn selectable(marks: Marks) -> Vec<TranscriptItem> {
 pub struct TuiFrame {
     /// The whole screen.
     pub screen: Rect,
-    /// Each panel drawn, the transcript panes among them, with its area,
-    /// in the order drawn.
+    /// Each panel drawn, the default screen's transcript, input and status
+    /// line among them, with its area, in the order drawn.
     pub areas: Vec<(Entity, Rect)>,
-    /// The status line.
-    pub status: Rect,
-    /// The strip above the input of a question shown beside the work;
-    /// no rows without one.
-    pub strip: Rect,
-    /// The input box.
-    pub input: Rect,
     /// What was drawn over the rest: the panels placed over the screen,
     /// the picker or question, the completion list, a question's text
     /// above the input.
@@ -1257,23 +1137,6 @@ fn draw_body(frame: &mut Frame, body: &str, input: Rect) -> Option<Rect> {
     Some(area)
 }
 
-/// The strip of a question shown beside the work: its title and the keys
-/// that answer it.
-pub(crate) fn inline_line(ask: &Listing<'_>) -> Line<'static> {
-    let mut spans = vec![
-        Span::from("? ").yellow().bold(),
-        Span::from(ask.title.to_owned()).bold(),
-        Span::from(" "),
-    ];
-    let typed = ask.free_text.then_some("Answer…");
-    let labels = ask.items.iter().map(|item| item.label).chain(typed);
-    for (index, label) in labels.take(9).enumerate() {
-        spans.push(Span::from(format!(" [Alt+{} {label}]", index + 1)).cyan());
-    }
-    spans.push(Span::from(" [Alt+0 Dismiss]").dim());
-    Line::from(spans)
-}
-
 /// The completion list, just above the input box; where, if it fit.
 fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) -> Option<Rect> {
     let rows = completion.items.len().min(COMPLETION_ROWS);
@@ -1312,152 +1175,6 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) -> O
         &mut state,
     );
     Some(area)
-}
-
-/// A piece of the status line, from a [`StatusItem`]. When the line does
-/// not fit, [`fit`] cuts or drops the pieces with the lowest `keep` first.
-struct Piece {
-    keep: u8,
-    /// How narrow it may be cut; 0 for never.
-    min: usize,
-    span: Span<'static>,
-}
-
-impl Piece {
-    fn new(keep: u8, span: Span<'static>) -> Self {
-        Self { keep, min: 0, span }
-    }
-
-    /// The same piece, cut down to no fewer than `min` columns before it
-    /// goes.
-    fn shrinking_to(mut self, min: usize) -> Self {
-        self.min = min;
-        self
-    }
-
-    fn width(&self) -> usize {
-        self.span.width()
-    }
-
-    /// Whether it can still be cut.
-    fn can_shrink(&self) -> bool {
-        self.min > 0 && self.width() > self.min
-    }
-
-    /// Cuts it by `over` columns, to no fewer than its `min`, ending in `…`.
-    fn shrink(&mut self, over: usize) {
-        let target = self.width().saturating_sub(over).max(self.min);
-        let mut text = String::new();
-        let mut width = 0;
-        for character in self.span.content.chars() {
-            let next = width + character.width().unwrap_or(0);
-            if next + 1 > target {
-                break;
-            }
-            text.push(character);
-            width = next;
-        }
-        text.push('…');
-        self.span.content = text.into();
-    }
-}
-
-/// The gap between the pieces on the left, and between the left and the
-/// meter.
-const LEFT_GAP: &str = "  ";
-/// The gap between the meter's pieces.
-const RIGHT_GAP: &str = " ";
-
-/// The width of `pieces` joined by `gap`.
-fn joined_width(pieces: &[Piece], gap: &str) -> usize {
-    let gaps = pieces.len().saturating_sub(1) * gap.len();
-    pieces.iter().map(Piece::width).sum::<usize>() + gaps
-}
-
-/// Cuts, then drops, the pieces of `left` and of the meter on the `right`
-/// with the lowest `keep` until both fit `width` with a gap between them:
-/// one that may shrink is cut to its `min` before it goes. What keeps
-/// `u8::MAX` stays, cut where it may; past that the line is cut at the
-/// edge.
-fn fit(left: &mut Vec<Piece>, right: &mut Vec<Piece>, width: usize) {
-    loop {
-        let separator = if right.is_empty() { 0 } else { LEFT_GAP.len() };
-        let used = joined_width(left, LEFT_GAP) + separator + joined_width(right, RIGHT_GAP);
-        let Some(over) = used.checked_sub(width).filter(|over| *over > 0) else {
-            return;
-        };
-        let lowest = |pieces: &[Piece]| {
-            pieces
-                .iter()
-                .enumerate()
-                .filter(|(_, piece)| piece.keep < u8::MAX || piece.can_shrink())
-                .min_by_key(|(_, piece)| piece.keep)
-                .map(|(index, piece)| (piece.keep, index))
-        };
-        let (side, index) = match (lowest(right.as_slice()), lowest(left.as_slice())) {
-            (Some((on_right, index)), on_left)
-                if on_left.is_none_or(|(on_left, _)| on_right <= on_left) =>
-            {
-                (&mut *right, index)
-            }
-            (_, Some((_, index))) => (&mut *left, index),
-            (_, None) => return,
-        };
-        match side.get_mut(index) {
-            Some(piece) if piece.can_shrink() => piece.shrink(over),
-            _ => {
-                side.remove(index);
-            }
-        }
-    }
-}
-
-/// `pieces` as one line, `gap` between them.
-fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
-    let mut spans = Vec::with_capacity(pieces.len() * 2);
-    for (index, piece) in pieces.into_iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::from(gap));
-        }
-        spans.push(piece.span);
-    }
-    Line::from(spans)
-}
-
-/// The status line's pieces, left and right: the app's items, the shown
-/// agent's and its turn's, by `order`, then name, with `no agent` where an
-/// agent's model would be when none is shown.
-fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, Vec<Piece>) {
-    let no_agent = StatusItem::new("agent", Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
-    let mut items: Vec<&StatusItem> = items
-        .into_iter()
-        .flatten()
-        .flat_map(StatusItems::iter)
-        .collect();
-    if !shown {
-        items.push(&no_agent);
-    }
-    items.sort_by_key(|item| (item.order, item.name));
-    let piece = |item: &StatusItem| {
-        let style = match item.tone {
-            Tone::Plain => Style::new(),
-            Tone::Bold => Style::new().bold(),
-            Tone::Dim => Style::new().dim(),
-            Tone::Green => Style::new().green(),
-            Tone::Yellow => Style::new().yellow(),
-            Tone::Red => Style::new().red(),
-            Tone::Cyan => Style::new().cyan(),
-            Tone::Magenta => Style::new().magenta(),
-        };
-        Piece::new(item.keep, Span::styled(item.text.clone(), style))
-            .shrinking_to(usize::from(item.min_width))
-    };
-    let (left, right): (Vec<_>, Vec<_>) =
-        items.into_iter().partition(|item| item.side == Side::Left);
-    (
-        left.into_iter().map(piece).collect(),
-        right.into_iter().map(piece).collect(),
-    )
 }
 
 /// The rows a picker's list keeps, at least, when a long body takes the

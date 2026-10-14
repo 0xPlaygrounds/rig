@@ -363,3 +363,55 @@ fn a_key_typed_leaves_the_transcript_view_unchanged() {
     assert_eq!(input(&app).text(), "a");
     assert!(!app.world().resource::<TranscriptChanged>().0);
 }
+
+/// An app that builds its own screen from the public widgets, without the
+/// default screen: its transcript draws and its input sends.
+#[test]
+fn a_screen_built_from_the_public_widgets_draws_and_sends() {
+    use ratatui::layout::Constraint;
+
+    let mut app = App::new();
+    app.set_error_handler(rig_harness::error::panic)
+        .insert_resource(Invoked::default())
+        .add_plugins((AgentPlugin, AskPlugin, PickPlugin, TuiViewPlugin))
+        .init_resource::<Delivered>()
+        .add_observer(
+            |accepted: On<Add<Started>>,
+             messages: Query<&Incoming>,
+             mut delivered: ResMut<Delivered>| {
+                if let Ok(message) = messages.get(accepted.entity) {
+                    delivered.0.push(message.text().to_owned());
+                }
+            },
+        );
+    add_view(&mut app);
+    let world = app.world_mut();
+    let pane = TranscriptPane::new(TranscriptSource::Shown).titled("chat");
+    let pane = world.spawn((pane, MainPane)).id();
+    let input = TuiPanel::new(Placement::Top(Constraint::Length(3)));
+    world.spawn((Editor::default(), MainEditor, input));
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    app.update();
+    let world = app.world_mut();
+    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
+    let Ok(agent) = agent else { return };
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(rig_core::completion::Message::user(
+            "where is the config read?",
+        ));
+    }
+    app.update();
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    let area = app.world().resource::<TuiFrame>().area(pane);
+    assert!(area.is_some_and(|area| area.y == 3), "{area:?}");
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("› where is the config read?")),
+        "{rows:#?}"
+    );
+    assert!(rows.iter().any(|row| row.contains("chat")), "{rows:#?}");
+    type_text(&mut app, "hello");
+    press(&mut app, "enter");
+    assert_eq!(app.world().resource::<Delivered>().0, ["hello"]);
+    assert_eq!(typed(&app), "");
+}

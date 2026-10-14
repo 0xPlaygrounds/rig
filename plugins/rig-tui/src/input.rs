@@ -124,6 +124,7 @@ pub enum InputSystems {
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct TuiInputState {
     scope: KeyScope,
+    editor: Option<Entity>,
     completion: Option<Completion>,
     typed: Option<(CompletionKind, String)>,
     answering: Option<Entity>,
@@ -138,6 +139,12 @@ impl TuiInputState {
     /// with the [`KeyFocus`].
     pub fn scope(&self) -> KeyScope {
         self.scope
+    }
+
+    /// The [`Editor`] the keys type into: the one of the panel with the
+    /// [`KeyFocus`], else the [`MainEditor`]; `None` without either.
+    pub fn editor(&self) -> Option<Entity> {
+        self.editor
     }
 
     /// The open completion, which Up, Down, Tab, Enter and Esc act on.
@@ -310,10 +317,16 @@ pub(crate) fn note_state(
     focus: Res<KeyFocus>,
     panels: Query<(), With<TuiPanel>>,
     choices: Choices,
-    (input, sources): (Query<&Editor, With<MainEditor>>, Query<&CompletionSource>),
+    (editors, sources): (
+        Query<(Entity, &Editor, Has<MainEditor>)>,
+        Query<&CompletionSource>,
+    ),
     mut state: ResMut<TuiInputState>,
 ) {
-    let typed = (input.single().ok()).and_then(|input| complete::typed(input, &sources));
+    let main_editor = editors.iter().find(|(.., main)| *main);
+    let typed = main_editor.and_then(|(_, input, _)| complete::typed(input, &sources));
+    let focused = focus.0.filter(|panel| editors.contains(*panel));
+    let editor = focused.or(main_editor.map(|(entity, ..)| entity));
     let scope = match focus.0 {
         Some(panel) if panels.contains(panel) => KeyScope::Panel(panel),
         _ if reading(&main) => KeyScope::Transcript,
@@ -331,6 +344,7 @@ pub(crate) fn note_state(
         }
     });
     let same = state.scope == scope
+        && state.editor == editor
         && state.answering == answering
         && state.picking == picking
         && state.selection == selection
@@ -339,6 +353,7 @@ pub(crate) fn note_state(
     if !same {
         *state = TuiInputState {
             scope,
+            editor,
             completion: view.completion.clone(),
             typed,
             answering,

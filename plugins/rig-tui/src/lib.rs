@@ -83,7 +83,8 @@ pub mod panel;
 mod pick;
 mod render;
 mod renderers;
-mod status;
+mod screen;
+pub mod status;
 mod terminal;
 mod transcript;
 mod view;
@@ -113,7 +114,7 @@ pub use pane::{MainPane, MainTranscript, PaneKeys, TranscriptPane, TranscriptSou
 pub use panel::{
     Focused, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel, TuiScreen, TuiSystems,
 };
-pub use pick::{ChoiceAction, ChoiceKeys};
+pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip};
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout, TuiFrame};
 pub use renderers::{
@@ -123,7 +124,8 @@ pub use renderers::{
     RenderAside, RenderContent, RenderEntry, RenderMessage, RenderToolCall, Role, ToolCallView,
     ToolRenderer, branch_lines, excerpt, split_lines,
 };
-pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
+pub use screen::DefaultScreenPlugin;
+pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
 pub use terminal::{
     CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite, TuiTestScreen,
 };
@@ -139,11 +141,24 @@ pub const FRONT: &str = "tui";
 
 /// Owns the terminal and draws the focused agent, when it is the run's
 /// front: on an interactive terminal, unless another front's option was
-/// given.
+/// given. It is the [`TuiViewPlugin`] with the [`DefaultScreenPlugin`].
 #[derive(Default)]
 pub struct TuiPlugin;
 
 impl Plugin for TuiPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((TuiViewPlugin, DefaultScreenPlugin));
+    }
+}
+
+/// The terminal view without a screen: the terminal, the keys, the frame
+/// and the widgets' systems, which draw whatever widgets are spawned. The
+/// [`TuiPlugin`] adds it with the [`DefaultScreenPlugin`]; an app that
+/// builds its own screen adds it alone.
+#[derive(Default)]
+pub struct TuiViewPlugin;
+
+impl Plugin for TuiViewPlugin {
     fn build(&self, app: &mut App) {
         // What other plugins use is there in any run; without the
         // terminal, no frame is ever due.
@@ -204,14 +219,6 @@ impl Plugin for TuiPlugin {
                 (HistorySystems::Record, HistorySystems::Save).chain(),
             );
         app.add_front(Front::new(FRONT).on_terminal());
-        app.world_mut().spawn((
-            Name::new("tui:transcript"),
-            TranscriptPane::new(TranscriptSource::Shown),
-            MainPane,
-            PaneKeys,
-        ));
-        app.world_mut()
-            .spawn((Name::new("tui:input"), Editor::default(), MainEditor));
     }
 
     /// Owns the terminal when the run is the terminal view's: any other
@@ -298,7 +305,14 @@ pub fn add_view(app: &mut App) {
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
                 transcript::note_effects.in_set(TuiSystems::Prepare),
-                pane::draw_panes.in_set(TuiSystems::Draw),
+                input::note_state.in_set(TuiSystems::Prepare),
+                (
+                    pane::draw_panes,
+                    editor::draw_editors,
+                    status::draw_status_lines,
+                    pick::draw_inline_strips,
+                )
+                    .in_set(TuiSystems::Draw),
                 (
                     complete::follow_input,
                     transcript::follow_streams,

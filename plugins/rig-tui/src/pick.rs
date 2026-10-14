@@ -41,7 +41,10 @@ use rig_harness::pick::{Chosen, Picker};
 use rig_tools::shorten;
 use unicode_width::UnicodeWidthStr;
 
+use ratatui::layout::Constraint;
+
 use super::editor::{Editor, MainEditor};
+use super::panel::{PanelCanvas, Placement, TuiPanel};
 use super::view::TuiView;
 
 /// Lines a page key moves.
@@ -511,6 +514,45 @@ fn answer(choosing: &Choosing, shown: &Listing<'_>, rows: &[Row]) -> Option<Opti
             Some(Some(chosen.with_text(choosing.filter.trim())))
         }
     }
+}
+
+/// The strip that shows the question asked beside the work, if any
+/// ([`Ask::inline`]), with the keys that answer it: one row while one
+/// shows, none otherwise, in a panel at the top or the bottom. The default
+/// screen's is above the input.
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[require(TuiPanel = TuiPanel::new(Placement::Bottom(Constraint::Length(1))))]
+pub struct InlineStrip;
+
+/// Draws the question shown beside the work in each strip with room.
+pub(crate) fn draw_inline_strips(
+    mut strips: Query<&mut PanelCanvas, With<InlineStrip>>,
+    view: Res<TuiView>,
+    choices: Choices,
+) {
+    let Some(ask) = view.inline.first().and_then(|&ask| choices.shown(ask)) else {
+        return;
+    };
+    for mut canvas in &mut strips {
+        canvas.render(inline_line(&ask));
+    }
+}
+
+/// The strip of a question shown beside the work: its title and the keys
+/// that answer it.
+fn inline_line(ask: &Listing<'_>) -> Line<'static> {
+    let mut spans = vec![
+        Span::from("? ").yellow().bold(),
+        Span::from(ask.title.to_owned()).bold(),
+        Span::from(" "),
+    ];
+    let typed = ask.free_text.then_some("Answer…");
+    let labels = ask.items.iter().map(|item| item.label).chain(typed);
+    for (index, label) in labels.take(9).enumerate() {
+        spans.push(Span::from(format!(" [Alt+{} {label}]", index + 1)).cyan());
+    }
+    spans.push(Span::from(" [Alt+0 Dismiss]").dim());
+    Line::from(spans)
 }
 
 #[cfg(test)]
