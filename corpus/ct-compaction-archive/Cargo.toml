@@ -13,6 +13,10 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# Its summaries get the line naming the archive as they are taken.
+rig-compaction = { path = "../../plugins/rig-compaction" }
+# The tools' arguments.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
