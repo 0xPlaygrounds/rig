@@ -199,7 +199,8 @@ pub enum Lifecycle {
     /// on; it reports nothing meanwhile.
     WaitingOn(Entity),
     /// Its turn ended with this answer and nothing it asked is open: the
-    /// answer is its report on every request it owes.
+    /// answer is its report on every request it owes. A rewrite of the
+    /// session that changes it inserts it again, mapped.
     Finished(String),
 }
 
