@@ -10,13 +10,14 @@
 //! lacks a heading is asked for once more, then the compaction runs the
 //! way it would have without this plugin, with a notice.
 //!
-//! It sets rig-compaction's default policy ([`CompactionDefault`]: its
-//! summary prompts and its cut, [`CUT`], which it adds as a named cut),
-//! under each agent's own knobs, and adds a Prepare system that sends
-//! rig-compaction's summary calls to the configured model, a Review system
-//! that checks their answers and sends them again ([`resend`]), and an
-//! observer that puts the kept messages after the summary once it is in. In the terminal view the
-//! summary is a collapsible "Summary" entry.
+//! It sets two knobs of rig-compaction's default policy
+//! ([`CompactionDefault`]), under each agent's own: the summary prompts and
+//! the cut, [`CUT`], which it adds as a named cut. It adds a Prepare system
+//! that sends rig-compaction's summary calls to the configured model, a
+//! Review system that checks their answers and sends them again
+//! ([`resend`]), and an observer that puts the kept messages after the
+//! summary as it goes in. In the terminal view the summary is a
+//! collapsible "Summary" entry.
 
 use std::borrow::Cow;
 
@@ -97,6 +98,15 @@ impl Plugin for StructuredCompactionPlugin {
         if !app.is_plugin_added::<CompactionPlugin>() {
             app.add_plugins(CompactionPlugin);
         }
+        let world = app.world_mut();
+        if let Some(mut default) = world.get_resource_mut::<CompactionDefault>() {
+            let policy = &mut default.0;
+            let fallback = Fallback {
+                prompts: std::mem::replace(&mut policy.summarizer.prompts, TEMPLATE),
+                cut: std::mem::replace(&mut policy.cut, Cut::Named(CUT.to_owned())),
+            };
+            world.insert_resource(fallback);
+        }
         app.add_setting::<StructuredCompaction>("compact")
             .add_compaction_cut(CUT, before_last_user)
             .configure_sets(
@@ -114,19 +124,9 @@ impl Plugin for StructuredCompactionPlugin {
             .add_observer(keep_verbatim);
     }
 
-    /// Puts the template and the cut in rig-compaction's default policy,
-    /// once every plugin built, keeping the default as it was for the
-    /// fallback.
+    /// Draws summaries as a "Summary" entry once rig-tui's renderers are in.
+    #[cfg(feature = "tui")]
     fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        let Some(mut default) = world.get_resource_mut::<CompactionDefault>() else {
-            return;
-        };
-        let fallback = Fallback(default.clone());
-        default.0.summarizer.prompts = TEMPLATE;
-        default.0.cut = Cut::Named(CUT.to_owned());
-        world.insert_resource(fallback);
-        #[cfg(feature = "tui")]
         tui::add(app);
     }
 }
@@ -154,10 +154,23 @@ impl Default for StructuredCompaction {
     }
 }
 
-/// rig-compaction's default policy as it was before this plugin, under
-/// each agent's own knobs the fallback compacts with.
+/// The default policy's prompts and cut as they were before this plugin:
+/// the fallback compacts with them.
 #[derive(Resource)]
-struct Fallback(CompactionDefault);
+struct Fallback {
+    prompts: SummaryPrompts,
+    cut: Cut,
+}
+
+impl Fallback {
+    /// `default` with these prompts and cut.
+    fn over(&self, default: &CompactionDefault) -> CompactionDefault {
+        let mut policy = default.0.clone();
+        policy.summarizer.prompts = self.prompts.clone();
+        policy.cut = self.cut.clone();
+        CompactionDefault(policy)
+    }
+}
 
 /// On a summary call in the template: how many summaries were asked for
 /// so far (more than [`TRIES`] means the fallback runs), and the user's
@@ -167,11 +180,6 @@ struct Structured {
     tries: u8,
     verbatim: Vec<String>,
 }
-
-/// On an agent whose structured summary was accepted: the user's messages
-/// to put after it once it is in the conversation.
-#[derive(Component, Clone, Debug)]
-struct KeepVerbatim(Vec<String>);
 
 /// Whether `text` has every heading of [`HEADINGS`] as a heading line.
 pub fn has_headings(text: &str) -> bool {
@@ -280,13 +288,12 @@ fn structure(
                 commands
                     .entity(call)
                     .insert(Structured { tries: 1, verbatim });
-                commands.entity(agent).remove::<KeepVerbatim>();
             }
             Some(structured) if structured.tries > TRIES => {
                 let Some(own) = own else {
                     continue;
                 };
-                match replan(&policy_of(knobs, &fallback.0), &own.spec) {
+                match replan(&policy_of(knobs, &fallback.over(&default)), &own.spec) {
                     Ok(Some((planned, request))) => {
                         *summarizing = planned;
                         *model = ModelRequest::new(request);
@@ -303,7 +310,7 @@ fn structure(
 }
 
 /// Checks each structured summary as it is answered: one with every
-/// heading goes in, with the user's messages to keep; a failed one or one
+/// heading goes in; a failed one or one
 /// missing a heading is asked for again, once, then the fallback runs in
 /// its place, with a notice.
 fn check(
@@ -320,8 +327,6 @@ fn check(
         }
         let summary = outcome.completion().map(Summarizer::summary_text);
         if summary.is_some_and(|summary| summary.is_ok_and(|text| has_headings(&text))) {
-            let verbatim = KeepVerbatim(structured.verbatim.clone());
-            commands.entity(agent).insert(verbatim);
             continue;
         }
         structured.tries += 1;
@@ -335,35 +340,33 @@ fn check(
     }
 }
 
-/// Once rig-compaction put an accepted structured summary in the
+/// As rig-compaction puts an accepted structured summary in the
 /// conversation, which it does as the summary call settles, puts the
 /// user's kept messages right after it, each its own message, as they
 /// were typed.
 fn keep_verbatim(
     settled: On<Add<Settled>>,
-    calls: Query<(&ForAgent, &Summarizing), With<Structured>>,
+    calls: Query<(&ForAgent, &Summarizing, &Structured)>,
     mut commands: Commands,
 ) {
-    let Ok((&ForAgent(agent), summarizing)) = calls.get(settled.entity) else {
+    let Ok((&ForAgent(agent), summarizing, structured)) = calls.get(settled.entity) else {
         return;
     };
     let Some(summary) = summarizing.summary.clone() else {
         return;
     };
+    if structured.tries > TRIES {
+        return;
+    }
+    let texts = structured.verbatim.clone();
     // Queued, so it runs once every observer of the settled call did.
-    commands.queue(move |world: &mut World| put_verbatim(world, agent, &summary));
+    commands.queue(move |world: &mut World| put_verbatim(world, agent, &summary, texts));
 }
 
-/// Puts the agent's [`KeepVerbatim`] messages after its summaries, when its
-/// newest compaction took `summary`.
-fn put_verbatim(world: &mut World, agent: Entity, summary: &str) {
-    let Ok(mut agent) = world.get_entity_mut(agent) else {
-        return;
-    };
-    let Some(KeepVerbatim(texts)) = agent.take::<KeepVerbatim>() else {
-        return;
-    };
-    let Some(mut conversation) = agent.get_mut::<Conversation>() else {
+/// Puts `texts` after the agent's summaries, when its newest compaction
+/// took `summary`.
+fn put_verbatim(world: &mut World, agent: Entity, summary: &str, texts: Vec<String>) {
+    let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
         return;
     };
     let newest = Compacted::of(&conversation).last();
