@@ -101,14 +101,14 @@ fn user_texts(request: &rig_core::completion::CompletionRequest) -> Vec<String> 
     texts
 }
 
-/// The main agent's turns in the snapshot `name` kept in `home`'s project data.
-fn snapshot_turns(app: &App, name: &str) -> Option<usize> {
-    let data = app.world().get_resource::<PluginData>()?;
-    let meta = data
-        .project
-        .read_file(&format!("{FOLDER}/{name}/meta.json"))
-        .ok()?;
-    Some(serde_json::from_slice::<SnapshotMeta>(&meta).ok()?.turns)
+/// The main agent's turns in the snapshot `name` of `home`, from its listing.
+fn snapshot_turns(app: &App, home: &Home, name: &str) -> Option<usize> {
+    let world = app.world();
+    let (stores, root) = (world.get_resource()?, world.get_resource()?);
+    let all = snapshots(home, stores, root);
+    all.into_iter()
+        .find(|(_, it)| it.name == name)
+        .map(|(_, it)| it.turns)
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn a_snapshot_starts_new_sessions_and_says_what_changed() {
         "/snapshot save renderer",
         notice_with("Saved snapshot"),
     );
-    assert_eq!(snapshot_turns(&app, "renderer"), Some(3));
+    assert_eq!(snapshot_turns(&app, &home, "renderer"), Some(3));
     type_line(
         &mut app,
         &wakes,
@@ -152,7 +152,7 @@ fn a_snapshot_starts_new_sessions_and_says_what_changed() {
         "/snapshot save early --at 1",
         notice_with("1 turns"),
     );
-    assert_eq!(snapshot_turns(&app, "early"), Some(1));
+    assert_eq!(snapshot_turns(&app, &home, "early"), Some(1));
     type_line(
         &mut app,
         &wakes,
@@ -160,12 +160,13 @@ fn a_snapshot_starts_new_sessions_and_says_what_changed() {
         "/snapshot save team --shared",
         notice_with("Shared snapshot"),
     );
-    assert!(root.join(".rig/snapshots/team/store.json").is_file());
+    assert!(root.join(".rig/snapshots/team").is_dir());
 
     // `/new --from renderer` forks it into a new session and switches there.
     type_line(&mut app, &wakes, agent, "/new --from renderer", switches(1));
     let second = app.world().resource::<Switches>().0.first().cloned();
     drop(app);
+    assert!(second.is_some(), "no switch");
     let Some(second) = second else {
         return;
     };
@@ -178,13 +179,14 @@ fn a_snapshot_starts_new_sessions_and_says_what_changed() {
         sent,
         ["read render", "read scene", "explain", "add a bloom pass"]
     );
-    assert_eq!(snapshot_turns(&app, "renderer"), Some(3));
+    assert_eq!(snapshot_turns(&app, &home, "renderer"), Some(3));
 
     // A file the snapshot read changed: the next session's first request says so.
     assert!(fs::write(root.join("src/scene.rs"), "struct Scene { lights: u8 }\n").is_ok());
     type_line(&mut app, &wakes, agent, "/new --from renderer", switches(1));
     let third = app.world().resource::<Switches>().0.first().cloned();
     drop(app);
+    assert!(third.is_some(), "no switch");
     let Some(third) = third else {
         return;
     };
@@ -210,6 +212,7 @@ fn a_snapshot_starts_new_sessions_and_says_what_changed() {
     type_line(&mut app, &wakes, agent, "/new --from early", switches(1));
     let fourth = app.world().resource::<Switches>().0.first().cloned();
     drop(app);
+    assert!(fourth.is_some(), "no switch");
     let Some(fourth) = fourth else {
         return;
     };
