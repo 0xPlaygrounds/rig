@@ -12,7 +12,12 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# The pool a run's output streams on.
+bevy_tasks = { workspace = true }
+# The channel a run's output comes through, as a stream.
+futures = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
