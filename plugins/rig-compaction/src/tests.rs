@@ -805,3 +805,79 @@ fn settings_set_only_the_knobs_they_name() {
     assert_eq!(default.tracked, CompactionDefault::default().0.tracked);
     assert_eq!(default.tracked.len(), 3);
 }
+
+/// `/compaction` sets the agent's own knobs at runtime: they are saved with
+/// its line, so a restore and a split of the line keep them, while a knob it
+/// never set follows the default.
+#[test]
+fn a_policy_set_by_command_is_restored_inherited_and_unset_knobs_follow_the_default() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = start(&store);
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(1)) else {
+        return;
+    };
+    let run = |app: &mut App, line: &str| {
+        app.world_mut()
+            .trigger(RunCommand::new(agent, line.to_owned()));
+        app.world_mut().flush();
+    };
+    run(&mut app, "compaction per-turn=1 keep=500");
+    app.update();
+    let own = CompactionOverrides {
+        per_turn: Some(1),
+        keep_recent: Some(500),
+        ..CompactionOverrides::default()
+    };
+    let has = |app: &App, agent| app.world().get::<Compaction>(agent).map(|it| it.0.clone());
+    assert_eq!(has(&app, agent), Some(own.clone()));
+    run(&mut app, "compaction bogus=1");
+    // A refused command line comes back to the user with why.
+    let recalled = app.world().resource::<Messages<Recalled>>();
+    let mut cursor = recalled.get_cursor();
+    let why: Vec<_> = cursor
+        .read(recalled)
+        .filter_map(|it| it.why.clone())
+        .collect();
+    assert!(
+        why.iter()
+            .any(|why| why.contains("there is no knob `bogus`")),
+        "{why:?}"
+    );
+    // A split of the line at its end starts with the line's knobs.
+    let by = Author::plugin("tree");
+    let split = app.world_mut().get_mut::<Conversation>(agent).map(|mut c| {
+        let at = c.messages().len();
+        c.branch_off(at, "split", by).is_ok()
+    });
+    assert_eq!(split, Some(true));
+    app.update();
+    assert_eq!(has(&app, agent), Some(own.clone()));
+    drop(app);
+
+    let (mut again, _wakes) = start(&store);
+    let Some(agent) = restored_agent(&mut again) else {
+        return;
+    };
+    assert_eq!(has(&again, agent), Some(own));
+    again
+        .world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .keep_asked = 7;
+    let policy = |app: &App| {
+        let own = app.world().get::<Compaction>(agent);
+        policy_of(own, app.world().resource::<CompactionDefault>())
+    };
+    let now = policy(&again);
+    assert_eq!((now.per_turn, now.keep_recent, now.keep_asked), (1, 500, 7));
+    again
+        .world_mut()
+        .trigger(RunCommand::new(agent, "compaction reset".to_owned()));
+    again.world_mut().flush();
+    assert_eq!(has(&again, agent), None);
+    assert_eq!(
+        policy(&again).per_turn,
+        CompactionDefault::default().0.per_turn
+    );
+}
