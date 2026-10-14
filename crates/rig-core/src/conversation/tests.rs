@@ -565,3 +565,22 @@ fn turn_records_open_numbered_and_end_once() {
     );
     assert_eq!(fold(&conversation.take_unsaved()), conversation);
 }
+
+/// Ids have a plain form: their number, and `m4`/`a4` text that reads back,
+/// with or without the letter; anything else is refused.
+#[test]
+fn ids_read_back_from_their_plain_form() {
+    let mut conversation = Conversation::new();
+    conversation.push(Message::user("one"));
+    let id = conversation.push(Message::user("two"));
+    assert_eq!(id.get(), 1);
+    assert_eq!(id.to_string(), "m1");
+    assert_eq!("m1".parse(), Ok(id));
+    assert_eq!("1".parse(), Ok(id));
+    assert!("a1".parse::<MessageId>().is_err());
+
+    let aside = conversation.add_aside(Aside::new("note", Author::rig(), serde_json::json!(1)));
+    assert_eq!(aside.to_string(), format!("a{}", aside.get()));
+    assert_eq!(aside.to_string().parse(), Ok(aside));
+    assert_eq!("m0".parse::<AsideId>(), Err(ParseIdError("m0".to_owned())));
+}

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_core::completion::Message;
@@ -7,7 +8,10 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::journal::JournalPlugin;
 use rig_ecs::prelude::{Author, RewriteSession, SavedAgent, Session, Store, Strings};
 use rig_harness::harness_protocol::Home;
-use rig_harness::prelude::{ForkSession, ForkedFrom, SessionForked};
+use rig_harness::prelude::{
+    AppKeepsExt, ForkSession, ForkedFrom, ReflectSaved, SessionEntry, SessionForked, SessionSource,
+    SessionStores,
+};
 use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
 
 use super::*;
@@ -33,9 +37,17 @@ fn running(home: &Home, id: &str) -> Option<App> {
     Some(app)
 }
 
+/// The saved sessions under `home` as a session listing reads them, each
+/// store opened by `stores`.
+fn list(home: &Home, stores: &SessionStores) -> Vec<SessionEntry> {
+    let saved = home.saved_sessions();
+    let read = saved.iter().map(|(_, dir)| SessionEntry::read(dir, stores));
+    read.flatten().collect()
+}
+
 /// The `/resume` lines of the sessions under `home`.
 fn lines(home: &Home) -> Vec<String> {
-    let listed = list(home, &SessionStores::default(), Path::new("/nowhere"));
+    let listed = list(home, &SessionStores::default());
     listed.iter().map(SessionEntry::label).collect()
 }
 
@@ -83,6 +95,7 @@ fn naming_another_session_changes_only_its_title() {
         title: "Fix the parser".to_owned(),
         labels: BTreeMap::from([("spent".to_owned(), "$0.50".to_owned())]),
         updated: 1000,
+        ..SessionMeta::default()
     };
     assert!(before.write(&*store).is_ok());
     let Some(mut app) = running(&home, "2-2") else {
@@ -98,8 +111,9 @@ fn naming_another_session_changes_only_its_title() {
     assert_eq!(app.world().resource::<SessionTitle>().name, None);
     let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
     let stores = SessionStores::default();
-    let listed = list(&home, &stores, home.session(&running).path());
-    let labels: Vec<String> = listed.iter().map(SessionEntry::label).collect();
+    let listed = list(&home, &stores);
+    let others = listed.iter().filter(|entry| entry.id != running);
+    let labels: Vec<String> = others.map(SessionEntry::label).collect();
     assert_eq!(labels, ["The parser  · $0.50"]);
     fs::remove_dir_all(home.root()).ok();
 }
@@ -176,7 +190,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     assert_eq!(plain(&copy), ["saved"]);
     assert!(dir.is_saved() && copy.is_saved());
 
-    let listed = list(&home, &memory.stores(), Path::new("/nowhere"));
+    let listed = list(&home, &memory.stores());
     let ids: Vec<_> = listed.iter().map(|entry| entry.id.clone()).collect();
     assert!(ids.contains(&fork) && ids.contains(&id), "{ids:?}");
     fs::remove_dir_all(home.root()).ok();
@@ -202,44 +216,85 @@ fn a_session_written_through_the_stores_is_listed() {
     };
     let written = stores.open(&dir).and_then(|store| session.save(&*store));
     assert!(written.is_ok(), "{written:?}");
-    let listed = list(&home, &stores, Path::new("/nowhere"));
+    let listed = list(&home, &stores);
     let ids: Vec<_> = listed.iter().map(|entry| entry.id.clone()).collect();
     assert_eq!(ids, [id]);
     fs::remove_dir_all(home.root()).ok();
 }
 
-#[cfg(feature = "tui")]
+/// `/resume` opens the native session picker over the saved sessions,
+/// picking one resumes it; with no other session it says so.
 #[test]
-fn resume_picks_from_the_sessions_of_the_apps_home() {
+fn resume_opens_the_session_picker() {
     let home = home("resume");
-    let Some(mut earlier) = running(&home, "1-1") else {
-        return;
-    };
-    earlier
-        .world_mut()
-        .spawn(ResumeLabel::new("goal", "Ship it"));
-    earlier.update();
     let Some(mut app) = running(&home, "2-2") else {
         return;
     };
     let world = app.world_mut();
     let agent = world.spawn(Agent).id();
-    world.trigger(rig_harness::commands::RunCommand::new(
-        agent,
-        "resume".to_owned(),
-    ));
+    let resume = || rig_harness::commands::RunCommand::new(agent, "resume".to_owned());
+    world.trigger(resume());
     world.flush();
-    let mut pickers = world.query::<&rig_harness::pick::Picker>();
-    let items: Vec<_> = pickers
+    assert_eq!(world.query::<&SessionPicker>().iter(world).count(), 0);
+    let Some(mut earlier) = running(&home, "1-1") else {
+        return;
+    };
+    earlier.update();
+    let world = app.world_mut();
+    world.trigger(resume());
+    world.flush();
+    let pickers: Vec<SessionPicker> = world
+        .query::<&SessionPicker>()
         .iter(world)
-        .flat_map(|picker| picker.items.clone())
+        .cloned()
         .collect();
-    let commands: Vec<&str> = items.iter().map(|item| item.command.as_str()).collect();
-    assert_eq!(commands, ["resume 1-1"]);
+    let commands: Vec<&str> = pickers
+        .iter()
+        .map(|picker| picker.command.as_str())
+        .collect();
+    assert_eq!(commands, ["resume {session}"]);
     assert!(
-        items.iter().all(|item| item.label.contains("Ship it")),
-        "{items:?}"
+        pickers
+            .iter()
+            .all(|picker| picker.source == SessionSource::Saved)
     );
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// A plugin's goal, listed.
+#[derive(Resource, Reflect, Clone, Default)]
+#[reflect(Resource, Saved, Clone, Default)]
+struct Goal(String);
+
+/// A listed value and the main agent's model are kept in the session's
+/// listing as they change, so a listing shows them without the logs.
+#[test]
+fn a_listed_value_and_the_model_are_kept_in_the_listing() {
+    let home = home("listed");
+    let Some(mut app) = running(&home, "1-1") else {
+        return;
+    };
+    app.register_type::<Goal>()
+        .insert_resource(Goal("ship the parser".to_owned()))
+        .saved_as::<Goal>("goals.goal")
+        .listed();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ModelChoice("openai/gpt-5".to_owned()));
+    app.update();
+    let store = app.world().resource::<SessionStore>().0.clone();
+    let meta = SessionMeta::read(&*store).unwrap_or_default();
+    let goal = meta.data.get("goals.goal").map(|saved| saved.value.clone());
+    assert_eq!(goal, Some(serde_json::json!("ship the parser")));
+    assert_eq!(meta.model, "openai/gpt-5");
+
+    app.world_mut().resource_mut::<Goal>().0 = "ship the lexer".to_owned();
+    app.update();
+    let meta = SessionMeta::read(&*store).unwrap_or_default();
+    let goal = meta.data.get("goals.goal").map(|saved| saved.value.clone());
+    assert_eq!(goal, Some(serde_json::json!("ship the lexer")));
     fs::remove_dir_all(home.root()).ok();
 }
 

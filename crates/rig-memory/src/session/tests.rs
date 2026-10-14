@@ -57,7 +57,7 @@ fn a_saved_conversation_folds_back_to_itself() {
     );
     let log = String::from_utf8(store.read_log("agent").expect("a log")).expect("text");
     assert!(log.starts_with(r#"{"seq":0,"n":0,"#), "{log}");
-    assert!(log.contains(r#""format":"rig-session/2""#), "{log}");
+    assert!(log.contains(r#""format":"rig-session/3""#), "{log}");
     assert!(!log.contains("cG5n"), "the image data is not in the log");
 
     // A running writer's log folds back the same, with saved values.
@@ -68,14 +68,20 @@ fn a_saved_conversation_folds_back_to_itself() {
     let mut live = edited();
     let saved = writer.save("main", &mut live);
     assert!(saved.iter().all(|change| change.at.is_some()));
-    writer.state("main", "mode", Some(json!("plan")), false);
-    writer.state(crate::SESSION, "theme", Some(json!("dark")), false);
+    writer.state("main", "mode", Some(json!("plan").into()), false);
+    writer.state(crate::SESSION, "theme", Some(json!("dark").into()), false);
     writer.flush();
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("the agent");
     assert_eq!(main.conversation, live);
-    assert_eq!(main.state, [("mode".to_owned(), json!("plan"))].into());
-    assert_eq!(session.state, [("theme".to_owned(), json!("dark"))].into());
+    assert_eq!(
+        main.state,
+        [("mode".to_owned(), json!("plan").into())].into()
+    );
+    assert_eq!(
+        session.state,
+        [("theme".to_owned(), json!("dark").into())].into()
+    );
     assert!(main.rewrites.is_empty());
 }
 

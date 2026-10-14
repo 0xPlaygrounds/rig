@@ -1,0 +1,28 @@
+[package]
+name = "corpus-sp-session-tree-browser"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (splits fresh held-out): SP-16: 16. Session and branch browser"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# The pool sessions are read on, off the main thread.
+bevy_tasks = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The browser's panes, keys and the transcript pane of its preview.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# Session listings with titles, as the agent writes them.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }

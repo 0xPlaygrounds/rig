@@ -44,7 +44,7 @@
 //! App::new().add_systems(AgentPass, stay_paused.in_set(Stage::Gate));
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
@@ -57,7 +57,7 @@ use rig_core::conversation::{Aside, AsideId, Author};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, UserContent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
-use rig_memory::Session;
+use rig_memory::{SESSION, SET_ASIDE, Session, Unread, Upgrades, Versioned, Writer};
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -65,6 +65,7 @@ use web_time::SystemTime;
 
 use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn, TurnOf};
 use super::effects::Effects;
+use super::follows::{ReflectFollows, give_line_values};
 use super::inbox::{Unsent, kept};
 use super::journal::{
     Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
@@ -301,14 +302,20 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
-    for (path, value) in &state {
-        let restored = saved(path, value, &registry).and_then(|(component, value)| {
+    let mut reader = SavedReader::new(world);
+    let followed = super::follows::followed(world);
+    for (key, value) in &state {
+        let restored = reader.read(&registry, SESSION, None, &state, key, value);
+        let restored = restored.and_then(|read| {
+            let Some((component, value)) = read else {
+                return Ok(());
+            };
             let mut resource = resource_entity(world, component)?;
             component.insert(&mut resource, value.as_partial_reflect(), &registry);
             Ok(())
         });
         if let Err(failure) = restored {
-            let skipped = format!("Skipped saved resource `{path}`: {failure}.");
+            let skipped = format!("Skipped saved resource `{key}`: {failure}.");
             notices.push(Notice::error(None, skipped));
         }
     }
@@ -317,17 +324,22 @@ pub(crate) fn restore_session(world: &mut World) {
     for agent in agents {
         let conversation = Conversation(agent.conversation);
         let id = AgentId(agent.id);
-        let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
-        for (path, value) in &agent.state {
-            let restored = saved(path, value, &registry).map(|(component, value)| {
-                component.insert(&mut spawned, value.as_partial_reflect(), &registry);
-            });
-            if let Err(failure) = restored {
-                let skipped = format!("Skipped saved component `{path}`: {failure}.");
-                notices.push(Notice::error(None, skipped));
+        let mut read = Vec::new();
+        for (key, value) in &agent.state {
+            match reader.read(&registry, &id.0, Some(&id), &agent.state, key, value) {
+                Ok(value) => read.extend(value),
+                Err(failure) => {
+                    let skipped = format!("Skipped saved component `{key}`: {failure}.");
+                    notices.push(Notice::error(None, skipped));
+                }
             }
         }
+        let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
+        for (component, value) in read {
+            component.insert(&mut spawned, value.as_partial_reflect(), &registry);
+        }
         let entity = spawned.id();
+        give_line_values(world, &registry, &mut reader, entity, &followed);
         entities.insert(id.0, entity);
         links.push((entity, agent.parent));
     }
@@ -349,6 +361,7 @@ pub(crate) fn restore_session(world: &mut World) {
             (depth, entity)
         })
         .collect();
+    reader.finish(world);
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
     log.start();
@@ -359,33 +372,273 @@ pub(crate) fn restore_session(world: &mut World) {
     }
 }
 
-/// The saved component of the type path `path` from its logged `value`,
-/// with the reflection that inserts it, in place of an immutable one too.
-pub(crate) fn saved<'r>(
-    path: &str,
+/// How the kernel reads older versions of saved values and of plugins'
+/// asides: each type's and kind's steps, registered by its plugin (rig-harness
+/// `AppKeepsExt::saved_upgrades` and `aside_upgrades`). A value is written
+/// at its type's version here.
+#[derive(Resource, Default)]
+pub struct SavedUpgrades(pub Upgrades);
+
+/// The stable keys saved types are logged and restored under instead of
+/// their type paths, such as `goals.goal` (rig-harness
+/// `AppKeepsExt::saved_as`), and which of them are listed: copied into the
+/// session's listing (rig-memory's `SessionMeta::data`) as they change.
+#[derive(Resource, Default, Debug, Clone, PartialEq, Eq)]
+pub struct SavedKeys {
+    /// Each key by type path.
+    keys: BTreeMap<String, String>,
+    /// Each type path by key.
+    paths: BTreeMap<String, String>,
+    /// The listed keys.
+    listed: BTreeSet<String>,
+}
+
+impl SavedKeys {
+    /// Saves the type of path `path` under `key`; again for the same pair
+    /// it does nothing.
+    ///
+    /// # Errors
+    ///
+    /// Recording nothing, when another type has `key` or the type has
+    /// another key.
+    pub fn add(&mut self, path: &str, key: &str) -> Result<(), String> {
+        match (self.paths.get(key), self.keys.get(path)) {
+            (Some(taken), _) if taken != path => {
+                Err(format!("the saved key `{key}` is taken by `{taken}`"))
+            }
+            (_, Some(other)) if other != key => {
+                Err(format!("`{path}` is saved under `{other}` already"))
+            }
+            _ => {
+                self.keys.insert(path.to_owned(), key.to_owned());
+                self.paths.insert(key.to_owned(), path.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Lists `key`'s values in the session's listing.
+    pub fn list(&mut self, key: &str) {
+        self.listed.insert(key.to_owned());
+    }
+
+    /// The key the type of path `path` is saved under, when it has one.
+    pub fn key(&self, path: &str) -> Option<&str> {
+        self.keys.get(path).map(String::as_str)
+    }
+
+    /// The path of the type saved under `key`, when one is.
+    pub fn path(&self, key: &str) -> Option<&str> {
+        self.paths.get(key).map(String::as_str)
+    }
+
+    /// Whether `key`'s values are listed.
+    pub fn is_listed(&self, key: &str) -> bool {
+        self.listed.contains(key)
+    }
+
+    /// The listed keys.
+    pub fn listed(&self) -> &BTreeSet<String> {
+        &self.listed
+    }
+}
+
+/// Saved keys no build reads any more, such as a deleted type's path: their
+/// values are kept in the file, and never reported.
+#[derive(Resource, Default)]
+pub struct RetiredSaved(pub BTreeSet<String>);
+
+/// The saved values this run set aside rather than read, with why: a value
+/// no step reads (moved to a side key on its key's next write) or one a
+/// newer rig saved (its key held, never written over).
+#[derive(Resource, Default, Debug)]
+pub struct SetAside(pub Vec<SetAsideValue>);
+
+/// A saved value set aside, as [`SetAside`] lists it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SetAsideValue {
+    /// The agent it was saved with; `None` for a saved resource.
+    pub agent: Option<AgentId>,
+    /// Its key, a type path.
+    pub key: String,
+    /// The value as saved, with its version.
+    pub saved: Versioned,
+    /// Why it was not read.
+    pub why: String,
+}
+
+/// The one reader of saved values, for a restore, a reread after a rewrite
+/// and the line values of `Follows` types: each value is read under its key
+/// (a stable key, or a type path), upgraded through [`SavedUpgrades`] and
+/// reflected as its type. A value no step reads, or that no longer fits its
+/// type, is set aside ([`SetAside`]; the writer moves it to a side key on
+/// its key's next write), and one a newer rig saved is held (never written
+/// over); a retired key, a side key, and a value under a type path whose
+/// type is saved under a key that has a value too, are skipped silently.
+pub(crate) struct SavedReader {
+    upgrades: Upgrades,
+    retired: BTreeSet<String>,
+    keys: SavedKeys,
+    log: Option<Writer>,
+    set_aside: Vec<SetAsideValue>,
+}
+
+impl SavedReader {
+    /// A reader with the registries of `world`.
+    pub(crate) fn new(world: &World) -> Self {
+        Self {
+            upgrades: world
+                .get_resource::<SavedUpgrades>()
+                .map(|upgrades| upgrades.0.clone())
+                .unwrap_or_default(),
+            retired: world
+                .get_resource::<RetiredSaved>()
+                .map(|retired| retired.0.clone())
+                .unwrap_or_default(),
+            keys: world
+                .get_resource::<SavedKeys>()
+                .cloned()
+                .unwrap_or_default(),
+            log: world.get_resource::<SessionLog>().map(|log| log.0.clone()),
+            set_aside: Vec::new(),
+        }
+    }
+
+    /// The saved value `saved` of `key` in the log `log` (of the agent
+    /// `agent`, or the session's), whose saved values are `state`, with
+    /// the reflection that inserts it; `None` when it is skipped silently.
+    ///
+    /// # Errors
+    ///
+    /// Why it is not read: set aside, held, or of a type no plugin saves.
+    pub(crate) fn read<'r>(
+        &mut self,
+        registry: &'r TypeRegistry,
+        log: &str,
+        agent: Option<&AgentId>,
+        state: &BTreeMap<String, Versioned>,
+        key: &str,
+        saved: &Versioned,
+    ) -> Result<Option<(&'r ReflectComponent, Box<dyn Reflect>)>, String> {
+        if key.starts_with(SET_ASIDE) || self.retired.contains(key) {
+            return Ok(None);
+        }
+        let path = self.keys.path(key).unwrap_or(key);
+        if let Some(keyed) = self.keys.key(path)
+            && keyed != key
+            && state.contains_key(keyed)
+        {
+            return Ok(None);
+        }
+        let (registration, component) = saved_type(path, registry)?;
+        let read = self
+            .upgrades
+            .upgrade(path, saved.clone())
+            .map_err(|unread| (matches!(unread, Unread::Newer { .. }), unread.to_string()))
+            .and_then(|value| {
+                reflected(registration, &value, registry).map_err(|failure| (false, failure))
+            });
+        match read {
+            Ok(value) => Ok(Some((component, value))),
+            Err((newer, why)) => {
+                if let Some(writer) = &self.log {
+                    if newer {
+                        writer.hold(log, key);
+                    } else {
+                        writer.set_aside(log, key, saved.clone());
+                    }
+                }
+                self.set_aside.push(SetAsideValue {
+                    agent: agent.cloned(),
+                    key: key.to_owned(),
+                    saved: saved.clone(),
+                    why: why.clone(),
+                });
+                let kept = if newer {
+                    "it is kept as it is"
+                } else {
+                    "it is kept aside"
+                };
+                Err(format!("{why}; {kept}"))
+            }
+        }
+    }
+
+    /// The followed value `saved` of the type of path `path`, upgraded,
+    /// reflected and as JSON; a value that does not read is listed in
+    /// [`SetAside`], and left as it is in the conversation.
+    ///
+    /// # Errors
+    ///
+    /// Why it is not read, and whether a newer rig saved it.
+    pub(crate) fn read_followed(
+        &mut self,
+        registry: &TypeRegistry,
+        agent: Option<&AgentId>,
+        path: &str,
+        saved: &Versioned,
+    ) -> Result<(Box<dyn Reflect>, Value), (bool, String)> {
+        let (registration, _) = saved_type(path, registry).map_err(|why| (false, why))?;
+        let read = self
+            .upgrades
+            .upgrade(path, saved.clone())
+            .map_err(|unread| (matches!(unread, Unread::Newer { .. }), unread.to_string()))
+            .and_then(|value| {
+                let read = reflected(registration, &value, registry);
+                Ok((read.map_err(|failure| (false, failure))?, value))
+            });
+        if let Err((_, why)) = &read {
+            self.set_aside.push(SetAsideValue {
+                agent: agent.cloned(),
+                key: self.keys.key(path).unwrap_or(path).to_owned(),
+                saved: saved.clone(),
+                why: why.clone(),
+            });
+        }
+        read
+    }
+
+    /// The type path of the values saved under `key`.
+    pub(crate) fn path<'k>(&'k self, key: &'k str) -> &'k str {
+        self.keys.path(key).unwrap_or(key)
+    }
+
+    /// Adds what it set aside to [`SetAside`].
+    pub(crate) fn finish(self, world: &mut World) {
+        if !self.set_aside.is_empty() {
+            let mut set_aside = world.get_resource_or_init::<SetAside>();
+            set_aside.0.extend(self.set_aside);
+        }
+    }
+}
+
+/// `value` reflected as the type of `registration`.
+fn reflected(
+    registration: &TypeRegistration,
     value: &Value,
-    registry: &'r TypeRegistry,
-) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), String> {
-    let (registration, component) = saved_type(path, registry)?;
+    registry: &TypeRegistry,
+) -> Result<Box<dyn Reflect>, String> {
     let reflected = TypedReflectDeserializer::new(registration, registry)
         .deserialize(value)
         .map_err(|failure| format!("its saved value no longer fits: {failure}"))?;
-    let value = registration
+    registration
         .data::<ReflectFromReflect>()
         .and_then(|from| from.from_reflect(&*reflected))
-        .ok_or("its saved value no longer fits")?;
-    Ok((component, value))
+        .ok_or_else(|| "its saved value no longer fits".to_owned())
 }
 
-/// The registration of the saved component of the type path `path`, with
-/// the reflection that inserts and removes it.
+/// The registration of the saved or followed component of the type path
+/// `path`, with the reflection that inserts and removes it.
 pub(crate) fn saved_type<'r>(
     path: &str,
     registry: &'r TypeRegistry,
 ) -> Result<(&'r TypeRegistration, &'r ReflectComponent), String> {
     let registration = registry
         .get_with_type_path(path)
-        .filter(|registration| registration.data::<ReflectSaved>().is_some())
+        .filter(|registration| {
+            registration.data::<ReflectSaved>().is_some()
+                || registration.data::<ReflectFollows>().is_some()
+        })
         .ok_or("no plugin saves it in this build")?;
     let component = registration.data::<ReflectComponent>();
     let component = component.ok_or("it is not a reflected component")?;

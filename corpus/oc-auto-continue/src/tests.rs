@@ -10,7 +10,7 @@ use rig_harness_test_support::{
     log_tool_outputs, reply, run_until, scripted_models, tui_view,
 };
 use rig_telemetry::{TurnSpending, UsagePlugin};
-use rig_tui::{Focus, TuiTestScreen};
+use rig_tui::{Focus, MainPane, TuiTestScreen};
 use serde_json::json;
 
 use super::*;
@@ -79,7 +79,9 @@ fn answers(world: &World, agent: Entity) -> Vec<AssistantMessage> {
 
 /// Where the seams' marks are: in a saved message's text, at a byte.
 fn marks(world: &World) -> Vec<Option<usize>> {
-    let marks = world.resource::<TranscriptView>().marks.iter();
+    let mut main = world.try_query_filtered::<&TranscriptView, With<MainPane>>();
+    let view = main.as_mut().and_then(|main| main.single(world).ok());
+    let marks = view.into_iter().flat_map(|view| view.marks.iter());
     let at = |mark: &TextMark| matches!(mark.r#in, MarkIn::Message { .. }).then_some(mark.at);
     marks.map(at).collect()
 }

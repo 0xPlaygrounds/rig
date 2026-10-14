@@ -12,7 +12,7 @@ use rig_harness_test_support::{
     tui_view,
 };
 use rig_telemetry::{EffectLog, EffectLogPlugin, UsagePlugin};
-use rig_tui::{DrawnRow, Expanded, PastEffects, TranscriptLayout, TranscriptView};
+use rig_tui::{DrawnRow, Expanded, MainPane, PastEffects, TranscriptLayout, TranscriptView};
 use serde_json::json;
 
 use super::*;
@@ -133,7 +133,7 @@ fn main_model() -> MockCompletionModel {
 
 /// The rows of `agent`'s transcript as the terminal view lays it out.
 fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
-    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
+    let lay_out = move |layout: TranscriptLayout, view: Single<&TranscriptView, With<MainPane>>| {
         layout.lay_out(&view, agent, 120, Expanded::AsShown)
     };
     let drawn = app.world_mut().run_system_once(lay_out).ok().flatten();

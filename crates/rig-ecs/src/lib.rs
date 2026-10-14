@@ -27,6 +27,7 @@
 pub mod agent;
 pub mod calls;
 pub mod effects;
+pub mod follows;
 pub mod inbox;
 pub mod journal;
 pub mod model;
@@ -58,6 +59,7 @@ pub mod prelude {
         ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, PollCalls, Running, Wake};
+    pub use crate::follows::{FOLLOWS, ReflectFollows};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
         Recalled, Unsent,
@@ -68,7 +70,9 @@ pub mod prelude {
     };
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
-    pub use crate::restore::{Interrupted, Restored};
+    pub use crate::restore::{
+        Interrupted, Restored, RetiredSaved, SavedKeys, SavedUpgrades, SetAside, SetAsideValue,
+    };
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,
         ForAgent, GateSystems, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
@@ -95,19 +99,21 @@ pub mod prelude {
         PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
     };
     pub use rig_memory::{
-        Files, Keep, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings, as_of,
-        fork, history, now_ms,
+        Files, Keep, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings,
+        Upgrade, Upgrades, Versioned, as_of, fork, history, now_ms,
     };
 }
 
+use bevy_app::MainScheduleOrder;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_time::TimePlugin;
 
 use agent::{Agent, Notice};
 use calls::{PollCalls, Wake, poll_calls, settle};
-use journal::{Saving, SessionLog, save_conversations};
+use journal::{SaveConversations, SavedOne, Saving, SessionLog, save_conversations, save_in_last};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
 /// them for the restart, unended. It runs before
@@ -151,8 +157,22 @@ impl Plugin for AgentPlugin {
                 .edit_schedule(PreUpdate, single)
                 .edit_schedule(Last, single);
         }
+        // A line changed before `Update` gives its followed values to it.
+        if let Some(mut order) = app.world_mut().get_resource_mut::<MainScheduleOrder>()
+            && let Some(at) = order
+                .labels
+                .iter()
+                .position(|label| *label == Update.intern())
+        {
+            order.labels.insert(at, SaveConversations.intern());
+        }
         app.init_resource::<effects::Effects>()
             .init_resource::<SessionLog>()
+            .init_resource::<SavedOne>()
+            .edit_schedule(SaveConversations, |schedule| {
+                schedule.set_executor(SingleThreadedExecutor::new());
+            })
+            .add_systems(SaveConversations, save_conversations)
             .init_resource::<Wake>()
             .init_resource::<model::Models>()
             .add_message::<Notice>()
@@ -186,7 +206,7 @@ impl Plugin for AgentPlugin {
                     turn::stop_turns_on_exit
                         .in_set(StopTurns)
                         .run_if(on_message::<AppExit>),
-                    save_conversations.in_set(Saving),
+                    save_in_last.in_set(Saving),
                     journal::apply_rewrites
                         .after(Saving)
                         .before(WriteJournal)

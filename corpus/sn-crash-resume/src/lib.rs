@@ -34,7 +34,7 @@ use rig_harness::note::Note;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Entry;
 use rig_harness::rig_core::message::Message as Chat;
-use rig_tui::TuiInput;
+use rig_tui::MainInput;
 use serde::{Deserialize, Serialize};
 
 /// The author (a plugin name) of the transcript note, of the message that
@@ -428,7 +428,7 @@ fn resolve(
     )>,
     holds: Query<(Entity, &CrashHold)>,
     mut decisions: Query<(&mut Decision, Option<&Interrupted>), (With<Restored>, With<Holds>)>,
-    mut input: Option<ResMut<TuiInput>>,
+    mut input: Option<MainInput>,
     data: Option<Res<PluginData>>,
     mut commands: Commands,
 ) {

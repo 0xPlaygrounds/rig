@@ -38,6 +38,11 @@ plugin = "rig_sessions::SessionsPlugin"
 crate = "rig-compaction"
 plugin = "rig_compaction::CompactionPlugin"
 
+# /split and /splits: split, move, switch, compare and merge back.
+[[plugin]]
+crate = "rig-splits"
+plugin = "rig_splits::SplitsPlugin"
+
 # What model calls cost, and /usage.
 [[plugin]]
 crate = "rig-telemetry"

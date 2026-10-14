@@ -38,16 +38,8 @@ fn a_later_set_overrides_an_earlier_one_in_the_summary() {
     state.track(
         &messages,
         &[
-            TrackArgument {
-                tool: "read",
-                argument: "path",
-                set: "read-files",
-            },
-            TrackArgument {
-                tool: "edit",
-                argument: "path",
-                set: "modified-files",
-            },
+            TrackArgument::new("read", "path", "read-files"),
+            TrackArgument::new("edit", "path", "modified-files"),
         ],
     );
     let text = state.message().expect("a summary");
@@ -81,7 +73,7 @@ fn spec(window: u32) -> Option<ModelSpec> {
 fn cut(messages: &[Message], window: u32, reason: &CompactReason) -> Option<usize> {
     let spec = spec(window);
     assert!(spec.is_some());
-    CompactionPolicy::default().cut(messages, 0, reason, spec.as_ref())
+    CompactionPolicy::default().cut(messages, 0, reason, spec.as_ref(), &CutRules::default())
 }
 
 /// A conversation of turns, each a question and a long answer.
@@ -189,23 +181,63 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
 }
 
 #[test]
-fn a_cut_rule_chooses_the_first_kept_message() {
+fn a_named_cut_rule_chooses_the_first_kept_message() {
     // Keep from the newest question on, whatever the budget says.
+    let mut rules = CutRules::default();
+    rules.add("newest-question", |messages: &[Message], _, _, _| {
+        messages
+            .iter()
+            .rposition(|message| matches!(message, Message::User { .. }))
+    });
     let policy = CompactionPolicy {
-        cut: Cut::With(Arc::new(|messages, _, _, _| {
-            messages
-                .iter()
-                .rposition(|message| matches!(message, Message::User { .. }))
-        })),
+        cut: Cut::Named("newest-question".to_owned()),
         ..CompactionPolicy::default()
     };
     let messages = turns(3);
     let threshold = CompactReason::Threshold;
-    let budget = CompactionPolicy::default().cut(&messages, 0, &threshold, spec(200_000).as_ref());
+    let window = spec(200_000);
+    let budget = CompactionPolicy::default().cut(&messages, 0, &threshold, window.as_ref(), &rules);
     assert_eq!(budget, None, "the budget keeps a short conversation");
-    assert_eq!(policy.cut(&messages, 0, &threshold, None), Some(4));
+    assert_eq!(policy.cut(&messages, 0, &threshold, None, &rules), Some(4));
     // An answer that summarizes nothing new counts as none.
-    assert_eq!(policy.cut(&messages, 4, &threshold, None), None);
+    assert_eq!(policy.cut(&messages, 4, &threshold, None, &rules), None);
+    // A name no rule has cuts by the budget.
+    let none = CutRules::default();
+    assert_eq!(
+        policy.cut(&messages, 0, &threshold, window.as_ref(), &none),
+        None
+    );
+}
+
+/// A policy is plain serde data, and overrides set only what they name:
+/// `{"keep_recent": 1000}` keeps the base's tracked arguments and prompts.
+#[test]
+fn a_policy_saves_and_overrides_keep_what_they_do_not_name() {
+    let base = CompactionPolicy {
+        tracked: vec![TrackArgument::new("read", "path", "read-files")],
+        cut: Cut::Named("mine".to_owned()),
+        ..CompactionPolicy::default()
+    };
+    let json = serde_json::to_value(&base).expect("serde");
+    assert_eq!(json.get("cut"), Some(&serde_json::json!("mine")));
+    let back: CompactionPolicy = serde_json::from_value(json).expect("serde");
+    assert_eq!(back, base);
+
+    let own: CompactionOverrides =
+        serde_json::from_value(serde_json::json!({"keep_recent": 1000})).expect("overrides");
+    let policy = own.apply(&base);
+    assert_eq!(policy.keep_recent, 1000);
+    assert_eq!(policy.tracked, base.tracked);
+    assert_eq!(policy.summarizer, base.summarizer);
+    let reserve: CompactionOverrides =
+        serde_json::from_value(serde_json::json!({"limits": {"reserve": 1}})).expect("overrides");
+    let limits = reserve.apply(&base).summarizer.limits;
+    assert_eq!(
+        (limits.reserve, limits.summary_tokens),
+        (1, SummaryLimits::DEFAULT.summary_tokens)
+    );
+    assert!(serde_json::from_value::<CompactionOverrides>(serde_json::json!({"keep": 1})).is_err());
+    assert!(CompactionOverrides::default().is_empty());
 }
 
 #[test]
@@ -276,11 +308,13 @@ fn compactions_are_undone_newest_first_with_their_ids_and_states() {
     let by = Author::plugin("undo");
     let undone = undo_summary(&mut conversation, &store, "agent", by.clone()).expect("undone");
     assert_eq!(undone.state, state("first"));
+    assert_eq!(summary_state(&conversation), state("first"));
     assert_eq!(undone.restored.len(), 2, "the first summary and \"three\"");
     assert_eq!(conversation.messages().len(), 3);
     save(&store, "agent", &mut conversation).expect("saved");
     let undone = undo_summary(&mut conversation, &store, "agent", by.clone()).expect("undone");
     assert_eq!(undone.state, SummaryState::default());
+    assert_eq!(summary_state(&conversation), SummaryState::default());
     assert_eq!(conversation.messages(), original.messages());
     let ids = |conversation: &Conversation| -> Vec<MessageId> {
         conversation.entries().map(|entry| entry.id).collect()

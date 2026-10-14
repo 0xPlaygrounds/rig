@@ -1,10 +1,10 @@
 use std::fs;
-use std::path::Path;
 
 use rig_core::completion::{Message, Usage};
 use rig_harness::harness_protocol::SessionId;
+use rig_harness::sessions::SessionEntry;
 use rig_harness_test_support::{app_in, commit_message, first_agent, scratch_home};
-use rig_sessions::{SessionsPlugin, list};
+use rig_sessions::SessionsPlugin;
 
 use super::*;
 use crate::UsagePlugin;
@@ -29,12 +29,11 @@ fn what_the_session_spent_is_in_its_resume_line() {
     spent.0.record(None, None, &usage);
     app.update();
 
-    let listed = list(&home, &SessionStores::default(), Path::new("/nowhere"));
-    let labels: Vec<_> = listed
-        .iter()
-        .map(|entry| entry.meta.labels.clone())
-        .collect();
-    let spent = labels.first().and_then(|labels| labels.get(SPENT).cloned());
-    assert_eq!(spent.as_deref(), Some("1.5k tokens"), "{labels:?}");
+    let listed = SessionEntry::read(&home.session(&id), &SessionStores::default());
+    let labels = listed.as_ref().map(|entry| &entry.listing.meta.labels);
+    let spent = labels.and_then(|labels| labels.get(SPENT));
+    assert_eq!(spent.map(String::as_str), Some("1.5k tokens"), "{labels:?}");
+    let line = listed.map(|entry| entry.label()).unwrap_or_default();
+    assert!(line.contains("  · 1.5k tokens"), "{line}");
     fs::remove_dir_all(home.root()).ok();
 }

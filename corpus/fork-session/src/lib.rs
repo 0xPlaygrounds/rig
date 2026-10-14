@@ -6,26 +6,24 @@
 //! (the kernel cuts every log there, so saved plugin state comes back as it
 //! was then); the new session starts with that message in the input line.
 //! The harness records each fork's parent, fork point and the text of the
-//! message it was branched before ([`ForkedFrom`]); `/tree` shows the
-//! family. Files on disk are never branched, except
-//! that `/branch --files` (with the `checkpoints` feature and spec 31's
-//! plugin) puts them back as that plugin's checkpoint before the message
-//! kept them, through its `Rewind` request, before switching.
+//! message it was branched before ([`ForkedFrom`]); `/resume` shows it,
+//! and `/tree` lists the family in the harness's [`SessionPicker`]. Files
+//! on disk are never branched, except that `/branch --files` (with the
+//! `checkpoints` feature and spec 31's plugin) puts them back as that
+//! plugin's checkpoint before the message kept them, through its `Rewind`
+//! request, before switching.
 
 #[cfg(feature = "checkpoints")]
 use corpus_checkpoint_rewind::{Rewind, RewindScope, Rewound};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_sessions::{NameSession, ResumeLabel, SessionTitle, SessionsPlugin, list};
-use rig_tools::shorten;
-use rig_tui::{Focus, TuiInput};
+use rig_sessions::{NameSession, SessionsPlugin};
+use rig_tools::{ago, shorten};
+use rig_tui::{Focus, MainInput};
 
 /// Most characters of a message in the `/branch` picker.
 const LABEL_CHARS: usize = 70;
-
-/// How deep `/tree` follows a family, against a loop in edited files.
-const DEPTH: usize = 64;
 
 /// What the user is told after a fork.
 const FILES: &str = "Files on disk are not branched: the working tree stays as it is.";
@@ -120,8 +118,8 @@ fn fork(
         })
         .id();
     commands.trigger(ForkSession {
-        before: None,
         asker: Some(asker),
+        ..ForkSession::default()
     });
 }
 
@@ -197,7 +195,8 @@ fn branch(
                 })
                 .id();
             commands.trigger(ForkSession {
-                before: Some((id.clone(), message)),
+                from: None,
+                cut: ForkCut::Before(id.clone(), message),
                 asker: Some(asker),
             });
         },
@@ -274,13 +273,22 @@ fn rewound(
     commands.entity(ended.entity).despawn();
 }
 
-/// Names each fork this plugin asked for, then switches to it.
+/// Names each fork this plugin asked for, then switches to it; forgets
+/// one that failed (the harness told the user why).
 fn forked(
-    mut forks: MessageReader<SessionForked>,
+    (mut forks, mut failed): (
+        MessageReader<SessionForked>,
+        MessageReader<SessionForkFailed>,
+    ),
     mut asked: Query<&mut Asked>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
+    for asker in failed.read().filter_map(|failed| failed.asker) {
+        if asked.contains(asker) {
+            commands.entity(asker).despawn();
+        }
+    }
     for fork in forks.read() {
         let Some(asker) = fork.asker else {
             continue;
@@ -310,33 +318,36 @@ fn forked(
     }
 }
 
-/// How a session came from its parent: `fork`, `branch`, or `branch
-/// before “text”`.
+/// How a session came from its parent: `fork`, `split`, `branch`, or
+/// `branch before “text”`.
 fn how(parent: &ForkedFrom) -> String {
     match (&parent.before, &parent.text) {
+        (None, _) if parent.through.is_some() => "split".to_owned(),
         (None, _) => "fork".to_owned(),
         (Some(_), None) => "branch".to_owned(),
         (Some(_), Some(text)) => format!("branch before “{}”", shorten(&one_line(text), 40)),
     }
 }
 
-/// A fork's start: says where it came from in `/resume`, and its first
-/// start, of a branch, puts the message it was branched before in the
+/// A branch's first start puts the message it was branched before in the
 /// input line, showing its agent.
 fn arrive(
     store: Option<Res<SessionStore>>,
     started: Option<Res<AppStart>>,
     agents: PrimaryQuery,
-    input: Option<ResMut<TuiInput>>,
+    input: Option<MainInput>,
     mut commands: Commands,
 ) {
-    let Some(parent) = store.and_then(|store| ForkedFrom::read(&*store.0)) else {
+    if started.is_none_or(|started| started.0 != StartReason::New) {
         return;
-    };
-    let label = format!("{} of {}", how(&parent), parent.session);
-    commands.spawn(ResumeLabel::new("family", label));
-    let first = started.is_some_and(|started| started.0 == StartReason::New);
-    let (true, Some((agent, _)), Some(text)) = (first, parent.before, parent.text) else {
+    }
+    let parent = store.and_then(|store| ForkedFrom::read(&*store.0));
+    let Some(ForkedFrom {
+        before: Some((agent, _)),
+        text: Some(text),
+        ..
+    }) = parent
+    else {
         return;
     };
     let agent = agents.iter().find(|(_, id, _)| id.0 == agent);
@@ -348,102 +359,40 @@ fn arrive(
     }
 }
 
-/// A session of the family: its id, its line, and how it was forked from
-/// which session.
-struct Node {
-    id: String,
-    label: String,
-    parent: Option<ForkedFrom>,
+/// `/tree`: this session's family (those it was forked or branched from,
+/// and those forked or branched from them), each with how it came from
+/// its parent, as the harness's session picker; choosing one resumes it.
+fn tree(In(args): In<CommandArgs>, paths: Option<Res<SessionPaths>>, mut commands: Commands) {
+    let Some(current) = paths.and_then(|paths| paths.id()) else {
+        return;
+    };
+    commands.spawn((
+        Picker::new("This session's family").for_agent(args.agent),
+        SessionPicker {
+            filter: SessionFilter {
+                running: true,
+                family: Some(current),
+                ..SessionFilter::default()
+            },
+            command: "resume {session}".to_owned(),
+            show: Some(family_member),
+            ..SessionPicker::default()
+        },
+    ));
 }
 
-/// `/tree`: the sessions forked and branched from this one's root, as a
-/// picker that resumes the one chosen.
-fn tree(
-    In(args): In<CommandArgs>,
-    (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
-    (home, stores): (Res<RigHome>, Res<SessionStores>),
-    title: Res<SessionTitle>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Some(paths) = paths else {
-        return;
+/// A session of the family: its label, and when it changed and how it
+/// came from which session.
+fn family_member(item: &SessionItem<'_>) -> (String, Option<String>) {
+    let SessionItem::Session(session) = item else {
+        return (String::new(), None);
     };
-    let Some(current) = paths.id().map(|id| id.to_string()) else {
-        return;
+    let ago = ago(session.updated.elapsed().unwrap_or_default());
+    let detail = match &session.listing.parent {
+        Some(parent) => format!("{ago} · {} of {}", how(parent), parent.session),
+        None => ago,
     };
-    let this = title.shown();
-    let parent_of_session = |id: &SessionId| {
-        let store = stores.open(&home.0.session(id)).ok()?;
-        ForkedFrom::read(&*store)
-    };
-    let mut nodes: Vec<Node> = list(&home.0, &stores, paths.path())
-        .into_iter()
-        .map(|entry| Node {
-            parent: parent_of_session(&entry.id),
-            id: entry.id.to_string(),
-            label: entry.label(),
-        })
-        .collect();
-    nodes.push(Node {
-        id: current.clone(),
-        label: format!("● this session  {this}"),
-        parent: store.and_then(|store| ForkedFrom::read(&*store.0)),
-    });
-    let parent_of = |id: &str| -> Option<String> {
-        let node = nodes.iter().find(|node| node.id == id)?;
-        let parent = node.parent.as_ref()?.session.clone();
-        nodes.iter().any(|node| node.id == parent).then_some(parent)
-    };
-    let mut root = current.clone();
-    for _ in 0..DEPTH {
-        match parent_of(&root) {
-            Some(parent) => root = parent,
-            None => break,
-        }
-    }
-    let mut picker = Picker::new("This session's family").for_agent(args.agent);
-    let mut stack = vec![(root, 0usize)];
-    while let Some((id, depth)) = stack.pop() {
-        let Some(node) = nodes.iter().find(|node| node.id == id) else {
-            continue;
-        };
-        if depth > DEPTH || picker.items.len() > 500 {
-            break;
-        }
-        let came = node
-            .parent
-            .as_ref()
-            .map(|parent| format!("  · {}", how(parent)))
-            .unwrap_or_default();
-        let command = if id == current {
-            picker.selected = picker.items.len();
-            String::new()
-        } else {
-            format!("resume {id}")
-        };
-        let line = format!("{}{}{came}", "  ".repeat(depth), node.label);
-        picker = picker.item(line, command);
-        // Session ids start with their creation time: oldest first once
-        // popped.
-        let mut children: Vec<&str> = nodes
-            .iter()
-            .filter(|child| parent_of(&child.id).as_deref() == Some(id.as_str()))
-            .map(|child| child.id.as_str())
-            .collect();
-        children.sort_by(|a, b| b.cmp(a));
-        stack.extend(
-            children
-                .into_iter()
-                .map(|child| (child.to_owned(), depth + 1)),
-        );
-    }
-    if picker.items.len() < 2 {
-        let none = "This session has no forks or branches; /fork or /branch makes one.";
-        notices.write(Notice::info(args.agent, none));
-        return;
-    }
-    commands.spawn(picker);
+    (session.label(), Some(detail))
 }
 
 #[cfg(test)]

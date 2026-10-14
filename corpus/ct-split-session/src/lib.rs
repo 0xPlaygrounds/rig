@@ -4,7 +4,8 @@
 //! `/split <from-turn> [<to-turn>] [--name <name>]` moves a range of the
 //! agent's turns (to the end by default) into a new saved session of the
 //! same project, and `/split undo` puts the last split's turns back while
-//! neither session changed since.
+//! neither session changed since. It takes the `/split` name from the
+//! default rig-splits plugin.
 //!
 //! Turns are the conversation's turn records ([`TurnRecord`]) whose first
 //! message is still in it, numbered from 1. A range boundary inside a tool
@@ -15,43 +16,34 @@
 //! Two model calls of the plugin's own (the `[split] model`, else the
 //! agent's) summarize what came before the range, as the new session's
 //! context, and what the range concluded, for the note left behind. The
-//! harness's [`ForkSession`] then copies the session as it was before the
-//! first message after the range, so every saved value of a plugin comes
-//! along as of the end of the range and the copy records its parent
-//! ([`ForkedFrom`]). In the copy the messages before the range become one
-//! context message; in the original the range becomes one note, a message
-//! by this plugin the model reads too, followed by an aside holding the
-//! moved entries for `/split undo`. Each session's `/resume` line says
-//! "split from" or "split off" ([`ResumeLabel`]).
+//! harness's [`ForkSession`] with a [`ForkCut::Line`] move then copies the
+//! agent's line through the range into a new session, takes the range out
+//! of this one and leaves a split pointer where it was; the copy records
+//! its parent, so session listings say "split from", and values that
+//! follow the conversation come along as of the end of the range. In the
+//! copy the messages before the range become one context message; in the
+//! original a note by this plugin, which the model reads too, joins the
+//! pointer. `/split undo` merges the copy's turns back at the pointer
+//! ([`Conversation::merge_line`](Line::merge_line)) and deletes the copy.
 
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 
-use rig_harness::harness_protocol::SessionId;
+use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::pending_calls;
+use rig_harness::rig_core::conversation::{Conversation as Line, MergeAt};
 use rig_harness::rig_core::message::Message;
-use rig_harness::rig_memory::{SessionMeta, Summarizer, SummaryLimits, SummaryPrompts, title_of};
-use rig_sessions::{NameSession, ResumeLabel, SessionsPlugin};
+use rig_harness::rig_memory::{SPLIT, SplitPointer, Summarizer, SummaryLimits, SummaryPrompts};
+use rig_sessions::{NameSession, SessionsPlugin};
 use serde::{Deserialize, Serialize};
 
 /// Who this plugin is, as an author and a decider, and the purpose of its
 /// model calls in usage.
 pub const NAME: &str = "split-session";
 
-/// The kind of the aside after a split's note that keeps what it moved.
+/// The kind of the aside after a split's note that keeps what `/split
+/// undo` checks.
 pub const MOVED: &str = "split-session.moved";
-
-/// The file, in a split-off session's plugin data, naming where it came
-/// from.
-const FROM_FILE: &str = "split-session/from.json";
-
-/// The same file as the session's store names it ([`PluginData::session`]
-/// is the store's `plugins/`).
-const FROM_IN_STORE: &str = "plugins/split-session/from.json";
-
-/// The tag of this plugin's `/resume` label.
-const LABEL: &str = "split";
 
 /// What the summarizing model is told.
 const SYSTEM: &str = "You summarize part of a coding conversation for a reader who has not seen \
@@ -96,11 +88,19 @@ impl Plugin for SplitSessionPlugin {
         if !app.is_plugin_added::<SessionsPlugin>() {
             app.add_plugins(SessionsPlugin);
         }
-        app.world_mut()
-            .spawn((SplitLabel, ResumeLabel::new(LABEL, "")));
+        let world = app.world_mut();
+        let taken: Vec<Entity> = world
+            .query_filtered::<(Entity, &Name), With<SlashCommand>>()
+            .iter(world)
+            .filter(|(_, name)| name.as_str() == "/split")
+            .map(|(entity, _)| entity)
+            .collect();
+        for entity in taken {
+            world.entity_mut(entity).insert(Disabled);
+        }
         app.add_setting::<SplitSettings>("split")
             .add_message::<SessionForked>()
-            .init_resource::<SplitFrom>()
+            .add_message::<SessionForkFailed>()
             .add_command(
                 "split",
                 "Move turns into a new session: /split <from> [<to>] [--name <name>], or /split undo",
@@ -110,8 +110,7 @@ impl Plugin for SplitSessionPlugin {
             .add_observer(summarized)
             .add_observer(wake_pending)
             .add_observer(follow_successor::<SplitCall>)
-            .add_systems(Startup, read_from)
-            .add_systems(Update, (begin.before(AgentLoop), label))
+            .add_systems(Update, begin.before(AgentLoop))
             .add_systems(AgentPass, hold_messages.in_set(Stage::Gate).after(AskSystems))
             .add_systems(Last, finish.after(ForkSessions));
     }
@@ -150,11 +149,12 @@ struct Split {
     turns: (usize, usize),
     /// The first message moved.
     first: MessageId,
-    /// The first message after the range; `None` when it runs to the end.
-    end: Option<MessageId>,
+    /// The last message moved.
+    last: MessageId,
     context: Option<String>,
     conclusions: Option<String>,
-    forking: bool,
+    /// The new session's name, once the harness was asked to copy.
+    forking: Option<String>,
 }
 
 /// Which summary a call of a split writes.
@@ -180,37 +180,20 @@ struct SplitHold(Entity);
 #[component(storage = "SparseSet")]
 struct HeldForSplit;
 
-/// The entity of this plugin's `/resume` label.
-#[derive(Component)]
-struct SplitLabel;
-
-/// Where this session was split from, if it was.
-#[derive(Resource, Default, Clone, Debug, PartialEq, Eq)]
-struct SplitFrom(Option<Origin>);
-
-/// A split-off session's record of its origin.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-struct Origin {
-    /// The session it was split from.
-    session: String,
-    /// The turns it took, as numbered there.
-    turns: (usize, usize),
-}
-
-/// What a split moved, kept in an aside after its note in the original.
+/// What `/split undo` checks, kept in an aside after a split's note.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct Moved {
     /// The new session.
     session: String,
     /// Its name.
     name: String,
-    /// The note that replaced the turns.
+    /// The note left in the moved turns' place.
     note: MessageId,
-    /// The entries moved, as they were.
-    entries: Vec<Entry>,
+    /// Whether the copy begins with a context message of this plugin.
+    context: bool,
     /// This conversation's revision right after the split.
     revision: u64,
-    /// The new session's main conversation's revision once written.
+    /// The copy's conversation's revision once written.
     copied: u64,
 }
 
@@ -352,12 +335,13 @@ fn turn_at(starts: &[usize], at: usize) -> usize {
     starts.iter().filter(|&&start| start <= at).count().max(1)
 }
 
-/// The messages `pending` moves of `conversation`, `from..to`, with
-/// whole tool exchanges, and what the user is told about a boundary moved.
+/// The messages `pending` moves of `conversation`, `from..to`, with whole
+/// tool exchanges; the turns they are; what the user is told about a
+/// boundary moved.
 fn range(
     conversation: &Conversation,
     pending: &PendingSplit,
-) -> Result<(usize, usize, Option<String>), String> {
+) -> Result<(usize, usize, (usize, usize), Option<String>), String> {
     let starts = turn_starts(conversation);
     let messages = conversation.messages();
     let count = starts.len();
@@ -374,18 +358,18 @@ fn range(
         .ok_or("no whole turn starts the range")?;
     let to = nearest_whole(messages, &starts, end, |at| at > from)
         .ok_or("no whole turn ends the range")?;
+    let first = turn_at(&starts, from);
+    let last = if to >= messages.len() {
+        count
+    } else {
+        turn_at(&starts, to).saturating_sub(1).max(first)
+    };
     let moved = (from != start || to != end).then(|| {
-        let first = turn_at(&starts, from);
-        let last = if to >= messages.len() {
-            count
-        } else {
-            turn_at(&starts, to).saturating_sub(1).max(first)
-        };
         format!(
             "A boundary fell inside a tool exchange, so the split moves whole turns {first}–{last}."
         )
     });
-    Ok((from, to, moved))
+    Ok((from, to, (first, last), moved))
 }
 
 /// A summary call of `split` over `messages`, on the `[split]` model or
@@ -437,7 +421,7 @@ fn begin(
 ) {
     for (agent, pending, conversation, own) in &agents {
         commands.entity(agent).remove::<PendingSplit>();
-        let (from, to, moved) = match range(conversation, pending) {
+        let (from, to, turns, moved) = match range(conversation, pending) {
             Ok(range) => range,
             Err(why) => {
                 notices.write(Notice::error(agent, format!("Cannot split: {why}.")));
@@ -447,14 +431,12 @@ fn begin(
         if let Some(moved) = moved {
             notices.write(Notice::info(agent, moved));
         }
-        let (Some(first), end) = (conversation.id(from), conversation.id(to)) else {
+        let ids = (
+            conversation.id(from),
+            to.checked_sub(1).and_then(|last| conversation.id(last)),
+        );
+        let (Some(first), Some(last)) = ids else {
             continue;
-        };
-        let starts = turn_starts(conversation);
-        let last = if to >= conversation.messages().len() {
-            starts.len()
-        } else {
-            turn_at(&starts, to).saturating_sub(1)
         };
         let split = commands.spawn_empty().id();
         let (part, messages) = match from {
@@ -479,12 +461,12 @@ fn begin(
         commands.entity(split).insert(Split {
             agent,
             name: pending.name.clone(),
-            turns: (turn_at(&starts, from), last.max(1)),
+            turns,
             first,
-            end,
-            context: (from == 0).then(String::new),
+            last,
+            context: None,
             conclusions: None,
-            forking: false,
+            forking: None,
         });
         commands.entity(agent).insert(Splitting(split));
     }
@@ -541,8 +523,8 @@ fn summary_of(outcome: &Outcome) -> Result<String, String> {
 }
 
 /// Takes each settled summary: after the context, asks for the
-/// conclusions; after both, asks the harness to copy the session as of
-/// the end of the range.
+/// conclusions; after both, asks the harness to move the range into a new
+/// session.
 fn summarized(
     settled: On<Add<Settled>>,
     calls: Query<(&SplitCall, &Outcome)>,
@@ -575,11 +557,10 @@ fn summarized(
         Part::Context => {
             state.context = Some(text);
             let from = conversation.index_of(state.first);
-            let to = state
-                .end
-                .and_then(|end| conversation.index_of(end))
-                .unwrap_or(conversation.messages().len());
-            let moved = from.and_then(|from| conversation.messages().get(from..to));
+            let to = conversation.index_of(state.last);
+            let moved = from
+                .zip(to)
+                .and_then(|(from, to)| conversation.messages().get(from..=to));
             let Some(moved) = moved else {
                 return fail("its turns changed".to_owned(), &mut commands, &mut notices);
             };
@@ -591,10 +572,22 @@ fn summarized(
             }
         }
         Part::Conclusions => {
+            let (topic, _) = topic_and_conclusions(&text);
+            let name = state
+                .name
+                .clone()
+                .unwrap_or_else(|| slug(topic.as_deref().unwrap_or("split")));
             state.conclusions = Some(text);
-            state.forking = true;
+            state.forking = Some(name.clone());
             commands.trigger(ForkSession {
-                before: state.end.map(|end| (id.clone(), end)),
+                from: None,
+                cut: ForkCut::Line {
+                    agent: id.clone(),
+                    line: None,
+                    through: state.last,
+                    take: Some(state.first),
+                    title: name,
+                },
                 asker: Some(split),
             });
         }
@@ -625,97 +618,111 @@ fn slug(topic: &str) -> String {
     }
 }
 
-/// Writes the new session `to` from the copy the harness made: the
-/// messages before the range become one context message. Its main
-/// conversation's revision once written.
-fn write_copy(
+/// The split pointer in `conversation` to the session `to`, not merged
+/// yet, and how many entries it took out.
+fn pointer_to(conversation: &Line, to: &SessionId) -> Option<(AsideId, usize)> {
+    let to = to.to_string();
+    conversation
+        .asides()
+        .filter(|(_, aside)| aside.kind == SPLIT)
+        .find_map(|(id, aside)| {
+            let pointer = SplitPointer::deserialize(&aside.value).ok()?;
+            (pointer.session == to && !pointer.merged).then_some((id, pointer.moved))
+        })
+}
+
+/// The saved session `to` of `home`: its conversation of `agent`.
+fn copy_of(
     (stores, home): (&SessionStores, &Home),
-    (from, to): (&SessionId, &SessionId),
+    to: &SessionId,
     agent: &AgentId,
-    split: &Split,
-    name: &str,
-) -> Result<u64, String> {
+) -> Result<Line, String> {
     let store = stores
         .open(&home.session(to))
         .map_err(|failure| failure.to_string())?;
-    let mut session = Session::read(&*store).map_err(|failure| failure.to_string())?;
+    let session = Session::read(&*store).map_err(|failure| failure.to_string())?;
     let saved = session
-        .agent_mut(&agent.0)
-        .ok_or("the copy lacks the agent")?;
-    let conversation = &mut saved.conversation;
-    let first = conversation
-        .index_of(split.first)
-        .ok_or("the copy lacks the moved turns")?;
-    let context = split.context.clone().unwrap_or_default();
-    let context = (first > 0).then(|| {
-        let text = format!(
-            "[Context from session `{from}` before turn {}, condensed]\n{context}",
-            split.turns.0
-        );
-        Entry::new(Message::user(text)).by(Author::plugin(NAME))
-    });
-    conversation.splice(..first, context, Author::plugin(NAME));
-    session
-        .save(&*store)
-        .map_err(|failure| failure.to_string())?;
-    let copied = session
         .agent(&agent.0)
-        .map(|saved| saved.conversation.revision())
-        .unwrap_or_default();
-    let origin = Origin {
-        session: from.to_string(),
-        turns: split.turns,
-    };
-    let bytes = serde_json::to_vec(&origin).map_err(|failure| failure.to_string())?;
-    store
-        .write_file(FROM_IN_STORE, &bytes)
-        .map_err(|failure| failure.to_string())?;
-    let labels = BTreeMap::from([(LABEL.to_owned(), format!("split from {from}"))]);
-    let meta = SessionMeta {
-        title: name.to_owned(),
-        labels,
-        updated: now_ms(),
-    };
-    meta.write(&*store).map_err(|failure| failure.to_string())?;
-    Ok(copied)
+        .ok_or("the split-off session lacks the agent")?;
+    Ok(saved.conversation.clone())
 }
 
-/// Replaces the moved range of `conversation` with one note, followed by
-/// the aside that keeps what it moved.
-fn leave_note(
-    conversation: &mut Conversation,
+/// Puts the turns `copy` (the split session `to`'s conversation, its
+/// context message taken off) holds back at their pointer in
+/// `conversation`, with their ids, and removes the pointer.
+fn put_back(conversation: &mut Line, to: &SessionId, copy: &Line) -> Result<(), String> {
+    let (pointer, moved) = pointer_to(conversation, to).ok_or("its pointer is gone")?;
+    conversation
+        .merge_line(copy, MergeAt::Back { pointer, moved }, Author::plugin(NAME))
+        .map_err(|failure| failure.to_string())?;
+    conversation.remove_aside(pointer);
+    Ok(())
+}
+
+/// Turns the messages before the range in the new session `to` into one
+/// context message. The copy's revision once written, and whether it
+/// begins with that message.
+fn write_copy(
+    (stores, home, running): (&SessionStores, &Home, &SessionDir),
+    (from, to): (&SessionId, &SessionId),
+    agent: &AgentId,
     split: &Split,
-    (to, name, copied): (&SessionId, &str, u64),
+) -> Result<(u64, bool), String> {
+    let mut written = (0, false);
+    edit_stopped(stores, running, &home.session(to), |session| {
+        let conversation = &mut session
+            .agent_mut(&agent.0)
+            .ok_or("the copy lacks the agent")?
+            .conversation;
+        let first = conversation
+            .index_of(split.first)
+            .ok_or("the copy lacks the moved turns")?;
+        if first > 0 {
+            let text = format!(
+                "[Context from session `{from}` before turn {}, condensed]\n{}",
+                split.turns.0,
+                split.context.as_deref().unwrap_or_default()
+            );
+            let context = Entry::new(Message::user(text)).by(Author::plugin(NAME));
+            conversation.splice(..first, [context], Author::plugin(NAME));
+        }
+        written = (conversation.revision(), first > 0);
+        Ok(())
+    })?;
+    Ok(written)
+}
+
+/// Leaves the note at the pointer to `to` in `conversation`, followed by
+/// the aside `/split undo` reads.
+fn leave_note(
+    conversation: &mut Line,
+    split: &Split,
+    (to, name): (&SessionId, &str),
+    (copied, context): (u64, bool),
 ) -> Result<(), String> {
-    let from = conversation
-        .index_of(split.first)
-        .ok_or("its turns changed")?;
-    let end = split
-        .end
-        .and_then(|end| conversation.index_of(end))
-        .unwrap_or(conversation.messages().len());
-    let entries: Vec<Entry> = (from..end)
-        .filter_map(|at| conversation.entry(at))
-        .collect();
+    let (pointer, _) = pointer_to(conversation, to).ok_or("its pointer is gone")?;
+    let at = conversation
+        .aside(pointer)
+        .map(|pointer| conversation.aside_position(pointer))
+        .ok_or("its pointer is gone")?;
     let (topic, conclusions) =
         topic_and_conclusions(split.conclusions.as_deref().unwrap_or_default());
     let topic = topic.unwrap_or_else(|| name.to_owned());
-    let (a, b) = split.turns;
-    let turns = if a == b {
-        format!("Turn {a}")
-    } else {
-        format!("Turns {a}–{b}")
+    let turns = match split.turns {
+        (a, b) if a == b => format!("Turn {a}"),
+        (a, b) => format!("Turns {a}–{b}"),
     };
     let text =
         format!("[{turns} ({topic}) were moved to session `{name}`.]\nConclusions:\n{conclusions}");
     let note = Entry::new(Message::user(text)).by(Author::plugin(NAME));
-    conversation.splice(from..end, [note], Author::plugin(NAME));
-    let note = conversation.id(from).ok_or("the note went missing")?;
+    conversation.splice(at..at, [note], Author::plugin(NAME));
+    let note = conversation.id(at).ok_or("the note went missing")?;
     let moved = Moved {
         session: to.to_string(),
         name: name.to_owned(),
         note,
-        entries,
+        context,
+        // The aside added next is one more record.
         revision: conversation.revision().saturating_add(1),
         copied,
     };
@@ -724,39 +731,62 @@ fn leave_note(
     Ok(())
 }
 
-/// Finishes each split whose copy the harness wrote this frame: writes
-/// the new session and leaves the note behind; a split whose copy failed
-/// ends with the harness's error.
+/// Finishes each split the harness moved (or failed to) this frame:
+/// writes the new session's context and leaves the note behind. When that
+/// fails, the turns go back and the copy is deleted.
 fn finish(
-    mut forked: MessageReader<SessionForked>,
-    splits: Query<(Entity, &Split)>,
+    (mut forked, mut failed): (
+        MessageReader<SessionForked>,
+        MessageReader<SessionForkFailed>,
+    ),
+    splits: Query<&Split>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     holds: Query<(Entity, &SplitHold)>,
-    (stores, home, wake): (Res<SessionStores>, Res<RigHome>, Res<Wake>),
+    (stores, home, paths, wake): (
+        Res<SessionStores>,
+        Res<RigHome>,
+        Res<SessionPaths>,
+        Res<Wake>,
+    ),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let forks: Vec<SessionForked> = forked.read().cloned().collect();
-    for (entity, split) in splits.iter().filter(|(_, split)| split.forking) {
-        let agent = split.agent;
-        let fork = forks.iter().find(|fork| fork.asker == Some(entity));
-        let done = fork.ok_or_else(|| "the session could not be copied".to_owned());
-        let done = done.and_then(|fork| {
+    let forks = forked
+        .read()
+        .filter_map(|fork| Some((fork.asker?, Ok((fork.from.clone(), fork.to.clone())))));
+    let failures = failed
+        .read()
+        .filter_map(|failure| Some((failure.asker?, Err(failure.why.clone()))));
+    let outcomes: Vec<_> = forks.chain(failures).collect();
+    for (entity, outcome) in outcomes {
+        let Ok(
+            split @ Split {
+                agent,
+                forking: Some(name),
+                ..
+            },
+        ) = splits.get(entity)
+        else {
+            continue;
+        };
+        let agent = *agent;
+        let done = outcome.and_then(|(from, to)| {
             let (id, mut conversation) = agents.get_mut(agent).map_err(|_| "no agent")?;
-            let (topic, _) =
-                topic_and_conclusions(split.conclusions.as_deref().unwrap_or_default());
-            let name = split
-                .name
-                .clone()
-                .unwrap_or_else(|| slug(topic.as_deref().unwrap_or("split")));
-            let written = write_copy((&stores, &home.0), (&fork.from, &fork.to), id, split, &name)
-                .and_then(|copied| leave_note(&mut conversation, split, (&fork.to, &name, copied)));
+            let written = write_copy((&stores, &home.0, &paths), (&from, &to), id, split)
+                .and_then(|copied| leave_note(&mut conversation, split, (&to, name), copied));
             if let Err(why) = written {
-                commands.trigger(DeleteSession(fork.to.clone()));
-                return Err(why);
+                let back = copy_of((&stores, &home.0), &to, id)
+                    .and_then(|copy| put_back(&mut conversation, &to, &copy));
+                return match back {
+                    Ok(()) => {
+                        commands.trigger(DeleteSession(to));
+                        Err(format!("{why}; the turns are back"))
+                    }
+                    Err(back) => Err(format!("{why}; they stay in session {to}: {back}")),
+                };
             }
             commands.trigger(NameSession {
-                session: fork.to.clone(),
+                session: to,
                 name: name.clone(),
             });
             Ok(format!(
@@ -797,24 +827,28 @@ fn undo(
         notices.write(Notice::error(agent, "No split to undo."));
         return;
     };
-    let unchanged = |moved: &Moved| -> Result<SessionId, String> {
+    let unchanged = || -> Result<(SessionId, Line), String> {
         if conversation.revision() != moved.revision {
             return Err("this session changed since".to_owned());
         }
         let session: SessionId = moved.session.parse().map_err(|_| "a bad session id")?;
-        let dir = home.0.session(&session);
-        if dir.runs_elsewhere() {
+        if home.0.session(&session).runs_elsewhere() {
             return Err(format!("session `{}` is running", moved.name));
         }
-        let store = stores.open(&dir).map_err(|failure| failure.to_string())?;
-        let copy = Session::read(&*store).map_err(|failure| failure.to_string())?;
-        let revision = copy.agent(&id.0).map(|saved| saved.conversation.revision());
-        if revision != Some(moved.copied) {
+        let mut copy = copy_of((&stores, &home.0), &session, id)?;
+        if copy.revision() != moved.copied {
             return Err(format!("session `{}` changed since", moved.name));
         }
-        Ok(session)
+        if moved.context {
+            copy.splice(..1, [], Author::plugin(NAME));
+        }
+        Ok((session, copy))
     };
-    let session = match unchanged(&moved) {
+    let back = unchanged().and_then(|(session, copy)| {
+        put_back(&mut conversation, &session, &copy)?;
+        Ok(session)
+    });
+    let session = match back {
         Ok(session) => session,
         Err(why) => {
             notices.write(Notice::error(
@@ -824,67 +858,15 @@ fn undo(
             return;
         }
     };
-    let Some(at) = conversation.index_of(moved.note) else {
-        notices.write(Notice::error(
-            agent,
-            "Cannot undo the split: its note is gone.",
-        ));
-        return;
-    };
     conversation.remove_aside(aside);
-    conversation.restore(at..=at, moved.entries, Author::plugin(NAME));
+    if let Some(note) = conversation.index_of(moved.note) {
+        conversation.splice(note..=note, [], Author::plugin(NAME));
+    }
     commands.trigger(DeleteSession(session));
     notices.write(Notice::info(
         agent,
         format!("Put the turns back; session `{}` is removed.", moved.name),
     ));
-}
-
-/// Reads where this session was split from, if it was.
-fn read_from(data: Option<Res<PluginData>>, mut from: ResMut<SplitFrom>) {
-    let read = data
-        .and_then(|data| data.session.read_file(FROM_FILE).ok())
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
-    from.0 = read;
-}
-
-/// Keeps this session's `/resume` label: where it was split from and the
-/// sessions split off it.
-fn label(
-    from: Res<SplitFrom>,
-    conversations: Query<Ref<Conversation>>,
-    mut labels: Query<&mut ResumeLabel, With<SplitLabel>>,
-) {
-    if !from.is_changed()
-        && !conversations
-            .iter()
-            .any(|conversation| conversation.is_changed())
-    {
-        return;
-    }
-    let mut parts = Vec::new();
-    if let Some(from) = &from.0 {
-        parts.push(format!("split from {}", from.session));
-    }
-    let off: Vec<String> = conversations
-        .iter()
-        .flat_map(|conversation| {
-            conversation
-                .asides()
-                .filter(|(_, aside)| aside.kind == MOVED)
-                .filter_map(|(_, aside)| Moved::deserialize(&aside.value).ok())
-                .filter(|moved| conversation.index_of(moved.note).is_some())
-                .map(|moved| moved.name)
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    if !off.is_empty() {
-        parts.push(format!("split off {}", off.join(", ")));
-    }
-    let text = title_of(&parts.join("; "));
-    for mut label in &mut labels {
-        label.set_if_neq(ResumeLabel::new(LABEL, text.clone()));
-    }
 }
 
 #[cfg(test)]

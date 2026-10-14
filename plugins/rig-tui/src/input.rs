@@ -13,10 +13,14 @@
 //! ```no_run
 //! use rig_harness::prelude::*;
 //! use rig_tui::crossterm::event::{Event, KeyCode};
-//! use rig_tui::{InputSystems, KeyInput, TerminalEvents, TuiInput, TuiInputState, TuiKeys};
+//! use rig_tui::{Editor, InputSystems, KeyInput, MainEditor, TerminalEvents, TuiInputState, TuiKeys};
 //!
 //! /// `/` on an empty input opens a search instead of a slash command.
-//! fn slash_searches(mut events: ResMut<TerminalEvents>, input: Res<TuiInput>, state: Res<TuiInputState>) {
+//! fn slash_searches(
+//!     mut events: ResMut<TerminalEvents>,
+//!     input: Single<&Editor, With<MainEditor>>,
+//!     state: Res<TuiInputState>,
+//! ) {
 //!     let slash = |item: &KeyInput| {
 //!         matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'))
 //!     };
@@ -47,11 +51,12 @@ use ratatui::layout::Rect;
 
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, Completion, CompletionKind, CompletionSource};
-use super::editor::TuiInput;
+use super::editor::{Editor, MainEditor};
 use super::history::{PromptHistory, Sent};
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
+use super::pane::{MainPane, PaneState};
 use super::panel::{TuiPanel, TuiScreen};
-use super::pick::{self, Choices};
+use super::pick::{self, Choices, PickerState, Showing};
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Interrupt, Notice};
@@ -123,6 +128,7 @@ pub enum InputSystems {
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct TuiInputState {
     scope: KeyScope,
+    editor: Option<Entity>,
     completion: Option<Completion>,
     typed: Option<(CompletionKind, String)>,
     answering: Option<Entity>,
@@ -137,6 +143,12 @@ impl TuiInputState {
     /// with the [`KeyFocus`].
     pub fn scope(&self) -> KeyScope {
         self.scope
+    }
+
+    /// The [`Editor`] the keys type into: the one of the panel with the
+    /// [`KeyFocus`], else the [`MainEditor`]; `None` without either.
+    pub fn editor(&self) -> Option<Entity> {
+        self.editor
     }
 
     /// The open completion, which Up, Down, Tab, Enter and Esc act on.
@@ -277,16 +289,16 @@ pub(crate) fn run_keys(world: &mut World) {
         }
         done += 1;
         world.resource_mut::<TerminalEvents>().0.push(item);
-        let text = world
-            .get_resource::<TuiInput>()
-            .map(|input| input.text().to_owned());
+        let text = main_text(world);
         world.run_schedule(TuiKeys);
-        let typed = world.get_resource::<TuiInput>().map(TuiInput::text) != text.as_deref();
-        if let Some(mut transcript) = world.get_resource_mut::<TranscriptView>()
-            && typed
-            && transcript.selected.is_some()
-        {
-            transcript.selected = None;
+        let typed = main_text(world) != text;
+        if typed {
+            let mut main = world.query_filtered::<&mut TranscriptView, With<MainPane>>();
+            for mut transcript in main.iter_mut(world) {
+                if transcript.selected.is_some() {
+                    transcript.selected = None;
+                }
+            }
         }
         let left = std::mem::take(&mut world.resource_mut::<TerminalEvents>().0);
         for item in left.into_iter().rev() {
@@ -295,34 +307,49 @@ pub(crate) fn run_keys(world: &mut World) {
     }
 }
 
+/// The main editor's text.
+fn main_text(world: &mut World) -> Option<String> {
+    let mut main = world.query_filtered::<&Editor, With<MainEditor>>();
+    let text = main.single(world).ok().map(Editor::text);
+    text.map(str::to_owned)
+}
+
 /// Notes the [`TuiInputState`] for the next key's filters, and after the
 /// frame's keys.
 pub(crate) fn note_state(
-    (view, transcript): (Res<TuiView>, Res<TranscriptView>),
+    (view, main): (Res<TuiView>, Query<&TranscriptView, With<MainPane>>),
+    showing: Query<(Entity, &PickerState)>,
     focus: Res<KeyFocus>,
     panels: Query<(), With<TuiPanel>>,
     choices: Choices,
-    (input, sources): (Res<TuiInput>, Query<&CompletionSource>),
+    (editors, sources): (
+        Query<(Entity, &Editor, Has<MainEditor>)>,
+        Query<&CompletionSource>,
+    ),
     mut state: ResMut<TuiInputState>,
 ) {
-    let typed = complete::typed(&input, &sources);
+    let main_editor = editors.iter().find(|(.., main)| *main);
+    let typed = main_editor.and_then(|(_, input, _)| complete::typed(input, &sources));
+    let focused = focus.0.filter(|panel| editors.contains(*panel));
+    let editor = focused.or(main_editor.map(|(entity, ..)| entity));
     let scope = match focus.0 {
         Some(panel) if panels.contains(panel) => KeyScope::Panel(panel),
-        _ if transcript.selected.is_some() => KeyScope::Transcript,
+        _ if reading(&main) => KeyScope::Transcript,
         _ => KeyScope::Input,
     };
-    let choosing = view.choosing.as_ref();
-    let answering = choosing.filter(|c| c.draft.is_some()).map(|c| c.entity);
-    let picker = choosing.filter(|c| c.draft.is_none());
-    let picking = picker.map(|c| c.entity);
-    let selection = picker.and_then(|choosing| {
-        let shown = choices.shown(choosing.entity)?;
+    let choosing = showing.iter().next();
+    let answering = choosing.filter(|(_, c)| c.draft.is_some()).map(|(e, _)| e);
+    let picker = choosing.filter(|(_, c)| c.draft.is_none());
+    let picking = picker.map(|(e, _)| e);
+    let selection = picker.and_then(|(entity, choosing)| {
+        let shown = choices.shown(entity)?;
         match shown.rows(&choosing.filter).get(choosing.selected) {
             Some(&pick::Row::Item(index)) => Some(index),
             _ => None,
         }
     });
     let same = state.scope == scope
+        && state.editor == editor
         && state.answering == answering
         && state.picking == picking
         && state.selection == selection
@@ -331,6 +358,7 @@ pub(crate) fn note_state(
     if !same {
         *state = TuiInputState {
             scope,
+            editor,
             completion: view.completion.clone(),
             typed,
             answering,
@@ -338,6 +366,12 @@ pub(crate) fn note_state(
             selection,
         };
     }
+}
+
+/// Whether the person reads the main transcript: an item of it is
+/// selected.
+fn reading(main: &Query<&TranscriptView, With<MainPane>>) -> bool {
+    main.iter().any(|view| view.selected.is_some())
 }
 
 /// The key bindings and who has the keys.
@@ -384,19 +418,56 @@ pub(crate) struct Context<'a, 'w, 's> {
     choices: &'a Choices<'w, 's>,
 }
 
-/// What a built-in key changes. The transcript view is marked changed
-/// only when a key really changes it, as plugins rerun on its changes.
+/// What a built-in key changes: the view, the input, and the transcript
+/// pane the keys act on, the one with the [`KeyFocus`] or else the main
+/// one. Its view is marked changed only when a key really changes it, as
+/// plugins rerun on its changes.
 pub(crate) struct Target<'a> {
     view: &'a mut TuiView,
-    input: &'a mut TuiInput,
-    transcript: Mut<'a, TranscriptView>,
+    input: &'a mut Editor,
+    pane: Option<(Mut<'a, TranscriptView>, Mut<'a, PaneState>)>,
+}
+
+/// The transcript panes, which the keys scroll, select and expand in.
+type Panes<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static mut TranscriptView,
+        &'static mut PaneState,
+        Has<MainPane>,
+    ),
+>;
+
+/// The editors, which the keys type into.
+type Editors<'w, 's> = Query<'w, 's, (Entity, &'static mut Editor, Has<MainEditor>)>;
+
+/// The editor the keys type into: the panel's with the keys, else the main
+/// one.
+fn keyed_editor(editors: &Editors, focus: Option<Entity>) -> Option<Entity> {
+    let focused = focus.filter(|entity| editors.contains(*entity));
+    let main = || editors.iter().find(|(.., main)| *main);
+    focused.or_else(|| main().map(|(entity, ..)| entity))
+}
+
+/// The pane the keys act on: the one with the keys, else the main one.
+fn keyed_pane(panes: &Panes, focus: Option<Entity>) -> Option<Entity> {
+    let focused = focus.filter(|entity| panes.contains(*entity));
+    let main = || {
+        panes
+            .iter()
+            .find(|(.., main)| *main)
+            .map(|(entity, ..)| entity)
+    };
+    focused.or_else(main)
 }
 
 /// Does the [`TerminalEvents`] left of the key being done, in order.
 pub(crate) fn read_input(
     mut events: ResMut<TerminalEvents>,
-    (mut view, mut transcript, shown): (ResMut<TuiView>, ResMut<TranscriptView>, Res<Shown>),
-    mut input: ResMut<TuiInput>,
+    (mut view, mut panes, shown): (ResMut<TuiView>, Panes, Res<Shown>),
+    (mut editors, mut showing): (Editors, Showing),
     mut keymap: Keymap,
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
@@ -429,66 +500,80 @@ pub(crate) fn read_input(
         history: &history.entries,
         choices: &choices,
     };
+    // Keys typed with no editor to take them go nowhere.
+    let mut none = Editor::default();
     for item in std::mem::take(&mut events.0) {
+        let editor = keyed_editor(&editors, keymap.focus.0);
+        let in_panel = editor.is_some() && editor == keymap.focus.0;
+        let mut found = editor.and_then(|editor| editors.get_mut(editor).ok());
+        let input: &mut Editor = match &mut found {
+            Some((_, editor, _)) => editor,
+            None => &mut none,
+        };
+        let pane = keyed_pane(&panes, keymap.focus.0);
+        let reading = panes
+            .iter()
+            .any(|(_, view, _, main)| main && view.selected.is_some());
         let event = match item {
             KeyInput::Event(event) => event,
             KeyInput::Action(action) => {
+                let pane = pane.and_then(|pane| panes.get_mut(pane).ok());
                 let mut target = Target {
                     view: &mut view,
-                    input: &mut input,
-                    transcript: transcript.reborrow(),
+                    input,
+                    pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
-                act(action, &mut target, &context, &mut commands);
+                act(action, &mut target, (&context, &showing), &mut commands);
                 continue;
             }
         };
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Release => {
-                let reading = transcript.selected.is_some();
                 released(key, (shown.0, reading), &mut keymap, &mut commands);
             }
             Event::Key(key) => {
                 // A question answered in the input leaves the keys to it.
-                let picking = view
-                    .choosing
-                    .as_mut()
-                    .filter(|choosing| choosing.draft.is_none());
-                if let Some(choosing) = picking {
-                    let Some(shown) = choices.shown(choosing.entity) else {
-                        continue;
-                    };
-                    if let Some(chosen) = pick::choice_key(key, choosing, &shown) {
-                        let entity = choosing.entity;
+                let picking = showing.iter_mut().find(|(_, c)| c.draft.is_none());
+                if let Some((entity, mut choosing)) = picking {
+                    let shown = choices.shown(entity);
+                    let chosen =
+                        shown.and_then(|shown| pick::choice_key(key, &mut choosing, &shown));
+                    if let Some(chosen) = chosen {
                         commands.trigger(Pick::person(entity, chosen));
                         // The next one takes the keys that follow.
                         view.queue.retain(|&queued| queued != entity);
-                        pick::show_first(&mut view, &choices, &mut input);
+                        pick::show_first(&view, &choices, (&showing, input), &mut commands);
                     }
                     continue;
                 }
+                let pane = pane.and_then(|pane| panes.get_mut(pane).ok());
                 let mut target = Target {
                     view: &mut view,
-                    input: &mut input,
-                    transcript: transcript.reborrow(),
+                    input,
+                    pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
-                pressed(key, &mut target, &mut keymap, &context, &mut commands);
+                pressed(
+                    key,
+                    (reading, in_panel),
+                    &mut target,
+                    &mut keymap,
+                    (&context, &showing),
+                    &mut commands,
+                );
             }
             // A paste arrives whole, newlines included, so it is not sent
             // line by line. A panel with the keys reads it from the event.
-            Event::Paste(text) => match view.choosing.as_mut().filter(|c| c.draft.is_none()) {
-                Some(choosing) => {
+            Event::Paste(text) => match showing.iter_mut().find(|(_, c)| c.draft.is_none()) {
+                Some((_, mut choosing)) => {
                     choosing
                         .filter
                         .push_str(text.lines().next().unwrap_or_default());
                     choosing.selected = 0;
                 }
-                None if matches!(
-                    keymap.scope(transcript.selected.is_some()),
-                    KeyScope::Panel(_)
-                ) => {}
+                None if !in_panel && matches!(keymap.scope(reading), KeyScope::Panel(_)) => {}
                 // A dropped image file becomes `@path`, which attaches it.
                 None => match clipboard::dropped_image(&text) {
-                    Some(path) => clipboard::type_path(&mut input, &path),
+                    Some(path) => clipboard::type_path(input, &path),
                     None => input.insert(&text),
                 },
             },
@@ -509,22 +594,20 @@ pub(crate) fn read_input(
 
 /// Handles a key pressed with no picker or question shown: a binding's,
 /// the next of a binding of several, else a character typed into the
-/// input. With a panel focused, Esc that it does not bind gives the keys
-/// back to the input.
+/// input, or into the editor of the panel with the keys (`in_panel`). With
+/// a panel focused, Esc that it does not bind gives the keys back to the
+/// input.
 fn pressed(
     key: KeyEvent,
+    (reading, in_panel): (bool, bool),
     target: &mut Target,
     keymap: &mut Keymap,
-    context: &Context,
+    (context, showing): (&Context, &Showing),
     commands: &mut Commands,
 ) {
-    let Target {
-        view,
-        input,
-        transcript,
-    } = target;
+    let Target { view, input, .. } = target;
     let press = KeyPress::of(&key);
-    let scope = keymap.scope(transcript.selected.is_some());
+    let scope = keymap.scope(reading);
     let bindings: Vec<(Entity, &KeyBinding)> = keymap
         .bindings
         .iter()
@@ -542,7 +625,7 @@ fn pressed(
         }
         match scope {
             KeyScope::Panel(_) if press.code == KeyCode::Esc => keymap.focus.0 = None,
-            KeyScope::Panel(_) => {}
+            KeyScope::Panel(_) if !in_panel => {}
             _ => {
                 if let Some(character) = press.typed() {
                     input.insert_char(character);
@@ -559,7 +642,7 @@ fn pressed(
         return;
     }
     match action {
-        Some(action) => act(*action, target, context, commands),
+        Some(action) => act(*action, target, (context, showing), commands),
         None => commands.trigger(KeyPressed {
             entity,
             agent: context.agent,
@@ -595,26 +678,26 @@ fn released(
 /// Does what a built-in key does. With a turn running, Enter steers it and
 /// Tab queues a follow-up. Esc interrupts the agent: it stops its turn,
 /// or, idle, what a plugin stops on it, such as a rebuild.
-fn act(action: InputAction, target: &mut Target, context: &Context, commands: &mut Commands) {
+fn act(
+    action: InputAction,
+    target: &mut Target,
+    (context, showing): (&Context, &Showing),
+    commands: &mut Commands,
+) {
     use InputAction as Do;
-    let Target {
-        view,
-        input,
-        transcript,
-    } = target;
+    let Target { view, input, pane } = target;
     // A question answered in the input: Enter answers it, Esc refuses it.
-    let editing = view
-        .choosing
-        .as_ref()
-        .filter(|choosing| choosing.draft.is_some())
-        .map(|choosing| choosing.entity);
+    let editing = showing
+        .iter()
+        .find(|(_, choosing)| choosing.draft.is_some());
+    let editing = editing.map(|(entity, _)| entity);
     match (action, editing) {
         (Do::Send, Some(ask)) if view.completion.as_ref().is_none_or(|c| c.is_exact()) => {
             let answer = Chosen::text(input.take());
-            return close(ask, Some(answer), target, context, commands);
+            return close(ask, Some(answer), target, (context, showing), commands);
         }
         (Do::Stop, Some(ask)) if view.completion.is_none() => {
-            return close(ask, None, target, context, commands);
+            return close(ask, None, target, (context, showing), commands);
         }
         _ => {}
     }
@@ -643,12 +726,20 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
             Some(completion) => completion.select(1),
             None => input.down(context.history),
         },
-        Do::ScrollUp => view.scroll.up(1),
-        Do::ScrollDown => view.scroll.down(1),
-        Do::PageUp => view.scroll.up(PAGE),
-        Do::PageDown => view.scroll.down(PAGE),
+        Do::ScrollUp | Do::ScrollDown | Do::PageUp | Do::PageDown => {
+            if let Some((_, state)) = pane {
+                let page = PAGE.min(state.page());
+                match action {
+                    Do::ScrollUp => state.scroll.up(1),
+                    Do::ScrollDown => state.scroll.down(1),
+                    Do::PageUp => state.scroll.up(page),
+                    _ => state.scroll.down(page),
+                }
+            }
+        }
         Do::Tab if view.completion.is_none() && context.busy && editing.is_none() => {
-            send(view, input, context.agent, commands, true);
+            let state = pane.as_mut().map(|(_, state)| &mut **state);
+            send(view, input, state, context.agent, commands, true);
         }
         Do::Tab => accept_completion(view, input),
         Do::Send => {
@@ -664,7 +755,8 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
             if input.continue_line() {
                 return;
             }
-            send(view, input, context.agent, commands, false);
+            let state = pane.as_mut().map(|(_, state)| &mut **state);
+            send(view, input, state, context.agent, commands, false);
         }
         Do::Stop => match view.completion.take() {
             Some(completion) => view.dismissed = Some(completion.start),
@@ -689,16 +781,23 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
                 .paste_image(images, launcher, context.wake.clone());
         }
         Do::SelectUp | Do::SelectDown => {
-            select(action == Do::SelectUp, view, transcript.reborrow());
+            if let Some((transcript, state)) = pane {
+                select(action == Do::SelectUp, transcript, state);
+            }
         }
         Do::Deselect => {
-            if transcript.selected.is_some() {
+            if let Some((transcript, _)) = pane
+                && transcript.selected.is_some()
+            {
                 transcript.selected = None;
             }
         }
         Do::Expand => {
+            let Some((transcript, state)) = pane else {
+                return;
+            };
             let newest_call = || {
-                let mut calls = view.items.iter().rev();
+                let mut calls = state.items.iter().rev();
                 calls.find(|item| matches!(item, TranscriptItem::Call(_)))
             };
             let item = transcript
@@ -709,7 +808,9 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
                 transcript.toggle(item);
             }
         }
-        Do::AnswerInline(number) => answer_inline(usize::from(number), target, context, commands),
+        Do::AnswerInline(number) => {
+            answer_inline(usize::from(number), target, (context, showing), commands);
+        }
         Do::DismissInline => {
             if let Some(&ask) = view.inline.first() {
                 view.inline.remove(0);
@@ -725,31 +826,36 @@ fn close(
     ask: Entity,
     chosen: Option<Chosen>,
     target: &mut Target,
-    context: &Context,
+    (context, showing): (&Context, &Showing),
     commands: &mut Commands,
 ) {
     commands.trigger(Pick::person(ask, chosen));
     target.view.queue.retain(|&queued| queued != ask);
-    pick::show_first(target.view, context.choices, target.input);
+    pick::show_first(
+        target.view,
+        context.choices,
+        (showing, target.input),
+        commands,
+    );
 }
 
-/// Moves the selection up or down the items of the transcript drawn last:
+/// Moves the selection up or down the items of the pane laid out last:
 /// up from none selects the newest, down past the newest selects none. The
 /// item selected is brought on screen.
-fn select(up: bool, view: &mut TuiView, mut transcript: Mut<TranscriptView>) {
+fn select(up: bool, transcript: &mut Mut<TranscriptView>, state: &mut Mut<PaneState>) {
     let at = transcript
         .selected
         .as_ref()
-        .and_then(|selected| view.items.iter().position(|item| item == selected));
+        .and_then(|selected| state.items.iter().position(|item| item == selected));
     let next = match (at, up) {
-        (None, true) => view.items.len().checked_sub(1),
+        (None, true) => state.items.len().checked_sub(1),
         (None, false) => None,
         (Some(at), true) => Some(at.saturating_sub(1)),
         (Some(at), false) => Some(at + 1),
     };
-    let selected = next.and_then(|next| view.items.get(next)).cloned();
+    let selected = next.and_then(|next| state.items.get(next)).cloned();
     if let Some(item) = &selected {
-        view.scroll.to(item.clone(), ItemRow::Reveal);
+        state.scroll.to(item.clone(), ItemRow::Reveal);
     }
     if transcript.selected != selected {
         transcript.selected = selected;
@@ -759,7 +865,12 @@ fn select(up: bool, view: &mut TuiView, mut transcript: Mut<TranscriptView>) {
 /// Answers the question shown beside the work with its choice `number`,
 /// counted from 1, or after its choices, when it takes text, takes the
 /// input for its answer.
-fn answer_inline(number: usize, target: &mut Target, context: &Context, commands: &mut Commands) {
+fn answer_inline(
+    number: usize,
+    target: &mut Target,
+    (context, showing): (&Context, &Showing),
+    commands: &mut Commands,
+) {
     let Some(&ask) = target.view.inline.first() else {
         return;
     };
@@ -772,20 +883,27 @@ fn answer_inline(number: usize, target: &mut Target, context: &Context, commands
     if index < shown.items.len() {
         target.view.inline.remove(0);
         commands.trigger(Pick::person(ask, Some(Chosen::item(index))));
-    } else if index == shown.items.len() && shown.free_text && target.view.choosing.is_none() {
+    } else if index == shown.items.len() && shown.free_text && showing.is_empty() {
         target.view.inline.remove(0);
         target.view.queue.insert(0, ask);
-        pick::show_first(target.view, context.choices, target.input);
+        pick::show_first(
+            target.view,
+            context.choices,
+            (showing, target.input),
+            commands,
+        );
     }
 }
 
 /// Sends the input to `agent`, the one shown, as the user's [`Deliver`]: a
 /// slash command, or a message that starts a turn, or steers the running
 /// one, or is queued for after it with `queue`. A refused command sent
-/// again unchanged is a message. The prompt history records it.
+/// again unchanged is a message. The prompt history records it, and the
+/// pane the keys act on follows the newest output.
 pub(crate) fn send(
     view: &mut TuiView,
-    input: &mut TuiInput,
+    input: &mut Editor,
+    pane: Option<&mut PaneState>,
     agent: Option<Entity>,
     commands: &mut Commands,
     queue: bool,
@@ -798,7 +916,9 @@ pub(crate) fn send(
     }
     let text = input.take();
     commands.write_message(Sent(text.clone()));
-    view.scroll.follow();
+    if let Some(pane) = pane {
+        pane.scroll.follow();
+    }
     let mode = if queue {
         DeliveryMode::Queue
     } else {
@@ -810,7 +930,7 @@ pub(crate) fn send(
 }
 
 /// Puts the selected completion in place of the token being completed.
-fn accept_completion(view: &mut TuiView, input: &mut TuiInput) {
+fn accept_completion(view: &mut TuiView, input: &mut Editor) {
     let Some(completion) = view.completion.take() else {
         return;
     };

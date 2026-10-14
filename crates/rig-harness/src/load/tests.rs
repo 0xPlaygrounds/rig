@@ -134,3 +134,17 @@ fn what_a_plugin_keeps_is_on_its_entity_under_the_saved_key() {
     let mut kept = world.query::<&Keeps>();
     assert_eq!(kept.iter(world).count(), 2);
 }
+
+/// A saved value's stable key is recorded and listed; a key another type
+/// has is refused, so the first type keeps it and nothing is listed.
+#[test]
+fn a_saved_key_is_recorded_once_and_a_taken_one_refused() {
+    let mut app = App::new();
+    app.saved_as::<Totals>("counter.totals").listed();
+    let _ = app.saved_as::<Count>("counter.totals");
+    let keys = app.world().resource::<rig_ecs::restore::SavedKeys>();
+    assert_eq!(keys.key(Totals::type_path()), Some("counter.totals"));
+    assert_eq!(keys.path("counter.totals"), Some(Totals::type_path()));
+    assert_eq!(keys.key(Count::type_path()), None);
+    assert!(keys.is_listed("counter.totals"));
+}

@@ -24,11 +24,11 @@ use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, Us
 use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
 use rig_core::tool::ToolResultContext;
 
-use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
-    CallState, ChildCall, ContentBlock, ContentView, EntryView, RESULT_LINES, Renderers,
-    ToolCallView, excerpt, result_style, result_text,
+    AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
+    MessageView, RESULT_LINES, Renderers, Role, ToolCallView, excerpt, plugin_name, result_style,
+    result_text,
 };
 use super::view::{
     Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, ShownNotice, TextMark,
@@ -41,7 +41,6 @@ use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_ecs::stage::{EffectRecorded, Outcome};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, SentTo, StreamDelta};
-use rig_harness::note::Note;
 use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 use rig_tools::attach::attached_file;
 use serde::Serialize;
@@ -678,43 +677,38 @@ pub(crate) struct Look<'a> {
 pub(crate) enum Inside<'a> {
     /// A notice written there, and its index in the notices shown.
     Notice(usize, &'a ShownNotice),
-    /// A note whose entry was taken out, after the start of what stands
+    /// An aside whose entry was taken out, after the start of what stands
     /// for it.
-    Note(&'a ShownNote<'a>),
+    Aside(&'a ShownAside<'a>),
 }
 
-/// A plugin's note in the conversation of the agent shown.
-pub(crate) struct ShownNote<'a> {
-    /// Its aside's id.
+/// An aside a look draws in the conversation of the agent shown: a
+/// plugin's note, or one of a kind with an aside renderer.
+pub(crate) struct ShownAside<'a> {
+    /// Its id.
     pub(crate) id: AsideId,
-    /// The aside that holds it.
+    /// The aside.
     pub(crate) aside: &'a Aside,
-    /// What it shows.
-    pub(crate) note: Note,
 }
 
-impl ShownNote<'_> {
-    /// The note's item.
+impl ShownAside<'_> {
+    /// The aside's item.
     pub(crate) fn item(&self) -> TranscriptItem {
-        TranscriptItem::Note(self.id)
+        TranscriptItem::Aside(self.id)
     }
 
-    /// The note as its plugin's renderer sees it.
-    pub(crate) fn view(&self, expanded: bool) -> EntryView<'_> {
-        EntryView {
-            plugin: plugin_name(&self.aside.author),
-            title: &self.note.title,
-            text: &self.note.text,
+    /// The aside as its renderer sees it.
+    pub(crate) fn view(&self, expanded: bool) -> AsideView<'_> {
+        AsideView {
+            id: self.id,
+            aside: self.aside,
             expanded,
         }
     }
-}
 
-/// The name of the plugin `author` is, or empty for any other author.
-fn plugin_name(author: &Author) -> &str {
-    match &author.kind {
-        AuthorKind::Plugin(name) => name,
-        _ => "",
+    /// Its lines, whole when `expanded`; none for a kind nothing draws.
+    pub(crate) fn lines(&self, renderers: &Renderers<'_>, expanded: bool) -> Vec<Line<'static>> {
+        renderers.aside(&self.view(expanded)).unwrap_or_default()
     }
 }
 
@@ -769,11 +763,13 @@ impl Look<'_> {
                     level_code(notice.level).hash(hasher);
                     notice.text.hash(hasher);
                 }
-                Inside::Note(note) => {
-                    note.id.hash(hasher);
-                    plugin_name(&note.aside.author).hash(hasher);
-                    (&note.note.title, &note.note.text).hash(hasher);
-                    self.is_expanded(&note.item()).hash(hasher);
+                Inside::Aside(shown) => {
+                    shown.id.hash(hasher);
+                    (&shown.aside.kind, plugin_name(&shown.aside.author)).hash(hasher);
+                    serde_json::to_vec(&shown.aside.value)
+                        .unwrap_or_default()
+                        .hash(hasher);
+                    self.is_expanded(&shown.item()).hash(hasher);
                 }
             }
         }
@@ -1307,9 +1303,10 @@ struct Held {
 }
 
 /// What is below a view scrolled up.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Below {
     /// Nothing: the view follows the bottom.
+    #[default]
     Nothing,
     /// Rows that were there when the view was scrolled up.
     More,
@@ -1480,10 +1477,10 @@ fn message_lines(
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
             match inside {
                 Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
-                Inside::Note(note) => {
-                    let item = note.item();
+                Inside::Aside(shown) => {
+                    let item = shown.item();
                     let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                        look.renderers.entry(&note.view(expanded))
+                        shown.lines(look.renderers, expanded)
                     });
                     let start = lines.len();
                     lines.push(Line::default());
@@ -1524,7 +1521,13 @@ fn message_lines(
                                 lines.extend(drawn);
                                 message_cut |= is_cut;
                             }
-                            None => user_lines(&text.text, &mut lines),
+                            None => lines.extend(look.renderers.message(&MessageView {
+                                role: Role::User,
+                                message: id,
+                                block: item_at,
+                                text: &text.text,
+                                marks: &[],
+                            })),
                         }
                     }
                     // Drawn under its call already.
@@ -1555,13 +1558,22 @@ fn message_lines(
                         lines.push(Line::default());
                         let marks =
                             id.map(|id| look.marks_in(MarkIn::Message { id, block: item_at }));
-                        lines.extend(markdown::render_marked(
-                            &text.text,
-                            &marks.unwrap_or_default(),
-                        ));
+                        lines.extend(look.renderers.message(&MessageView {
+                            role: Role::Assistant,
+                            message: id,
+                            block: item_at,
+                            text: &text.text,
+                            marks: &marks.unwrap_or_default(),
+                        }));
                     }
                     AssistantContent::Reasoning(reasoning) => {
-                        lines.extend(plain_lines(&reasoning.text, Style::new().dim().italic()));
+                        lines.extend(look.renderers.message(&MessageView {
+                            role: Role::Reasoning,
+                            message: id,
+                            block: item_at,
+                            text: &reasoning.text,
+                            marks: &[],
+                        }));
                     }
                     AssistantContent::ToolCall(call) => {
                         let result = tool_results(next).find(|result| result.call == call.id);
@@ -1600,6 +1612,22 @@ fn message_lines(
                         }
                     }
                 }
+            }
+        }
+    }
+    if !matches!(message, Message::System { .. }) {
+        let decorated = DecoratedMessage {
+            message,
+            id,
+            author,
+        };
+        let (drawn, decorations) = look.renderers.message_decorations(&decorated);
+        let start = lines.len();
+        lines.extend(drawn);
+        for (name, rows) in decorations {
+            if let Some(id) = id {
+                let decoration = TranscriptItem::MessageDecoration(id, name);
+                marks.push((decoration, start + rows.start..start + rows.end));
             }
         }
     }
@@ -1644,18 +1672,6 @@ fn content_lines(
         if is_cut {
             cut.push(item);
         }
-    }
-}
-
-/// What the user typed, under a `›`.
-fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
-    let style = Style::new().cyan().bold();
-    for (index, line) in text.lines().enumerate() {
-        let prefix = if index == 0 { "› " } else { "  " };
-        lines.push(Line::styled(
-            format!("{prefix}{}", line.replace('\t', "    ")),
-            style,
-        ));
     }
 }
 

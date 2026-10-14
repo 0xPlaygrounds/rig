@@ -367,15 +367,17 @@ impl Here<'_, '_> {
         let Some(root) = paths.id() else {
             return Vec::new();
         };
-        let family: Vec<(SessionId, String, Arc<dyn Store>)> =
-            rig_sessions::list(&home.0, stores, paths.path())
-                .into_iter()
-                .filter_map(|entry| {
-                    let store = stores.open(&home.0.session(&entry.id)).ok()?;
-                    let parent = ForkedFrom::read(&*store)?.session;
-                    Some((entry.id, parent, store))
-                })
-                .collect();
+        let family: Vec<(SessionId, String, Arc<dyn Store>)> = home
+            .0
+            .saved_sessions()
+            .into_iter()
+            .filter(|(_, dir)| dir.path() != paths.path())
+            .filter_map(|(id, dir)| {
+                let store = stores.open(&dir).ok()?;
+                let parent = ForkedFrom::read(&*store)?.session;
+                Some((id, parent, store))
+            })
+            .collect();
         let mut found: Vec<(SessionId, Arc<dyn Store>)> = Vec::new();
         let mut todo = vec![root.to_string()];
         while let Some(parent) = todo.pop() {

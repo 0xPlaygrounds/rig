@@ -395,6 +395,20 @@ impl Home {
         }
     }
 
+    /// Every saved session of this home (not one being deleted), in no
+    /// order, with its directory: what every listing and [`Self::find`]
+    /// read.
+    pub fn saved_sessions(&self) -> Vec<(SessionId, SessionDir)> {
+        let entries = std::fs::read_dir(self.sessions()).into_iter().flatten();
+        let ids = entries.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
+        ids.map(|id| {
+            let dir = self.session(&id);
+            (id, dir)
+        })
+        .filter(|(_, dir)| dir.is_saved())
+        .collect()
+    }
+
     /// The saved session `name_or_id` names: the one with that id when it
     /// parses as one and is saved, else the only saved session with that
     /// [`SessionDir::name`].
@@ -410,14 +424,11 @@ impl Home {
         {
             return Ok(id);
         }
-        let mut named: Vec<SessionId> = std::fs::read_dir(self.sessions())
+        let mut named: Vec<SessionId> = self
+            .saved_sessions()
             .into_iter()
-            .flatten()
-            .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
-            .filter(|id| {
-                let dir = self.session(id);
-                dir.is_saved() && dir.name().as_deref() == Some(wanted)
-            })
+            .filter(|(_, dir)| dir.name().as_deref() == Some(wanted))
+            .map(|(id, _)| id)
             .collect();
         named.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         match named.as_slice() {
@@ -567,6 +578,31 @@ impl SessionDir {
     /// Held by the launcher running the session while it lives.
     pub fn launcher_lock(&self) -> PathBuf {
         self.0.join("launcher.lock")
+    }
+
+    /// Takes [`Self::launcher_lock`], creating the directory, unless
+    /// another launcher holds it: the lock that marks the session as run,
+    /// held until the returned file is dropped or the process dies. A
+    /// launcher holds it while it runs the session, and a program that
+    /// changes a saved session holds it while it does, so no launcher
+    /// starts the session meanwhile. `None` when another holds it.
+    ///
+    /// # Errors
+    ///
+    /// When the directory or the lock file cannot be made, or locking
+    /// fails otherwise.
+    pub fn hold(&self) -> std::io::Result<Option<std::fs::File>> {
+        std::fs::create_dir_all(&self.0)?;
+        let file = std::fs::File::options()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(self.launcher_lock())?;
+        match file.try_lock() {
+            Ok(()) => Ok(Some(file)),
+            Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+            Err(std::fs::TryLockError::Error(failure)) => Err(failure),
+        }
     }
 
     /// Whether a launcher runs the session: one holds

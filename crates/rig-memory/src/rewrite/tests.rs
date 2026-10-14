@@ -77,8 +77,8 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     let note = json!({ "sk-1": "about sk-1" });
     main.add_aside(Aside::new("note", Author::plugin("btw"), note).after(Some(look)));
     writer.save("main", &mut main);
-    writer.state("main", "rig::title", Some(json!("about sk-1")), true);
-    writer.state(SESSION, "theme", Some(json!("dark")), false);
+    writer.state("main", "rig::title", Some(json!("about sk-1").into()), true);
+    writer.state(SESSION, "theme", Some(json!("dark").into()), false);
     let mut other = Conversation::from_messages([Message::user("plain")]);
     writer.save("other", &mut other);
     let mut replaced = Conversation::from_messages([Message::user("a reset with sk-1")]);
@@ -113,7 +113,10 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     // left.
     assert_eq!(main_log.records, 4);
     assert_eq!(main_log.changed_keys, ["rig::title"]);
-    assert_eq!(main_log.state.get("rig::title"), Some(&json!("about [R]")));
+    assert_eq!(
+        main_log.state.get("rig::title"),
+        Some(&json!("about [R]").into())
+    );
     assert_eq!(
         rewritten.files,
         ["effects.jsonl", "meta.json", "notes.md"],
@@ -275,7 +278,7 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     writer.start();
     let mut live = Conversation::from_messages([Message::user("my key is sk-1")]);
     writer.save("main", &mut live);
-    writer.state("main", "mode", Some(json!("sk-1")), true);
+    writer.state("main", "mode", Some(json!("sk-1").into()), true);
     // Queued, not written yet.
     let rewritten = writer
         .rewrite(Author::plugin("redact"), &redact())
@@ -284,7 +287,7 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     live.reread(main.conversation.clone()).expect("reread");
     assert_eq!(live.messages(), [Message::user("my key is [R]")]);
     // The host puts the rewritten value back: nothing is written.
-    writer.state("main", "mode", Some(json!("[R]")), true);
+    writer.state("main", "mode", Some(json!("[R]").into()), true);
     live.push(Message::assistant("ok"));
     let saved = writer.save("main", &mut live);
     assert!(
@@ -296,7 +299,7 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("main");
     assert_eq!(main.conversation, live);
-    assert_eq!(main.state.get("mode"), Some(&json!("[R]")));
+    assert_eq!(main.state.get("mode"), Some(&json!("[R]").into()));
     let modes = history(&*store, "main").expect("history");
     let modes = modes
         .iter()
@@ -436,6 +439,47 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
     assert_eq!(back, Some(&Message::assistant("Seen [R].")));
     save(&store, "main", &mut read).expect("saved");
     assert_eq!(load(&store, "main").expect("read"), read);
+}
+
+/// A rewrite reaches the saved asides a stashed branch keeps, which come
+/// back rewritten when it is switched to; a branch it finds nothing in
+/// keeps its record's bytes.
+#[test]
+fn a_rewrite_reaches_the_asides_a_stashed_branch_keeps() {
+    let store = MemoryStore::default();
+    let by = Author::plugin("tree");
+    let mut conversation = load(&store, "main").expect("loaded");
+    conversation.extend([Message::user("Hi."), Message::user("Deploy it.")]);
+    let deploy = conversation.id(1);
+    let note = Aside::new("note", by.clone(), json!("used sk-1")).after(deploy);
+    conversation.add_aside(note);
+    let secret = conversation.branch_off(1, "retry", by.clone());
+    let secret = secret.expect("branched");
+    conversation.push(Message::user("Wait."));
+    assert!(conversation.branch_off(1, "later", by.clone()).is_ok());
+    save(&store, "main", &mut conversation).expect("saved");
+    let before = logs(&store).remove("main").unwrap_or_default();
+
+    rewrite(&store, Author::plugin("redact"), &redact()).expect("rewritten");
+    let after = logs(&store).remove("main").unwrap_or_default();
+    let text = String::from_utf8_lossy(&after);
+    assert!(!text.contains("sk-1"), "{text}");
+    let waited: Vec<&[u8]> = lines(&before)
+        .into_iter()
+        .filter(|line| String::from_utf8_lossy(line).contains("Wait."))
+        .collect();
+    assert!(!waited.is_empty());
+    let kept = lines(&after);
+    assert!(waited.iter().all(|line| kept.contains(line)), "{text}");
+
+    let mut read = load(&store, "main").expect("read");
+    read.switch_branch(secret, by).expect("switched");
+    let notes: Vec<_> = read
+        .asides()
+        .filter(|(_, aside)| aside.kind == "note")
+        .map(|(_, aside)| (aside.after, aside.value.clone()))
+        .collect();
+    assert_eq!(notes, [(deploy, json!("used [R]"))]);
 }
 
 #[test]

@@ -98,7 +98,7 @@ fn a_session_saved_in_format_1_is_refused_before_anything_is_written() {
         let format = matches!(&refused, LoadError::Format { found: Some(found), .. } if found == "rig-session/1");
         assert!(format, "{refused:?}");
         assert!(
-            message.contains("older version of rig") && message.contains("rig-session/2"),
+            message.contains("older version of rig") && message.contains("rig-session/3"),
             "{message}"
         );
         // The log's name is quoted, so `session` does not read as a word.
@@ -122,8 +122,8 @@ fn a_session_saved_in_format_1_is_refused_before_anything_is_written() {
     // A newer rig's format, and one that is not rig's, are refused too,
     // each saying which it is.
     for (format, says) in [
-        ("rig-session/3", "a newer version of rig"),
-        ("other/1", "is in format other/1, not rig-session/2"),
+        ("rig-session/4", "a newer version of rig"),
+        ("other/1", "is in format other/1, not rig-session/3"),
     ] {
         let dir = scratch(&format.replace('/', "-"));
         write_fixture(

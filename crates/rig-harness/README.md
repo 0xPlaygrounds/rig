@@ -77,6 +77,7 @@ The default `plugins.toml`, in order:
 | `rig-models` | `DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
 | `rig-sessions` | `SessionsPlugin` | `/new`, `/resume`, `/name` |
 | `rig-compaction` | `CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
+| `rig-splits` | `SplitsPlugin` | `/split` and `/splits`: splitting a conversation at any entry into a branch or a new session, moving a range out, switching, comparing and merging back |
 | `rig-telemetry` | `UsagePlugin` | what model calls cost; `/usage` |
 | `rig-activity` | `ActivityPlugin` | what each agent is doing, for views |
 | `rig-telemetry` | `EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |

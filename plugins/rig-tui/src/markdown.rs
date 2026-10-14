@@ -37,7 +37,7 @@ const MOST_MARKS: usize = 0x1900;
 /// before its byte: past the end at the end, inside a character before
 /// it. Each mark stands in the text as a private-use character while it
 /// is rendered, so markdown on both sides of it is kept.
-pub(crate) fn render_marked(text: &str, marks: &[(usize, Span<'static>)]) -> Vec<Line<'static>> {
+pub fn render_marked(text: &str, marks: &[(usize, Span<'static>)]) -> Vec<Line<'static>> {
     if marks.is_empty() {
         return render(text);
     }

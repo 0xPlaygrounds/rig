@@ -5,7 +5,7 @@ use rig_harness_test_support::{
     Ended, MemoryStore, app_on, calls, log_ended, press, reply, run_until, scripted_models,
     tui_view,
 };
-use rig_tui::{Focus, TuiTestScreen};
+use rig_tui::{Focus, MainPane, TuiTestScreen};
 
 use super::*;
 
@@ -36,10 +36,10 @@ fn prompt(n: usize) -> String {
     format!("prompt {n}: now make it work on Windows, and keep the Linux build green too")
 }
 
-/// Sends prompt `n` as the user typed it and runs its turn to its end.
-fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, n: usize) {
-    let typed = Deliver::new(agent, prompt(n), DeliveryMode::Queue).with_author(Author::user());
-    app.world_mut().trigger(typed);
+/// Sends prompt `n` as `author` and runs its turn to its end.
+fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, n: usize, author: Author) {
+    let sent = Deliver::new(agent, prompt(n), DeliveryMode::Queue).with_author(author);
+    app.world_mut().trigger(sent);
     run_until(app, wakes, |world| world.resource::<Ended>().0.len() >= n);
     // The frame after the turn draws it; the next one shows its header.
     app.update();
@@ -58,9 +58,18 @@ fn first_row(app: &App) -> String {
     rows.first().cloned().unwrap_or_default()
 }
 
+/// The main pane's `T`.
+fn of_main_pane<T: Component>(app: &App) -> Option<&T> {
+    let world = app.world();
+    let mut panes = world.try_query_filtered::<&T, With<MainPane>>()?;
+    panes.single(world).ok()
+}
+
 /// The first row prompt `n` (from 1) is drawn at, and the top row.
 fn rows(app: &App, agent: Entity, n: usize) -> (Option<usize>, usize) {
-    let drawn = app.world().resource::<DrawnTranscript>();
+    let drawn = of_main_pane::<DrawnTranscript>(app)
+        .cloned()
+        .unwrap_or_default();
     let conversation = app.world().get::<Conversation>(agent);
     let ids = conversation
         .map(|conversation| turns(conversation))
@@ -70,7 +79,8 @@ fn rows(app: &App, agent: Entity, n: usize) -> (Option<usize>, usize) {
     (start.map(|rows| rows.start), drawn.on_screen().start)
 }
 
-/// Presses `keys` and runs a frame more, for the header it noted.
+/// Presses `keys` and runs a frame more, for the header row that comes
+/// or goes as the view leaves or reaches the bottom.
 fn press_and_show(app: &mut App, keys: &str) {
     press(app, keys);
     app.update();
@@ -78,9 +88,7 @@ fn press_and_show(app: &mut App, keys: &str) {
 
 #[test]
 fn keys_jump_between_prompts_and_the_header_follows_the_top_row() {
-    let script = (1..=4)
-        .flat_map(turn)
-        .chain([reply("streamed answer\n\nmore")]);
+    let script = (1..=5).flat_map(turn);
     let model = MockCompletionModel::from_stream_turns(script);
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Settings::default())
@@ -101,16 +109,17 @@ fn keys_jump_between_prompts_and_the_header_follows_the_top_row() {
     app.update();
     app.world_mut().trigger(Focus { entity: agent });
     for n in 1..=4 {
-        ask(&mut app, &wakes, agent, n);
+        ask(&mut app, &wakes, agent, n, Author::user());
     }
     // At the live bottom: no header.
     assert_eq!(header(&app), None);
     assert!(!first_row(&app).starts_with('▸'), "{}", first_row(&app));
 
-    // Twice back from the bottom: turn 3's prompt is the top row.
+    // Twice back from the bottom: turn 3's prompt is the top row. Once
+    // scrolled, the header follows in the frame the view moves.
     press_and_show(&mut app, "ctrl+up");
     assert_eq!(header(&app), Some(4));
-    press_and_show(&mut app, "ctrl+up");
+    press(&mut app, "ctrl+up");
     let (third, top) = rows(&app, agent, 3);
     assert_eq!(third, Some(top));
     assert_eq!(header(&app), Some(3));
@@ -126,16 +135,17 @@ fn keys_jump_between_prompts_and_the_header_follows_the_top_row() {
     let fourth = fourth.unwrap_or_default();
     assert!(fourth > top + 1, "turn 3 is longer than a row");
     let to_boundary = vec!["shift+down"; fourth - top - 1].join(" ");
-    press_and_show(&mut app, &to_boundary);
+    press(&mut app, &to_boundary);
     assert_eq!(rows(&app, agent, 4), (Some(fourth), fourth - 1));
     assert_eq!(header(&app), Some(3));
-    press_and_show(&mut app, "shift+down");
+    press(&mut app, "shift+down");
     assert_eq!(rows(&app, agent, 4), (Some(fourth), fourth));
     assert_eq!(header(&app), Some(4));
     assert!(first_row(&app).starts_with("▸ 4 ·"), "{}", first_row(&app));
 
-    // A turn streams while the view is scrolled up: it stays, marked.
-    ask(&mut app, &wakes, agent, 5);
+    // A turn a plugin asks for streams while the view is scrolled up: it
+    // stays, marked.
+    ask(&mut app, &wakes, agent, 5, Author::plugin("reminder"));
     assert_eq!(rows(&app, agent, 4), (Some(fourth), fourth));
     assert_eq!(header(&app), Some(4));
     let screen = app.world().resource::<TuiTestScreen>().rows();
@@ -145,17 +155,24 @@ fn keys_jump_between_prompts_and_the_header_follows_the_top_row() {
     );
     press_and_show(&mut app, "ctrl+end");
     assert_eq!(header(&app), None);
-    assert!(app.world().resource::<TranscriptView>().top().is_none());
+    let view = of_main_pane::<TranscriptView>(&app);
+    assert!(view.is_some_and(|view| view.top().is_none()));
     assert!(!first_row(&app).starts_with('▸'));
 
+    // The plugin's message is no prompt: back from the bottom is turn 4.
+    press_and_show(&mut app, "ctrl+up");
+    assert_eq!(header(&app), Some(4));
+    let (fourth, top) = rows(&app, agent, 4);
+    assert_eq!(fourth, Some(top));
+
     // On turn 2, narrowed from 120 to 40 columns: still turn 2, one row.
-    press_and_show(&mut app, "ctrl+home");
+    press(&mut app, "ctrl+home");
     assert_eq!(header(&app), Some(1));
-    press_and_show(&mut app, "ctrl+down");
+    press(&mut app, "ctrl+down");
     assert_eq!(header(&app), Some(2));
-    app.insert_resource(TuiTestScreen::new(40, 24));
-    app.world_mut().write_message(RequestRedraw);
-    app.update();
+    app.world_mut()
+        .resource_mut::<TuiTestScreen>()
+        .resize(40, 24);
     app.update();
     let (second, top) = rows(&app, agent, 2);
     assert_eq!(second, Some(top));

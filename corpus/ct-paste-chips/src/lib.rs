@@ -9,7 +9,7 @@
 //! image attachment; Enter on a message with an image warns first when the
 //! model reads no images.
 //!
-//! The input is plain text ([`TuiInput`]), so a chip is its token in the
+//! The input is plain text (an [`Editor`]), so a chip is its token in the
 //! text, which the plugin's [`PasteChips`] maps to its contents; a draft
 //! kept for a reload keeps its chips too.
 
@@ -26,8 +26,8 @@ use rig_harness::rig_tools::process::Launcher;
 use rig_harness::rig_tools::workspace::Local as LocalWorkspace;
 use rig_tui::crossterm::event::{Event, KeyEventKind};
 use rig_tui::{
-    AppKeyBindingsExt, InputAction, InputSystems, KeyBinding, KeyInput, KeyPress, KeyPressed,
-    KeyScope, TerminalEvents, TuiInput, TuiInputState, TuiKeys, TuiPlugin,
+    AppKeyBindingsExt, Editor, InputAction, InputSystems, KeyBinding, KeyInput, KeyPress,
+    KeyPressed, KeyScope, MainInput, TerminalEvents, TuiInputState, TuiKeys, TuiPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -403,7 +403,7 @@ struct Chipping<'w, 's> {
 fn chip_keys(
     mut events: ResMut<TerminalEvents>,
     state: Res<TuiInputState>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
     bindings: Query<(&KeyBinding, Option<&InputAction>)>,
     mut chipping: Chipping,
     mut warned: Local<Option<String>>,
@@ -428,7 +428,7 @@ fn chip_keys(
 
 /// A paste: an image file or a long text becomes a chip; a short one is
 /// left to the view.
-fn paste(text: &str, input: &mut ResMut<TuiInput>, chipping: &mut Chipping) -> bool {
+fn paste(text: &str, input: &mut Editor, chipping: &mut Chipping) -> bool {
     if let Some(path) = pasted_image(text) {
         let token = chipping.chips.add(image_chip(path));
         input.insert(&token);
@@ -469,13 +469,13 @@ fn paste(text: &str, input: &mut ResMut<TuiInput>, chipping: &mut Chipping) -> b
 fn act(
     action: InputAction,
     state: &TuiInputState,
-    input: &mut ResMut<TuiInput>,
+    input: &mut Editor,
     chipping: &mut Chipping,
     warned: &mut Option<String>,
 ) -> bool {
     let (text, at) = (input.text().to_owned(), input.cursor());
     let chips = &chipping.chips;
-    let remove = |input: &mut ResMut<TuiInput>, range: Range<usize>| {
+    let remove = |input: &mut Editor, range: Range<usize>| {
         let mut left = text.clone();
         left.replace_range(range.clone(), "");
         input.set(left);
@@ -553,7 +553,7 @@ fn read_clipboard(chipping: &Chipping) -> bool {
 fn receive_images(
     clipboard: Res<ClipboardImages>,
     mut chips: ResMut<PasteChips>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
     shown: Res<Shown>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -577,7 +577,7 @@ fn receive_images(
 /// Alt+E: opens the chip at the cursor in place, its contents between a
 /// first and a last line, or closes the opened chip the cursor is in,
 /// keeping its edits.
-fn open_or_close(_: On<KeyPressed>, mut input: ResMut<TuiInput>, mut chips: ResMut<PasteChips>) {
+fn open_or_close(_: On<KeyPressed>, mut input: MainInput, mut chips: ResMut<PasteChips>) {
     let (text, at) = (input.text().to_owned(), input.cursor());
     if let Some((range, inside, id)) = chips.opened_around(&text, at) {
         let contents = text.get(inside).unwrap_or_default().to_owned();
@@ -613,7 +613,7 @@ fn open_or_close(_: On<KeyPressed>, mut input: ResMut<TuiInput>, mut chips: ResM
 fn merge_answered(
     asks: Query<(&Outcome, &MergeAsk), Added<Outcome>>,
     mut chips: ResMut<PasteChips>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
 ) {
     for (outcome, merge) in &asks {
         if !Answer::of(outcome).is_some_and(|answer| answer.is("merge")) {

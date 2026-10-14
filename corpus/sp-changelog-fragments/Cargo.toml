@@ -1,0 +1,29 @@
+[package]
+name = "corpus-sp-changelog-fragments"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (splits fresh held-out): SP-05: 05. Changelog fragments"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# The pool the fragment files are read and written on.
+bevy_tasks = { workspace = true }
+# The `include` and `exclude` globs; already in Cargo.lock.
+glob = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# `/changelog edit` runs `$EDITOR` with the terminal.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

@@ -11,6 +11,7 @@
 //! never a plugin's message. The view itself keeps a scrolled view where it
 //! is as output arrives and marks the new output below it.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use rig_harness::prelude::*;
@@ -21,8 +22,8 @@ use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
-    AppKeyBindingsExt, DrawnTranscript, ItemRow, KeyPressed, Keys, PanelCanvas, Placement,
-    RequestRedraw, ScrollTo, TranscriptItem, TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, DrawnTranscript, ItemRow, KeyPressed, Keys, MainPane, PanelCanvas,
+    Placement, ScrollTo, TranscriptItem, TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
 };
 use serde::{Deserialize, Deserializer};
 use unicode_width::UnicodeWidthChar;
@@ -121,15 +122,15 @@ impl Plugin for TurnNavigationPlugin {
             app.add_plugins(TuiPlugin);
         }
         app.add_setting::<NavigationKeys>("turn-navigation")
-            .init_resource::<DrawnTranscript>()
             .init_resource::<PromptHeader>()
             .add_systems(
                 PostUpdate,
                 (
-                    draw_header.in_set(TuiSystems::Draw),
+                    keep_drawn.in_set(TuiSystems::Prepare),
                     note_header
-                        .after(TuiSystems::Render)
-                        .run_if(resource_changed::<DrawnTranscript>),
+                        .after(TuiSystems::Layout)
+                        .before(TuiSystems::Draw),
+                    draw_header.in_set(TuiSystems::Draw),
                 ),
             );
         let panel = TuiPanel::new(Placement::Top(Constraint::Length(0)));
@@ -155,11 +156,19 @@ fn is_prompt(entry: &EntryRef<'_>) -> bool {
             .is_none_or(|author| !matches!(author.kind, AuthorKind::Plugin(_)))
 }
 
-/// Each prompt of `conversation`, with its turn.
+/// Each prompt of `conversation`, with its turn: the request of each turn
+/// the user or an agent asked for, numbered among them. A turn a plugin's
+/// message began, and what it adds, belong to the prompt before it.
 fn turns(conversation: &conversation::Conversation) -> Vec<(MessageId, TurnHeader)> {
+    let asked: HashSet<MessageId> = conversation
+        .turns()
+        .filter_map(|(_, record)| conversation.request(record.start))
+        .filter(is_prompt)
+        .map(|request| request.id)
+        .collect();
     let mut turns: Vec<(MessageId, u64, TurnHeader)> = Vec::new();
     for entry in conversation.entries() {
-        if is_prompt(&entry) {
+        if asked.contains(&entry.id) {
             let header = TurnHeader {
                 turn: turns.len() + 1,
                 first_line: first_line(entry.message),
@@ -213,20 +222,33 @@ fn drawn_prompts(
     rows.collect()
 }
 
-/// The observer of a navigation key: scrolls the agent shown as `to`
-/// says, from the rows the last frame drew.
+/// Has the main transcript pane keep the rows it draws, which the keys
+/// and the header read.
+fn keep_drawn(
+    panes: Query<Entity, (With<MainPane>, Without<DrawnTranscript>)>,
+    mut commands: Commands,
+) {
+    for pane in &panes {
+        commands.entity(pane).insert(DrawnTranscript::default());
+    }
+}
+
+/// The main pane and what it drew.
+type MainDrawn<'w, 's> = Query<'w, 's, (Entity, &'static DrawnTranscript), With<MainPane>>;
+
+/// The observer of a navigation key: scrolls the main pane, showing the
+/// agent shown, as `to` says, from the rows the last frame drew.
 fn jump(
     to: Jump,
-) -> impl FnMut(On<KeyPressed>, Res<DrawnTranscript>, Query<&Conversation>, Commands)
-+ Send
-+ Sync
-+ 'static {
-    move |pressed, drawn, conversations, mut commands| {
-        let (Some(agent), false) = (pressed.agent, pressed.released) else {
+) -> impl FnMut(On<KeyPressed>, MainDrawn, Query<&Conversation>, Commands) + Send + Sync + 'static {
+    move |pressed, panes, conversations, mut commands| {
+        let (Some(agent), false, Ok((pane, drawn))) =
+            (pressed.agent, pressed.released, panes.single())
+        else {
             return;
         };
         let bottom = ScrollTo {
-            agent,
+            pane,
             item: None,
             row: ItemRow::Top(0),
         };
@@ -241,7 +263,7 @@ fn jump(
         else {
             return;
         };
-        let prompts = drawn_prompts(conversation, &drawn);
+        let prompts = drawn_prompts(conversation, drawn);
         let top = drawn.on_screen().start;
         let target = match to {
             Jump::First => prompts.first(),
@@ -250,7 +272,7 @@ fn jump(
         };
         match target {
             Some((id, ..)) => commands.trigger(ScrollTo {
-                agent,
+                pane,
                 item: Some(TranscriptItem::Message(*id)),
                 row: ItemRow::Top(0),
             }),
@@ -260,21 +282,26 @@ fn jump(
     }
 }
 
-/// After a frame is drawn, the header for where it left the view: shown
-/// at the next frame, which it asks for when the header changed, as the
-/// view places its scroll only while it draws, after the panels.
+/// Once the frame is laid out, the header for where the main pane is
+/// scrolled, drawn in this frame. When it comes or goes, its row (the
+/// panel's height) is laid out only at the next frame, which the changed
+/// panel asks for and the wake brings now.
 fn note_header(
-    (drawn, view): (Res<DrawnTranscript>, Res<TranscriptView>),
+    pane: Single<(Ref<DrawnTranscript>, Ref<TranscriptView>), With<MainPane>>,
     conversations: Query<&Conversation>,
     mut header: ResMut<PromptHeader>,
     mut panels: Query<&mut TuiPanel, With<HeaderPanel>>,
-    (mut redraw, wake): (MessageWriter<RequestRedraw>, Option<Res<Wake>>),
+    wake: Option<Res<Wake>>,
 ) {
+    let (drawn, view) = &*pane;
+    if !drawn.is_changed() && !view.is_changed() {
+        return;
+    }
     let scrolled = view.top().and(drawn.agent());
     let conversation = scrolled.and_then(|agent| conversations.get(agent).ok());
     let top = drawn.on_screen().start;
     let shown = conversation.and_then(|conversation| {
-        let prompts = drawn_prompts(conversation, &drawn).into_iter();
+        let prompts = drawn_prompts(conversation, drawn).into_iter();
         let mut above = prompts.filter(|(.., start)| *start <= top);
         above.next_back().map(|(_, header, _)| header)
     });
@@ -282,11 +309,13 @@ fn note_header(
         return;
     }
     let rows = u16::from(header.0.is_some());
+    let placed = TuiPanel::new(Placement::Top(Constraint::Length(rows)));
+    // Every panel is placed, so no short-circuiting `any`.
+    let mut moved = false;
     for mut panel in &mut panels {
-        panel.set_if_neq(TuiPanel::new(Placement::Top(Constraint::Length(rows))));
+        moved |= panel.set_if_neq(placed.clone());
     }
-    redraw.write(RequestRedraw);
-    if let Some(wake) = wake {
+    if let Some(wake) = wake.filter(|_| moved) {
         wake.wake();
     }
 }

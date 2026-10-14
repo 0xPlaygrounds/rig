@@ -13,15 +13,23 @@
 //! ([`Note`](rig_harness::note::Note)) and
 //! delivered texts with [`AppToolRenderersExt::add_entry_renderer`], a
 //! kind of content block (images, audio, video, documents) with
-//! [`AppToolRenderersExt::add_content_renderer`], and rows under every
-//! call with [`AppToolRenderersExt::add_call_decorator`]. The
-//! [`TranscriptView`] says, and lets a plugin set, what is expanded and
-//! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;
-//! [`ScrollTo`] scrolls to an item or to a row of it a highlight lights,
-//! and [`TranscriptView::top`] reads where the view is.
+//! [`AppToolRenderersExt::add_content_renderer`], a kind of aside (a kept
+//! branch, a split) with [`AppToolRenderersExt::add_aside_renderer`], the
+//! user's, the model's and its reasoning's text with
+//! [`AppToolRenderersExt::add_message_renderer`], and rows under every
+//! call or message with [`AppToolRenderersExt::add_call_decorator`] and
+//! [`AppToolRenderersExt::add_message_decorator`]. The line producers the
+//! transcript draws with are public ([`markdown`], [`wrap`], [`diff`],
+//! [`excerpt`]), so a plugin's own text looks the same. A transcript is a
+//! [`TranscriptPane`] ([`pane`]) over the agent shown, another agent or a
+//! conversation value, which a plugin places in a panel of its own; each
+//! pane's [`TranscriptView`] says, and lets a plugin set, what is expanded
+//! and selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text
+//! lit; [`ScrollTo`] scrolls a pane to an item or to a row of it a
+//! highlight lights, and [`TranscriptView::top`] reads where it is.
 //! [`ShownNotice::slot`] says where a notice is drawn in an agent's
 //! transcript ([`TranscriptSlot`]), and [`DrawnTranscript`], which a
-//! plugin adds, holds the rows the last frame drew, by item, with those
+//! plugin adds to a pane, holds the rows it laid out, by item, with those
 //! drawn cut and the matches it lit. [`TranscriptLayout`] lays out any
 //! agent's transcript the same way without drawing it, cut as drawn or
 //! whole ([`Expanded`]), for an export, a copy or a search.
@@ -43,7 +51,8 @@
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well, each doing an
 //! [`InputAction`], which a plugin may also put among the keys), the keys for a
-//! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
+//! panel ([`KeyFocus`]), the draft in the input ([`MainInput`], an
+//! [`Editor`] a panel may hold too), the
 //! candidates completion lists ([`CompletionSource`]), the frame's
 //! keys before any binding sees them ([`TerminalEvents`], filtered one at
 //! a time in [`InputSystems::Filter`] of [`TuiKeys`], with
@@ -62,7 +71,6 @@
 
 mod clipboard;
 mod complete;
-mod conversation_panel;
 pub mod diff;
 mod editor;
 mod history;
@@ -70,54 +78,62 @@ mod input;
 mod jsonl;
 pub mod keys;
 pub mod markdown;
+pub mod pane;
 pub mod panel;
 mod pick;
 mod render;
 mod renderers;
-mod status;
+mod screen;
+pub mod status;
 mod terminal;
 mod transcript;
 mod view;
-mod wrap;
+pub mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
+use rig_core::conversation::BRANCH;
 use rig_ecs::journal::SessionRewritten;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, Shown};
+use rig_harness::rig_memory::SPLIT;
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
-pub use conversation_panel::ConversationPanel;
 pub use crossterm;
-pub use editor::TuiInput;
+pub use editor::{Editor, MainEditor, MainInput};
 pub use history::{HistorySystems, PromptHistory, Sent};
 pub use input::{InputSystems, KeyInput, TerminalEvents, TuiInputState, TuiKeys};
 pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
     run_command,
 };
+pub use pane::{MainPane, MainTranscript, PaneKeys, TranscriptPane, TranscriptSource};
 pub use panel::{
     Focused, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel, TuiScreen, TuiSystems,
 };
-pub use pick::{ChoiceAction, ChoiceKeys};
+pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerState};
 pub use ratatui;
 pub use render::{Expanded, TranscriptLayout, TuiFrame};
 pub use renderers::{
-    AppToolRenderersExt, CallDecorator, CallState, ChildCall, ContentBlock, ContentKind,
-    ContentRenderer, ContentView, EntryRenderer, EntryView, RESULT_LINES, RenderContent,
-    RenderEntry, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
+    AppToolRenderersExt, AsideRenderer, AsideView, CallDecorator, CallState, ChildCall,
+    ContentBlock, ContentKind, ContentRenderer, ContentView, DecorateMessage, DecoratedMessage,
+    EntryRenderer, EntryView, MessageDecorator, MessageRenderer, MessageView, RESULT_LINES,
+    RenderAside, RenderContent, RenderEntry, RenderMessage, RenderToolCall, Role, ToolCallView,
+    ToolRenderer, branch_lines, excerpt, split_lines,
 };
-pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
+pub use screen::DefaultScreenPlugin;
+pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
 pub use terminal::{
     CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite, TuiTestScreen,
 };
 pub use transcript::PastEffects;
 pub use view::{
     Continuation, DrawnLine, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, LineSpan,
-    MarkIn, ScrollTo, ShownNotice, TextMark, TranscriptItem, TranscriptSlot, TranscriptView,
+    MarkIn, Notices, ScrollTo, ShownNotice, TextMark, TranscriptItem, TranscriptSlot,
+    TranscriptView,
 };
 
 /// The terminal view's name as a front.
@@ -125,27 +141,41 @@ pub const FRONT: &str = "tui";
 
 /// Owns the terminal and draws the focused agent, when it is the run's
 /// front: on an interactive terminal, unless another front's option was
-/// given.
+/// given. It is the [`TuiViewPlugin`] with the [`DefaultScreenPlugin`].
 #[derive(Default)]
 pub struct TuiPlugin;
 
 impl Plugin for TuiPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((TuiViewPlugin, DefaultScreenPlugin));
+    }
+}
+
+/// The terminal view without a screen: the terminal, the keys, the frame
+/// and the widgets' systems, which draw whatever widgets are spawned. The
+/// [`TuiPlugin`] adds it with the [`DefaultScreenPlugin`]; an app that
+/// builds its own screen adds it alone.
+#[derive(Default)]
+pub struct TuiViewPlugin;
+
+impl Plugin for TuiViewPlugin {
     fn build(&self, app: &mut App) {
         // What other plugins use is there in any run; without the
         // terminal, no frame is ever due.
         status::add(app);
         // Spawned in `build`, so a plugin's `finish` may disable one.
         keys::add_built_in(app);
-        app.add_entry_renderer(BUILD_ORIGIN, build_failed);
+        app.add_entry_renderer(BUILD_ORIGIN, build_failed)
+            .add_aside_renderer(BRANCH, branch_lines)
+            .add_aside_renderer(SPLIT, split_lines);
         // The notices shown and the unsent draft, in the session's files.
         app.keeps_files("tui");
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiFrame>()
-            .init_resource::<TranscriptView>()
+            .init_resource::<Notices>()
             .init_resource::<transcript::CallFacts>()
             .init_resource::<transcript::StreamingCalls>()
             .init_resource::<TuiScreen>()
-            .init_resource::<TuiInput>()
             .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
             .init_resource::<TerminalEvents>()
@@ -178,6 +208,7 @@ impl Plugin for TuiPlugin {
                 (
                     TuiSystems::Prepare,
                     TuiSystems::Layout,
+                    TuiSystems::Fit,
                     TuiSystems::Draw.run_if(render::frame_due),
                     TuiSystems::Render.run_if(render::frame_due),
                 )
@@ -236,7 +267,9 @@ pub fn add_view(app: &mut App) {
                 )
                     .chain()
                     .before(input::run_keys),
-                input::note_state.after(input::run_keys),
+                (pick::mark_highlighted, input::note_state)
+                    .chain()
+                    .after(input::run_keys),
             ),
         )
         .add_systems(
@@ -255,6 +288,8 @@ pub fn add_view(app: &mut App) {
                 // frame, and so does a question asked there.
                 (
                     pick::queue_choices,
+                    pick::mark_highlighted,
+                    pick::follow_previews,
                     keys::arm_inline_keys,
                     view::collect_notices,
                 )
@@ -268,6 +303,18 @@ pub fn add_view(app: &mut App) {
                 history::save.in_set(HistorySystems::Save),
             ),
         )
+        // One thread: the panels, then the panes in what they leave.
+        .edit_schedule(render::LayOut, |layout| {
+            layout.set_executor(SingleThreadedExecutor::new());
+        })
+        .add_systems(
+            render::LayOut,
+            (
+                render::layout.run_if(terminal::has_screen.and_then(render::needs_redraw)),
+                pane::lay_out_panes.run_if(render::frame_due),
+            )
+                .chain(),
+        )
         .add_systems(
             PostUpdate,
             (
@@ -275,14 +322,24 @@ pub fn add_view(app: &mut App) {
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
                 transcript::note_effects.in_set(TuiSystems::Prepare),
-                conversation_panel::draw_panels.in_set(TuiSystems::Draw),
+                input::note_state.in_set(TuiSystems::Prepare),
+                (
+                    pane::draw_panes,
+                    editor::draw_editors,
+                    status::draw_status_lines,
+                    pick::draw_inline_strips,
+                )
+                    .in_set(TuiSystems::Draw),
                 (
                     complete::follow_input,
                     transcript::follow_streams,
-                    render::layout.run_if(terminal::has_screen.and_then(render::needs_redraw)),
+                    render::lay_out_frame,
                 )
                     .chain()
                     .in_set(TuiSystems::Layout),
+                render::lay_out_fitted
+                    .after(TuiSystems::Fit)
+                    .before(TuiSystems::Draw),
                 (
                     terminal::report_releases.run_if(resource_exists::<terminal::Tui>),
                     render::render,
@@ -316,12 +373,12 @@ fn follow_rewrites(
     mut rewritten: MessageReader<SessionRewritten>,
     mut history: ResMut<PromptHistory>,
     mut facts: ResMut<transcript::CallFacts>,
-    mut view: ResMut<TranscriptView>,
+    mut notices: ResMut<Notices>,
 ) {
     for done in rewritten.read().filter(|done| done.result.is_ok()) {
         history.rewrite(&*done.with);
         facts.rewrite(&*done.with);
-        view.rewrite(&*done.with);
+        notices.rewrite(&*done.with);
     }
 }
 

@@ -66,7 +66,12 @@ pub fn find(
     current: &Path,
 ) -> Result<SessionDir, String> {
     if named == "last" {
-        let newest = rig_sessions::list(home, stores, current).into_iter().next();
+        let newest = home
+            .saved_sessions()
+            .into_iter()
+            .filter(|(_, dir)| dir.path() != current)
+            .filter_map(|(_, dir)| SessionEntry::read(&dir, stores))
+            .max_by_key(|entry| entry.updated);
         return newest
             .map(|entry| home.session(&entry.id))
             .ok_or_else(|| "there is no saved session".to_owned());

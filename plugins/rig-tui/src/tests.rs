@@ -17,6 +17,7 @@ pub(crate) fn redacted(secret: &'static str) -> SessionRewritten {
         hit
     });
     SessionRewritten {
+        by: Author::plugin("redact"),
         asker: None,
         with: std::sync::Arc::new(with),
         result: Ok(Rewritten::default()),
@@ -109,49 +110,79 @@ pub(crate) fn type_text(app: &mut App, text: &str) {
     press(app, &keys.join(" "));
 }
 
-/// The rows of `agent`'s transcript on a screen `height` rows high and 80
-/// wide, with `streaming` tool calls after the last message, as a frame
-/// draws them where the view is scrolled, selection and highlights
-/// included; notes where the view is and what it drew, as a frame does.
+/// The main transcript pane.
+pub(crate) fn main_pane(world: &World) -> Entity {
+    let pane = world.try_query_filtered::<Entity, With<MainPane>>();
+    let pane = pane.and_then(|mut panes| panes.single(world).ok());
+    pane.unwrap_or(Entity::PLACEHOLDER)
+}
+
+/// The main pane's view; a default one without the pane.
+pub(crate) fn main_view(app: &App) -> &TranscriptView {
+    static NONE: std::sync::LazyLock<TranscriptView> = std::sync::LazyLock::new(Default::default);
+    let world = app.world();
+    world
+        .get::<TranscriptView>(main_pane(world))
+        .unwrap_or(&NONE)
+}
+
+/// Changes the main pane's view with `change`.
+pub(crate) fn steer(app: &mut App, change: impl FnOnce(&mut TranscriptView)) {
+    let pane = main_pane(app.world());
+    if let Some(mut view) = app.world_mut().get_mut::<TranscriptView>(pane) {
+        change(&mut view);
+    }
+}
+
+/// Has the main pane keep its [`DrawnTranscript`].
+pub(crate) fn keep_drawn(app: &mut App) {
+    let pane = main_pane(app.world());
+    if let Ok(mut pane) = app.world_mut().get_entity_mut(pane) {
+        pane.insert(DrawnTranscript::default());
+    }
+}
+
+/// The main pane's [`DrawnTranscript`]; an empty one without it.
+pub(crate) fn drawn(app: &App) -> &DrawnTranscript {
+    static NONE: std::sync::LazyLock<DrawnTranscript> = std::sync::LazyLock::new(Default::default);
+    let world = app.world();
+    world
+        .get::<DrawnTranscript>(main_pane(world))
+        .unwrap_or(&NONE)
+}
+
+/// The rows of `agent`'s transcript in the main pane, `height` rows high
+/// and 80 wide, with `streaming` tool calls after the last message, as a
+/// frame lays them out where the pane is scrolled, selection and
+/// highlights included; notes where the pane is and what it drew, as a
+/// frame does.
 pub(crate) fn drawn_rows(
     app: &mut App,
     agent: Entity,
     height: usize,
     streaming: Vec<rig_core::message::ToolCall>,
 ) -> Vec<ratatui::text::Line<'static>> {
-    use crate::render::{Sources, decorate, lay_out_transcript};
-    use crate::transcript::Transcript;
+    use crate::pane::{PaneState, lay_out_pane};
 
-    let draw =
-        move |layout: TranscriptLayout,
-              (mut view, mut transcript_view): (ResMut<view::TuiView>, ResMut<TranscriptView>),
-              mut drawn: Option<ResMut<DrawnTranscript>>| {
-            let Some(mut shown) = layout.agent(agent, true) else {
-                return Vec::new();
-            };
-            shown.streaming = streaming.clone();
-            let renderers = layout.looks.by_kind();
-            let sources = Sources {
-                view: &transcript_view,
-                renderers: &renderers,
-                facts: layout.facts(),
-                whole: false,
-                note_cut: drawn.is_some(),
-            };
-            let mut rows = Transcript::default();
-            let parts = lay_out_transcript(&mut rows, &sources, Some(&shown), 80);
-            let highlights = transcript_view.highlights.as_slice();
-            let visible = rows.visible(&parts, (80, height), &mut view.scroll, highlights);
-            if let Some(drawn) = &mut drawn {
-                let on_screen = visible.first..visible.first + visible.rows.len();
-                drawn.set_if_neq(rows.laid_out(Some(agent), &parts, highlights, on_screen));
-            }
-            let selected = transcript_view.selected.as_ref();
-            let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
-            view.items = crate::render::selectable(visible.marks);
-            TranscriptView::note_drawn(&mut transcript_view, visible.top, 80);
-            lines
+    let pane = main_pane(app.world());
+    let area = ratatui::layout::Rect::new(0, 0, 80, u16::try_from(height).unwrap_or(u16::MAX));
+    let draw = move |layout: TranscriptLayout,
+                     mut panes: Query<(
+        &mut TranscriptView,
+        &mut PaneState,
+        Option<&mut DrawnTranscript>,
+    )>| {
+        let Ok((view, mut state, drawn)) = panes.get_mut(pane) else {
+            return Vec::new();
         };
+        let Some(mut shown) = layout.agent(agent, true) else {
+            return Vec::new();
+        };
+        shown.streaming = streaming.clone();
+        let state = state.bypass_change_detection();
+        lay_out_pane(&layout, pane, (view, state, drawn), Some(&shown), area);
+        state.rows.clone()
+    };
     app.world_mut().run_system_once(draw).unwrap_or_default()
 }
 
@@ -166,9 +197,27 @@ pub(crate) fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
     on_screen(app, agent, 1000)
 }
 
+/// The main editor; an empty one without it.
+pub(crate) fn input(app: &App) -> &Editor {
+    static NONE: std::sync::LazyLock<Editor> = std::sync::LazyLock::new(Default::default);
+    let world = app.world();
+    let main = world.try_query_filtered::<&Editor, With<MainEditor>>();
+    let main = main.and_then(|mut main| main.single(world).ok());
+    main.unwrap_or(&NONE)
+}
+
+/// Edits the main editor with `edit`.
+pub(crate) fn edit(app: &mut App, edit: impl FnOnce(&mut Editor)) {
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut Editor, With<MainEditor>>();
+    if let Ok(mut input) = main.single_mut(world) {
+        edit(&mut input);
+    }
+}
+
 /// The input's text.
 pub(crate) fn typed(app: &App) -> String {
-    app.world().resource::<TuiInput>().text().to_owned()
+    input(app).text().to_owned()
 }
 
 #[test]
@@ -206,8 +255,8 @@ fn a_plugins_test_lays_out_a_transcript_without_a_terminal() {
     let note = Deliver::new(agent, "a note", DeliveryMode::Note);
     app.world_mut().trigger(note);
     app.update();
-    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
-        layout.lay_out(&view, agent, 40, Expanded::AsShown)
+    let lay_out = move |layout: TranscriptLayout| {
+        layout.lay_out(&TranscriptView::default(), agent, 40, Expanded::AsShown)
     };
     let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
     assert!(laid_out.is_some());
@@ -218,7 +267,8 @@ fn a_plugins_test_lays_out_a_transcript_without_a_terminal() {
         "{drawn:#?}"
     );
     // As the frame that never comes would hold it.
-    app.insert_resource(drawn);
+    let pane = main_pane(app.world());
+    app.world_mut().entity_mut(pane).insert(drawn);
 }
 
 #[test]
@@ -279,10 +329,12 @@ fn a_frame_with_nothing_typed_changes_nothing_the_redraw_check_reads() {
     app.init_resource::<ChangedLastFrame>().add_systems(
         bevy_app::Last,
         |view: Res<crate::view::TuiView>,
-         input: Res<crate::editor::TuiInput>,
-         transcript: Res<crate::view::TranscriptView>,
+         input: Query<Ref<Editor>>,
+         transcript: Query<Ref<TranscriptView>>,
          mut changed: ResMut<ChangedLastFrame>| {
-            changed.0 = view.is_changed() || input.is_changed() || transcript.is_changed();
+            let transcript = transcript.iter().any(|view| view.is_changed());
+            let input = input.iter().any(|input| input.is_changed());
+            changed.0 = view.is_changed() || input || transcript;
         },
     );
     app.update();
@@ -302,15 +354,64 @@ fn a_key_typed_leaves_the_transcript_view_unchanged() {
     let (mut app, _) = view_app();
     app.init_resource::<TranscriptChanged>().add_systems(
         bevy_app::Last,
-        |transcript: Res<crate::view::TranscriptView>, mut changed: ResMut<TranscriptChanged>| {
-            changed.0 = transcript.is_changed();
+        |transcript: Query<Ref<TranscriptView>>, mut changed: ResMut<TranscriptChanged>| {
+            changed.0 = transcript.iter().any(|view| view.is_changed());
         },
     );
     app.update();
     type_text(&mut app, "a");
-    assert_eq!(
-        app.world().resource::<crate::editor::TuiInput>().text(),
-        "a"
-    );
+    assert_eq!(input(&app).text(), "a");
     assert!(!app.world().resource::<TranscriptChanged>().0);
+}
+
+/// An app that builds its own screen from the public widgets, without the
+/// default screen: its transcript draws and its input sends.
+#[test]
+fn a_screen_built_from_the_public_widgets_draws_and_sends() {
+    use ratatui::layout::Constraint;
+
+    let mut app = App::new();
+    app.set_error_handler(rig_harness::error::panic)
+        .insert_resource(Invoked::default())
+        .add_plugins((AgentPlugin, AskPlugin, PickPlugin, TuiViewPlugin))
+        .init_resource::<Delivered>()
+        .add_observer(
+            |accepted: On<Add<Started>>,
+             messages: Query<&Incoming>,
+             mut delivered: ResMut<Delivered>| {
+                if let Ok(message) = messages.get(accepted.entity) {
+                    delivered.0.push(message.text().to_owned());
+                }
+            },
+        );
+    add_view(&mut app);
+    let world = app.world_mut();
+    let pane = TranscriptPane::new(TranscriptSource::Shown).titled("chat");
+    let pane = world.spawn((pane, MainPane)).id();
+    let input = TuiPanel::new(Placement::Top(Constraint::Length(3)));
+    world.spawn((Editor::default(), MainEditor, input));
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    app.update();
+    let world = app.world_mut();
+    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
+    let Ok(agent) = agent else { return };
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(rig_core::completion::Message::user(
+            "where is the config read?",
+        ));
+    }
+    app.update();
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    let area = app.world().resource::<TuiFrame>().area(pane);
+    assert!(area.is_some_and(|area| area.y == 3), "{area:?}");
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("› where is the config read?")),
+        "{rows:#?}"
+    );
+    assert!(rows.iter().any(|row| row.contains("chat")), "{rows:#?}");
+    type_text(&mut app, "hello");
+    press(&mut app, "enter");
+    assert_eq!(app.world().resource::<Delivered>().0, ["hello"]);
+    assert_eq!(typed(&app), "");
 }

@@ -7,6 +7,8 @@ license = "MIT"
 readme = "README.md"
 description = "Conversations over time for the Rig agent framework: windows, compaction, and saving and resuming sessions."
 repository = "https://github.com/0xPlaygrounds/rig"
+# Frozen sessions older formats wrote, read by the upgrade test only.
+exclude = ["fixtures/"]
 
 [lints]
 workspace = true

@@ -1,28 +1,55 @@
 //! The input editor: multiline text with a cursor and emacs-style editing
-//! keys. It is the [`TuiInput`] resource, so a plugin reads and edits the
-//! draft as the keys do (a template, a dictated message, the text an
-//! editor wrote), and `is_changed` on it says the draft was edited. Up and
-//! Down move between lines and, from the first or last line, through the
-//! [`PromptHistory`](crate::PromptHistory), saving the draft as pi's
-//! editor does
+//! keys. An [`Editor`] is a component, so a panel can hold one; the default
+//! screen's is the [`MainEditor`], which [`MainInput`] reads, and a plugin
+//! reads and edits its draft as the keys do (a template, a dictated
+//! message, the text an editor wrote): `is_changed` on it says the draft
+//! was edited. Up and Down move between lines and, from the first or last
+//! line, through the [`PromptHistory`](crate::PromptHistory), saving the
+//! draft as pi's editor does
 //! (`references/pi/packages/tui/src/components/editor.ts:344-347,457-470`).
+//!
+//! ```no_run
+//! use rig_harness::prelude::*;
+//! use rig_tui::MainInput;
+//!
+//! /// Puts a template in the input.
+//! fn template(mut input: MainInput) {
+//!     input.set("Review the diff for:\n- ");
+//! }
+//! ```
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
+use ratatui::layout::Position;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Paragraph};
+use rig_ecs::agent::ActiveTurn;
+use rig_harness::primary::Shown;
 use unicode_width::UnicodeWidthChar;
+
+use super::input::TuiInputState;
+use super::keys::KeyFocus;
+use super::panel::PanelCanvas;
+use super::pick::Choices;
 
 /// The prompt before the first line of the input.
 const PROMPT: &str = "› ";
 
-/// The terminal view's input: the text being typed, with its cursor, and
-/// where it is in the prompt history while Up and Down browse it. It is
-/// there in any run, empty unless the view runs. Enter sends what it holds
-/// to the agent shown.
-#[derive(Resource, Reflect, Default)]
-#[reflect(Resource, Default)]
-pub struct TuiInput {
+/// Most lines an editor that fits its text shows; past them it scrolls to
+/// keep the cursor in sight.
+const MOST_LINES: usize = 10;
+
+/// A text being typed, with its cursor, and where it is in the prompt
+/// history while Up and Down browse it. The keys type into the
+/// [`MainEditor`], or into the editor of the panel with the
+/// [`KeyFocus`](crate::KeyFocus); Enter sends the main one's text to the
+/// agent shown. In a panel placed at the top, the bottom or below the
+/// input, it is as tall as its text, up to ten lines.
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Default)]
+#[require(Caret)]
+pub struct Editor {
     text: String,
     /// A byte offset in `text`, on a character boundary.
     cursor: usize,
@@ -32,6 +59,22 @@ pub struct TuiInput {
     draft: String,
 }
 
+/// Marks the editor the keys type into while no panel has the
+/// [`KeyFocus`](crate::KeyFocus), whose text Enter sends to the agent
+/// shown, and which a recalled message or a reload's draft comes back to:
+/// the default screen's. An app that builds its own screen marks its own.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct MainEditor;
+
+/// The main editor's text, to read or edit. A system with it is skipped
+/// when there is no such editor, as in an app without the default screen.
+pub type MainInput<'w, 's> = Single<'w, 's, &'static mut Editor, With<MainEditor>>;
+
+/// Where an editor drew the cursor of the keys, on screen, while it has
+/// them and no picker does.
+#[derive(Component, Default)]
+pub(crate) struct Caret(pub(crate) Option<Position>);
+
 /// The input laid out to a width: its rows and where the cursor is.
 pub(crate) struct Layout {
     pub(crate) rows: Vec<Line<'static>>,
@@ -39,7 +82,7 @@ pub(crate) struct Layout {
     pub(crate) cursor_column: usize,
 }
 
-impl TuiInput {
+impl Editor {
     /// The text.
     pub fn text(&self) -> &str {
         &self.text
@@ -342,6 +385,13 @@ impl TuiInput {
         self.show(text);
     }
 
+    /// The rows it fits its text in, `width` columns wide with its border:
+    /// one line at least, [`MOST_LINES`] at most.
+    pub(crate) fn fit_rows(&self, width: u16) -> u16 {
+        let lines = self.layout(width.saturating_sub(2)).rows.len();
+        u16::try_from(lines.clamp(1, MOST_LINES) + 2).unwrap_or(u16::MAX)
+    }
+
     /// The text laid out in rows `width` columns wide, broken anywhere, the
     /// first row after the prompt and the others indented under it.
     pub(crate) fn layout(&self, width: u16) -> Layout {
@@ -397,5 +447,64 @@ impl TuiInput {
             cursor_row,
             cursor_column,
         }
+    }
+}
+
+/// The hint under an editor with the keys.
+fn hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
+    match (panel_keys, turn_running, empty) {
+        (true, ..) => " A panel has the keys · Esc gives them back ",
+        (false, true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
+        (false, false, true) => {
+            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
+        }
+        (false, false, false) => "",
+    }
+}
+
+/// Draws each editor with room into its canvas, in a border, scrolled to
+/// keep its cursor in sight. The one the keys type into says under it
+/// what the keys do, and is titled by the question it answers, if any; it
+/// places the caret, unless a picker or a panel without an editor has the
+/// keys.
+pub(crate) fn draw_editors(
+    mut editors: Query<(Entity, &Editor, &mut PanelCanvas, &mut Caret)>,
+    (state, choices, focus): (Res<TuiInputState>, Choices, Res<KeyFocus>),
+    (shown, active): (Res<Shown>, Query<(), With<ActiveTurn>>),
+) {
+    let answering = state.answering().and_then(|ask| choices.shown(ask));
+    let busy = shown.0.is_some_and(|agent| active.contains(agent));
+    for (entity, editor, mut canvas, mut caret) in &mut editors {
+        let caret = &mut caret.bypass_change_detection().0;
+        *caret = None;
+        let area = canvas.area();
+        if area.width < 3 || area.height < 3 {
+            continue;
+        }
+        let layout = editor.layout(area.width - 2);
+        let top = (layout.cursor_row + 1).saturating_sub(usize::from(area.height - 2));
+        let mut block = Block::bordered();
+        if state.editor() == Some(entity) {
+            let elsewhere = focus.0.is_some_and(|focused| focused != entity);
+            let hint = match &answering {
+                Some(ask) => {
+                    block = block.title(Line::from(format!(" {} ", ask.title)).bold());
+                    " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses "
+                }
+                None => hint(busy, editor.is_empty(), elsewhere),
+            };
+            block = block.title_bottom(Line::from(hint).dim().right_aligned());
+            if state.picking().is_none() && !elsewhere {
+                let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
+                let row = u16::try_from(layout.cursor_row - top).unwrap_or(0);
+                let x = area.x.saturating_add(1).saturating_add(column);
+                *caret = Some(Position::new(
+                    x,
+                    area.y.saturating_add(1).saturating_add(row),
+                ));
+            }
+        }
+        let top = u16::try_from(top).unwrap_or(u16::MAX);
+        canvas.render(Paragraph::new(layout.rows).scroll((top, 0)).block(block));
     }
 }

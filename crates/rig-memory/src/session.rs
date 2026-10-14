@@ -13,9 +13,10 @@ use rig_core::conversation::{AsideId, Author, Change, Conversation, MessageId, R
 use serde_json::Value;
 
 use crate::blobs::{load_images, load_images_with, messages_mut};
-use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
+use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, version_of};
+use crate::upgrade::{each_record, header_now};
 use crate::writer::Book;
-use crate::{FORMAT, LoadError, Repair, Rewrote, Stamp, Store};
+use crate::{LoadError, OLDEST, Repair, Rewrote, Stamp, Store, VERSION, Versioned, upgrade};
 
 /// A session as its logs left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -23,7 +24,7 @@ pub struct Session {
     /// Its agents, in the order their logs were started.
     pub agents: Vec<SavedAgent>,
     /// The session's own saved values by key: the [`SESSION`] log's.
-    pub state: BTreeMap<String, Value>,
+    pub state: BTreeMap<String, Versioned>,
     /// What reading it repaired or worked around.
     pub repairs: Vec<Repair>,
 }
@@ -40,8 +41,9 @@ pub struct SavedAgent {
     /// Its conversation, continuing its log: its lineage the log's, its
     /// revision the number of changes the log holds.
     pub conversation: Conversation,
-    /// The newest value of each of its saved values, by key.
-    pub state: BTreeMap<String, Value>,
+    /// The newest value of each of its saved values, by key, with the
+    /// version it was saved at.
+    pub state: BTreeMap<String, Versioned>,
     /// Whether it is gone for good: a restore skips it, and the agents it
     /// spawned.
     pub retired: bool,
@@ -67,6 +69,8 @@ pub enum Record {
     State {
         /// Its key.
         key: String,
+        /// The version of its type it was saved at.
+        v: u32,
         /// Its value.
         value: Option<Value>,
     },
@@ -85,7 +89,7 @@ pub(crate) struct Folded {
     /// The last record that put, replaced or removed each aside (a reset
     /// counts for every aside before and after it), and who made it.
     pub asides_set: HashMap<AsideId, (Stamp, Option<Author>)>,
-    pub state: BTreeMap<String, Value>,
+    pub state: BTreeMap<String, Versioned>,
     pub retired: bool,
     /// The `seq` after the last record's.
     pub next_seq: u64,
@@ -125,15 +129,14 @@ fn read(
 }
 
 /// Reads `lines`, the log `name`, strictly, giving each record after the
-/// header to `each`, which may stop the reading early. `None` when it
-/// holds no complete line.
+/// header, in this format, to `each`, which may stop the reading early.
+/// `None` when it holds no complete line.
 fn read_lines(
     name: &str,
     lines: &LogLines,
     mut each: impl FnMut(Stamp, Body) -> Result<ControlFlow<()>, String>,
 ) -> Result<Option<Read>, LoadError> {
-    let mut records = lines.iter();
-    let Some((_, _, first)) = records.next() else {
+    let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
     let refuse = |line, why| LoadError::Record {
@@ -141,21 +144,24 @@ fn read_lines(
         line,
         why,
     };
-    let (started, header) = read_header(name, first)?;
+    let (started, header, version) = read_header(name, first)?;
     let mut last = started;
-    for (line, _, bytes) in records {
-        let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
-        if matches!(body, Body::Meta(Meta::Header(_))) {
-            return Err(refuse(line, "a second header".to_owned()));
-        }
-        if each(stamp, body)
-            .map_err(|why| refuse(line, why))?
-            .is_break()
-        {
-            break;
-        }
-        last = stamp;
-    }
+    each_record(
+        lines,
+        version,
+        |line, bytes| {
+            let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
+            if matches!(body, Body::Meta(Meta::Header(_))) {
+                return Err(refuse(line, "a second header".to_owned()));
+            }
+            let flow = each(stamp, body).map_err(|why| refuse(line, why))?;
+            if flow.is_continue() {
+                last = stamp;
+            }
+            Ok(flow)
+        },
+        refuse,
+    )?;
     Ok(Some(Read {
         header,
         started,
@@ -163,9 +169,10 @@ fn read_lines(
     }))
 }
 
-/// The header `first`, the first line of the log `name`, read strictly:
-/// of this format, with the log's lineage.
-pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), LoadError> {
+/// The header `first`, the first line of the log `name`, read strictly,
+/// with the format version it names: of a format from [`OLDEST`] to this
+/// one, with the log's lineage. The header is given as read in this format.
+pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header, u32), LoadError> {
     let (started, header) = match parse(first) {
         Ok((stamp, Body::Meta(Meta::Header(header)))) => (stamp, header),
         _ => {
@@ -178,11 +185,12 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), L
             });
         }
     };
-    if header.format.as_deref() != Some(FORMAT) {
+    let version = header.format.as_deref().and_then(version_of);
+    let Some(version) = version.filter(|version| (OLDEST..=VERSION).contains(version)) else {
         let found = header.format;
         let log = name.to_owned();
         return Err(LoadError::Format { log, found });
-    }
+    };
     if !header.lineage.is_log() {
         return Err(LoadError::Record {
             log: name.to_owned(),
@@ -190,7 +198,12 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), L
             why: "a header without the log's lineage".to_owned(),
         });
     }
-    Ok((started, header))
+    let header = header_now(version, header).map_err(|why| LoadError::Record {
+        log: name.to_owned(),
+        line: 1,
+        why,
+    })?;
+    Ok((started, header, version))
 }
 
 /// How a log is folded.
@@ -231,8 +244,8 @@ pub(crate) fn fold_lines(
             return Ok(ControlFlow::Break(()));
         }
         match body {
-            Body::Meta(Meta::State { key, value }) => match value.filter(|v| !v.is_null()) {
-                Some(value) => state.insert(key, value),
+            Body::Meta(Meta::State { key, v, value }) => match value.filter(|v| !v.is_null()) {
+                Some(value) => state.insert(key, Versioned { v, value }),
                 None => state.remove(&key),
             },
             Body::Meta(Meta::Retired) => {
@@ -486,7 +499,8 @@ impl Session {
     /// store gets a header), its changed and removed saved values, and its
     /// retirement, and the session's changed values. Each agent's
     /// conversation is left with nothing unsaved. A torn last line of a log
-    /// written to is first set aside, as [`Writer::open`](crate::Writer::open)
+    /// written to is first set aside, and a session an older rig saved
+    /// rewritten in this format, as [`Writer::open`](crate::Writer::open)
     /// does.
     ///
     /// # Errors
@@ -496,6 +510,7 @@ impl Session {
     /// before anything is written; otherwise as
     /// [`Self::read`], or when a write fails.
     pub fn save(&mut self, store: &dyn Store) -> Result<(), LoadError> {
+        upgrade(store)?;
         let folded = fold_all(store, false)?;
         let had = |id: &str| folded.iter().find(|log| log.name == id);
         for agent in &self.agents {
@@ -562,7 +577,8 @@ pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, LoadError> {
 
 /// Appends the unsaved changes of `conversation` to the log `log` of
 /// `store`, starting it when there is none, and leaves the conversation
-/// with nothing unsaved. A torn last line of the log is first set aside, as
+/// with nothing unsaved. A torn last line of the log is first set aside,
+/// and a session an older rig saved rewritten in this format, as
 /// [`Writer::open`](crate::Writer::open) does.
 ///
 /// ```
@@ -590,6 +606,7 @@ pub fn save(
     log: &str,
     conversation: &mut Conversation,
 ) -> Result<(), LoadError> {
+    upgrade(store)?;
     let folded = fold(store, log, Fold::default())?;
     check_continues(folded.as_ref(), log, conversation)?;
     let mut book = Book::after(folded.as_slice());
@@ -638,8 +655,9 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, Record)>, Loa
                 });
                 Record::Change(recorded)
             }
-            Body::Meta(Meta::State { key, value }) => Record::State {
+            Body::Meta(Meta::State { key, v, value }) => Record::State {
                 key,
+                v,
                 value: value.filter(|value| !value.is_null()),
             },
             Body::Meta(Meta::Retired) => Record::Retired,

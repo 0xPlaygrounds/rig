@@ -1,11 +1,13 @@
-//! Word wrapping of styled lines to a width, done once per line and width
-//! and kept by the transcript, so a frame only lays out what changed.
+//! Word wrapping of styled lines to a width, as the transcript wraps its
+//! rows: at word boundaries, a list item's continuation rows under its
+//! text. A plugin drawing its own lines wraps them with [`wrap_all`] to
+//! look the same.
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use super::view::Continuation;
+use crate::Continuation;
 
 /// Markers after which a wrapped line's continuation rows are indented, so
 /// a list item or a tool result keeps its left edge.
@@ -15,7 +17,7 @@ const HANGING_MARKERS: [&str; 8] = ["•", "-", "*", "›", "⎿", "●", "│",
 /// wide, each with how it continues the row before it (`None` for the
 /// first). A word wider than a row is broken. Continuation rows are
 /// indented like the text after the line's leading spaces and list marker.
-pub(crate) fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<Continuation>)> {
+pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<Continuation>)> {
     let width = width.max(1);
     let cells: Vec<(&str, Style)> = line
         .styled_graphemes(Style::default())
@@ -85,7 +87,7 @@ pub(crate) fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<
 }
 
 /// Every line of `lines` wrapped to `width`.
-pub(crate) fn wrap_all(lines: &[Line<'_>], width: usize) -> Vec<Line<'static>> {
+pub fn wrap_all(lines: &[Line<'_>], width: usize) -> Vec<Line<'static>> {
     let rows = lines.iter().flat_map(|line| wrap(line, width));
     rows.map(|(row, _)| row).collect()
 }

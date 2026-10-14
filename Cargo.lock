@@ -4778,7 +4778,6 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_tasks",
- "chrono",
  "futures",
  "regex",
  "rig-core",
@@ -5845,7 +5844,6 @@ dependencies = [
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
- "rig-sessions",
  "rig-tools",
  "schemars 1.2.1",
  "serde",
@@ -6883,7 +6881,6 @@ name = "corpus-sn-bookmarks"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
@@ -7332,6 +7329,331 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "toml",
+]
+
+[[package]]
+name = "corpus-sp-branch-cherry-pick"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tui",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-branch-compare-view"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-coding-tools",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-telemetry",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-branch-explode-library"
+version = "0.0.0"
+dependencies = [
+ "rig",
+ "rig-core",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-memory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-changelog-fragments"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "glob",
+ "rig-coding-tools",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-churn-monitor"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-coding-tools",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-commit-msg-hook"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-dead-ends-ledger"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-coding-tools",
+ "rig-compaction",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-inbox-folder"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-output-styles"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
+name = "corpus-sp-per-agent-compaction"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "rig-compaction",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-subagents",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-plugin-state-upgrade"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-recent-sessions-start"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-sessions",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-reply-prefill"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-session-doctor-library"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-memory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-session-provenance"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "chrono",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-models",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-session-tree-browser"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-sessions",
+ "rig-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-shell-env-policy"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "glob",
+ "rig-coding-tools",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tui",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
+name = "corpus-sp-structured-config-edit"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "corpus-plan-mode",
+ "rig-coding-tools",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "toml_edit",
+]
+
+[[package]]
+name = "corpus-sp-subagent-result-cache"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-coding-tools",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-subagents",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-sp-theme-files"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tui",
+ "serde",
+ "serde_json",
  "toml",
 ]
 
@@ -16891,6 +17213,7 @@ dependencies = [
  "rig-print",
  "rig-reload",
  "rig-sessions",
+ "rig-splits",
  "rig-subagents",
  "rig-telemetry",
  "rig-tui",
@@ -17349,6 +17672,23 @@ dependencies = [
  "rig-harness-test-support",
  "rig-tools",
  "rig-tui",
+]
+
+[[package]]
+name = "rig-splits"
+version = "0.44.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-compaction",
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-memory",
+ "rig-tui",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -20472,6 +20812,7 @@ dependencies = [
  "indexmap 2.14.0",
  "toml_datetime",
  "toml_parser",
+ "toml_writer",
  "winnow",
 ]
 

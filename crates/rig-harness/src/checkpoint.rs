@@ -58,7 +58,7 @@ use rig_core::serve::ErasedHandler;
 use rig_core::tool::{Scope, Touches};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    AgentPass, CallHandler, CallOf, Footprint, ForAgent, GateSystems, Stage, ToolCalls, Undecided,
+    AgentPass, CallHandler, CallOf, Footprint, ForAgent, GateSystems, ToolCalls, Undecided,
 };
 use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
@@ -181,7 +181,7 @@ impl Plugin for CheckpointPlugin {
                 .after(GateSystems::After)
                 .after(PreviewSystems)
                 .after(ApprovalSystems)
-                .before(Stage::Start)
+                .before(GateSystems::Fallback)
                 .run_if(|checkpoints: Res<Checkpoints>| checkpoints.enabled),
         )
         .add_systems(Startup, forget_kept);
@@ -199,7 +199,9 @@ fn forget_kept(scratch: Option<Res<Scratch>>) {
 }
 
 /// Wraps each call about to start that may write anywhere, after every
-/// gate, so a footprint a plugin declared counts. A call a gate decided is
+/// gate, so a footprint a plugin declared counts, and before the kernel's
+/// fallback answers, so before the conversations saved ahead of Start (a
+/// save reads the whole world). A call a gate decided is
 /// wrapped too, harmlessly: its handler never runs. It reads no
 /// [`Decision`](rig_ecs::prelude::Decision), so it needs no order against
 /// the systems that decide there.

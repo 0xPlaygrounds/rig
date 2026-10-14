@@ -100,18 +100,18 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload);
-    app.world_mut().resource_mut::<TuiInput>().set("/tools");
+    crate::tests::edit(&mut app, |input| input.set("/tools"));
     assert!(app.world_mut().run_system_once(keep_draft).is_ok());
     drop(app);
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
-    assert_eq!(app.world().resource::<TuiInput>().text(), "/tools");
+    assert_eq!(crate::tests::input(&app).text(), "/tools");
     // Once: the build after this one starts empty.
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
-    assert!(app.world().resource::<TuiInput>().is_empty());
+    assert!(crate::tests::input(&app).is_empty());
 }
 
 /// Adds `message` to `agent`'s conversation.
@@ -137,7 +137,7 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
     app.update();
     say(&mut app, agent, Message::user("next"));
     let world = app.world();
-    let notice = world.resource::<TranscriptView>().notices().first();
+    let notice = world.resource::<crate::Notices>().all().first();
     let conversation = world.get::<Conversation>(agent);
     assert_eq!(notice.and_then(ShownNotice::drawn_in), Some(&id));
     let slot = |id: &AgentId| notice?.slot(id, conversation?);
@@ -177,6 +177,7 @@ fn a_notice_about_an_agent_gone_before_it_is_read_is_drawn_in_no_other_transcrip
 #[test]
 fn a_notice_is_an_item_a_plugin_scrolls_to() {
     let (mut app, agent) = view_app();
+    let pane = crate::tests::main_pane(app.world());
     let question = |index: usize| rig_core::completion::Message::user(format!("question {index}"));
     for index in 0..10 {
         say(&mut app, agent, question(index));
@@ -187,17 +188,17 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
     for index in 10..30 {
         say(&mut app, agent, question(index));
     }
-    let notices = app.world().resource::<TranscriptView>().notices().len();
+    let notices = app.world().resource::<crate::Notices>().all().len();
     assert_eq!(notices, 1);
     let item = TranscriptItem::Notice(0);
     app.world_mut().trigger(ScrollTo {
-        agent,
+        pane,
         item: Some(item.clone()),
         row: ItemRow::Top(0),
     });
     let lines = crate::tests::on_screen(&mut app, agent, 5);
     assert_eq!(lines.first().map(String::as_str), Some("Rate limited."));
-    let top = app.world().resource::<TranscriptView>().top().cloned();
+    let top = crate::tests::main_view(&app).top().cloned();
     assert_eq!(top, Some((item, 0)));
 }
 
@@ -209,8 +210,13 @@ fn laid_out_narrow(said: &[&str]) -> Option<DrawnTranscript> {
         app.world_mut().trigger(note);
         app.update();
     }
-    let lay_out = move |layout: crate::TranscriptLayout, view: Res<TranscriptView>| {
-        layout.lay_out(&view, agent, 12, crate::Expanded::AsShown)
+    let lay_out = move |layout: crate::TranscriptLayout| {
+        layout.lay_out(
+            &TranscriptView::default(),
+            agent,
+            12,
+            crate::Expanded::AsShown,
+        )
     };
     app.world_mut().run_system_once(lay_out).ok().flatten()
 }
@@ -274,23 +280,4 @@ fn a_line_says_where_each_of_its_rows_starts_in_it() {
     // The blanks a wrap dropped end the row before.
     let blank = line.text.find("  ").unwrap_or_default();
     assert_eq!(line.row_at(blank + 1), line.row_at(blank));
-}
-
-#[test]
-fn a_new_width_changes_the_view_and_the_same_one_does_not() {
-    let (mut app, _) = view_app();
-    let changed = app
-        .world_mut()
-        .register_system(|view: Res<TranscriptView>| view.is_changed());
-    let mut drawn_at = |width: u16| {
-        let note = move |mut view: ResMut<TranscriptView>| {
-            TranscriptView::note_drawn(&mut view, None, width);
-        };
-        assert!(app.world_mut().run_system_once(note).is_ok());
-        app.world_mut().run_system(changed).unwrap_or_default()
-    };
-    drawn_at(80);
-    assert!(!drawn_at(80));
-    assert!(drawn_at(100));
-    assert!(!drawn_at(100));
 }

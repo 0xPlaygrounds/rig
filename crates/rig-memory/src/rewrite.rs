@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
+use std::ops::ControlFlow;
 
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, Author, Branch, Change, Conversation, Lineage};
@@ -17,8 +18,9 @@ use serde_json::Value;
 use crate::blobs::{named_blobs, store_change};
 use crate::format::{Body, Header, LogLines, Meta, Rewrote, parse, write_change, write_meta};
 use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
+use crate::upgrade::each_record;
 use crate::writer::set_aside_tail;
-use crate::{Files, LoadError, MemoryStore, Stamp, Store, now_ms};
+use crate::{Files, LoadError, MemoryStore, Stamp, Store, Versioned, now_ms, upgrade};
 
 /// Where a value being rewritten is kept.
 #[derive(Clone, Copy, Debug)]
@@ -467,8 +469,8 @@ pub struct RewrittenLog {
     pub records: usize,
     /// Its conversation as rewritten, with images, continuing the new log.
     pub conversation: Conversation,
-    /// Its saved values as rewritten.
-    pub state: BTreeMap<String, Value>,
+    /// Its saved values as rewritten, each at the version it was saved at.
+    pub state: BTreeMap<String, Versioned>,
     /// The saved keys whose newest value changed; one whose value was
     /// removed is not in `state`.
     pub changed_keys: Vec<String>,
@@ -499,41 +501,46 @@ pub(crate) fn map_log(
     with: &dyn Rewrite,
     blobs: &dyn Store,
 ) -> Result<Option<Mapped>, LoadError> {
-    let mut records = lines.iter();
     let refuse = |line, why| LoadError::Record {
         log: name.to_owned(),
         line,
         why,
     };
-    let Some((_, _, first)) = records.next() else {
+    let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
-    let header = read_header(name, first)?;
+    let (stamp, header, version) = read_header(name, first)?;
     let mut mapped = Mapped {
-        last: header.0,
-        header,
+        last: stamp,
+        header: (stamp, header),
         body: Vec::new(),
         records: 0,
         changes: false,
     };
-    for (line, _, bytes) in records {
-        let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
-        if until.is_some_and(|until| stamp.n >= until) {
-            break;
-        }
-        mapped.changes |= matches!(body, Body::Change(_));
-        match map_record(name, stamp, body, with, blobs).map_err(|why| refuse(line, why))? {
-            Some(record) => {
-                mapped.body.extend_from_slice(&record);
-                mapped.records += 1;
+    each_record(
+        lines,
+        version,
+        |line, bytes| {
+            let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
+            if until.is_some_and(|until| stamp.n >= until) {
+                return Ok(ControlFlow::Break(()));
             }
-            None => {
-                mapped.body.extend_from_slice(bytes);
-                mapped.body.push(b'\n');
+            mapped.changes |= matches!(body, Body::Change(_));
+            match map_record(name, stamp, body, with, blobs).map_err(|why| refuse(line, why))? {
+                Some(record) => {
+                    mapped.body.extend_from_slice(&record);
+                    mapped.records += 1;
+                }
+                None => {
+                    mapped.body.extend_from_slice(bytes);
+                    mapped.body.push(b'\n');
+                }
             }
-        }
-        mapped.last = stamp;
-    }
+            mapped.last = stamp;
+            Ok(ControlFlow::Continue(()))
+        },
+        refuse,
+    )?;
     Ok(Some(mapped))
 }
 
@@ -550,6 +557,7 @@ pub(crate) fn map_record(
     match body {
         Body::Meta(Meta::State {
             key,
+            v,
             value: Some(mut value),
         }) if !value.is_null() => {
             let at = Place::Record {
@@ -562,6 +570,7 @@ pub(crate) fn map_record(
             }
             let state = Meta::State {
                 key,
+                v,
                 value: Some(value),
             };
             write_meta(&mut line, stamp, &state).map_err(|failure| failure.to_string())?;
@@ -688,8 +697,10 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// changed gets a fresh lineage and `{t, by}` added to its header's
 /// `rewrites`.
 ///
-/// Every log is read strictly, and every changed log is encoded and
-/// folded strictly in memory, before anything is written. Then torn tails
+/// A session an older rig saved is first rewritten in this format
+/// ([`upgrade`](crate::upgrade)). Every log is read strictly, and every
+/// changed log is encoded and folded strictly in memory, before anything
+/// is written. Then torn tails
 /// are set aside (as [`Writer::open`](crate::Writer::open) does), new
 /// blobs are stored, each changed log is replaced
 /// ([`Store::replace_log`]), every file of the store goes through
@@ -716,6 +727,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 ///
 /// [`save`]: crate::save
 pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewritten, LoadError> {
+    upgrade(store)?;
     let mut logs: Vec<(String, LogLines, Folded)> = Vec::new();
     for name in store.logs()? {
         let Some(lines) = log_lines(store, &name)? else {

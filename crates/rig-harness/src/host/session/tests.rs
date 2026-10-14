@@ -8,20 +8,26 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
+use rig_core::conversation::MessageId;
 use rig_core::conversation::{self, Author, Entry};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
 use rig_ecs::journal::{JournalPlugin, RewriteSession, SessionStore};
 use rig_ecs::{AgentPlugin, WriteJournal};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::{DirStore, Files, MemoryStore, Store, Strings, load, save};
+use rig_memory::{
+    DirStore, Files, MemoryStore, SPLIT, Session, SessionMeta, SplitPointer, Store, Strings,
+    Versioned, load, save,
+};
 
 use super::{
-    AppStart, DeleteSession, ForkSession, ForkSessions, ForkedFrom, Scratch, SessionDeleteFailed,
-    SessionDeleted, SessionForked, SessionPaths, SessionPlugin, SessionStores, first_typed,
-    log_layer, rewrite_stopped, typed,
+    AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, ForkedFrom, Scratch,
+    SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
+    SessionPlugin, SessionStores, first_typed, log_layer, rewrite_stopped, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
+use crate::host::exit::ExitReason;
 use crate::host::launcher::{Invoked, LauncherRun};
+use crate::load::AppKeepsExt;
 use crate::plugin_data::PluginData;
 use crate::services::RigHome;
 
@@ -29,13 +35,17 @@ use crate::services::RigHome;
 #[derive(Resource, Default)]
 struct Seen {
     forked: Vec<SessionForked>,
+    fork_failed: Vec<SessionForkFailed>,
     deleted: Vec<SessionId>,
     failed: Vec<(SessionId, String)>,
     notices: Vec<String>,
 }
 
 fn watch(
-    mut forked: MessageReader<SessionForked>,
+    (mut forked, mut fork_failed): (
+        MessageReader<SessionForked>,
+        MessageReader<SessionForkFailed>,
+    ),
     (mut deleted, mut failed): (
         MessageReader<SessionDeleted>,
         MessageReader<SessionDeleteFailed>,
@@ -44,6 +54,7 @@ fn watch(
     mut seen: ResMut<Seen>,
 ) {
     seen.forked.extend(forked.read().cloned());
+    seen.fork_failed.extend(fork_failed.read().cloned());
     let failed = failed
         .read()
         .map(|failed| (failed.id.clone(), failed.why.clone()));
@@ -116,8 +127,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     // resumed.
     let parent = ForkedFrom {
         session: id.to_string(),
-        before: None,
-        text: None,
+        ..ForkedFrom::default()
     };
     let parent_of = |session: &SessionDir| dir_store(session).as_ref().and_then(ForkedFrom::read);
     assert_eq!(parent_of(&copy), Some(parent));
@@ -311,6 +321,294 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
     fs::remove_dir_all(home.root()).ok();
 }
 
+/// A fork that cannot be made says why to whoever asked, as data, beside
+/// the error notice.
+#[test]
+fn a_failed_fork_tells_its_asker_why() {
+    let home = scratch_home("rig-fork-failed");
+    let Ok(id) = "1700000000-6".parse::<SessionId>() else {
+        return;
+    };
+    let session = home.session(&id);
+    fs::create_dir_all(session.path()).ok();
+    let mut app = App::new();
+    app.add_message::<Notice>()
+        .init_resource::<Seen>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session))
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch.after(ForkSessions));
+    drop(std::panic::take_hook());
+    let asker = app.world_mut().spawn_empty().id();
+    // No store: the session was never opened.
+    app.world_mut().trigger(ForkSession {
+        asker: Some(asker),
+        ..ForkSession::default()
+    });
+    app.update();
+    let seen = app.world().resource::<Seen>();
+    let failed: Vec<_> = seen
+        .fork_failed
+        .iter()
+        .map(|failed| (failed.from.clone(), failed.cut.clone(), failed.asker))
+        .collect();
+    assert_eq!(failed, [(None, ForkCut::Whole, Some(asker))]);
+    let why = seen.fork_failed.first().map(|failed| failed.why.as_str());
+    assert_eq!(why, Some("this session is not stored"));
+    assert_eq!(seen.notices.len(), 1, "{:?}", seen.notices);
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// The app of the saved session `id` of `home`, which says what forks
+/// it made, with the agent's conversation `said` (an empty one when
+/// `None`): the agent's entity.
+fn running_with(home: &Home, id: &SessionId, said: &[Message]) -> Option<(App, Entity)> {
+    let session = home.session(id);
+    fs::create_dir_all(session.path()).ok()?;
+    let mut app = App::new();
+    app.init_resource::<Seen>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch.after(ForkSessions));
+    drop(std::panic::take_hook());
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut())?;
+    for message in said {
+        commit_message(app.world_mut(), agent, message.clone()).ok()?;
+    }
+    app.update();
+    Some((app, agent))
+}
+
+/// Four messages, a question asked twice.
+fn four() -> [Message; 4] {
+    [
+        Message::user("one"),
+        Message::assistant("two"),
+        Message::user("three"),
+        Message::assistant("four"),
+    ]
+}
+
+/// A split of this session's line through a message is a new session
+/// holding that line, which names its parent and the message it copied
+/// through, and leaves a pointer after that message; a move also takes
+/// the range out of the line, the pointer in its place.
+#[test]
+fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
+    let home = scratch_home("rig-split-here");
+    let Ok(id) = "1700000000-30".parse::<SessionId>() else {
+        return;
+    };
+    let Some((mut app, agent)) = running_with(&home, &id, &four()) else {
+        return;
+    };
+    let world = app.world();
+    let agent_id = world.get::<AgentId>(agent).cloned().unwrap_or_default();
+    let ids: Vec<_> = world
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
+        .unwrap_or_default();
+    let (Some(&second), Some(&third), Some(&fourth)) = (ids.get(1), ids.get(2), ids.get(3)) else {
+        return;
+    };
+    let line = |through, take| ForkCut::Line {
+        agent: agent_id.clone(),
+        line: None,
+        through,
+        take,
+        title: "side".to_owned(),
+    };
+    app.world_mut().trigger(ForkSession {
+        cut: line(third, None),
+        ..ForkSession::default()
+    });
+    app.update();
+    let forked = app.world().resource::<Seen>().forked.first().cloned();
+    assert!(
+        forked.is_some(),
+        "no split: {:?}",
+        app.world().resource::<Seen>().notices
+    );
+    let Some(forked) = forked else { return };
+    let copy = dir_store(&home.session(&forked.to));
+    let read = copy.as_ref().and_then(|copy| Session::read(copy).ok());
+    let copied: Vec<_> = read
+        .iter()
+        .flat_map(|read| read.agents.iter())
+        .flat_map(|agent| agent.conversation.entries().map(|entry| entry.id))
+        .collect();
+    assert_eq!(copied, ids.get(..3).unwrap_or_default());
+    let parent = copy.as_ref().and_then(ForkedFrom::read);
+    assert_eq!(
+        parent,
+        Some(ForkedFrom {
+            session: id.to_string(),
+            through: Some((agent_id.0.clone(), third)),
+            line: Some("side".to_owned()),
+            text: Some("three".to_owned()),
+            ..ForkedFrom::default()
+        })
+    );
+    let pointers = |app: &App| -> Vec<(Option<MessageId>, SplitPointer)> {
+        let conversation = app.world().get::<Conversation>(agent);
+        let asides = conversation
+            .into_iter()
+            .flat_map(|conversation| conversation.asides());
+        asides
+            .filter(|(_, aside)| aside.kind == SPLIT)
+            .filter_map(|(_, aside)| {
+                Some((
+                    aside.after,
+                    serde_json::from_value(aside.value.clone()).ok()?,
+                ))
+            })
+            .collect()
+    };
+    let pointer = |to: &SessionId, moved| SplitPointer {
+        session: to.to_string(),
+        agent: agent_id.0.clone(),
+        title: "side".to_owned(),
+        moved,
+        merged: false,
+    };
+    assert_eq!(pointers(&app), [(Some(third), pointer(&forked.to, 0))]);
+
+    app.world_mut().trigger(ForkSession {
+        cut: line(fourth, Some(second)),
+        ..ForkSession::default()
+    });
+    app.update();
+    let moved = app
+        .world()
+        .resource::<Seen>()
+        .forked
+        .get(1)
+        .map(|forked| forked.to.clone());
+    assert!(
+        moved.is_some(),
+        "no move: {:?}",
+        app.world().resource::<Seen>().notices
+    );
+    let Some(moved) = moved else { return };
+    let left: Vec<_> = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
+        .unwrap_or_default();
+    assert_eq!(left, ids.get(..1).unwrap_or_default());
+    let now = pointers(&app);
+    assert_eq!(
+        now.last(),
+        Some(&(ids.first().copied(), pointer(&moved, 3)))
+    );
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// A split of a stopped session leaves its pointer there through
+/// [`edit_stopped`](super::edit_stopped), which holds the session's lock;
+/// a session another rig runs is copied without one, and a move out of it
+/// is refused.
+#[test]
+fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() {
+    let home = scratch_home("rig-split-stopped");
+    let (Ok(here), Ok(there)) = (
+        "1700000000-31".parse::<SessionId>(),
+        "1700000000-32".parse::<SessionId>(),
+    ) else {
+        return;
+    };
+    let Some((app, agent)) = running_with(&home, &there, &four()) else {
+        return;
+    };
+    let agent_id = app
+        .world()
+        .get::<AgentId>(agent)
+        .cloned()
+        .unwrap_or_default();
+    let ids: Vec<_> = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
+        .unwrap_or_default();
+    drop(app);
+    let Some((mut app, _)) = running_with(&home, &here, &[]) else {
+        return;
+    };
+    let (Some(&second), Some(&third)) = (ids.get(1), ids.get(2)) else {
+        return;
+    };
+    let line = |take| ForkCut::Line {
+        agent: agent_id.clone(),
+        line: None,
+        through: third,
+        take,
+        title: "side".to_owned(),
+    };
+    let stopped = home.session(&there);
+    let lock = stopped.hold().ok().flatten();
+    assert!(lock.is_some(), "held as another rig would");
+    for take in [None, Some(second)] {
+        app.world_mut().trigger(ForkSession {
+            from: Some(there.clone()),
+            cut: line(take),
+            asker: None,
+        });
+        app.update();
+    }
+    drop(lock);
+    let seen = app.world().resource::<Seen>();
+    let notes: Vec<_> = seen
+        .forked
+        .iter()
+        .map(|forked| forked.note.is_some())
+        .collect();
+    assert_eq!(notes, [true], "copied without a pointer");
+    let failed: Vec<_> = seen
+        .fork_failed
+        .iter()
+        .map(|failed| failed.why.as_str())
+        .collect();
+    assert_eq!(failed, ["another rig runs it"]);
+
+    app.world_mut().trigger(ForkSession {
+        from: Some(there.clone()),
+        cut: line(Some(second)),
+        asker: None,
+    });
+    app.update();
+    let seen = app.world().resource::<Seen>();
+    let to = seen
+        .forked
+        .get(1)
+        .map(|forked| (forked.to.clone(), forked.note.clone()));
+    assert!(matches!(to, Some((_, None))), "{to:?} {:?}", seen.notices);
+    let read = dir_store(&stopped).and_then(|store| Session::read(&store).ok());
+    let conversation = read
+        .as_ref()
+        .and_then(|read| read.agent(&agent_id.0))
+        .map(|agent| &agent.conversation);
+    let left: Vec<_> = conversation
+        .map(|conversation| conversation.entries().map(|entry| entry.id).collect())
+        .unwrap_or_default();
+    let kept: Vec<_> = [ids.first(), ids.get(3)]
+        .into_iter()
+        .flatten()
+        .copied()
+        .collect();
+    assert_eq!(left, kept, "the range left the stopped session");
+    let pointers = conversation
+        .into_iter()
+        .flat_map(|conversation| conversation.asides())
+        .filter(|(_, aside)| aside.kind == SPLIT)
+        .count();
+    assert_eq!(pointers, 1);
+    fs::remove_dir_all(home.root()).ok();
+}
+
 /// A branch before a message keeps what the user wrote in it with its
 /// parent, so a view of the family reads no other log.
 #[test]
@@ -353,9 +651,13 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     let before = agent_id.zip(message);
     assert!(before.is_some(), "the message was logged");
     let asker = app.world_mut().spawn_empty().id();
+    let cut = before.clone().map_or(ForkCut::Whole, |(agent, message)| {
+        ForkCut::Before(agent, message)
+    });
     app.world_mut().trigger(ForkSession {
-        before: before.clone(),
+        cut,
         asker: Some(asker),
+        ..ForkSession::default()
     });
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
@@ -407,8 +709,61 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
     assert_eq!(ended(true, AppExit::from_code(1)), Some(false));
     let log = std::fs::read_to_string(run.log()).ok();
     assert_eq!(log.as_deref(), Some("1-0"), "the launcher points at it");
-    assert_eq!(ended(false, AppExit::from_code(1)), Some(true));
+    // Any run that saved nothing leaves no directory either.
+    assert_eq!(ended(false, AppExit::from_code(1)), Some(false));
+    let log = std::fs::read_to_string(run.log()).ok();
+    assert_eq!(log.as_deref(), Some("0-0"));
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// A run that leaves its session before anything was saved there, such
+/// as one switching to another session at startup, removes its directory,
+/// whatever its front; a reload, which runs the session again, and a
+/// saved session keep it. A switch the launcher is told of (its switch
+/// file) keeps it too: the launcher reads where to go from there, then
+/// removes the unsaved session itself.
+#[test]
+fn an_unsaved_session_left_for_good_leaves_no_directory() {
+    let home = scratch_home("rig-unsaved-left");
+    let left = |id: &str, reason: ExitReason, saved: bool| {
+        let id: SessionId = id.parse().ok()?;
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        if saved {
+            session.mark_saved().ok()?;
+        }
+        if id.as_str() == "1700000000-20" {
+            fs::write(session.switch(), "1700000000-19").ok()?;
+        }
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .add_plugins(SessionPlugin);
+        app.update();
+        app.world_mut().write_message(reason.exit());
+        app.insert_resource(reason);
+        app.update();
+        Some(session.path().exists())
+    };
+    let switched = left("1700000000-16", ExitReason::Switch(None), false);
+    let quit = left("1700000000-17", ExitReason::Quit, false);
+    let reloaded = left("1700000000-18", ExitReason::Reload, false);
+    let saved = left("1700000000-19", ExitReason::Switch(None), true);
+    let told = left("1700000000-20", ExitReason::Switch(None), false);
+    let switch_file = "1700000000-20"
+        .parse()
+        .ok()
+        .map(|id| home.session(&id).switch());
+    let switch_file = switch_file.and_then(|path| fs::read_to_string(path).ok());
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(switched, Some(false), "switched away at startup");
+    assert_eq!(quit, Some(false), "quit");
+    assert_eq!(reloaded, Some(true), "reloaded");
+    assert_eq!(saved, Some(true), "saved");
+    assert_eq!(told, Some(true), "a switch the launcher is told of");
+    assert_eq!(switch_file.as_deref(), Some("1700000000-19"));
 }
 
 /// A front whose runs keep no session never takes a resumed one, such as
@@ -486,6 +841,53 @@ fn a_fronts_own_store_keeps_only_the_sessions_of_its_runs() {
     fs::remove_dir_all(home.root()).ok();
     assert_eq!(reply, Some((true, true)));
     assert_eq!(print, Some((false, false)));
+}
+
+/// A sessionless run never marks its session saved, in a front's own
+/// store (such as a question asked in memory) or in its directory, so a
+/// crash leaves nothing `/resume` lists; a run that keeps its session
+/// does, a front's own store included.
+#[test]
+fn a_sessionless_run_never_marks_its_session_saved() {
+    let home = scratch_home("rig-sessionless-unmarked");
+    let crashed = |id: &str, front: Front| {
+        let id: SessionId = id.parse().ok()?;
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .add_plugins(SessionPlugin)
+            .add_front(front);
+        app.finish();
+        let store = app.world().get_resource::<SessionStore>()?.0.clone();
+        let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+        save(&*store, "agent-1", &mut said).ok()?;
+        // No exit: the run is cut short.
+        drop(app);
+        Some(session.is_saved())
+    };
+    let in_memory = |front: Front| {
+        let store = MemoryStore::default();
+        front.session_store(move |_| Ok(Arc::new(store.clone())))
+    };
+    let asked = crashed(
+        "1700000000-12",
+        in_memory(Front::new("ask").headless().sessionless()),
+    );
+    let exported = crashed(
+        "1700000000-13",
+        Front::new("export").headless().sessionless(),
+    );
+    let replied = crashed("1700000000-14", in_memory(Front::new("reply").headless()));
+    let printed = crashed("1700000000-15", Front::new("print").headless());
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(asked, Some(false), "a sessionless front's own store");
+    assert_eq!(exported, Some(false), "a sessionless run's directory");
+    assert_eq!(replied, Some(true), "a front's own store");
+    assert_eq!(printed, Some(true), "its directory");
 }
 
 #[test]
@@ -832,5 +1234,90 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     assert_eq!(done.map(|done| done.logs.len()), Ok(1));
     assert_eq!(secret_in(stopped.path()), Vec::<PathBuf>::new());
     drop((app, layer));
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Saved values made secret by a rewrite; files are left.
+struct Secret;
+
+impl rig_memory::Rewrite for Secret {
+    fn value(&self, _: &rig_memory::Place<'_>, _: &str, value: &mut serde_json::Value) -> bool {
+        let hit = value.as_str() == Some("ship");
+        if hit {
+            *value = serde_json::Value::from("[secret]");
+        }
+        hit
+    }
+
+    fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
+        false
+    }
+}
+
+/// An edit and a rewrite of a stopped session keep its listing, as a
+/// running rig does: a listed value set or rewritten is listed (an unlisted
+/// one is not), the message count follows, and `updated` moves on.
+#[test]
+fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
+    let home = scratch_home("rig-stopped-listing");
+    let (Ok(here), Ok(there)) = (
+        "1700000000-41".parse::<SessionId>(),
+        "1700000000-42".parse::<SessionId>(),
+    ) else {
+        return;
+    };
+    let (session, stopped) = (home.session(&here), home.session(&there));
+    let store = fs::create_dir_all(stopped.path())
+        .ok()
+        .and_then(|()| SessionStores::default().open(&stopped).ok());
+    let Some(store) = store else {
+        return;
+    };
+    let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+    assert!(save(&*store, "agent-1", &mut said).is_ok());
+    let old = SessionMeta {
+        title: "hi".to_owned(),
+        updated: 1,
+        messages: 1,
+        ..SessionMeta::default()
+    };
+    assert!(old.write(&*store).is_ok());
+    fs::create_dir_all(session.path()).ok();
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()))
+        .add_plugins(SessionPlugin);
+    app.saved_as::<String>("goals.goal").listed();
+    let _ = app.saved_as::<u32>("goals.count");
+    drop(std::panic::take_hook());
+    app.finish();
+    app.update();
+    let stores = app.world().resource::<SessionStores>().clone();
+    let value = |value: serde_json::Value| Versioned { v: 1, value };
+    let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
+        read.state
+            .insert("goals.goal".to_owned(), value("ship".into()));
+        read.state.insert("goals.count".to_owned(), value(3.into()));
+        let agent = read.agent_mut("agent-1").ok_or("no agent")?;
+        agent.conversation.push(Message::assistant("hello"));
+        Ok(())
+    });
+    assert_eq!(edited, Ok(()));
+    let listed = |goal: &str| BTreeMap::from([("goals.goal".to_owned(), value(goal.into()))]);
+    let meta = SessionMeta::read(&*store).unwrap_or_default();
+    assert_eq!(
+        (meta.title.as_str(), meta.messages, &meta.data),
+        ("hi", 2, &listed("ship"))
+    );
+    assert!(meta.updated > 1, "updated");
+
+    assert!(old.write(&*store).is_ok());
+    let by = Author::plugin("redact");
+    let rewritten = rewrite_stopped(&stores, &session, &stopped, by, &Secret);
+    assert!(rewritten.is_ok());
+    let meta = SessionMeta::read(&*store).unwrap_or_default();
+    assert_eq!((meta.messages, &meta.data), (2, &listed("[secret]")));
+    assert!(meta.updated > 1, "updated");
+    drop(app);
     fs::remove_dir_all(home.root()).ok();
 }

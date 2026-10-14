@@ -35,17 +35,18 @@
 //! real output is found, not the placeholder.
 //!
 //! Each summary gets one more line, [`ARCHIVED_LINE`]: rig-compaction's
-//! as it is taken ([`Summarized`] inserted), before the request built from
-//! it, and any other plugin's once its splice is committed.
+//! as a reviewer of its text ([`Summarizing::summary`]), before it
+//! replaces anything and so before the request built from it, and any
+//! other plugin's once its splice is committed.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use rig_compaction::Summarized;
+use rig_compaction::Summarizing;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Chat;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_memory::{Compacted, LoadError, Record, summary_author};
+use rig_harness::rig_memory::{LoadError, Record, summary_author};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -121,7 +122,10 @@ impl Plugin for CompactionArchivePlugin {
                 },
                 get,
             )
-            .add_observer(mark_compaction_summary)
+            .add_systems(
+                AgentPass,
+                mark_compaction_summary.in_set(ReviewSystems::Act),
+            )
             .add_systems(Update, mark_other_summaries.after(AgentLoop));
     }
 }
@@ -640,17 +644,18 @@ pub fn mark(conversation: &mut Chat, id: MessageId) -> bool {
     true
 }
 
-/// rig-compaction's newest summary gets the line as it is taken, before
-/// the request built from the compacted conversation.
-fn mark_compaction_summary(inserted: On<Insert<Summarized>>, mut agents: Query<&mut Conversation>) {
-    let Ok(mut conversation) = agents.get_mut(inserted.entity) else {
-        return;
-    };
-    let summary = Compacted::of(&conversation)
-        .last()
-        .map(|(_, it)| it.summary);
-    if let Some(summary) = summary {
-        mark(&mut conversation, summary);
+/// rig-compaction's summary gets the line as it is reviewed, before it
+/// replaces anything.
+fn mark_compaction_summary(mut calls: Query<&mut Summarizing, Unreviewed>) {
+    for mut summarizing in &mut calls {
+        if let Some(summary) = summarizing
+            .summary
+            .as_mut()
+            .filter(|summary| !summary.contains(ARCHIVED_LINE))
+        {
+            summary.push_str("\n\n");
+            summary.push_str(ARCHIVED_LINE);
+        }
     }
 }
 

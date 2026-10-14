@@ -17,7 +17,7 @@ use rig_harness_test_support::{
     Collected, answer_open, app_in, collect, connect, first_agent, reply, run_until, scratch_home,
 };
 use rig_tools::{Read, Shell};
-use rig_tui::TuiInput;
+use rig_tui::{Editor, MainEditor};
 
 use super::{CrashResumePlugin, Progress, Recovering, TITLE, read_progress};
 
@@ -27,8 +27,8 @@ fn app(home: &Home, session: &SessionId) -> (App, std::sync::mpsc::Receiver<()>)
     let (mut app, wakes) = app_in(home, session);
     app.add_plugins((AgentPlugin, JournalPlugin, AskPlugin, CrashResumePlugin))
         .add_tool(Shell::default())
-        .add_tool(Read::default())
-        .init_resource::<TuiInput>();
+        .add_tool(Read::default());
+    app.world_mut().spawn((Editor::default(), MainEditor));
     app.world_mut().spawn(Answerer::default());
     collect::<Notice>(&mut app);
     app.finish();
@@ -261,12 +261,14 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
         world.get::<Recovering>(agent).is_none()
     });
 
-    let world = second.world();
+    let world = second.world_mut();
     let left = world
         .get::<Conversation>(agent)
         .map(|conversation| conversation.messages().len());
     assert_eq!(left, Some(0));
-    assert_eq!(world.resource::<TuiInput>().text(), "Explain the plan.");
+    let mut main = world.query_filtered::<&Editor, With<MainEditor>>();
+    let typed = main.single(world).map(|input| input.text().to_owned());
+    assert_eq!(typed.ok().as_deref(), Some("Explain the plan."));
     second
         .world_mut()
         .trigger(Deliver::new(agent, "Start over.", DeliveryMode::Steer));

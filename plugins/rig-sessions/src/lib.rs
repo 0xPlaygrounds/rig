@@ -1,41 +1,44 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`, and
 //! [`NameSession`] for a plugin naming any session. Each change of a
-//! conversation, title or label rewrites the session's listing in its
-//! store (rig-memory's [`SessionMeta`]: the title of its [`SessionTitle`],
-//! the [`ResumeLabel`]s plugins add, such as rig-telemetry's cost, and when
+//! conversation, title, label, model or listed value rewrites the
+//! session's listing in its store (rig-memory's [`SessionMeta`]: the title
+//! of its [`SessionTitle`], the [`ResumeLabel`]s plugins add, such as
+//! rig-telemetry's cost, the main agent's model and message count, the
+//! values plugins list with rig-harness's `saved_as(..).listed()`, and when
 //! it was updated), which `/resume` lists and a resumed session reads its
 //! title back from, as does a session rewritten through rig-memory
-//! (`RewriteSession`). With the default
-//! `tui` feature, `/resume` without arguments is a picker and the terminal
-//! view's status line shows the session's name. Running another
+//! (`RewriteSession`). `/resume` without arguments is the harness's native
+//! session picker ([`SessionPicker`]); with the default `tui` feature the
+//! terminal view's status line shows the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
 //! process: it names the next session in [`SessionDir::switch`] and exits
 //! with the reload code, as `/reload` does, and the launcher starts it in
 //! its own directory.
 
-use std::cmp::Reverse;
+use std::any::TypeId;
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_app::prelude::*;
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
+use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::error;
 use bevy_reflect::prelude::*;
+use bevy_reflect::serde::TypedReflectSerializer;
+use rig_core::serde_json;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
-use rig_harness::rig_memory::{SessionMeta, title_of};
-use rig_tools::ago;
+use rig_harness::rig_memory::{SessionMeta, Versioned, main_order, title_of};
 
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::journal::{Committed, SessionRewritten, SessionStore};
-use rig_ecs::prelude::now_ms;
+use rig_ecs::model::ModelChoice;
+use rig_ecs::prelude::{SavedKeys, SavedUpgrades, now_ms};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
-use rig_harness::prelude::{
-    Exit, ExitReason, Files, RigHome, SessionPaths, SessionStores, first_typed,
-};
+use rig_harness::pick::Picker;
+use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
 use rig_harness::primary::primary_order;
+use rig_harness::sessions::SessionPicker;
 
 #[cfg(feature = "tui")]
 mod tui;
@@ -49,8 +52,8 @@ impl Plugin for SessionsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SessionTitle>()
             .init_resource::<Listed>()
+            .init_resource::<ListedValues>()
             .init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
             .add_command("new", "Start a new session; this one is kept", new)
             .add_command(
                 "resume",
@@ -69,10 +72,13 @@ impl Plugin for SessionsPlugin {
                 Last,
                 (
                     reread_title.run_if(on_message::<SessionRewritten>),
+                    read_listed,
                     update_meta.run_if(
                         on_message::<Committed>
                             .or_eager(resource_changed::<SessionTitle>)
-                            .or_eager(labels_changed),
+                            .or_eager(labels_changed)
+                            .or_eager(models_changed)
+                            .or_eager(resource_changed::<ListedValues>),
                     ),
                 )
                     .chain()
@@ -168,98 +174,119 @@ pub struct NameSession {
     pub name: String,
 }
 
-/// An earlier session, as `/resume` lists it.
-#[derive(Clone, Debug)]
-pub struct SessionEntry {
-    /// Its id.
-    pub id: SessionId,
-    /// The name `/name` gave it.
-    pub name: Option<String>,
-    /// Its listing cache; empty when no turn of it ended.
-    pub meta: SessionMeta,
-    /// The directory it runs in, if known.
-    pub directory: Option<PathBuf>,
-    /// When it last changed.
-    pub saved: SystemTime,
-}
-
-impl SessionEntry {
-    /// One line: name or title, the [`ResumeLabel`]s, directory.
-    pub fn label(&self) -> String {
-        let mut label = match (&self.name, self.meta.title.as_str()) {
-            (Some(name), _) => name.clone(),
-            (None, "") => format!("session {}", self.id),
-            (None, title) => title.to_owned(),
-        };
-        for text in self.meta.labels.values() {
-            label.push_str(&format!("  · {text}"));
-        }
-        if let Some(directory) = &self.directory {
-            label.push_str(&format!("  · {}", tilde(directory)));
-        }
-        label
-    }
-
-    /// How long ago it changed, shown whole beside the label.
-    pub fn detail(&self) -> String {
-        ago(self.saved.elapsed().unwrap_or_default())
-    }
-}
-
-/// The saved sessions under `home` other than `current`, newest first,
-/// each read from its store as `stores` open it.
-pub fn list(home: &Home, stores: &SessionStores, current: &Path) -> Vec<SessionEntry> {
-    let Ok(entries) = fs::read_dir(home.sessions()) else {
-        return Vec::new();
-    };
-    let mut sessions: Vec<SessionEntry> = entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let id: SessionId = entry.file_name().to_str()?.parse().ok()?;
-            let dir = home.session(&id);
-            if dir.path() == current || !dir.is_saved() {
-                return None;
-            }
-            let store = stores.open(&dir).ok();
-            let meta = store.as_deref().and_then(SessionMeta::read);
-            let saved = match &meta {
-                Some(meta) => UNIX_EPOCH + Duration::from_millis(meta.updated),
-                None => fs::metadata(dir.path()).ok()?.modified().ok()?,
-            };
-            Some(SessionEntry {
-                directory: dir.working_directory(),
-                name: dir.name(),
-                meta: meta.unwrap_or_default(),
-                id,
-                saved,
-            })
-        })
-        .collect();
-    sessions.sort_by_key(|session| Reverse(session.saved));
-    sessions
-}
-
-/// `path` with the home directory shown as `~`.
-fn tilde(path: &Path) -> String {
-    match std::env::home_dir().and_then(|home| path.strip_prefix(home).ok().map(Path::to_owned)) {
-        Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
-        Some(rest) => format!("~/{}", rest.display()),
-        None => path.display().to_string(),
-    }
-}
-
-/// What the session's listing cache holds of the title and labels, as
-/// last written or read back: a title or label set to what it already
-/// says is no change, so resuming a session leaves its place in `/resume`.
+/// What the session's listing cache holds, as last written or read back,
+/// its time left out: a title, label, model or listed value set to what it
+/// already says is no change, so resuming a session leaves its place in
+/// `/resume`.
 #[derive(Resource, Default, PartialEq)]
-struct Listed(SessionTitle, BTreeMap<String, String>);
+struct Listed(SessionTitle, SessionMeta);
 
 /// What the session in `paths`, kept in `store`, is listed as, and its
-/// listing's labels.
+/// listing.
 fn listed(paths: &SessionPaths, store: &SessionStore) -> Option<Listed> {
     let title = SessionTitle::read(paths, &*store.0)?;
-    let labels = SessionMeta::read(&*store.0).unwrap_or_default().labels;
-    Some(Listed(title, labels))
+    let meta = SessionMeta::read(&*store.0).unwrap_or_default();
+    Some(Listed(title, SessionMeta { updated: 0, ..meta }))
+}
+
+/// The values of the session plugins list (rig-harness's
+/// `saved_as(..).listed()`), by key, at the version they are saved at, as
+/// last read: copied into the listing whenever one changes.
+#[derive(Resource, Default, PartialEq)]
+struct ListedValues(BTreeMap<String, Versioned>);
+
+/// A listed value's type: its key, its saved version and its reflection.
+struct ListedType {
+    key: String,
+    version: u32,
+    id: TypeId,
+    reflect: ReflectComponent,
+}
+
+/// Reads each listed value that changed since it was last read: a saved
+/// resource's, else the main agent's. Every saved value is listed or not
+/// once the app is built, so the listed types are found once.
+fn read_listed(
+    world: &mut World,
+    mut types: Local<Option<Vec<ListedType>>>,
+    mut seen: Local<BTreeMap<String, Tick>>,
+) {
+    let types = types.get_or_insert_with(|| listed_types(world));
+    if types.is_empty() {
+        return;
+    }
+    let mut agents = world.query_filtered::<(Entity, &AgentId, Has<SpawnedBy>), With<Agent>>();
+    let mut agents: Vec<_> = agents
+        .iter(world)
+        .map(|(entity, id, spawned)| (entity, id.0.clone(), spawned))
+        .collect();
+    agents.sort_by(|a, b| main_order(a.2, &a.1).cmp(&main_order(b.2, &b.1)));
+    let mut values = world.resource::<ListedValues>().0.clone();
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    for listed in types.iter() {
+        let component = world.components().get_id(listed.id);
+        let holder = component.and_then(|component| {
+            let resource = world.resource_entities().get(component);
+            let agent = agents.iter().map(|(entity, ..)| *entity);
+            let mut holders = resource.into_iter().chain(agent);
+            let holder = holders.find(|entity| world.entity(*entity).contains_id(component))?;
+            let ticks = world.entity(holder).get_change_ticks_by_id(component)?;
+            Some((holder, ticks.changed))
+        });
+        let Some((holder, changed)) = holder else {
+            values.remove(&listed.key);
+            seen.remove(&listed.key);
+            continue;
+        };
+        if seen.get(&listed.key) == Some(&changed) {
+            continue;
+        }
+        seen.insert(listed.key.clone(), changed);
+        let Some(reflect) = listed.reflect.reflect(world.entity(holder)) else {
+            continue;
+        };
+        let value = TypedReflectSerializer::new(reflect.as_partial_reflect(), &registry);
+        match serde_json::to_value(value) {
+            Ok(value) => {
+                let v = listed.version;
+                values.insert(listed.key.clone(), Versioned { v, value });
+            }
+            Err(failure) => error!("not listing `{}`: {failure}", listed.key),
+        }
+    }
+    drop(registry);
+    let mut listed = world.resource_mut::<ListedValues>();
+    if listed.0 != values {
+        listed.0 = values;
+    }
+}
+
+/// The types of the values listed, of every type registered.
+fn listed_types(world: &World) -> Vec<ListedType> {
+    let (Some(keys), Some(registry)) = (
+        world.get_resource::<SavedKeys>(),
+        world.get_resource::<AppTypeRegistry>(),
+    ) else {
+        return Vec::new();
+    };
+    let upgrades = world.get_resource::<SavedUpgrades>();
+    let version = |name: &str| upgrades.map_or(1, |upgrades| upgrades.0.version(name));
+    let registry = registry.read();
+    registry
+        .iter()
+        .filter_map(|registration| {
+            let path = registration.type_info().type_path();
+            let key = keys.key(path).filter(|key| keys.is_listed(key))?;
+            Some(ListedType {
+                key: key.to_owned(),
+                // Steps are added under the type's path or its key.
+                version: version(path).max(version(key)),
+                id: registration.type_id(),
+                reflect: registration.data::<ReflectComponent>()?.clone(),
+            })
+        })
+        .collect()
 }
 
 /// Reads the session's name from its directory and its title from its
@@ -304,15 +331,30 @@ fn labels_changed(
     removed.read().count() > 0 || !labels.is_empty()
 }
 
+/// Whether an agent's model changed.
+fn models_changed(models: Query<(), (With<Agent>, Changed<ModelChoice>)>) -> bool {
+    !models.is_empty()
+}
+
 /// Rewrites the session's listing cache when a conversation changed, and
-/// on a new name or label, once some agent logged a message; the first
-/// time, the title takes the start of the first message typed.
+/// on a new name, label, model or listed value, once some agent logged a
+/// message; the first time, the title takes the start of the first message
+/// typed. The main agent's model and how many messages its line holds are
+/// listed too.
 fn update_meta(
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     (mut title, mut listed): (ResMut<SessionTitle>, ResMut<Listed>),
     mut committed: MessageReader<Committed>,
-    agents: Query<(&AgentId, &Conversation, Has<SpawnedBy>), With<Agent>>,
-    labels: Query<&ResumeLabel>,
+    agents: Query<
+        (
+            &AgentId,
+            &Conversation,
+            Has<SpawnedBy>,
+            Option<&ModelChoice>,
+        ),
+        With<Agent>,
+    >,
+    (labels, values): (Query<&ResumeLabel>, Res<ListedValues>),
 ) {
     let changed = committed.read().count() > 0;
     let (Some(_), Some(store)) = (paths.filter(|paths| paths.is_saved()), store) else {
@@ -325,7 +367,7 @@ fn update_meta(
     if title.typed.is_empty()
         && let Some(typed) = agents
             .iter()
-            .find_map(|(_, conversation, _)| first_typed(conversation))
+            .find_map(|(_, conversation, ..)| first_typed(conversation))
     {
         title.bypass_change_detection().typed = title_of(&typed);
     }
@@ -334,14 +376,26 @@ fn update_meta(
         .filter(|label| !label.text.is_empty())
         .map(|label| (label.tag.clone(), title_of(&label.text)))
         .collect();
-    let now = Listed(title.clone(), labels);
+    let main = agents.first();
+    let now = Listed(
+        title.clone(),
+        SessionMeta {
+            title: title.typed.clone(),
+            labels,
+            updated: 0,
+            model: main
+                .and_then(|(.., model)| model.map(|model| model.0.clone()))
+                .unwrap_or_default(),
+            messages: main.map_or(0, |(_, conversation, ..)| conversation.messages().len()),
+            data: values.0.clone(),
+        },
+    );
     if !changed && *listed == now {
         return;
     }
     let meta = SessionMeta {
-        title: now.0.typed.clone(),
-        labels: now.1.clone(),
         updated: now_ms(),
+        ..now.1.clone()
     };
     match meta.write(&*store.0) {
         Ok(()) => *listed = now,
@@ -365,28 +419,35 @@ fn new(
     commands.trigger(SwitchSession { session: None });
 }
 
-/// `/resume <id or name>` runs that session; without arguments, the
-/// terminal view lets the user pick one.
+/// `/resume <id or name>` runs that session; without arguments, the user
+/// picks one of the saved sessions in the native session picker.
 fn resume(
     In(args): In<CommandArgs>,
-    #[cfg(feature = "tui")] (home, stores): (Res<RigHome>, Res<SessionStores>),
-    #[cfg(feature = "tui")] paths: Option<Res<SessionPaths>>,
-    #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
+    (home, paths): (Res<RigHome>, Option<Res<SessionPaths>>),
+    mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    if args.args.is_empty() {
-        #[cfg(feature = "tui")]
-        tui::pick_session(
-            args.agent,
-            (&home.0, &stores, paths.as_deref()),
-            &mut notices,
-            &mut commands,
-        );
+    if !args.args.is_empty() {
+        commands.trigger(SwitchSession {
+            session: Some(args.args),
+        });
         return;
     }
-    commands.trigger(SwitchSession {
-        session: Some(args.args),
-    });
+    let Some(paths) = paths else {
+        return;
+    };
+    let saved = home.0.saved_sessions();
+    if saved.iter().all(|(_, dir)| dir.path() == paths.path()) {
+        notices.write(Notice::info(args.agent, "No earlier session to resume."));
+        return;
+    }
+    commands.spawn((
+        Picker::new("Resume a session").for_agent(args.agent),
+        SessionPicker {
+            command: "resume {session}".to_owned(),
+            ..SessionPicker::default()
+        },
+    ));
 }
 
 fn name(

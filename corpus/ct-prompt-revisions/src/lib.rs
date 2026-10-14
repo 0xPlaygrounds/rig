@@ -25,30 +25,23 @@
 //!   that made it, so it goes with its version. After a switch, the files
 //!   either continuation changed are compared with the working tree, and a
 //!   one-line notice names those that differ from the selected version.
-//! - Saved components registered with
-//!   [`AppFollowVersionsExt::follow_versions`] follow the active version:
-//!   they are snapshot as an aside at the end of every turn and before a
-//!   switch, and set from the active line's latest snapshot after one.
+//! - Agent state that says `#[reflect(Component, Follows)]` follows the
+//!   active version by itself: the kernel keeps it with the line it was
+//!   set on, so every switch gives the agent its line's value. It does so
+//!   at the end of the frame, so the revised turn, started in that frame,
+//!   sees the old version's value until then.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use bevy_ecs::reflect::AppTypeRegistry;
-use bevy_reflect::serde::{TypedReflectDeserializer, TypedReflectSerializer};
-use bevy_reflect::{FromReflect, GetTypeRegistration, Reflect, TypePath};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Aside, AsideId, MessageKey};
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::{FileChange, FileState, FilesChanged};
-use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 
 /// The author of this plugin's conversation edits, branches and notes.
 pub const NAME: &str = "prompt-revisions";
-
-/// The kind of the aside holding a snapshot of the followed state: an
-/// object from each followed type's path to its value.
-pub const STATE: &str = "prompt-revisions.state";
 
 /// The kind of the aside after an entry whose tool call changed files: a
 /// [`FilesRecord`].
@@ -147,70 +140,6 @@ pub fn slots(conversation: &Conversation) -> Vec<Slot> {
         .collect()
 }
 
-/// A saved agent component whose value follows the active version.
-#[derive(Clone, Copy)]
-struct Follower {
-    /// Its key in a snapshot.
-    name: &'static str,
-    /// Its value on the agent, if it has one.
-    capture: fn(&World, Entity) -> Option<serde_json::Value>,
-    /// Sets it on the agent from a snapshot's value, its default without.
-    restore: fn(&mut World, Entity, Option<&serde_json::Value>),
-}
-
-/// The components that follow the active version.
-#[derive(Resource, Default, Clone)]
-struct Followed(Vec<Follower>);
-
-/// Makes an agent component follow the active version.
-pub trait AppFollowVersionsExt {
-    /// `T`, a reflected agent component (usually also `Saved`), follows
-    /// the active version: switched to a version, the agent gets the value
-    /// `T` had at the end of that version's line, its default where it had
-    /// none. Its values are kept in their reflected form, as the journal
-    /// keeps a saved value.
-    fn follow_versions<T>(&mut self) -> &mut Self
-    where
-        T: Component + Reflect + FromReflect + TypePath + GetTypeRegistration + Default;
-}
-
-impl AppFollowVersionsExt for App {
-    fn follow_versions<T>(&mut self) -> &mut Self
-    where
-        T: Component + Reflect + FromReflect + TypePath + GetTypeRegistration + Default,
-    {
-        let follower = Follower {
-            name: T::type_path(),
-            capture: |world, agent| {
-                let value = world.get::<T>(agent)?;
-                let registry = world.resource::<AppTypeRegistry>().read();
-                let value = TypedReflectSerializer::new(value.as_partial_reflect(), &registry);
-                serde_json::to_value(value).ok()
-            },
-            restore: |world, agent, value| {
-                let read = value.and_then(|value| {
-                    let registry = world.resource::<AppTypeRegistry>().read();
-                    let registration = registry.get(std::any::TypeId::of::<T>())?;
-                    let seed = TypedReflectDeserializer::new(registration, &registry);
-                    T::from_reflect(&*seed.deserialize(value).ok()?)
-                });
-                let wanted = read.unwrap_or_default();
-                let same = world
-                    .get::<T>(agent)
-                    .and_then(|now| now.reflect_partial_eq(&wanted));
-                if same != Some(true)
-                    && let Ok(mut agent) = world.get_entity_mut(agent)
-                {
-                    agent.insert(wanted);
-                }
-            },
-        };
-        self.register_type::<T>().init_resource::<Followed>();
-        self.world_mut().resource_mut::<Followed>().0.push(follower);
-        self
-    }
-}
-
 /// A question opening a message for editing.
 #[derive(Component, Clone, Debug)]
 struct Revising {
@@ -228,10 +157,8 @@ pub struct PromptRevisionsPlugin;
 
 impl Plugin for PromptRevisionsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Followed>()
-            .init_resource::<ProjectWorkspace>()
+        app.init_resource::<ProjectWorkspace>()
             .add_observer(record_changes)
-            .add_observer(turn_ended)
             .add_observer(answered)
             .add_observer(compared)
             .add_systems(Update, badges.after(AgentLoop))
@@ -373,7 +300,6 @@ fn revise_now(world: &mut World, agent: Entity, message: MessageId, text: String
         );
         return;
     }
-    snapshot(world, agent);
     let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
         return;
     };
@@ -392,7 +318,6 @@ fn revise_now(world: &mut World, agent: Entity, message: MessageId, text: String
         notice(world, Notice::error(agent, failure.to_string()));
         return;
     }
-    restore(world, agent);
     compare(world, agent, before, BTreeMap::new());
     let deliver = Deliver::new(agent, text, DeliveryMode::Queue).with_author(Author::user());
     world.trigger(deliver);
@@ -408,7 +333,6 @@ fn switch_now(world: &mut World, agent: Entity, at: usize, branch: AsideId) {
         );
         return;
     }
-    snapshot(world, agent);
     let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
         return;
     };
@@ -418,65 +342,11 @@ fn switch_now(world: &mut World, agent: Entity, at: usize, branch: AsideId) {
         return;
     }
     let after = files_after(&conversation, at);
-    restore(world, agent);
     compare(world, agent, before, after);
 }
 
 fn notice(world: &mut World, notice: Notice) {
     world.write_message(notice);
-}
-
-/// The latest snapshot of the followed state on the active line.
-fn latest_state(conversation: &Conversation) -> Option<serde_json::Value> {
-    let states = conversation
-        .asides()
-        .filter(|(_, aside)| aside.kind == STATE);
-    let latest = states.max_by_key(|(_, aside)| conversation.aside_position(aside));
-    latest.map(|(_, aside)| aside.value.clone())
-}
-
-/// Keeps the followed state at the end of the active line, unless the
-/// latest snapshot there says the same.
-fn snapshot(world: &mut World, agent: Entity) {
-    let followers = world.resource::<Followed>().0.clone();
-    if followers.is_empty() {
-        return;
-    }
-    let values: serde_json::Map<String, serde_json::Value> = followers
-        .iter()
-        .filter_map(|follower| Some((follower.name.to_owned(), (follower.capture)(world, agent)?)))
-        .collect();
-    let value = serde_json::Value::Object(values);
-    let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
-        return;
-    };
-    if latest_state(&conversation).as_ref() == Some(&value) {
-        return;
-    }
-    let last = conversation.messages().len().checked_sub(1);
-    let after = last.and_then(|at| conversation.id(at));
-    conversation.add_aside(Aside::new(STATE, author(), value).after(after));
-}
-
-/// Sets the followed state from the active line's latest snapshot.
-fn restore(world: &mut World, agent: Entity) {
-    let followers = world.resource::<Followed>().0.clone();
-    let state = world.get::<Conversation>(agent).and_then(latest_state);
-    for follower in followers {
-        let value = state.as_ref().and_then(|state| state.get(follower.name));
-        (follower.restore)(world, agent, value);
-    }
-}
-
-/// Snapshots the followed state when a turn ends.
-fn turn_ended(
-    settled: On<Add<Settled>>,
-    turns: Query<&ForAgent, With<TurnOutcome>>,
-    mut commands: Commands,
-) {
-    if let Ok(&ForAgent(agent)) = turns.get(settled.entity) {
-        commands.queue(move |world: &mut World| snapshot(world, agent));
-    }
 }
 
 /// Keeps the files each settled tool call changed after the entry that
@@ -644,7 +514,7 @@ mod tui {
     use rig_tui::ratatui::text::Line;
     use rig_tui::{
         AppKeyBindingsExt, AppToolRenderersExt, KeyBinding, KeyPress, KeyPressed, KeyScope,
-        TranscriptItem, TranscriptView,
+        MainPane, TranscriptItem, TranscriptView,
     };
 
     use super::{NAME, slots};
@@ -675,7 +545,7 @@ mod tui {
     ) -> Option<(usize, usize, usize)> {
         let id = match view.selected.as_ref()? {
             TranscriptItem::Message(id) => *id,
-            TranscriptItem::Note(aside) => conversation.aside(*aside)?.after?,
+            TranscriptItem::Aside(aside) => conversation.aside(*aside)?.after?,
             _ => return None,
         };
         let at = conversation.index_of(id)?;
@@ -704,7 +574,7 @@ mod tui {
 
     fn previous(
         pressed: On<KeyPressed>,
-        view: Res<TranscriptView>,
+        view: Single<&TranscriptView, With<MainPane>>,
         agents: Query<&Conversation>,
         mut commands: Commands,
     ) {
@@ -715,7 +585,7 @@ mod tui {
 
     fn next(
         pressed: On<KeyPressed>,
-        view: Res<TranscriptView>,
+        view: Single<&TranscriptView, With<MainPane>>,
         agents: Query<&Conversation>,
         mut commands: Commands,
     ) {
@@ -726,7 +596,7 @@ mod tui {
 
     fn edit(
         pressed: On<KeyPressed>,
-        view: Res<TranscriptView>,
+        view: Single<&TranscriptView, With<MainPane>>,
         agents: Query<&Conversation>,
         mut commands: Commands,
     ) {

@@ -15,6 +15,7 @@
 //! started, such as its session's first start or a `/reload`, is
 //! [`AppStart`]; what the user typed in a message is [`typed`].
 
+use std::collections::BTreeSet;
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Seek, SeekFrom};
@@ -36,18 +37,21 @@ use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Author, Conversation, MessageId};
+use rig_core::conversation::{Aside, AsideId, Author, BranchError, Conversation, MessageId};
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{self, AgentId, Notice};
+use rig_ecs::agent::{self, ActiveTurn, AgentId, Notice};
 use rig_ecs::journal::{SessionRewritten, SessionStore, open_session};
+use rig_ecs::restore::SavedKeys;
 use rig_memory::{
-    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, Store, fork, rewrite,
+    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, SPLIT, Session, SessionMeta,
+    SplitOf, SplitPointer, Store, fork, load, rewrite, split,
 };
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
 
 use super::cli::{self, Cli};
+use super::exit::ExitReason;
 use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
 use crate::plugin_data::PluginData;
@@ -81,11 +85,22 @@ impl Deref for SessionPaths {
 /// written; a run whose store does not open, or whose session cannot be
 /// read, is refused, and nothing of the session is changed. Every store it
 /// opens marks its session saved ([`SessionDir::mark_saved`]) the first
-/// time a log is written to it, so `/resume` lists the session. By default
+/// time a log is written to it, so `/resume` lists the session, but a
+/// sessionless run's ([`Front::sessionless`](super::cli::Front::sessionless)).
+/// By default
 /// a session is kept in its directory ([`DirStore`]: `logs/`, `blobs/` and
 /// `files/`), which refuses a session an older rig saved.
+///
+/// It also keeps the listing ([`SessionMeta`]) of a session no rig runs up
+/// to date as it is written ([`Self::relist`]): once every plugin is built
+/// and the app started it knows the listed keys (`saved_as(..).listed()`).
 #[derive(Resource, Clone)]
-pub struct SessionStores(Arc<OpenStore>);
+pub struct SessionStores {
+    /// How a store is opened.
+    open: Arc<OpenStore>,
+    /// The keys whose values a listing holds.
+    listed: Arc<BTreeSet<String>>,
+}
 
 /// How [`SessionStores`] opens a store.
 type OpenStore = dyn Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync;
@@ -95,7 +110,10 @@ impl SessionStores {
     pub fn new(
         open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync + 'static,
     ) -> Self {
-        Self(Arc::new(open))
+        Self {
+            open: Arc::new(open),
+            listed: Arc::default(),
+        }
     }
 
     /// The store of the session in `dir`, which marks the session saved
@@ -107,10 +125,26 @@ impl SessionStores {
     /// a session an older rig saved.
     pub fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, LoadError> {
         Ok(Arc::new(Marking {
-            inner: (self.0)(dir)?,
+            inner: (self.open)(dir)?,
             dir: dir.clone(),
             marked: AtomicBool::new(false),
         }))
+    }
+
+    /// Brings the listing of the session `session` read from or saved to
+    /// `store`, which no rig runs, up to it, as a running rig keeps its
+    /// own: its listed values, its main agent's model and message count,
+    /// and when it changed ([`SessionMeta::relist`]). Every writer of a
+    /// stopped session calls it after writing; [`edit_stopped`] and
+    /// [`rewrite_stopped`] do.
+    ///
+    /// # Errors
+    ///
+    /// When the listing cannot be written.
+    pub fn relist(&self, store: &dyn Store, session: &Session) -> io::Result<()> {
+        let mut meta = SessionMeta::read(store).unwrap_or_default();
+        meta.relist(session, &self.listed);
+        meta.write(store)
     }
 }
 
@@ -305,13 +339,14 @@ impl Plugin for SessionPlugin {
                 Last,
                 mark_started
                     .run_if(resource_exists::<Unmarked>)
-                    .before(discard_sessionless),
+                    .before(discard_unsaved),
             );
         }
         app.init_resource::<SessionStores>()
             .init_resource::<SystemTimings>()
             .init_resource::<Forks>()
             .add_message::<SessionForked>()
+            .add_message::<SessionForkFailed>()
             .add_message::<SessionDeleted>()
             .add_message::<SessionDeleteFailed>()
             .add_message::<SessionRewritten>()
@@ -320,6 +355,7 @@ impl Plugin for SessionPlugin {
                 forks.0.push(fork.event().clone());
             })
             .add_observer(delete_session)
+            .add_systems(PreStartup, list_keys)
             .add_systems(
                 Startup,
                 finish_deletes.run_if(not(resource_exists::<Describing>)),
@@ -335,7 +371,7 @@ impl Plugin for SessionPlugin {
             )
             .add_systems(
                 Last,
-                discard_sessionless
+                discard_unsaved
                     .after(OnAppExitSystems)
                     .run_if(on_message::<AppExit>),
             );
@@ -368,6 +404,15 @@ impl Plugin for SessionPlugin {
     }
 }
 
+/// Tells the [`SessionStores`] the listed keys, once every plugin said its
+/// own.
+fn list_keys(keys: Option<Res<SavedKeys>>, stores: Option<ResMut<SessionStores>>) {
+    if let Some(mut stores) = stores {
+        let listed = keys.map(|keys| keys.listed().clone());
+        stores.listed = Arc::new(listed.unwrap_or_default());
+    }
+}
+
 /// Inserts the [`PluginData`] of this run, unless the app has one: in the
 /// session's store when it opened, for the [`ProjectRoot`] in the
 /// [`ProjectWorkspace`].
@@ -392,20 +437,26 @@ fn insert_plugin_data(world: &mut World) {
 /// Opens the session's store, the one in the world or else the one the
 /// run's front or [`SessionStores`] opens for [`SessionPaths`], and reads
 /// the session it holds ([`open_session`]), before anything is written to
-/// it.
+/// it. A sessionless run's store never marks its session saved, whoever
+/// opens it, so a crash leaves no session for `/resume` to list.
 fn open_store(world: &mut World) -> Result<(), LoadError> {
     let store = match world.remove_resource::<SessionStore>() {
         Some(SessionStore(store)) => store,
         None => {
             cli::choose(world);
             let front = world.get_resource::<Cli>().and_then(Cli::chosen);
+            let keeps = !front.is_some_and(|front| front.sessionless);
             let stores = front
                 .and_then(|front| front.session_store.as_ref())
                 .or_else(|| world.get_resource::<SessionStores>());
             let (Some(paths), Some(stores)) = (world.get_resource::<SessionPaths>(), stores) else {
                 return Ok(());
             };
-            stores.open(paths)?
+            if keeps {
+                stores.open(paths)?
+            } else {
+                (stores.open)(paths)?
+            }
         }
     };
     open_session(world, store)
@@ -430,22 +481,42 @@ fn mark_started(paths: Res<SessionPaths>, mut commands: Commands) {
     }
 }
 
-/// Removes the session's directory when a sessionless front's run ends,
-/// however, once everything was written there; never a resumed session's,
-/// which such a front refuses. A run that failed first moves its text log
-/// into the launcher's run directory, where the launcher's failure message
-/// points.
-fn discard_sessionless(
+/// Removes the session's directory when the run leaves it for good with
+/// nothing saved there, such as a run that switches to another session at
+/// startup, or when a sessionless front's run ends, however, once
+/// everything was written there; never a saved session a front keeps,
+/// never on a reload, which runs the session again, never on a switch the
+/// launcher is told of (its switch file is in the directory, and the
+/// launcher removes an unsaved session once it read it), and never a
+/// resumed session's, which a sessionless front refuses. A run that
+/// failed first moves its text log into the launcher's run directory,
+/// where the launcher's failure message points.
+fn discard_unsaved(
     mut exits: MessageReader<AppExit>,
-    (cli, start): (Option<Res<Cli>>, Option<Res<AppStart>>),
+    (cli, start, reason): (
+        Option<Res<Cli>>,
+        Option<Res<AppStart>>,
+        Option<Res<ExitReason>>,
+    ),
     paths: Res<SessionPaths>,
     (run, scratch): (Option<Res<LauncherRun>>, Option<Res<Scratch>>),
 ) {
-    let resumed = start.is_some_and(|start| start.0 == StartReason::Resumed);
-    if resumed || !cli.is_some_and(|cli| cli.sessionless()) {
+    let exits: Vec<&AppExit> = exits.read().collect();
+    let reload = match reason.as_deref() {
+        Some(reason) => *reason == ExitReason::Reload,
+        None => exits
+            .iter()
+            .any(|exit| ExitReason::of(exit) == ExitReason::Reload),
+    };
+    let discard = if cli.is_some_and(|cli| cli.sessionless()) {
+        start.is_none_or(|start| start.0 != StartReason::Resumed)
+    } else {
+        !reload && !paths.is_saved() && !paths.switch().exists()
+    };
+    if !discard {
         return;
     }
-    if !exits.read().all(AppExit::is_success)
+    if !exits.iter().all(|exit| exit.is_success())
         && let Some(run) = run
         && let Some(log) = scratch.and_then(|scratch| scratch.log())
     {
@@ -454,39 +525,142 @@ fn discard_sessionless(
     fs::remove_dir_all(paths.path()).ok();
 }
 
-/// Copies this session into a new one: every agent's log, saved state and
-/// stored file, and the directory it works in. With `before`, an agent's
-/// id and the id of a message in its conversation, the copy is the session
-/// as it was before that message was made (see [`fork`]). The new
-/// session's effect log starts empty.
-/// [`SessionForked`] names it; switching to it is
-/// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`](super::exit::ExitReason::Switch).
+/// Copies a saved session, this one with `from: None`, into a new one:
+/// every agent's log, saved state and stored file, and the directory it
+/// works in, cut as `cut` says ([`ForkCut`]): whole, as it was before a
+/// message was made (see [`fork`]), or one agent's line through a message
+/// (see [`split`]), which leaves a [`SplitPointer`] in the source and,
+/// for a move, takes the range out of it. The new session's effect log
+/// starts empty. [`SessionForked`] names it, or [`SessionForkFailed`]
+/// says why there is none; switching to it is
+/// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`].
 #[derive(Event, Clone, Debug, Default)]
 pub struct ForkSession {
-    /// Where the copy stops: an agent's id and a message's id.
-    pub before: Option<(AgentId, MessageId)>,
+    /// The session copied: this one with `None`.
+    pub from: Option<SessionId>,
+    /// Where the copy is cut.
+    pub cut: ForkCut,
     /// Who asked, such as an entity of the plugin's own: [`SessionForked`]
     /// says so, so an asker knows its fork from another's.
     pub asker: Option<Entity>,
 }
 
-/// A session forked from this one, in the frame it was written.
+/// A session forked from a saved one, in the frame it was written.
 #[derive(Message, Clone, Debug)]
 pub struct SessionForked {
-    /// This session.
+    /// The session copied.
     pub from: SessionId,
     /// The new session.
     pub to: SessionId,
-    /// Where the copy stopped, as [`ForkSession`] asked.
-    pub before: Option<(AgentId, MessageId)>,
+    /// Where the copy was cut, as [`ForkSession`] asked.
+    pub cut: ForkCut,
     /// Who asked, as [`ForkSession`] said.
     pub asker: Option<Entity>,
+    /// What was left undone, such as the pointer a split leaves in a
+    /// session another rig runs.
+    pub note: Option<String>,
+}
+
+/// Where a [`ForkSession`] cuts the session it copies.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ForkCut {
+    /// Every log whole.
+    #[default]
+    Whole,
+    /// The session as it was before the agent's message was made
+    /// (rig-memory's `fork`).
+    Before(AgentId, MessageId),
+    /// One agent's line through message `through` (rig-memory's `split`),
+    /// leaving a `SplitPointer` in the source. With `take: Some(from)` it
+    /// is a move: `from..=through` is also taken out of the source line,
+    /// and the pointer says how many entries left.
+    Line {
+        /// The agent whose line is copied.
+        agent: AgentId,
+        /// Its line: a kept branch's aside, the active line with `None`.
+        line: Option<AsideId>,
+        /// The last message copied.
+        through: MessageId,
+        /// For a move, the first message taken out of the source.
+        take: Option<MessageId>,
+        /// The split's title.
+        title: String,
+    },
+}
+
+/// A fork that failed, in the frame it was asked for, as data for the
+/// asker; the user sees an error notice too.
+#[derive(Message, Clone, Debug)]
+pub struct SessionForkFailed {
+    /// The session it would have copied; `None` for this one.
+    pub from: Option<SessionId>,
+    /// Where it would have cut it.
+    pub cut: ForkCut,
+    /// Who asked, as the fork said.
+    pub asker: Option<Entity>,
+    /// Why it failed.
+    pub why: String,
+}
+
+/// Changes the saved session in `dir`, which no rig runs, as
+/// [`rewrite_stopped`] rewrites one: read (older formats upgraded), given
+/// to `edit`, and saved, its listing brought up to it
+/// ([`SessionStores::relist`]). It holds the session's launcher lock
+/// ([`SessionDir::hold`]) from the check to the last write, so a rig
+/// starting meanwhile finds it running elsewhere. The running session,
+/// `running`, is refused: edit its agents' `Conversation` instead.
+///
+/// # Errors
+///
+/// When `dir` is the running session or another rig runs it, when its
+/// store does not open or its session cannot be read (nothing written),
+/// when `edit` fails (nothing written), or when a write fails.
+pub fn edit_stopped(
+    stores: &SessionStores,
+    running: &SessionDir,
+    dir: &SessionDir,
+    edit: impl FnOnce(&mut Session) -> Result<(), String>,
+) -> Result<(), String> {
+    let _held = hold_stopped(running, dir, "edit its agents' conversations instead")?;
+    let store = stores.open(dir).map_err(|failure| failure.to_string())?;
+    let mut session = Session::read(&*store).map_err(|failure| failure.to_string())?;
+    edit(&mut session)?;
+    session
+        .save(&*store)
+        .map_err(|failure| failure.to_string())?;
+    relist(stores, &*store, &session);
+    Ok(())
+}
+
+/// Brings the listing of `session`, saved to `store`, up to it; a listing
+/// not written is logged, as a running rig's is, since the session is.
+fn relist(stores: &SessionStores, store: &dyn Store, session: &Session) {
+    if let Err(failure) = stores.relist(store, session) {
+        warn!("could not write a stopped session's listing: {failure}");
+    }
+}
+
+/// The launcher lock of the session in `dir`, held for an edit of it:
+/// refused for the running session (`running`, which is edited as `this`
+/// says), a session that is not there and one another rig runs.
+fn hold_stopped(running: &SessionDir, dir: &SessionDir, this: &str) -> Result<File, String> {
+    if dir.path() == running.path() {
+        return Err(format!("it is this session: {this}"));
+    }
+    if !dir.path().is_dir() {
+        return Err("there is no such session".to_owned());
+    }
+    dir.hold()
+        .map_err(|failure| failure.to_string())?
+        .ok_or_else(|| "another rig runs it".to_owned())
 }
 
 /// Rewrites the saved session in `dir`, which no rig runs, through
-/// `with`, as done by `by` (rig-memory's `rewrite`): its store opened by
+/// `with`, as done by `by` (rig-memory's `rewrite`), holding its launcher
+/// lock throughout, as [`edit_stopped`] does: its store opened by
 /// `stores`, then the files kept in its directory: its name
-/// ([`SessionDir::name`]), the text log and the spilled tool output. The
+/// ([`SessionDir::name`]), the text log and the spilled tool output, and
+/// its listing brought up to it ([`SessionStores::relist`]). The
 /// running session, `running`, is
 /// rewritten with `RewriteSession` instead. For a plugin redacting this
 /// session's forks too:
@@ -523,12 +697,7 @@ pub fn rewrite_stopped(
     by: Author,
     with: &dyn Rewrite,
 ) -> Result<Rewritten, String> {
-    if dir.path() == running.path() {
-        return Err("it is this session, which a RewriteSession rewrites".to_owned());
-    }
-    if dir.runs_elsewhere() {
-        return Err("another rig runs it".to_owned());
-    }
+    let _held = hold_stopped(running, dir, "a RewriteSession rewrites it")?;
     let store = stores.open(dir).map_err(|failure| failure.to_string())?;
     let rewritten = rewrite(&*store, by, with).map_err(|failure| failure.to_string())?;
     let scratch = Scratch(Some(dir.path().to_owned()));
@@ -540,6 +709,10 @@ pub fn rewrite_stopped(
                 .map_or(Ok(false), |log| map_file(&log, LOG, with))
         })
         .map_err(|failure| format!("rewriting its scratch files failed: {failure}"))?;
+    match Session::read(&*store) {
+        Ok(session) => relist(stores, &*store, &session),
+        Err(failure) => warn!("could not read a rewritten session to list it: {failure}"),
+    }
     Ok(rewritten)
 }
 
@@ -674,26 +847,27 @@ fn fork_sessions(
         Res<SessionStores>,
     ),
     home: Option<Res<RigHome>>,
-    agents: Query<(&AgentId, &agent::Conversation)>,
-    mut forked: MessageWriter<SessionForked>,
+    mut agents: LiveAgents,
+    (mut forked, mut failed): (
+        MessageWriter<SessionForked>,
+        MessageWriter<SessionForkFailed>,
+    ),
     mut notices: MessageWriter<Notice>,
 ) {
-    for ForkSession { before, asker } in forks.0.drain(..) {
-        let home = home
-            .as_ref()
-            .map_or_else(Home::from_env, |home| home.0.clone());
-        let text = before.as_ref().and_then(|(agent, message)| {
-            let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
-            typed(conversation, conversation.index_of(*message)?)
-        });
-        let stores = (store.as_deref(), &*stores);
-        match fork_into(&home, &paths, stores, (before.as_ref(), text)) {
-            Ok((from, to)) => {
+    let home = home
+        .as_ref()
+        .map_or_else(Home::from_env, |home| home.0.clone());
+    for ForkSession { from, cut, asker } in forks.0.drain(..) {
+        let here = (&paths.0, store.as_deref());
+        let made = fork_one(&home, here, &stores, (from.as_ref(), &cut), &mut agents);
+        match made {
+            Ok((from, to, note)) => {
                 forked.write(SessionForked {
                     from,
                     to,
-                    before,
+                    cut,
                     asker,
+                    note,
                 });
             }
             Err(why) => {
@@ -701,9 +875,259 @@ fn fork_sessions(
                     None,
                     format!("Could not fork the session: {why}"),
                 ));
+                failed.write(SessionForkFailed {
+                    from,
+                    cut,
+                    asker,
+                    why,
+                });
             }
         }
     }
+}
+
+/// The running agents' conversations, by agent, whether a turn runs.
+type LiveAgents<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static AgentId,
+        &'static mut agent::Conversation,
+        Has<ActiveTurn>,
+    ),
+>;
+
+/// Copies the session `from` of `home` (this one, at `here` and kept in
+/// its store, with `None`) into a new session as `cut` says; the session
+/// copied, the copy, and what was left undone.
+fn fork_one(
+    home: &Home,
+    (here, store): (&SessionDir, Option<&SessionStore>),
+    stores: &SessionStores,
+    (from, cut): (Option<&SessionId>, &ForkCut),
+    agents: &mut LiveAgents<'_, '_>,
+) -> Result<(SessionId, SessionId, Option<String>), String> {
+    let this = here.id().ok_or("this session has no id")?;
+    let from = from.filter(|from| **from != this);
+    let (dir, source) = match from {
+        None => (
+            here.clone(),
+            store.ok_or("this session is not stored")?.0.clone(),
+        ),
+        Some(from) => {
+            let dir = home.session(from);
+            if !dir.is_saved() {
+                return Err(format!("there is no saved session {from}"));
+            }
+            let source = stores.open(&dir).map_err(|failure| failure.to_string())?;
+            (dir, source)
+        }
+    };
+    let id = dir.id().ok_or("the session has no id")?;
+    if let (
+        None,
+        ForkCut::Line {
+            agent,
+            take: Some(_),
+            ..
+        },
+    ) = (from, cut)
+        && agents.iter().any(|(id, _, turn)| id == agent && turn)
+    {
+        return Err("a turn is running; stop it first".to_owned());
+    }
+    let (to, target) = home.new_session().map_err(|failure| failure.to_string())?;
+    let copied = stores
+        .open(&target)
+        .map_err(|failure| failure.to_string())
+        .and_then(|copy| {
+            let to = to.to_string();
+            let here = (here, from.map(|_| &dir), &*source, &*copy);
+            let (parent, note) = copy_cut(stores, here, cut, &to, agents)?;
+            let parent = ForkedFrom {
+                session: id.to_string(),
+                ..parent
+            };
+            parent
+                .write(&*copy)
+                .map_err(|failure| failure.to_string())?;
+            Ok(note)
+        })
+        .and_then(|note| match dir.working_directory() {
+            Some(directory) => {
+                fs::write(target.directory(), directory.to_string_lossy().as_bytes())
+                    .map_err(|failure| failure.to_string())?;
+                Ok(note)
+            }
+            None => Ok(note),
+        });
+    match copied {
+        Ok(note) => Ok((id, to, note)),
+        Err(why) => {
+            fs::remove_dir_all(target.path()).ok();
+            Err(why)
+        }
+    }
+}
+
+/// Copies `source`, the store of the running session `here` or of the
+/// stopped session `stopped`, into `copy`, the session `to`, as `cut`
+/// says, leaving a split's pointer in the source; what the copy keeps of
+/// its parent, and what was left undone.
+fn copy_cut(
+    stores: &SessionStores,
+    (here, stopped, source, copy): (&SessionDir, Option<&SessionDir>, &dyn Store, &dyn Store),
+    cut: &ForkCut,
+    to: &str,
+    agents: &mut LiveAgents<'_, '_>,
+) -> Result<(ForkedFrom, Option<String>), String> {
+    let failed = |failure: LoadError| failure.to_string();
+    let (agent, line, through, take, title) = match cut {
+        ForkCut::Whole => {
+            fork(source, copy, None, &Keep).map_err(failed)?;
+            return Ok((ForkedFrom::default(), None));
+        }
+        ForkCut::Before(agent, message) => {
+            let said =
+                match stopped {
+                    None => agents.iter().find(|(id, ..)| *id == agent).and_then(
+                        |(_, conversation, _)| {
+                            typed(conversation, conversation.index_of(*message)?)
+                        },
+                    ),
+                    Some(_) => load(source, &agent.0).ok().and_then(|conversation| {
+                        typed(&conversation, conversation.index_of(*message)?)
+                    }),
+                };
+            fork(source, copy, Some((&agent.0, *message)), &Keep).map_err(failed)?;
+            let parent = ForkedFrom {
+                before: Some((agent.0.clone(), *message)),
+                text: said,
+                ..ForkedFrom::default()
+            };
+            return Ok((parent, None));
+        }
+        ForkCut::Line {
+            agent,
+            line,
+            through,
+            take,
+            title,
+        } => (agent, *line, *through, *take, title),
+    };
+    let of = SplitOf {
+        agent: &agent.0,
+        line,
+        through: Some(through),
+    };
+    let pointer = SplitPointer {
+        session: to.to_owned(),
+        agent: agent.0.clone(),
+        title: title.clone(),
+        moved: 0,
+        merged: false,
+    };
+    let point = Point {
+        line,
+        through,
+        take,
+        title,
+    };
+    let mut written = None;
+    let note = match stopped {
+        None => {
+            let Some((_, mut conversation, _)) = agents.iter_mut().find(|(id, ..)| *id == agent)
+            else {
+                return Err(format!("this session has no agent {}", agent.0));
+            };
+            // Tried on a copy first: a move that cannot be made copies nothing.
+            point.leave(&mut conversation.view(), pointer.clone())?;
+            written = Some(split(source, copy, &of).map_err(failed)?);
+            point.leave(&mut conversation, pointer)?;
+            None
+        }
+        Some(dir) => {
+            let edited = edit_stopped(stores, here, dir, |session| {
+                let conversation = session
+                    .agent_mut(&agent.0)
+                    .map(|agent| &mut agent.conversation)
+                    .ok_or_else(|| format!("the session has no agent {}", agent.0))?;
+                point.leave(conversation, pointer.clone())?;
+                written = Some(split(source, copy, &of).map_err(failed)?);
+                Ok(())
+            });
+            match edited {
+                Ok(()) => None,
+                Err(why) if written.is_none() && take.is_none() && dir.runs_elsewhere() => {
+                    written = Some(split(source, copy, &of).map_err(failed)?);
+                    Some(format!("the split's pointer was not left: {why}"))
+                }
+                Err(why) => return Err(why),
+            }
+        }
+    };
+    let said = written.and_then(|copy| typed(&copy, copy.messages().len().checked_sub(1)?));
+    let parent = ForkedFrom {
+        through: Some((agent.0.clone(), through)),
+        line: Some(title.clone()),
+        text: said,
+        ..ForkedFrom::default()
+    };
+    Ok((parent, note))
+}
+
+/// Where a line is split from: its line, the last message copied, for a
+/// move the first message taken out, and the split's title.
+struct Point<'a> {
+    line: Option<AsideId>,
+    through: MessageId,
+    take: Option<MessageId>,
+    title: &'a str,
+}
+
+impl Point<'_> {
+    /// Leaves `pointer` in `conversation`: after the last message copied,
+    /// in its line; for a move, in place of the range taken out of the
+    /// line, made active first.
+    fn leave(
+        &self,
+        conversation: &mut Conversation,
+        mut pointer: SplitPointer,
+    ) -> Result<(), String> {
+        let by = Author::rig();
+        let failed = |failure: BranchError| failure.to_string();
+        let Some(first) = self.take else {
+            let aside = Aside::new(SPLIT, by, pointer_value(&pointer)?).after(Some(self.through));
+            conversation
+                .add_aside_in(self.line, aside)
+                .map_err(failed)?;
+            return Ok(());
+        };
+        if let Some(line) = self.line {
+            conversation
+                .switch_branch(line, by.clone())
+                .map_err(failed)?;
+        }
+        let at = |id: MessageId| {
+            conversation
+                .index_of(id)
+                .ok_or_else(|| format!("message {id} is not on the line"))
+        };
+        let (start, end) = (at(first)?, at(self.through)?.saturating_add(1));
+        pointer.moved = end.saturating_sub(start);
+        let moved = conversation
+            .move_out(start..end, self.title, by.clone())
+            .map_err(failed)?;
+        let after = conversation.aside(moved).and_then(|aside| aside.after);
+        let aside = Aside::new(SPLIT, by, pointer_value(&pointer)?).after(after);
+        conversation.replace_aside(moved, aside);
+        Ok(())
+    }
+}
+
+/// `pointer` as an aside's value.
+fn pointer_value(pointer: &SplitPointer) -> Result<serde_json::Value, String> {
+    serde_json::to_value(pointer).map_err(|failure| failure.to_string())
 }
 
 /// What the user typed in message `at` of `conversation`: the text items
@@ -735,43 +1159,6 @@ pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
 /// What the user typed first in `conversation` ([`typed`]).
 pub fn first_typed(conversation: &Conversation) -> Option<String> {
     (0..conversation.messages().len()).find_map(|at| typed(conversation, at))
-}
-
-/// Copies the session at `paths`, kept in `store`, into a new session of
-/// `home` opened by `stores`, as of `before`, whose message's `text` the
-/// copy keeps with its parent.
-fn fork_into(
-    home: &Home,
-    paths: &SessionPaths,
-    (store, stores): (Option<&SessionStore>, &SessionStores),
-    (before, text): (Option<&(AgentId, MessageId)>, Option<String>),
-) -> Result<(SessionId, SessionId), String> {
-    let from = paths.id().ok_or("this session has no id")?;
-    let store = store.ok_or("this session is not stored")?;
-    let (to, target) = home.new_session().map_err(|failure| failure.to_string())?;
-    let parent = ForkedFrom {
-        session: from.to_string(),
-        before: before.map(|(agent, message)| (agent.0.clone(), *message)),
-        text,
-    };
-    let before = before.map(|(agent, message)| (agent.0.as_str(), *message));
-    let copied = stores
-        .open(&target)
-        .and_then(|copy| fork(&*store.0, &*copy, before, &Keep).map(|_| copy))
-        .map_err(|failure| failure.to_string())
-        .and_then(|copy| parent.write(&*copy).map_err(|failure| failure.to_string()))
-        .and_then(|()| match paths.working_directory() {
-            Some(directory) => {
-                fs::write(target.directory(), directory.to_string_lossy().as_bytes())
-                    .map_err(|failure| failure.to_string())
-            }
-            None => Ok(()),
-        });
-    if let Err(why) = copied {
-        fs::remove_dir_all(target.path()).ok();
-        return Err(why);
-    }
-    Ok((from, to))
 }
 
 fn delete_session(
@@ -817,7 +1204,7 @@ fn delete_session(
 /// holds, then its directory. Running it again after a crash finishes it.
 /// A session an older rig saved has nothing outside its directory.
 fn finish_delete(session: &SessionDir, stores: &SessionStores) -> Result<(), LoadError> {
-    match (stores.0)(session) {
+    match (stores.open)(session) {
         Ok(store) => store.destroy()?,
         Err(LoadError::OldLayout) => {}
         Err(failure) => return Err(failure),

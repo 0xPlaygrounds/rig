@@ -9,12 +9,13 @@
 //! it never reaches the agent, and the side agent's conversation is its
 //! own: the agent's requests never carry the side question.
 //!
-//! The answer streams into a box under the terminal view's transcript
-//! ([`SideChat`], drawn in its panel), which takes the keys: what is typed
-//! there and sent with Enter is a follow-up to the same side agent, as is
-//! `/btw` while it is open (`/btw new <question>` replaces it), Ctrl+Y
-//! copies the last answer into the main input without sending it and
-//! closes the box, and Esc closes it. Closing retires the side agent. Each
+//! The side agent is drawn live in a [`TranscriptPane`] under the
+//! terminal view's transcript, its answer streaming in, over an [`Editor`]
+//! panel that takes the keys ([`SideChat`]): what is typed there and sent
+//! with Enter is a follow-up to the same side agent, as is `/btw` while it
+//! is open (`/btw new <question>` replaces it), Ctrl+Y copies the last
+//! answer into the main input without sending it and closes both, and Esc
+//! closes them. Closing retires the side agent. Each
 //! side conversation is a [`Note`] aside of the agent it was asked beside,
 //! after the message it was asked at: titled by its first question
 //! and drawn cut until expanded, kept with the session, never part of the
@@ -30,15 +31,11 @@
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
-use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;
-use rig_tui::ratatui::style::{Style, Stylize};
-use rig_tui::ratatui::text::Line;
-use rig_tui::ratatui::widgets::{Block, Paragraph, Wrap};
 use rig_tui::{
-    AppKeyBindingsExt, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
-    KeyScope, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiInput, TuiPanel, TuiPlugin,
-    TuiSystems,
+    AppKeyBindingsExt, Editor, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope,
+    MainInput, Placement, TranscriptPane, TranscriptSource, TuiPanel, TuiPlugin,
 };
 use serde::Deserialize;
 
@@ -51,6 +48,9 @@ pub const PURPOSE: &str = "btw";
 /// What a still-running tool call of the agent reads as in the side
 /// agent's copy of the conversation.
 const STILL_RUNNING: &str = "Still running in the main agent; no result yet.";
+
+/// The side agent's pane title: what its keys do.
+const HELP: &str = "btw · Enter asks · Ctrl+Y to the agent's input · Esc closes";
 
 /// What the side agent is told about its job.
 const SIDE_PROMPT: &str = "You answer the user's side question about the conversation above, \
@@ -97,12 +97,16 @@ pub struct AskSide {
     pub fresh: bool,
 }
 
-/// The side conversation open in the panel, if any.
+/// The side conversation open, if any: the side agent drawn live in a
+/// transcript pane, over an editor for follow-ups that has the keys.
 #[derive(Resource, Debug)]
 pub struct SideChat {
-    /// The panel's entity, a [`TuiPanel`] while the side conversation is
-    /// open.
-    pub panel: Entity,
+    /// The follow-up editor, a [`TuiPanel`] with the keys while the side
+    /// conversation is open.
+    pub editor: Entity,
+    /// The side agent's transcript pane, a [`TranscriptPane`] once it is
+    /// spawned.
+    pub pane: Entity,
     /// The agent it is beside.
     pub main: Option<Entity>,
     /// The side agent, once spawned.
@@ -113,8 +117,6 @@ pub struct SideChat {
     pub exchanges: Vec<SideExchange>,
     /// Questions asked before the side agent was spawned.
     waiting: Vec<String>,
-    /// What is typed in the panel.
-    pub draft: String,
     /// The message of the agent it was asked after.
     after: Option<MessageId>,
     /// Its [`Note`] aside in the agent's conversation, once answered.
@@ -122,16 +124,16 @@ pub struct SideChat {
 }
 
 impl SideChat {
-    /// A closed side conversation drawn in `panel`.
-    fn closed(panel: Entity) -> Self {
+    /// A closed side conversation drawn in `editor` and `pane`.
+    fn closed(editor: Entity, pane: Entity) -> Self {
         Self {
-            panel,
+            editor,
+            pane,
             main: None,
             agent: None,
             request: None,
             exchanges: Vec::new(),
             waiting: Vec::new(),
-            draft: String::new(),
             after: None,
             entry: None,
         }
@@ -164,7 +166,7 @@ impl SideChat {
     }
 }
 
-/// `/btw`, the side agent, its panel and keys.
+/// `/btw`, the side agent, its pane, editor and keys.
 #[derive(Default)]
 pub struct SideQuestionPlugin;
 
@@ -173,15 +175,28 @@ impl Plugin for SideQuestionPlugin {
         if !app.is_plugin_added::<TuiPlugin>() {
             app.add_plugins(TuiPlugin);
         }
-        let panel = app.world_mut().spawn(Name::new("panel:btw")).id();
-        let scope = KeyScope::Panel(panel);
+        // Spawned in this order, the editor is laid out under the pane.
+        let world = app.world_mut();
+        let editor = world
+            .spawn((Name::new("btw:editor"), Editor::default()))
+            .id();
+        let pane = world.spawn(Name::new("btw:pane")).id();
+        let scope = KeyScope::Panel(editor);
+        let backspace = KeyBinding::new(KeyPress::key(KeyCode::Backspace), "Delete back");
+        world.spawn((
+            backspace.in_scope(scope),
+            InputAction::Backspace,
+            ChildOf(editor),
+        ));
+        let ask = KeyBinding::new(KeyPress::key(KeyCode::Enter), "Ask the side agent");
         let close = KeyBinding::new(KeyPress::key(KeyCode::Esc), "Close the side question");
         let send = KeyBinding::new(KeyPress::ctrl('y'), "Send the side answer to the agent");
+        app.add_key_binding(ask.in_scope(scope), ask_on_key);
         app.add_key_binding(close.in_scope(scope), close_on_key);
         app.add_key_binding(send.in_scope(scope), send_to_agent);
         app.add_setting::<BtwSettings>("btw")
             .register_type::<SideAgent>()
-            .insert_resource(SideChat::closed(panel))
+            .insert_resource(SideChat::closed(editor, pane))
             .add_command(
                 "btw",
                 "Ask a side question while the agent works: /btw <question>, /btw new <question>",
@@ -192,14 +207,9 @@ impl Plugin for SideQuestionPlugin {
             .add_observer(side_purpose)
             .add_observer(answered)
             .add_systems(
-                rig_tui::TuiKeys,
-                type_follow_up.in_set(InputSystems::Filter),
-            )
-            .add_systems(
                 Update,
                 discard_restored.run_if(resource_added::<SessionRestored>),
-            )
-            .add_systems(PostUpdate, (redraw, draw.in_set(TuiSystems::Draw)));
+            );
     }
 }
 
@@ -221,7 +231,7 @@ fn btw(
     };
     if question.is_empty() {
         if !fresh && chat.main == Some(args.agent) {
-            focus.0 = Some(chat.panel);
+            focus.0 = Some(chat.editor);
         } else {
             let usage = "/btw needs a question: /btw <question>, or /btw new <question>";
             notices.write(Notice::error(args.agent, usage));
@@ -263,7 +273,7 @@ fn ask_side(
             }
             None => chat.waiting.push(question),
         }
-        focus.0 = Some(chat.panel);
+        focus.0 = Some(chat.editor);
         return;
     }
     close(&mut chat, &mut commands);
@@ -291,7 +301,7 @@ fn ask_side(
     let request = commands
         .spawn((request, ForAgent(main), Snapshot(snapshot)))
         .id();
-    let panel = chat.panel;
+    let (editor, pane) = (chat.editor, chat.pane);
     *chat = SideChat {
         main: Some(main),
         request: Some(request),
@@ -300,12 +310,11 @@ fn ask_side(
         after: messages
             .checked_sub(1)
             .and_then(|last| conversation.id(last)),
-        ..SideChat::closed(panel)
+        ..SideChat::closed(editor, pane)
     };
-    // Under the transcript, which keeps streaming above it.
-    let below = Placement::Bottom(Constraint::Percentage(40));
-    commands.entity(panel).insert(TuiPanel::new(below));
-    focus.0 = Some(panel);
+    let below = Placement::Bottom(Constraint::Length(3));
+    commands.entity(editor).insert(TuiPanel::new(below));
+    focus.0 = Some(editor);
 }
 
 /// Gives the side agent just spawned its copy of the conversation and the
@@ -329,6 +338,12 @@ fn seed_side_agent(
         conversation.splice(0..0, snapshot.iter().cloned(), Author::plugin(TITLE));
     }
     commands.entity(side).insert(SideAgent);
+    // Under the transcript, which keeps streaming above it.
+    let pane = TranscriptPane::new(TranscriptSource::Agent(side)).titled(HELP);
+    let below = Placement::Bottom(Constraint::Percentage(40));
+    commands
+        .entity(chat.pane)
+        .insert((pane, TuiPanel::new(below)));
     let section = PromptSection::new(PromptSection::ORDER_ROLE + 1, TITLE, SIDE_PROMPT);
     commands.spawn((section, SectionOf(side)));
     for question in chat.waiting.drain(..) {
@@ -386,8 +401,9 @@ fn answered(
     }
 }
 
-/// Closes the side conversation: the side agent is retired and the panel
-/// goes; its note in the transcript stays.
+/// Closes the side conversation: the side agent is retired, and the pane
+/// and editor go, the keys back to the input; its note in the transcript
+/// stays.
 fn close(chat: &mut SideChat, commands: &mut Commands) {
     if let Some(side) = chat.agent.take() {
         commands.trigger(Retire { entity: side });
@@ -395,86 +411,62 @@ fn close(chat: &mut SideChat, commands: &mut Commands) {
     if let Some(request) = chat.request.take() {
         commands.entity(request).try_despawn();
     }
-    commands.entity(chat.panel).remove::<TuiPanel>();
-    *chat = SideChat::closed(chat.panel);
+    commands
+        .entity(chat.editor)
+        .remove::<TuiPanel>()
+        .insert(Editor::default());
+    commands
+        .entity(chat.pane)
+        .remove::<(TranscriptPane, TuiPanel)>();
+    *chat = SideChat::closed(chat.editor, chat.pane);
 }
 
-/// Esc in the panel: closes the side conversation.
-fn close_on_key(
+/// Enter in the editor: what it holds is asked as a follow-up.
+fn ask_on_key(
     pressed: On<KeyPressed>,
-    mut chat: ResMut<SideChat>,
-    mut focus: ResMut<KeyFocus>,
+    mut editors: Query<&mut Editor>,
+    chat: Res<SideChat>,
     mut commands: Commands,
 ) {
-    if pressed.released {
+    let (Some(main), Ok(mut editor)) = (chat.main, editors.get_mut(chat.editor)) else {
+        return;
+    };
+    if pressed.released || editor.text().trim().is_empty() {
         return;
     }
-    close(&mut chat, &mut commands);
-    focus.0 = None;
+    let question = editor.take();
+    commands.trigger(AskSide {
+        agent: main,
+        question,
+        fresh: false,
+    });
 }
 
-/// Ctrl+Y in the panel: the last answer goes in the main input, not sent,
-/// and the side conversation closes.
+/// Esc in the editor: closes the side conversation.
+fn close_on_key(pressed: On<KeyPressed>, mut chat: ResMut<SideChat>, mut commands: Commands) {
+    if !pressed.released {
+        close(&mut chat, &mut commands);
+    }
+}
+
+/// Ctrl+Y in the editor: the last answer goes in the main input, not
+/// sent, and the side conversation closes.
 fn send_to_agent(
     pressed: On<KeyPressed>,
     mut chat: ResMut<SideChat>,
-    mut input: ResMut<TuiInput>,
-    mut focus: ResMut<KeyFocus>,
+    input: Option<MainInput>,
     mut commands: Commands,
 ) {
     if pressed.released {
         return;
     }
-    if let Some(answer) = chat.last_answer().filter(|answer| !answer.is_empty()) {
+    if let (Some(answer), Some(mut input)) = (
+        chat.last_answer().filter(|answer| !answer.is_empty()),
+        input,
+    ) {
         input.set(answer.to_owned());
     }
     close(&mut chat, &mut commands);
-    focus.0 = None;
-}
-
-/// Types into the panel while it has the keys: characters, pastes and
-/// Backspace edit the draft, and Enter asks it as a follow-up.
-fn type_follow_up(
-    events: Res<TerminalEvents>,
-    focus: Res<KeyFocus>,
-    mut chat: ResMut<SideChat>,
-    mut commands: Commands,
-) {
-    let Some(main) = chat.main.filter(|_| focus.0 == Some(chat.panel)) else {
-        return;
-    };
-    for item in &events.0 {
-        let KeyInput::Event(event) = item else {
-            continue;
-        };
-        match event {
-            Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
-                KeyCode::Enter => {
-                    let question = std::mem::take(&mut chat.draft);
-                    if !question.trim().is_empty() {
-                        commands.trigger(AskSide {
-                            agent: main,
-                            question,
-                            fresh: false,
-                        });
-                    }
-                }
-                KeyCode::Backspace => {
-                    chat.draft.pop();
-                }
-                KeyCode::Char(typed)
-                    if !key
-                        .modifiers
-                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-                {
-                    chat.draft.push(typed);
-                }
-                _ => {}
-            },
-            Event::Paste(text) => chat.draft.push_str(text),
-            _ => {}
-        }
-    }
 }
 
 /// Retires the side agents a restored session brings back: a side agent
@@ -488,63 +480,6 @@ fn discard_restored(
     for side in sides.iter().filter(|&side| chat.agent != Some(side)) {
         commands.trigger(Retire { entity: side });
     }
-}
-
-/// The side agent's answer streaming so far, from its model call in flight.
-type Streaming<'w, 's> =
-    Query<'w, 's, (Ref<'static, Partial>, &'static ForAgent), (With<TurnCall>, Without<Settled>)>;
-
-/// The text the side agent of `chat` has streamed so far.
-fn streaming<'a>(chat: &SideChat, partials: &'a Streaming) -> Option<Ref<'a, Partial>> {
-    let side = chat.agent?;
-    partials
-        .iter()
-        .find_map(|(partial, &ForAgent(agent))| (agent == side).then_some(partial))
-}
-
-/// Draws the panel again when the side conversation or its streaming
-/// answer changed.
-fn redraw(chat: Res<SideChat>, partials: Streaming, mut redraw: MessageWriter<RequestRedraw>) {
-    let streamed = streaming(&chat, &partials).is_some_and(|partial| partial.is_changed());
-    if chat.is_changed() || streamed {
-        redraw.write(RequestRedraw);
-    }
-}
-
-/// Draws the side conversation, its latest lines, and the draft.
-fn draw(
-    chat: Res<SideChat>,
-    partials: Streaming,
-    mut canvases: Query<&mut PanelCanvas, With<TuiPanel>>,
-) {
-    let Ok(mut canvas) = canvases.get_mut(chat.panel) else {
-        return;
-    };
-    let streamed = streaming(&chat, &partials);
-    let mut lines: Vec<Line> = Vec::new();
-    let last = chat.exchanges.len().saturating_sub(1);
-    for (at, exchange) in chat.exchanges.iter().enumerate() {
-        lines.push(Line::from(format!("› {}", exchange.question)).bold());
-        // The turn's answer goes to the last question; it streams there.
-        let answer = match &streamed {
-            Some(partial) if at == last && exchange.answer.is_empty() => partial.text.as_str(),
-            _ => exchange.answer.as_str(),
-        };
-        if answer.is_empty() {
-            lines.push(Line::from("…").dim());
-        }
-        lines.extend(answer.lines().map(|line| Line::from(line.to_owned())));
-        lines.push(Line::default());
-    }
-    lines.push(Line::from(format!("> {}", chat.draft)));
-    let rows = usize::from(canvas.area().height.saturating_sub(2));
-    let skip = lines.len().saturating_sub(rows);
-    let block = Block::bordered()
-        .title(" btw ")
-        .title_bottom(" Enter ask · Ctrl+Y to the agent's input · Esc close ")
-        .border_style(Style::new().dim());
-    let text: Vec<Line> = lines.into_iter().skip(skip).collect();
-    canvas.render(Paragraph::new(text).wrap(Wrap { trim: false }).block(block));
 }
 
 #[cfg(test)]

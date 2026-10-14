@@ -8,8 +8,9 @@
 //! each search, re-reading only the sessions whose logs changed; the
 //! running session is never in it. `recall` ranks the messages with BM25
 //! and shows each hit with ±3 messages around it, `recall_open` shows more
-//! around a hit, and `/recall <query>` offers the hits in a picker, the one
-//! picked going with the user's next message. What `read` returned for a
+//! around a hit, and `/recall <query>` offers the hits in a picker that
+//! previews each hit's conversation at the message found, the one picked
+//! going with the user's next message. What `read` returned for a
 //! `.env`-like file, and such a file attached to a message, is never
 //! indexed.
 
@@ -17,16 +18,14 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_core::tool::ToolOutput;
-use rig_harness::rig_memory::{DirStore, SessionMeta};
-use rig_sessions::SessionTitle;
+use rig_harness::rig_memory::{DirStore, read_line};
 use rig_tools::attach::attached_file;
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
@@ -101,6 +100,7 @@ impl Plugin for RecallPlugin {
             .add_systems(Startup, warm_up)
             .configure_sets(AgentPass, RecallSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, attach.in_set(RecallSystems))
+            .add_systems(Update, preview)
             .add_observer(warmed)
             .add_observer(found);
     }
@@ -158,18 +158,34 @@ struct Saved {
     docs: Vec<Doc>,
 }
 
-/// One message of one agent's conversation, as text.
+/// One message of one agent's conversation, as text, and its position in
+/// that conversation.
 #[derive(Serialize, Deserialize, Clone)]
 struct Doc {
     agent: String,
+    message: usize,
     text: String,
 }
 
 /// What a hit says about its session, read afresh at each update.
 struct Info {
     name: String,
-    updated_ms: u64,
+    updated: SystemTime,
     directory: Option<PathBuf>,
+}
+
+impl From<SessionEntry> for Info {
+    fn from(entry: SessionEntry) -> Self {
+        let title = Some(entry.listing.meta.title).filter(|title| !title.is_empty());
+        Self {
+            name: entry
+                .name
+                .or(title)
+                .unwrap_or_else(|| format!("session {}", entry.id)),
+            updated: entry.updated,
+            directory: entry.directory,
+        }
+    }
 }
 
 /// One indexed session: its documents and their terms.
@@ -228,11 +244,7 @@ impl Indexed {
     /// The line naming the session: name, date and, with `project`, its
     /// directory.
     fn header(&self, id: &str, project: bool) -> String {
-        let date = i64::try_from(self.info.updated_ms)
-            .ok()
-            .and_then(chrono::DateTime::from_timestamp_millis)
-            .map(|date| date.format("%Y-%m-%d").to_string())
-            .unwrap_or_default();
+        let date = chrono::DateTime::<chrono::Utc>::from(self.info.updated).format("%Y-%m-%d");
         let mut line = format!("“{}” · {date}", self.info.name);
         if project && let Some(directory) = &self.info.directory {
             line.push_str(&format!(" · {}", directory.display()));
@@ -246,6 +258,11 @@ impl Indexed {
 
 /// A search hit.
 struct Hit {
+    /// The session, the agent and the message's position in its
+    /// conversation.
+    session: String,
+    agent: String,
+    message: usize,
     /// The session's line and the reference.
     title: String,
     /// The messages around it, cut short.
@@ -262,38 +279,31 @@ impl Index {
         let dir = place.home.root().join(INDEX_DIR);
         let mut unreadable = Vec::new();
         let mut seen = HashSet::new();
-        let entries = fs::read_dir(place.home.sessions()).into_iter().flatten();
-        for entry in entries.filter_map(Result::ok) {
-            let Some(id) = entry.file_name().to_str().and_then(|id| id.parse().ok()) else {
-                continue;
-            };
-            let id: SessionId = id;
-            let session = place.home.session(&id);
-            if Some(session.path()) == place.current.as_deref() || !session.is_saved() {
+        for (id, session) in place.home.saved_sessions() {
+            if Some(session.path()) == place.current.as_deref() {
                 continue;
             }
+            let Some(entry) = SessionEntry::read(&session, &place.stores) else {
+                continue;
+            };
             let id = id.to_string();
             let stamp = stamp(session.path());
-            let store = match place.stores.open(&session) {
-                Ok(store) => store,
-                Err(why) => {
-                    unreadable.push(format!("{} ({why})", session.path().display()));
-                    continue;
-                }
-            };
-            let info = info(&session, &*store, &id, stamp);
             seen.insert(id.clone());
             if let Some(indexed) = self.sessions.get_mut(&id)
                 && indexed.saved.stamp == stamp
             {
-                indexed.info = info;
+                indexed.info = entry.into();
                 continue;
             }
             let file = dir.join(format!("{id}.json"));
             let saved = match read_json::<Saved>(&file).filter(|saved| saved.stamp == stamp) {
                 Some(saved) => saved,
                 None => {
-                    let docs = match Session::read_lenient(&*store) {
+                    let read = place.stores.open(&session).map_err(|why| why.to_string());
+                    let read = read.and_then(|store| {
+                        Session::read_lenient(&*store).map_err(|why| why.to_string())
+                    });
+                    let docs = match read {
                         Ok((read, left_out)) => {
                             for log in left_out {
                                 let path = session.path().display();
@@ -314,7 +324,7 @@ impl Index {
                     saved
                 }
             };
-            self.sessions.insert(id, Indexed::new(info, saved));
+            self.sessions.insert(id, Indexed::new(entry.into(), saved));
         }
         self.sessions.retain(|id, _| seen.contains(id));
         forget_gone(&dir, &seen);
@@ -377,7 +387,7 @@ impl Index {
                     })
                     .sum();
                 if score > 0.0 {
-                    scored.push((score, indexed.info.updated_ms, id.as_str(), at));
+                    scored.push((score, indexed.info.updated, id.as_str(), at));
                 }
             }
         }
@@ -391,7 +401,11 @@ impl Index {
             let near = taken
                 .iter()
                 .any(|&(taken, other)| taken == id && other.abs_diff(at) <= AROUND);
-            let Some(indexed) = self.sessions.get(id) else {
+            let Some((indexed, doc)) = self
+                .sessions
+                .get(id)
+                .and_then(|indexed| Some((indexed, indexed.saved.docs.get(at)?)))
+            else {
                 continue;
             };
             if near {
@@ -400,6 +414,9 @@ impl Index {
             taken.push((id, at));
             let reference = format!("(recall_open session \"{id}\", message {at})");
             hits.push(Hit {
+                session: id.to_owned(),
+                agent: doc.agent.clone(),
+                message: doc.message,
                 title: format!("{} {reference}", indexed.header(id, project.is_none())),
                 snippet: indexed.excerpt(at, AROUND, Some(SNIPPET_CHARS)),
                 excerpt: format!(
@@ -454,23 +471,6 @@ fn stamp(session: &Path) -> Stamp {
     stamp
 }
 
-/// The session's name, date and directory, from its listing cache in
-/// `store`.
-fn info(session: &SessionDir, store: &dyn Files, id: &str, stamp: Stamp) -> Info {
-    let meta = SessionMeta::read(store);
-    let title = SessionTitle::read(session, store);
-    let name = title.as_ref().map(SessionTitle::shown);
-    let name = name.filter(|name| !name.is_empty()).map(str::to_owned);
-    let directory = fs::read_to_string(session.directory())
-        .ok()
-        .map(|text| PathBuf::from(text.trim_end_matches('\n')));
-    Info {
-        name: name.unwrap_or_else(|| format!("session {id}")),
-        updated_ms: meta.map_or(stamp.modified_ms, |meta| meta.updated),
-        directory,
-    }
-}
-
 /// Whether two paths name the same directory.
 fn same_dir(a: &Path, b: &Path) -> bool {
     a == b
@@ -486,7 +486,7 @@ fn docs(session: &Session) -> Vec<Doc> {
     let mut docs = Vec::new();
     for agent in &session.agents {
         let mut secret_reads = HashSet::new();
-        for message in agent.conversation.messages() {
+        for (at, message) in agent.conversation.messages().iter().enumerate() {
             let mut parts = Vec::new();
             match message {
                 Message::User { content } => {
@@ -556,6 +556,7 @@ fn docs(session: &Session) -> Vec<Doc> {
             // Every message keeps its place, so a reference counts messages.
             docs.push(Doc {
                 agent: agent.id.clone(),
+                message: at,
                 text: parts.join("\n"),
             });
         }
@@ -747,15 +748,19 @@ struct Searching {
     query: String,
 }
 
-/// What a `/recall` search found.
+/// What a `/recall` search found: each hit and its preview.
 #[derive(Component)]
-struct Found(Result<Vec<Hit>, String>);
+struct Found(Result<Vec<(Hit, PickPreview)>, String>);
 
-impl From<Result<Vec<Hit>, ToolExecutionError>> for Found {
-    fn from(found: Result<Vec<Hit>, ToolExecutionError>) -> Self {
+impl From<Result<Vec<(Hit, PickPreview)>, ToolExecutionError>> for Found {
+    fn from(found: Result<Vec<(Hit, PickPreview)>, ToolExecutionError>) -> Self {
         Self(found.map_err(|error| error.to_string()))
     }
 }
+
+/// The previews of a `/recall` picker's hits, in its items' order.
+#[derive(Component)]
+struct HitPreviews(Vec<PickPreview>);
 
 /// The excerpt picked with `/recall`, which goes with the agent's next
 /// message from the user.
@@ -783,8 +788,24 @@ fn recall_command(
     }
     let place = Place::of(&home, stores.as_deref(), paths.as_deref(), &project);
     let searched = query.clone();
-    let work = with_index(index.clone(), place, move |index, _| {
-        index.search(&searched, None, MAX_LIMIT)
+    let work = with_index(index.clone(), place, move |index, place| {
+        let hits = index.search(&searched, None, MAX_LIMIT);
+        let mut read: HashMap<(String, String), PickPreview> = HashMap::new();
+        hits.into_iter()
+            .map(|hit| {
+                let conversation = read
+                    .entry((hit.session.clone(), hit.agent.clone()))
+                    .or_insert_with(|| conversation_of(place, &hit.session, &hit.agent));
+                let preview = match conversation {
+                    PickPreview::Conversation { conversation, .. } => PickPreview::Conversation {
+                        at: conversation.id(hit.message),
+                        conversation: conversation.clone(),
+                    },
+                    PickPreview::Text(_) => PickPreview::Text(hit.excerpt.clone()),
+                };
+                (hit, preview)
+            })
+            .collect()
     });
     commands.spawn((
         Name::new("recall search"),
@@ -826,10 +847,12 @@ fn found(
     );
     let picker = hits.iter().fold(
         Picker::new("Recall").for_agent(agent).body(body),
-        |picker, hit| picker.item(format!("{}  {}", hit.title, one_line(&hit.snippet)), ""),
+        |picker, (hit, _)| picker.item(format!("{}  {}", hit.title, one_line(&hit.snippet)), ""),
     );
+    let (hits, previews): (Vec<Hit>, Vec<PickPreview>) = hits.into_iter().unzip();
     let excerpts: Vec<String> = hits.into_iter().map(|hit| hit.excerpt).collect();
-    commands.spawn(picker).observe(
+    let mut picker = commands.spawn((picker, Highlighted(0), HitPreviews(previews)));
+    picker.observe(
         move |picked: On<Picked>, mut commands: Commands, mut notices: MessageWriter<Notice>| {
             if let Some(index) = picked
                 .chosen
@@ -847,6 +870,36 @@ fn found(
             }
         },
     );
+}
+
+/// The conversation of `agent` in the past session `session`, as a
+/// preview; why it cannot be read otherwise.
+fn conversation_of(place: &Place, session: &str, agent: &str) -> PickPreview {
+    let dir = session.parse().map(|id| place.home.session(&id));
+    let store = dir
+        .map_err(|why| why.to_string())
+        .and_then(|dir| place.stores.open(&dir).map_err(|why| why.to_string()));
+    let read = store
+        .and_then(|store| read_line(&*store, Some(agent), None).map_err(|why| why.to_string()));
+    match read {
+        Ok((_, conversation)) => PickPreview::Conversation {
+            conversation,
+            at: None,
+        },
+        Err(why) => PickPreview::Text(format!("Cannot preview it: {why}")),
+    }
+}
+
+/// Previews the highlighted hit of a `/recall` picker.
+fn preview(
+    pickers: Query<(Entity, &Highlighted, &HitPreviews), Changed<Highlighted>>,
+    mut commands: Commands,
+) {
+    for (entity, &Highlighted(at), HitPreviews(previews)) in &pickers {
+        if let Some(preview) = previews.get(at) {
+            commands.entity(entity).insert(preview.clone());
+        }
+    }
 }
 
 /// Attaches a picked excerpt to the user's next message to its agent.

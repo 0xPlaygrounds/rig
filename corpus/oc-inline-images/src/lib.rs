@@ -28,7 +28,6 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use bevy_ecs::schedule::SystemCondition;
 use image::imageops::FilterType;
 use image::{DynamicImage, GenericImageView, ImageFormat};
 use rig_harness::prelude::*;
@@ -43,8 +42,9 @@ use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
     AppKeyBindingsExt, AppToolRenderersExt, CallDecorator, ContentBlock, ContentKind,
-    CopyToClipboard, DrawnTranscript, KeyBinding, KeyPress, KeyPressed, KeyScope, Repaint,
-    TerminalWrite, ToolCallView, TranscriptItem, TranscriptView, TuiFrame, TuiScreen, TuiSystems,
+    CopyToClipboard, DrawnTranscript, KeyBinding, KeyPress, KeyPressed, KeyScope, MainPane,
+    Repaint, TerminalWrite, ToolCallView, TranscriptItem, TranscriptView, TuiFrame, TuiScreen,
+    TuiSystems,
 };
 use serde::Deserialize;
 
@@ -496,19 +496,34 @@ fn drawn_in(
     fitted.into_iter().filter_map(at_row).collect()
 }
 
+/// Has the main transcript pane keep the rows it draws, which images are
+/// placed over.
+fn keep_drawn(
+    panes: Query<Entity, (With<MainPane>, Without<DrawnTranscript>)>,
+    mut commands: Commands,
+) {
+    for pane in &panes {
+        commands.entity(pane).insert(DrawnTranscript::default());
+    }
+}
+
 /// Keeps the look of images in step with the settings, the terminal and
 /// its width, and draws the transcript again when it changes.
 fn follow_look(
     images: Res<Images>,
     (settings, graphics): (Res<ImagesSettings>, Res<TerminalGraphics>),
-    (screen, frame): (Res<TuiScreen>, Res<TuiFrame>),
+    (screen, view): (
+        Res<TuiScreen>,
+        Option<Single<&TranscriptView, With<MainPane>>>,
+    ),
     mut decorators: Query<&mut CallDecorator>,
 ) {
     let width = match screen.0.width {
         0 => 80,
         width => width,
     };
-    let params = Params::of(&settings, &graphics, (width, frame.transcript.width));
+    let transcript = view.and_then(|view| view.width()).unwrap_or(0);
+    let params = Params::of(&settings, &graphics, (width, transcript));
     let mut shared = images.lock();
     if shared.params == params {
         return;
@@ -582,7 +597,7 @@ fn wanted(
             };
             let spot = Spot {
                 key: fitted.key,
-                x: frame.transcript.x.saturating_add(INDENT),
+                x: drawn.area().x.saturating_add(INDENT),
                 y,
                 cols: fitted.cols,
                 rows: fitted.rows,
@@ -795,17 +810,21 @@ fn at_spot(spot: &Spot, sequence: &str) -> String {
     at((spot.x, spot.y), sequence)
 }
 
-/// After each drawn frame, places the images on screen and takes off
+/// After each drawn frame that moved the main pane's rows or the panels,
+/// or left an image waiting, places the images on screen and takes off
 /// those that left it, through the view's writer; the cells an image drawn
 /// in them leaves are written again by the view.
 fn place_images(
     images: Res<Images>,
     graphics: Res<TerminalGraphics>,
-    (drawn, frame): (Res<DrawnTranscript>, Res<TuiFrame>),
+    (drawn, frame): (Single<Ref<DrawnTranscript>, With<MainPane>>, Res<TuiFrame>),
     conversations: Query<&Conversation>,
     mut placed: ResMut<Placed>,
     (mut terminal, mut repaints): (MessageWriter<TerminalWrite>, MessageWriter<Repaint>),
 ) {
+    if !drawn.is_changed() && !frame.is_changed() && !placed.deferred {
+        return;
+    }
     placed.deferred = false;
     // A resize clears the screen: everything is placed again.
     if placed.screen != Some(frame.screen) {
@@ -853,11 +872,13 @@ fn clear_on_exit(
     }
 }
 
-/// The selected item's first image, saved where the session keeps pasted
-/// images, by its key.
+/// The main pane's selected item's first image, saved where the session
+/// keeps pasted images, by its key.
 fn selected_image(world: &mut World) -> Result<PathBuf, String> {
-    let selected = world.resource::<TranscriptView>().selected.clone();
-    let agent = world.resource::<DrawnTranscript>().agent();
+    let mut panes = world.query_filtered::<(&TranscriptView, &DrawnTranscript), With<MainPane>>();
+    let pane = panes.single(world).ok();
+    let selected = pane.and_then(|(view, _)| view.selected.clone());
+    let agent = pane.and_then(|(_, drawn)| drawn.agent());
     let conversation = agent.and_then(|agent| world.get::<Conversation>(agent));
     let image = match (selected, conversation) {
         (Some(TranscriptItem::Content(id, index)), Some(conversation)) => {
@@ -938,7 +959,6 @@ impl Plugin for InlineImagesPlugin {
         let (content, call) = (images.clone(), images.clone());
         app.insert_resource(images)
             .init_resource::<Placed>()
-            .init_resource::<DrawnTranscript>()
             .init_resource::<TuiFrame>()
             .init_resource::<TuiScreen>()
             .add_message::<TerminalWrite>()
@@ -954,13 +974,11 @@ impl Plugin for InlineImagesPlugin {
                     .map_or(&[][..], |result| result.content.as_slice());
                 call.lock().all_lines(result_images(content)).0
             })
-            .add_systems(PostUpdate, follow_look.in_set(TuiSystems::Prepare))
             .add_systems(
                 PostUpdate,
-                place_images.after(TuiSystems::Render).run_if(
-                    resource_changed::<DrawnTranscript>
-                        .or_eager(resource_changed::<TuiFrame>)
-                        .or_eager(|placed: Res<Placed>| placed.deferred),
+                (
+                    (keep_drawn, follow_look).in_set(TuiSystems::Prepare),
+                    place_images.after(TuiSystems::Render),
                 ),
             )
             .add_systems(

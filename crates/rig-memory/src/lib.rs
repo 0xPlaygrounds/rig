@@ -19,8 +19,16 @@
 //! [`fork`] copies a session as it was before one of its messages, through
 //! a [`Rewrite`], with what the copied messages' asides say now; and
 //! [`history`] and [`as_of`] read how a conversation got where it is.
+//! [`split`] copies one agent's line into a new session, ids kept, and
+//! [`lines`] lists a conversation's lines.
 //! Beside its logs a store keeps what a listing shows of the session
-//! ([`SessionMeta`]) and the session it was forked from ([`ForkedFrom`]).
+//! ([`SessionMeta`]) and the session it was forked from ([`ForkedFrom`]);
+//! [`Listing`] reads both and [`read_line`] one agent's line, without
+//! folding the rest.
+//! Sessions older rigs saved, from format version [`OLDEST`] on, read
+//! through a chain of steps, and [`upgrade`] rewrites them in this format
+//! the first time anything writes to them; a saved value carries its own
+//! version ([`Versioned`]), read through a plugin's [`Upgrades`].
 //! A saved agent's model and title are kept under [`MODEL`] and [`TITLE`]
 //! ([`SavedAgent::model`]), and [`Session::main_agent`] is the agent the
 //! user talks to.
@@ -74,26 +82,30 @@ mod compaction;
 mod dir;
 mod fork;
 mod format;
+mod listing;
 mod meta;
 mod rewrite;
 mod saved;
 mod session;
+mod split;
 mod store;
 mod tokens;
+mod upgrade;
 pub mod window;
 mod writer;
 
 pub use blobs::{load_images, store_images};
 pub use compaction::{
-    COMPACTED, ClearToolOutputs, Cleared, CompactReason, Compacted, CompactionPolicy, Cut,
-    Summarizer, SummaryError, SummaryLimits, SummaryPlan, SummaryPrompts, SummaryState,
-    TrackArgument, TrackedSet, Uncompacted, UndoError, apply_summary, summarized_prefix,
-    summary_author, summary_in, undo_summary,
+    COMPACTED, ClearToolOutputs, Cleared, CompactReason, Compacted, CompactionOverrides,
+    CompactionPolicy, Cut, CutRule, CutRules, Summarizer, SummaryError, SummaryLimits, SummaryPlan,
+    SummaryPrompts, SummaryState, TrackArgument, TrackedSet, Uncompacted, UndoError, apply_summary,
+    estimate_tokens, summarized_prefix, summary_author, summary_in, summary_state, undo_summary,
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
 pub use fork::{Forked, fork};
-pub use format::{FORMAT, LoadError, Repair, Rewrote, SESSION, Stamp, now_ms};
+pub use format::{FORMAT, LoadError, OLDEST, Repair, Rewrote, SESSION, Stamp, VERSION, now_ms};
+pub use listing::{Listing, read_line};
 pub use meta::{ForkedFrom, META, PARENT, SessionMeta, title_of};
 pub use rewrite::{
     Keep, Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
@@ -101,6 +113,8 @@ pub use rewrite::{
 };
 pub use saved::{MODEL, TITLE, main_order};
 pub use session::{Record, SavedAgent, Session, Unreadable, as_of, history, load, save};
+pub use split::{Line, LineId, SPLIT, SplitOf, SplitPointer, lines, split};
 pub use store::{Files, MemoryStore, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};
+pub use upgrade::{SET_ASIDE, Unread, Upgrade, Upgraded, Upgrades, ValueError, Versioned, upgrade};
 pub use writer::Writer;

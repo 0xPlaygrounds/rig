@@ -6,7 +6,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
 use rig_models::ModelsPlugin;
 use rig_telemetry::{Spending, UsagePlugin};
-use rig_tui::CompletionSource;
+use rig_tui::{CompletionSource, Editor, MainEditor};
 
 use super::*;
 
@@ -136,9 +136,9 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     };
     // Both models complete `/model`'s argument, once it is typed; the
     // keyless one says why.
-    let mut typed = rig_tui::TuiInput::default();
+    let mut typed = Editor::default();
     typed.set("/model ");
-    app.insert_resource(typed);
+    app.world_mut().spawn((typed, MainEditor));
     app.update();
     let world = app.world_mut();
     let offered: Vec<(String, String)> = world

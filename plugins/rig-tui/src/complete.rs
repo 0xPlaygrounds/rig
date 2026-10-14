@@ -17,7 +17,7 @@ use bevy_ecs::system::SystemParam;
 use bevy_log::warn;
 use crossbeam_channel::Receiver;
 
-use super::editor::TuiInput;
+use super::editor::{Editor, MainEditor};
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
 use rig_harness::commands::SlashCommand;
@@ -380,7 +380,7 @@ fn markers(sources: &Query<&CompletionSource>) -> Vec<char> {
 /// The token at the cursor of `input` that completion completes, and what
 /// is typed of it after its marker.
 pub(crate) fn typed(
-    input: &TuiInput,
+    input: &Editor,
     sources: &Query<&CompletionSource>,
 ) -> Option<(CompletionKind, String)> {
     let (kind, _, query, _) = token(input.text(), input.cursor(), &markers(sources))?;
@@ -392,7 +392,7 @@ pub(crate) fn typed(
 /// closed with Esc stays closed until the token moves.
 pub(crate) fn update(
     view: &mut TuiView,
-    input: &TuiInput,
+    input: &Editor,
     index: &mut FileIndex,
     (sources, renewed): (&Sources, bool),
     wake: &Wake,
@@ -505,10 +505,13 @@ pub(crate) fn receive_paths(
     mut index: ResMut<FileIndex>,
     mut changes: MessageReader<FileChanges>,
     mut view: ResMut<TuiView>,
-    input: Res<TuiInput>,
+    input: Query<&Editor, With<MainEditor>>,
     sources: Sources,
     (wake, mut commands): (Res<Wake>, Commands),
 ) {
+    let Ok(input) = input.single() else {
+        return;
+    };
     let watch = index.watch;
     let changed = changes.read().any(|change| Some(change.watch) == watch);
     if changed {
@@ -518,7 +521,7 @@ pub(crate) fn receive_paths(
     if changed || received {
         update(
             &mut view,
-            &input,
+            input,
             &mut index,
             (&sources, false),
             &wake,
@@ -532,7 +535,7 @@ pub(crate) fn receive_paths(
 pub(crate) fn follow_input(
     mut index: ResMut<FileIndex>,
     mut view: ResMut<TuiView>,
-    input: Res<TuiInput>,
+    input: Query<Ref<Editor>, With<MainEditor>>,
     sources: Sources,
     (changed, mut removed): (
         Query<(), Changed<CompletionSource>>,
@@ -541,6 +544,9 @@ pub(crate) fn follow_input(
     (wake, mut commands): (Res<Wake>, Commands),
 ) {
     let renewed = !changed.is_empty() || removed.read().count() > 0;
+    let Ok(input) = input.single() else {
+        return;
+    };
     if input.is_changed() || renewed {
         update(
             &mut view,

@@ -244,6 +244,12 @@ impl TuiTestScreen {
         }
     }
 
+    /// Makes it `width` columns wide and `height` rows high, as a terminal
+    /// resized; the next frame is drawn at that size.
+    pub fn resize(&mut self, width: u16, height: u16) {
+        self.terminal.backend_mut().resize(width, height);
+    }
+
     /// Its size.
     pub fn size(&self) -> Size {
         let area = self.buffer().area;

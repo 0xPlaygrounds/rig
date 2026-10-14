@@ -4,7 +4,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{app_in, connect, run_until, scratch_home};
 use rig_subagents::SubagentsPlugin;
 use rig_telemetry::EffectLogPlugin;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::*;
 

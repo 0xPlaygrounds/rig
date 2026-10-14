@@ -19,7 +19,7 @@
 //! - `/provenance <file>[:<line>[-<line>]]` lists the lines in runs of one
 //!   origin, and offers a picker of the agents' entries: choosing one opens
 //!   that turn's session, read from its store, in a read-only
-//!   `ConversationPanel` scrolled to the turn.
+//!   [`TranscriptPane`] over the screen scrolled to the turn; Esc closes it.
 //! - `/provenance --forget <session>` drops one session's records.
 //! - `rig provenance <file>[:<line>[-<line>]] [--json]` prints the same from
 //!   the command line, without a session; `--forget` works there too.
@@ -33,7 +33,12 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
 use rig_harness::rig_memory::{Session, now_ms};
-use rig_tui::{ConversationPanel, KeyFocus, TranscriptItem};
+use rig_tui::crossterm::event::KeyCode;
+use rig_tui::ratatui::layout::Constraint;
+use rig_tui::{
+    ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, PaneKeys, Placement, ScrollTo,
+    TranscriptItem, TranscriptPane, TranscriptSource, TuiPanel,
+};
 use std::collections::HashMap;
 
 mod store;
@@ -511,13 +516,7 @@ fn provenance(
                         record.turn,
                         record.prompt
                     );
-                    let at = Some(TranscriptItem::Message(turn));
-                    let panel = ConversationPanel {
-                        title,
-                        conversation,
-                        at,
-                    };
-                    let panel = commands.spawn(panel).id();
+                    let panel = open_turn(&mut commands, conversation, turn, title);
                     if let Some(mut focus) = opening.focus {
                         focus.0 = Some(panel);
                     }
@@ -527,6 +526,41 @@ fn provenance(
                 }
             }
         }
+    }
+}
+
+/// Shows `conversation` read-only in a pane over the screen, titled
+/// `title`, with `turn` at its top; Esc in it closes it.
+fn open_turn(commands: &mut Commands, conversation: Log, turn: MessageId, title: String) -> Entity {
+    let over = Placement::Over {
+        width: Constraint::Percentage(90),
+        height: Constraint::Percentage(90),
+    };
+    let pane = commands
+        .spawn((
+            TranscriptPane::new(TranscriptSource::Value(conversation)).titled(title),
+            TuiPanel::new(over),
+            PaneKeys,
+        ))
+        .id();
+    let close =
+        KeyBinding::new(KeyPress::key(KeyCode::Esc), "Close").in_scope(KeyScope::Panel(pane));
+    commands.spawn((close, ChildOf(pane))).observe(close_turn);
+    commands.trigger(ScrollTo {
+        pane,
+        item: Some(TranscriptItem::Message(turn)),
+        row: ItemRow::Top(0),
+    });
+    pane
+}
+
+/// Esc in a turn's pane: closes it.
+fn close_turn(pressed: On<KeyPressed>, keys: Query<&ChildOf>, mut commands: Commands) {
+    if pressed.released {
+        return;
+    }
+    if let Ok(of) = keys.get(pressed.entity) {
+        commands.entity(of.parent()).despawn();
     }
 }
 

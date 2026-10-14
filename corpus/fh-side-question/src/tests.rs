@@ -7,6 +7,8 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, calls, reply, run_until, scripted_models};
 use rig_subagents::SubagentsPlugin;
 
+use rig_tui::{Editor, MainEditor};
+
 use super::*;
 
 /// A tool the test answers itself, or never.
@@ -131,7 +133,7 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         calls("c1", "shell", serde_json::json!({ "command": "migrate" })),
         reply("Migrated."),
     ]);
-    let side = MockCompletionModel::from_stream_turns([reply("X is Y")]);
+    let side = MockCompletionModel::from_stream_turns([reply("X is Y"), reply("Z is W")]);
     let (mut app, wakes, agent) = start(&store, &main, &side);
 
     // The main turn's `shell` call runs and is held open.
@@ -161,10 +163,15 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
     assert_eq!(chat.last_answer(), Some("X is Y"));
     assert_eq!(
         app.world().resource::<KeyFocus>().0,
-        Some(chat.panel),
+        Some(chat.editor),
         "the panel has the keys"
     );
-    assert!(app.world().get::<TuiPanel>(chat.panel).is_some());
+    assert!(app.world().get::<TuiPanel>(chat.editor).is_some());
+    let pane = app.world().get::<TranscriptPane>(chat.pane);
+    let drawn = pane.map(
+        |pane| matches!(pane.source, TranscriptSource::Agent(side) if Some(side) == chat.agent),
+    );
+    assert_eq!(drawn, Some(true), "the side agent is drawn in its pane");
     let asked = side.requests();
     let first = asked.first().map(sent).unwrap_or_default();
     for part in ["Migrate the DB.", "migrate", "what is X?"] {
@@ -204,13 +211,34 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         );
     }
 
+    // A follow-up typed in the editor goes to the same side agent.
+    let editor = app.world().resource::<SideChat>().editor;
+    if let Some(mut typed) = app.world_mut().get_mut::<Editor>(editor) {
+        typed.set("and Z?");
+    }
+    press(&mut app, "Ask the side agent");
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<SideChat>().last_answer() == Some("Z is W")
+    });
+    let follow_up = side.requests().last().map(sent).unwrap_or_default();
+    assert!(
+        follow_up.contains("what is X?") && follow_up.contains("and Z?"),
+        "{follow_up}"
+    );
+
     // Send to agent: the answer is in the input, and nothing was sent.
     let before = app
         .world()
         .get::<Conversation>(agent)
         .map(|c| c.messages().len());
     press(&mut app, "Send the side answer to the agent");
-    assert_eq!(app.world().resource::<TuiInput>().text(), "X is Y");
+    let world = app.world_mut();
+    let input = world
+        .query_filtered::<&Editor, With<MainEditor>>()
+        .single(world)
+        .map(|editor| editor.text().to_owned())
+        .ok();
+    assert_eq!(input.as_deref(), Some("Z is W"));
     for _ in 0..3 {
         app.update();
     }
@@ -243,7 +271,8 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
     let kept = kept
         .first()
         .map(|(_, note)| (note.title.as_str(), note.text.as_str()));
-    assert_eq!(kept, Some(("btw: what is X?", "› what is X?\nX is Y")));
+    let text = "› what is X?\nX is Y\n\n› and Z?\nZ is W";
+    assert_eq!(kept, Some(("btw: what is X? (+1 follow-ups)", text)));
     let world = app.world_mut();
     let mut sides = world.query::<&SideAgent>();
     assert_eq!(sides.iter(world).count(), 0, "the side agent was retired");

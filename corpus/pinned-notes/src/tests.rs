@@ -74,7 +74,9 @@ fn pins_go_with_every_request_survive_compaction_and_come_back() {
     ask(&mut app, &wakes, agent, "Which approach?");
     run(&mut app, agent, "compact");
     run_until(&mut app, &wakes, |world| {
-        world.get::<rig_compaction::Summarized>(agent).is_some()
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|conversation| rig_compaction::summarized_prefix(conversation) > 0)
     });
     ask(&mut app, &wakes, agent, "And now?");
 

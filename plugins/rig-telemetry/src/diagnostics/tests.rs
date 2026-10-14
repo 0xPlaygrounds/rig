@@ -83,6 +83,7 @@ fn a_session_rewrite_reaches_the_kept_warnings() {
         hit
     });
     app.world_mut().write_message(SessionRewritten {
+        by: Author::plugin("redact"),
         asker: None,
         with: std::sync::Arc::new(redact),
         result: Ok(Rewritten::default()),

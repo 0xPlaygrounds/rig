@@ -61,7 +61,10 @@ impl Speaker for FakeSpeaker {
 }
 
 fn draft(world: &World) -> String {
-    world.resource::<TuiInput>().text().to_owned()
+    let main = world.try_query_filtered::<&rig_tui::Editor, With<rig_tui::MainEditor>>();
+    let main =
+        main.and_then(|mut main| main.single(world).ok().map(|input| input.text().to_owned()));
+    main.unwrap_or_default()
 }
 
 #[test]

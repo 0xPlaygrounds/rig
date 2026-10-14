@@ -17,7 +17,6 @@ chrono = { workspace = true }
 futures = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -27,3 +26,4 @@ serde_json = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }

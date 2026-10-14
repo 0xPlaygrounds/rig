@@ -1,17 +1,19 @@
 //! A running session's logs: [`Writer`] queues each agent's changes as a
 //! host saves them and writes them on [`flush`](Writer::flush).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rig_core::conversation::{Author, Change, Conversation, Lineage, Recorded};
-use serde_json::Value;
 
 use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
-use crate::{LoadError, Repair, Rewrite, Rewritten, Session, Stamp, Store, now_ms, rewrite};
+use crate::{
+    LoadError, Repair, Rewrite, Rewritten, SET_ASIDE, Session, Stamp, Store, Versioned, now_ms,
+    rewrite, upgrade,
+};
 
 /// One log as the writer keeps it.
 #[derive(Default)]
@@ -24,7 +26,12 @@ struct Log {
     pending: Vec<u8>,
     /// The newest value of each saved value, so an unchanged one is not
     /// written again.
-    state: BTreeMap<String, Value>,
+    state: BTreeMap<String, Versioned>,
+    /// The keys whose newest value no step reads: moved to a side key
+    /// before the key is next written.
+    set_aside: BTreeMap<String, Versioned>,
+    /// The keys a newer rig wrote: never written in this run.
+    held: BTreeSet<String>,
     /// The log's lineage, from its header.
     lineage: Lineage,
     /// The changes it holds.
@@ -229,16 +236,36 @@ impl Book {
 
     /// Queues the saved value `key` of the log `name` when it changed;
     /// `None` or `null` when it was removed. With `starts`, the change
-    /// starts the log.
-    pub fn state(&mut self, name: &str, key: &str, value: Option<Value>, starts: bool) {
-        let value = value.filter(|value| !value.is_null());
-        let known = self.logs.get(name).and_then(|log| log.state.get(key));
+    /// starts the log. A held key is not written; a key set aside has its
+    /// value moved to its side key first.
+    pub fn state(&mut self, name: &str, key: &str, value: Option<Versioned>, starts: bool) {
+        let value = value.filter(|saved| !saved.value.is_null());
+        let log = self.logs.get(name);
+        if log.is_some_and(|log| log.held.contains(key)) {
+            return;
+        }
+        let known = log.and_then(|log| log.state.get(key));
         if known == value.as_ref() {
             return;
         }
+        let set_aside = self
+            .logs
+            .get_mut(name)
+            .and_then(|log| log.set_aside.remove(key));
+        if let Some(saved) = set_aside {
+            let side = Meta::State {
+                key: format!("{SET_ASIDE}{key}/v{}", saved.v),
+                v: saved.v,
+                value: Some(saved.value),
+            };
+            if !self.meta(name, &side) {
+                return;
+            }
+        }
         let meta = Meta::State {
             key: key.to_owned(),
-            value: value.clone(),
+            v: value.as_ref().map_or(1, |saved| saved.v),
+            value: value.as_ref().map(|saved| saved.value.clone()),
         };
         if self.meta(name, &meta)
             && let Some(log) = self.logs.get_mut(name)
@@ -256,8 +283,8 @@ impl Book {
     pub fn states(
         &mut self,
         name: &str,
-        known: Option<&BTreeMap<String, Value>>,
-        values: &BTreeMap<String, Value>,
+        known: Option<&BTreeMap<String, Versioned>>,
+        values: &BTreeMap<String, Versioned>,
     ) {
         let removed = known.into_iter().flat_map(BTreeMap::keys);
         let removed: Vec<String> = removed
@@ -274,6 +301,20 @@ impl Book {
 
     pub fn retire(&mut self, name: &str) {
         self.meta(name, &Meta::Retired);
+    }
+
+    /// Marks the newest value of `key` in the log `name` as set aside.
+    pub fn set_aside_value(&mut self, name: &str, key: &str, saved: Versioned) {
+        if let Some(log) = self.logs.get_mut(name) {
+            log.set_aside.insert(key.to_owned(), saved);
+        }
+    }
+
+    /// Holds `key` in the log `name`: it is never written.
+    pub fn hold(&mut self, name: &str, key: &str) {
+        if let Some(log) = self.logs.get_mut(name) {
+            log.held.insert(key.to_owned());
+        }
     }
 
     /// Goes on after `rewritten`: each rewritten log with its new lineage
@@ -343,9 +384,12 @@ impl Writer {
     }
 
     /// Opens the session in `store` to go on with it: reads it as
-    /// [`Session::read`] does, refusing an old or broken session before
+    /// [`Session::read`] does, refusing a broken session, or one older
+    /// than [`OLDEST`](crate::OLDEST) or newer than this format, before
     /// anything is written, then sets each torn tail aside in the file
-    /// `recovered/<log>-<k>.part` and cuts it off ([`Repair::TornTail`]).
+    /// `recovered/<log>-<k>.part` and cuts it off ([`Repair::TornTail`]),
+    /// and rewrites a session an older rig saved in this format
+    /// ([`upgrade`]).
     /// The session read leaves out retired agents and the agents they
     /// spawned. The writer logs to `store` once started, after its logs.
     ///
@@ -353,6 +397,7 @@ impl Writer {
     ///
     /// As [`Session::read`], or when setting a torn tail aside fails.
     pub fn open(store: Arc<dyn Store>) -> Result<(Self, Session), LoadError> {
+        let upgraded = upgrade(&*store)?;
         let mut folded = fold_all(&*store, true)?;
         let mut repairs = repairs(&*store, &folded)?;
         for repair in &mut repairs {
@@ -366,6 +411,8 @@ impl Writer {
                 *set_aside = Some(set_aside_tail(&*store, log, *kept)?);
             }
         }
+        // Set aside by the upgrade already, before it was rewritten.
+        repairs.splice(..0, upgraded.repairs);
         let book = Book::after(&folded);
         let skipped = retired(&folded);
         folded.retain(|log| !skipped.contains(&log.name));
@@ -418,15 +465,30 @@ impl Writer {
     }
 
     /// Queues the saved value `key` of the log `log`, an agent's id or
-    /// [`SESSION`], when its value changed; `None` or `null` when it was
-    /// removed. With `starts`, the change starts the log.
-    pub fn state(&self, log: &str, key: &str, value: Option<Value>, starts: bool) {
+    /// [`SESSION`], with the version of its type, when it changed; `None`
+    /// or a `null` value when it was removed. With `starts`, the change
+    /// starts the log.
+    pub fn state(&self, log: &str, key: &str, value: Option<Versioned>, starts: bool) {
         self.inner().book.state(log, key, value, starts);
     }
 
     /// Queues that the agent of the log `log` is gone for good.
     pub fn retire(&self, log: &str) {
         self.inner().book.retire(log);
+    }
+
+    /// The newest value of `key` in the log `log`, `saved`, is set aside:
+    /// no step reads it. The first time `key` is written again, `saved` is
+    /// first written under the side key `rig.set_aside/<key>/v<N>`
+    /// ([`SET_ASIDE`]), so it is kept and the key goes on.
+    pub fn set_aside(&self, log: &str, key: &str, saved: Versioned) {
+        self.inner().book.set_aside_value(log, key, saved);
+    }
+
+    /// Holds `key` in the log `log`: a newer rig saved its value, which
+    /// this run never writes over.
+    pub fn hold(&self, log: &str, key: &str) {
+        self.inner().book.hold(log, key);
     }
 
     /// Rewrites the session's saved history through `with`, as done by

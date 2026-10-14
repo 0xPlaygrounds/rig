@@ -21,8 +21,9 @@ fn start(home: &Home, id: &SessionId, new: Option<&str>) -> Option<(App, Receive
         app.world_mut()
             .spawn((Name::new("agent"), Agent, AgentId(new.to_owned())));
     }
-    app.init_resource::<TranscriptView>()
-        .init_resource::<Ended>()
+    // The terminal view's main pane, its view alone.
+    app.world_mut().spawn((TranscriptView::default(), MainPane));
+    app.init_resource::<Ended>()
         .add_observer(log_ended)
         .add_plugins((AgentPlugin, JournalPlugin, BookmarksPlugin));
     app.finish();
@@ -109,15 +110,24 @@ fn open_bookmark(
     });
     app.world_mut().despawn(picker);
     app.update();
-    app.world().resource::<TranscriptView>().selected.clone()
+    let world = app.world_mut();
+    let mut panes = world.query_filtered::<&TranscriptView, With<MainPane>>();
+    panes
+        .single(world)
+        .ok()
+        .and_then(|view| view.selected.clone())
 }
 
-fn labels(app: &App) -> Vec<String> {
-    app.world()
-        .resource::<Bookmarks>()
-        .0
-        .iter()
-        .map(|bookmark| bookmark.label.clone())
+/// Every bookmark's label and message, oldest first.
+fn marks(app: &mut App) -> Vec<(String, MessageId)> {
+    let world = app.world_mut();
+    let mut agents = world.query::<(Entity, &Conversation)>();
+    let found = all(agents
+        .iter(world)
+        .map(|(agent, conversation)| (agent, &conversation.0)));
+    found
+        .into_iter()
+        .map(|(_, _, message, bookmark)| (bookmark.label, message))
         .collect()
 }
 
@@ -136,19 +146,15 @@ fn ids(app: &mut App, agent: Entity) -> Vec<Option<MessageId>> {
     })
 }
 
-/// The fork of a session in `home`, once its parent handed it the
-/// bookmarks.
-fn fork_of(home: &Home) -> Option<SessionId> {
+/// The fork of session `of` in `home`.
+fn fork_of(home: &Home, of: &SessionId) -> Option<SessionId> {
     let sessions = fs::read_dir(home.sessions())
         .into_iter()
         .flatten()
         .flatten();
     sessions
         .filter_map(|entry| entry.file_name().to_str()?.parse::<SessionId>().ok())
-        .find(|id| {
-            let store = SessionStores::default().open(&home.session(id));
-            store.is_ok_and(|store| store.read_file(HANDED).is_ok())
-        })
+        .find(|id| id != of)
 }
 
 /// Condenses exchange 1 of `agent` into a summary, as compaction does.
@@ -158,12 +164,6 @@ fn condense(In(agent): In<Entity>, mut agents: Query<&mut Conversation>) {
     if let Ok(mut conversation) = agents.get_mut(agent) {
         conversation.splice(0..2, [summary], by);
     }
-}
-
-/// The note `id` of `agent`'s conversation.
-fn note(app: &App, agent: Entity, id: AsideId) -> Option<Note> {
-    let conversation = app.world().get::<Conversation>(agent)?;
-    Note::of(conversation.aside(id)?)
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
     assert_eq!(requests.len(), 3);
     assert_eq!(requests.get(2), plain_requests.get(2));
 
-    // Resumed, both are back, at exchange 1's and 2's answers, with their markers.
+    // Resumed, both are back, at exchange 1's and 2's answers.
     let restored = start(&home, &id, None);
     assert!(restored.is_some(), "the session was restored");
     let Some((mut app, wakes, agent)) = restored else {
@@ -224,26 +224,13 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
         unreachable_ids(&ids);
         return;
     };
-    assert_eq!(labels(&app), ["api-design", "The root cause is a"]);
-    let marks: Vec<MessageId> = app
-        .world()
-        .resource::<Bookmarks>()
-        .0
-        .iter()
-        .map(|bookmark| bookmark.message)
-        .collect();
-    assert_eq!(marks, [*answer_1, *answer_2]);
-    let conversation = app.world().get::<Conversation>(agent);
-    let markers = conversation.into_iter().flat_map(|conversation| {
-        let marker = Author::plugin(ORIGIN);
-        let asides = conversation.asides();
-        asides
-            .filter(move |(_, aside)| aside.author == marker && Note::of(aside).is_some())
-            .map(|(_, aside)| aside.after)
-    });
-    let mut drawn: Vec<_> = markers.collect();
-    drawn.sort();
-    assert_eq!(drawn, [Some(*answer_1), Some(*answer_2)]);
+    assert_eq!(
+        marks(&mut app),
+        [
+            ("api-design".to_owned(), *answer_1),
+            ("The root cause is a".to_owned(), *answer_2)
+        ]
+    );
     // `api-design` opens exchange 1's answer.
     let opened = open_bookmark(&mut app, &wakes, agent, "api-design");
     assert_eq!(opened, Some(TranscriptItem::Message(*answer_1)));
@@ -251,40 +238,49 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
     // Fork before exchange 2: the fork keeps only `api-design`.
     let agent_id = app.world().get::<AgentId>(agent).cloned();
     let before = agent_id.map(|agent_id| (agent_id, *question_2));
+    let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
     app.world_mut().trigger(ForkSession {
-        before,
-        asker: None,
+        cut,
+        ..ForkSession::default()
     });
-    run_until(&mut app, &wakes, |_| fork_of(&home).is_some());
-    let fork = fork_of(&home);
-    assert!(fork.is_some(), "a fork with the bookmarks handed over");
+    app.update();
+    let fork = fork_of(&home, &id);
+    assert!(fork.is_some(), "a fork");
     let Some(fork) = fork else {
         return;
     };
 
-    // Condensed, exchange 1 still opens, showing the saved history.
+    // Condensed, exchange 1 still opens, in its saved history.
     assert!(
         app.world_mut()
             .run_system_cached_with(condense, agent)
             .is_ok()
     );
     app.update();
-    let opened = open_bookmark(&mut app, &wakes, agent, "api-design");
-    let history = match opened {
-        Some(TranscriptItem::Note(id)) => note(&app, agent, id),
-        _ => None,
-    };
-    let text = history.map(|history| history.text).unwrap_or_default();
-    assert!(text.contains(&format!("◆ model: {AGREED}")), "{text}");
-    assert!(text.contains("user: How should read work?"), "{text}");
+    open_bookmark(&mut app, &wakes, agent, "api-design");
+    let world = app.world_mut();
+    let mut panes = world.query_filtered::<(&TranscriptPane, &TranscriptView), With<HistoryPane>>();
+    let shown = panes.single(world).ok().and_then(|(pane, view)| {
+        let TranscriptSource::Value(then) = &pane.source else {
+            return None;
+        };
+        let at = then.index_of(*answer_1)?;
+        let text = text_of(then.messages().get(at)?);
+        Some((text, view.selected.clone()))
+    });
+    assert_eq!(
+        shown,
+        Some((AGREED.to_owned(), Some(TranscriptItem::Message(*answer_1))))
+    );
     drop(app);
 
     let forked = start(&home, &fork, None);
     assert!(forked.is_some(), "the fork was restored");
-    let Some((app, _, _)) = forked else {
+    let Some((mut app, _, _)) = forked else {
         return;
     };
-    assert_eq!(labels(&app), ["api-design"]);
+    let kept = marks(&mut app);
+    assert_eq!(kept, [("api-design".to_owned(), *answer_1)]);
     drop(app);
     fs::remove_dir_all(home.root()).ok();
     fs::remove_dir_all(plain_home.root()).ok();

@@ -449,9 +449,10 @@ fn sends_only_the_new_part_while_the_server_holds_the_rest() {
     let agent_id = app.world().get::<AgentId>(agent).cloned();
     let before = agent_id.zip(fork_at);
     assert!(before.is_some(), "a message to fork before");
+    let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
     app.world_mut().trigger(ForkSession {
-        before,
-        asker: None,
+        cut,
+        ..ForkSession::default()
     });
     run_until(&mut app, &wakes, |_| forked(&home).is_some());
     let original = chain(&app, agent).link.map(|link| link.response_id);

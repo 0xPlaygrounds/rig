@@ -1,14 +1,19 @@
 //! What a session says about itself beside its logs, kept as files of its
 //! store: what a listing shows of it ([`SessionMeta`], in [`META`]) and
 //! the session it was forked from ([`ForkedFrom`], in [`PARENT`]).
+//!
+//! These files are versioned implicitly: they change only by fields that
+//! a reader not knowing them skips and a reader missing them takes as
+//! empty. A change that breaks that adds a `"v"` field and a step that
+//! reads the older form, as the logs' format does.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
 use rig_core::conversation::MessageId;
 use serde::{Deserialize, Serialize};
 
-use crate::Files;
+use crate::{Files, Session, Versioned, main_order, now_ms};
 
 /// The file of a session's store that holds its [`SessionMeta`].
 pub const META: &str = "meta.json";
@@ -34,6 +39,15 @@ pub struct SessionMeta {
     pub labels: BTreeMap<String, String>,
     /// When it last changed, in milliseconds since the Unix epoch.
     pub updated: u64,
+    /// The main agent's model, `vendor/model`; empty when unknown.
+    pub model: String,
+    /// How many messages the main agent's active line holds.
+    pub messages: usize,
+    /// Plugins' listed values by key, each copied here whenever it changes,
+    /// so a listing shows and filters by them without opening a log; kept
+    /// small.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub data: BTreeMap<String, Versioned>,
 }
 
 impl SessionMeta {
@@ -52,22 +66,59 @@ impl SessionMeta {
     pub fn write(&self, files: &(impl Files + ?Sized)) -> io::Result<()> {
         files.write_file(META, &serde_json::to_vec_pretty(self)?)
     }
+
+    /// Brings it up to `session`, as a running rig keeps it, for a writer
+    /// of a session no rig runs: the main agent's model and how many
+    /// messages its line holds, and each listed value (of a key in `listed`, or one it lists
+    /// already) as the session's own, else the first agent's in
+    /// [`main_order`] that has one, a value no longer there unlisted;
+    /// `updated` is now. Its title and labels are left.
+    pub fn relist(&mut self, session: &Session, listed: &BTreeSet<String>) {
+        let mut agents: Vec<_> = session.agents.iter().filter(|a| !a.retired).collect();
+        agents.sort_by(|a, b| {
+            main_order(a.parent.is_some(), &a.id).cmp(&main_order(b.parent.is_some(), &b.id))
+        });
+        let main = agents.first();
+        self.messages = main.map_or(0, |main| main.conversation.messages().len());
+        self.model = main.and_then(|main| main.model()).unwrap_or_default();
+        let keys: BTreeSet<String> = listed.iter().chain(self.data.keys()).cloned().collect();
+        self.data = keys
+            .into_iter()
+            .filter_map(|key| {
+                let mut holders = agents.iter().map(|agent| &agent.state);
+                let value = session
+                    .state
+                    .get(&key)
+                    .or_else(|| holders.find_map(|state| state.get(&key)))?;
+                Some((key, value.clone()))
+            })
+            .collect();
+        self.updated = now_ms();
+    }
 }
 
-/// The session a session was forked from, and where the copy stopped,
-/// with the text of the message it stopped before: kept in the forked
-/// session's store, so a view of a session's family reads no other
-/// session's log.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// The session a session was forked or split from, and where the copy
+/// stopped, with the text of the message it stopped at: kept in the copy's
+/// store, so a view of a session's family reads no other session's log.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForkedFrom {
     /// The id of the session it was copied from.
     pub session: String,
-    /// Where the copy stopped: an agent's id (its log's name) and a
-    /// message's id; `None` for a copy of everything.
+    /// For a fork, where the copy stopped: an agent's id (its log's name)
+    /// and the id of the message it stopped before; `None` for a copy of
+    /// everything, and for a split.
     pub before: Option<(String, MessageId)>,
-    /// What the user wrote in the message the copy stopped before, its
-    /// text without attached files; `None` without `before`, or for a
-    /// message with no text of the user's.
+    /// For a split, the agent whose line it copied and the last message it
+    /// copied; `None` for a fork.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub through: Option<(String, MessageId)>,
+    /// For a split, the title of the line it copied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<String>,
+    /// What the user wrote in the message the copy stopped at (before it,
+    /// for a fork; through it, for a split), its text without attached
+    /// files; `None` for a copy of everything, or for a message with no
+    /// text of the user's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
 }

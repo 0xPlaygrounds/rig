@@ -23,8 +23,8 @@ use std::process::Command;
 
 use rig_harness::prelude::*;
 use rig_tui::{
-    AppKeyBindingsExt, KeyBinding, KeyPressed, KeyScope, Keys, RunInTerminal, TerminalExit,
-    TuiInput, TuiPlugin, run_command,
+    AppKeyBindingsExt, Editor, KeyBinding, KeyPressed, KeyScope, Keys, MainEditor, MainInput,
+    RunInTerminal, TerminalExit, TuiPlugin, run_command,
 };
 use serde::Deserialize;
 
@@ -192,8 +192,8 @@ impl Entry {
 }
 
 /// Inserts `text` at the input's cursor.
-fn insert(text: String) -> impl FnMut(On<KeyPressed>, ResMut<TuiInput>) {
-    move |_: On<KeyPressed>, mut input: ResMut<TuiInput>| input.insert(&text)
+fn insert(text: String) -> impl FnMut(On<KeyPressed>, MainInput) {
+    move |_: On<KeyPressed>, mut input: MainInput| input.insert(&text)
 }
 
 /// Sends `text` to the agent shown, as the user.
@@ -239,7 +239,7 @@ fn cycle_model(
 /// (else `vi`) on it, with the terminal.
 fn edit(
     pressed: On<KeyPressed>,
-    input: Res<TuiInput>,
+    input: Single<&Editor, With<MainEditor>>,
     (paths, home): (Option<Res<SessionPaths>>, Res<RigHome>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -269,7 +269,7 @@ fn edit(
 /// failed.
 fn take_draft(
     done: Query<(Entity, &TerminalExit, &Draft), Added<TerminalExit>>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
     mut commands: Commands,
 ) {
     for (run, exit, Draft(path)) in &done {

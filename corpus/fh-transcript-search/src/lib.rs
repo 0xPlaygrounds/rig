@@ -35,10 +35,10 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Highlight, InputSystems, ItemRow,
-    KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope, LineSpan, PanelCanvas,
-    Placement, RequestRedraw, ScrollTo, TerminalEvents, TranscriptItem, TranscriptLayout,
-    TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Focus, Highlight, InputSystems,
+    ItemRow, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope, LineSpan, MainPane,
+    PanelCanvas, Placement, RequestRedraw, ScrollTo, TerminalEvents, TranscriptItem,
+    TranscriptLayout, TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
 };
 
 /// Whose transcript is searched.
@@ -378,7 +378,7 @@ fn open(
     pressed: On<KeyPressed>,
     bars: Query<(), With<TranscriptSearch>>,
     shown: Res<Shown>,
-    view: Res<TranscriptView>,
+    view: Single<&TranscriptView, With<MainPane>>,
     mut focus: ResMut<KeyFocus>,
     mut commands: Commands,
 ) {
@@ -392,6 +392,9 @@ fn open(
     );
     focus.0 = Some(commands.spawn(bar).id());
 }
+
+/// The main pane: the one the bar searches, lights and scrolls.
+type Main<'w, 's> = Single<'w, 's, (Entity, &'static mut TranscriptView), With<MainPane>>;
 
 /// What the bar searches, read live.
 #[derive(bevy_ecs::system::SystemParam)]
@@ -446,13 +449,14 @@ fn type_in_bar(
     mut events: ResMut<TerminalEvents>,
     mut bars: Query<(Entity, &mut TranscriptSearch)>,
     transcripts: Transcripts,
-    mut view: ResMut<TranscriptView>,
+    main: Main,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
     let Ok((bar, mut search)) = bars.single_mut() else {
         return;
     };
+    let (pane, mut view) = main.into_inner();
     // The bar takes the keys it does, as the panel with the keys; those
     // after an Esc are the input's again.
     let (mut closing, mut typed) = (false, false);
@@ -476,9 +480,9 @@ fn type_in_bar(
         false
     });
     if closing {
-        close(bar, &mut search, &mut view, &mut commands);
+        close(bar, &mut search, (pane, &mut view), &mut commands);
     } else if typed {
-        show(&mut search, &mut view, &transcripts, &mut commands);
+        show(&mut search, (pane, &mut view), &transcripts, &mut commands);
         redraw.write(RequestRedraw);
     }
 }
@@ -489,20 +493,21 @@ fn follow(
     mut bars: Query<(Entity, &mut TranscriptSearch)>,
     focus: Res<KeyFocus>,
     transcripts: Transcripts,
-    mut view: ResMut<TranscriptView>,
+    main: Main,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
     let Ok((bar, mut search)) = bars.single_mut() else {
         return;
     };
+    let (pane, mut view) = main.into_inner();
     if focus.0 != Some(bar) {
-        close(bar, &mut search, &mut view, &mut commands);
+        close(bar, &mut search, (pane, &mut view), &mut commands);
     } else if transcripts.changed() || view.is_changed() {
         // The view counts as changed only when it changes, such as on a
         // new width, which the layout wraps at, or a notice.
         search.search(&transcripts, &view);
-        show(&mut search, &mut view, &transcripts, &mut commands);
+        show(&mut search, (pane, &mut view), &transcripts, &mut commands);
         redraw.write(RequestRedraw);
     }
 }
@@ -515,7 +520,7 @@ fn follow(
 /// the same message still draws cut.
 fn show(
     search: &mut TranscriptSearch,
-    view: &mut ResMut<TranscriptView>,
+    (pane, view): (Entity, &mut Mut<TranscriptView>),
     transcripts: &Transcripts,
     commands: &mut Commands,
 ) {
@@ -560,8 +565,9 @@ fn show(
     if let Some(hit) = jump {
         let found = drawn.iter().find(|found| found.key() == hit.key());
         let row = ItemRow::Top(found.map_or(hit.row, |found| found.row));
-        let (agent, item) = (hit.agent, hit.item().cloned());
-        commands.trigger(ScrollTo { agent, item, row });
+        let item = hit.item().cloned();
+        commands.trigger(Focus { entity: hit.agent });
+        commands.trigger(ScrollTo { pane, item, row });
     }
     // Drawn cut, the match shown counts among other matches of its item.
     let whole = |hit: &Hit| {
@@ -584,7 +590,7 @@ fn show(
 fn close(
     bar: Entity,
     search: &mut TranscriptSearch,
-    view: &mut ResMut<TranscriptView>,
+    (pane, view): (Entity, &mut Mut<TranscriptView>),
     commands: &mut Commands,
 ) {
     commands.entity(bar).despawn();
@@ -601,7 +607,8 @@ fn close(
     if let Some((agent, top)) = search.back.take() {
         let (item, row) = top.map_or((None, 0), |(item, row)| (Some(item), row));
         let row = ItemRow::Top(row);
-        commands.trigger(ScrollTo { agent, item, row });
+        commands.trigger(Focus { entity: agent });
+        commands.trigger(ScrollTo { pane, item, row });
     }
 }
 

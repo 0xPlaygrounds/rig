@@ -1,9 +1,9 @@
 use bevy_ecs::system::RunSystemOnce;
 use rig_ecs::prelude::*;
 
-use super::super::editor::TuiInput;
+use super::super::editor::Editor;
 use super::super::history::Sent;
-use super::super::view::{self, TranscriptView, TuiView};
+use super::super::view::{self, TuiView};
 use super::send;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::primary::Shown;
@@ -17,11 +17,11 @@ fn enter(app: &mut App, text: &str) {
     let text = text.to_owned();
     let sent = app.world_mut().run_system_once(
         move |mut view: ResMut<TuiView>,
-              mut input: ResMut<TuiInput>,
+              mut input: crate::MainInput,
               shown: Res<Shown>,
               mut commands: Commands| {
             input.set(text.clone());
-            send(&mut view, &mut input, shown.0, &mut commands, false);
+            send(&mut view, &mut input, None, shown.0, &mut commands, false);
         },
     );
     assert!(sent.is_ok());
@@ -44,9 +44,8 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         )
         .add_message::<Sent>()
         .init_resource::<TuiView>()
-        .init_resource::<TranscriptView>()
+        .init_resource::<view::Notices>()
         .init_resource::<Shown>()
-        .init_resource::<TuiInput>()
         .init_resource::<Delivered>()
         .add_observer(
             |accepted: On<Add<Started>>,
@@ -61,6 +60,8 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
             Update,
             (view::collect_notices, view::recall_messages).after(AgentLoop),
         );
+    app.world_mut()
+        .spawn((Editor::default(), crate::MainEditor));
     app.update();
     let world = app.world_mut();
     let agent = world
@@ -74,10 +75,10 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
     ];
     for (typed, why) in refused {
         enter(&mut app, typed);
-        let view = app.world().resource::<TranscriptView>();
-        let input = app.world().resource::<TuiInput>();
-        let shown: Vec<&str> = view
-            .notices()
+        let notices = app.world().resource::<view::Notices>();
+        let input = crate::tests::input(&app);
+        let shown: Vec<&str> = notices
+            .all()
             .iter()
             .map(|notice| notice.text.as_str())
             .collect();
@@ -88,7 +89,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         );
     }
     assert_eq!(
-        app.world().resource::<TranscriptView>().notices().len(),
+        app.world().resource::<crate::Notices>().all().len(),
         refused.len()
     );
     enter(&mut app, "/gui still doesnt do anything");
@@ -168,7 +169,11 @@ fn a_filter_turns_the_frames_keys_into_actions_in_their_order() {
 struct Seen(Vec<String>);
 
 /// Notes the input as the key being done finds it.
-fn note_input(events: Res<crate::TerminalEvents>, input: Res<TuiInput>, mut seen: ResMut<Seen>) {
+fn note_input(
+    events: Res<crate::TerminalEvents>,
+    input: Single<&Editor, With<crate::MainEditor>>,
+    mut seen: ResMut<Seen>,
+) {
     if !events.0.is_empty() {
         seen.0.push(input.text().to_owned());
     }
@@ -193,7 +198,7 @@ struct Searches(usize);
 /// `/` on an empty input opens a search instead of a slash command.
 fn slash_searches(
     mut events: ResMut<crate::TerminalEvents>,
-    input: Res<TuiInput>,
+    input: Single<&Editor, With<crate::MainEditor>>,
     mut searches: ResMut<Searches>,
 ) {
     use crate::KeyInput;
@@ -244,10 +249,10 @@ fn the_transcript_has_the_keys_while_an_item_is_selected_until_typing() {
     let searched = |_: On<KeyPressed>, mut searched: ResMut<Searched>| searched.0 += 1;
     app.init_resource::<Searched>()
         .add_key_binding(slash.in_scope(KeyScope::Transcript), searched);
-    let selected = |app: &App| app.world().resource::<TranscriptView>().selected.clone();
+    let selected = |app: &App| crate::tests::main_view(app).selected.clone();
     let select = |app: &mut App| {
         let item = TranscriptItem::Call(CallId::from_wire("c1"));
-        app.world_mut().resource_mut::<TranscriptView>().selected = Some(item);
+        crate::tests::steer(app, |view| view.selected = Some(item));
     };
     select(&mut app);
     press(&mut app, "/");
@@ -266,4 +271,36 @@ fn the_transcript_has_the_keys_while_an_item_is_selected_until_typing() {
     select(&mut app);
     press(&mut app, "esc");
     assert_eq!((selected(&app), typed(&app)), (None, "x/".to_owned()));
+}
+
+#[test]
+fn keys_type_into_the_editor_of_the_panel_that_has_them() {
+    use ratatui::layout::Constraint;
+
+    use crate::tests::{press, type_text, typed, view_app};
+    use crate::{KeyFocus, Placement, TuiPanel};
+
+    let (mut app, _) = view_app();
+    let placement = Placement::Over {
+        width: Constraint::Length(30),
+        height: Constraint::Length(3),
+    };
+    let search = (Editor::default(), TuiPanel::new(placement));
+    let search = app.world_mut().spawn(search).id();
+    app.world_mut().resource_mut::<KeyFocus>().0 = Some(search);
+    type_text(&mut app, "flaky");
+    let text = |app: &App| {
+        app.world()
+            .get::<Editor>(search)
+            .map(|e| e.text().to_owned())
+    };
+    assert_eq!(text(&app).as_deref(), Some("flaky"));
+    assert_eq!(typed(&app), "");
+    // Esc gives the keys back to the main editor.
+    press(&mut app, "esc");
+    type_text(&mut app, "x");
+    assert_eq!(
+        (text(&app).as_deref(), typed(&app).as_str()),
+        (Some("flaky"), "x")
+    );
 }

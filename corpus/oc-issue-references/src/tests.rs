@@ -9,7 +9,7 @@ use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, first_agent, log_ended, log_tool_outputs,
     press, reply, run_until, scripted_models, tui_view,
 };
-use rig_tui::{TuiInput, TuiInputState};
+use rig_tui::{Editor, MainEditor, TuiInputState};
 use serde_json::{Value, json};
 
 use super::*;
@@ -322,7 +322,10 @@ fn hash_offers_the_open_issues_by_title() {
         "open issues by title, not the pull request"
     );
     press(&mut app, "tab");
-    assert_eq!(app.world().resource::<TuiInput>().text(), "fix #142 ");
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&Editor, With<MainEditor>>();
+    let typed = main.single(world).map(Editor::text);
+    assert_eq!(typed.ok(), Some("fix #142 "));
     assert_eq!(server.asked("/repos/acme/widget/issues"), 1, "loaded once");
 }
 

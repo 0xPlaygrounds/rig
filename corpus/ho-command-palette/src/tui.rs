@@ -12,7 +12,7 @@ use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::{Block, List, ListItem, ListState, StatefulWidget};
 use rig_tui::{
     AppKeyBindingsExt, Focus, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
-    PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiInput, TuiPanel, TuiPlugin,
+    MainInput, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiPanel, TuiPlugin,
     TuiSystems,
 };
 
@@ -170,7 +170,7 @@ fn activate(
     activated: On<Activate>,
     mut recent: ResMut<RecentPicks>,
     home: Res<RigHome>,
-    mut input: ResMut<TuiInput>,
+    mut input: Option<MainInput>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -180,7 +180,11 @@ fn activate(
         Action::Run(line) => {
             commands.trigger(RunCommand::new(*agent, line.clone()));
         }
-        Action::Prefill(name) => input.set(format!("{name} ")),
+        Action::Prefill(name) => {
+            if let Some(input) = input.as_deref_mut() {
+                input.set(format!("{name} "));
+            }
+        }
         Action::Focus(shown) => commands.trigger(Focus { entity: *shown }),
         Action::Describe => {
             let off = if entry.off { " (off)" } else { "" };

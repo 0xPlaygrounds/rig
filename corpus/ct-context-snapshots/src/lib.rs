@@ -1,47 +1,46 @@
 //! CT-13: reusable context snapshots.
 //!
-//! `/snapshot save <name> [--at <turn>] [--shared]` copies the session, whole or as it
-//! was before turn `<turn>` began, with rig-memory's `fork` into a store in memory and
-//! keeps it in the project's plugin data: every agent's messages, its own system prompt,
-//! its model and every saved value and session file plugins keep. `--shared` also writes
-//! it into the repository's `.rig/snapshots`, through a plugin effect whose payload any
-//! redaction plugin edits in Prepare or refuses in Gate. `/snapshot list` and
-//! `/snapshot delete <name>` manage them.
+//! A snapshot is a saved session of `RIG_HOME` that holds a [`Snapshot`] value (listed,
+//! so `/snapshot list` and a session picker read it without a log).
+//! `/snapshot save <name> [--at <turn>] [--shared]` forks this session into one, whole
+//! or as it was before turn `<turn>` began (`ForkSession`, `ForkCut::Before`): every
+//! agent's messages, its own system prompt, its model and every saved value and session
+//! file plugins keep. `--shared` also copies it into the repository's
+//! `.rig/snapshots/<name>`, through a plugin effect a redaction plugin acts on first
+//! (`rewrite_stopped` on the snapshot session it names, or a refusal in Gate).
+//! `/snapshot list` opens a picker over them; `/snapshot delete <name>` removes one.
 //!
-//! `/new --from <name>` and `rig --from <name>` fork the snapshot into a new session of
-//! `RIG_HOME` and switch to it: a normal session from then on, the snapshot unchanged.
-//! Its first start compares the files the snapshot's tool calls read ([`FilesSeen`])
-//! with the disk, and the files that changed go to the model with the user's next message
-//! and to the user as a note. A snapshot whose model is unusable starts on the default.
+//! `/new --from <name>` and `rig --from <name>` fork the snapshot into a new session and
+//! switch to it: a normal session from then on, the snapshot unchanged. Its first start
+//! compares the files the snapshot's tool calls read ([`FilesSeen`]) with the disk, and
+//! the files that changed go to the model with the user's next message and to the user
+//! as a note. A snapshot whose model is unusable starts on the default.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
-use rig_harness::harness_protocol::SessionId;
+use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::UserContent;
 use rig_harness::rig_core::tool::{FilesRead, content_hash};
-use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_memory::{
-    self, DirFiles, Files, HeuristicTokenCounter, Keep, MODEL, MemoryStore, Place as At, Rewrite,
-    Session, Store, TokenCounter, check_name,
+    self, DirStore, HeuristicTokenCounter, Keep, MODEL, SessionMeta, TokenCounter, Versioned,
+    check_name,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-/// Where snapshots are kept in the project's plugin data.
-const FOLDER: &str = "context-snapshots";
+/// The key a snapshot session's [`Snapshot`] is saved and listed under.
+pub const KEY: &str = "context-snapshots.snapshot";
+
+/// The key of [`StartedFrom`].
+const STARTED: &str = "context-snapshots.started";
 
 /// Where shared snapshots are kept, from the project root.
 const SHARED: &str = ".rig/snapshots";
 
-/// The session file a session started from a snapshot finds on its first start.
-const STARTED: &str = "context-snapshots/started-from.json";
-
-/// The kind of the effect that writes a shared snapshot into the repository.
+/// The kind of the effect that copies a snapshot into the repository.
 pub const SHARE_KIND: &str = "context-snapshots.share";
 
 /// Who the plugin is, in notes and decisions.
@@ -65,8 +64,13 @@ impl Plugin for ContextSnapshotsPlugin {
             .register_required_components::<Agent, ContextNote>()
             .keeps_saved::<FilesSeen>()
             .keeps_saved::<ContextNote>()
-            .keeps_files(FOLDER)
-            .add_flag(
+            .register_type::<Snapshot>()
+            .register_type::<StartedFrom>()
+            .saved_as::<Snapshot>(KEY)
+            .listed();
+        // Saved, not listed: `listed` is the only thing to say of a saved key.
+        let _ = app.saved_as::<StartedFrom>(STARTED);
+        app.add_flag(
                 Flag::new(FROM, "Start a new session from a saved context snapshot").value("NAME"),
             )
             .add_command(
@@ -83,6 +87,7 @@ impl Plugin for ContextSnapshotsPlugin {
                 ),
             )
             .add_systems(PostStartup, (arrive, start_from_flag).chain())
+            .add_systems(Last, forked.after(ForkSessions))
             .add_observer(remember_reads)
             .add_observer(start_from)
             .add_observer(write_shared);
@@ -101,9 +106,10 @@ pub struct FilesSeen(pub HashMap<String, String>);
 #[reflect(Component, Saved, Default)]
 pub struct ContextNote(pub Option<String>);
 
-/// What `/snapshot list` shows of a snapshot, kept beside it.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct SnapshotMeta {
+/// What makes a saved session a snapshot, and what `/snapshot list` shows of it.
+#[derive(Resource, Reflect, Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
+pub struct Snapshot {
     /// Its name.
     pub name: String,
     /// The main agent's turns it holds.
@@ -116,105 +122,43 @@ pub struct SnapshotMeta {
     pub saved_ms: u64,
 }
 
-/// A session's store as plain data: logs as text, blobs and files.
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
-pub struct StoreDump {
-    /// Each log, its JSON lines.
-    pub logs: BTreeMap<String, String>,
-    /// Each blob.
-    pub blobs: BTreeMap<String, Content>,
-    /// Each file.
-    pub files: BTreeMap<String, Content>,
-}
+/// In a session started from a snapshot, until its first start: which one, and what
+/// the user is told.
+#[derive(Resource, Reflect, Serialize, Deserialize, Clone, Debug, Default)]
+#[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
+pub struct StartedFrom(pub Option<(String, Option<String>)>);
 
-/// A file's content: text when it is UTF-8, so a redaction reads it.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(untagged)]
-pub enum Content {
-    /// UTF-8 text.
-    Text(String),
-    /// Other bytes.
-    Bytes(Vec<u8>),
-}
-
-impl Content {
-    fn of(bytes: Vec<u8>) -> Self {
-        String::from_utf8(bytes).map_or_else(|text| Self::Bytes(text.into_bytes()), Self::Text)
-    }
-
-    fn bytes(&self) -> &[u8] {
-        match self {
-            Self::Text(text) => text.as_bytes(),
-            Self::Bytes(bytes) => bytes,
-        }
-    }
-}
-
-impl StoreDump {
-    /// Everything `store` holds.
-    ///
-    /// # Errors
-    ///
-    /// When the store fails or a log is not UTF-8.
-    pub fn of(store: &dyn Store) -> std::io::Result<Self> {
-        let mut dump = Self::default();
-        for log in store.logs()? {
-            let text = String::from_utf8(store.read_log(&log)?).map_err(std::io::Error::other)?;
-            dump.logs.insert(log, text);
-        }
-        for blob in store.blobs()? {
-            dump.blobs
-                .insert(blob.clone(), Content::of(store.blob(&blob)?));
-        }
-        for file in store.files()? {
-            dump.files
-                .insert(file.clone(), Content::of(store.read_file(&file)?));
-        }
-        Ok(dump)
-    }
-
-    /// A store in memory holding it.
-    ///
-    /// # Errors
-    ///
-    /// When a name is no name in a store.
-    pub fn store(&self) -> std::io::Result<MemoryStore> {
-        let store = MemoryStore::default();
-        for (log, text) in &self.logs {
-            store.append_log(log, text.as_bytes())?;
-        }
-        for (blob, content) in &self.blobs {
-            store.put_blob(blob, content.bytes())?;
-        }
-        for (file, content) in &self.files {
-            store.write_file(file, content.bytes())?;
-        }
-        Ok(store)
-    }
-}
-
-/// The payload of a [`SHARE_KIND`] effect: the snapshot it writes into the
-/// repository, which a redaction plugin edits in Prepare.
+/// The payload of a [`SHARE_KIND`] effect: the snapshot session it copies into the
+/// repository, which a redaction plugin rewrites (`rewrite_stopped`) before it starts.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SharePayload {
-    /// What it is.
-    pub meta: SnapshotMeta,
-    /// Its session.
-    pub store: StoreDump,
+    /// The snapshot's name.
+    pub name: String,
+    /// Its session's id.
+    pub session: String,
 }
 
 /// On a [`SHARE_KIND`] effect of this plugin.
 #[derive(Component)]
 struct Sharing;
 
-/// What a session started from a snapshot does on its first start.
-#[derive(Serialize, Deserialize)]
-struct StartedFrom {
-    snapshot: String,
-    notice: Option<String>,
+/// The asker of a fork that makes the snapshot `name`.
+#[derive(Component)]
+struct Saving {
+    name: String,
+    shared: bool,
+    agent: Entity,
 }
 
-/// Starts a new session from the snapshot `name` and switches to it.
+/// The asker of a fork that starts a session from the snapshot `name`.
+#[derive(Component)]
+struct Starting {
+    name: String,
+    agent: Option<Entity>,
+}
+
+/// Starts a new session from the snapshot `name` (or of that session id) and
+/// switches to it.
 #[derive(Event, Clone, Debug)]
 pub struct StartFromSnapshot {
     /// The agent that asked, for notices.
@@ -223,79 +167,41 @@ pub struct StartFromSnapshot {
     pub name: String,
 }
 
-/// Where snapshots are kept: the project's plugin data, and the repository's
-/// shared ones.
-struct Places {
-    own: Arc<dyn Files>,
-    shared: DirFiles,
+/// The snapshots of `home` for the project in `root`, by session, from their listings.
+pub fn snapshots(
+    home: &Home,
+    stores: &SessionStores,
+    root: &ProjectRoot,
+) -> Vec<(SessionId, Snapshot)> {
+    home.saved_sessions()
+        .iter()
+        .filter_map(|(_, dir)| SessionEntry::read(dir, stores))
+        .filter(|entry| entry.directory.as_ref().is_none_or(|it| *it == root.0))
+        .filter_map(|entry| Some((entry.id.clone(), snapshot_of(&entry)?)))
+        .collect()
 }
 
-impl Places {
-    fn new(data: &PluginData, root: &ProjectRoot) -> Self {
-        Self {
-            own: data.project.clone(),
-            shared: DirFiles::new(root.0.join(SHARED)),
-        }
-    }
-
-    /// The snapshot `name`'s meta and store, from the project's data, else shared.
-    fn load(&self, name: &str) -> Result<(SnapshotMeta, StoreDump), String> {
-        let own = read_snapshot(&*self.own, &format!("{FOLDER}/{name}"));
-        own.or_else(|_| read_snapshot(&self.shared, name))
-            .map_err(|_| format!("There is no snapshot named “{name}”."))
-    }
-
-    /// Every snapshot's meta, and whether it is shared, by name.
-    fn list(&self) -> BTreeMap<String, (SnapshotMeta, bool)> {
-        let mut all = BTreeMap::new();
-        for (files, prefix, shared) in [
-            (&self.shared as &dyn Files, String::new(), true),
-            (&*self.own, format!("{FOLDER}/"), false),
-        ] {
-            for file in files.files().unwrap_or_default() {
-                let Some(dir) = file
-                    .strip_prefix(&prefix)
-                    .and_then(|it| it.strip_suffix("/meta.json"))
-                else {
-                    continue;
-                };
-                let meta = files.read_file(&file).ok();
-                if let Some(meta) =
-                    meta.and_then(|it| serde_json::from_slice::<SnapshotMeta>(&it).ok())
-                {
-                    let shared = shared || all.contains_key(dir);
-                    all.insert(dir.to_owned(), (meta, shared));
-                }
-            }
-        }
-        all
-    }
+/// The snapshot `entry` is, from its listing.
+fn snapshot_of(entry: &SessionEntry) -> Option<Snapshot> {
+    let saved = entry.listing.meta.data.get(KEY)?;
+    serde_json::from_value(saved.value.clone()).ok()
 }
 
-fn read_snapshot(files: &dyn Files, dir: &str) -> Result<(SnapshotMeta, StoreDump), String> {
-    let read = |name: &str| {
-        files
-            .read_file(&format!("{dir}/{name}"))
-            .map_err(|e| e.to_string())
-    };
-    let meta = serde_json::from_slice(&read("meta.json")?).map_err(|e| e.to_string())?;
-    let store = serde_json::from_slice(&read("store.json")?).map_err(|e| e.to_string())?;
-    Ok((meta, store))
+/// The snapshot `name` (or of that session id) of `home`.
+fn find(home: &Home, stores: &SessionStores, root: &ProjectRoot, name: &str) -> Option<SessionId> {
+    let all = snapshots(home, stores, root);
+    let found = all
+        .into_iter()
+        .find(|(id, it)| it.name == name || id.as_str() == name);
+    found.map(|(id, _)| id)
 }
 
-fn write_snapshot(
-    files: &dyn Files,
-    dir: &str,
-    meta: &SnapshotMeta,
-    store: &StoreDump,
-) -> Result<(), String> {
-    let store = serde_json::to_vec(store).map_err(|e| e.to_string())?;
-    let meta = serde_json::to_vec(meta).map_err(|e| e.to_string())?;
-    // The meta last: a snapshot is listed once its store is whole.
-    files
-        .write_file(&format!("{dir}/store.json"), &store)
-        .and_then(|()| files.write_file(&format!("{dir}/meta.json"), &meta))
-        .map_err(|e| e.to_string())
+/// The shared snapshots in the repository, by name.
+fn shared(root: &ProjectRoot) -> BTreeSet<String> {
+    let entries = std::fs::read_dir(root.0.join(SHARED)).into_iter().flatten();
+    entries
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .collect()
 }
 
 /// Remembers the hash of each file a successful tool call read, as it settles.
@@ -322,155 +228,184 @@ fn remember_reads(
 /// `/snapshot save|list|delete`.
 fn snapshot(
     In(args): In<CommandArgs>,
-    (data, root, store): (Res<PluginData>, Res<ProjectRoot>, Option<Res<SessionStore>>),
+    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<SessionStores>),
     agents: Query<(&AgentId, &Conversation, Has<ActiveTurn>)>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    let places = Places::new(&data, &root);
     let words: Vec<&str> = args.args.split_whitespace().collect();
     let agent = args.agent;
+    let all = || snapshots(&home.0, &stores, &root);
     let result = match words.as_slice() {
         ["save", name, rest @ ..] => {
-            let agent_state = agents.get(agent).ok();
-            save(&places, store.as_deref(), agent_state, name, rest).map(|(meta, shared)| {
-                if let Some(store) = shared {
-                    let payload = SharePayload {
-                        meta: meta.clone(),
-                        store,
-                    };
-                    let payload = serde_json::to_value(payload).unwrap_or_default();
-                    let kind = EffectKind::Custom {
-                        kind: SHARE_KIND.into(),
-                        payload,
-                    };
-                    let request = EffectRequest {
-                        kind,
-                        handler: None,
-                    };
-                    commands.spawn((request, Sharing, ForAgent(agent)));
-                }
-                format!("Saved snapshot “{}”: {} turns.", meta.name, meta.turns)
-            })
+            let taken = all().iter().any(|(_, it)| it.name == *name);
+            let cut = agents
+                .get(agent)
+                .map_err(|_| "There is no session to snapshot.".to_owned());
+            cut.and_then(|agent| save_cut(agent, name, rest, taken))
+                .map(|(cut, shared)| {
+                    let name = (*name).to_owned();
+                    let asker = commands
+                        .spawn(Saving {
+                            name,
+                            shared,
+                            agent,
+                        })
+                        .id();
+                    commands.trigger(ForkSession {
+                        from: None,
+                        cut,
+                        asker: Some(asker),
+                    });
+                    String::new()
+                })
         }
-        ["list"] => {
-            let all = places.list();
-            if all.is_empty() {
-                Ok("No snapshots; /snapshot save <name> makes one.".to_owned())
-            } else {
-                Ok(all
-                    .values()
-                    .map(|(meta, shared)| listed(meta, *shared))
-                    .collect::<Vec<_>>()
-                    .join("\n"))
+        ["list"] => list(all(), &shared(&root), agent, &mut commands),
+        ["delete", name] => {
+            let found = find(&home.0, &stores, &root, name);
+            let share = root.0.join(SHARED).join(name);
+            if let Some(id) = &found {
+                commands.trigger(DeleteSession(id.clone()));
+            }
+            let unshared = check_name(name).is_ok() && std::fs::remove_dir_all(share).is_ok();
+            match found.is_some() || unshared {
+                true => Ok(format!("Deleted snapshot “{name}”.")),
+                false => Err(format!("There is no snapshot named “{name}”.")),
             }
         }
-        ["delete", name] => delete(&places, name),
         _ => Err(
             "Use /snapshot save <name> [--at <turn>] [--shared], list or delete <name>.".to_owned(),
         ),
     };
-    notices.write(match result {
-        Ok(text) => Notice::info(agent, text),
-        Err(why) => Notice::error(agent, why),
-    });
+    match result {
+        Ok(text) if text.is_empty() => {}
+        Ok(text) => {
+            notices.write(Notice::info(agent, text));
+        }
+        Err(why) => {
+            notices.write(Notice::error(agent, why));
+        }
+    }
 }
 
-/// One line of `/snapshot list`.
-fn listed(meta: &SnapshotMeta, shared: bool) -> String {
-    let saved = UNIX_EPOCH + Duration::from_millis(meta.saved_ms);
-    let age = rig_harness::rig_tools::ago(saved.elapsed().unwrap_or_default());
-    let model = meta.model.as_deref().unwrap_or("no model");
-    let shared = if shared { " · shared" } else { "" };
-    format!(
-        "{}: {} turns · ~{} tokens · {model} · {age}{shared}",
-        meta.name, meta.turns, meta.tokens
-    )
-}
-
-/// Saves the snapshot `name` of the session in `store`; with `--shared`, also the
-/// store to share.
-fn save(
-    places: &Places,
-    store: Option<&SessionStore>,
-    agent: Option<(&AgentId, &Conversation, bool)>,
+/// Where `/snapshot save <name> <rest>` cuts the session, and whether it is shared.
+fn save_cut(
+    (id, conversation, busy): (&AgentId, &Conversation, bool),
     name: &str,
     rest: &[&str],
-) -> Result<(SnapshotMeta, Option<StoreDump>), String> {
-    let (Some(store), Some((id, conversation, busy))) = (store, agent) else {
-        return Err("There is no saved session to snapshot.".to_owned());
-    };
+    taken: bool,
+) -> Result<(ForkCut, bool), String> {
     if busy {
         return Err("A turn is running. Press Esc to stop it first.".to_owned());
     }
     if check_name(name).is_err() || name.contains('/') {
         return Err(format!("“{name}” is no snapshot name."));
     }
-    let mut at = None;
+    if taken {
+        return Err(format!(
+            "There is a snapshot “{name}”; /snapshot delete {name} first."
+        ));
+    }
+    let mut cut = ForkCut::Whole;
     let mut shared = false;
     let mut words = rest.iter();
     while let Some(word) = words.next() {
         match *word {
             "--shared" => shared = true,
             "--at" => {
-                let turn = words.next().and_then(|turn| turn.parse::<u64>().ok());
-                at = Some(turn.ok_or("--at needs a number of turns")?);
+                let at = words.next().and_then(|turn| turn.parse::<u64>().ok());
+                let at = at.ok_or("--at needs a number of turns")?;
+                // Turn `at` (counted from 0) begins at the user's message it answers.
+                if let Some((_, turn)) = conversation.turns().find(|(_, turn)| turn.index == at) {
+                    cut = ForkCut::Before(id.clone(), turn.start);
+                }
             }
             other => return Err(format!("Unknown option {other}.")),
         }
     }
-    // Turn `at` (counted from 0) begins at the user's message it answers.
-    let before = at.and_then(|at| {
-        let (_, turn) = conversation.turns().find(|(_, turn)| turn.index == at)?;
-        Some((id.0.as_str(), turn.start))
-    });
-    let copy = MemoryStore::default();
-    rig_memory::fork(&*store.0, &copy, before, &Keep).map_err(|e| e.to_string())?;
-    let session = Session::read(&copy).map_err(|e| e.to_string())?;
-    let main = session.main_agent();
-    let counter = HeuristicTokenCounter::default();
-    let meta = SnapshotMeta {
-        name: name.to_owned(),
-        turns: main.map_or(0, |main| main.conversation.turns().count()),
-        tokens: main.map_or(0, |main| {
-            main.conversation
-                .messages()
-                .iter()
-                .map(|m| counter.count(m))
-                .sum()
-        }),
-        model: main.and_then(|main| main.model()),
-        saved_ms: rig_memory::now_ms(),
+    Ok((cut, shared))
+}
+
+/// `/snapshot list`: a picker over the project's snapshots, previewed; the one picked
+/// starts a new session. Shared ones not brought in yet are named.
+fn list(
+    all: Vec<(SessionId, Snapshot)>,
+    shared: &BTreeSet<String>,
+    agent: Entity,
+    commands: &mut Commands,
+) -> Result<String, String> {
+    let names: BTreeSet<&str> = all.iter().map(|(_, it)| it.name.as_str()).collect();
+    let not_in: Vec<&str> = shared
+        .iter()
+        .map(String::as_str)
+        .filter(|it| !names.contains(it))
+        .collect();
+    let mut text = String::new();
+    if !not_in.is_empty() {
+        text = format!(
+            "Shared in {SHARED}: {}; /new --from <name> starts one.",
+            not_in.join(", ")
+        );
+    }
+    if all.is_empty() {
+        return Ok(match text.is_empty() {
+            true => "No snapshots; /snapshot save <name> makes one.".to_owned(),
+            false => text,
+        });
+    }
+    let source = SessionSource::Sessions(all.into_iter().map(|(id, _)| id).collect());
+    let picker = Picker::new("Start a session from which snapshot?").for_agent(agent);
+    let view = SessionPicker {
+        source,
+        show: Some(show),
+        ..Default::default()
     };
-    let dump = StoreDump::of(&copy).map_err(|e| e.to_string())?;
-    write_snapshot(&*places.own, &format!("{FOLDER}/{name}"), &meta, &dump)?;
-    Ok((meta, shared.then_some(dump)))
+    commands.spawn((picker, view)).observe(pick);
+    Ok(text)
 }
 
-/// Deletes the snapshot `name`, the project's and the shared copy.
-fn delete(places: &Places, name: &str) -> Result<String, String> {
-    if places.load(name).is_err() {
-        return Err(format!("There is no snapshot named “{name}”."));
-    }
-    for (files, dir) in [
-        (&*places.own, format!("{FOLDER}/{name}")),
-        (&places.shared as &dyn Files, name.to_owned()),
-    ] {
-        for file in ["meta.json", "store.json"] {
-            files
-                .remove_file(&format!("{dir}/{file}"))
-                .map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(format!("Deleted snapshot “{name}”."))
+/// A snapshot's line in the picker: name, turns, tokens, model and age.
+fn show(item: &SessionItem<'_>) -> (String, Option<String>) {
+    let SessionItem::Session(entry) = item else {
+        return (String::new(), None);
+    };
+    let Some(it) = snapshot_of(entry) else {
+        return (entry.label(), None);
+    };
+    let saved = UNIX_EPOCH + Duration::from_millis(it.saved_ms);
+    let age = rig_harness::rig_tools::ago(saved.elapsed().unwrap_or_default());
+    let model = it.model.as_deref().unwrap_or("no model");
+    let label = format!(
+        "{}: {} turns · ~{} tokens · {model}",
+        it.name, it.turns, it.tokens
+    );
+    (label, Some(age))
 }
 
-/// Writes each shared snapshot once its effect starts, as its payload stands after
-/// every plugin's Prepare edits, such as a redaction's.
+/// Starts a session from the snapshot picked.
+fn pick(picked: On<Picked>, chosen: Query<(&SessionPicked, &Picker)>, mut commands: Commands) {
+    let Ok((
+        SessionPicked {
+            session: Some(id), ..
+        },
+        picker,
+    )) = chosen.get(picked.entity)
+    else {
+        return;
+    };
+    let name = id.to_string();
+    commands.trigger(StartFromSnapshot {
+        agent: picker.agent,
+        name,
+    });
+}
+
+/// Copies each shared snapshot into the repository once its effect starts, as its
+/// session stands after every plugin's Prepare, such as a redaction's.
 fn write_shared(
     started: On<Add<Started>>,
     mut effects: Query<(&EffectRequest, &mut Decision, &ForAgent), With<Sharing>>,
-    root: Res<ProjectRoot>,
+    (root, home, stores): (Res<ProjectRoot>, Res<RigHome>, Res<SessionStores>),
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok((request, mut decision, &ForAgent(agent))) = effects.get_mut(started.entity) else {
@@ -482,9 +417,18 @@ fn write_shared(
     let written = serde_json::from_value::<SharePayload>(payload.clone())
         .map_err(|e| e.to_string())
         .and_then(|share| {
-            let files = DirFiles::new(root.0.join(SHARED));
-            write_snapshot(&files, &share.meta.name, &share.meta, &share.store)
-                .map(|()| share.meta.name)
+            let id: SessionId = share
+                .session
+                .parse()
+                .map_err(|_| "no session id".to_owned())?;
+            let from = stores
+                .open(&home.0.session(&id))
+                .map_err(|e| e.to_string())?;
+            let path = root.0.join(SHARED).join(&share.name);
+            std::fs::remove_dir_all(&path).ok();
+            let to = DirStore::open(path).map_err(|e| e.to_string())?;
+            rig_memory::fork(&*from, &to, None, &Keep).map_err(|e| e.to_string())?;
+            Ok(share.name)
         });
     let outcome = match written {
         Ok(name) => {
@@ -512,30 +456,25 @@ fn new_from(
     mut commands: Commands,
 ) {
     for (incoming, &ForAgent(agent), mut decision) in &mut typed {
-        if incoming.author.kind != AuthorKind::User || incoming.literal {
-            continue;
-        }
-        let mut words = incoming.text().split_whitespace();
-        if let (Some("/new"), Some("--from"), Some(name), None) =
+        let mut words = incoming.command().unwrap_or_default().split_whitespace();
+        if let (Some("new"), Some("--from"), Some(name), None) =
             (words.next(), words.next(), words.next(), words.next())
         {
             decision.decide(
                 Decider::plugin(NAME),
                 Outcome::custom("new from a snapshot"),
             );
-            commands.trigger(StartFromSnapshot {
-                agent: Some(agent),
-                name: name.to_owned(),
-            });
+            let (agent, name) = (Some(agent), name.to_owned());
+            commands.trigger(StartFromSnapshot { agent, name });
         }
     }
 }
 
 /// `rig --from <name>`: a new session whose conversation is still empty starts the
-/// snapshot's session in its place.
+/// snapshot's session in its place (the harness removes the empty one).
 fn start_from_flag(
     invoked: Option<Res<Invoked>>,
-    data: Res<PluginData>,
+    started: Option<Res<StartedFrom>>,
     agents: Query<(Entity, &Conversation), (With<Agent>, Without<SpawnedBy>)>,
     mut commands: Commands,
 ) {
@@ -548,7 +487,7 @@ fn start_from_flag(
     let empty = agents
         .iter()
         .all(|(_, conversation)| conversation.messages().is_empty());
-    if empty && data.session.read_file(STARTED).is_err() {
+    if empty && started.is_none() {
         let agent = agents.iter().next().map(|(agent, _)| agent);
         commands.trigger(StartFromSnapshot {
             agent,
@@ -557,33 +496,10 @@ fn start_from_flag(
     }
 }
 
-/// Drops the saved model `model` from a copy.
-struct WithoutModel(String);
-
-impl Rewrite for WithoutModel {
-    fn value(&self, _: &At<'_>, key: &str, value: &mut Value) -> bool {
-        let drop = key == MODEL && value.as_str() == Some(&self.0);
-        if drop {
-            *value = Value::Null;
-        }
-        drop
-    }
-
-    fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
-        false
-    }
-}
-
-/// Forks the snapshot into a new session and switches to it.
+/// Forks the snapshot into a new session; [`forked`] switches to it.
 fn start_from(
     start: On<StartFromSnapshot>,
-    (data, root, home, stores): (
-        Res<PluginData>,
-        Res<ProjectRoot>,
-        Res<RigHome>,
-        Res<SessionStores>,
-    ),
-    models: Res<Models>,
+    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<SessionStores>),
     turns: Query<(), With<TurnOf>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -595,39 +511,217 @@ fn start_from(
         ));
         return;
     }
-    let places = Places::new(&data, &root);
-    let started = places.load(&start.name).and_then(|(meta, dump)| {
-        let copy = dump.store().map_err(|e| e.to_string())?;
-        let unusable = meta.model.clone().filter(|model| models.connect(model).is_err());
-        let notice = unusable.as_ref().map(|model| {
-            format!("The snapshot's model {model} is unavailable; this session starts on the default model.")
+    let found = find(&home.0, &stores, &root, &start.name)
+        .map(Ok)
+        .or_else(|| {
+            shared(&root)
+                .contains(&start.name)
+                .then(|| bring_in(&home.0, &stores, &root, &start.name))
         });
-        let (id, dir) = home.0.new_session().map_err(|e| e.to_string())?;
-        let store = stores.open(&dir).map_err(|e| e.to_string())?;
-        let with: Box<dyn Rewrite> = match unusable {
-            Some(model) => Box::new(WithoutModel(model)),
-            None => Box::new(Keep),
-        };
-        rig_memory::fork(&copy, &*store, None, &*with).map_err(|e| e.to_string())?;
-        let marker = StartedFrom { snapshot: meta.name, notice };
-        let marker = serde_json::to_vec(&marker).map_err(|e| e.to_string())?;
-        store.write_file(&format!("plugins/{STARTED}"), &marker).map_err(|e| e.to_string())?;
-        std::fs::write(dir.directory(), root.0.to_string_lossy().as_bytes())
-            .map_err(|e| e.to_string())?;
-        Ok::<SessionId, String>(id)
-    });
-    match started {
-        Ok(id) => commands.trigger(Exit(ExitReason::Switch(Some(id)))),
-        Err(why) => {
+    match found {
+        Some(Ok(id)) => {
+            let asker = Starting {
+                name: start.name.clone(),
+                agent: start.agent,
+            };
+            let asker = commands.spawn(asker).id();
+            commands.trigger(ForkSession {
+                from: Some(id),
+                cut: ForkCut::Whole,
+                asker: Some(asker),
+            });
+        }
+        Some(Err(why)) => {
+            notices.write(Notice::error(start.agent, why));
+        }
+        None => {
+            let why = format!("There is no snapshot named “{}”.", start.name);
             notices.write(Notice::error(start.agent, why));
         }
     }
 }
 
+/// Copies the shared snapshot `name` into a session of `home`, so it is a snapshot
+/// `ForkSession` forks: a fork from a store that is no session of `home`.
+fn bring_in(
+    home: &Home,
+    stores: &SessionStores,
+    root: &ProjectRoot,
+    name: &str,
+) -> Result<SessionId, String> {
+    let from = DirStore::open(root.0.join(SHARED).join(name)).map_err(|e| e.to_string())?;
+    let (id, dir) = home.new_session().map_err(|e| e.to_string())?;
+    let copied = stores.open(&dir).map_err(|e| e.to_string()).and_then(|to| {
+        rig_memory::fork(&from, &*to, None, &Keep).map_err(|e| e.to_string())?;
+        std::fs::write(dir.directory(), root.0.to_string_lossy().as_bytes())
+            .map_err(|e| e.to_string())
+    });
+    match copied {
+        Ok(()) => Ok(id),
+        Err(why) => {
+            std::fs::remove_dir_all(dir.path()).ok();
+            Err(why)
+        }
+    }
+}
+
+/// Finishes this plugin's forks: marks a new snapshot as one (and shares it), or
+/// readies a session started from one and switches to it.
+fn forked(
+    mut forked: MessageReader<SessionForked>,
+    mut failed: MessageReader<SessionForkFailed>,
+    askers: Query<(Option<&Saving>, Option<&Starting>)>,
+    (home, paths, stores): (Res<RigHome>, Res<SessionPaths>, Res<SessionStores>),
+    models: Res<Models>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    for fork in forked.read() {
+        let Some(asker) = fork.asker else { continue };
+        let Ok((saving, starting)) = askers.get(asker) else {
+            continue;
+        };
+        let dir = home.0.session(&fork.to);
+        if let Some(Saving {
+            name,
+            shared,
+            agent,
+        }) = saving
+        {
+            let marked = mark(&stores, &paths, &dir, name);
+            let text = marked.map(|it| {
+                if *shared {
+                    let session = fork.to.to_string();
+                    let share = SharePayload {
+                        name: name.clone(),
+                        session,
+                    };
+                    let payload = serde_json::to_value(share).unwrap_or_default();
+                    let kind = EffectKind::Custom {
+                        kind: SHARE_KIND.into(),
+                        payload,
+                    };
+                    let request = EffectRequest {
+                        kind,
+                        handler: None,
+                    };
+                    commands.spawn((request, Sharing, ForAgent(*agent)));
+                }
+                format!("Saved snapshot “{name}”: {} turns.", it.turns)
+            });
+            notices.write(match text {
+                Ok(text) => Notice::info(*agent, text),
+                Err(why) => Notice::error(*agent, why),
+            });
+        }
+        if let Some(Starting { name, agent }) = starting {
+            match ready(&stores, &paths, &dir, name, &models) {
+                Ok(()) => commands.trigger(Exit(ExitReason::Switch(Some(fork.to.clone())))),
+                Err(why) => {
+                    notices.write(Notice::error(*agent, why));
+                }
+            }
+        }
+        commands.entity(asker).despawn();
+    }
+    for fail in failed.read() {
+        if let Some(asker) = fail.asker.filter(|it| askers.contains(*it)) {
+            commands.entity(asker).despawn();
+        }
+    }
+}
+
+/// Makes the session in `dir` the snapshot `name`, saved and listed.
+fn mark(
+    stores: &SessionStores,
+    paths: &SessionPaths,
+    dir: &SessionDir,
+    name: &str,
+) -> Result<Snapshot, String> {
+    let mut made = None;
+    edit_stopped(stores, paths, dir, |session| {
+        let main = session.main_agent();
+        let counter = HeuristicTokenCounter::default();
+        let it = Snapshot {
+            name: name.to_owned(),
+            turns: main.map_or(0, |main| main.conversation.turns().count()),
+            tokens: main.map_or(0, |main| {
+                main.conversation
+                    .messages()
+                    .iter()
+                    .map(|m| counter.count(m))
+                    .sum()
+            }),
+            model: main.and_then(|main| main.model()),
+            saved_ms: rig_memory::now_ms(),
+        };
+        let value = serde_json::to_value(&it).map_err(|e| e.to_string())?;
+        session
+            .state
+            .insert(KEY.to_owned(), Versioned { v: 1, value });
+        made = Some(it);
+        Ok(())
+    })?;
+    let made = made.ok_or("the snapshot was not written")?;
+    let value = serde_json::to_value(&made).map_err(|e| e.to_string())?;
+    relist(stores, dir, Some(Versioned { v: 1, value }))?;
+    Ok(made)
+}
+
+/// Readies the session in `dir`, a copy of the snapshot `name`: no snapshot itself,
+/// told so on its first start, and without the snapshot's model when it is unusable.
+fn ready(
+    stores: &SessionStores,
+    paths: &SessionPaths,
+    dir: &SessionDir,
+    name: &str,
+    models: &Models,
+) -> Result<(), String> {
+    edit_stopped(stores, paths, dir, |session| {
+        session.state.remove(KEY);
+        let main = session
+            .main_agent()
+            .map(|main| (main.id.clone(), main.model()));
+        let mut notice = None;
+        if let Some((id, Some(model))) = main
+            && models.connect(&model).is_err()
+            && let Some(agent) = session.agents.iter_mut().find(|agent| agent.id == id)
+        {
+            agent.state.remove(MODEL);
+            notice = Some(format!(
+                "The snapshot's model {model} is unavailable; this session starts on the default model."
+            ));
+        }
+        let started = StartedFrom(Some((name.to_owned(), notice)));
+        let value = serde_json::to_value(started).map_err(|e| e.to_string())?;
+        session
+            .state
+            .insert(STARTED.to_owned(), Versioned { v: 1, value });
+        Ok(())
+    })?;
+    relist(stores, dir, None)
+}
+
+/// Sets the listed [`Snapshot`] of the stopped session in `dir`: `edit_stopped`
+/// leaves its listing as it was.
+fn relist(
+    stores: &SessionStores,
+    dir: &SessionDir,
+    value: Option<Versioned>,
+) -> Result<(), String> {
+    let store = stores.open(dir).map_err(|e| e.to_string())?;
+    let mut meta = SessionMeta::read(&*store).unwrap_or_default();
+    match value {
+        Some(value) => meta.data.insert(KEY.to_owned(), value),
+        None => meta.data.remove(KEY),
+    };
+    meta.write(&*store).map_err(|e| e.to_string())
+}
+
 /// On a session's first start from a snapshot: tells the user, and the model with
 /// the user's next message, which files the snapshot read have changed since.
 fn arrive(
-    data: Res<PluginData>,
+    started: Option<ResMut<StartedFrom>>,
     workspace: Option<Res<ProjectWorkspace>>,
     mut agents: Query<
         (Entity, &mut Conversation, &FilesSeen, &mut ContextNote),
@@ -635,37 +729,31 @@ fn arrive(
     >,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(bytes) = data.session.read_file(STARTED) else {
-        return;
-    };
-    data.session.remove_file(STARTED).ok();
-    let Ok(started) = serde_json::from_slice::<StartedFrom>(&bytes) else {
+    let Some((snapshot, notice)) = started.and_then(|mut started| started.0.take()) else {
         return;
     };
     let Some((agent, mut conversation, seen, mut note)) = agents.iter_mut().next() else {
         return;
     };
-    if let Some(notice) = started.notice {
+    if let Some(notice) = notice {
         notices.write(Notice::info(agent, notice));
     }
-    let mut changed: Vec<&String> = seen
+    let mut changed: Vec<&str> = seen
         .0
         .iter()
         .filter(|(path, hash)| now_hash(workspace.as_deref(), path).as_ref() != Some(*hash))
-        .map(|(path, _)| path)
+        .map(|(path, _)| path.as_str())
         .collect();
     if changed.is_empty() {
         return;
     }
-    changed.sort();
-    let list = changed
-        .iter()
-        .map(|path| path.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let text = format!("These files changed since this context was captured: {list}");
+    changed.sort_unstable();
+    let text = format!(
+        "These files changed since this context was captured: {}",
+        changed.join(", ")
+    );
     notices.write(Notice::info(agent, text.clone()));
-    let title = format!("Started from snapshot “{}”", started.snapshot);
+    let title = format!("Started from snapshot “{snapshot}”");
     let after = conversation.entries().next_back().map(|entry| entry.id);
     conversation.add_aside(Note::new(title, text.clone()).aside(Author::plugin(NAME), after));
     note.0 = Some(text);
@@ -691,8 +779,7 @@ fn attach_note(
     mut agents: Query<&mut ContextNote>,
 ) {
     for (mut incoming, &ForAgent(agent)) in &mut messages {
-        let command = !incoming.literal && incoming.text().starts_with('/');
-        if incoming.author.kind != AuthorKind::User || command {
+        if incoming.author.kind != AuthorKind::User || incoming.command().is_some() {
             continue;
         }
         let Ok(mut note) = agents.get_mut(agent) else {

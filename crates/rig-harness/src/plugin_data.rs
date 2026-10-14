@@ -20,9 +20,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::Home;
+use rig::harness_protocol::{Home, SessionDir};
 use rig_core::tool::content_hash;
-use rig_memory::{DirFiles, Files, MemoryStore};
+use rig_memory::{DirFiles, Files, LoadError, MemoryStore};
+
+use crate::host::session::SessionStores;
 
 /// Where plugins keep their files: per session, per project and per
 /// user. Not in the project's own directory: a plugin's data is the
@@ -58,6 +60,20 @@ impl PluginData {
             project: Arc::new(DirFiles::new(project_dir(home, root, host))),
             user: Arc::new(DirFiles::new(home.data())),
         }
+    }
+}
+
+impl PluginData {
+    /// The plugin files of the saved session in `dir`, kept in the store
+    /// `stores` opens for it (`plugins/` of that store), such as a
+    /// split's: what [`PluginData::session`] is in a run of that session.
+    ///
+    /// # Errors
+    ///
+    /// When its store does not open.
+    pub fn of(stores: &SessionStores, dir: &SessionDir) -> Result<Arc<dyn Files>, LoadError> {
+        let store: Arc<dyn Files> = stores.open(dir)?;
+        Ok(Arc::new(Within(store)))
     }
 }
 

@@ -24,26 +24,33 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_ecs::resource::IsResource;
-use bevy_ecs::schedule::SystemSet;
+use bevy_ecs::schedule::{ScheduleLabel, SystemSet};
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
-use bevy_log::error;
+use bevy_log::{error, warn};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
 use rig_core::conversation::{Author, Recorded};
-use rig_memory::{LoadError, Place, Repair, Rewrite, Rewritten, SESSION, Session, Store, Writer};
+use rig_memory::{
+    LoadError, Place, Repair, Rewrite, Rewritten, SESSION, Session, Store, Versioned, Writer,
+};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::WriteJournal;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
-use super::restore::{resource_entity, saved, saved_type};
+use super::follows::{self, Mirroring, ReflectFollows};
+use super::restore::{RetiredSaved, SavedKeys, SavedUpgrades, SetAside};
+use super::restore::{SavedReader, resource_entity, saved_type};
 
 /// Saves an agent component or a resource with the session: derive
 /// `Reflect` and add `Saved` to its `#[reflect(..)]`, as
 /// `#[reflect(Component, Saved)]` or `#[reflect(Resource, Saved)]`. Each
-/// change of it is logged at the end of the frame by its type path (an
-/// agent's in its log, a resource in the session's [`SESSION`] log, written
-/// once an agent's log is) and restored by reflection, inserted on the
+/// change of it is logged at the end of the frame under its type path, or
+/// the stable key its plugin gives it ([`SavedKeys`]), with its type's
+/// version ([`SavedUpgrades`]; an agent's in its log, a resource in the
+/// session's [`SESSION`] log, written once an agent's log is) and restored
+/// by reflection, read at its type's version through the steps its plugin
+/// registered, inserted on the
 /// agent it was saved with before [`SessionRestored`] exists, so an
 /// `On<Insert<T>>` observer re-arms what it says; a value that serializes
 /// to `null` is saved as absent, and so is an agent component removed. A
@@ -58,7 +65,11 @@ use super::restore::{resource_entity, saved, saved_type};
 ///
 /// Registration is a runtime fact: a generic type is saved only once
 /// registered (`app.register_type::<T>()`), and a logged type no build
-/// registers any more is reported on restore and kept in the log.
+/// registers any more is reported on restore and kept in the log. A value
+/// no step reads, or that no longer fits its type, is reported, listed in
+/// [`SetAside`] and not inserted; the next change of it first moves the old
+/// value to a side key (rig-memory's `SET_ASIDE`), so nothing is lost. A
+/// value a newer rig saved is reported and never written over in this run.
 #[derive(Clone)]
 pub struct ReflectSaved {
     watch: fn(&mut App),
@@ -90,18 +101,23 @@ fn log_changed<T: Component + Reflect + TypePath>(
     spawned: Query<(), Added<Agent>>,
     log: Res<SessionLog>,
     registry: Res<AppTypeRegistry>,
+    (keys, upgrades): (Res<SavedKeys>, Res<SavedUpgrades>),
 ) {
     if !log.0.is_live() {
         return;
     }
-    let name = T::type_path();
+    let path = T::type_path();
+    let name = keys.key(path).unwrap_or(path);
+    let v = upgrades.0.version(path);
     let registry = registry.read();
     for (entity, id, component) in &changed {
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
-        let key = id.map_or(SESSION, |id| id.0.as_str());
+        let log_name = id.map_or(SESSION, |id| id.0.as_str());
         let starts = id.is_some() && !spawned.contains(entity);
         match serde_json::to_value(value) {
-            Ok(value) => log.0.state(key, name, Some(value), starts),
+            Ok(value) => log
+                .0
+                .state(log_name, name, Some(Versioned { v, value }), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
@@ -244,11 +260,44 @@ impl Drain<'_, '_> {
     }
 }
 
+/// The schedule that saves the agent conversations changed since it last
+/// ran ([`save_now`]): right before `Update`, between the stages of each
+/// agent pass and in `Last` ([`Saving`]). Followed components are mirrored
+/// into their lines first ([`Mirroring`]), and after the save each agent
+/// whose line may have changed is given its line's values
+/// (`follows::sync`). So a change of a followed component is kept at the
+/// entry it was made after, give or take a stage, and a line changed
+/// before `Update`, such as by a key or a command, or before a stage gives
+/// its values to `Update` or that stage, not to the next frame.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct SaveConversations;
+
+/// An agent whose conversation [`save_conversations`] saved changes of,
+/// since [`save_now`] last took it.
+#[derive(Resource, Default)]
+pub(crate) struct SavedOne(Option<Entity>);
+
+/// Saves the conversations changed since it last ran, in
+/// [`SaveConversations`].
+pub(crate) fn save_conversations(mut drain: Drain, mut saved: ResMut<SavedOne>) {
+    if let Some(agent) = drain.save() {
+        saved.0 = Some(agent);
+    }
+}
+
+/// Runs [`SaveConversations`]: an agent whose conversation had changes,
+/// if any did; one the run before `Update` saved is not counted.
+pub(crate) fn save_now(world: &mut World) -> Option<Entity> {
+    world.get_resource_mut::<SavedOne>()?.0 = None;
+    world.try_run_schedule(SaveConversations).ok()?;
+    world.get_resource_mut::<SavedOne>()?.0.take()
+}
+
 /// Saves the conversations changed outside the agent loop, such as by
 /// commands and observers, in `Last` before the frame's records are
 /// written.
-pub(crate) fn save_conversations(mut drain: Drain) {
-    drain.save();
+pub(crate) fn save_in_last(world: &mut World) {
+    save_now(world);
 }
 
 /// Saves what a conversation about to be replaced or removed did not save
@@ -332,6 +381,8 @@ pub struct RewriteSession {
 /// files, and every plugin's copies, in memory or in files of its own.
 #[derive(Message, Clone)]
 pub struct SessionRewritten {
+    /// Who rewrote it, as [`RewriteSession`] said.
+    pub by: Author,
     /// Who asked, as [`RewriteSession`] said.
     pub asker: Option<Entity>,
     /// The map the session was rewritten through.
@@ -355,30 +406,44 @@ pub(crate) fn rewrites_asked(rewrites: Res<Rewrites>) -> bool {
     !rewrites.0.is_empty()
 }
 
-/// Runs the rewrites asked for, as [`RewriteSession`] says.
+/// How many rounds of rewrites asked while rewrites are applied, such as by
+/// an observer of a value reread, run in one frame; the rest wait for the
+/// next.
+const REWRITE_ROUNDS: usize = 8;
+
+/// Runs the rewrites asked for, as [`RewriteSession`] says, each with its
+/// own author, and those asked meanwhile, in the same frame.
 pub(crate) fn apply_rewrites(world: &mut World) {
-    let asked = world
-        .get_resource_mut::<Rewrites>()
-        .map(|mut rewrites| std::mem::take(&mut rewrites.0))
-        .unwrap_or_default();
     let log = world
         .get_resource::<SessionLog>()
         .cloned()
         .unwrap_or_default();
-    for RewriteSession { by, with, asker } in asked {
-        let result = log.0.rewrite(by, &*with);
-        let result = result.map_err(|failure| failure.to_string());
-        if let Ok(rewritten) = &result {
-            for failure in reread(world, rewritten, &*with) {
-                let failure = format!("After rewriting the session: {failure}.");
-                world.write_message(Notice::error(None, failure));
-            }
+    for _ in 0..REWRITE_ROUNDS {
+        let asked = world
+            .get_resource_mut::<Rewrites>()
+            .map(|mut rewrites| std::mem::take(&mut rewrites.0))
+            .unwrap_or_default();
+        if asked.is_empty() {
+            return;
         }
-        world.write_message(SessionRewritten {
-            asker,
-            with,
-            result,
-        });
+        for RewriteSession { by, with, asker } in asked {
+            let result = log.0.rewrite(by.clone(), &*with);
+            let result = result.map_err(|failure| failure.to_string());
+            if let Ok(rewritten) = &result {
+                for failure in reread(world, rewritten, &*with) {
+                    let failure = format!("After rewriting the session: {failure}.");
+                    world.write_message(Notice::error(None, failure));
+                }
+            }
+            world.write_message(SessionRewritten {
+                by,
+                asker,
+                with,
+                result,
+            });
+        }
+        // What observers of the reread values asked, such as another rewrite.
+        world.flush();
     }
 }
 
@@ -393,6 +458,7 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
+    let mut reader = SavedReader::new(world);
     let mut failures = Vec::new();
     for log in &rewritten.logs {
         let agent = agents.iter().find(|(_, id)| *id == log.log);
@@ -422,20 +488,26 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
                 ));
             }
         }
+        let id = agent.map(|_| AgentId(log.log.clone()));
         for key in &log.changed_keys {
             let inserted = match log.state.get(key) {
-                Some(value) => saved(key, value, &registry).and_then(|(component, value)| {
-                    let mut entity = match agent {
-                        Some(agent) => world
-                            .get_entity_mut(agent)
-                            .map_err(|failure| failure.to_string())?,
-                        None => resource_entity(world, component)?,
-                    };
-                    component.insert(&mut entity, value.as_partial_reflect(), &registry);
-                    Ok(())
-                }),
+                Some(value) => reader
+                    .read(&registry, &log.log, id.as_ref(), &log.state, key, value)
+                    .and_then(|read| {
+                        let Some((component, value)) = read else {
+                            return Ok(());
+                        };
+                        let mut entity = match agent {
+                            Some(agent) => world
+                                .get_entity_mut(agent)
+                                .map_err(|failure| failure.to_string())?,
+                            None => resource_entity(world, component)?,
+                        };
+                        component.insert(&mut entity, value.as_partial_reflect(), &registry);
+                        Ok(())
+                    }),
                 // A value the rewrite made null is gone, from an agent.
-                None => saved_type(key, &registry).map(|(_, component)| {
+                None => saved_type(reader.path(key), &registry).map(|(_, component)| {
                     if let Some(mut entity) =
                         agent.and_then(|agent| world.get_entity_mut(agent).ok())
                     {
@@ -448,6 +520,7 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
             }
         }
     }
+    reader.finish(world);
     failures
 }
 
@@ -460,11 +533,17 @@ impl Plugin for JournalPlugin {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(Last, write_logs.in_set(WriteJournal))
-            .add_observer(open_child_log);
+            .configure_sets(SaveConversations, Mirroring.before(save_conversations))
+            .add_systems(SaveConversations, follows::sync.after(save_conversations))
+            .add_observer(open_child_log)
+            .init_resource::<SavedUpgrades>()
+            .init_resource::<RetiredSaved>()
+            .init_resource::<SavedKeys>()
+            .init_resource::<SetAside>();
     }
 
-    /// Watches every type registered as [`ReflectSaved`], once every
-    /// plugin had its say in the registry.
+    /// Watches every type registered as [`ReflectSaved`] or
+    /// [`ReflectFollows`], once every plugin had its say in the registry.
     fn finish(&self, app: &mut App) {
         let watches: Vec<fn(&mut App)> = app
             .world()
@@ -472,7 +551,18 @@ impl Plugin for JournalPlugin {
             .map(|registry| {
                 let registry = registry.read();
                 let saved = registry.iter_with_data::<ReflectSaved>();
-                saved.map(|(_, saved)| saved.watch).collect()
+                let saved = saved.filter_map(|(registration, saved)| {
+                    if registration.data::<ReflectFollows>().is_none() {
+                        return Some(saved.watch);
+                    }
+                    let path = registration.type_info().type_path();
+                    warn!("{path} is both Saved and Follows; it follows its line");
+                    None
+                });
+                let follows = registry.iter_with_data::<ReflectFollows>();
+                saved
+                    .chain(follows.map(|(_, follows)| follows.watch))
+                    .collect()
             })
             .unwrap_or_default();
         for watch in watches {

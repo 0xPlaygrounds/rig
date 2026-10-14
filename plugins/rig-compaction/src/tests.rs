@@ -232,9 +232,9 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     };
     let world = restarted.world();
     assert_eq!(entries(world, agent), live);
-    let tracked = world
-        .get::<Summarized>(agent)
-        .map(|summarized| &summarized.0.tracked);
+    // The state the next compaction builds on is the restored summary's.
+    let state = world.get::<Conversation>(agent).map(|c| summary_state(c));
+    let tracked = state.as_ref().map(|state| &state.tracked);
     assert!(
         tracked.is_some_and(|tracked| tracked
             .iter()
@@ -550,9 +550,13 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
 
 /// The requests a turn near a 40k window makes when its compacted request
 /// still overflows, with `per_turn` summaries a turn, and its answer.
-fn overflow_after_a_summary(per_turn: u32) -> (Vec<String>, Option<String>) {
+/// With `own`, the agent's own `per_turn` over the default's.
+fn overflow_after_a_summary(per_turn: u32, own: Option<u32>) -> (Vec<String>, Option<String>) {
     let (mut app, wakes) = start(&MemoryStore::default());
-    app.world_mut().resource_mut::<Compaction>().0.per_turn = per_turn;
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .per_turn = per_turn;
     let model = MockCompletionModel::from_stream_turns([
         reply("## Goal\nThe first summary."),
         too_long(),
@@ -562,6 +566,13 @@ fn overflow_after_a_summary(per_turn: u32) -> (Vec<String>, Option<String>) {
     let Some(agent) = agent(&mut app, &model, 40_000, long_conversation(6)) else {
         return (Vec::new(), None);
     };
+    if let Some(per_turn) = own {
+        let own = CompactionOverrides {
+            per_turn: Some(per_turn),
+            ..CompactionOverrides::default()
+        };
+        app.world_mut().entity_mut(agent).insert(Compaction(own));
+    }
     ask(&mut app, &wakes, agent);
     (sent(&model), answer(&app))
 }
@@ -573,19 +584,22 @@ fn a_turn_asks_for_at_most_per_turn_summaries() {
         sent.iter().filter(summary).count()
     };
     // By default a second summary rescues the turn.
-    let (sent, answer) = overflow_after_a_summary(2);
+    let (sent, answer) = overflow_after_a_summary(2, None);
     assert_eq!(
         (summaries(&sent), answer.as_deref()),
         (2, Some("done")),
         "{sent:?}"
     );
-    // With one a turn, the overflow after the first ends the turn.
-    let (sent, answer) = overflow_after_a_summary(1);
-    assert_eq!(
-        (summaries(&sent), sent.len(), answer),
-        (1, 2, None),
-        "{sent:?}"
-    );
+    // With one a turn, the overflow after the first ends the turn: by
+    // default, or by the agent's own policy over a default of two.
+    for (per_turn, own) in [(1, None), (2, Some(1))] {
+        let (sent, answer) = overflow_after_a_summary(per_turn, own);
+        assert_eq!(
+            (summaries(&sent), sent.len(), answer),
+            (1, 2, None),
+            "{sent:?}"
+        );
+    }
 }
 
 /// A review of a summary call, holding it until the test decides.
@@ -693,7 +707,11 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
         context.is_some_and(|tokens| tokens < 900_000),
         "{context:?}"
     );
-    let state = |app: &App| app.world().get::<Summarized>(agent).map(|it| it.0.clone());
+    let state = |app: &App| {
+        app.world()
+            .get::<Conversation>(agent)
+            .map(|c| summary_state(c))
+    };
     assert!(state(&app).is_some_and(|it| it.summary.contains("reviewed")));
 
     // Undone: the messages are back with their ids, and the state before.
@@ -716,5 +734,150 @@ fn the_compaction_notice_says_it_or_they_by_how_many_messages_were_kept() {
     assert!(
         two.contains("kept the newest 2 messages (about 38 tokens) as they were;"),
         "{two}"
+    );
+}
+
+/// The texts of the notices so far.
+fn notices(app: &App) -> Vec<String> {
+    let notices = app.world().resource::<Messages<Notice>>();
+    let mut cursor = notices.get_cursor();
+    cursor
+        .read(notices)
+        .map(|notice| notice.text.clone())
+        .collect()
+}
+
+/// An agent's own policy decides its compaction: a cut it names from the
+/// plugins' rules, until its own knobs are taken out again.
+#[test]
+fn an_agents_own_policy_and_a_named_cut_decide_its_compaction() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.add_compaction_cut("never", |_: &[Message], _, _, _| None);
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nThe summary.")]);
+    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(3)) else {
+        return;
+    };
+    let never = CompactionOverrides {
+        cut: Some(rig_memory::Cut::Named("never".to_owned())),
+        ..CompactionOverrides::default()
+    };
+    app.world_mut().entity_mut(agent).insert(Compaction(never));
+    let compact = |app: &mut App| {
+        let focus = String::new();
+        app.world_mut().trigger(Compact {
+            entity: agent,
+            focus,
+        });
+    };
+    compact(&mut app);
+    app.update();
+    assert!(
+        notices(&app)
+            .iter()
+            .any(|text| text == "Nothing to compact yet.")
+    );
+    assert!(model.requests().is_empty());
+
+    app.world_mut().entity_mut(agent).remove::<Compaction>();
+    compact(&mut app);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+}
+
+/// `[compaction]` in settings sets only the knobs it names over the
+/// built-in default, which tracks the built-in file tools.
+#[test]
+fn settings_set_only_the_knobs_they_name() {
+    let (mut app, _wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[compaction]\nkeep_recent = 1000\ncut = \"before-last-user\"",
+    ));
+    app.add_plugins(CompactionPlugin);
+    let default = app.world().resource::<CompactionDefault>().0.clone();
+    assert_eq!(default.keep_recent, 1000);
+    assert_eq!(
+        default.cut,
+        rig_memory::Cut::Named("before-last-user".to_owned())
+    );
+    assert_eq!(default.tracked, CompactionDefault::default().0.tracked);
+    assert_eq!(default.tracked.len(), 3);
+}
+
+/// `/compaction` sets the agent's own knobs at runtime: they are saved with
+/// its line, so a restore and a split of the line keep them, while a knob it
+/// never set follows the default.
+#[test]
+fn a_policy_set_by_command_is_restored_inherited_and_unset_knobs_follow_the_default() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = start(&store);
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(1)) else {
+        return;
+    };
+    let run = |app: &mut App, line: &str| {
+        app.world_mut()
+            .trigger(RunCommand::new(agent, line.to_owned()));
+        app.world_mut().flush();
+    };
+    run(&mut app, "compaction per-turn=1 keep=500");
+    app.update();
+    let own = CompactionOverrides {
+        per_turn: Some(1),
+        keep_recent: Some(500),
+        ..CompactionOverrides::default()
+    };
+    let has = |app: &App, agent| app.world().get::<Compaction>(agent).map(|it| it.0.clone());
+    assert_eq!(has(&app, agent), Some(own.clone()));
+    run(&mut app, "compaction bogus=1");
+    // A refused command line comes back to the user with why.
+    let recalled = app.world().resource::<Messages<Recalled>>();
+    let mut cursor = recalled.get_cursor();
+    let why: Vec<_> = cursor
+        .read(recalled)
+        .filter_map(|it| it.why.clone())
+        .collect();
+    assert!(
+        why.iter()
+            .any(|why| why.contains("there is no knob `bogus`")),
+        "{why:?}"
+    );
+    // A split of the line at its end starts with the line's knobs.
+    let by = Author::plugin("tree");
+    let split = app.world_mut().get_mut::<Conversation>(agent).map(|mut c| {
+        let at = c.messages().len();
+        c.branch_off(at, "split", by).is_ok()
+    });
+    assert_eq!(split, Some(true));
+    app.update();
+    assert_eq!(has(&app, agent), Some(own.clone()));
+    drop(app);
+
+    let (mut again, _wakes) = start(&store);
+    let Some(agent) = restored_agent(&mut again) else {
+        return;
+    };
+    assert_eq!(has(&again, agent), Some(own));
+    again
+        .world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .keep_asked = 7;
+    let policy = |app: &App| {
+        let own = app.world().get::<Compaction>(agent);
+        policy_of(own, app.world().resource::<CompactionDefault>())
+    };
+    let now = policy(&again);
+    assert_eq!((now.per_turn, now.keep_recent, now.keep_asked), (1, 500, 7));
+    again
+        .world_mut()
+        .trigger(RunCommand::new(agent, "compaction reset".to_owned()));
+    again.world_mut().flush();
+    assert_eq!(has(&again, agent), None);
+    assert_eq!(
+        policy(&again).per_turn,
+        CompactionDefault::default().0.per_turn
     );
 }

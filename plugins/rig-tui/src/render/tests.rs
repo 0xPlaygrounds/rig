@@ -1,112 +1,13 @@
 use ratatui::style::Style;
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 
-use super::{Piece, fit, light, status_pieces};
-use crate::{Highlight, Side, StatusItem, StatusItems, Tone};
-
-/// The `keep` of the default plugins' items: the model and the status
-/// always stay.
-const ALWAYS: u8 = u8::MAX;
-
-fn text(pieces: &[Piece], gap: &str) -> String {
-    let texts: Vec<&str> = pieces
-        .iter()
-        .map(|piece| piece.span.content.as_ref())
-        .collect();
-    texts.join(gap)
-}
-
-fn left() -> Vec<Piece> {
-    vec![
-        Piece::new(2, Span::from("my session")),
-        Piece::new(ALWAYS, Span::from("deepseek/deepseek-flash")),
-        Piece::new(12, Span::from("reasoning default")),
-        Piece::new(ALWAYS, Span::from("thinking… (Esc stops)")),
-        Piece::new(15, Span::from("2 subagents working")),
-    ]
-}
-
-/// Tokens, cache reads, cost and context.
-fn meter() -> Vec<Piece> {
-    vec![
-        Piece::new(4, Span::from("↑5.4k ↓1.2k")),
-        Piece::new(1, Span::from("cache 27k")),
-        Piece::new(3, Span::from("$0.012")),
-        Piece::new(5, Span::from("ctx 30k/1M (3%)")),
-    ]
-}
-
-#[test]
-fn the_meter_shrinks_before_the_status() {
-    let (mut left, mut right) = (left(), meter());
-    fit(&mut left, &mut right, 86);
-    let (status, usage) = (text(&left, "  "), text(&right, " "));
-    // The meter goes, and the session's name with it.
-    assert_eq!(
-        status,
-        "deepseek/deepseek-flash  reasoning default  thinking… (Esc stops)  2 subagents working"
-    );
-    assert!(usage.is_empty(), "{usage}");
-}
-
-#[test]
-fn cache_and_a_long_session_name_go_before_what_the_session_spends() {
-    // The resumed dogfood session: a long name must not hide the spending.
-    let mut left = vec![
-        Piece::new(2, Span::from("stats refactor")),
-        Piece::new(ALWAYS, Span::from("model")),
-        Piece::new(ALWAYS, Span::from("idle")),
-    ];
-    let mut right = meter();
-    // "model  idle" is 11 wide; the gap 2; tokens, cost and context 34.
-    fit(&mut left, &mut right, 47);
-    assert_eq!(left.len(), 2);
-    assert_eq!(text(&right, " "), "↑5.4k ↓1.2k $0.012 ctx 30k/1M (3%)");
-    // Then the cost.
-    fit(&mut left, &mut right, 40);
-    assert_eq!(text(&left, "  "), "model  idle");
-    assert_eq!(text(&right, " "), "↑5.4k ↓1.2k ctx 30k/1M (3%)");
-}
-
-#[test]
-fn a_piece_that_shrinks_is_cut_before_it_goes() {
-    let goal = || Piece::new(20, Span::from("goal: ship the parser")).shrinking_to(8);
-    let mut left = vec![Piece::new(ALWAYS, Span::from("model")), goal()];
-    // "model  " is 7 wide; the goal is cut to the 13 columns left.
-    fit(&mut left, &mut Vec::new(), 20);
-    assert_eq!(text(&left, "  "), "model  goal: ship t…");
-    // Never below its least; then it goes.
-    let mut left = vec![Piece::new(ALWAYS, Span::from("model")), goal()];
-    fit(&mut left, &mut Vec::new(), 14);
-    assert_eq!(text(&left, "  "), "model");
-}
-
-#[test]
-fn two_items_at_one_place_both_show_by_name() {
-    let mut items = StatusItems::default();
-    let at = |name| StatusItem::new(name, Side::Left, 45, 9);
-    items.show(at("plan").says("plan", Tone::Cyan));
-    items.show(at("mode").says("auto", Tone::Yellow));
-    let (left, right) = status_pieces(true, [None, Some(&items), None]);
-    assert_eq!(text(&left, "  "), "auto  plan");
-    assert!(right.is_empty());
-}
-
-#[test]
-fn the_model_and_status_always_stay() {
-    let (mut left, mut right) = (left(), meter());
-    fit(&mut left, &mut right, 10);
-    assert!(right.is_empty());
-    assert_eq!(
-        text(&left, "  "),
-        "deepseek/deepseek-flash  thinking… (Esc stops)"
-    );
-}
+use super::light;
+use crate::Highlight;
 
 /// The screen after drawing `shown` as `choosing` says, 120 columns by
 /// 20 rows, a line per row.
 fn drawn_choice(
-    choosing: &mut super::super::pick::Choosing,
+    choosing: &mut super::super::pick::PickerState,
     shown: &super::super::pick::Listing<'_>,
 ) -> String {
     use ratatui::Terminal;
@@ -115,7 +16,7 @@ fn drawn_choice(
 
     let Ok(mut terminal) = Terminal::new(TestBackend::new(120, 20));
     let drawn = terminal.draw(|frame| {
-        super::draw_choice(frame, choosing, shown);
+        super::draw_choice(frame, choosing, shown, None);
     });
     assert!(drawn.is_ok());
     let buffer = terminal.backend().buffer();
@@ -128,13 +29,14 @@ fn drawn_choice(
 
 #[test]
 fn a_question_shows_its_body_choices_and_typed_answer() {
-    use super::super::pick::{Choosing, Item, Listing, Row};
+    use super::super::pick::{Item, Listing, PickerState, Row};
 
     let mut shown = Listing {
         title: "Allow `rm -rf build`?",
         body: "It matches `rm -rf`.\nType a reason to deny it with.",
         items: ["Deny", "Allow once", "Allow for this session"]
             .map(|label| Item {
+                id: label,
                 label,
                 detail: None,
                 checked: false,
@@ -148,8 +50,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         edit: None,
         keys: &[],
     };
-    let mut choosing = Choosing {
-        entity: bevy_ecs::entity::Entity::PLACEHOLDER,
+    let mut choosing = PickerState {
         filter: "allow".to_owned(),
         selected: 0,
         ticked: Vec::new(),
@@ -157,6 +58,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         draft: None,
         more: false,
         touched: false,
+        picked: None,
     };
     // What is typed filters the choices and is an answer of its own.
     assert_eq!(
@@ -198,38 +100,35 @@ fn a_panel_below_the_input_takes_the_rows_under_the_input_box() {
     use bevy_ecs::prelude::*;
     use ratatui::layout::{Constraint, Rect};
 
-    use super::super::panel::{self, PanelCanvas, Placement, TuiPanel};
-    use super::split;
+    use crate::tests::view_app;
+    use crate::{Editor, Placement, StatusLine, TuiFrame, TuiPanel, TuiTestScreen};
 
-    let screen = Rect::new(0, 0, 80, 24);
-    let mut world = World::new();
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let world = app.world_mut();
     let suggestions = world
         .spawn(TuiPanel::new(Placement::BelowInput(Constraint::Length(1))))
         .id();
     // Too tall to leave the transcript its rows: skipped.
-    world.spawn(TuiPanel::new(Placement::BelowInput(Constraint::Length(30))));
-    let mut panels = world.query::<(Entity, &TuiPanel, &mut PanelCanvas)>();
-    let mut panels: Vec<_> = panels.iter_mut(&mut world).collect();
-    panels.sort_by_key(|(entity, ..)| *entity);
-    let asked: Vec<u16> = panels
-        .iter()
-        .filter_map(|(_, panel, _)| match panel.placement {
-            Placement::BelowInput(size) => Some(panel::rows_of(size, screen.height)),
-            _ => None,
-        })
-        .collect();
-    let [above, status, _, input, below] = split(screen, 1, 0, &asked);
-    assert_eq!(status.y + 1, input.y);
-    let transcript = panel::lay_out(
-        panels.into_iter().map(|(_, panel, canvas)| (panel, canvas)),
-        above,
-        below,
-        screen,
+    let tall = TuiPanel::new(Placement::BelowInput(Constraint::Length(30)));
+    let tall = world.spawn(tall).id();
+    app.update();
+    let world = app.world_mut();
+    let input = world.query_filtered::<Entity, With<Editor>>().single(world);
+    let status = world
+        .query_filtered::<Entity, With<StatusLine>>()
+        .single(world);
+    let frame = world.resource::<TuiFrame>();
+    let area = |entity: Result<Entity, _>| entity.ok().and_then(|entity| frame.area(entity));
+    let (input, status) = (area(input), area(status));
+    assert_eq!(
+        area(Ok(suggestions)),
+        Some(Rect::new(0, 23, 80, 1)),
+        "{frame:?}"
     );
-    assert_eq!(transcript, above);
-    let area = |entity: Entity| world.get::<PanelCanvas>(entity).map(PanelCanvas::area);
-    assert_eq!(area(suggestions), Some(Rect::new(0, input.bottom(), 80, 1)));
-    assert_eq!(input.bottom() + 1, screen.bottom());
+    assert_eq!(area(Ok(tall)).filter(|area| !area.is_empty()), None);
+    assert_eq!(input, Some(Rect::new(0, 20, 80, 3)), "{frame:?}");
+    assert_eq!(status, Some(Rect::new(0, 19, 80, 1)));
 }
 
 #[test]
@@ -269,13 +168,11 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     use rig_harness::prelude::*;
 
     use crate::tests::{type_text, view_app};
-    use crate::{
-        DrawnTranscript, TerminalWrite, TranscriptItem, TuiFrame, TuiInput, TuiTestScreen,
-    };
+    use crate::{TerminalWrite, TranscriptItem, TuiFrame, TuiTestScreen};
 
     let (mut app, agent) = view_app();
-    app.insert_resource(TuiTestScreen::new(60, 20))
-        .init_resource::<DrawnTranscript>();
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    crate::tests::keep_drawn(&mut app);
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.push(Message::user("where is the config read?"));
     }
@@ -291,8 +188,16 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     // transcript is.
     let frame = world.resource::<TuiFrame>().clone();
     assert_eq!((frame.screen.width, frame.screen.height), (60, 20));
-    assert!(frame.transcript.height > 0 && frame.input.y > frame.transcript.y);
-    let drawn = world.resource::<DrawnTranscript>();
+    let transcript = frame
+        .area(crate::tests::main_pane(world))
+        .unwrap_or_default();
+    let input = world.try_query_filtered::<Entity, With<crate::MainEditor>>();
+    let input = input.and_then(|mut input| input.single(world).ok());
+    let input = input
+        .and_then(|input| frame.area(input))
+        .unwrap_or_default();
+    assert!(transcript.height > 0 && input.y > transcript.y);
+    let drawn = crate::tests::drawn(&app);
     let id = world.get::<Conversation>(agent).and_then(|c| c.id(0));
     let message = id.and_then(|id| drawn.rows_of(&TranscriptItem::Message(id)));
     let on_screen = message.into_iter().flatten().filter_map(|row| {
@@ -309,11 +214,11 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     assert!(frame.overlays.is_empty());
     // A completion list covers the transcript.
     app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
-    app.world_mut().resource_mut::<TuiInput>().set("");
+    crate::tests::edit(&mut app, |input| input.set(""));
     type_text(&mut app, "/mo");
     let frame = app.world().resource::<TuiFrame>();
     assert_eq!(frame.overlays.len(), 1, "{frame:?}");
-    assert!(frame.covered(frame.transcript));
+    assert!(frame.covered(transcript));
 }
 
 /// A repaint asks for a frame and writes its cells again, clipped to the

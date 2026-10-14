@@ -45,9 +45,20 @@ pub enum TuiSystems {
     /// its [`TuiPanel`]s here, such as a placement that depends on the
     /// [`TuiScreen`].
     Prepare,
-    /// The view decides whether to draw a frame, and lays out the input,
-    /// the status line, the panels and the transcript.
+    /// The view decides whether to draw a frame and lays it out: first
+    /// every panel by its placement (the input, the status line, the
+    /// plugins' panels), then each [`TranscriptPane`](crate::TranscriptPane)
+    /// in what its panel got, its rows laid out and its scroll placed
+    /// ([`TranscriptView::top`](crate::TranscriptView::top),
+    /// [`DrawnTranscript`](crate::DrawnTranscript)).
     Layout,
+    /// After the frame is laid out and every pane's scroll placed: a plugin
+    /// fits its [`TuiPanel`]s to what the panes show here, such as a header
+    /// shown while a pane is scrolled up. When a panel was spawned or
+    /// changed here, the view lays the frame out again, panels then panes,
+    /// before [`Draw`](Self::Draw), so the frame that placed the scroll
+    /// draws the panel fitted to it.
+    Fit,
     /// Plugins draw their panels into their [`PanelCanvas`]. Runs only for
     /// a frame that is drawn.
     Draw,
@@ -80,12 +91,12 @@ pub struct TuiScreen(pub Rect);
 #[reflect(Component, Clone, Debug, Default)]
 pub struct Focused;
 
-/// A panel of a plugin in the terminal view. Panels are laid out one after
-/// another, in entity order, each taking its side of what is left above the
-/// status line, or rows under the input ([`Placement::BelowInput`]); a
-/// panel that would leave the transcript less than 20 columns or 3 rows
-/// gets no area this frame. Despawn the entity, or remove the component,
-/// to remove the panel.
+/// A panel in the terminal view: the default screen's transcript, input
+/// and status line are panels too, spawned first. Panels are laid out one
+/// after another, in the order spawned, each taking its side of what is left,
+/// after the rows under the input ([`Placement::BelowInput`]); a panel
+/// that would leave less than 20 columns or 3 rows gets no area this frame.
+/// Despawn the entity, or remove the component, to remove the panel.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
 #[require(PanelCanvas)]
 #[reflect(opaque, Component, Clone, Debug, PartialEq)]
@@ -104,15 +115,16 @@ impl TuiPanel {
 /// Where a [`TuiPanel`] goes, with the size it asks for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Placement {
-    /// Rows above the transcript.
+    /// Rows above what is left: above the transcript.
     Top(Constraint),
-    /// Rows under the transcript, above the status line.
+    /// Rows under what is left: under the transcript, above the status
+    /// line, which the default screen spawns first.
     Bottom(Constraint),
     /// Columns left of the transcript.
     Left(Constraint),
     /// Columns right of the transcript.
     Right(Constraint),
-    /// Rows under the input box, at the bottom of the screen, such as a row
+    /// Rows at the bottom of the screen, under the input box, such as a row
     /// of suggestions; several stack in entity order.
     BelowInput(Constraint),
     /// A box centred over the whole screen, drawn over everything but the
@@ -122,6 +134,20 @@ pub enum Placement {
         width: Constraint,
         /// Its height.
         height: Constraint,
+    },
+    /// What the other panels leave, such as the default screen's
+    /// transcript; several such panels share it.
+    Rest,
+    /// Column `part` (from 0) of `of` equal columns of another panel, or
+    /// of the picker shown, such as a preview beside a picker's list or
+    /// two transcripts compared side by side; drawn over it.
+    Within {
+        /// The panel, or the picker's entity.
+        panel: Entity,
+        /// Which column.
+        part: u16,
+        /// How many columns.
+        of: u16,
     },
 }
 
@@ -170,6 +196,12 @@ impl PanelCanvas {
     }
 }
 
+/// Where `entity` comes in the order panels are laid out and drawn: the
+/// order they were spawned, the default screen's first.
+pub(super) fn spawned(entity: Entity) -> (u32, Entity) {
+    (entity.index_u32(), entity)
+}
+
 /// The smallest transcript a panel may leave.
 pub(super) const MIN_MAIN: (u16, u16) = (20, 3);
 
@@ -196,32 +228,69 @@ pub(super) fn below_rows(asked: impl IntoIterator<Item = u16>, mut room: u16) ->
         .collect()
 }
 
-/// Lays the panels out in `main`, the area above the status line,
-/// `below`, the rows under the input, and `screen`, the whole screen;
-/// returns what is left for the transcript.
+/// A panel to lay out: its entity, where it goes, how many rows it fits its
+/// content in when it does (an editor, a strip) in place of its
+/// placement's size, and its canvas.
+pub(super) type ToLayOut<'a> = (Entity, &'a TuiPanel, Option<u16>, Mut<'a, PanelCanvas>);
+
+/// Lays the panels out on `screen`, in the order given: those below the
+/// input first, stacked at the bottom while what they leave keeps the
+/// rows the others fit their content in and the least a transcript
+/// takes; then each other one takes its side of what is left (one that
+/// fits its content as many rows as that takes), a box goes over the
+/// screen, those that take the rest share what is left, and those within
+/// another take their column of it, or of a box of `boxes` (the picker
+/// shown).
 pub(super) fn lay_out<'a>(
-    panels: impl Iterator<Item = (&'a TuiPanel, Mut<'a, PanelCanvas>)>,
-    mut main: Rect,
-    mut below: Rect,
+    panels: impl Iterator<Item = ToLayOut<'a>>,
     screen: Rect,
-) -> Rect {
-    for (panel, mut canvas) in panels {
+    boxes: &[(Entity, Rect)],
+) {
+    let panels: Vec<ToLayOut<'a>> = panels.collect();
+    let fitted: u16 = panels
+        .iter()
+        .filter(|(_, panel, ..)| !matches!(panel.placement, Placement::BelowInput(_)))
+        .filter_map(|(_, _, fits, _)| *fits)
+        .sum();
+    let asked = panels
+        .iter()
+        .filter_map(|(_, panel, fits, _)| match panel.placement {
+            Placement::BelowInput(size) => Some(fits.unwrap_or(rows_of(size, screen.height))),
+            _ => None,
+        });
+    let room = (screen.height.saturating_sub(fitted)).saturating_sub(MIN_MAIN.1);
+    let below_rows = below_rows(asked, room);
+    let total: u16 = below_rows.iter().sum();
+    let [mut main, mut below] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(total)]).areas(screen);
+    let mut below_rows = below_rows.into_iter();
+    let (mut rest, mut within) = (Vec::new(), Vec::new());
+    let mut areas: Vec<(Entity, Rect)> = boxes.to_vec();
+    for (entity, panel, fits, mut canvas) in panels {
+        let fit = |size| fits.map_or(size, Constraint::Length);
         let area = match panel.placement {
+            Placement::Rest => {
+                rest.push((entity, canvas));
+                continue;
+            }
+            Placement::Within { panel, part, of } => {
+                within.push((panel, (part, of), canvas));
+                continue;
+            }
             Placement::Over { width, height } => screen.centered(width, height),
-            Placement::BelowInput(size) => {
-                let rows = below_rows([rows_of(size, screen.height)], below.height);
-                let rows = rows.first().copied().unwrap_or(0);
-                let [panel, rest] =
+            Placement::BelowInput(_) => {
+                let rows = below_rows.next().unwrap_or(0);
+                let [panel, left] =
                     Layout::vertical([Constraint::Length(rows), Constraint::Min(0)]).areas(below);
-                below = rest;
+                below = left;
                 if rows == 0 { Rect::default() } else { panel }
             }
             Placement::Top(size) => {
-                let [panel, rest] = Layout::vertical([size, Constraint::Min(0)]).areas(main);
+                let [panel, rest] = Layout::vertical([fit(size), Constraint::Min(0)]).areas(main);
                 take(&mut main, panel, rest)
             }
             Placement::Bottom(size) => {
-                let [rest, panel] = Layout::vertical([Constraint::Min(0), size]).areas(main);
+                let [rest, panel] = Layout::vertical([Constraint::Min(0), fit(size)]).areas(main);
                 take(&mut main, panel, rest)
             }
             Placement::Left(size) => {
@@ -235,8 +304,21 @@ pub(super) fn lay_out<'a>(
         };
         // Drawing changes only the buffer: not a change to redraw for.
         canvas.bypass_change_detection().reset(area);
+        areas.push((entity, area));
     }
-    main
+    for (entity, mut canvas) in rest {
+        canvas.bypass_change_detection().reset(main);
+        areas.push((entity, main));
+    }
+    for (host, (part, of), mut canvas) in within {
+        let host = areas.iter().find(|(entity, _)| *entity == host);
+        let host = host.map_or(Rect::default(), |(_, area)| *area);
+        let columns = Layout::horizontal(vec![Constraint::Fill(1); usize::from(of.max(1))]);
+        let column = columns.split(host).get(usize::from(part)).copied();
+        canvas
+            .bypass_change_detection()
+            .reset(column.unwrap_or_default());
+    }
 }
 
 /// `panel` when `rest` is still big enough for the transcript, which it

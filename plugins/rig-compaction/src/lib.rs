@@ -22,7 +22,16 @@
 //! ([`HoldOf`]) until someone decided, replace the text, or take it out to
 //! cancel the compaction. Every compaction keeps what it replaced
 //! (rig-memory's [`Compacted`](rig_memory::Compacted)), and [`Uncompact`]
-//! puts the newest one's messages back with their ids.
+//! puts the newest one's messages back with their ids. The summary state
+//! the next compaction builds on is the newest of those
+//! ([`summary_state`]), so it never goes stale.
+//!
+//! Each agent has its own policy: its own knobs ([`Compaction`], a
+//! component kept with its conversation's line, so every split inherits
+//! it) over the default every agent starts from ([`CompactionDefault`],
+//! `[compaction]` in settings over the built-in one). A plugin changes an
+//! agent's policy by inserting its `Compaction`, and adds the cut rules a
+//! policy may name with [`AppCompactionExt::add_compaction_cut`].
 
 use bevy_ecs::query::QueryData;
 use rig_core::catalog::ModelSpec;
@@ -30,38 +39,46 @@ use rig_core::completion::{CompletionRequest, Usage, tokens_label};
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::settings::AppSettingsExt;
 use rig_harness::successor::follow_successor;
 use rig_harness::{AppKeepsExt, PluginEntity, ProvidedBy};
 use rig_memory::{
-    Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryPlan, SummaryState, TrackArgument,
-    apply_summary, undo_summary,
+    Cleared, CompactReason, CompactionOverrides, CompactionPolicy, Cut, CutRules, Summarizer,
+    SummaryPlan, SummaryState, TrackArgument, apply_summary, estimate_tokens, undo_summary,
 };
-/// Who writes a compaction's summary, and how many of a conversation's
-/// first entries are summaries already: rig-memory's, which this plugin
-/// compacts by.
-pub use rig_memory::{summarized_prefix, summary_author, summary_in};
-use serde::{Deserialize, Serialize};
+/// Who writes a compaction's summary, how many of a conversation's first
+/// entries are summaries already, and the summary state the next
+/// compaction builds on: rig-memory's, which this plugin compacts by.
+pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Compacts agents' conversations near their model's window, after an
-/// overflow, and on `/compact`, by the [`Compaction`] policy.
+/// overflow, and on `/compact`, each by its own policy ([`policy_of`]).
 #[derive(Default)]
 pub struct CompactionPlugin;
 
 impl Plugin for CompactionPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Compaction(CompactionPolicy {
-            tracked: TRACKED.to_vec(),
-            ..CompactionPolicy::default()
-        }))
-        .register_required_components::<TurnOf, Compactions>()
-        .keeps_saved::<Summarized>()
-        .add_command(
+        app.add_setting::<CompactionDefault>("compaction")
+            .init_resource::<CompactionCuts>()
+            .register_required_components::<TurnOf, Compactions>()
+            .keeps_saved::<Compaction>()
+            // Kept by older sessions; the state is the newest summary's now.
+            .retired_saved("rig_compaction::Summarized")
+            .add_command(
             "compact",
             "Summarize all but the newest reply to free context; /compact <focus> says what to keep",
             |In(args): In<CommandArgs>, mut commands: Commands| {
                 let (entity, focus) = (args.agent, args.args);
                 commands.trigger(Compact { entity, focus });
             },
+        )
+        .add_command(
+            "compaction",
+            "Show the agent's compaction policy; /compaction keep=30000 per-turn=1 sets its own \
+             knobs (reserve, keep, keep-asked, clear, per-turn, cut), /compaction reset [knob…] \
+             unsets them",
+            set_compaction,
         )
         .add_observer(on_compact)
         .add_observer(on_uncompact)
@@ -81,40 +98,113 @@ impl Plugin for CompactionPlugin {
     }
 }
 
-/// How agents are compacted: rig-memory's default policy, tracking the
-/// files the built-in file tools read and changed. A plugin whose tool
-/// reads or changes files tracks its argument the same way, by adding a
-/// [`TrackArgument`] to `tracked` (from `finish` or a startup system). A
-/// plugin chooses where a compaction cuts with the policy's `cut` (a
-/// [`Cut`](rig_memory::Cut)), given the conversation's messages and how
-/// many of the first are summaries ([`summarized_prefix`]), and how many
-/// summaries a turn may ask for with `per_turn`.
-#[derive(Resource, Clone, Debug)]
-pub struct Compaction(pub CompactionPolicy);
+/// This agent's own compaction knobs, kept with its conversation's line
+/// (`Follows`): every split starts with its source's as of the split
+/// point. Its policy is these applied to [`CompactionDefault`]
+/// ([`policy_of`]), so knobs it never set follow settings, new default
+/// prompts and plugins' tracked arguments. An agent without one has the
+/// default; a plugin or a command changes an agent's policy by inserting
+/// it.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[reflect(opaque, Component, Follows, Default, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Compaction(pub CompactionOverrides);
+
+/// The policy of every agent before its own knobs: rig-memory's default,
+/// tracking the files the built-in file tools read and changed, with
+/// `[compaction]` from `settings.toml` applied (each key a knob of
+/// [`CompactionOverrides`], so `keep_recent = 1000` keeps the rest). A
+/// plugin whose tool reads or changes files tracks its argument by adding
+/// a [`TrackArgument`] to its `tracked` in `build` or `finish`, after this
+/// plugin's.
+#[derive(Resource, Clone, Debug, PartialEq)]
+pub struct CompactionDefault(pub CompactionPolicy);
+
+impl Default for CompactionDefault {
+    /// The built-in default.
+    fn default() -> Self {
+        Self(CompactionPolicy {
+            tracked: TRACKED.to_vec(),
+            ..CompactionPolicy::default()
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for CompactionDefault {
+    /// `[compaction]` read as overrides of the built-in default.
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let overrides = CompactionOverrides::deserialize(deserializer)?;
+        Ok(Self(overrides.apply(&Self::default().0)))
+    }
+}
+
+/// An agent's policy: its own knobs, if any, applied to the default.
+pub fn policy_of(own: Option<&Compaction>, default: &CompactionDefault) -> CompactionPolicy {
+    match own {
+        Some(own) => own.0.apply(&default.0),
+        None => default.0.clone(),
+    }
+}
+
+/// The cut rules a policy may name (rig-memory's `Cut::Named`), added by
+/// plugins with [`AppCompactionExt::add_compaction_cut`].
+#[derive(Resource, Clone, Debug, Default)]
+pub struct CompactionCuts(pub CutRules);
+
+/// Adding cut rules a compaction policy may name.
+pub trait AppCompactionExt {
+    /// Adds `rule` as the cut `name`, which an agent's policy or
+    /// `[compaction] cut = "<name>"` chooses: given the messages, how many
+    /// of the first are summarized already, the reason and the model, the
+    /// first message to keep.
+    fn add_compaction_cut(
+        &mut self,
+        name: &str,
+        rule: impl Fn(
+            &[rig_core::completion::Message],
+            usize,
+            &CompactReason,
+            Option<&ModelSpec>,
+        ) -> Option<usize>
+        + Send
+        + Sync
+        + 'static,
+    ) -> &mut Self;
+}
+
+impl AppCompactionExt for App {
+    fn add_compaction_cut(
+        &mut self,
+        name: &str,
+        rule: impl Fn(
+            &[rig_core::completion::Message],
+            usize,
+            &CompactReason,
+            Option<&ModelSpec>,
+        ) -> Option<usize>
+        + Send
+        + Sync
+        + 'static,
+    ) -> &mut Self {
+        self.world_mut()
+            .get_resource_or_init::<CompactionCuts>()
+            .0
+            .add(name, rule);
+        self
+    }
+}
 
 /// The files the built-in file tools (rig-coding-tools') were called with:
 /// `read`'s are read, `edit`'s and `write`'s changed (a later set wins in
 /// the summary).
-const TRACKED: &[TrackArgument<'static>] = &[
-    TrackArgument {
-        tool: "read",
-        argument: "path",
-        set: "read-files",
-    },
-    TrackArgument {
-        tool: "edit",
-        argument: "path",
-        set: "modified-files",
-    },
-    TrackArgument {
-        tool: "write",
-        argument: "path",
-        set: "modified-files",
-    },
+const TRACKED: &[TrackArgument] = &[
+    TrackArgument::new("read", "path", "read-files"),
+    TrackArgument::new("edit", "path", "modified-files"),
+    TrackArgument::new("write", "path", "modified-files"),
 ];
 
 /// Compact the agent's conversation now: its messages up to the small tail
-/// the [`Compaction`] policy keeps (by default the newest reply alone) are
+/// its policy keeps (by default the newest reply alone) are
 /// replaced in requests by a summary the model writes, focused on `focus`
 /// when it is not empty. Refused while a turn runs.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
@@ -128,8 +218,8 @@ pub struct Compact {
 
 /// Put back the messages the agent's newest compaction replaced, with
 /// their ids, in place of its summary, as the session's log holds them
-/// ([`undo_summary`]); the summary state goes back to the compaction's
-/// before it. Refused while a turn runs or in a session that is not
+/// ([`undo_summary`]); the summary state ([`summary_state`]) goes back to
+/// the compaction's before it. Refused while a turn runs or in a session that is not
 /// saved.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
@@ -137,15 +227,6 @@ pub struct Uncompact {
     /// The agent.
     pub entity: Entity,
 }
-
-/// The agent's summary so far and the files it tracks, which the next
-/// compaction builds on. Saved with the session. A compaction inserts it
-/// after it spliced the summary into the conversation, so an
-/// `On<Insert<Summarized>>` observer sees the conversation with it.
-#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct Summarized(pub SummaryState);
 
 /// What a turn did to fit the window: whether it cleared tool outputs
 /// after an overflow, and how many summaries it asked for.
@@ -188,38 +269,198 @@ pub struct Summarizing {
 #[component(storage = "SparseSet")]
 struct SummaryRead;
 
-/// An agent as compacting it reads it: its messages, its summary so far,
-/// and its model.
+/// An agent as compacting it reads it: its messages, its own compaction
+/// knobs, and its model.
 #[derive(QueryData)]
 #[query_data(mutable)]
 struct Compacting {
     conversation: &'static mut Conversation,
-    summarized: Option<&'static Summarized>,
+    compaction: Option<&'static Compaction>,
     connection: Option<&'static Connection>,
 }
 
-/// Plans one summary call of `conversation` with `policy`, for `reason`,
-/// written by the model `spec`, building on `summarized`: the
-/// [`Summarizing`] to spawn it with and its request. `None` when no message
-/// would be summarized that is not already; an error says why the policy
-/// cannot plan it. rig-compaction's own compactions are planned so with the
-/// [`Compaction`] policy; a plugin that summarizes with another, such as a
+/// The knobs `/compaction` names, each with how it reads from a policy,
+/// whether overrides set it, and how it is set and unset there.
+const KNOBS: &[&str] = &["reserve", "keep", "keep-asked", "clear", "per-turn", "cut"];
+
+/// The value of the knob `knob` in `policy`, as `/compaction` shows it.
+fn knob(policy: &CompactionPolicy, knob: &str) -> String {
+    match knob {
+        "reserve" => policy.summarizer.limits.reserve.to_string(),
+        "keep" => policy.keep_recent.to_string(),
+        "keep-asked" => policy.keep_asked.to_string(),
+        "clear" => policy.clearing.keep_tokens.to_string(),
+        "per-turn" => policy.per_turn.to_string(),
+        _ => String::from(policy.cut.clone()),
+    }
+}
+
+/// Whether `own` sets the knob `knob`.
+fn sets(own: &CompactionOverrides, knob: &str) -> bool {
+    match knob {
+        "reserve" => own.limits.is_some(),
+        "keep" => own.keep_recent.is_some(),
+        "keep-asked" => own.keep_asked.is_some(),
+        "clear" => own.clearing.is_some(),
+        "per-turn" => own.per_turn.is_some(),
+        _ => own.cut.is_some(),
+    }
+}
+
+/// `own` with the knob `knob` set to `value` over `policy`, the agent's
+/// policy now, or why not.
+fn set_knob(
+    own: &mut CompactionOverrides,
+    policy: &CompactionPolicy,
+    knob: &str,
+    value: &str,
+) -> Result<(), String> {
+    let number = || {
+        value
+            .parse::<usize>()
+            .map_err(|_| format!("`{knob}` takes a number of tokens, not `{value}`"))
+    };
+    match knob {
+        "reserve" => {
+            let reserve = u64::try_from(number()?).map_err(|failure| failure.to_string())?;
+            let mut limits = own.limits.unwrap_or(policy.summarizer.limits);
+            limits.reserve = reserve;
+            own.limits = Some(limits);
+        }
+        "keep" => own.keep_recent = Some(number()?),
+        "keep-asked" => own.keep_asked = Some(number()?),
+        "clear" => own.clearing = Some(rig_memory::ClearToolOutputs::new(number()?)),
+        "per-turn" => {
+            let count = value
+                .parse()
+                .map_err(|_| format!("`per-turn` takes a count, not `{value}`"))?;
+            own.per_turn = Some(count);
+        }
+        "cut" if !value.is_empty() => own.cut = Some(Cut::from(value.to_owned())),
+        _ => return Err(unknown_knob(knob)),
+    }
+    Ok(())
+}
+
+/// Unsets the knob `knob` of `own`, or says it has none such.
+fn unset_knob(own: &mut CompactionOverrides, knob: &str) -> Result<(), String> {
+    match knob {
+        "reserve" => own.limits = None,
+        "keep" => own.keep_recent = None,
+        "keep-asked" => own.keep_asked = None,
+        "clear" => own.clearing = None,
+        "per-turn" => own.per_turn = None,
+        "cut" => own.cut = None,
+        _ => return Err(unknown_knob(knob)),
+    }
+    Ok(())
+}
+
+fn unknown_knob(knob: &str) -> String {
+    format!(
+        "there is no knob `{knob}`; the knobs are {}",
+        KNOBS.join(", ")
+    )
+}
+
+/// What `/compaction <args>` makes of `own`, the agent's knobs, whose policy
+/// is `policy`: the knobs to keep (`None` to show them only), or why not.
+fn edit_knobs(
+    own: &CompactionOverrides,
+    policy: &CompactionPolicy,
+    args: &str,
+) -> Result<Option<CompactionOverrides>, String> {
+    let mut words = args.split_whitespace().peekable();
+    if words.peek().is_none() {
+        return Ok(None);
+    }
+    let mut edited = own.clone();
+    if words.next_if_eq(&"reset").is_some() {
+        if words.peek().is_none() {
+            return Ok(Some(CompactionOverrides::default()));
+        }
+        for knob in words {
+            unset_knob(&mut edited, knob)?;
+        }
+        return Ok(Some(edited));
+    }
+    for word in words {
+        let (knob, value) = word
+            .split_once('=')
+            .ok_or_else(|| format!("`{word}` is not knob=value"))?;
+        set_knob(&mut edited, policy, knob, value)?;
+    }
+    Ok(Some(edited))
+}
+
+/// `/compaction`: shows the agent's policy, each knob its own or the
+/// default's, or sets or unsets its own knobs.
+fn set_compaction(
+    In(args): In<CommandArgs>,
+    agents: Query<Option<&Compaction>, With<Agent>>,
+    default: Res<CompactionDefault>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = args.agent;
+    let Ok(own) = agents.get(agent) else {
+        return;
+    };
+    let policy = policy_of(own, &default);
+    let none = CompactionOverrides::default();
+    let own = own.map_or(&none, |own| &own.0);
+    match edit_knobs(own, &policy, &args.args) {
+        Ok(None) => {
+            let lines: Vec<String> = KNOBS
+                .iter()
+                .map(|name| {
+                    let whose = if sets(own, name) { "own" } else { "settings" };
+                    format!("{name} = {} ({whose})", knob(&policy, name))
+                })
+                .collect();
+            let text = format!("Compaction policy:\n{}", lines.join("\n"));
+            notices.write(Notice::info(agent, text));
+        }
+        Ok(Some(edited)) if edited.is_empty() => {
+            commands.entity(agent).remove::<Compaction>();
+            notices.write(Notice::info(
+                agent,
+                "The compaction policy follows settings.",
+            ));
+        }
+        Ok(Some(edited)) => {
+            commands.entity(agent).insert(Compaction(edited));
+            notices.write(Notice::info(agent, "The compaction policy is changed."));
+        }
+        Err(why) => {
+            notices.write(Notice::error(agent, format!("/compaction: {why}.")));
+        }
+    }
+}
+
+/// Plans one summary call of `conversation` with `policy`, its cut named
+/// in `cuts`, for `reason`, written by the model `spec`, building on the
+/// conversation's summary state ([`summary_state`]): the [`Summarizing`] to
+/// spawn it with and its request. `None` when no message would be
+/// summarized that is not already; an error says why the policy cannot plan
+/// it. rig-compaction's own compactions are planned so with each agent's
+/// policy ([`policy_of`]); a plugin that summarizes with another, such as a
 /// fallback, replaces a summary call's [`Summarizing`] and
 /// [`ModelRequest`] with what this returns.
 pub fn plan(
     conversation: &rig_core::conversation::Conversation,
-    summarized: Option<&Summarized>,
     policy: &CompactionPolicy,
+    cuts: &CutRules,
     reason: CompactReason,
     spec: &ModelSpec,
 ) -> Result<Option<(Summarizing, CompletionRequest)>, String> {
-    let none = SummaryState::default();
-    let state = summarized.map_or(&none, |summarized| &summarized.0);
-    let planned = policy.plan_summary(conversation, state, &reason, spec);
+    let state = summary_state(conversation);
+    let planned = policy.plan_summary(conversation, &state, &reason, spec, cuts);
     let Some(SummaryPlan {
         upto,
         state,
         request,
+        ..
     }) = planned.map_err(|why| why.to_string())?
     else {
         return Ok(None);
@@ -292,20 +533,20 @@ impl CompactingItem<'_, '_> {
     fn start(
         &self,
         (agent, turn): (Entity, Option<(Entity, Entity)>),
-        (policy, reason): (&CompactionPolicy, CompactReason),
+        (policy, cuts, reason): (&CompactionPolicy, &CutRules, CompactReason),
         commands: &mut Commands,
         notices: &mut MessageWriter<Notice>,
     ) -> Start {
         let Some(connection) = self.connection else {
             return Start::NoModel;
         };
-        let planned = plan(
-            &self.conversation,
-            self.summarized,
-            policy,
-            reason,
-            &connection.spec,
-        );
+        if let Cut::Named(name) = &policy.cut
+            && !cuts.0.contains_key(name)
+        {
+            let why = format!("No plugin adds the compaction cut `{name}`; cutting by the budget.");
+            notices.write(Notice::warn(agent, why));
+        }
+        let planned = plan(&self.conversation, policy, cuts, reason, &connection.spec);
         let (summarizing, request) = match planned {
             Ok(Some(planned)) => planned,
             Ok(None) => return Start::NothingNew,
@@ -339,7 +580,7 @@ impl CompactingItem<'_, '_> {
 fn on_compact(
     compact: On<Compact>,
     mut agents: Query<(Compacting, Has<ActiveTurn>), With<Agent>>,
-    policy: Res<Compaction>,
+    (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -354,9 +595,10 @@ fn on_compact(
     let reason = CompactReason::Asked {
         focus: compact.focus.clone(),
     };
+    let policy = policy_of(compacting.compaction, &default);
     let refusal = match compacting.start(
         (agent, None),
-        (&policy.0, reason),
+        (&policy, &cuts.0, reason),
         &mut commands,
         &mut notices,
     ) {
@@ -380,7 +622,7 @@ fn compact_near_the_window(
     mut agents: Query<(Compacting, &mut LastUsage)>,
     mut turns: Query<&mut Compactions>,
     starts: ModelStarts,
-    policy: Res<Compaction>,
+    (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -391,14 +633,15 @@ fn compact_near_the_window(
         let Ok((mut compacting, mut last)) = agents.get_mut(agent) else {
             continue;
         };
-        if compactions.summaries >= policy.0.per_turn {
+        let policy = policy_of(compacting.compaction, &default);
+        if compactions.summaries >= policy.per_turn {
             continue;
         }
         let Ok((connection, sent, _)) = starts.sent(&model, Some(adapters), Some(agent)) else {
             continue;
         };
-        let (policy, spec) = (&policy.0, &*connection.spec);
-        let sent = policy.estimate(&sent.chat_history);
+        let (policy, spec) = (&policy, &*connection.spec);
+        let sent = estimate_tokens(&sent.chat_history);
         let used = last.context().unwrap_or(0).max(sent);
         if !policy.over_threshold(used, spec) {
             continue;
@@ -424,7 +667,7 @@ fn compact_near_the_window(
         if !policy.over_threshold(left, spec) {
             continue;
         }
-        let reason = (policy, CompactReason::Threshold);
+        let reason = (policy, &cuts.0, CompactReason::Threshold);
         let at = (agent, Some((turn, call)));
         let started = compacting.start(at, reason, &mut commands, &mut notices);
         if matches!(started, Start::Refused | Start::Started) {
@@ -443,7 +686,7 @@ fn recover_from_overflow(
     >,
     mut agents: Query<Compacting>,
     mut turns: Query<&mut Compactions>,
-    policy: Res<Compaction>,
+    (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -457,7 +700,7 @@ fn recover_from_overflow(
         let Ok(mut compacting) = agents.get_mut(agent) else {
             continue;
         };
-        let policy = &policy.0;
+        let policy = &policy_of(compacting.compaction, &default);
         let outgrew = "The conversation outgrew the model's context window";
         if !compactions.cleared {
             compactions.cleared = true;
@@ -479,7 +722,7 @@ fn recover_from_overflow(
         if compactions.summaries >= policy.per_turn {
             continue;
         }
-        let reason = (policy, CompactReason::Overflow);
+        let reason = (policy, &cuts.0, CompactReason::Overflow);
         let at = (agent, Some((turn, call)));
         match compacting.start(at, reason, &mut commands, &mut notices) {
             Start::NoModel | Start::NothingNew => {}
@@ -539,7 +782,6 @@ fn take_summary(
     calls: Query<(&CallOf, &ForAgent, &Summarizing, &Outcome, Option<&HoldOf>)>,
     held: Query<&Effect>,
     mut agents: Query<(&mut Conversation, &mut LastUsage)>,
-    policy: Res<Compaction>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -573,23 +815,22 @@ fn take_summary(
     let summary = summary.and_then(|(summary, end)| {
         let messages = conversation.messages();
         let older = messages.get(..end).unwrap_or_default();
-        let older = (older.len(), policy.0.estimate(older));
+        let older = (older.len(), estimate_tokens(older));
         let kept = messages.get(end..).unwrap_or_default();
-        let kept = (kept.len(), policy.0.estimate(kept));
+        let kept = (kept.len(), estimate_tokens(kept));
         let state = SummaryState {
             summary,
             ..summarizing.state.clone()
         };
         match apply_summary(&mut conversation, summarizing.upto, &state) {
-            Some(_) => Ok((state, older, kept)),
+            Some(_) => Ok((older, kept)),
             None => Err(failed("the summary was empty")),
         }
     });
     match summary {
-        Ok((state, (older, older_tokens), (kept, kept_tokens))) => {
-            let left = policy.0.estimate(conversation.messages());
+        Ok(((older, older_tokens), (kept, kept_tokens))) => {
+            let left = estimate_tokens(conversation.messages());
             *last = LastUsage(Some(Usage::new().total_tokens(left)));
-            commands.entity(agent).insert(Summarized(state));
             let text = compacted_text((older, older_tokens), (kept, kept_tokens), left);
             notices.write(Notice::info(agent, text));
         }
@@ -626,8 +867,6 @@ fn on_uncompact(
     uncompact: On<Uncompact>,
     mut agents: Query<(&AgentId, &mut Conversation, &mut LastUsage, Has<ActiveTurn>)>,
     store: Option<Res<SessionStore>>,
-    policy: Res<Compaction>,
-    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = uncompact.entity;
@@ -645,9 +884,8 @@ fn on_uncompact(
     };
     match undo_summary(&mut conversation, &*store.0, &id.0, summary_author()) {
         Ok(undone) => {
-            let left = policy.0.estimate(conversation.messages());
+            let left = estimate_tokens(conversation.messages());
             *last = LastUsage(Some(Usage::new().total_tokens(left)));
-            commands.entity(agent).insert(Summarized(undone.state));
             let count = undone.restored.len();
             let text = format!(
                 "Put back the {count} {} the newest compaction summarized; the model now gets \

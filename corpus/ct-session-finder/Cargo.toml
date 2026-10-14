@@ -13,14 +13,12 @@ workspace = true
 bevy_ecs = { workspace = true }
 # The pool the search's stream runs on.
 bevy_tasks = { workspace = true }
-# A session's date in the results.
-chrono = { workspace = true }
-# The channel the search thread sends its results through.
+# The search's results, as a stream.
 futures = { workspace = true }
 # The query, matched ignoring case.
 regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# A session's name, and switching to another session.
+# Switching to another session.
 rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 # Copying a message, and scrolling to it in a resumed session.
 rig-tui = { path = "../../plugins/rig-tui" }

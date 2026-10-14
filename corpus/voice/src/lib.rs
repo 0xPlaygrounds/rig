@@ -41,8 +41,8 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::{
-    AppKeyBindingsExt, InputSystems, KeyBinding, KeyInput, KeyPress, KeyPressed, Keys,
-    TerminalEvents, TuiInput,
+    AppKeyBindingsExt, InputSystems, KeyBinding, KeyInput, KeyPress, KeyPressed, Keys, MainInput,
+    TerminalEvents,
 };
 use serde::Deserialize;
 
@@ -381,7 +381,7 @@ fn on_talk(
 fn on_heard(
     heard: On<Add<Heard>>,
     transcriptions: Query<(&Transcribing, &Heard)>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -419,7 +419,7 @@ fn on_heard(
 fn on_send(
     send: On<SendTranscript>,
     pending: Query<&Pending>,
-    mut input: ResMut<TuiInput>,
+    mut input: MainInput,
     mut commands: Commands,
 ) {
     let Ok(Pending { agent, text }) = pending.get(send.entity) else {

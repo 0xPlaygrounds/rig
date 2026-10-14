@@ -15,6 +15,7 @@ fn a_listing_and_a_parent_read_back_and_unknown_fields_are_skipped() {
         title: "fix the parser".to_owned(),
         labels: BTreeMap::from([("spent".to_owned(), "$1".to_owned())]),
         updated: 7,
+        ..SessionMeta::default()
     };
     assert_eq!(SessionMeta::read(&store).as_ref(), Some(&meta));
     assert!(SessionMeta::default().write(&store).is_ok());

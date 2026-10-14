@@ -17,7 +17,7 @@ use rig_core::completion::UsageTotals;
 use rig_core::conversation::Conversation;
 use rig_core::message::{AssistantContent, Message, ToolCall, UserContent};
 use rig_core::tool::Tool;
-use rig_memory::{DirStore, SavedAgent, Session, title_of};
+use rig_memory::{DirStore, LineId, Session, Upgrades, lines, title_of};
 use rig_tools::{Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -86,11 +86,12 @@ pub fn load(arg: &str) -> Result<Side, String> {
         );
         return Err(format!("{path} is not a readable rig session: {why}"));
     };
-    let line = line_of(&agent.conversation, branch).map_err(|branches| match branch {
-        Some(branch) => format!("{path} has no branch {branch:?}; it has {branches}"),
-        None => format!("{path}: no active line"),
-    })?;
-    let spending = spending_of(&session, agent);
+    let line = line_of(&agent.conversation, branch).map_err(|why| format!("{path}: {why}"))?;
+    let upgrades = Upgrades::default();
+    let spending: Option<Spending> = session
+        .get(SESSION_SPENDING, &upgrades)
+        .or_else(|| agent.get(SPENDING, &upgrades))
+        .and_then(Result::ok);
     Ok(Side {
         label: arg.to_owned(),
         line,
@@ -107,35 +108,33 @@ pub fn load(arg: &str) -> Result<Side, String> {
     })
 }
 
-/// The session's spending, or else its main agent's.
-fn spending_of(session: &Session, agent: &SavedAgent) -> Option<Spending> {
-    let session = session.state.get(SESSION_SPENDING).cloned();
-    let value = session.or_else(|| agent.state.get(SPENDING).cloned())?;
-    serde_json::from_value(value).ok()
-}
-
-/// The line `branch` of `conversation` (the active one for `None`), as a
-/// conversation of its own; else the titles there are, listed.
+/// The line titled `branch` of `conversation` (the active one for `None`),
+/// as a conversation of its own with ids and made-times kept; else why not.
 fn line_of(conversation: &Conversation, branch: Option<&str>) -> Result<Conversation, String> {
-    let kept = conversation.branches();
-    let id = match branch {
-        None => None,
-        Some(title) if title == conversation.branch_title() => None,
-        Some(title) => match kept.iter().find(|kept| kept.branch.title == title) {
-            Some(kept) => Some(kept.id),
-            None => {
-                let titles = std::iter::once(conversation.branch_title())
-                    .chain(kept.iter().map(|kept| kept.branch.title.as_str()));
-                return Err(titles.collect::<Vec<_>>().join(", "));
-            }
-        },
+    let all = lines(conversation);
+    let line = match branch {
+        None => all.first(),
+        Some(title) => all.iter().find(|line| line.title == title),
     };
-    let entries = conversation.line(id).ok_or_else(String::new)?;
-    let mut line = Conversation::new();
-    for entry in entries {
-        line.push(entry);
-    }
-    Ok(line)
+    let Some(line) = line else {
+        let titles: Vec<&str> = all.iter().map(|line| line.title.as_str()).collect();
+        let branch = branch.unwrap_or_default();
+        return Err(format!(
+            "no branch {branch:?}; it has {}",
+            titles.join(", ")
+        ));
+    };
+    let id = match &line.id {
+        LineId::Active => None,
+        LineId::Branch(id) => Some(*id),
+        LineId::Session { session, .. } => {
+            return Err(format!("{:?} was split into session {session}", line.title));
+        }
+    };
+    let end = line.at.saturating_add(line.entries);
+    conversation
+        .line_conversation(id, end)
+        .ok_or_else(|| format!("cannot read the line {:?}", line.title))
 }
 
 /// What one side did.
