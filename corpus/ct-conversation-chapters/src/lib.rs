@@ -58,17 +58,9 @@ const BOUNDARY_PREAMBLE: &str = "You split a long coding session into chapters b
     {\"new_chapter\": true or false, \"title\": \"...\"}";
 
 /// The tool arguments that name a file a chapter changed.
-const CHANGED: &[TrackArgument<'static>] = &[
-    TrackArgument {
-        tool: "edit",
-        argument: "path",
-        set: "files-changed",
-    },
-    TrackArgument {
-        tool: "write",
-        argument: "path",
-        set: "files-changed",
-    },
+const CHANGED: &[TrackArgument] = &[
+    TrackArgument::new("edit", "path", "files-changed"),
+    TrackArgument::new("write", "path", "files-changed"),
 ];
 
 /// What the summary model is asked when a chapter is folded.
@@ -683,21 +675,28 @@ fn chapter_command(
     }
 }
 
-/// Scrolls the terminal view to `line`'s note.
+/// Shows `agent` in the terminal view's main pane, scrolled to `line`'s
+/// note.
 #[cfg(feature = "tui")]
 fn show(agent: Entity, conversation: &Conversation, line: &ChapterLine, commands: &mut Commands) {
-    use rig_tui::{ItemRow, ScrollTo, TranscriptItem};
+    use rig_tui::{Focus, ItemRow, MainPane, ScrollTo, TranscriptItem};
     let note = conversation.asides().find(|(_, aside)| {
         aside.after == Some(line.start) && aside.author == author() && Note::of(aside).is_some()
     });
     let item = match note {
-        Some((id, _)) => TranscriptItem::Note(id),
+        Some((id, _)) => TranscriptItem::Aside(id),
         None => TranscriptItem::Message(line.start),
     };
-    commands.trigger(ScrollTo {
-        agent,
-        item: Some(item),
-        row: ItemRow::Top(0),
+    commands.trigger(Focus { entity: agent });
+    commands.queue(move |world: &mut World| {
+        let mut main = world.query_filtered::<Entity, With<MainPane>>();
+        if let Ok(pane) = main.single(world) {
+            world.trigger(ScrollTo {
+                pane,
+                item: Some(item),
+                row: ItemRow::Top(0),
+            });
+        }
     });
 }
 
