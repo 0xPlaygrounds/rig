@@ -84,6 +84,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
+use rig_ecs::journal::SessionRewritten;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, Shown};
@@ -218,6 +219,7 @@ pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
     app.add_message::<rig_harness::watch::FileChanges>()
+        .add_message::<SessionRewritten>()
         .init_resource::<RigHome>()
         .init_resource::<Shown>()
         .init_resource::<view::TuiView>()
@@ -259,6 +261,9 @@ pub fn add_view(app: &mut App) {
                     .chain()
                     .after(AgentLoop),
                 view::recall_messages.after(AgentLoop),
+                history::follow_rewrites
+                    .before(HistorySystems::Record)
+                    .run_if(on_message::<SessionRewritten>),
                 history::record.in_set(HistorySystems::Record),
                 history::save.in_set(HistorySystems::Save),
             ),
