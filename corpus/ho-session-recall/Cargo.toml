@@ -17,8 +17,6 @@ bevy_tasks = { workspace = true }
 # Dates of the sessions a hit names.
 chrono = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# A past session's name and date, from its listing cache.
-rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
