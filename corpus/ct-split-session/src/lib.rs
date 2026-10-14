@@ -594,7 +594,10 @@ fn summarized(
             state.conclusions = Some(text);
             state.forking = true;
             commands.trigger(ForkSession {
-                before: state.end.map(|end| (id.clone(), end)),
+                from: None,
+                cut: state
+                    .end
+                    .map_or(ForkCut::Whole, |end| ForkCut::Before(id.clone(), end)),
                 asker: Some(split),
             });
         }

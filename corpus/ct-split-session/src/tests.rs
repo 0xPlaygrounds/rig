@@ -8,7 +8,6 @@ use rig_harness_test_support::{
     Collected, Ended, app_in, calls, collect, connect, first_agent, log_ended, reply, run_until,
     scratch_home, scripted_models,
 };
-use rig_sessions::list;
 
 use super::*;
 
@@ -236,10 +235,7 @@ fn split_moves_turns_three_and_four_and_undo_puts_them_back() {
     );
     assert_eq!(copied.get(1..), before.messages().get(4..12));
     assert!(copy.conversation.validate().is_ok());
-    let listed = list(&home, &SessionStores::default(), home.session(&id).path());
-    let line = listed
-        .iter()
-        .find(|entry| entry.id == copy_id)
+    let line = SessionEntry::read(&home.session(&copy_id), &SessionStores::default())
         .map(|entry| entry.label());
     assert!(
         line.as_deref()
