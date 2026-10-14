@@ -8,7 +8,11 @@
 //! again. A recorded model the environment has no key for, such as one
 //! whose credentials are gone, is reached through the replay's sign-in,
 //! which answers from the record only. Tool calls and replayable plugin
-//! effects are decided as Gate opens, before any gate. Each request is checked against the
+//! effects are decided as Gate opens, before any gate, but for the calls
+//! of a tool that [`RunsAgain`], such as rig-subagents' `task`, `message`
+//! and `wait`, whose answers come from the agents the replay runs again: a
+//! spawned subagent gets its recorded id, so what names it reads as it was
+//! recorded, and a `wait` ends when its report comes, as it did. Each request is checked against the
 //! recorded one at the same place of the same agent; the first difference
 //! stops the replay, or with `--continue-live` is reported and the run goes
 //! on live. With `--speed` each answer settles after its recorded duration
@@ -49,7 +53,7 @@ use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::providers::registry::ConnectError;
 use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_subagents::{SUBAGENT, SpawnedAgent};
+use rig_subagents::{MESSAGE, SUBAGENT, SpawnSubagent, SpawnedAgent, TASK, WAIT};
 
 #[cfg(test)]
 mod tests;
@@ -117,6 +121,14 @@ impl ReplaySource {
 /// Questions to the user (`ask`) are replayable.
 #[derive(Component, Clone, Debug)]
 pub struct Replayable(pub Cow<'static, str>);
+
+/// A tool, by name, whose calls a replay runs again instead of answering
+/// them from the record, as an entity: a tool that acts only in the
+/// agents' own world, so its answer depends on what the agents the replay
+/// runs do, such as a subagent's report. The replay spawns one for
+/// rig-subagents' `task`, `message` and `wait`.
+#[derive(Component, Clone, Debug)]
+pub struct RunsAgain(pub Cow<'static, str>);
 
 /// The first difference between a replayed effect and the recorded one.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -292,6 +304,9 @@ pub struct Replay {
     spawned: HashMap<Arc<str>, VecDeque<Arc<str>>>,
     /// The recorded agent each replaying agent stands for.
     paired: HashMap<Entity, Arc<str>>,
+    /// The recorded agent each spawn request given its id stands for,
+    /// until it spawned.
+    spawning: HashMap<Entity, Arc<str>>,
     /// The user messages not sent yet, and the recorded exit.
     steps: VecDeque<Step>,
     primary: Option<Entity>,
@@ -346,6 +361,7 @@ impl Replay {
             first,
             spawned,
             paired: HashMap::new(),
+            spawning: HashMap::new(),
             steps,
             primary: None,
             last_sent: None,
@@ -629,6 +645,9 @@ impl Plugin for SessionReplayPlugin {
         .add_flag(Flag::new(LIVE_TOOLS, "Run tools for real in --replay"))
         .add_flag(Flag::new(SPEED, "Keep the recorded timing in --replay"));
         app.world_mut().spawn(Replayable("ask".into()));
+        for tool in [TASK, MESSAGE, WAIT] {
+            app.world_mut().spawn(RunsAgain(tool.into()));
+        }
         app.configure_sets(
             AgentPass,
             (
@@ -662,6 +681,14 @@ impl Plugin for SessionReplayPlugin {
                 None => return,
             }
         };
+        // The replay's own front starts with no agent: its primary agent is
+        // the recorded first one again, id and all, so what names it, such
+        // as a subagent's brief, reads as recorded.
+        let first = source.effects.records.iter().find_map(|r| r.scope.clone());
+        if let (true, Some(first)) = (app.runs_front(REPLAY), first) {
+            let first = AgentId(first.to_string());
+            app.world_mut().spawn((Name::new("agent"), Agent, first));
+        }
         let timed = source.flags.original_timing;
         let recorded = source.effects.records.iter();
         let models = recorded.filter(|record| matches!(record.kind, EffectKind::Completion { .. }));
@@ -680,7 +707,9 @@ impl Plugin for SessionReplayPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    models_from_record.in_set(ReplaySystems::Prepare),
+                    (recorded_ids, models_from_record)
+                        .chain()
+                        .in_set(ReplaySystems::Prepare),
                     answer_from_record.in_set(ReplaySystems::Gate),
                     keep_recorded_timing
                         .in_set(ReplaySystems::Review)
@@ -759,24 +788,39 @@ fn start(
     );
 }
 
-/// Pairs each subagent the replay spawns with the one its parent's recorded
-/// spawn at the same place made.
-fn pair_spawned(
-    spawned: On<Add<SpawnedAgent>>,
-    spawns: Query<(&SpawnedAgent, &ForAgent)>,
+/// Gives each spawn request of a replayed agent the id of the agent its
+/// recorded spawn at the same place made, so the subagent is that agent
+/// again: the answers and the messages that name it read as recorded.
+fn recorded_ids(
+    mut spawns: Query<(Entity, &mut SpawnSubagent, &ForAgent), Added<Admitted>>,
     mut replay: ResMut<Replay>,
 ) {
-    let Ok((&SpawnedAgent(child), &ForAgent(parent))) = spawns.get(spawned.entity) else {
+    for (entity, mut spawn, &ForAgent(parent)) in &mut spawns {
+        let Some(recorded_parent) = replay.paired.get(&parent).cloned() else {
+            continue;
+        };
+        let recorded = replay
+            .spawned
+            .get_mut(&recorded_parent)
+            .and_then(VecDeque::pop_front);
+        if let Some(recorded) = recorded {
+            spawn.id = Some(AgentId(recorded.to_string()));
+            replay.spawning.insert(entity, recorded);
+        }
+    }
+}
+
+/// Pairs each subagent the replay spawns with the recorded one its
+/// request was given the id of.
+fn pair_spawned(
+    spawned: On<Add<SpawnedAgent>>,
+    spawns: Query<&SpawnedAgent>,
+    mut replay: ResMut<Replay>,
+) {
+    let Ok(&SpawnedAgent(child)) = spawns.get(spawned.entity) else {
         return;
     };
-    let Some(recorded_parent) = replay.paired.get(&parent).cloned() else {
-        return;
-    };
-    let recorded = replay
-        .spawned
-        .get_mut(&recorded_parent)
-        .and_then(VecDeque::pop_front);
-    if let Some(recorded) = recorded {
+    if let Some(recorded) = replay.spawning.remove(&spawned.entity) {
         replay.paired.insert(child, recorded);
     }
 }
@@ -948,7 +992,7 @@ type Answerable<'a> = (
     Option<&'a EffectRequest>,
 );
 
-/// Decides each tool call (unless tools run live) and [`Replayable`]
+/// Decides each tool call (unless tools run live, or its tool [`RunsAgain`]) and [`Replayable`]
 /// plugin effect about to start, and not decided yet, with the record its
 /// request matches, in id order. At a divergence the effect is refused,
 /// which stops the replay, as is everything after it but the exit, model
@@ -956,7 +1000,7 @@ type Answerable<'a> = (
 /// has it. With `continue_live` they are left to start live.
 fn answer_from_record(
     mut effects: Query<Answerable, (Undecided, Without<Incoming>, Without<ExitRequest>)>,
-    replayable: Query<&Replayable>,
+    (replayable, again): (Query<&Replayable>, Query<&RunsAgain>),
     replay: Res<Replay>,
     mut commands: Commands,
 ) {
@@ -978,8 +1022,15 @@ fn answer_from_record(
             let name = kind.name();
             replayable.iter().any(|replayable| replayable.0 == name)
         };
+        let runs_again = |call: &ToolCall| {
+            let name = call.function.name.as_str();
+            again.iter().any(|again| again.0 == name)
+        };
         let kind = match (tool, request) {
-            (Some(ToolRequest { call }), _) if !replay.flags.live_tools => EffectKind::from(call),
+            (Some(ToolRequest { call }), _) if replay.flags.live_tools || runs_again(call) => {
+                continue;
+            }
+            (Some(ToolRequest { call }), _) => EffectKind::from(call),
             (None, Some(request)) if replays(&request.kind) => request.kind.clone(),
             _ => continue,
         };
