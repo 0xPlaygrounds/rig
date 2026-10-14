@@ -13,6 +13,14 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The subagents kept after their task, their lifecycle and open requests.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+# What each subagent spent, for `/subagents`.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+# `Focus`: the terminal view sends what is typed to the agent it shows.
+rig-tui = { path = "../../plugins/rig-tui" }
+# The tool's parameters, derived from its arguments type.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
