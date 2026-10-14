@@ -9,9 +9,13 @@ description = "Plugin corpus (conversation-over-time fresh held-out): CT-18: 18.
 workspace = true
 
 [dependencies]
+# What the socket's connections hand the app, read as a `Running::stream`.
+async-channel = { workspace = true }
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# The pool the streams run on.
+bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
