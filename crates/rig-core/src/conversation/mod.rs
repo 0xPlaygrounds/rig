@@ -54,7 +54,7 @@ mod turn;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
-pub use branch::{ACTIVE, BRANCH, Branch, BranchError, Kept, LINE, MAIN};
+pub use branch::{ACTIVE, BRANCH, Branch, BranchError, Kept, LINE, MAIN, MergeAt, shared_prefix};
 pub use lineage::Lineage;
 pub use turn::{TURN, TurnEnd, TurnRecord};
 
