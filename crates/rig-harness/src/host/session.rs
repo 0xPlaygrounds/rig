@@ -445,10 +445,12 @@ fn mark_started(paths: Res<SessionPaths>, mut commands: Commands) {
 /// nothing saved there, such as a run that switches to another session at
 /// startup, or when a sessionless front's run ends, however, once
 /// everything was written there; never a saved session a front keeps,
-/// never on a reload, which runs the session again, and never a resumed
-/// session's, which a sessionless front refuses. A run that failed first
-/// moves its text log into the launcher's run directory, where the
-/// launcher's failure message points.
+/// never on a reload, which runs the session again, never on a switch the
+/// launcher is told of (its switch file is in the directory, and the
+/// launcher removes an unsaved session once it read it), and never a
+/// resumed session's, which a sessionless front refuses. A run that
+/// failed first moves its text log into the launcher's run directory,
+/// where the launcher's failure message points.
 fn discard_unsaved(
     mut exits: MessageReader<AppExit>,
     (cli, start, reason): (
@@ -469,7 +471,7 @@ fn discard_unsaved(
     let discard = if cli.is_some_and(|cli| cli.sessionless()) {
         start.is_none_or(|start| start.0 != StartReason::Resumed)
     } else {
-        !reload && !paths.is_saved()
+        !reload && !paths.is_saved() && !paths.switch().exists()
     };
     if !discard {
         return;

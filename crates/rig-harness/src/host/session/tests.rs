@@ -716,7 +716,9 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
 /// A run that leaves its session before anything was saved there, such
 /// as one switching to another session at startup, removes its directory,
 /// whatever its front; a reload, which runs the session again, and a
-/// saved session keep it.
+/// saved session keep it. A switch the launcher is told of (its switch
+/// file) keeps it too: the launcher reads where to go from there, then
+/// removes the unsaved session itself.
 #[test]
 fn an_unsaved_session_left_for_good_leaves_no_directory() {
     let home = scratch_home("rig-unsaved-left");
@@ -726,6 +728,9 @@ fn an_unsaved_session_left_for_good_leaves_no_directory() {
         fs::create_dir_all(session.path()).ok();
         if saved {
             session.mark_saved().ok()?;
+        }
+        if id.as_str() == "1700000000-20" {
+            fs::write(session.switch(), "1700000000-19").ok()?;
         }
         let mut app = App::new();
         app.add_message::<Notice>()
@@ -742,12 +747,20 @@ fn an_unsaved_session_left_for_good_leaves_no_directory() {
     let quit = left("1700000000-17", ExitReason::Quit, false);
     let reloaded = left("1700000000-18", ExitReason::Reload, false);
     let saved = left("1700000000-19", ExitReason::Switch(None), true);
+    let told = left("1700000000-20", ExitReason::Switch(None), false);
+    let switch_file = "1700000000-20"
+        .parse()
+        .ok()
+        .map(|id| home.session(&id).switch());
+    let switch_file = switch_file.and_then(|path| fs::read_to_string(path).ok());
     drop(std::panic::take_hook());
     fs::remove_dir_all(home.root()).ok();
     assert_eq!(switched, Some(false), "switched away at startup");
     assert_eq!(quit, Some(false), "quit");
     assert_eq!(reloaded, Some(true), "reloaded");
     assert_eq!(saved, Some(true), "saved");
+    assert_eq!(told, Some(true), "a switch the launcher is told of");
+    assert_eq!(switch_file.as_deref(), Some("1700000000-19"));
 }
 
 /// A front whose runs keep no session never takes a resumed one, such as
