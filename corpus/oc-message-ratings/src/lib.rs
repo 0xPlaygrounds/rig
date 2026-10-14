@@ -11,19 +11,21 @@
 //! jumps to one; `/ratings --all` reads every saved session of the project
 //! and tallies good, bad and unrated replies per model.
 
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Conversation as Saved, MessageKey};
 use rig_harness::rig_core::message::{AssistantContent, Message};
 use rig_harness::rig_memory::now_ms;
+use rig_harness::sessions::SessionEntry;
 use rig_tui::crossterm::event::{KeyCode, KeyModifiers};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, EntryView, InputAction, ItemRow, KeyBinding, KeyPress,
-    KeyPressed, KeyScope, ScrollTo, TranscriptItem, TranscriptView, TuiPlugin, run_command,
+    AppKeyBindingsExt, AppToolRenderersExt, EntryView, Focus, InputAction, ItemRow, KeyBinding,
+    KeyPress, KeyPressed, KeyScope, MainPane, ScrollTo, TranscriptItem, TranscriptView, TuiPlugin,
+    run_command,
 };
 use serde::{Deserialize, Serialize};
 
@@ -392,12 +394,12 @@ fn list(
     commands.spawn((picker, Opens(opens))).observe(open);
 }
 
-/// Scrolls to the rating chosen in a `/ratings` picker and shows it
-/// expanded and selected.
+/// Shows the agent of the rating chosen in a `/ratings` picker in the
+/// main pane, scrolled to the rating, expanded and selected.
 fn open(
     picked: On<Picked>,
     opens: Query<&Opens>,
-    view: Option<ResMut<TranscriptView>>,
+    pane: Option<Single<(Entity, &mut TranscriptView), With<MainPane>>>,
     mut commands: Commands,
 ) {
     let Some(chosen) = picked
@@ -414,13 +416,16 @@ fn open(
     else {
         return;
     };
-    let item = TranscriptItem::Note(marker);
-    if let Some(mut view) = view {
-        view.expanded.insert(item.clone());
-        view.selected = Some(item.clone());
-    }
+    let Some(pane) = pane else {
+        return;
+    };
+    let (pane, mut view) = pane.into_inner();
+    let item = TranscriptItem::Aside(marker);
+    view.expanded.insert(item.clone());
+    view.selected = Some(item.clone());
+    commands.trigger(Focus { entity: agent });
     commands.trigger(ScrollTo {
-        agent,
+        pane,
         item: Some(item),
         row: ItemRow::Reveal,
     });
@@ -517,11 +522,16 @@ fn across_project(agents: &Query<(Entity, &AgentId, &Conversation)>, project: &P
     }
     let paths = project.paths.as_deref();
     let directory = paths.and_then(|paths| paths.working_directory());
-    let path = paths.map_or_else(PathBuf::new, |paths| paths.path().to_path_buf());
-    for session in rig_sessions::list(&home, &stores, &path) {
-        if session.directory != directory {
-            continue;
-        }
+    let this = paths.map(|paths| paths.path());
+    let mut sessions: Vec<SessionEntry> = home
+        .saved_sessions()
+        .into_iter()
+        .filter(|(_, dir)| Some(dir.path()) != this)
+        .filter_map(|(_, dir)| SessionEntry::read(&dir, &stores))
+        .filter(|session| session.directory == directory)
+        .collect();
+    sessions.sort_by_key(|session| Reverse(session.updated));
+    for session in sessions {
         let store = stores.open(&home.session(&session.id));
         let Some((saved, _)) = store
             .ok()

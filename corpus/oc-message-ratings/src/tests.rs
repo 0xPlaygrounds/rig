@@ -146,9 +146,10 @@ fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
     // new turn is rated by nobody.
     let before = turn_2.map(|turn_2| (AgentId("main".to_owned()), turn_2));
     assert!(before.is_some(), "turn 2 was asked");
+    let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
     app.world_mut().trigger(ForkSession {
-        before,
-        asker: None,
+        cut,
+        ..ForkSession::default()
     });
     let fork_dir = home.sessions();
     let forked = |_: &World| fs::read_dir(&fork_dir).into_iter().flatten().count() > 1;
