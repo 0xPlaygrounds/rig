@@ -24,8 +24,8 @@ use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    InputSystems, KeyInput, PanelCanvas, Placement, TerminalEvents, TuiInput, TuiInputState,
-    TuiKeys, TuiPanel, TuiSystems,
+    Editor, InputSystems, KeyInput, MainEditor, PanelCanvas, Placement, TerminalEvents,
+    TuiInputState, TuiKeys, TuiPanel, TuiSystems,
 };
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -200,7 +200,10 @@ fn note_activity(
 /// before then puts the clock off.
 fn watch_keys(
     mut events: ResMut<TerminalEvents>,
-    (input, state): (Res<TuiInput>, Res<TuiInputState>),
+    (input, state): (
+        Option<Single<&Editor, With<MainEditor>>>,
+        Res<TuiInputState>,
+    ),
     clocks: Query<(Entity, Has<Due>), With<IdleClock>>,
     cards: Query<Entity, With<RecapCard>>,
     config: Res<RecapConfig>,
@@ -212,7 +215,9 @@ fn watch_keys(
     if key.kind == KeyEventKind::Release {
         return;
     }
-    let quiet = input.is_empty() && state.completion().is_none() && state.picking().is_none();
+    let quiet = input.is_none_or(|input| input.is_empty())
+        && state.completion().is_none()
+        && state.picking().is_none();
     if key.code == KeyCode::Esc && quiet && !cards.is_empty() {
         events.0.remove(0);
         commands.trigger(DismissRecap);
