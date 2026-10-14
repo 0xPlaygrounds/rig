@@ -123,6 +123,9 @@ pub enum Placement {
         /// Its height.
         height: Constraint,
     },
+    /// What the other panels leave, such as the default screen's
+    /// transcript; several such panels share it.
+    Rest,
 }
 
 /// Where a [`TuiPanel`] is drawn this frame and what was drawn there. The
@@ -198,15 +201,20 @@ pub(super) fn below_rows(asked: impl IntoIterator<Item = u16>, mut room: u16) ->
 
 /// Lays the panels out in `main`, the area above the status line,
 /// `below`, the rows under the input, and `screen`, the whole screen;
-/// returns what is left for the transcript.
+/// those that take the rest get what the others leave, which it returns.
 pub(super) fn lay_out<'a>(
     panels: impl Iterator<Item = (&'a TuiPanel, Mut<'a, PanelCanvas>)>,
     mut main: Rect,
     mut below: Rect,
     screen: Rect,
 ) -> Rect {
+    let mut rest = Vec::new();
     for (panel, mut canvas) in panels {
         let area = match panel.placement {
+            Placement::Rest => {
+                rest.push(canvas);
+                continue;
+            }
             Placement::Over { width, height } => screen.centered(width, height),
             Placement::BelowInput(size) => {
                 let rows = below_rows([rows_of(size, screen.height)], below.height);
@@ -235,6 +243,9 @@ pub(super) fn lay_out<'a>(
         };
         // Drawing changes only the buffer: not a change to redraw for.
         canvas.bypass_change_detection().reset(area);
+    }
+    for mut canvas in rest {
+        canvas.bypass_change_detection().reset(main);
     }
     main
 }

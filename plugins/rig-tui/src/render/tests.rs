@@ -269,13 +269,11 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     use rig_harness::prelude::*;
 
     use crate::tests::{type_text, view_app};
-    use crate::{
-        DrawnTranscript, TerminalWrite, TranscriptItem, TuiFrame, TuiInput, TuiTestScreen,
-    };
+    use crate::{TerminalWrite, TranscriptItem, TuiFrame, TuiInput, TuiTestScreen};
 
     let (mut app, agent) = view_app();
-    app.insert_resource(TuiTestScreen::new(60, 20))
-        .init_resource::<DrawnTranscript>();
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    crate::tests::keep_drawn(&mut app);
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.push(Message::user("where is the config read?"));
     }
@@ -291,8 +289,11 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     // transcript is.
     let frame = world.resource::<TuiFrame>().clone();
     assert_eq!((frame.screen.width, frame.screen.height), (60, 20));
-    assert!(frame.transcript.height > 0 && frame.input.y > frame.transcript.y);
-    let drawn = world.resource::<DrawnTranscript>();
+    let transcript = frame
+        .area(crate::tests::main_pane(world))
+        .unwrap_or_default();
+    assert!(transcript.height > 0 && frame.input.y > transcript.y);
+    let drawn = crate::tests::drawn(&app);
     let id = world.get::<Conversation>(agent).and_then(|c| c.id(0));
     let message = id.and_then(|id| drawn.rows_of(&TranscriptItem::Message(id)));
     let on_screen = message.into_iter().flatten().filter_map(|row| {
@@ -313,7 +314,7 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
     type_text(&mut app, "/mo");
     let frame = app.world().resource::<TuiFrame>();
     assert_eq!(frame.overlays.len(), 1, "{frame:?}");
-    assert!(frame.covered(frame.transcript));
+    assert!(frame.covered(transcript));
 }
 
 /// A repaint asks for a frame and writes its cells again, clipped to the

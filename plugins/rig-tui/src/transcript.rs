@@ -1303,9 +1303,10 @@ struct Held {
 }
 
 /// What is below a view scrolled up.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Below {
     /// Nothing: the view follows the bottom.
+    #[default]
     Nothing,
     /// Rows that were there when the view was scrolled up.
     More,

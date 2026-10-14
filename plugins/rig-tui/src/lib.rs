@@ -20,14 +20,16 @@
 //! call or message with [`AppToolRenderersExt::add_call_decorator`] and
 //! [`AppToolRenderersExt::add_message_decorator`]. The line producers the
 //! transcript draws with are public ([`markdown`], [`wrap`], [`diff`],
-//! [`excerpt`]), so a plugin's own text looks the same. The
-//! [`TranscriptView`] says, and lets a plugin set, what is expanded and
-//! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;
-//! [`ScrollTo`] scrolls to an item or to a row of it a highlight lights,
-//! and [`TranscriptView::top`] reads where the view is.
+//! [`excerpt`]), so a plugin's own text looks the same. A transcript is a
+//! [`TranscriptPane`] ([`pane`]) over the agent shown, another agent or a
+//! conversation value, which a plugin places in a panel of its own; each
+//! pane's [`TranscriptView`] says, and lets a plugin set, what is expanded
+//! and selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text
+//! lit; [`ScrollTo`] scrolls a pane to an item or to a row of it a
+//! highlight lights, and [`TranscriptView::top`] reads where it is.
 //! [`ShownNotice::slot`] says where a notice is drawn in an agent's
 //! transcript ([`TranscriptSlot`]), and [`DrawnTranscript`], which a
-//! plugin adds, holds the rows the last frame drew, by item, with those
+//! plugin adds to a pane, holds the rows it laid out, by item, with those
 //! drawn cut and the matches it lit. [`TranscriptLayout`] lays out any
 //! agent's transcript the same way without drawing it, cut as drawn or
 //! whole ([`Expanded`]), for an export, a copy or a search.
@@ -68,7 +70,6 @@
 
 mod clipboard;
 mod complete;
-mod conversation_panel;
 pub mod diff;
 mod editor;
 mod history;
@@ -76,6 +77,7 @@ mod input;
 mod jsonl;
 pub mod keys;
 pub mod markdown;
+pub mod pane;
 pub mod panel;
 mod pick;
 mod render;
@@ -98,7 +100,6 @@ use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, Sho
 use rig_harness::rig_memory::SPLIT;
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
-pub use conversation_panel::ConversationPanel;
 pub use crossterm;
 pub use editor::TuiInput;
 pub use history::{HistorySystems, PromptHistory, Sent};
@@ -107,6 +108,7 @@ pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
     run_command,
 };
+pub use pane::{MainPane, MainTranscript, PaneKeys, TranscriptPane, TranscriptSource};
 pub use panel::{
     Focused, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel, TuiScreen, TuiSystems,
 };
@@ -127,7 +129,8 @@ pub use terminal::{
 pub use transcript::PastEffects;
 pub use view::{
     Continuation, DrawnLine, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, LineSpan,
-    MarkIn, ScrollTo, ShownNotice, TextMark, TranscriptItem, TranscriptSlot, TranscriptView,
+    MarkIn, Notices, ScrollTo, ShownNotice, TextMark, TranscriptItem, TranscriptSlot,
+    TranscriptView,
 };
 
 /// The terminal view's name as a front.
@@ -153,7 +156,7 @@ impl Plugin for TuiPlugin {
         app.keeps_files("tui");
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiFrame>()
-            .init_resource::<TranscriptView>()
+            .init_resource::<Notices>()
             .init_resource::<transcript::CallFacts>()
             .init_resource::<transcript::StreamingCalls>()
             .init_resource::<TuiScreen>()
@@ -201,6 +204,12 @@ impl Plugin for TuiPlugin {
                 (HistorySystems::Record, HistorySystems::Save).chain(),
             );
         app.add_front(Front::new(FRONT).on_terminal());
+        app.world_mut().spawn((
+            Name::new("tui:transcript"),
+            TranscriptPane::new(TranscriptSource::Shown),
+            MainPane,
+            PaneKeys,
+        ));
     }
 
     /// Owns the terminal when the run is the terminal view's: any other
@@ -287,11 +296,12 @@ pub fn add_view(app: &mut App) {
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
                 transcript::note_effects.in_set(TuiSystems::Prepare),
-                conversation_panel::draw_panels.in_set(TuiSystems::Draw),
+                pane::draw_panes.in_set(TuiSystems::Draw),
                 (
                     complete::follow_input,
                     transcript::follow_streams,
                     render::layout.run_if(terminal::has_screen.and_then(render::needs_redraw)),
+                    pane::lay_out_panes.run_if(render::frame_due),
                 )
                     .chain()
                     .in_set(TuiSystems::Layout),
@@ -328,12 +338,12 @@ fn follow_rewrites(
     mut rewritten: MessageReader<SessionRewritten>,
     mut history: ResMut<PromptHistory>,
     mut facts: ResMut<transcript::CallFacts>,
-    mut view: ResMut<TranscriptView>,
+    mut notices: ResMut<Notices>,
 ) {
     for done in rewritten.read().filter(|done| done.result.is_ok()) {
         history.rewrite(&*done.with);
         facts.rewrite(&*done.with);
-        view.rewrite(&*done.with);
+        notices.rewrite(&*done.with);
     }
 }
 

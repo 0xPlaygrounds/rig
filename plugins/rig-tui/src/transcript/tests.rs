@@ -284,9 +284,9 @@ fn a_kept_branch_and_a_message_are_drawn_by_their_looks() {
     assert!(order.is_sorted(), "{lines:#?}");
     assert!(line_of(&lines, "second question").is_none(), "{lines:#?}");
     // The decoration is an item of its own inside the reply's rows.
-    app.init_resource::<DrawnTranscript>();
+    crate::tests::keep_drawn(&mut app);
     on_screen(&mut app, agent, 100);
-    let drawn = app.world().resource::<DrawnTranscript>();
+    let drawn = crate::tests::drawn(&app);
     let reply = message_id(&app, agent, 1);
     let decoration = reply.map(|id| TranscriptItem::MessageDecoration(id, "ratings".into()));
     let rows = decoration.and_then(|item| drawn.rows_of(&item));
@@ -323,7 +323,7 @@ fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
     assert!(order.is_sorted(), "{lines:#?}");
     // Alt+Up selects the newest item, the last message; again, the note.
     press(&mut app, "alt+up alt+up");
-    let selected = app.world().resource::<TranscriptView>().selected.clone();
+    let selected = crate::tests::main_view(&app).selected.clone();
     assert_eq!(selected, note.map(TranscriptItem::Aside));
     // Ctrl+O expands it: drawn whole.
     press(&mut app, "ctrl+o");
@@ -348,7 +348,7 @@ fn an_image_the_assistant_made_is_drawn() {
 fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
     use rig_core::message::UserContent;
     let (mut app, agent) = view_app();
-    app.init_resource::<DrawnTranscript>();
+    crate::tests::keep_drawn(&mut app);
     // An image look that reserves a row under its label, as a plugin
     // placing images does.
     app.add_content_renderer(ContentKind::Image, |view| {
@@ -388,7 +388,7 @@ fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
     let Some(asked) = message_id(&app, agent, 0) else {
         return;
     };
-    let drawn = app.world().resource::<DrawnTranscript>();
+    let drawn = crate::tests::drawn(&app);
     let rows = drawn.rows_of(&TranscriptItem::Content(asked, 1));
     let texts: Vec<&str> = (rows.unwrap_or_default().map(|row| drawn.rows().get(row)))
         .map(|row| row.map_or("", |row| row.text.as_str()))
@@ -448,6 +448,7 @@ fn the_note_rig_adds_after_a_stop_is_drawn_as_a_stop() {
 #[test]
 fn scroll_to_puts_an_item_at_the_top_and_top_reads_it_back() {
     let (mut app, agent) = view_app();
+    let pane = crate::tests::main_pane(app.world());
     for index in 0..30 {
         say(&mut app, agent, Message::user(format!("question {index}")));
         say(
@@ -461,29 +462,30 @@ fn scroll_to_puts_an_item_at_the_top_and_top_reads_it_back() {
     };
     let item = TranscriptItem::Message(hit);
     app.world_mut().trigger(ScrollTo {
-        agent,
+        pane,
         item: Some(item.clone()),
         row: ItemRow::Top(1),
     });
     let lines = on_screen(&mut app, agent, 10);
     // The answer's first row is blank; its second, the text.
     assert_eq!(lines.first().map(String::as_str), Some("answer 10"));
-    let top = app.world().resource::<TranscriptView>().top().cloned();
+    let top = crate::tests::main_view(&app).top().cloned();
     assert_eq!(top, Some((item, 1)));
     // `None` follows the newest output again.
     app.world_mut().trigger(ScrollTo {
-        agent,
+        pane,
         item: None,
         row: ItemRow::Top(0),
     });
     let lines = on_screen(&mut app, agent, 10);
     assert_eq!(lines.last().map(String::as_str), Some("answer 29"));
-    assert_eq!(app.world().resource::<TranscriptView>().top(), None);
+    assert_eq!(crate::tests::main_view(&app).top(), None);
 }
 
 #[test]
 fn scroll_to_finds_the_row_a_highlight_lights() {
     let (mut app, agent) = view_app();
+    let pane = crate::tests::main_pane(app.world());
     for index in 0..30 {
         say(&mut app, agent, Message::user(format!("question {index}")));
         let answer = match index {
@@ -495,13 +497,15 @@ fn scroll_to_finds_the_row_a_highlight_lights() {
     let Some(hit) = message_id(&app, agent, 21) else {
         return;
     };
-    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
-        text: "FLAKY".to_owned(),
-        ..Highlight::default()
-    }];
+    crate::tests::steer(&mut app, |view| {
+        view.highlights = vec![Highlight {
+            text: "FLAKY".to_owned(),
+            ..Highlight::default()
+        }]
+    });
     let mut top_after = |row: ItemRow| {
         let item = Some(TranscriptItem::Message(hit));
-        app.world_mut().trigger(ScrollTo { agent, item, row });
+        app.world_mut().trigger(ScrollTo { pane, item, row });
         let lines = on_screen(&mut app, agent, 10);
         lines.first().cloned().unwrap_or_default()
     };
@@ -517,7 +521,7 @@ fn scroll_to_finds_the_row_a_highlight_lights() {
 #[test]
 fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
     let (mut app, agent) = view_app();
-    app.init_resource::<DrawnTranscript>();
+    crate::tests::keep_drawn(&mut app);
     let Ok(name) = ToolName::new("shell") else {
         return;
     };
@@ -531,14 +535,16 @@ fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
     let output: Vec<String> = (0..10).map(|test| format!("test {test} flaky")).collect();
     let result = Message::tool_result(call.id.clone(), name, output.join("\n"));
     say(&mut app, agent, result);
-    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
-        text: "flaky".to_owned(),
-        ..Highlight::default()
-    }];
+    crate::tests::steer(&mut app, |view| {
+        view.highlights = vec![Highlight {
+            text: "flaky".to_owned(),
+            ..Highlight::default()
+        }]
+    });
     let item = TranscriptItem::Call(call.id.clone());
     let drawn = |app: &mut App| {
         on_screen(app, agent, 5);
-        app.world().resource::<DrawnTranscript>().clone()
+        crate::tests::drawn(&app).clone()
     };
     let collapsed = drawn(&mut app);
     assert_eq!(collapsed.agent(), Some(agent));
@@ -557,15 +563,16 @@ fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
     let rows = collapsed.rows().len();
     assert_eq!(collapsed.on_screen(), rows.saturating_sub(5)..rows);
     // Drawn whole, every match is.
-    let expanded = &mut app.world_mut().resource_mut::<TranscriptView>().expanded;
-    expanded.insert(item.clone());
+    crate::tests::steer(&mut app, |view| {
+        view.expanded.insert(item.clone());
+    });
     assert_eq!(drawn(&mut app).lit_in(&item), 10);
 }
 
 #[test]
 fn a_match_a_wrap_splits_is_lit_and_counted() {
     let (mut app, agent) = view_app();
-    app.init_resource::<DrawnTranscript>();
+    crate::tests::keep_drawn(&mut app);
     // Words that fill the 80 columns so "cannot find" wraps after "cannot".
     let filler = "word ".repeat(14);
     say(
@@ -574,12 +581,14 @@ fn a_match_a_wrap_splits_is_lit_and_counted() {
         Message::user(format!("{filler}cannot find foo")),
     );
     let lit = Style::new().on_yellow();
-    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
-        text: "cannot find".to_owned(),
-        style: lit,
-        match_case: false,
-        spans: Vec::new(),
-    }];
+    crate::tests::steer(&mut app, |view| {
+        view.highlights = vec![Highlight {
+            text: "cannot find".to_owned(),
+            style: lit,
+            match_case: false,
+            spans: Vec::new(),
+        }]
+    });
     let rows = drawn_rows(&mut app, agent, 10, Vec::new());
     let texts: Vec<String> = rows.iter().map(ToString::to_string).collect();
     let split = texts.windows(2).any(|pair| {
@@ -592,7 +601,7 @@ fn a_match_a_wrap_splits_is_lit_and_counted() {
         .map(|span| span.content.as_ref())
         .collect();
     assert_eq!(lit, ["cannot", "find"]);
-    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    let drawn = crate::tests::drawn(&app).clone();
     let question = message_id(&app, agent, 0).map(TranscriptItem::Message);
     assert_eq!(question.map(|item| drawn.lit_in(&item)), Some(1));
 }
@@ -600,7 +609,8 @@ fn a_match_a_wrap_splits_is_lit_and_counted() {
 #[test]
 fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
     let (mut app, agent) = view_app();
-    app.init_resource::<DrawnTranscript>();
+    let pane = crate::tests::main_pane(app.world());
+    crate::tests::keep_drawn(&mut app);
     // Words that fill the 80 columns so "cannot find" wraps after "cannot".
     let filler = "word ".repeat(14);
     let asked = format!("{filler}cannot find foo foobar foo");
@@ -637,14 +647,16 @@ fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
     }
     assert_eq!(spans.len(), 3, "{lines:#?}");
     let lit = Style::new().on_yellow();
-    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
-        style: lit,
-        spans,
-        ..Highlight::default()
-    }];
+    crate::tests::steer(&mut app, |view| {
+        view.highlights = vec![Highlight {
+            style: lit,
+            spans,
+            ..Highlight::default()
+        }]
+    });
     let mut lit_after = |row: ItemRow| {
         let item = Some(item.clone());
-        app.world_mut().trigger(ScrollTo { agent, item, row });
+        app.world_mut().trigger(ScrollTo { pane, item, row });
         let rows = drawn_rows(&mut app, agent, 10, Vec::new());
         let spans = rows.iter().flat_map(|row| row.spans.iter());
         let lit = spans.filter(|span| span.style.bg == lit.bg);
@@ -659,7 +671,7 @@ fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
     let (top, shown) = lit_after(ItemRow::Lit(0));
     assert!(top.ends_with("cannot"), "{top}");
     assert_eq!(shown, ["cannot", "find", "foo", "foo"]);
-    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    let drawn = crate::tests::drawn(&app).clone();
     assert_eq!(drawn.lit_in(&item), 3);
     let rows = drawn.rows_of(&item).unwrap_or_default();
     let rows = drawn.rows().get(rows).unwrap_or_default();
@@ -670,7 +682,8 @@ fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
 /// `agent`'s transcript as [`TranscriptLayout`] lays it out at 80
 /// columns, with `expanded` items whole.
 fn laid_out(app: &mut App, agent: Entity, expanded: Expanded) -> Option<DrawnTranscript> {
-    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
+    let lay_out = move |layout: TranscriptLayout, views: Query<&TranscriptView>| {
+        let view = views.iter().next().cloned().unwrap_or_default();
         layout.lay_out(&view, agent, WIDTH, expanded)
     };
     app.world_mut().run_system_once(lay_out).ok().flatten()
@@ -679,7 +692,7 @@ fn laid_out(app: &mut App, agent: Entity, expanded: Expanded) -> Option<DrawnTra
 #[test]
 fn a_layout_is_the_drawn_transcript_cut_as_drawn_or_whole() {
     let (mut app, agent) = view_app();
-    app.init_resource::<DrawnTranscript>();
+    crate::tests::keep_drawn(&mut app);
     // A look that keeps a collapsed output's last lines, as a shell's does.
     app.add_tool_renderer("shell", |call| {
         let mut lines = vec![call.header("shell", "")];
@@ -700,13 +713,15 @@ fn a_layout_is_the_drawn_transcript_cut_as_drawn_or_whole() {
     let output = ["panicked at a.rs", "two", "three", "panicked at b.rs"];
     let result = Message::tool_result(call.id.clone(), name, output.join("\n"));
     say(&mut app, agent, result);
-    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
-        text: "panicked".to_owned(),
-        ..Highlight::default()
-    }];
+    crate::tests::steer(&mut app, |view| {
+        view.highlights = vec![Highlight {
+            text: "panicked".to_owned(),
+            ..Highlight::default()
+        }]
+    });
     let item = TranscriptItem::Call(call.id.clone());
     on_screen(&mut app, agent, 5);
-    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    let drawn = crate::tests::drawn(&app).clone();
     let shown = laid_out(&mut app, agent, Expanded::AsShown);
     // Laid out as drawn, it is what the frame drew, but on no screen.
     assert_eq!(
@@ -732,10 +747,11 @@ fn a_layout_is_the_drawn_transcript_cut_as_drawn_or_whole() {
     assert_eq!(lit, [0, 1, 0, 0, 1]);
     assert_eq!(call_rows.items().first(), Some(&(item.clone(), 0..5)));
     // Expanded in the view, it is drawn as laid out whole.
-    let expanded = &mut app.world_mut().resource_mut::<TranscriptView>().expanded;
-    expanded.insert(item.clone());
+    crate::tests::steer(&mut app, |view| {
+        view.expanded.insert(item.clone());
+    });
     on_screen(&mut app, agent, 5);
-    let drawn = app.world().resource::<DrawnTranscript>().item(&item);
+    let drawn = crate::tests::drawn(&app).item(&item);
     assert_eq!(
         drawn.map(|drawn| drawn.rows().to_vec()),
         Some(call_rows.rows().to_vec())
@@ -766,12 +782,14 @@ fn a_highlight_lights_a_renderers_text_and_draws_again() {
     redraw(&mut app);
     assert!(!redraw(&mut app));
     let lit = Style::new().on_yellow();
-    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
-        text: "TEST".to_owned(),
-        style: lit,
-        match_case: false,
-        spans: Vec::new(),
-    }];
+    crate::tests::steer(&mut app, |view| {
+        view.highlights = vec![Highlight {
+            text: "TEST".to_owned(),
+            style: lit,
+            match_case: false,
+            spans: Vec::new(),
+        }]
+    });
     assert!(redraw(&mut app));
     let rows = drawn_rows(&mut app, agent, 100, Vec::new());
     let spans = rows.iter().flat_map(|row| row.spans.iter());
@@ -846,7 +864,7 @@ fn layout_app() -> (App, Entity) {
     let mut app = App::new();
     app.init_resource::<CallFacts>()
         .init_resource::<StreamingCalls>()
-        .init_resource::<TranscriptView>()
+        .init_resource::<crate::Notices>()
         .init_resource::<rig_ecs::effects::Effects>()
         .add_message::<EffectRecorded>()
         .add_message::<PastEffects>()
@@ -1023,12 +1041,14 @@ fn a_mark_is_drawn_inside_a_replys_text_with_its_markdown_kept() {
         return;
     };
     // Byte 18: after "**first part** and".
-    app.world_mut().resource_mut::<TranscriptView>().marks = vec![TextMark {
-        r#in: MarkIn::Message { id, block: 0 },
-        at: 18,
-        label: "⟳".to_owned(),
-        style: Style::new(),
-    }];
+    crate::tests::steer(&mut app, |view| {
+        view.marks = vec![TextMark {
+            r#in: MarkIn::Message { id, block: 0 },
+            at: 18,
+            label: "⟳".to_owned(),
+            style: Style::new(),
+        }]
+    });
     let rows = drawn_rows(&mut app, agent, 20, Vec::new());
     let row = rows.iter().find(|row| row.to_string().contains("⟳"));
     assert_eq!(
@@ -1056,12 +1076,14 @@ fn a_mark_on_a_streaming_reply_is_drawn_until_cleared() {
         reasoning: String::new(),
     };
     let call = world.spawn((CallOf(turn), partial)).id();
-    world.resource_mut::<TranscriptView>().marks = vec![TextMark {
-        r#in: MarkIn::Streaming(call),
-        at: 7,
-        label: "[continued] ".to_owned(),
-        style: Style::new(),
-    }];
+    crate::tests::steer(&mut app, |view| {
+        view.marks = vec![TextMark {
+            r#in: MarkIn::Streaming(call),
+            at: 7,
+            label: "[continued] ".to_owned(),
+            style: Style::new(),
+        }];
+    });
     let text = |app: &mut App| -> Vec<String> {
         let rows = drawn_rows(app, agent, 20, Vec::new());
         rows.iter().map(ToString::to_string).collect()
@@ -1071,10 +1093,7 @@ fn a_mark_on_a_streaming_reply_is_drawn_until_cleared() {
         rows.iter().any(|row| row == "so far [continued] more"),
         "{rows:?}"
     );
-    app.world_mut()
-        .resource_mut::<TranscriptView>()
-        .marks
-        .clear();
+    crate::tests::steer(&mut app, |view| view.marks.clear());
     let rows = text(&mut app);
     assert!(rows.iter().any(|row| row == "so far more"), "{rows:?}");
 }
@@ -1085,7 +1104,7 @@ fn a_mark_on_a_streaming_reply_is_drawn_until_cleared() {
 #[test]
 fn each_decorators_rows_are_an_item_inside_its_call() {
     let (mut app, agent) = view_app();
-    app.init_resource::<DrawnTranscript>();
+    crate::tests::keep_drawn(&mut app);
     app.add_tool_renderer("shell", |call| vec![call.header("shell", "")])
         .add_call_decorator("late", |_| {
             vec![Line::from("  late one"), Line::from("  late two")]
@@ -1100,7 +1119,7 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
     say(&mut app, agent, Message::Assistant(reply));
     let lines = on_screen(&mut app, agent, 40);
     assert!(line_of(&lines, "never").is_none(), "{lines:#?}");
-    let drawn = app.world().resource::<DrawnTranscript>();
+    let drawn = crate::tests::drawn(&app);
     let texts = |item: TranscriptItem| -> Vec<String> {
         let rows = drawn.rows_of(&item).unwrap_or_default();
         let rows = rows.filter_map(|row| drawn.rows().get(row));
@@ -1192,7 +1211,7 @@ fn a_session_rewrite_reaches_every_call_and_notice_the_view_keeps() {
     assert!(!texts.contains("sk-9"), "{texts}");
     assert!(texts.contains("echo [REDACTED] | wc -c"), "{texts}");
     assert!(texts.contains("token [REDACTED]"), "{texts}");
-    let notices = app.world().resource::<TranscriptView>().notices();
+    let notices = app.world().resource::<crate::Notices>().all();
     let notices: Vec<&str> = notices.iter().map(|notice| notice.text.as_str()).collect();
     assert_eq!(notices, ["Ran `echo [REDACTED]`."]);
 }

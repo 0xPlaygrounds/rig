@@ -951,82 +951,92 @@ impl AppToolRenderersExt for App {
     }
 }
 
+/// A look as [`Looks`] reads it: changed since the last frame or not, and
+/// the pane it applies in, if only one.
+type Scoped<T> = (Entity, Ref<'static, T>, Option<&'static ChildOf>);
+
 /// The looks plugins added, as a frame draws with them.
 #[derive(SystemParam)]
 pub(crate) struct Looks<'w, 's> {
-    tools: Query<'w, 's, Ref<'static, ToolRenderer>>,
-    entries: Query<'w, 's, Ref<'static, EntryRenderer>>,
-    contents: Query<'w, 's, Ref<'static, ContentRenderer>>,
-    asides: Query<'w, 's, Ref<'static, AsideRenderer>>,
-    messages: Query<'w, 's, Ref<'static, MessageRenderer>>,
-    decorators: Query<'w, 's, (Entity, Ref<'static, CallDecorator>)>,
-    message_decorators: Query<'w, 's, (Entity, Ref<'static, MessageDecorator>)>,
+    tools: Query<'w, 's, Scoped<ToolRenderer>>,
+    entries: Query<'w, 's, Scoped<EntryRenderer>>,
+    contents: Query<'w, 's, Scoped<ContentRenderer>>,
+    asides: Query<'w, 's, Scoped<AsideRenderer>>,
+    messages: Query<'w, 's, Scoped<MessageRenderer>>,
+    decorators: Query<'w, 's, Scoped<CallDecorator>>,
+    message_decorators: Query<'w, 's, Scoped<MessageDecorator>>,
+}
+
+/// The looks of `looks` that apply in `pane` (`None`: in no pane of its
+/// own, such as a layout for an export), by key: those of the pane first,
+/// then the global ones, each in entity order.
+fn scoped<'a, T: Component, K, V>(
+    looks: impl Iterator<Item = (Entity, Ref<'a, T>, Option<&'a ChildOf>)>,
+    pane: Option<Entity>,
+    key: impl Fn(&'a T) -> (K, V),
+) -> Vec<(K, V)> {
+    let mut found: Vec<(bool, Entity, &'a T)> = looks
+        .filter_map(|(entity, look, parent)| match parent.map(ChildOf::parent) {
+            None => Some((true, entity, look.into_inner())),
+            Some(of) if Some(of) == pane => Some((false, entity, look.into_inner())),
+            Some(_) => None,
+        })
+        .collect();
+    found.sort_by_key(|(global, entity, _)| (*global, *entity));
+    found.into_iter().map(|(.., look)| key(look)).collect()
+}
+
+/// `looks` by key, the first of each key kept.
+fn first_of<K: Eq + std::hash::Hash, V>(looks: Vec<(K, V)>) -> HashMap<K, V> {
+    let mut map = HashMap::new();
+    for (key, look) in looks {
+        map.entry(key).or_insert(look);
+    }
+    map
 }
 
 impl Looks<'_, '_> {
-    /// Each look by what it draws.
-    pub(crate) fn by_kind(&self) -> Renderers<'_> {
-        let tools = self.tools.iter().map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.tool.as_str(), &renderer.render)
+    /// Each look that applies in `pane` by what it draws: a pane's own
+    /// before the global one of the same key, and its decorators before the
+    /// global ones.
+    pub(crate) fn by_kind(&self, pane: Option<Entity>) -> Renderers<'_> {
+        let tools = scoped(self.tools.iter(), pane, |look| {
+            (look.tool.as_str(), &look.render)
         });
-        let entries = self.entries.iter().map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.plugin.as_str(), &renderer.render)
+        let entries = scoped(self.entries.iter(), pane, |look| {
+            (look.plugin.as_str(), &look.render)
         });
-        let contents = self.contents.iter().map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.kind, &renderer.render)
+        let contents = scoped(self.contents.iter(), pane, |look| (look.kind, &look.render));
+        let asides = scoped(self.asides.iter(), pane, |look| {
+            (look.kind.as_str(), &look.render)
         });
-        let asides = self.asides.iter().map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.kind.as_str(), &renderer.render)
+        let messages = scoped(self.messages.iter(), pane, |look| (look.role, &look.render));
+        let decorators = scoped(self.decorators.iter(), pane, |look| {
+            (look.name.as_str(), &look.render)
         });
-        let messages = self.messages.iter().map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.role, &renderer.render)
+        let message_decorators = scoped(self.message_decorators.iter(), pane, |look| {
+            (look.name.as_str(), &look.render)
         });
-        let mut decorators: Vec<(Entity, (&str, &Arc<RenderToolCall>))> = (self.decorators.iter())
-            .map(|(entity, decorator)| {
-                let decorator = decorator.into_inner();
-                (entity, (decorator.name.as_str(), &decorator.render))
-            })
-            .collect();
-        decorators.sort_by_key(|(entity, _)| *entity);
-        let mut message_decorators: Vec<(Entity, (&str, &Arc<DecorateMessage>))> =
-            (self.message_decorators.iter())
-                .map(|(entity, decorator)| {
-                    let decorator = decorator.into_inner();
-                    (entity, (decorator.name.as_str(), &decorator.render))
-                })
-                .collect();
-        message_decorators.sort_by_key(|(entity, _)| *entity);
         Renderers {
-            tools: tools.collect(),
-            entries: entries.collect(),
-            contents: contents.collect(),
-            asides: asides.collect(),
-            messages: messages.collect(),
-            decorators: decorators.into_iter().map(|(_, look)| look).collect(),
-            message_decorators: message_decorators
-                .into_iter()
-                .map(|(_, look)| look)
-                .collect(),
+            tools: first_of(tools),
+            entries: first_of(entries),
+            contents: first_of(contents),
+            asides: first_of(asides),
+            messages: first_of(messages),
+            decorators,
+            message_decorators,
         }
     }
 
     /// Whether a look changed or was added since the last frame.
     pub(crate) fn changed(&self) -> bool {
-        self.tools.iter().any(|look| look.is_changed())
-            || self.entries.iter().any(|look| look.is_changed())
-            || self.contents.iter().any(|look| look.is_changed())
-            || self.asides.iter().any(|look| look.is_changed())
-            || self.messages.iter().any(|look| look.is_changed())
-            || self.decorators.iter().any(|(_, look)| look.is_changed())
-            || self
-                .message_decorators
-                .iter()
-                .any(|(_, look)| look.is_changed())
+        self.tools.iter().any(|(_, look, _)| look.is_changed())
+            || self.entries.iter().any(|(_, look, _)| look.is_changed())
+            || self.contents.iter().any(|(_, look, _)| look.is_changed())
+            || self.asides.iter().any(|(_, look, _)| look.is_changed())
+            || self.messages.iter().any(|(_, look, _)| look.is_changed())
+            || self.decorators.iter().any(|(_, look, _)| look.is_changed())
+            || (self.message_decorators.iter()).any(|(_, look, _)| look.is_changed())
     }
 }
 
