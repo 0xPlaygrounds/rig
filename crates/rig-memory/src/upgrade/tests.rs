@@ -1,7 +1,196 @@
-use rig_core::conversation::{Aside, Author};
-use serde_json::{Value, json};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use rig_core::completion::Message;
+use rig_core::conversation::{Aside, Author, Conversation, Entry, Halt};
+use rig_core::message::{ImageMediaType, UserContent};
+use serde_json::{Map, Value, json};
 
 use super::{Unread, Upgrade, Upgrades, Versioned};
+use crate::{
+    Files, ForkedFrom, MemoryStore, SESSION, Session, SessionMeta, Store, SummaryState, VERSION,
+    Writer, apply_summary,
+};
+
+/// Where the frozen sessions every older format wrote are kept.
+fn fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures")
+}
+
+/// A session of every record type, written by this build's writer: two
+/// agents (one spawned by the other, its log starting with a reset), a
+/// retired one, the session's own value, an image, a summary with its
+/// aside, nested branches, a halt, a saved value of a deleted type and one
+/// of a type no build knows, a listing and a parent, and a torn tail.
+fn every_record() -> MemoryStore {
+    let store = Arc::new(MemoryStore::default());
+    let Ok((writer, _)) = Writer::open(store.clone()) else {
+        return MemoryStore::default();
+    };
+    writer.start();
+    let state = |log: &str, key: &str, value: Value| {
+        writer.state(log, key, Some(value.into()), true);
+    };
+    let mut main = Conversation::new();
+    main.push(Message::User {
+        content: vec![
+            UserContent::text("look"),
+            UserContent::image_base64("cG5n", Some(ImageMediaType::PNG), None),
+        ],
+    });
+    main.push(Message::assistant("a cat"));
+    main.push(Entry::new(Message::user("report")).by(Author::plugin("ci")));
+    main.push(Message::assistant("noted"));
+    let summary = SummaryState {
+        summary: "The user showed a cat.".to_owned(),
+        tracked: Vec::new(),
+    };
+    let upto = main.id(2);
+    apply_summary(&mut main, upto, &summary);
+    main.push(Message::user("go on"));
+    main.halt(Halt::Stopped);
+    main.push(Message::user("go on, then"));
+    main.push(Message::assistant("going"));
+    let by = Author::plugin("tree");
+    let _ = main.branch_off(2, "other", by.clone());
+    main.push(Message::assistant("another way"));
+    let _ = main.branch_off(3, "nested", by);
+    main.push(Message::user("deeper"));
+    let note = Aside::new("note", Author::plugin("btw"), json!({ "text": "hi" }));
+    main.add_aside(note);
+    writer.save("main", &mut main);
+    state("main", "rig_ecs::agent::ToolAccess", json!("All"));
+    state("main", "rig::model", json!("ollama/deepseek-v4-flash"));
+    state(
+        "main",
+        "rig_compaction::Summarized",
+        json!({ "summary": "The user showed a cat.", "tracked": [] }),
+    );
+    state("main", "a_plugin::Gone", json!(1));
+    state("main", "a_plugin::Removed", json!(2));
+    writer.state("main", "a_plugin::Removed", None, true);
+    state(SESSION, "a_plugin::Counter", json!(3));
+
+    writer.open_log("sub", Some("main"));
+    let mut first = Conversation::from_messages([Message::user("a first try")]);
+    writer.save("sub", &mut first);
+    let mut sub = Conversation::from_messages([Message::user("Fix the parser.")]);
+    writer.save("sub", &mut sub);
+    sub.push(Message::assistant("Fixed."));
+    writer.save("sub", &mut sub);
+    state("sub", "rig::title", json!("Fix the parser"));
+
+    writer.open_log("gone", Some("main"));
+    let mut gone = Conversation::from_messages([Message::user("never mind")]);
+    writer.save("gone", &mut gone);
+    writer.retire("gone");
+    writer.flush();
+
+    let meta = SessionMeta {
+        title: "look".to_owned(),
+        updated: 1_791_779_409_181,
+        ..SessionMeta::default()
+    };
+    let parent = ForkedFrom {
+        session: "a-parent".to_owned(),
+        ..ForkedFrom::default()
+    };
+    let torn = b"{\"seq\":99,\"n\":";
+    let written = meta.write(&*store).and_then(|()| parent.write(&*store));
+    let written = written.and_then(|()| store.append_log("main", torn));
+    assert!(written.is_ok());
+    Arc::unwrap_or_clone(store)
+}
+
+/// What a reader must find in `session`, as JSON: each agent's
+/// conversation (entries, saved asides, halt), saved values, parent,
+/// retirement and active title, and the session's own values.
+fn summary(session: &Session) -> Value {
+    let mut agents = Map::new();
+    for agent in &session.agents {
+        let summary = json!({
+            "conversation": agent.conversation,
+            "state": agent.state,
+            "parent": agent.parent,
+            "retired": agent.retired,
+            "title": agent.conversation.branch_title(),
+        });
+        agents.insert(agent.id.clone(), summary);
+    }
+    json!({ "agents": agents, "state": session.state })
+}
+
+/// Writes `store` into `dir` as a `DirStore` lays it out: `logs/`,
+/// `blobs/` and `files/`.
+fn dump(store: &MemoryStore, dir: &Path) -> std::io::Result<()> {
+    let write = |path: PathBuf, bytes: &[u8]| {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, bytes)
+    };
+    for log in store.logs()? {
+        write(
+            dir.join("logs").join(format!("{log}.jsonl")),
+            &store.read_log(&log)?,
+        )?;
+    }
+    for blob in store.blobs()? {
+        write(dir.join("blobs").join(&blob), &store.blob(&blob)?)?;
+    }
+    for file in store.files()? {
+        write(dir.join("files").join(&file), &store.read_file(&file)?)?;
+    }
+    Ok(())
+}
+
+/// The fixture in `dir` as a store in memory.
+fn load(dir: &Path) -> std::io::Result<MemoryStore> {
+    let store = MemoryStore::default();
+    let mut found = vec![dir.to_path_buf()];
+    while let Some(path) = found.pop() {
+        for entry in fs::read_dir(&path)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                found.push(path);
+                continue;
+            }
+            let Ok(name) = path.strip_prefix(dir) else {
+                continue;
+            };
+            let name = name.to_string_lossy().replace('\\', "/");
+            let bytes = fs::read(&path)?;
+            if let Some(log) = name.strip_prefix("logs/") {
+                let log = log.strip_suffix(".jsonl").unwrap_or(log);
+                store.append_log(log, &bytes)?;
+            } else if let Some(blob) = name.strip_prefix("blobs/") {
+                store.put_blob(blob, &bytes)?;
+            } else if let Some(file) = name.strip_prefix("files/") {
+                store.write_file(file, &bytes)?;
+            }
+        }
+    }
+    Ok(store)
+}
+
+/// Freezes a session written by this build's writer as
+/// `fixtures/rig-session-<VERSION>/`, with what a reader must find in it
+/// (`expected.json`), unless it is there: run it once before a format's
+/// version moves on, and commit what it wrote. Fixtures are never edited.
+#[test]
+#[ignore = "writes the fixture of this format; run once before bumping it"]
+fn write_the_fixture_of_this_format() {
+    let dir = fixtures().join(format!("rig-session-{VERSION}"));
+    if dir.exists() {
+        return;
+    }
+    let store = every_record();
+    let session = Session::read(&store).expect("it reads");
+    let expected = serde_json::to_vec_pretty(&summary(&session)).expect("json");
+    dump(&store, &dir).expect("written");
+    fs::write(dir.join("expected.json"), expected).expect("written");
+}
 
 fn label(old: Value) -> Result<Value, String> {
     Ok(json!([old, ""]))
@@ -49,4 +238,35 @@ fn saved_values_and_asides_read_through_their_steps() {
         Ok(json!([{"v": 9, "value": 1}, ""]))
     );
     assert_eq!(saved(1, json!(5)).to_aside_value(), json!(5));
+}
+
+/// Each frozen fixture, by name, as a store in memory, with what a reader
+/// must find in it.
+fn every_fixture() -> Vec<(String, MemoryStore, Value)> {
+    let mut found = Vec::new();
+    let dirs = fs::read_dir(fixtures()).expect("the fixtures");
+    for dir in dirs {
+        let dir = dir.expect("a fixture").path();
+        let name = dir
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        let expected = fs::read(dir.join("expected.json")).expect("its expected.json");
+        let expected = serde_json::from_slice(&expected).expect("json");
+        found.push((
+            name.unwrap_or_default(),
+            load(&dir).expect("it loads"),
+            expected,
+        ));
+    }
+    assert!(!found.is_empty(), "the fixtures are checked in");
+    found
+}
+
+/// Every session an older rig saved reads with this one as it read then.
+#[test]
+fn every_fixture_reads_with_the_current_reader() {
+    for (name, store, expected) in every_fixture() {
+        let session = Session::read(&store).unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert_eq!(summary(&session), expected, "{name}");
+    }
 }
