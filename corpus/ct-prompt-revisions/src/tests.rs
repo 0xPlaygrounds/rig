@@ -13,16 +13,24 @@ use rig_tui::{MainPane, TranscriptItem, TranscriptView};
 use super::*;
 
 /// A per-conversation state: how many turns its line has had, counted as
-/// each turn starts.
+/// each turn ends; none on a line that never had one. Counted at the start
+/// instead, the revised turn would read the old version's count: the
+/// kernel gives a line's values at the end of the frame of the switch.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Follows, Default)]
 struct TurnCount(u32);
 
-fn count(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut counts: Query<&mut TurnCount>) {
-    if let Ok(TurnOf(agent)) = turns.get(turn.entity)
-        && let Ok(mut count) = counts.get_mut(*agent)
+fn count(
+    settled: On<Add<Settled>>,
+    turns: Query<&ForAgent, With<TurnOutcome>>,
+    counts: Query<Option<&TurnCount>>,
+    mut commands: Commands,
+) {
+    if let Ok(&ForAgent(agent)) = turns.get(settled.entity)
+        && let Ok(count) = counts.get(agent)
     {
-        count.0 += 1;
+        let next = count.map_or(0, |count| count.0) + 1;
+        commands.entity(agent).insert(TurnCount(next));
     }
 }
 
@@ -33,8 +41,7 @@ fn start(home: &Home, id: &SessionId, view: bool) -> (App, Receiver<()>, Entity)
     }
     app.add_plugins((AgentPlugin, JournalPlugin, AskPlugin, AnswerAsks))
         .add_plugins(PromptRevisionsPlugin)
-        .register_required_components::<Agent, TurnCount>()
-        .follow_versions::<TurnCount>()
+        .register_type::<TurnCount>()
         .add_observer(count)
         .init_resource::<Ended>()
         .add_observer(log_ended);
