@@ -319,44 +319,52 @@ pub(crate) fn fold_all(store: &dyn Store, images: bool) -> Result<Vec<Folded>, L
 }
 
 /// What reading `folded`, the logs of `store` that hold a record, repaired,
-/// torn tails not set aside. A log that holds no complete line but a torn
-/// one, such as one whose first write was cut short, is torn whole.
+/// torn tails not set aside.
 pub(crate) fn repairs(store: &dyn Store, folded: &[Folded]) -> Result<Vec<Repair>, LoadError> {
-    let mut repairs = Vec::new();
-    for log in store.logs()? {
-        if folded.iter().any(|folded| folded.name == log) {
-            continue;
-        }
-        // A log that cannot be read is refused or set aside by its fold.
-        let lines = log_lines(store, &log).ok().flatten();
-        let Some(lines) = lines.filter(|lines| lines.len() == 0) else {
-            continue;
-        };
-        let cut = lines.tail().len() as u64;
-        if cut > 0 {
-            repairs.push(Repair::TornTail {
-                log,
-                kept: 0,
-                cut,
-                set_aside: None,
-            });
-        }
-    }
+    let torn = torn_tails(store, folded)?.into_iter();
+    let mut repairs: Vec<Repair> = torn
+        .map(|(log, kept, cut)| Repair::TornTail {
+            log,
+            kept,
+            cut,
+            set_aside: None,
+        })
+        .collect();
     for log in folded {
-        if let Some((kept, cut)) = log.torn {
-            repairs.push(Repair::TornTail {
-                log: log.name.clone(),
-                kept,
-                cut,
-                set_aside: None,
-            });
-        }
         repairs.extend(log.lost.iter().map(|why| Repair::LostImage {
             log: log.name.clone(),
             why: why.clone(),
         }));
     }
     Ok(repairs)
+}
+
+/// Each log of `store` that ends in a torn line, with the bytes before the
+/// line and its bytes: each of `folded`, the logs that hold a record, that
+/// does, and each log that holds no complete line but a torn one, such as
+/// one whose first write was cut short.
+pub(crate) fn torn_tails(
+    store: &dyn Store,
+    folded: &[Folded],
+) -> Result<Vec<(String, u64, u64)>, LoadError> {
+    let mut torn = Vec::new();
+    for log in store.logs()? {
+        match folded.iter().find(|folded| folded.name == log) {
+            Some(folded) => torn.extend(folded.torn.map(|(kept, cut)| (log, kept, cut))),
+            None => torn.extend(torn_whole(store, &log).map(|cut| (log, 0, cut))),
+        }
+    }
+    Ok(torn)
+}
+
+/// The bytes of the torn line the log `log` of `store` holds, when it holds
+/// no complete line but a torn one.
+fn torn_whole(store: &dyn Store, log: &str) -> Option<u64> {
+    // A log that cannot be read is refused or set aside by its fold.
+    let lines = log_lines(store, log).ok().flatten();
+    let lines = lines.filter(|lines| lines.len() == 0)?;
+    let cut = lines.tail().len() as u64;
+    (cut > 0).then_some(cut)
 }
 
 /// The names of the logs a restore skips: those retired, and the agents
@@ -477,7 +485,9 @@ impl Session {
     /// one): appends each agent's unsaved changes (an agent new to the
     /// store gets a header), its changed and removed saved values, and its
     /// retirement, and the session's changed values. Each agent's
-    /// conversation is left with nothing unsaved.
+    /// conversation is left with nothing unsaved. A torn last line of a log
+    /// written to is first set aside, as [`Writer::open`](crate::Writer::open)
+    /// does.
     ///
     /// # Errors
     ///
@@ -496,6 +506,8 @@ impl Session {
             check_continues(had(&agent.id), &agent.id, &agent.conversation)?;
         }
         let mut book = Book::after(&folded);
+        let torn = torn_tails(store, &folded)?.into_iter();
+        book.set_aside(torn.map(|(log, kept, _)| (log, kept)));
         book.start();
         for agent in &mut self.agents {
             book.open_log(&agent.id, agent.parent.as_deref());
@@ -550,7 +562,8 @@ pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, LoadError> {
 
 /// Appends the unsaved changes of `conversation` to the log `log` of
 /// `store`, starting it when there is none, and leaves the conversation
-/// with nothing unsaved.
+/// with nothing unsaved. A torn last line of the log is first set aside, as
+/// [`Writer::open`](crate::Writer::open) does.
 ///
 /// ```
 /// use rig_core::message::Message;
@@ -580,6 +593,11 @@ pub fn save(
     let folded = fold(store, log, Fold::default())?;
     check_continues(folded.as_ref(), log, conversation)?;
     let mut book = Book::after(folded.as_slice());
+    let kept = match &folded {
+        Some(folded) => folded.torn.map(|(kept, _)| kept),
+        None => torn_whole(store, log).map(|_| 0),
+    };
+    book.set_aside(kept.map(|kept| (log.to_owned(), kept)));
     book.raise_n(next_n(store)?);
     book.start();
     book.open_log(log, None);

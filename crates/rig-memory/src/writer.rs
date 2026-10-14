@@ -42,6 +42,9 @@ pub(crate) struct Book {
     /// dropped.
     failure: Option<String>,
     logs: HashMap<String, Log>,
+    /// The logs that end in a torn line, each with the bytes before it: the
+    /// line is set aside before anything is written after it.
+    torn: HashMap<String, u64>,
 }
 
 impl Book {
@@ -71,6 +74,13 @@ impl Book {
             book.next_n = book.next_n.max(log.next_n);
         }
         book
+    }
+
+    /// Sets aside the torn line each log of `torn` ends in, given with the
+    /// bytes before it, as [`set_aside_tail`] does, before that log is next
+    /// written.
+    pub fn set_aside(&mut self, torn: impl IntoIterator<Item = (String, u64)>) {
+        self.torn.extend(torn);
     }
 
     /// Numbers the next record `n` or later.
@@ -298,7 +308,12 @@ impl Book {
             let Some(log) = self.logs.get_mut(&name) else {
                 continue;
             };
-            if let Err(failure) = store.append_log(&name, &log.pending) {
+            let set_aside = self
+                .torn
+                .remove(&name)
+                .map_or(Ok(()), |kept| set_aside_tail(store, &name, kept).map(drop));
+            let written = set_aside.and_then(|()| Ok(store.append_log(&name, &log.pending)?));
+            if let Err(failure) = written {
                 let failure = format!("writing the log {name} failed: {failure}");
                 self.failure = Some(failure.clone());
                 return Err(io::Error::other(failure).into());

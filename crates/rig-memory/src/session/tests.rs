@@ -282,6 +282,51 @@ fn a_log_holding_only_a_torn_first_line_is_set_aside_before_it_is_written() {
     assert_eq!(load(&*store, "main").expect("loaded"), conversation);
 }
 
+/// The library saves set a torn last line aside before they append, as
+/// [`Writer::open`] does, so the next record starts a line of its own.
+#[test]
+fn the_library_saves_set_a_torn_tail_aside_before_they_append() {
+    let tear = br#"{"seq":2,"n":"#;
+
+    // `save` onto a log whose last record was cut short.
+    let store = MemoryStore::default();
+    let mut conversation = Conversation::from_messages([Message::user("hello")]);
+    save(&store, "main", &mut conversation).expect("saved");
+    store.append_log("main", tear).expect("torn");
+    conversation.push(Message::assistant("hi"));
+    save(&store, "main", &mut conversation).expect("saved after the tear");
+    assert_eq!(load(&store, "main").expect("loaded"), conversation);
+    assert_eq!(
+        store.read_file("recovered/main-1.part").expect("set aside"),
+        tear
+    );
+
+    // `save` onto a log whose first write was cut short.
+    let store = MemoryStore::default();
+    store.append_log("main", tear).expect("torn");
+    save(&store, "main", &mut conversation).expect("saved after the tear");
+    assert_eq!(load(&store, "main").expect("loaded"), conversation);
+    assert_eq!(
+        store.read_file("recovered/main-1.part").expect("set aside"),
+        tear
+    );
+
+    // `Session::save` onto a log whose last record was cut short.
+    store.append_log("main", tear).expect("torn");
+    let mut session = Session::read(&store).expect("read");
+    if let Some(agent) = session.agent_mut("main") {
+        agent.conversation.push(Message::user("again"));
+    }
+    session.save(&store).expect("saved after the tear");
+    let read = Session::read(&store).expect("read again");
+    assert_eq!(read.repairs, []);
+    assert_eq!(read.agent("main"), session.agent("main"));
+    assert_eq!(
+        store.read_file("recovered/main-2.part").expect("set aside"),
+        tear
+    );
+}
+
 #[test]
 fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
     let store = MemoryStore::default();
