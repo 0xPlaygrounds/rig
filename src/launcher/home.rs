@@ -13,14 +13,7 @@ use super::Result;
 /// another launcher holds it. It is released when the returned file is
 /// dropped or the launcher dies.
 pub fn hold_session(home: &Home, session: &SessionId) -> Result<Option<File>> {
-    let session = home.session(session);
-    fs::create_dir_all(session.path())?;
-    let file = lock_file(&session.launcher_lock(), true)?;
-    match file.try_lock() {
-        Ok(()) => Ok(Some(file)),
-        Err(TryLockError::WouldBlock) => Ok(None),
-        Err(TryLockError::Error(failure)) => Err(failure.into()),
-    }
+    Ok(home.session(session).hold()?)
 }
 
 /// This launcher's [`RunDir`], held locked while it lives. Dropping it
