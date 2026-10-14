@@ -92,10 +92,18 @@ fn number(sequence: &str, key: &str) -> Option<u16> {
     digits.parse().ok()
 }
 
+/// What the main pane drew; nothing without it.
+fn main_drawn(app: &App) -> DrawnTranscript {
+    let world = app.world();
+    let panes = world.try_query_filtered::<&DrawnTranscript, With<MainPane>>();
+    let drawn = panes.and_then(|mut panes| panes.single(world).ok().cloned());
+    drawn.unwrap_or_default()
+}
+
 /// The rows of the whole transcript that are an image in half-blocks
 /// (13 columns of `▀`).
 fn block_rows(app: &App) -> usize {
-    let drawn = app.world().resource::<DrawnTranscript>();
+    let drawn = main_drawn(app);
     let blocks = "▀".repeat(13);
     drawn
         .rows()
@@ -155,10 +163,7 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
     );
     // The caption is one of this plugin's decoration rows, though another
     // decorator draws after it.
-    let (drawn, frame) = (
-        app.world().resource::<DrawnTranscript>(),
-        app.world().resource::<TuiFrame>(),
-    );
+    let (drawn, frame) = (&main_drawn(&app), app.world().resource::<TuiFrame>());
     let call = drawn.items().iter().find_map(|(item, rows)| match item {
         TranscriptItem::Decoration(_, name) if name == DECORATOR => Some(rows.clone()),
         _ => None,
@@ -230,7 +235,7 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
 
     // `mode = "off"`: one line with the size, no blocks.
     let (app, _, _) = front(&store, "[images]\nmode = \"off\"\n", Some(Protocol::Kitty));
-    let drawn = app.world().resource::<DrawnTranscript>();
+    let drawn = main_drawn(&app);
     let line = drawn
         .rows()
         .iter()
