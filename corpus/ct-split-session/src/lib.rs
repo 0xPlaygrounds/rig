@@ -24,7 +24,7 @@
 //! copy the messages before the range become one context message; in the
 //! original a note by this plugin, which the model reads too, joins the
 //! pointer. `/split undo` merges the copy's turns back at the pointer
-//! ([`Conversation::merge_line`]) and deletes the copy.
+//! ([`Conversation::merge_line`](Line::merge_line)) and deletes the copy.
 
 use std::borrow::Cow;
 
