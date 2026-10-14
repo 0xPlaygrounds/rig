@@ -22,7 +22,7 @@
 //! or take a stage, and a line changed before the agent loop or in a stage
 //! gives its value to the next stage. Pushes and tool calls cost nothing.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::change_detection::Tick;
@@ -33,7 +33,7 @@ use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath, TypeRegistry};
 use rig_core::conversation::{Aside, AsideId, Author, BRANCH, Change, LINE, MessageId};
-use rig_memory::Versioned;
+use rig_memory::{SET_ASIDE, Versioned};
 use serde_json::{Map, Value};
 
 use super::agent::{Agent, AgentId, Conversation};
@@ -50,7 +50,11 @@ pub const FOLLOWS: &str = "rig.follows";
 /// move, a merge, a fork and a restore give the agent the value its line
 /// had at that point; with none set on the line, the component is removed.
 /// Versioned like a saved value, and keyed by its type path or the stable
-/// key its plugin gives it. It takes the place of `Saved` for its type.
+/// key its plugin gives it: a line value no step reads is listed in
+/// `SetAside` and left on the line, and the next change of the component
+/// moves it to a side key (rig-memory's `SET_ASIDE`) on that line; a newer
+/// rig's is never written over in this run. It takes the place of `Saved`
+/// for its type.
 #[derive(Clone)]
 pub struct ReflectFollows {
     pub(crate) watch: fn(&mut App),
@@ -85,10 +89,49 @@ pub(crate) struct Given(HashMap<(Entity, String), Option<Tick>>);
 #[derive(Resource, Default)]
 pub(crate) struct Followed(pub(crate) Vec<String>);
 
-/// The agents and keys whose line value could not be read this run: their
-/// component is not mirrored, so the value is never written over.
+/// The agents and keys whose line value did not read, as a saved value's:
+/// a newer rig's is held, never written over this run; one no step reads is
+/// moved to its side key ([`SET_ASIDE`]) by the next change of the
+/// component, which is then kept as any is.
 #[derive(Resource, Default)]
-pub(crate) struct Unmirrored(HashSet<(Entity, String)>);
+pub(crate) struct Unread(HashMap<(Entity, String), Unreadable>);
+
+/// Why a line value did not read.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Unreadable {
+    /// A newer rig saved it.
+    Newer,
+    /// No step reads it, or it no longer fits its type.
+    SetAside,
+}
+
+/// Whether the change of `key` on `agent` is not to be kept: its line value
+/// is a newer rig's. One that is set aside is moved to its side key first,
+/// as the writer moves a saved value's, so the change loses nothing.
+fn held(
+    unread: Option<&mut Unread>,
+    agent: Entity,
+    key: &str,
+    conversation: &mut rig_core::conversation::Conversation,
+) -> bool {
+    let Some(unread) = unread else {
+        return false;
+    };
+    let at = (agent, key.to_owned());
+    match unread.0.get(&at) {
+        Some(Unreadable::Newer) => true,
+        Some(Unreadable::SetAside) => {
+            unread.0.remove(&at);
+            if let Some(old) = current(conversation, key)
+                && let Some(saved) = versioned(&old)
+            {
+                set(conversation, &format!("{SET_ASIDE}{key}/v{}", saved.v), old);
+            }
+            false
+        }
+        None => false,
+    }
+}
 
 /// A followed value as kept: `{"v": n, "value": …}`, or `null` when the
 /// component was removed.
@@ -299,20 +342,17 @@ fn mirror<T: Component + Reflect + TypePath>(
     mut agents: Query<&mut Conversation, (With<Agent>, Without<T>)>,
     registry: Res<AppTypeRegistry>,
     (keys, upgrades): (Res<SavedKeys>, Res<SavedUpgrades>),
-    (unmirrored, mut given): (Option<Res<Unmirrored>>, ResMut<Given>),
+    (mut unread, mut given): (Option<ResMut<Unread>>, ResMut<Given>),
 ) {
     let path = T::type_path();
     let key = keys.key(path).unwrap_or(path);
-    let skipped = |entity: Entity| {
-        unmirrored
-            .as_ref()
-            .is_some_and(|unmirrored| unmirrored.0.contains(&(entity, key.to_owned())))
-    };
     let v = upgrades.0.version(path);
     let registry = registry.read();
     for (entity, component, mut conversation) in &mut changed {
         let gave = given.0.remove(&(entity, key.to_owned()));
-        if skipped(entity) || gave == Some(Some(component.last_changed())) {
+        if gave == Some(Some(component.last_changed()))
+            || held(unread.as_deref_mut(), entity, key, &mut conversation)
+        {
             continue;
         }
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
@@ -329,10 +369,11 @@ fn mirror<T: Component + Reflect + TypePath>(
     }
     for entity in removed.read() {
         let gave = given.0.remove(&(entity, key.to_owned()));
-        if skipped(entity) || gave == Some(None) {
+        if gave == Some(None) {
             continue;
         }
         if let Ok(mut conversation) = agents.get_mut(entity)
+            && !held(unread.as_deref_mut(), entity, key, &mut conversation)
             && current(&conversation, key).is_some_and(|value| !value.is_null())
         {
             set(&mut conversation, key, Value::Null);
@@ -443,8 +484,8 @@ pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Committed>
 
 /// Gives `agent` the value of each `followed` (key, type path) its line has:
 /// inserted when it differs from the component, removed when the line has
-/// none or a removal. A value no step reads is set aside, and the key is not
-/// mirrored on that agent this run.
+/// none or a removal. A value that does not read is left on the line, set
+/// aside or held ([`Unread`]), until the agent is given another.
 pub(crate) fn give_line_values(
     world: &mut World,
     registry: &TypeRegistry,
@@ -464,6 +505,11 @@ pub(crate) fn give_line_values(
         })
         .collect();
     for (key, path, value) in lines {
+        if let Some(mut unread) = world.get_resource_mut::<Unread>()
+            && unread.0.get(&(agent, key.clone())) == Some(&Unreadable::SetAside)
+        {
+            unread.0.remove(&(agent, key.clone()));
+        }
         let Ok((_, component)) = super::restore::saved_type(&path, registry) else {
             continue;
         };
@@ -501,12 +547,13 @@ pub(crate) fn give_line_values(
                         .insert((agent, key), Some(tick));
                 }
             }
-            Err(why) => {
+            Err((newer, why)) => {
                 warn!("not giving the agent its line's `{key}`: {why}");
-                world
-                    .get_resource_or_init::<Unmirrored>()
-                    .0
-                    .insert((agent, key));
+                let mut unread = world.get_resource_or_init::<Unread>();
+                let unreadable = unread.0.entry((agent, key)).or_insert(Unreadable::SetAside);
+                if newer {
+                    *unreadable = Unreadable::Newer;
+                }
             }
         }
     }

@@ -570,21 +570,24 @@ impl SavedReader {
     ///
     /// # Errors
     ///
-    /// Why it is not read.
+    /// Why it is not read, and whether a newer rig saved it.
     pub(crate) fn read_followed(
         &mut self,
         registry: &TypeRegistry,
         agent: Option<&AgentId>,
         path: &str,
         saved: &Versioned,
-    ) -> Result<(Box<dyn Reflect>, Value), String> {
-        let (registration, _) = saved_type(path, registry)?;
+    ) -> Result<(Box<dyn Reflect>, Value), (bool, String)> {
+        let (registration, _) = saved_type(path, registry).map_err(|why| (false, why))?;
         let read = self
             .upgrades
             .upgrade(path, saved.clone())
-            .map_err(|unread| unread.to_string())
-            .and_then(|value| Ok((reflected(registration, &value, registry)?, value)));
-        if let Err(why) = &read {
+            .map_err(|unread| (matches!(unread, Unread::Newer { .. }), unread.to_string()))
+            .and_then(|value| {
+                let read = reflected(registration, &value, registry);
+                Ok((read.map_err(|failure| (false, failure))?, value))
+            });
+        if let Err((_, why)) = &read {
             self.set_aside.push(SetAsideValue {
                 agent: agent.cloned(),
                 key: self.keys.key(path).unwrap_or(path).to_owned(),
