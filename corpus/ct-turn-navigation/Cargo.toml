@@ -13,8 +13,12 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The keys, the header panel and the transcript as drawn.
+rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# The header's width in columns, to cut it to one row.
+unicode-width = { workspace = true }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
