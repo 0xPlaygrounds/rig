@@ -199,3 +199,20 @@ fn values_of_entries_a_splice_took_out_collapse_into_one() {
     branch_off(&mut app, agent, 1, "other");
     assert_eq!(mode(&app, agent).as_deref(), Some("build"));
 }
+
+/// A value changed in the frame a line changes is kept, not taken back by
+/// the line's older value.
+#[test]
+fn a_value_changed_in_the_frame_of_a_split_is_kept() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let agent = agent(&mut app);
+    say(&mut app, agent, "one");
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(Mode("plan".to_owned()));
+    branch_off(&mut app, agent, 1, "other");
+    assert_eq!(mode(&app, agent).as_deref(), Some("plan"));
+    app.update();
+    assert_eq!(mode(&app, agent).as_deref(), Some("plan"));
+}

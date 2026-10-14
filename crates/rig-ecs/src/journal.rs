@@ -267,11 +267,6 @@ pub(crate) fn save_conversations(mut drain: Drain) {
     drain.save();
 }
 
-/// Saves what the followed components' mirrors put in the conversations.
-fn save_mirrored(mut drain: Drain) {
-    drain.save();
-}
-
 /// Saves what a conversation about to be replaced or removed did not save
 /// yet, so neither a value inserted over it nor its agent despawned loses
 /// a change.
@@ -505,14 +500,8 @@ impl Plugin for JournalPlugin {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(Last, write_logs.in_set(WriteJournal))
-            .configure_sets(Last, Mirroring.in_set(Saving).after(follows::sync))
-            .add_systems(
-                Last,
-                (
-                    follows::sync.in_set(Saving).after(save_conversations),
-                    save_mirrored.in_set(Saving).after(Mirroring),
-                ),
-            )
+            .configure_sets(Last, Mirroring.in_set(Saving).before(save_conversations))
+            .add_systems(Last, follows::sync.in_set(Saving).after(save_conversations))
             .add_observer(open_child_log)
             .init_resource::<SavedUpgrades>()
             .init_resource::<RetiredSaved>()

@@ -13,15 +13,16 @@
 //! it stays removed on that line.
 //!
 //! The kernel mirrors each change of a followed component into the
-//! conversation at the end of the frame, and after a change that may
-//! change the line (a splice, a reset, a branch, line value or followed
-//! value put) gives the agent its line's value, read as a saved value is
-//! (upgraded through its plugin's steps). Pushes and tool calls cost
-//! nothing.
+//! conversation at the end of the frame, before it is saved, and after a
+//! change that may change the line (a splice, a reset, a branch, line value
+//! or followed value put) gives the agent its line's value, read as a saved
+//! value is (upgraded through its plugin's steps); a value it gave is never
+//! mirrored back. Pushes and tool calls cost nothing.
 
 use std::collections::{HashMap, HashSet};
 
 use bevy_app::prelude::*;
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::message::MessageCursor;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
@@ -55,7 +56,8 @@ pub struct ReflectFollows {
 impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectFollows {
     fn create_type_data(_: ()) -> Self {
         let watch = |app: &mut App| {
-            app.world_mut()
+            app.init_resource::<Given>()
+                .world_mut()
                 .get_resource_or_init::<Followed>()
                 .0
                 .push(T::type_path().to_owned());
@@ -66,11 +68,15 @@ impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectFollows {
 }
 
 /// The systems in `Last` that mirror followed components into their
-/// conversations: after the frame's changes were saved and the agents were
-/// given their lines' values, so a value given is never mirrored into
-/// another line, and before what they put is saved.
+/// conversations, before the frame's changes are saved.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Mirroring;
+
+/// The values the kernel gave agents from their lines, by agent and key,
+/// with the tick of the insert (`None` for a removal): a mirror never writes
+/// them back, into whatever line is active by then.
+#[derive(Resource, Default)]
+pub(crate) struct Given(HashMap<(Entity, String), Option<Tick>>);
 
 /// The type paths of the followed types.
 #[derive(Resource, Default)]
@@ -285,12 +291,12 @@ fn collapse(
 /// Mirrors each change of the followed component `T` on an agent, and its
 /// removal, into the agent's conversation, unless the line has that value.
 fn mirror<T: Component + Reflect + TypePath>(
-    mut changed: Query<(Entity, &T, &mut Conversation), (With<Agent>, Changed<T>)>,
+    mut changed: Query<(Entity, Ref<T>, &mut Conversation), (With<Agent>, Changed<T>)>,
     mut removed: RemovedComponents<T>,
     mut agents: Query<&mut Conversation, (With<Agent>, Without<T>)>,
     registry: Res<AppTypeRegistry>,
     (keys, upgrades): (Res<SavedKeys>, Res<SavedUpgrades>),
-    unmirrored: Option<Res<Unmirrored>>,
+    (unmirrored, mut given): (Option<Res<Unmirrored>>, ResMut<Given>),
 ) {
     let path = T::type_path();
     let key = keys.key(path).unwrap_or(path);
@@ -302,7 +308,8 @@ fn mirror<T: Component + Reflect + TypePath>(
     let v = upgrades.0.version(path);
     let registry = registry.read();
     for (entity, component, mut conversation) in &mut changed {
-        if skipped(entity) {
+        let gave = given.0.remove(&(entity, key.to_owned()));
+        if skipped(entity) || gave == Some(Some(component.last_changed())) {
             continue;
         }
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
@@ -318,7 +325,8 @@ fn mirror<T: Component + Reflect + TypePath>(
         }
     }
     for entity in removed.read() {
-        if skipped(entity) {
+        let gave = given.0.remove(&(entity, key.to_owned()));
+        if skipped(entity) || gave == Some(None) {
             continue;
         }
         if let Ok(mut conversation) = agents.get_mut(entity)
@@ -469,6 +477,10 @@ pub(crate) fn give_line_values(
                 && let Ok(mut entity) = world.get_entity_mut(agent)
             {
                 component.remove(&mut entity);
+                world
+                    .get_resource_or_init::<Given>()
+                    .0
+                    .insert((agent, key), None);
             }
             continue;
         };
@@ -479,6 +491,11 @@ pub(crate) fn give_line_values(
                 }
                 if let Ok(mut entity) = world.get_entity_mut(agent) {
                     component.insert(&mut entity, read.as_partial_reflect(), registry);
+                    let tick = world.change_tick();
+                    world
+                        .get_resource_or_init::<Given>()
+                        .0
+                        .insert((agent, key), Some(tick));
                 }
             }
             Err(why) => {
