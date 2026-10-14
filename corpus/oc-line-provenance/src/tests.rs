@@ -5,8 +5,10 @@ use rig_coding_tools::{EditTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness_test_support::{
-    Ended, app_in, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
+    Ended, app_in, calls, connect, first_agent, log_ended, press, reply, run_until, scratch_home,
+    tui_view,
 };
+use rig_tui::TuiTestScreen;
 use serde_json::{Value, json};
 
 use super::*;
@@ -24,10 +26,12 @@ fn edit(id: &str, path: &Path, old: &str, new: &str) -> Vec<MockStreamEvent> {
     )
 }
 
-/// A session of `home` on the project `dir`, its agent on `model`.
+/// A session of `home` on the project `dir`, its agent on `model`, with
+/// the terminal view on a test screen.
 fn session(home: &Home, dir: &Path, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_in(home, &SessionId::generate());
     app.insert_resource(ProjectRoot(dir.to_owned()))
+        .insert_resource(TuiTestScreen::new(100, 30))
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
@@ -39,6 +43,7 @@ fn session(home: &Home, dir: &Path, model: &MockCompletionModel) -> (App, Receiv
         ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
+    tui_view(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -222,8 +227,8 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
         vec![by(8, 8, &second, "rename", "shell", false)]
     );
 
-    // `/provenance` offers the turn that wrote a line; choosing it shows
-    // that turn of session 1, read from its store, as a note.
+    // `/provenance` offers the turn that wrote a line; choosing it opens
+    // session 1, read from its store, in a read-only panel at that turn.
     app.world_mut()
         .trigger(RunCommand::new(agent, format!("{NAME} net.rs:13")));
     app.update();
@@ -235,25 +240,21 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
         .next()
         .unwrap_or_default();
     assert!(command.starts_with("provenance --open "), "{command}");
+    press(&mut app, "esc");
     app.world_mut().trigger(RunCommand::new(agent, command));
     app.update();
-    let conversation = app.world().get::<Conversation>(agent);
-    let notes: Vec<Note> = conversation
-        .into_iter()
-        .flat_map(|conversation| {
-            conversation
-                .asides()
-                .filter_map(|(_, aside)| Note::of(aside))
-        })
-        .collect();
-    let shown = notes
-        .last()
-        .map(|note| note.text.clone())
-        .unwrap_or_default();
+    app.update();
+    let screen = app.world().resource::<TuiTestScreen>().rows().join("\n");
     assert!(
-        shown.contains("> add retry") && shown.contains("retry 1"),
-        "{shown}"
+        screen.contains("Session `retry`, turn 1: add retry")
+            && screen.contains("add retry")
+            && screen.contains("Added."),
+        "{screen}"
     );
+    assert!(!screen.contains("add logging"), "{screen}");
+    press(&mut app, "esc");
+    let mut panels = app.world_mut().query::<&rig_tui::ConversationPanel>();
+    assert_eq!(panels.iter(app.world()).count(), 0, "Esc closes the panel");
 
     app.world_mut()
         .trigger(RunCommand::new(agent, format!("{NAME} --forget retry")));

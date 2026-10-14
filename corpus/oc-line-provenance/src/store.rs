@@ -72,15 +72,16 @@ pub struct ProvenanceStore {
     pub records: BTreeMap<u64, Record>,
     /// The files agents wrote lines of, by path from the project root.
     pub files: BTreeMap<String, TrackedFile>,
+    /// The next record's key; a dropped record's key is never reused.
+    #[serde(default)]
+    pub next: u64,
 }
 
 impl ProvenanceStore {
     /// Keeps `record`, returning its key.
     pub fn add(&mut self, record: Record) -> u64 {
-        let key = self
-            .records
-            .last_key_value()
-            .map_or(0, |(key, _)| key.saturating_add(1));
+        let key = self.next;
+        self.next = key.saturating_add(1);
         self.records.insert(key, record);
         key
     }
@@ -201,10 +202,18 @@ impl ProvenanceStore {
         spans
     }
 
-    /// Stops tracking files no agent's line is left in.
+    /// Stops tracking files no agent's line is left in, and drops the
+    /// records no line is left of.
     fn prune(&mut self) {
         self.files
             .retain(|_, file| file.lines.iter().any(Option::is_some));
+        let kept: std::collections::BTreeSet<u64> = self
+            .files
+            .values()
+            .flat_map(|file| file.lines.iter().flatten())
+            .map(|origin| origin.record)
+            .collect();
+        self.records.retain(|key, _| kept.contains(key));
     }
 }
 

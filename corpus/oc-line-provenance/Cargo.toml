@@ -16,6 +16,8 @@ bevy_log = { workspace = true }
 # A record's day, in the user's time zone; already in Cargo.lock.
 chrono = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The read-only panel an opened turn is shown in.
+rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # Line diffs that carry each line's origin forward, as rig-tools' `edit` diffs.

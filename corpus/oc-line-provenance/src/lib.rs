@@ -17,8 +17,9 @@
 //! changed is marked "changed by you", a line they added is no agent's.
 //!
 //! - `/provenance <file>[:<line>[-<line>]]` lists the lines in runs of one
-//!   origin, and offers a picker of the agents' entries: choosing one shows
-//!   that turn, read from its session (read-only), as a note.
+//!   origin, and offers a picker of the agents' entries: choosing one opens
+//!   that turn's session, read from its store, in a read-only
+//!   `ConversationPanel` scrolled to the turn.
 //! - `/provenance --forget <session>` drops one session's records.
 //! - `rig provenance <file>[:<line>[-<line>]] [--json]` prints the same from
 //!   the command line, without a session; `--forget` works there too.
@@ -29,10 +30,10 @@ use std::path::Path;
 use bevy_log::warn;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::conversation::{Conversation as Log, MessageKey};
-use rig_harness::rig_core::message::{AssistantContent, Message, UserContent};
+use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_harness::rig_memory::{Session, now_ms};
+use rig_tui::{ConversationPanel, KeyFocus, TranscriptItem};
 use std::collections::HashMap;
 
 mod store;
@@ -475,12 +476,14 @@ impl Answer {
 }
 
 /// What `/provenance --open` reads: the saved sessions, and this one's
-/// agents as they are.
+/// agents as they are; and the terminal view's key focus, which the
+/// opened turn's panel takes.
 #[derive(bevy_ecs::system::SystemParam)]
 struct Opening<'w, 's> {
     stores: Option<Res<'w, SessionStores>>,
     session: Option<Res<'w, SessionPaths>>,
-    agents: Query<'w, 's, (&'static AgentId, &'static mut Conversation)>,
+    agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
+    focus: Option<ResMut<'w, KeyFocus>>,
 }
 
 /// `/provenance <file>[:<line>[-<line>]]`, `--forget <session>`, and
@@ -488,7 +491,7 @@ struct Opening<'w, 's> {
 fn provenance(
     In(args): In<CommandArgs>,
     asking: Asking,
-    mut opening: Opening,
+    opening: Opening,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -530,19 +533,23 @@ fn provenance(
                 ));
                 return;
             };
-            match turn_text(record, &asking, &opening) {
-                Ok(shown) => {
+            match turn_of(record, &asking, &opening) {
+                Ok((conversation, turn)) => {
                     let title = format!(
                         "Session `{}`, turn {}: {}",
                         asking.session_label(&record.session),
                         record.turn,
                         record.prompt
                     );
-                    if let Ok((_, mut conversation)) = opening.agents.get_mut(args.agent) {
-                        let last = conversation.messages().len().checked_sub(1);
-                        let after = last.and_then(|last| conversation.id(last));
-                        let note = Note::new(title, shown).aside(Author::plugin(NAME), after);
-                        conversation.add_aside(note.unsaved());
+                    let at = Some(TranscriptItem::Message(turn));
+                    let panel = ConversationPanel {
+                        title,
+                        conversation,
+                        at,
+                    };
+                    let panel = commands.spawn(panel).id();
+                    if let Some(mut focus) = opening.focus {
+                        focus.0 = Some(panel);
                     }
                 }
                 Err(why) => {
@@ -553,85 +560,49 @@ fn provenance(
     }
 }
 
-/// The turn a record was made in, as text: what was asked, what the agent
-/// reasoned and said, and the calls it made, read from its session
-/// (this one's agents as they are, another's from its store).
-fn turn_text(record: &Record, asking: &Asking, opening: &Opening) -> Result<String, String> {
+/// The conversation a record was made in and its turn's first message,
+/// read from its session: this one's agents as they are, another's from
+/// its store.
+fn turn_of(
+    record: &Record,
+    asking: &Asking,
+    opening: &Opening,
+) -> Result<(Log, MessageId), String> {
     let asked = record.asked.ok_or("the turn's prompt was not recorded")?;
-    let gone = || "the turn is not in its session any more (compacted or rewritten)".to_owned();
     let here = opening.session.as_ref().and_then(|paths| paths.id());
-    if here.is_some_and(|id| id.to_string() == record.session) {
-        let live = opening
-            .agents
-            .iter()
-            .find(|(id, _)| id.0 == record.agent_id);
-        if let Some((_, conversation)) = live {
-            return render_turn(conversation, asked).ok_or_else(gone);
+    let live = here
+        .filter(|id| id.to_string() == record.session)
+        .and_then(|_| {
+            opening
+                .agents
+                .iter()
+                .find(|(id, _)| id.0 == record.agent_id)
+        })
+        .map(|(_, conversation)| conversation.0.clone());
+    let conversation = match live {
+        Some(conversation) => conversation,
+        None => {
+            let id: SessionId = record.session.parse().map_err(|_| "not a session id")?;
+            let (Some(home), Some(stores)) = (asking.home.as_ref(), opening.stores.as_ref()) else {
+                return Err("no sessions to read".to_owned());
+            };
+            let store = stores
+                .open(&home.0.session(&id))
+                .map_err(|why| why.to_string())?;
+            let session = Session::read(&*store).map_err(|why| why.to_string())?;
+            session
+                .agents
+                .into_iter()
+                .find(|agent| agent.id == record.agent_id)
+                .ok_or("the agent is not in its session any more")?
+                .conversation
         }
-    }
-    let id: SessionId = record.session.parse().map_err(|_| "not a session id")?;
-    let (Some(home), Some(stores)) = (asking.home.as_ref(), opening.stores.as_ref()) else {
-        return Err("no sessions to read".to_owned());
     };
-    let store = stores
-        .open(&home.0.session(&id))
-        .map_err(|why| why.to_string())?;
-    let session = Session::read(&*store).map_err(|why| why.to_string())?;
-    let agent = session
-        .agents
-        .iter()
-        .find(|agent| agent.id == record.agent_id)
-        .ok_or("the agent is not in its session any more")?;
-    render_turn(&agent.conversation, asked).ok_or_else(gone)
-}
-
-/// The turn `asked` asked for, up to the next request; `None` when that
-/// message is not in the conversation any more.
-fn render_turn(conversation: &Log, asked: MessageKey) -> Option<String> {
-    let start = conversation.index_of_key(asked)?;
-    let mut out = String::new();
-    for entry in conversation.entries().skip(start) {
-        if entry.index > start && entry.is_request() {
-            break;
-        }
-        match entry.message {
-            Message::User { content } => {
-                for part in content.iter() {
-                    match part {
-                        UserContent::Text(text) => out.push_str(&format!("> {}\n", text.text)),
-                        UserContent::ToolResult(result) => {
-                            let texts: Vec<&str> = result
-                                .content
-                                .iter()
-                                .filter_map(|it| it.as_text())
-                                .collect();
-                            let text: String = texts.join(" ").chars().take(200).collect();
-                            out.push_str(&format!("  ← {}: {text}\n", result.name.as_str()));
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            Message::Assistant(reply) => {
-                for part in &reply.content {
-                    match part {
-                        AssistantContent::Reasoning(reasoning) if !reasoning.text.is_empty() => {
-                            out.push_str(&format!("(thinking) {}\n", reasoning.text));
-                        }
-                        AssistantContent::Text(text) => out.push_str(&format!("{}\n", text.text)),
-                        AssistantContent::ToolCall(call) => out.push_str(&format!(
-                            "→ {} {}\n",
-                            call.function.name.as_str(),
-                            serde_json::to_string(&call.function.arguments).unwrap_or_default()
-                        )),
-                        _ => {}
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    Some(out)
+    let turn = conversation
+        .index_of_key(asked)
+        .and_then(|at| conversation.id(at))
+        .ok_or("the turn is not in its session any more (compacted or rewritten)")?;
+    Ok((conversation, turn))
 }
 
 /// `rig provenance …`: prints the answer, then exits.
