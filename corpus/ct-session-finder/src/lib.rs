@@ -780,6 +780,7 @@ fn fork_here(sessions: &Sessions, session: &Found, hit: &Hit) -> Result<SessionI
         session: session.id.to_string(),
         before: before.map(|(agent, next)| (agent.to_owned(), next)),
         text: hit.next.as_ref().and_then(|(_, text)| text.clone()),
+        ..ForkedFrom::default()
     };
     let copied = sessions
         .stores

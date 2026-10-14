@@ -110,8 +110,8 @@ pub fn load(arg: &str) -> Result<Side, String> {
 /// The session's spending, or else its main agent's.
 fn spending_of(session: &Session, agent: &SavedAgent) -> Option<Spending> {
     let session = session.state.get(SESSION_SPENDING).cloned();
-    let value = session.or_else(|| agent.state.get(SPENDING).cloned())?;
-    serde_json::from_value(value).ok()
+    let saved = session.or_else(|| agent.state.get(SPENDING).cloned())?;
+    serde_json::from_value(saved.value).ok()
 }
 
 /// The line `branch` of `conversation` (the active one for `None`), as a

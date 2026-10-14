@@ -26,7 +26,6 @@ use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_sessions::SessionTitle;
 use serde::de::DeserializeSeed;
-use serde_json::Value;
 
 mod render;
 
@@ -328,10 +327,10 @@ fn model_call(record: &EffectRecord) -> Option<ModelCall> {
 
 /// The saved value of `T` among an agent's saved components.
 fn saved_value<T: Reflect + TypePath + FromReflect>(
-    saved: &BTreeMap<String, Value>,
+    saved: &BTreeMap<String, Versioned>,
     registry: &TypeRegistry,
 ) -> Option<T> {
-    let value = saved.get(T::type_path())?;
+    let value = &saved.get(T::type_path())?.value;
     let registration = registry.get(TypeId::of::<T>())?;
     let reflected = TypedReflectDeserializer::new(registration, registry)
         .deserialize(value)

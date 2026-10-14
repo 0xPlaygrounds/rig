@@ -675,6 +675,7 @@ fn write_copy(
         title: name.to_owned(),
         labels,
         updated: now_ms(),
+        ..SessionMeta::default()
     };
     meta.write(&*store).map_err(|failure| failure.to_string())?;
     Ok(copied)

@@ -83,6 +83,7 @@ fn naming_another_session_changes_only_its_title() {
         title: "Fix the parser".to_owned(),
         labels: BTreeMap::from([("spent".to_owned(), "$0.50".to_owned())]),
         updated: 1000,
+        ..SessionMeta::default()
     };
     assert!(before.write(&*store).is_ok());
     let Some(mut app) = running(&home, "2-2") else {

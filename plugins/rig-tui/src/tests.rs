@@ -17,6 +17,7 @@ pub(crate) fn redacted(secret: &'static str) -> SessionRewritten {
         hit
     });
     SessionRewritten {
+        by: Author::plugin("redact"),
         asker: None,
         with: std::sync::Arc::new(with),
         result: Ok(Rewritten::default()),

@@ -636,8 +636,7 @@ fn save(home: &Home, opened: Opened, target: Target, edit: &Edit) -> Result<Vec<
                     let session = parent.to_string();
                     let forked = ForkedFrom {
                         session,
-                        before: None,
-                        text: None,
+                        ..ForkedFrom::default()
                     };
                     forked.write(&to)?;
                 }

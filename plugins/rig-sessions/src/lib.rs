@@ -342,6 +342,7 @@ fn update_meta(
         title: now.0.typed.clone(),
         labels: now.1.clone(),
         updated: now_ms(),
+        ..SessionMeta::default()
     };
     match meta.write(&*store.0) {
         Ok(()) => *listed = now,

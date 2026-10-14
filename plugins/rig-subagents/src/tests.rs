@@ -719,6 +719,7 @@ fn a_session_rewrite_reaches_a_finished_subagents_answer() {
         hit
     });
     world.write_message(SessionRewritten {
+        by: Author::plugin("redact"),
         asker: None,
         with: std::sync::Arc::new(redact),
         result: Ok(Rewritten::default()),
