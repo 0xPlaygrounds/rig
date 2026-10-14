@@ -257,17 +257,40 @@ struct Connections;
 #[derive(Component)]
 struct OneShot;
 
-/// The socket a session serving `project` listens on, under `home`.
+/// The longest socket path the system takes (`sun_path` less its nul).
+const MAX_SOCKET_PATH: usize = 107;
+
+/// The socket a session serving `project` listens on: under `home`, or,
+/// when that path is longer than a socket path may be, under the user's
+/// runtime directory (else the temporary one), keyed by `home` too.
 pub fn socket_path(home: &Path, project: &Path) -> PathBuf {
+    let path = home_socket_path(home, project);
+    if path.as_os_str().len() <= MAX_SOCKET_PATH {
+        return path;
+    }
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let name = path.file_name().map(PathBuf::from).unwrap_or_default();
+    runtime
+        .join(format!(
+            "rig-shell-{:016x}",
+            fnv(home.as_os_str().as_encoded_bytes())
+        ))
+        .join(name)
+}
+
+/// FNV-1a: stable across builds, unlike std's hasher.
+fn fnv(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, &byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
+
+/// The socket path under `home`, whatever its length.
+fn home_socket_path(home: &Path, project: &Path) -> PathBuf {
     let project = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
-    // FNV-1a: stable across builds, unlike std's hasher.
-    let hash = project
-        .as_os_str()
-        .as_encoded_bytes()
-        .iter()
-        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, &byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
-        });
+    let hash = fnv(project.as_os_str().as_encoded_bytes());
     home.join("shell").join(format!("{hash:016x}.sock"))
 }
 
