@@ -8,11 +8,19 @@ description = "Plugin corpus (conversation-over-time fresh held-out): CT-09: 09.
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The version badge's look and the keys on a selected message.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# Reading the working tree off the main thread.
+bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
@@ -20,3 +28,4 @@ serde_json = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-tui = { path = "../../plugins/rig-tui" }
