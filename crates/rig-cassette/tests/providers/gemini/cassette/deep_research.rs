@@ -1,5 +1,6 @@
 //! The Deep Research agent through the Interactions API, recorded: a
-//! background stream dropped after its first cursor and resumed after it.
+//! background stream dropped at its first resume point and resumed after
+//! it.
 
 use futures::StreamExt;
 use rig::completion::CompletionRequest;
@@ -12,8 +13,9 @@ use rig::providers::gemini::interactions_api::streaming::StreamCursor;
 use super::super::support::{recorded_request_bodies, with_gemini_interactions_cassette};
 
 /// With collaborative planning, the agent answers with a plan. The stream
-/// is dropped at its first cursor, and the resumed stream, after that
-/// cursor, carries the plan to its end.
+/// names its interaction as it is created, is dropped at its first resume
+/// point, and the stream resumed after that point carries the plan to its
+/// end.
 #[tokio::test]
 async fn a_planning_stream_resumes_after_its_cursor() {
     const SCENARIO: &str = "deep_research/planning_stream_resumed";
@@ -38,22 +40,32 @@ async fn a_planning_stream_resumes_after_its_cursor() {
                 .interactions(DEEP_RESEARCH_PREVIEW_04_2026)
                 .stream(request)
                 .expect("the interaction opens");
-            let mut cursor = None;
+            let (mut created, mut cursor) = (None, None);
             while let Some(item) = stream.next().await {
-                cursor = StreamCursor::of(&item.expect("the stream reads"));
-                if cursor.is_some() {
-                    break;
+                let Some(next) = StreamCursor::of(&item.expect("the stream reads")) else {
+                    continue;
+                };
+                match next.event_id {
+                    None => created = created.or(Some(next)),
+                    Some(_) => {
+                        cursor = Some(next);
+                        break;
+                    }
                 }
             }
             drop(stream);
-            let cursor = cursor.expect("the stream yields a cursor");
-            let interaction_id = cursor
+            let created = created.expect("the creation yields a cursor");
+            let cursor = cursor.expect("the stream yields a resume point");
+            let interaction_id = created
                 .interaction_id
-                .clone()
-                .expect("the cursor names its interaction");
+                .expect("the creation names its interaction");
+            assert_eq!(
+                cursor.interaction_id.as_deref(),
+                Some(interaction_id.as_str())
+            );
 
             let mut resumed = client
-                .interaction_resumed(interaction_id.as_str(), Some(&cursor.event_id))
+                .interaction_resumed(interaction_id.as_str(), cursor.event_id.as_deref())
                 .stream(CompletionRequest::new("resume"))
                 .expect("the stream resumes");
             while let Some(item) = resumed.next().await {

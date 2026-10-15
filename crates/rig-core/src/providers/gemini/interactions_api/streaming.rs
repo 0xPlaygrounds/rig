@@ -41,20 +41,20 @@ const INTERACTION_MARKER_KEYS: &[&str] = &["steps", "status", "usage", "object",
 /// The tag of the unknown payload a [`StreamCursor`] travels in.
 const CURSOR_TYPE: &str = "gemini.stream_cursor";
 
-/// Where a resumable stream picks up: an `event_id` the API marked as a
-/// resume point, and the interaction it belongs to. A stream carries one
-/// after each event with an `event_id`, as an
-/// [`Item::Unknown`](crate::streaming::Item::Unknown) that [`Self::of`]
-/// reads. A stream resumed after it with
+/// Where a resumable stream picks up: the interaction, and the last
+/// `event_id` the API marked as a resume point. A stream carries one after
+/// `interaction.created`, with no event yet, and one after each event with
+/// an `event_id`, as an [`Item::Unknown`](crate::streaming::Item::Unknown)
+/// that [`Self::of`] reads. A stream resumed with
 /// [`Gemini::interaction_resumed`](crate::providers::gemini::Gemini::interaction_resumed)
-/// continues from the next event, so a step that was open arrives without
-/// its start.
+/// continues after the event, or from the start without one, so a step
+/// that was open arrives without its start.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StreamCursor {
     /// The interaction's id, when the stream named it.
     pub interaction_id: Option<String>,
-    /// The `event_id` to resume after.
-    pub event_id: String,
+    /// The `event_id` to resume after; `None` resumes from the start.
+    pub event_id: Option<String>,
 }
 
 impl StreamCursor {
@@ -577,6 +577,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
             ))
         };
         let event_id = event.str("event_id").map(str::to_owned);
+        let resumable = event_id.is_some() || event_type == "interaction.created";
         match event_type.as_str() {
             "step.start" => match event.get("step") {
                 // A start that states no step leaves its deltas to open it.
@@ -622,7 +623,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
             }
             _ => {}
         }
-        if let Some(event_id) = event_id {
+        if resumable {
             let cursor = StreamCursor {
                 interaction_id: self.interaction_id.clone(),
                 event_id,

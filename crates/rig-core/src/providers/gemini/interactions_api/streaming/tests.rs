@@ -158,10 +158,10 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
     assert!(outcome.is_err());
 }
 
-/// A stream yields a cursor after each event the API marks with an
-/// `event_id`, naming the interaction `interaction.created` named; a stream
-/// that resumes an interaction names it without that event, and joins the
-/// step that was open.
+/// A stream yields a cursor naming its interaction after
+/// `interaction.created` and after each event the API marks with an
+/// `event_id`; a stream that resumes an interaction names it without that
+/// event, and joins the step that was open.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn resume_points_yield_cursors() -> anyhow::Result<()> {
@@ -179,11 +179,11 @@ async fn resume_points_yield_cursors() -> anyhow::Result<()> {
         .iter()
         .filter_map(|item| item.as_ref().ok().and_then(StreamCursor::of))
         .collect();
-    let cursor = |event_id: &str| StreamCursor {
+    let cursor = |event_id: Option<&str>| StreamCursor {
         interaction_id: Some("int_1".to_owned()),
-        event_id: event_id.to_owned(),
+        event_id: event_id.map(str::to_owned),
     };
-    anyhow::ensure!(cursors == [cursor("e2")], "{cursors:?}");
+    anyhow::ensure!(cursors == [cursor(None), cursor(Some("e2"))], "{cursors:?}");
     let other = Item::<StreamEvent>::Unknown(crate::streaming::UnknownPayload::new(
         json!({"type": "other", "event_id": "e9"}),
     ));
@@ -218,7 +218,7 @@ async fn resume_points_yield_cursors() -> anyhow::Result<()> {
     while let Some(item) = stream.next().await {
         cursors.extend(StreamCursor::of(&item?));
     }
-    anyhow::ensure!(cursors == [cursor("e5")], "{cursors:?}");
+    anyhow::ensure!(cursors == [cursor(Some("e5"))], "{cursors:?}");
     let response = stream.finish().await?;
     let text: String = response
         .choice

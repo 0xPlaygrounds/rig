@@ -57,10 +57,15 @@ async fn main() -> Result<()> {
     };
     println!("{agent} started {id}");
 
-    let report = match flag("--poll") {
-        true => poll(&gemini, &id).await?,
-        false => stream(&gemini, &id).await?,
-    };
+    if !flag("--poll") {
+        stream(&gemini, &id).await?;
+    }
+    // A resumed stream holds only what followed its cursor, so the report is
+    // read whole from the finished interaction.
+    let report = poll(&gemini, &id).await?;
+    if let Some(error) = &report.error {
+        bail!("the research did not complete: {error}");
+    }
     print_report(&report);
     Ok(())
 }
@@ -71,9 +76,9 @@ fn read() -> CompletionRequest {
     CompletionRequest::new("read")
 }
 
-/// Stream the interaction's progress, resuming after the last cursor when
-/// the stream drops.
-async fn stream(gemini: &Gemini, id: &str) -> Result<CompletionResponse> {
+/// Print the interaction's progress as it streams, resuming after the last
+/// cursor when the stream drops.
+async fn stream(gemini: &Gemini, id: &str) -> Result<()> {
     let mut cursor: Option<String> = None;
     for _ in 0..RECONNECTS {
         let mut stream = gemini
@@ -87,8 +92,8 @@ async fn stream(gemini: &Gemini, id: &str) -> Result<CompletionResponse> {
                     break;
                 }
             };
-            if let Some(resume) = StreamCursor::of(&item) {
-                cursor = Some(resume.event_id);
+            if let Some(event_id) = StreamCursor::of(&item).and_then(|resume| resume.event_id) {
+                cursor = Some(event_id);
             }
             match item {
                 Item::Event(StreamEvent::Reasoning { text, .. }) => println!("\n[thought] {text}"),
@@ -97,11 +102,11 @@ async fn stream(gemini: &Gemini, id: &str) -> Result<CompletionResponse> {
             }
         }
         match stream.finish().await {
-            Ok(report) => return Ok(report),
+            Ok(_) => return Ok(()),
             Err(error) => eprintln!("Resuming after {cursor:?}: {error}"),
         }
     }
-    poll(gemini, id).await
+    Ok(())
 }
 
 /// Poll the interaction until it stops running.
