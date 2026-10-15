@@ -3457,9 +3457,9 @@ fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
 mod tests;
 
 /// A reqwest client that buffers unary responses and optionally records complete
-/// exchanges, preserving non-UTF-8 bodies as base64. Multipart requests are
-/// not recorded, but a file they upload is logged in the created-resource
-/// ledger; streaming requests pass through untouched.
+/// exchanges, preserving non-UTF-8 bodies as base64. Multipart and streaming
+/// requests are not recorded, but what they create is logged in the
+/// created-resource ledger before the caller reads it.
 #[derive(Clone, Debug, Default)]
 pub struct DirectRecordingHttpClient {
     inner: rig_reqwest::ReqwestClient,
@@ -3562,7 +3562,124 @@ impl HttpClientExt for DirectRecordingHttpClient {
     where
         T: Into<Bytes> + Send,
     {
-        self.inner.send_streaming(req)
+        let inner = self.inner.clone();
+        let recorder = self.recorder.clone();
+        let (parts, body) = req.into_parts();
+        let body: Bytes = body.into();
+        let method = parts.method.to_string();
+        let uri = parts.uri.to_string();
+        let request = HttpRequest::from_parts(parts, body.clone());
+        async move {
+            let response = inner.send_streaming(request).await?;
+            let Some(recorder) = recorder else {
+                return Ok(response);
+            };
+            // An error reply creates nothing, and a binary stream names nothing.
+            if !response.status().is_success() || !LedgerTap::taps(response.headers()) {
+                return Ok(response);
+            }
+            let (parts, stream) = response.into_parts();
+            let tap = LedgerTap {
+                stream,
+                recorder,
+                method,
+                uri,
+                request_body: body,
+                status: parts.status.as_u16(),
+                pending: Vec::new(),
+            };
+            let stream: http_client::BoxedStream = Box::pin(tap);
+            Ok(HttpResponse::from_parts(parts, stream))
+        }
+    }
+}
+
+/// A streamed reply on the direct path that logs what it creates: each
+/// complete SSE event before the chunk that completes it reaches the caller,
+/// and the bytes after the last event (a body that is not SSE) when the
+/// stream ends or is dropped.
+struct LedgerTap {
+    stream: http_client::BoxedStream,
+    recorder: DirectRecorder,
+    method: String,
+    uri: String,
+    request_body: Bytes,
+    status: u16,
+    /// Bytes after the last complete event.
+    pending: Vec<u8>,
+}
+
+impl LedgerTap {
+    /// Whether a streamed reply with `headers` is tapped: every body but a
+    /// known binary one (audio, image, video, octet stream).
+    fn taps(headers: &http_client::HeaderMap) -> bool {
+        let content_type = headers
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        !["audio/", "image/", "video/", "application/octet-stream"]
+            .iter()
+            .any(|binary| content_type.starts_with(binary))
+    }
+
+    fn feed(&mut self, bytes: &[u8]) {
+        // Only the new bytes, and three before them for a split `\r\n\r\n`,
+        // can complete an event, so a body without one is scanned once.
+        let from = self.pending.len().saturating_sub(3);
+        self.pending.extend_from_slice(bytes);
+        let fresh = self.pending.get(from..).unwrap_or_default();
+        if !fresh.windows(2).any(|pair| pair == b"\n\n")
+            && !fresh.windows(4).any(|quad| quad == b"\r\n\r\n")
+        {
+            return;
+        }
+        let events = relay::complete_events(&self.pending).concat();
+        self.log(&events);
+        self.pending.drain(..events.len());
+    }
+
+    /// Check the bytes after the last complete event. The second call, on
+    /// drop after the stream ended, finds nothing left.
+    fn finish(&mut self) {
+        let rest = std::mem::take(&mut self.pending);
+        if !rest.iter().all(u8::is_ascii_whitespace) {
+            self.log(&rest);
+        }
+    }
+
+    fn log(&self, body: &[u8]) {
+        self.recorder.log_created(
+            &self.method,
+            &self.uri,
+            &self.request_body,
+            self.status,
+            body,
+        );
+    }
+}
+
+impl futures::Stream for LedgerTap {
+    type Item = http_client::Result<Bytes>;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        let polled = this.stream.as_mut().poll_next(cx);
+        match &polled {
+            std::task::Poll::Ready(Some(Ok(bytes))) => this.feed(bytes),
+            std::task::Poll::Ready(None) => this.finish(),
+            _ => {}
+        }
+        polled
+    }
+}
+
+impl Drop for LedgerTap {
+    fn drop(&mut self) {
+        self.finish();
     }
 }
 
