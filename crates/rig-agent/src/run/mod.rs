@@ -293,6 +293,16 @@ impl RunState {
     const READY: Self = Self::PreparingRequest {
         rollback_owed: false,
     };
+
+    /// Whether the next action is a model call nothing was fed or recorded for.
+    fn awaits_model_call(&self) -> bool {
+        matches!(
+            self,
+            Self::PreparingRequest {
+                rollback_owed: false
+            } | Self::AwaitingModel { recorded: false }
+        )
+    }
 }
 
 /// The sans-IO agent loop state machine. See the [module docs](self) for the
@@ -532,10 +542,13 @@ impl AgentRun {
     /// have already appended the assistant turn and the corrective feedback
     /// message to the history. Consumes one output-retry, then emits the retry
     /// [`AgentRunStep::CallModel`].
-    fn reprompt_for_output(&mut self) -> Result<AgentRunStep, PromptError> {
+    fn reprompt_for_output(
+        &mut self,
+        requested: &mut Option<String>,
+    ) -> Result<AgentRunStep, PromptError> {
         self.output_retries += 1;
         self.state = RunState::READY;
-        self.next_step()
+        self.advance(requested)
     }
 
     /// Set the retry budget for [`InvalidToolCallAction::Retry`]
@@ -840,7 +853,23 @@ impl AgentRun {
     ///   protocol (for example, calling this while an invalid tool-call
     ///   resolution is pending).
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
-        match std::mem::replace(&mut self.state, RunState::Failed) {
+        self.advance(&mut None)
+    }
+
+    /// [`Self::next_step`], taking `requested` to end the run as
+    /// [`Self::finish_with`] does where the step would call the model, even
+    /// one the same step reaches after committing a turn.
+    pub(crate) fn advance(
+        &mut self,
+        requested: &mut Option<String>,
+    ) -> Result<AgentRunStep, PromptError> {
+        let state = std::mem::replace(&mut self.state, RunState::Failed);
+        if state.awaits_model_call()
+            && let Some(output) = requested.take()
+        {
+            return Ok(self.finish_on_request(output));
+        }
+        match state {
             // Re-issuing a pending attempt consumes no turn; the interrupted
             // attempt stays recorded and billed if it was.
             state @ (RunState::PreparingRequest { .. } | RunState::AwaitingModel { .. }) => {
@@ -919,7 +948,7 @@ impl AgentRun {
                             {
                                 self.history.commit([user_message]);
                             }
-                            return self.reprompt_for_output();
+                            return self.reprompt_for_output(requested);
                         }
                         return Err(ProviderError::Response(format!(
                             "the output tool `{output_tool_name}` was called with arguments \
@@ -942,7 +971,7 @@ impl AgentRun {
                         {
                             self.history.commit([user_message]);
                         }
-                        return self.reprompt_for_output();
+                        return self.reprompt_for_output(requested);
                     }
 
                     // Store output as text without tool calls so resumed history
@@ -988,7 +1017,7 @@ impl AgentRun {
                     // A batch answered in full (a whole-turn skip) is
                     // committed at once and the run moves on to the model.
                     self.answer_all([])?;
-                    self.next_step()
+                    self.advance(requested)
                 } else {
                     // Accept schema-compatible JSON text without requiring a tool call;
                     // other nonempty answers may consume an output retry.
@@ -1003,7 +1032,7 @@ impl AgentRun {
                         self.history.commit([Message::user(
                             structured_output::reprompt_text_answer(output_tool_name),
                         )]);
-                        return self.reprompt_for_output();
+                        return self.reprompt_for_output(requested);
                     }
 
                     Ok(self.finish(items, 0))
@@ -1100,6 +1129,33 @@ impl AgentRun {
             .with_output_tool_calls(output_tool_calls);
         self.state = RunState::Done(response.clone());
         AgentRunStep::Done(response)
+    }
+
+    /// End the run successfully with `output` in place of its pending model
+    /// call: `output` is committed as a hand-built assistant turn and is the
+    /// final response's output. [`Self::next_step`] then returns
+    /// [`AgentRunStep::Done`].
+    ///
+    /// # Errors
+    /// A protocol violation, changing nothing, unless the run is about to
+    /// call the model or awaits a model response not yet fed or recorded.
+    pub fn finish_with(&mut self, output: impl Into<String>) -> Result<(), PromptError> {
+        if self.state.awaits_model_call() {
+            self.finish_on_request(output.into());
+            Ok(())
+        } else {
+            Err(self.protocol_violation(
+                "finish_with called while the run is not waiting for a model call",
+            ))
+        }
+    }
+
+    /// Commit `output` as the run's last turn and finish with it.
+    fn finish_on_request(&mut self, output: String) -> AgentRunStep {
+        let content = vec![AssistantContent::text(output)];
+        self.history
+            .commit(assistant_turn(AssistantMessage::default(), content.clone()));
+        self.finish(content, 0)
     }
 
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the

@@ -3,7 +3,7 @@
 //! engine mints an id or builds either event. [`model_step`] holds a
 //! completion's [`CompletionScope`] across its model turn and closes it once.
 
-use super::super::hook::{DispatchAction, DispatchEvent, OutcomeEvent};
+use super::super::hook::{DispatchAction, DispatchEvent, OutcomeEvent, Scratchpad};
 use super::*;
 use crate::run::response::CompletionCall;
 use crate::tool::ToolContext;
@@ -11,10 +11,12 @@ use rig_core::{completion::CompletionRequest, streaming::CompletionStream};
 use rig_core::{completion::CompletionResponse, effect::EffectId, message::CallId};
 use std::marker::PhantomData;
 
-/// One dispatched effect: its id and the effect after any hook's patch.
+/// One dispatched effect: its id, the effect after any hook's patch, and the
+/// scratchpad its hooks share, dropped with the scope.
 pub(crate) struct DispatchScope {
     id: EffectId,
     kind: EffectKind,
+    scratchpad: Scratchpad,
 }
 
 impl DispatchScope {
@@ -30,6 +32,7 @@ impl DispatchScope {
         call: Option<(&CallId, &ToolContext)>,
     ) -> Result<Self, (Self, ErrorReport)> {
         let id = runner.config.bus.dispatcher().mint_id();
+        let scratchpad = Scratchpad::default();
         let (call_id, context) = call.unzip();
         let event = DispatchEvent {
             id,
@@ -37,13 +40,19 @@ impl DispatchScope {
             turn: ctx.turn(),
             call_id,
             context,
+            scratchpad: &scratchpad,
+        };
+        let scope = |kind| Self {
+            id,
+            kind,
+            scratchpad: scratchpad.clone(),
         };
         match runner.config.hooks.on_dispatch(ctx, event).await {
-            DispatchAction::Proceed => Ok(Self { id, kind }),
-            DispatchAction::Patch(kind) => Ok(Self { id, kind }),
+            DispatchAction::Proceed => Ok(scope(kind)),
+            DispatchAction::Patch(kind) => Ok(scope(kind)),
             DispatchAction::Deny(report) => {
                 let kind = ctx.take_salvaged_patch(id).unwrap_or(kind);
-                Err((Self { id, kind }, report))
+                Err((scope(kind), report))
             }
         }
     }
@@ -74,6 +83,7 @@ impl DispatchScope {
             turn,
             call_id,
             context,
+            scratchpad: &self.scratchpad,
         };
         runner.config.hooks.on_outcome(ctx, event).await
     }

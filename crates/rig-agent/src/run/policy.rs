@@ -90,6 +90,24 @@ pub struct InvalidToolCallContext {
     pub reason: InvalidToolCallReason,
 }
 
+impl InvalidToolCallContext {
+    /// A context for a call to `tool_name` rejected for `reason`, with every
+    /// other field empty. Set the public fields to describe more of the call.
+    pub fn new(tool_name: impl Into<String>, reason: InvalidToolCallReason) -> Self {
+        Self {
+            tool_name: tool_name.into(),
+            tool_call_id: None,
+            args: None,
+            available_tools: Vec::new(),
+            allowed_tools: Vec::new(),
+            tool_choice: None,
+            chat_history: Vec::new(),
+            is_streaming: false,
+            reason,
+        }
+    }
+}
+
 /// The tool policy of one model turn, built once by
 /// [`prepare_request`](super::prepare::prepare_request) and read by every
 /// invalid-call check of that turn. The allowed set is derived from the
