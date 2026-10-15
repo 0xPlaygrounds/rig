@@ -82,7 +82,12 @@ pub(super) fn add(app: &mut App) {
     app.add_open_tool(TASK, TASK_DESCRIPTION, independent(RULES), on_task)
         .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(&[]), on_message)
         .add_open_tool(WAIT, WAIT_DESCRIPTION, independent(&[]), on_wait)
-        .add_systems(Update, send_briefs.before(AgentLoop));
+        .add_systems(
+            Update,
+            send_briefs
+                .run_if(any_with_component::<Brief>)
+                .before(AgentLoop),
+        );
 }
 
 /// The arguments of a `task` call. Any argument besides these is one

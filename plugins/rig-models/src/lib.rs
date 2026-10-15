@@ -94,27 +94,27 @@ pub struct ModelLabel(pub String);
 fn choose_invoked_model(
     invoked: Option<Res<Invoked>>,
     (agents, busy): (MainAgentQuery, Query<Has<ActiveTurn>>),
-    mut waited: Local<Option<bool>>,
+    (mut done, mut told): (Local<bool>, Local<bool>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if *waited == Some(true) {
+    if *done {
         return;
     }
     let model = invoked.and_then(|invoked| invoked.args.model.clone());
     let (Some(model), Some(agent)) = (model, main_agent(&agents)) else {
-        *waited = Some(true);
+        *done = true;
         return;
     };
     if busy.get(agent).unwrap_or_default() {
-        if waited.is_none() {
+        if !*told {
             let text = format!("--model {model} applies once the continued turn ends.");
             notices.write(Notice::info(agent, text));
+            *told = true;
         }
-        *waited = Some(false);
         return;
     }
-    *waited = Some(true);
+    *done = true;
     commands.trigger(SetModel {
         entity: agent,
         model,

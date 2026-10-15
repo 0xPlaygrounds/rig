@@ -165,14 +165,13 @@ pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, commands: &mut Comman
 /// reasoning setting, when one of them changed.
 fn show(
     mut agents: Query<(
-        Entity,
         Option<&ModelChoice>,
         Option<&ModelLabel>,
         &ReasoningSetting,
         &mut StatusItems,
     )>,
     changed: Query<
-        (),
+        Entity,
         Or<(
             Changed<ModelChoice>,
             Changed<ReasoningSetting>,
@@ -181,11 +180,10 @@ fn show(
     >,
     mut unlabeled: RemovedComponents<ModelLabel>,
 ) {
-    let unlabeled: Vec<Entity> = unlabeled.read().collect();
-    for (agent, model, label, effort, mut items) in &mut agents {
-        if !changed.contains(agent) && !unlabeled.contains(&agent) {
+    for agent in changed.iter().chain(unlabeled.read()) {
+        let Ok((model, label, effort, mut items)) = agents.get_mut(agent) else {
             continue;
-        }
+        };
         let model = match (label, model) {
             (Some(label), _) => &label.0,
             (None, Some(model)) => &model.0,
