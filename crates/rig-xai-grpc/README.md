@@ -53,7 +53,11 @@ Every field of `GetCompletionsRequest` can be set through
 `additional_params`, spelled as proto3 JSON (`"search_parameters"`,
 `"include": ["INCLUDE_OPTION_INLINE_CITATIONS"]`, or a server-side tool such
 as `"tools": [{"web_search": {}}]`). A field the proto does not declare is an
-error rather than dropped. The gRPC request has no prompt cache key, so a
+error rather than dropped. With server-side tools xAI answers in several
+outputs; they read as one turn, and the API's own tool calls are not
+surfaced as calls to run. Encrypted reasoning (`use_encrypted_content`)
+stays in `raw` and is not replayed in later turns. The gRPC request has no
+prompt cache key, so a
 `cache_key` option or `XaiOptions::prompt_cache_key` is refused. Audio and
 video inputs have no content part in the proto.
 

@@ -5,7 +5,7 @@ use crate::proto::{
 };
 use futures::StreamExt;
 use rig_core::Model;
-use rig_core::completion::{CompletionResponse, ToolDefinition};
+use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::message::{
     AssistantContent, CallId, ImageDetail, ImageMediaType, Message, ToolName, UserContent,
 };
@@ -206,6 +206,26 @@ fn raw_parameters_reach_proto_fields_and_unknown_ones_are_refused() {
     ));
 
     let mut request = CompletionRequest::new("hi");
+    request.additional_params = Some(json!({
+        "reasoning_effort": "EFFORT_HIGH",
+        "tool_choice": {"mode": "TOOL_MODE_NONE"},
+        "response_format": {"format_type": "FORMAT_TYPE_JSON_OBJECT"},
+    }));
+    let encoded = encode(request).expect("proto spellings encode");
+    assert_eq!(
+        encoded.reasoning_effort,
+        Some(proto::ReasoningEffort::EffortHigh as i32)
+    );
+    assert_eq!(
+        encoded.tool_choice.and_then(|choice| choice.tool_choice),
+        Some(tool_choice::ToolChoice::Mode(proto::ToolMode::None as i32))
+    );
+    assert_eq!(
+        encoded.response_format.map(|format| format.format_type()),
+        Some(proto::FormatType::JsonObject)
+    );
+
+    let mut request = CompletionRequest::new("hi");
     request.additional_params = Some(json!({"no_such_field": true}));
     let error = encode(request).expect_err("an undeclared field is refused");
     assert!(error.to_string().contains("no_such_field"), "{error}");
@@ -282,6 +302,56 @@ fn a_unary_reply_decodes_its_message_usage_and_raw_document() {
         .expect("xAI extras")
         .expect("they read");
     assert_eq!(extras.cost_in_usd_ticks, Some(2_500_000));
+}
+
+/// With server-side tools xAI answers in several outputs: the API's own
+/// calls and tool results are not the caller's, and the turn ends on the
+/// last output's answer.
+#[test]
+fn an_agentic_reply_reads_as_one_turn() {
+    let output =
+        |index: i32, role: proto::MessageRole, content: &str, calls, finish| CompletionOutput {
+            index,
+            finish_reason: finish as i32,
+            message: Some(proto::CompletionMessage {
+                content: content.to_owned(),
+                role: role as i32,
+                tool_calls: calls,
+                ..proto::CompletionMessage::default()
+            }),
+            ..CompletionOutput::default()
+        };
+    use proto::{FinishReason as Reason, MessageRole as Role};
+    let search = vec![call("search_1", ToolCallType::WebSearchTool, "{}")];
+    let response = proto::GetChatCompletionResponse {
+        outputs: vec![
+            output(
+                0,
+                Role::RoleAssistant,
+                "",
+                search.clone(),
+                Reason::ReasonToolCalls,
+            ),
+            output(1, Role::RoleTool, "results", search, Reason::ReasonInvalid),
+            output(
+                2,
+                Role::RoleAssistant,
+                "The answer.",
+                Vec::new(),
+                Reason::ReasonStop,
+            ),
+        ],
+        usage: Some(usage()),
+        ..proto::GetChatCompletionResponse::default()
+    };
+    let reply = complete(vec![XaiFrame::Whole(response)]);
+
+    assert_eq!(reply.finish_reason(), Some(FinishReason::Stop));
+    assert!(
+        matches!(reply.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "The answer."),
+        "{:?}",
+        reply.choice
+    );
 }
 
 /// A stream's text arrives as it is sent, its calls keep one index each,

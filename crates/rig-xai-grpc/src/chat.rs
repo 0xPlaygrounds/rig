@@ -99,9 +99,11 @@ pub(crate) fn request(body: ChatBody) -> Result<GetCompletionsRequest, EncodeErr
     from_json(Value::Object(rest)).map_err(|error| EncodeError::request(error.to_string()))
 }
 
-/// A Chat Completions enum string as the proto enum value `prefix` names.
+/// A Chat Completions enum string as the proto enum value `prefix` names;
+/// a value already spelled as the proto enum is kept.
 fn enumerated(prefix: &str, value: Value) -> Result<Value, EncodeError> {
     match value {
+        Value::String(name) if name.starts_with(prefix) => Ok(Value::String(name)),
         Value::String(name) => Ok(Value::String(format!(
             "{prefix}{}",
             name.to_ascii_uppercase()
@@ -237,6 +239,8 @@ fn tools(tools: Value) -> Result<Value, EncodeError> {
     })
 }
 
+/// A Chat tool choice as a proto `ToolChoice`; one already in proto form is
+/// kept.
 fn tool_choice(choice: Value) -> Result<Value, EncodeError> {
     Ok(match &choice {
         Value::String(mode) => match mode.as_str() {
@@ -245,6 +249,11 @@ fn tool_choice(choice: Value) -> Result<Value, EncodeError> {
             }
             mode => return Err(unsendable(format_args!("the tool choice {mode:?}"))),
         },
+        Value::Object(fields)
+            if fields.contains_key("mode") || fields.contains_key("function_name") =>
+        {
+            choice
+        }
         Value::Object(_) => match choice.pointer("/function/name") {
             Some(name) => json!({ "function_name": name }),
             None => return Err(unsendable(format_args!("the tool choice `{choice}`"))),
@@ -254,8 +263,11 @@ fn tool_choice(choice: Value) -> Result<Value, EncodeError> {
     })
 }
 
+/// A Chat response format as a proto `ResponseFormat`; one already in
+/// proto form is kept.
 fn response_format(format: Value) -> Result<Value, EncodeError> {
     Ok(match format.get("type").and_then(Value::as_str) {
+        None if format.get("format_type").is_some() => format,
         Some("text") => json!({ "format_type": "FORMAT_TYPE_TEXT" }),
         Some("json_object") => json!({ "format_type": "FORMAT_TYPE_JSON_OBJECT" }),
         Some("json_schema") => {
@@ -270,21 +282,25 @@ fn response_format(format: Value) -> Result<Value, EncodeError> {
     })
 }
 
-/// The calls of one reply streamed in fragments, so the completed copy
-/// that follows them is not read twice.
+/// What a reply's earlier messages said about its calls: the calls
+/// streamed in fragments, so the completed copy that follows them is not
+/// read twice, and the outputs that made a client-side call.
 #[derive(Debug, Default)]
 pub(crate) struct Calls {
     fragmented: HashSet<String>,
+    calling: HashSet<i32>,
 }
 
 impl Calls {
-    /// `call` as a Chat tool-call delta, keyed by its id: a fragment of a
-    /// call streamed in pieces, or a whole call once. Server-side calls are
-    /// the API's own and are not the caller's to run.
-    fn delta(&mut self, call: &ToolCall) -> Option<Value> {
+    /// `call`, made in output `output`, as a Chat tool-call delta keyed by
+    /// its id: a fragment of a call streamed in pieces, or a whole call
+    /// once. Server-side calls are the API's own and are not the caller's
+    /// to run.
+    fn delta(&mut self, output: i32, call: &ToolCall) -> Option<Value> {
         if call.r#type() != ToolCallType::ClientSideTool && call.r#type() != ToolCallType::Invalid {
             return None;
         }
+        self.calling.insert(output);
         if call.index.is_some() {
             self.fragmented.insert(call.id.clone());
         } else if self.fragmented.contains(&call.id) {
@@ -299,20 +315,63 @@ impl Calls {
         }
         Some(json!({ "id": call.id, "type": "function", "function": function }))
     }
+
+    /// Output `output`'s finish reason as Chat Completions spells it. An
+    /// output that stopped for server-side calls only did not stop the
+    /// turn: the API ran them and answers in a later output.
+    fn finish(&self, output: i32, reason: i32) -> Option<&'static str> {
+        match finish_reason(reason)? {
+            "tool_calls" if !self.calling.contains(&output) => None,
+            reason => Some(reason),
+        }
+    }
 }
 
-/// Whether an output is the model's own message: server-side tool outputs
-/// carry the tool role.
-fn assistant(role: i32) -> bool {
-    role == MessageRole::RoleAssistant as i32 || role == MessageRole::InvalidRole as i32
+/// One output of a reply, its message or delta.
+struct Output<'a> {
+    index: i32,
+    role: i32,
+    content: &'a str,
+    reasoning: &'a str,
+    calls: &'a [ToolCall],
+    finish: i32,
 }
 
-/// The Chat Completions message fields of an output's message or delta.
-fn message_json(
-    content: &str,
-    reasoning: &str,
-    calls: impl Iterator<Item = Value>,
-) -> Map<String, Value> {
+/// The model's outputs folded into one Chat choice under `key`
+/// (`message` or `delta`). With server-side tools xAI answers in several
+/// outputs, one per agentic turn, and the turn is what they say in order;
+/// outputs of the tool role are the API's own tool results. `None` when no
+/// output is the model's.
+fn folded<'a>(
+    outputs: impl Iterator<Item = Output<'a>>,
+    key: &str,
+    calls: &mut Calls,
+) -> Option<Value> {
+    let mut any = false;
+    let (mut content, mut reasoning, mut deltas, mut finish) =
+        (String::new(), String::new(), Vec::new(), None);
+    for output in outputs {
+        let model = output.role == MessageRole::RoleAssistant as i32
+            || output.role == MessageRole::InvalidRole as i32;
+        if !model {
+            continue;
+        }
+        any = true;
+        content.push_str(output.content);
+        reasoning.push_str(output.reasoning);
+        deltas.extend(
+            output
+                .calls
+                .iter()
+                .filter_map(|call| calls.delta(output.index, call)),
+        );
+        if let Some(reason) = calls.finish(output.index, output.finish) {
+            finish = Some(reason);
+        }
+    }
+    if !any {
+        return None;
+    }
     let mut message = Map::from_iter([("role".to_owned(), Value::from("assistant"))]);
     if !content.is_empty() {
         message.insert("content".to_owned(), content.into());
@@ -320,11 +379,10 @@ fn message_json(
     if !reasoning.is_empty() {
         message.insert("reasoning_content".to_owned(), reasoning.into());
     }
-    let calls: Vec<Value> = calls.collect();
-    if !calls.is_empty() {
-        message.insert("tool_calls".to_owned(), Value::Array(calls));
+    if !deltas.is_empty() {
+        message.insert("tool_calls".to_owned(), Value::Array(deltas));
     }
-    message
+    Some(json!({ "index": 0, key: message, "finish_reason": finish }))
 }
 
 /// A proto finish reason as Chat Completions spells it; `None` before the
@@ -388,37 +446,21 @@ fn envelope(
     Value::Object(reply)
 }
 
-fn choice(index: i32, key: &str, message: Map<String, Value>, finish: i32) -> Value {
-    json!({
-        "index": index,
-        key: message,
-        "finish_reason": finish_reason(finish),
-    })
-}
-
 /// A unary reply as a `chat.completion`.
 pub(crate) fn whole(response: &GetChatCompletionResponse) -> Value {
-    let mut calls = Calls::default();
-    let choices = response
-        .outputs
-        .iter()
-        .filter_map(|output| {
-            let default = CompletionMessage::default();
-            let message = output.message.as_ref().unwrap_or(&default);
-            let CompletionMessage {
-                content,
-                reasoning_content,
-                role,
-                tool_calls,
-                ..
-            } = message;
-            assistant(*role).then(|| {
-                let calls = tool_calls.iter().filter_map(|call| calls.delta(call));
-                let message = message_json(content, reasoning_content, calls);
-                choice(output.index, "message", message, output.finish_reason)
-            })
-        })
-        .collect();
+    let default = CompletionMessage::default();
+    let outputs = response.outputs.iter().map(|output| {
+        let message = output.message.as_ref().unwrap_or(&default);
+        Output {
+            index: output.index,
+            role: message.role,
+            content: &message.content,
+            reasoning: &message.reasoning_content,
+            calls: &message.tool_calls,
+            finish: output.finish_reason,
+        }
+    });
+    let choice = folded(outputs, "message", &mut Calls::default());
     envelope(
         "chat.completion",
         &response.id,
@@ -426,36 +468,26 @@ pub(crate) fn whole(response: &GetChatCompletionResponse) -> Value {
         response.created.as_ref(),
         response.usage.as_ref(),
         &response.citations,
-        choices,
+        choice.into_iter().collect(),
     )
 }
 
-/// A streamed chunk as a `chat.completion.chunk`; `calls` holds the
-/// reply's calls streamed in fragments.
+/// A streamed chunk as a `chat.completion.chunk`; `calls` holds what the
+/// reply's earlier chunks said about its calls.
 pub(crate) fn chunk(chunk: &GetChatCompletionChunk, calls: &mut Calls) -> Value {
-    let choices = chunk
-        .outputs
-        .iter()
-        .filter_map(|output| {
-            let default = Delta::default();
-            let delta = output.delta.as_ref().unwrap_or(&default);
-            let Delta {
-                content,
-                reasoning_content,
-                role,
-                tool_calls,
-                ..
-            } = delta;
-            assistant(*role).then(|| {
-                let deltas: Vec<Value> = tool_calls
-                    .iter()
-                    .filter_map(|call| calls.delta(call))
-                    .collect();
-                let message = message_json(content, reasoning_content, deltas.into_iter());
-                choice(output.index, "delta", message, output.finish_reason)
-            })
-        })
-        .collect();
+    let default = Delta::default();
+    let outputs = chunk.outputs.iter().map(|output| {
+        let delta = output.delta.as_ref().unwrap_or(&default);
+        Output {
+            index: output.index,
+            role: delta.role,
+            content: &delta.content,
+            reasoning: &delta.reasoning_content,
+            calls: &delta.tool_calls,
+            finish: output.finish_reason,
+        }
+    });
+    let choice = folded(outputs, "delta", calls);
     envelope(
         "chat.completion.chunk",
         &chunk.id,
@@ -463,6 +495,6 @@ pub(crate) fn chunk(chunk: &GetChatCompletionChunk, calls: &mut Calls) -> Value 
         chunk.created.as_ref(),
         chunk.usage.as_ref(),
         &chunk.citations,
-        choices,
+        choice.into_iter().collect(),
     )
 }
