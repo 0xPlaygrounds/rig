@@ -260,20 +260,13 @@ impl NdjsonFramer {
     pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, Vec<u8>> {
         self.buffer.extend_from_slice(chunk);
         let mut rest = self.buffer.as_slice();
-        while let Some(end) = rest
-            .iter()
-            .skip(self.scanned)
-            .position(|byte| *byte == b'\n')
-        {
-            let Some((line, next)) = rest.split_at_checked(self.scanned + end) else {
-                break;
-            };
+        while let Some((line, end)) = split_line(rest, self.scanned, |byte| *byte == b'\n') {
             self.scanned = 0;
             let line = line.strip_suffix(b"\r").unwrap_or(line);
             if !line.is_empty() {
                 self.ready.push(line.to_vec());
             }
-            rest = next.get(1..).unwrap_or_default();
+            rest = end.get(1..).unwrap_or_default();
         }
         self.scanned = rest.len();
         let consumed = self.buffer.len() - rest.len();
@@ -299,14 +292,17 @@ impl NdjsonFramer {
 /// Defers a trailing CR until another byte arrives so a split CRLF is consumed
 /// as one terminator.
 fn terminated_line(buffer: &[u8], scanned: usize) -> Option<(&[u8], &[u8])> {
-    let ends = |byte: &u8| *byte == b'\n' || *byte == b'\r';
-    let pos = scanned + buffer.iter().skip(scanned).position(ends)?;
-    let (line, end) = buffer.split_at_checked(pos)?;
-    match end {
-        [b'\r', b'\n', rest @ ..] => Some((line, rest)),
-        [b'\r'] | [] => None,
-        [_, rest @ ..] => Some((line, rest)),
+    match split_line(buffer, scanned, |byte| *byte == b'\n' || *byte == b'\r')? {
+        (line, [b'\r', b'\n', rest @ ..]) => Some((line, rest)),
+        (_, [b'\r'] | []) => None,
+        (line, [_, rest @ ..]) => Some((line, rest)),
     }
+}
+
+/// `buffer` split before its first byte that `ends` a line, if it has one;
+/// the first `scanned` bytes hold none.
+fn split_line(buffer: &[u8], scanned: usize, ends: impl Fn(&u8) -> bool) -> Option<(&[u8], &[u8])> {
+    buffer.split_at_checked(scanned + buffer.iter().skip(scanned).position(ends)?)
 }
 
 #[cfg(test)]
