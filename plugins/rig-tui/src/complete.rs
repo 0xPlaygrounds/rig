@@ -3,7 +3,7 @@
 //! marker such as `#`, one of the candidates plugins add for it
 //! ([`CompletionSource`]). Paths come from a walk of the
 //! [`ProjectRoot`] in the app's [`ProjectWorkspace`] that honours
-//! `.gitignore`, done on a thread of its own, whatever the workspace, and
+//! `.gitignore`, done off the main thread, whatever the workspace, and
 //! kept until a [`FileWatch`] of the root says something there changed.
 //! An item matches when it contains the query, ignoring case; the earlier
 //! the match, the higher it ranks.
@@ -15,15 +15,16 @@ use std::sync::Arc;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_log::warn;
-use crossbeam_channel::Receiver;
+use bevy_tasks::{IoTaskPool, TaskPool};
 
 use super::editor::{Editor, MainEditor};
 use super::view::TuiView;
-use rig_ecs::tasks::Wake;
+use rig_ecs::tasks::{Running, Wake};
 use rig_harness::commands::SlashCommand;
 use rig_harness::services::ProjectRoot;
 use rig_harness::watch::{FileChanges, FileWatch};
 use rig_harness::workspace::ProjectWorkspace;
+use rig_tools::blocking;
 use rig_tools::workspace::{Listing, Local, Workspace};
 
 /// Items a completion lists.
@@ -227,11 +228,22 @@ impl CompletionKind {
 #[derive(Resource, Default)]
 pub(crate) struct FileIndex {
     paths: Arc<Vec<String>>,
-    walking: Option<Receiver<Vec<String>>>,
+    /// Whether a walk runs, to end as [`WalkedPaths`].
+    walking: bool,
     /// Whether the paths are the project's as its watch last saw it.
     fresh: bool,
     /// The watch of the project's root, from the first `@` on.
     watch: Option<Entity>,
+}
+
+/// The paths a walk of the project found, on the walk's entity.
+#[derive(Component)]
+pub(crate) struct WalkedPaths(Arc<Vec<String>>);
+
+impl From<Vec<String>> for WalkedPaths {
+    fn from(paths: Vec<String>) -> Self {
+        Self(Arc::new(paths))
+    }
 }
 
 impl FileIndex {
@@ -247,32 +259,21 @@ impl FileIndex {
             let watch = (Name::new("rig-tui: @ paths"), FileWatch::tree(&root));
             self.watch = Some(commands.spawn(watch).id());
         }
-        if self.walking.is_some() || self.fresh {
+        if self.walking || self.fresh {
             return;
         }
-        let (sender, receiver) = crossbeam_channel::bounded(1);
-        let wake = wake.clone();
-        let started = std::thread::Builder::new()
-            .name("rig-harness-paths".to_owned())
-            .spawn(move || {
-                sender.send(walk(&*workspace, &root)).ok();
-                wake.wake();
-            });
-        match started {
-            // A change seen from here on makes the walk stale.
-            Ok(_) => (self.walking, self.fresh) = (Some(receiver), true),
-            Err(failure) => warn!("could not list the project's files: {failure}"),
-        }
-    }
-
-    /// Takes a finished walk's paths; returns whether there were any new.
-    fn receive(&mut self) -> bool {
-        let Some(paths) = self.walking.as_ref().and_then(|walk| walk.try_recv().ok()) else {
-            return false;
+        let walk = blocking(move || Ok(walk(&*workspace, &root)));
+        let walk = async move {
+            walk.await.unwrap_or_else(|failure| {
+                warn!("could not list the project's files: {failure}");
+                Vec::new()
+            })
         };
-        self.paths = Arc::new(paths);
-        self.walking = None;
-        true
+        let pool = IoTaskPool::get_or_init(TaskPool::default);
+        let walking = Running::spawn_into::<WalkedPaths, _>(pool, wake, walk);
+        commands.spawn((Name::new("rig-tui: @ paths walk"), walking));
+        // A change seen from here on makes the walk stale.
+        (self.walking, self.fresh) = (true, true);
     }
 }
 
@@ -412,7 +413,7 @@ pub(crate) fn update(
     if kind == CompletionKind::Path {
         index.refresh(wake, sources.project(), commands);
     }
-    let complete = index.walking.is_none();
+    let complete = !index.walking;
     if let Some(open) = &view.completion
         && open.kind == kind
         && open.start == start
@@ -504,6 +505,7 @@ fn path_items(paths: &[String], query: &str) -> Vec<Candidate> {
 pub(crate) fn receive_paths(
     mut index: ResMut<FileIndex>,
     mut changes: MessageReader<FileChanges>,
+    walked: Option<Single<(Entity, &WalkedPaths)>>,
     mut view: ResMut<TuiView>,
     input: Query<&Editor, With<MainEditor>>,
     sources: Sources,
@@ -517,8 +519,12 @@ pub(crate) fn receive_paths(
     if changed {
         index.fresh = false;
     }
-    let received = index.walking.is_some() && index.receive();
-    if changed || received {
+    let received = walked.map(|walked| walked.into_inner());
+    if let Some((walk, WalkedPaths(paths))) = received {
+        (index.paths, index.walking) = (paths.clone(), false);
+        commands.entity(walk).despawn();
+    }
+    if changed || received.is_some() {
         update(
             &mut view,
             input,

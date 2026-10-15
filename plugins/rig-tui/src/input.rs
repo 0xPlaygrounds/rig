@@ -49,7 +49,7 @@ use crossbeam_channel::Receiver;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::layout::Rect;
 
-use super::clipboard::{self, Clipboard};
+use super::clipboard;
 use super::complete::{self, Completion, CompletionKind, CompletionSource};
 use super::editor::{Editor, MainEditor};
 use super::history::{PromptHistory, Sent};
@@ -399,7 +399,6 @@ pub(crate) struct Context<'a, 'w, 's> {
     /// The agent shown.
     agent: Option<Entity>,
     busy: bool,
-    clipboard: &'a Clipboard,
     scratch: Option<&'a Scratch>,
     processes: Option<&'a Processes>,
     wake: &'a Wake,
@@ -462,8 +461,7 @@ pub(crate) fn read_input(
     mut keymap: Keymap,
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
-    (clipboard, scratch, processes, wake, history): (
-        Res<Clipboard>,
+    (scratch, processes, wake, history): (
         Option<Res<Scratch>>,
         Option<Res<Processes>>,
         Res<Wake>,
@@ -484,7 +482,6 @@ pub(crate) fn read_input(
     let context = Context {
         agent: shown.0,
         busy,
-        clipboard: &clipboard,
         scratch: scratch.as_deref(),
         processes: processes.as_deref(),
         wake: &wake,
@@ -766,9 +763,7 @@ fn act(
                 .processes
                 .map(Processes::launcher)
                 .unwrap_or_default();
-            context
-                .clipboard
-                .paste_image(images, launcher, context.wake.clone());
+            clipboard::paste_image(images, launcher, context.wake, commands);
         }
         Do::SelectUp | Do::SelectDown => {
             if let Some((transcript, state)) = pane {

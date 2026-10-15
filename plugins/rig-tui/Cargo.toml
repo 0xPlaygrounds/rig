@@ -18,6 +18,7 @@ bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
 # A copy to the clipboard through the terminal (OSC 52).
 base64 = { workspace = true }
 crossbeam-channel = { workspace = true }
