@@ -507,7 +507,6 @@ fn hide_blobs(mut records: MessageMutator<EffectRecorded>) {
                 {
                     hide_in(&mut turn.content, &api);
                 }
-                .into()
             }
         }
         if let Ok(EffectOutcome::Completion(response)) = &mut record.outcome {
