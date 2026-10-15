@@ -17683,12 +17683,9 @@ dependencies = [
  "bevy_reflect",
  "rig-compaction",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
- "rig-memory",
  "rig-tui",
- "serde",
  "serde_json",
 ]
 
