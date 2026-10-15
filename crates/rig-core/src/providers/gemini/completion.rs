@@ -53,6 +53,7 @@ use crate::message::{
     MimeType, ToolChoice, ToolResultContent, UserContent,
 };
 use crate::operation::Completion;
+use crate::providers::internal::set_fields;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::telemetry::GenAiOperation;
 use crate::wire::{Descriptor, Encoded, Framing, Mode, Wire};
@@ -468,16 +469,12 @@ fn base(
         request.temperature.map(Value::from),
         request.max_tokens.map(Value::from),
     );
-    let typed = [
+    let config = set_fields([
         ("responseMimeType", mime),
         ("responseJsonSchema", schema),
         ("temperature", temperature),
         ("maxOutputTokens", max_tokens),
-    ];
-    let config: Map<String, Value> = typed
-        .into_iter()
-        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-        .collect();
+    ]);
     let (mut system, mut history) = (Vec::new(), Vec::new());
     for message in &request.chat_history {
         match &**message {
@@ -507,7 +504,7 @@ fn base(
     }
     let declared: Vec<Value> = request.tools.iter().map(declaration).collect();
     let declared = (!declared.is_empty()).then(|| {
-        Value::Object(object([
+        Value::Object(set_fields([
             ("functionDeclarations", Some(Value::Array(declared))),
             ("codeExecution", Some(Value::Null)),
         ]))
@@ -519,7 +516,7 @@ fn base(
         .tool_choice
         .clone()
         .map_or(Value::Null, calling_config);
-    Ok(object([
+    Ok(set_fields([
         ("contents", Some(contents)),
         (
             "generationConfig",
@@ -541,19 +538,11 @@ fn base(
 /// tool with no schema declares none.
 fn declaration(tool: &crate::completion::ToolDefinition) -> Value {
     let parameters = (!tool.parameters.is_null()).then(|| tool.parameters.clone());
-    Value::Object(object([
+    Value::Object(set_fields([
         ("name", Some(Value::from(tool.name.as_str()))),
         ("description", Some(Value::from(tool.description.as_str()))),
         ("parametersJsonSchema", parameters),
     ]))
-}
-
-/// An object of the entries that are set.
-fn object<const N: usize>(entries: [(&str, Option<Value>); N]) -> Map<String, Value> {
-    let entries = entries.into_iter();
-    entries
-        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-        .collect()
 }
 
 /// Proto3 JSON accepts both lowerCamelCase and original proto field names.
@@ -575,7 +564,7 @@ fn calling_config(choice: ToolChoice) -> Value {
         ToolChoice::Required => ("ANY", None),
         ToolChoice::Specific { function_names } => ("ANY", Some(json!(function_names))),
     };
-    let config = object([
+    let config = set_fields([
         ("mode", Some(json!(mode))),
         ("allowed_function_names", names),
     ]);
@@ -644,7 +633,7 @@ fn contents(
 
 /// A content of `parts` in `role`.
 fn content(parts: Vec<Value>, role: &str) -> Value {
-    Value::Object(object([
+    Value::Object(set_fields([
         ("parts", Some(Value::Array(parts))),
         ("role", Some(Value::from(role))),
     ]))
@@ -685,7 +674,7 @@ fn media(mime_type: Option<String>, source: &Source, part: bool) -> Result<Value
             ));
         }
     };
-    Ok(Value::Object(object([
+    Ok(Value::Object(set_fields([
         (data.0, Some(data.1)),
         ("thought", part.then_some(Value::Bool(false))),
     ])))
@@ -716,7 +705,7 @@ fn user_part(part: &UserContent, id: Option<&str>) -> Result<Value, EncodeError>
                 1 => values.pop(),
                 _ => Some(Value::Array(values)),
             };
-            let response = object([
+            let response = set_fields([
                 ("name", Some(json!(result.name))),
                 ("id", id.map(Value::from)),
                 (
@@ -725,7 +714,7 @@ fn user_part(part: &UserContent, id: Option<&str>) -> Result<Value, EncodeError>
                 ),
                 ("parts", (!parts.is_empty()).then_some(Value::Array(parts))),
             ]);
-            Value::Object(object([
+            Value::Object(set_fields([
                 ("functionResponse", Some(Value::Object(response))),
                 ("thought", Some(Value::Bool(false))),
             ]))
@@ -795,8 +784,8 @@ fn assistant_part(
             let name = Some(json!(call.function.name));
             let args = Some(json!(call.function.arguments));
             let signature = gemini3.then(|| json!("skip_thought_signature_validator"));
-            let call = Value::Object(object([("name", name), ("args", args), ("id", id)]));
-            Value::Object(object([
+            let call = Value::Object(set_fields([("name", name), ("args", args), ("id", id)]));
+            Value::Object(set_fields([
                 ("functionCall", Some(call)),
                 ("thoughtSignature", signature),
             ]))

@@ -382,7 +382,7 @@ impl Chat {
             _ => None,
         };
 
-        let fields = [
+        Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
             ("messages", Some(Value::Array(messages))),
             ("tools", (!tools.is_empty()).then_some(Value::Array(tools))),
@@ -390,11 +390,7 @@ impl Chat {
             ("temperature", request.temperature.map(Value::from)),
             ("max_tokens", request.max_tokens.map(Value::from)),
             ("response_format", response_format),
-        ];
-        Ok(fields
-            .into_iter()
-            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect())
+        ]))
     }
 
     /// The history as Chat messages, each call and result spelled by one

@@ -156,7 +156,7 @@ impl Chat {
             .filter(|_| tools.is_empty() || answered)
             .map(|schema| schema.to_value());
 
-        let fields = [
+        Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
             ("messages", Some(Value::Array(messages))),
             ("tools", (!tools.is_empty()).then_some(Value::Array(tools))),
@@ -166,11 +166,7 @@ impl Chat {
                 (!options.is_empty()).then_some(Value::Object(options)),
             ),
             ("stream", Some(Value::Bool(mode == Mode::Streaming))),
-        ];
-        Ok(fields
-            .into_iter()
-            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect())
+        ]))
     }
 
     /// The history as `/api/chat` messages, each call and result spelled by

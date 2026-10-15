@@ -511,7 +511,7 @@ impl wire::Responses {
                 json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}})
             });
 
-        let fields = [
+        Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
             ("input", Some(Value::Array(items))),
             ("instructions", instructions.map(Value::from)),
@@ -529,11 +529,7 @@ impl wire::Responses {
             ),
             ("tools", (!tools.is_empty()).then(|| json!(tools))),
             ("text", text),
-        ];
-        Ok(fields
-            .into_iter()
-            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect())
+        ]))
     }
 }
 

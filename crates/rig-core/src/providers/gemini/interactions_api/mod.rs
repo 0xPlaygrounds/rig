@@ -447,14 +447,11 @@ fn create_base(
             json!({ "allowed_tools": { "mode": "validated", "tools": function_names } })
         }
     });
-    let config: Map<String, Value> = [
+    let config = crate::providers::internal::set_fields([
         ("temperature", request.temperature.map(Value::from)),
         ("max_output_tokens", request.max_tokens.map(Value::from)),
         ("tool_choice", choice),
-    ]
-    .into_iter()
-    .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-    .collect();
+    ]);
     let mut tools: Vec<Value> = request
         .tools
         .iter()

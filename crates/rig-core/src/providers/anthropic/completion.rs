@@ -26,6 +26,7 @@ use crate::message::{
     self, AssistantContent, DocumentData, DocumentMediaType, DocumentSourceKind, ImageMediaType,
     Message, ToolResultContent, UserContent,
 };
+use crate::providers::internal::set_fields;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::Mode;
 
@@ -307,7 +308,7 @@ fn base(
         .is_none()
         .then(|| container(&history))
         .flatten();
-    Ok(object([
+    Ok(set_fields([
         ("model", Some(json!(model))),
         ("messages", Some(Value::Array(messages))),
         ("max_tokens", Some(json!(max_tokens))),
@@ -329,14 +330,6 @@ fn base(
 /// A text content block.
 fn text(text: &str) -> Value {
     json!({ "type": "text", "text": text })
-}
-
-/// An object of the `fields` that are present, in order.
-pub(super) fn object<const N: usize>(fields: [(&str, Option<Value>); N]) -> Map<String, Value> {
-    fields
-        .into_iter()
-        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-        .collect()
 }
 
 /// `message` on the wire, its tool ids spelled by `ids`. `None` when no
@@ -364,7 +357,7 @@ fn message_json(
         ),
     };
     Ok((!content.is_empty()).then(|| {
-        Value::Object(object([
+        Value::Object(set_fields([
             ("role", Some(Value::from(role))),
             ("content", Some(Value::Array(content))),
         ]))
@@ -376,7 +369,7 @@ fn message_json(
 fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeError> {
     let image = |image: &message::Image| {
         let source = image_source(image).ok_or_else(unsendable)?;
-        Ok::<_, EncodeError>(Value::Object(object([
+        Ok::<_, EncodeError>(Value::Object(set_fields([
             ("type", Some(Value::from("image"))),
             ("source", Some(source)),
         ])))
@@ -393,7 +386,7 @@ fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeE
                     ToolResultContent::Image(part) => image(part)?,
                 });
             }
-            Value::Object(object([
+            Value::Object(set_fields([
                 ("type", Some(json!("tool_result"))),
                 ("tool_use_id", Some(Value::from(ids.spell(&result.call)))),
                 ("content", Some(Value::Array(content))),
@@ -418,7 +411,7 @@ fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
             EncodeError::request("Document `additional_params.citations` must be `{\"enabled\": bool}`")
         })? })),
     };
-    Ok(Value::Object(object([
+    Ok(Value::Object(set_fields([
         ("type", Some(json!("document"))),
         (
             "source",
@@ -460,7 +453,7 @@ pub(super) fn assistant_part(
             text(&reasoning.text)
         }
         AssistantContent::ToolCall(call) => {
-            let mut part = object([
+            let mut part = set_fields([
                 ("type", Some(json!("tool_use"))),
                 ("id", Some(Value::from(ids.spell(&call.id)))),
                 ("name", Some(json!(call.function.name.as_str()))),
@@ -562,7 +555,7 @@ fn tools(
         if strict {
             sanitize_strict_tool_schema(&mut schema);
         }
-        Value::Object(object([
+        Value::Object(set_fields([
             ("name", Some(Value::from(tool.name.as_str()))),
             ("description", Some(Value::from(tool.description.as_str()))),
             ("input_schema", Some(schema)),

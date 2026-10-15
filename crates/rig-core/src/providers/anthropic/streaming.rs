@@ -14,13 +14,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 
-use super::completion::object;
 use crate::completion::FinishReason;
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::message::{CallId, DocumentRange, Source, SourceLocation, ToolName};
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
+use crate::providers::internal::set_fields;
 use crate::providers::internal::wire;
 use crate::wire::{
     AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation, WireEvent, WireFrame,
@@ -418,13 +418,16 @@ impl MessagesDecoder {
                 (Kind::Redacted, _) => item.str("data").is_some_and(|data| !data.is_empty()),
                 (Kind::Opaque, Ok(None)) => true,
                 (Kind::Call | Kind::Opaque, Ok(Some(input @ Value::Object(_)))) => {
-                    crate::operation::completion::merge(item, &object([("input", Some(input))]));
+                    crate::operation::completion::merge(
+                        item,
+                        &set_fields([("input", Some(input))]),
+                    );
                     true
                 }
                 (Kind::Call, Ok(None | Some(Value::Null))) => {
                     crate::operation::completion::merge(
                         item,
-                        &object([("input", Some(json!({})))]),
+                        &set_fields([("input", Some(json!({})))]),
                     );
                     true
                 }

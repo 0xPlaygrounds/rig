@@ -27,6 +27,7 @@ use crate::message::{
     MimeType, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
 use crate::operation::Completion;
+use crate::providers::internal::object;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::{Capabilities, Descriptor, Encoded, Framing, Mode, Wire};
 
@@ -133,7 +134,7 @@ impl NativeChat {
             .output_schema
             .clone()
             .map(|schema| json!({"type": "json_object", "schema": schema.to_value()}));
-        let fields = [
+        Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
             ("messages", Some(Value::Array(messages))),
             (
@@ -153,11 +154,7 @@ impl NativeChat {
                 "stream",
                 (mode == Mode::Streaming).then_some(Value::Bool(true)),
             ),
-        ];
-        Ok(fields
-            .into_iter()
-            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect())
+        ]))
     }
 
     /// The history as Cohere messages, each call and result spelled by one
@@ -271,7 +268,7 @@ impl NativeChat {
         if content.is_empty() && calls.is_empty() {
             return None;
         }
-        let fields = [
+        Some(Value::Object(crate::providers::internal::set_fields([
             ("role", Some(Value::from("assistant"))),
             (
                 "content",
@@ -289,13 +286,7 @@ impl NativeChat {
                 "citations",
                 (!citations.is_empty()).then_some(Value::Array(citations)),
             ),
-        ];
-        Some(Value::Object(
-            fields
-                .into_iter()
-                .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-                .collect(),
-        ))
+        ])))
     }
 }
 
@@ -364,10 +355,7 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
                 (Source::Base64(data), Some(mime)) => format!("data:{mime};base64,{data}"),
                 _ => return Err(unsendable("an image")),
             };
-            object([
-                ("type", Value::from("image_url")),
-                ("image_url", object([("url", Value::String(url))])),
-            ])
+            object! {"type": "image_url", "image_url": object! {"url": url}}
         }
         UserContent::Document(document) => match &document.data {
             DocumentData::Text(text) => json!({"type": "text", "text": text}),
@@ -390,18 +378,7 @@ fn user_message(messages: &mut Vec<Value>, parts: &mut Vec<Value>) {
     if parts.is_empty() {
         return;
     }
-    let parts = Value::Array(std::mem::take(parts));
-    messages.push(object([("role", Value::from("user")), ("content", parts)]));
-}
-
-/// An object of `fields`, in order, each moved in.
-fn object<const N: usize>(fields: [(&str, Value); N]) -> Value {
-    Value::Object(
-        fields
-            .into_iter()
-            .map(|(key, value)| (key.to_owned(), value))
-            .collect(),
-    )
+    messages.push(object! {"role": "user", "content": std::mem::take(parts)});
 }
 
 /// A result as the `tool` message that answers its call, its parts as text.
@@ -417,11 +394,7 @@ fn tool_message(result: &ToolResult, ids: &WireIds) -> Value {
             ToolResultContent::Image(_) => None,
         })
         .collect();
-    object([
-        ("role", Value::from("tool")),
-        ("tool_call_id", Value::String(ids.spell(&result.call))),
-        ("content", Value::Array(content)),
-    ])
+    object! {"role": "tool", "tool_call_id": ids.spell(&result.call), "content": content}
 }
 
 impl Wire for NativeChat {

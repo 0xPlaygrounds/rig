@@ -30,6 +30,16 @@ macro_rules! object {
 }
 pub(crate) use object;
 
+/// An object of the `fields` that are present, in order.
+pub(crate) fn set_fields<const N: usize>(
+    fields: [(&str, Option<serde_json::Value>); N],
+) -> serde_json::Map<String, serde_json::Value> {
+    fields
+        .into_iter()
+        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+        .collect()
+}
+
 /// Every option refused for `reason`.
 pub(crate) fn refuse_all(
     fields: crate::completion::options::OptionFields<'_>,
