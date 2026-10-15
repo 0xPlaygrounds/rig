@@ -1,7 +1,9 @@
-//! The built-in tools of [`rig_tools`], one plugin each, with their rules
-//! on when to pick them. `read` and `search` run beside each other; `edit`,
-//! `write` and `shell` run alone. [`DeleteTool`], [`MoveTool`] (gated as
-//! writes) and [`ListTool`] (a read) are opt-in.
+//! The coding tools of [`rig_tools`] the agent ships, one plugin each, with
+//! their rules on when to pick them: `read`, `edit`, `write` and `shell`,
+//! as pi has. `read`s run beside each other; `edit`, `write` and `shell`
+//! run alone. The library's other tools (`search`, `list`, `delete`,
+//! `move`) are the shell's job here; a plugin that wants one registers it
+//! with [`AppPerCallExt::add_tool_per_call`].
 //!
 //! Each tool is made per call ([`AppPerCallExt`]), so every call works in
 //! the app's [`ProjectWorkspace`] from its agent's [`WorkDir`], else the
@@ -25,7 +27,7 @@ use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::serde::Deserialize;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, attachments};
-use rig_tools::{Delete, Edit, List, Move, OutputLimit, Read, Search, Shell, Write};
+use rig_tools::{Edit, OutputLimit, Read, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
 
@@ -33,9 +35,8 @@ use rig_tui::AppToolRenderersExt;
 mod looks;
 
 /// Options with `rules`; what each call touches, so calls on different
-/// files run side by side, the tool says: `read` and `search` read the
-/// path they name, `edit`, `write`, `delete` and `move` write theirs,
-/// `shell` may change anything.
+/// files run side by side, the tool says: `read` reads the path it names,
+/// `edit` and `write` write theirs, `shell` may change anything.
 fn options(rules: &'static [&'static str]) -> ToolOptions<'static> {
     ToolOptions {
         rules,
@@ -56,22 +57,6 @@ impl Plugin for ReadTool {
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Read::NAME, looks::read);
-    }
-}
-
-/// The `search` tool.
-#[derive(Default)]
-pub struct SearchTool;
-
-impl Plugin for SearchTool {
-    fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Search::default(), options(Search::RULES), |place| Search {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-        });
-        #[cfg(feature = "tui")]
-        app.add_tool_renderer(Search::NAME, looks::search);
     }
 }
 
@@ -104,60 +89,6 @@ impl Plugin for WriteTool {
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);
-    }
-}
-
-/// The `delete` tool: removes a file, gated as a write of it. Not in the
-/// default plugins; add it where the model may delete files.
-#[derive(Default)]
-pub struct DeleteTool;
-
-impl Plugin for DeleteTool {
-    fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Delete::default(), options(Delete::RULES), |place| Delete {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-        });
-        #[cfg(feature = "tui")]
-        app.add_tool_renderer(Delete::NAME, looks::delete);
-    }
-}
-
-/// The `move` tool: moves or renames a file, gated as a write of both
-/// paths. Not in the default plugins; add it where the model may move
-/// files.
-#[derive(Default)]
-pub struct MoveTool;
-
-impl Plugin for MoveTool {
-    fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Move::default(), options(Move::RULES), |place| Move {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-        });
-        #[cfg(feature = "tui")]
-        app.add_tool_renderer(Move::NAME, looks::moved);
-    }
-}
-
-/// The `list` tool: lists a directory's files down to a depth, as `files`
-/// sees them (no ignored, hidden or `target` files), gated as a read of
-/// it. Not in the default plugins; add it where the model should list
-/// directories without `shell`.
-#[derive(Default)]
-pub struct ListTool;
-
-impl Plugin for ListTool {
-    fn build(&self, app: &mut App) {
-        app.add_tool_per_call(List::default(), options(List::RULES), |place| List {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-        });
-        #[cfg(feature = "tui")]
-        app.add_tool_renderer(List::NAME, looks::list);
     }
 }
 

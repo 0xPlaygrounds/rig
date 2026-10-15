@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_coding_tools::{ReadTool, SearchTool, ShellTool};
+use rig_coding_tools::{ReadTool, ShellTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, reply,
@@ -47,10 +47,21 @@ impl Session {
                 SessionLogPlugin,
                 SubagentsPlugin,
                 ReadTool,
-                SearchTool,
                 ShellTool,
                 SubagentResultCachePlugin,
             ))
+            .add_tool_per_call(
+                rig_harness::rig_tools::Search::default(),
+                ToolOptions {
+                    rules: rig_harness::rig_tools::Search::RULES,
+                    ..ToolOptions::default()
+                },
+                |place| rig_harness::rig_tools::Search {
+                    workspace: place.workspace,
+                    base: Some(place.base),
+                    confine: place.confine,
+                },
+            )
             .add_observer(log_tool_outputs);
         collect::<Notice>(&mut app);
         if fresh {

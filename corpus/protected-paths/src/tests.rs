@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rig_coding_tools::{ReadTool, SearchTool, WriteTool};
+use rig_coding_tools::{ReadTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
@@ -43,13 +43,19 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     app.set_error_handler(rig_harness::error::warn)
         .insert_resource(ProjectRoot(project.clone()))
         .insert_resource(RigHome(Home::at(dir.join("home"))))
-        .add_plugins((
-            AgentPlugin,
-            SessionLogPlugin,
-            ReadTool,
-            WriteTool,
-            SearchTool,
-        ))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, WriteTool))
+        .add_tool_per_call(
+            rig_tools::Search::default(),
+            ToolOptions {
+                rules: rig_tools::Search::RULES,
+                ..ToolOptions::default()
+            },
+            |place| rig_tools::Search {
+                workspace: place.workspace,
+                base: Some(place.base),
+                confine: place.confine,
+            },
+        )
         .add_plugins(ProtectedPathsPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended);

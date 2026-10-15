@@ -1,8 +1,7 @@
 //! How the terminal view (rig-tui) draws the tools' calls: each shows its
 //! arguments and its whole result. `read` shows the file's lines and
 //! `write` the new file in the colors of its language, `edit` its change
-//! as a diff, `delete` and `move` the paths, and `shell` the command, as
-//! bash, and its output.
+//! as a diff, and `shell` the command, as bash, and its output.
 
 use rig_harness::rig_core::tool::{FilesRead, LinesShown};
 use rig_tui::ToolCallView;
@@ -75,22 +74,6 @@ fn span(shown: LinesShown) -> String {
     }
 }
 
-pub(super) fn list(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let path = view.argument("path").unwrap_or(".").to_owned();
-    let depth = view
-        .call
-        .function
-        .arguments
-        .get("depth")
-        .and_then(|depth| depth.as_u64());
-    let depth = depth
-        .map(|depth| format!("depth {depth}"))
-        .unwrap_or_default();
-    let mut lines = vec![view.header(format!("list {path}"), depth)];
-    lines.extend(view.result_lines());
-    lines
-}
-
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
@@ -108,25 +91,6 @@ pub(super) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         rows.extend(code_rows(content, Language::File(&path)));
     }
     rows
-}
-
-pub(super) fn delete(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let path = view.argument("path").unwrap_or_default().to_owned();
-    let mut lines = vec![view.header(format!("delete {path}"), "")];
-    if view.failed() {
-        lines.extend(view.result_lines());
-    }
-    lines
-}
-
-pub(super) fn moved(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let from = view.argument("from").unwrap_or_default();
-    let to = view.argument("to").unwrap_or_default();
-    let mut lines = vec![view.header(format!("move {from} → {to}"), "")];
-    if view.failed() {
-        lines.extend(view.result_lines());
-    }
-    lines
 }
 
 pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
@@ -149,20 +113,6 @@ pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     if lines.is_empty() {
         lines.push(view.header("$", ""));
     }
-    lines.extend(view.result_lines());
-    lines
-}
-
-pub(super) fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let pattern = view.argument("pattern").unwrap_or_default();
-    let mut detail = String::new();
-    if let Some(path) = view.argument("path") {
-        detail.push_str(&format!("in {path}"));
-    }
-    if let Some(glob) = view.argument("glob") {
-        detail.push_str(&format!(" ({glob})"));
-    }
-    let mut lines = vec![view.header(format!("search {pattern}"), detail.trim().to_owned())];
     lines.extend(view.result_lines());
     lines
 }
