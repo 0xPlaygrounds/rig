@@ -9,7 +9,7 @@
 //! let mut document = GenerateContentResponse::default();
 //! for text in ["Hel", "lo"] {
 //!     let chunk = json!({"candidates": [{"content": {"parts": [{"text": text}], "role": "model"}, "index": 0}]});
-//!     document.chunk(chunk.as_object().cloned().unwrap_or_default());
+//!     document.chunk(chunk.as_object().unwrap_or(&Default::default()));
 //! }
 //! assert_eq!(document.document()["candidates"][0]["content"]["parts"], json!([{"text": "Hello"}]));
 //! ```
@@ -47,11 +47,11 @@ impl GenerateContentResponse {
     ///
     /// For rig's own crates; not covered by semver.
     #[doc(hidden)]
-    pub fn chunk(&mut self, chunk: Map<String, Value>) {
+    pub fn chunk(&mut self, chunk: &Map<String, Value>) {
         for (key, value) in chunk {
             match (key.as_str(), value) {
                 ("candidates", Value::Array(candidates)) => {
-                    for (position, candidate) in candidates.into_iter().enumerate() {
+                    for (position, candidate) in candidates.iter().enumerate() {
                         self.candidate(position, candidate);
                     }
                 }
@@ -59,8 +59,8 @@ impl GenerateContentResponse {
                 // keeps the ones it holds.
                 ("candidates", _) => {}
                 ("promptFeedback", value) => {
-                    if self.document.get(&key).is_none_or(Value::is_null) {
-                        self.document.insert(key, value);
+                    if self.document.get(key).is_none_or(Value::is_null) {
+                        self.document.insert(key.clone(), value.clone());
                     }
                 }
                 (_, value) => set(&mut self.document, key, value),
@@ -81,7 +81,7 @@ impl GenerateContentResponse {
     }
 
     /// Fold one streamed candidate into the candidate of its `index`.
-    fn candidate(&mut self, position: usize, candidate: Value) {
+    fn candidate(&mut self, position: usize, candidate: &Value) {
         let Value::Object(candidate) = candidate else {
             return;
         };
@@ -114,13 +114,13 @@ impl GenerateContentResponse {
                 ("citationMetadata", Value::Object(citations)) => {
                     if let Value::Object(held) = slot(held, "citationMetadata", Value::Object) {
                         for (key, value) in citations {
-                            match (key.as_str(), held.get_mut(&key), value) {
+                            match (key.as_str(), held.get_mut(key), value) {
                                 (
                                     "citationSources",
                                     Some(Value::Array(sources)),
                                     Value::Array(more),
                                 ) => {
-                                    sources.extend(more);
+                                    sources.extend(more.iter().cloned());
                                 }
                                 (_, _, value) => set(held, key, value),
                             }
@@ -136,7 +136,7 @@ impl GenerateContentResponse {
 /// Fold a streamed candidate's `content` into the content held so far.
 fn content_into(
     held: &mut Map<String, Value>,
-    content: Map<String, Value>,
+    content: &Map<String, Value>,
     index: u64,
     signatures: &mut Vec<(u64, String)>,
 ) {
@@ -146,7 +146,7 @@ fn content_into(
             continue;
         };
         if key != "parts" {
-            set(held, key, Value::Array(more));
+            set(held, key, value);
             continue;
         }
         let Value::Array(parts) = slot(held, "parts", Value::Array) else {
@@ -162,7 +162,7 @@ fn content_into(
 /// it where the unary body states them as one.
 fn part_into(
     parts: &mut Vec<Value>,
-    mut part: Value,
+    part: &Value,
     index: u64,
     signatures: &mut Vec<(u64, String)>,
 ) {
@@ -183,7 +183,7 @@ fn part_into(
             merge_part(last, part);
             return;
         }
-    } else if let Value::Object(fields) = &part {
+    } else if let Value::Object(fields) = part {
         let bare = ["thought", "thoughtSignature", "partMetadata"];
         let data = fields.keys().any(|key| !bare.contains(&key.as_str()));
         if !data && let Some(signature) = signature {
@@ -196,6 +196,7 @@ fn part_into(
             return;
         }
     }
+    let mut part = part.clone();
     if let Some(at) = signatures.iter().position(|(held, _)| *held == index)
         && let Some(fields) = part.as_object_mut()
     {
@@ -214,10 +215,10 @@ fn signed(part: &Value) -> bool {
 }
 
 /// Set `key` to `value`: a non-null value replaces, and `null` only fills
-/// an absent key.
-fn set(map: &mut Map<String, Value>, key: String, value: Value) {
-    if !value.is_null() || !map.contains_key(&key) {
-        map.insert(key, value);
+/// an absent key. A value equal to the one held is not copied again.
+fn set(map: &mut Map<String, Value>, key: &String, value: &Value) {
+    if (!value.is_null() || !map.contains_key(key)) && map.get(key) != Some(value) {
+        map.insert(key.clone(), value.clone());
     }
 }
 
@@ -239,7 +240,7 @@ impl crate::wire::document::Serves<crate::operation::Completion> for GenerateCon
 
 impl Reassemble<GenerateContentChunk> for GenerateContentResponse {
     fn absorb(&mut self, GenerateContentChunk(chunk): &GenerateContentChunk) {
-        self.chunk(chunk.clone());
+        self.chunk(chunk);
     }
 
     fn finish(self) -> Value {

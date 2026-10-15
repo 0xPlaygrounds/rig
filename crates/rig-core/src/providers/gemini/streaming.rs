@@ -290,7 +290,7 @@ impl GenerateContentDecoder {
                         self.placement = self.answer.push(index, text).map(|at| (index, at));
                     }
                     out.push(index, text)?;
-                    out.edit(index, |item| merge_part(item, part))
+                    out.edit(index, |item| merge_part(item, &part))
                 }
                 _ => {
                     let block = match thought {
@@ -394,21 +394,19 @@ fn malformed(what: &str) -> ProviderError {
 /// Merge a streamed part into the part its block holds so far: the text
 /// appends, a non-empty `thoughtSignature` replaces the one held, and any
 /// other field replaces its namesake.
-fn merge_part(item: &mut Value, part: Value) {
-    match (item, part) {
-        (Value::Object(held), Value::Object(part)) => {
-            for (key, value) in part {
-                if key == "text"
-                    && let (Some(Value::String(text)), Value::String(more)) =
-                        (held.get_mut("text"), &value)
-                {
-                    text.push_str(more);
-                } else if key != "thoughtSignature" || value.as_str() != Some("") {
-                    held.insert(key, value);
-                }
-            }
+fn merge_part(item: &mut Value, part: &Value) {
+    let (Value::Object(held), Value::Object(part)) = (&mut *item, part) else {
+        *item = part.clone();
+        return;
+    };
+    for (key, value) in part {
+        if key == "text"
+            && let (Some(Value::String(text)), Value::String(more)) = (held.get_mut("text"), value)
+        {
+            text.push_str(more);
+        } else if key != "thoughtSignature" || value.as_str() != Some("") {
+            held.insert(key.clone(), value.clone());
         }
-        (item, part) => *item = part,
     }
 }
 
