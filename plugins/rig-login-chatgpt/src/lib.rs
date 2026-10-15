@@ -22,7 +22,7 @@ use rig_core::catalog::{ModelSpec, SignIn, Transport};
 use rig_core::providers::chatgpt::{
     self, SignedInModel,
     auth::{
-        AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore, STORE_KEY,
+        AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore,
         SignInMethod, SignInPrompt,
     },
 };
@@ -81,7 +81,7 @@ impl Plugin for ChatgptLoginPlugin {
 
 /// Where the credential is kept.
 fn auth_file() -> PathBuf {
-    FileTokenStore::new(Home::from_env().auth()).path(STORE_KEY)
+    FileTokenStore::new(Home::from_env().auth()).path(PROVIDER)
 }
 
 /// The authenticator every call and sign-in of the plan goes through.

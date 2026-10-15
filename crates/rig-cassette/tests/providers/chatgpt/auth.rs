@@ -54,7 +54,7 @@ async fn oauth_client_in(dir: &Path) -> OpenAiModels {
 
 /// The file the credential kept in `dir` is written to.
 fn auth_file_in(dir: &Path) -> PathBuf {
-    FileTokenStore::new(dir).path(chatgpt::auth::STORE_KEY)
+    FileTokenStore::new(dir).path(chatgpt::PROVIDER_NAME)
 }
 
 fn seed_refresh_auth_file(path: &Path) {

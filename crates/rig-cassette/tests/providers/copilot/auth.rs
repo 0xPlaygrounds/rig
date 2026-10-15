@@ -1,7 +1,8 @@
 //! Copilot OAuth and bootstrap smoke tests.
 
 use assert_fs::TempDir;
-use rig::providers::copilot::auth::{AuthSource, FileTokenStore, STORE_KEY};
+use rig::providers::copilot::PROVIDER_NAME;
+use rig::providers::copilot::auth::{AuthSource, FileTokenStore};
 use rig_test_support::cassette_models::CopilotModels;
 use serde_json::json;
 use std::fs;
@@ -26,7 +27,7 @@ fn required_copilot_github_access_token() -> String {
 /// The Copilot record kept in `dir`.
 fn kept_record(dir: &Path) -> serde_json::Value {
     serde_json::from_slice(
-        &fs::read(FileTokenStore::new(dir).path(STORE_KEY)).expect("the record should be kept"),
+        &fs::read(FileTokenStore::new(dir).path(PROVIDER_NAME)).expect("the record should be kept"),
     )
     .expect("the record should deserialize")
 }
@@ -137,7 +138,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
     let token_dir = temp.path();
 
     fs::write(
-        FileTokenStore::new(token_dir).path(STORE_KEY),
+        FileTokenStore::new(token_dir).path(PROVIDER_NAME),
         serde_json::to_vec_pretty(&json!({
             "github_token": required_copilot_github_access_token(),
             "token": "expired-token",

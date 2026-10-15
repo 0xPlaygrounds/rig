@@ -21,7 +21,7 @@ use assert_fs::TempDir;
 use rig::providers::copilot;
 use rig::providers::copilot::auth::{
     AuthError, AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore, MemoryTokenStore,
-    STORE_KEY, TokenStore,
+    TokenStore,
 };
 use rig::providers::copilot::wire::CopilotConfig;
 use std::borrow::Cow;
@@ -161,7 +161,7 @@ async fn copilot_noninteractive_oauth_cassette(
         "expires_at": i64::MAX,
     });
     std::fs::write(
-        FileTokenStore::new(temp.path()).path(STORE_KEY),
+        FileTokenStore::new(temp.path()).path(copilot::PROVIDER_NAME),
         serde_json::to_vec_pretty(&api_key_record).expect("api key record should serialize"),
     )
     .expect("api key record should be written");

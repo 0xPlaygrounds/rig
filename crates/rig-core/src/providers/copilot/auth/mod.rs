@@ -19,11 +19,10 @@ pub use crate::providers::internal::auth::{
 #[cfg(not(target_family = "wasm"))]
 mod native;
 
-const GITHUB_API_KEY_URL: &str = "https://api.github.com/copilot_internal/v2/token";
+/// The key the record is kept under in the store.
+const STORE_KEY: &str = super::PROVIDER_NAME;
 
-/// The key the Copilot sign-in, its GitHub token and its exchanged session,
-/// is kept under in its [`TokenStore`].
-pub const STORE_KEY: &str = "copilot";
+const GITHUB_API_KEY_URL: &str = "https://api.github.com/copilot_internal/v2/token";
 
 /// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment.
 ///
@@ -128,9 +127,11 @@ pub struct AuthContext {
 }
 
 impl Authenticator {
-    /// An authenticator over `source`, keeping the sign-in in `store` under
-    /// [`STORE_KEY`]; `device_code_handler` shows a device code when the
-    /// device flow is allowed.
+    /// An authenticator over `source`, keeping the GitHub token and the
+    /// session it exchanges for in `store` under
+    /// [`PROVIDER_NAME`](super::PROVIDER_NAME), `copilot`;
+    /// `device_code_handler` shows a device code when the device flow is
+    /// allowed.
     pub fn new(
         source: AuthSource,
         store: impl TokenStore + 'static,
@@ -195,7 +196,7 @@ impl Authenticator {
 }
 
 /// Copilot API key exchanged for a GitHub access token, and the record kept
-/// under [`STORE_KEY`].
+/// under the provider's name.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct ApiKeyRecord {
     /// The GitHub token an OAuth sign-in got, which the exchange takes.

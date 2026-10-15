@@ -19,11 +19,12 @@ pub use crate::providers::internal::auth::{
     DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, TokenStore,
 };
 
-/// The key the ChatGPT sign-in is kept under in its [`TokenStore`].
-pub const STORE_KEY: &str = "chatgpt";
-
 #[cfg(not(target_family = "wasm"))]
 mod native;
+
+/// The key the sign-in is kept under in the store.
+#[cfg(not(target_family = "wasm"))]
+const STORE_KEY: &str = super::PROVIDER_NAME;
 
 /// What a browser sign-in shows the user while it waits.
 #[derive(Debug, Clone)]
@@ -114,8 +115,9 @@ pub struct AuthContext {
 
 impl Authenticator {
     /// An authenticator over `source`, keeping an OAuth sign-in in `store`
-    /// under [`STORE_KEY`]; `device_code_handler` shows a device code when
-    /// the device flow is allowed.
+    /// under [`PROVIDER_NAME`](super::PROVIDER_NAME), `chatgpt`;
+    /// `device_code_handler` shows a device code when the device flow is
+    /// allowed.
     pub fn new(
         source: AuthSource,
         store: impl TokenStore + 'static,

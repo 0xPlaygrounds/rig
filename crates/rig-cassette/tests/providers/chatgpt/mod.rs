@@ -92,7 +92,7 @@ pub(crate) async fn live_client() -> OpenAiModels {
 
 fn has_usable_oauth_cache() -> bool {
     let Some(path) = default_auth_dir()
-        .map(|dir| chatgpt::auth::FileTokenStore::new(dir).path(chatgpt::auth::STORE_KEY))
+        .map(|dir| chatgpt::auth::FileTokenStore::new(dir).path(chatgpt::PROVIDER_NAME))
     else {
         return false;
     };
