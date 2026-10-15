@@ -33,3 +33,6 @@ mod sqlite;
 #[cfg(feature = "vectorize")]
 #[path = "../../tests/integrations/vectorize.rs"]
 mod vectorize;
+#[cfg(feature = "weaviate")]
+#[path = "../../tests/integrations/weaviate.rs"]
+mod weaviate;

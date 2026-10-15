@@ -266,4 +266,5 @@ companion_modules! {
     surrealdb = rig_surrealdb ["surrealdb"];
     vectorize = rig_vectorize ["vectorize"];
     vertexai = rig_vertexai ["vertexai"];
+    weaviate = rig_weaviate ["weaviate"];
 }

@@ -120,6 +120,7 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 - AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors)
 - HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb)
 - Cloudflare Vectorize: [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize)
+- Weaviate: [`rig-weaviate`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-weaviate)
 
 The following providers are available as separate companion-crates:
 
