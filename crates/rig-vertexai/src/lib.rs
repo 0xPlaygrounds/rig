@@ -8,11 +8,12 @@
         clippy::unreachable
     )
 )]
-//! The Vertex AI completion wire and the [`VertexAi`] transport it is sent
-//! through. Configure Application Default Credentials or supply credentials
-//! or a prediction service through [`VertexAiBuilder`]. ADC construction
-//! requires a Tokio runtime that remains alive and driven for the
-//! transport's lifetime.
+//! The Vertex AI completion wires and the [`VertexAi`] transport they are
+//! sent through: Gemini's `GenerateContent`, and Claude through
+//! [`anthropic`]. Configure Application Default Credentials or supply
+//! credentials or a prediction service through [`VertexAiBuilder`]. ADC
+//! construction requires a Tokio runtime that remains alive and driven for
+//! the transport's lifetime.
 //!
 //! ```no_run
 //! use rig_core::Model;
@@ -25,6 +26,7 @@
 //! # }
 //! ```
 
+pub mod anthropic;
 mod auth;
 pub mod client;
 pub mod completion;

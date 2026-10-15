@@ -17913,6 +17913,7 @@ dependencies = [
  "rig-agent",
  "rig-core",
  "rig-history-conformance",
+ "rig-reqwest",
  "schemars 1.2.1",
  "serde",
  "serde_json",

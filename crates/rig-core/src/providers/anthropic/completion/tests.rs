@@ -158,12 +158,13 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
         default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), "claude-opus-4.6"),
         Some(64_000)
     );
+    // Vertex AI's dated spelling finds the listed model.
     assert_eq!(
         default_max_tokens_for_model(
             crate::catalog::ModelFacts::builtin(),
             "claude-sonnet-4-6@20260101"
         ),
-        Some(64_000)
+        Some(128_000)
     );
 }
 

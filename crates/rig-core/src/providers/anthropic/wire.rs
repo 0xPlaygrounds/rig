@@ -12,11 +12,12 @@
 
 use crate::catalog::ModelFacts;
 use crate::client::env::{self, EnvError};
+use crate::completion::options::FinalBody;
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::operation::Completion;
 use crate::providers::internal::named_dialect;
-use crate::wire::{Capabilities, Descriptor, Encoded, Framing, Mode, Secret, Wire};
+use crate::wire::{Body, Capabilities, Descriptor, Encoded, Framing, Mode, Secret, Wire};
 use serde::{Deserialize, Serialize};
 
 use super::completion::{
@@ -240,6 +241,30 @@ pub struct AnthropicConfig {
     pub betas: Vec<String>,
     /// Which Messages-format provider this is.
     pub dialect: Dialect,
+    /// Where a request names its model and API version.
+    #[serde(default, skip_serializing_if = "Addressing::is_body")]
+    pub addressing: Addressing,
+}
+
+/// Where a Messages request names its model and API version.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Addressing {
+    /// `model` in the body and `version` as the `anthropic-version` header,
+    /// as Anthropic's own API takes them.
+    #[default]
+    Body,
+    /// No `model` in the body, because the URL names it, and `version` as
+    /// the body's `anthropic_version`, as cloud platforms take them. Such a
+    /// platform builds its URL with [`Messages::encode_with`].
+    Url,
+}
+
+impl Addressing {
+    /// Whether this is Anthropic's own [`Addressing::Body`].
+    fn is_body(&self) -> bool {
+        *self == Self::Body
+    }
 }
 
 impl AnthropicConfig {
@@ -258,6 +283,7 @@ impl AnthropicConfig {
             version: super::completion::ANTHROPIC_VERSION_LATEST.to_owned(),
             betas: Vec::new(),
             dialect: *dialect,
+            addressing: Addressing::Body,
         }
     }
 
@@ -305,7 +331,7 @@ impl AnthropicConfig {
     }
 
     /// The Messages wire for `model`.
-    pub(crate) fn completion(&self, model: impl Into<String>) -> Messages {
+    pub fn completion(&self, model: impl Into<String>) -> Messages {
         let model = model.into();
         Messages {
             default_max_tokens: self
@@ -323,29 +349,35 @@ impl AnthropicConfig {
 
     /// The request headers every Messages-format endpoint takes.
     pub(super) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
-        self.headers_with(builder, &[])
+        self.headers_with(builder, &self.betas)
     }
 
-    /// [`Self::headers`], with `extra` among the `anthropic-beta` flags.
-    pub(super) fn headers_with(
+    /// [`Self::headers`], with `betas` as the `anthropic-beta` flags.
+    fn headers_with(
         &self,
         builder: http::request::Builder,
-        extra: &[&str],
+        betas: &[String],
     ) -> http::request::Builder {
         let builder = builder
             .header("x-api-key", self.api_key.expose())
             .header("anthropic-version", &self.version);
-        let mut betas: Vec<&str> = self.betas.iter().map(String::as_str).collect();
-        for extra in extra {
-            if !betas.contains(extra) {
-                betas.push(extra);
-            }
-        }
         if betas.is_empty() {
             builder
         } else {
             builder.header("anthropic-beta", betas.join(","))
         }
+    }
+
+    /// The configured `anthropic-beta` flags, then each of `extra` not
+    /// among them.
+    fn betas_with(&self, extra: &[&str]) -> Vec<String> {
+        let mut betas = self.betas.clone();
+        for extra in extra {
+            if !betas.iter().any(|beta| beta == extra) {
+                betas.push((*extra).to_owned());
+            }
+        }
+        betas
     }
 }
 
@@ -488,6 +520,71 @@ impl Messages {
     }
 }
 
+/// A Messages request encoded but not yet addressed or authenticated: what
+/// a platform serving the Messages API under its own envelope sends.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct Prepared {
+    /// The model the request addresses.
+    pub model: String,
+    /// The request body.
+    pub body: FinalBody,
+    /// The `anthropic-beta` flags: the configured ones, then the ones the
+    /// request needs.
+    pub betas: Vec<String>,
+}
+
+impl Messages {
+    /// Encode `request` as [`Wire::encode`] does, with `envelope` building
+    /// the HTTP request in place of `POST /v1/messages` with an API key.
+    /// The framing, request-id header and projection stay this wire's, so
+    /// a platform that serves the Messages API at another address, with
+    /// other credentials or another body envelope, reads replies as this
+    /// wire does.
+    ///
+    /// # Errors
+    ///
+    /// When the request does not encode, or `envelope` fails.
+    pub fn encode_with(
+        &self,
+        request: CompletionRequest,
+        mode: Mode,
+        envelope: impl FnOnce(Prepared) -> Result<http::Request<Body>, EncodeError>,
+    ) -> Result<Encoded, EncodeError> {
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let fine_grained = !request.tools.is_empty()
+            && self.tool_input_streaming == ToolInputStreaming::BetaHeader;
+        let body = super::completion::body(self, &request, mode)?;
+        let betas: Vec<&str> = [
+            super::completion::drops_unbound_thinking(self, &model, body.get("thinking"))
+                .then_some(super::completion::THINKING_BINDING_BETA),
+            fine_grained.then_some(super::completion::FINE_GRAINED_TOOL_STREAMING_BETA),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Anthropic completion request",
+            &body,
+        );
+        let request = envelope(Prepared {
+            model,
+            body,
+            betas: self.provider.betas_with(&betas),
+        })?;
+        Ok(Encoded::new(
+            request,
+            match mode {
+                Mode::Unary => Framing::Whole,
+                Mode::Streaming => Framing::Sse,
+            },
+        )
+        .with_request_id_header(self.provider.dialect.request_id_header)
+        .with_projection(MessagesDecoder::project))
+    }
+}
+
 impl Wire for Messages {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
@@ -512,40 +609,16 @@ impl Wire for Messages {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let fine_grained = !request.tools.is_empty()
-            && self.tool_input_streaming == ToolInputStreaming::BetaHeader;
-        let body = super::completion::body(self, &request, mode)?;
-        let betas: Vec<&str> = [
-            super::completion::drops_unbound_thinking(self, &model, body.get("thinking"))
-                .then_some(super::completion::THINKING_BINDING_BETA),
-            fine_grained.then_some(super::completion::FINE_GRAINED_TOOL_STREAMING_BETA),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Anthropic completion request",
-            &body,
-        );
-        let request = self
-            .provider
-            .headers_with(
-                http::Request::post(format!("{}/v1/messages", self.provider.base_url)),
-                &betas,
-            )
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .body(body.into_body())?;
-        Ok(Encoded::new(
-            request,
-            match mode {
-                Mode::Unary => Framing::Whole,
-                Mode::Streaming => Framing::Sse,
-            },
-        )
-        .with_request_id_header(self.provider.dialect.request_id_header)
-        .with_projection(MessagesDecoder::project))
+        self.encode_with(request, mode, |prepared| {
+            Ok(self
+                .provider
+                .headers_with(
+                    http::Request::post(format!("{}/v1/messages", self.provider.base_url)),
+                    &prepared.betas,
+                )
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(prepared.body.into_body())?)
+        })
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

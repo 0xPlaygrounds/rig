@@ -194,6 +194,11 @@ pub(super) fn body(
     if wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(&wire.facts, &model) {
         rewrites.push(Rewrite::DropUnboundThinking);
     }
+    if wire.provider.addressing == super::wire::Addressing::Url {
+        rewrites.push(Rewrite::AnthropicVersionInBody(
+            wire.provider.version.clone(),
+        ));
+    }
     if mode == Mode::Streaming {
         rewrites.push(Rewrite::Stream(true));
         // Anthropic rejects tool_choice without tools.

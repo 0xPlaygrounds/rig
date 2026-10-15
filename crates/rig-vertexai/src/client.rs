@@ -6,9 +6,11 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
 
+use crate::anthropic::RawPredict;
 use crate::auth::build_credentials;
 use crate::completion::GenerateContent;
 use rig_core::Model;
+use rig_core::http_client::{DynHttpClient, HttpClientExt};
 
 // Env vars and terminology (location, project) chosen to match google genai client
 // https://googleapis.github.io/python-genai/genai.html#genai.client.Client
@@ -40,6 +42,15 @@ pub enum VertexAiClientError {
         "a supplied `PredictionService` already carries its own credentials; drop either `VertexAiBuilder::with_credentials()` or `VertexAiBuilder::with_prediction_service()`"
     )]
     ConflictingCredentials,
+    /// A Claude request needs Google credentials, which a client built on a
+    /// supplied prediction service does not hold.
+    #[error(
+        "Claude requests need Google credentials; build the client without `VertexAiBuilder::with_prediction_service()`"
+    )]
+    NoCredentials,
+    /// The credentials produced no request headers.
+    #[error("failed to get Google credentials headers")]
+    Credentials(#[source] Arc<google_cloud_auth::errors::CredentialsError>),
 }
 
 #[derive(Clone, Debug)]
@@ -48,6 +59,7 @@ pub struct VertexAiBuilder {
     location: Option<String>,
     credentials: Option<Credentials>,
     prediction_service: Option<vertexai::client::PredictionService>,
+    http: Option<DynHttpClient>,
 }
 
 impl VertexAiBuilder {
@@ -57,6 +69,7 @@ impl VertexAiBuilder {
             location: None,
             credentials: None,
             prediction_service: None,
+            http: None,
         }
     }
 
@@ -122,6 +135,13 @@ impl VertexAiBuilder {
         self
     }
 
+    /// Send Claude requests through `http` instead of the shared reqwest
+    /// client. Gemini requests always go through the prediction service.
+    pub fn with_http_client(mut self, http: impl HttpClientExt + 'static) -> Self {
+        self.http = Some(DynHttpClient::new(http));
+        self
+    }
+
     /// Build the client with the configured values, falling back to environment variables where not set.
     ///
     /// Without a supplied prediction service this resolves credentials now
@@ -155,6 +175,7 @@ impl VertexAiBuilder {
             project,
             location,
             service,
+            http: self.http.unwrap_or_else(rig_reqwest::shared),
         })
     }
 }
@@ -185,6 +206,8 @@ pub struct VertexAi {
     project: String,
     location: String,
     service: PredictionServiceSource,
+    /// The HTTP transport Claude requests travel on.
+    http: DynHttpClient,
 }
 
 impl VertexAi {
@@ -225,12 +248,36 @@ impl VertexAi {
         Model::new(GenerateContent::new(model), self.clone())
     }
 
+    /// The Claude model `model` (`claude-sonnet-4-6`,
+    /// `claude-haiku-4-5@20251001`), served through the `anthropic`
+    /// publisher. See [`crate::anthropic`].
+    pub fn anthropic(&self, model: impl Into<String>) -> Model<RawPredict, Self> {
+        Model::new(
+            RawPredict::new(&self.project, &self.location, model),
+            self.clone(),
+        )
+    }
+
     pub fn project(&self) -> &str {
         &self.project
     }
 
     pub fn location(&self) -> &str {
         &self.location
+    }
+
+    /// The Google credentials this client resolved; `None` for a client
+    /// built on a supplied prediction service.
+    pub fn credentials(&self) -> Option<&Credentials> {
+        match &self.service {
+            PredictionServiceSource::Deferred { credentials, .. } => Some(credentials),
+            PredictionServiceSource::Supplied(_) => None,
+        }
+    }
+
+    /// The HTTP transport Claude requests travel on.
+    pub(crate) fn http(&self) -> &DynHttpClient {
+        &self.http
     }
 
     /// The underlying Vertex AI prediction service, built on first use unless

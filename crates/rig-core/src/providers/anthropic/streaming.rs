@@ -644,5 +644,8 @@ impl MessagesDecoder {
 
 pub(crate) mod document;
 
+/// The document a Messages reply reassembles into.
+pub use document::Message as MessagesDocument;
+
 #[cfg(test)]
 mod tests;

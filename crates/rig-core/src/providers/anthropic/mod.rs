@@ -32,6 +32,6 @@ pub use completion::{
 };
 pub use modality::{Models, Verify};
 pub use wire::{
-    ANTHROPIC, AnthropicConfig, Dialect, MaxTokens, Messages, Quirks, ToolInputStreaming,
-    compatible,
+    ANTHROPIC, Addressing, AnthropicConfig, Dialect, MaxTokens, Messages, Prepared, Quirks,
+    ToolInputStreaming, compatible,
 };
