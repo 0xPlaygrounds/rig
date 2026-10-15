@@ -352,7 +352,6 @@ event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{
 fn openai_direct_recorder(ledger: &Path) -> DirectRecorder {
     DirectRecorder {
         interactions: Arc::new(Mutex::new(Vec::new())),
-        policy: CassettePolicy::for_scenario("openai", CassetteSpec::new("direct/stream")),
         ledger: Arc::new(relay::LedgerTarget {
             path: ledger.to_path_buf(),
             provider: "openai".to_owned(),
