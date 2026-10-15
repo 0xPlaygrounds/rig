@@ -11,7 +11,7 @@
 
 use crate::error::ProviderError;
 use crate::wire::Flow;
-use serde_json::json;
+use serde_json::{Map, Value, json};
 
 use crate::embeddings;
 use crate::error::EncodeError;
@@ -84,22 +84,18 @@ impl Wire for Embeddings {
     }
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let requests: Vec<_> = request
-            .iter()
-            .map(|doc| {
-                json!({
-                    "model": format!("models/{}", self.model),
-                    "content": json!({
-                        "parts": [json!({
-                            "text": doc
-                        })]
-                    }),
-                    "output_dimensionality": self.ndims,
-                })
+        let model = format!("models/{}", self.model);
+        let requests = request.iter().map(|doc| {
+            json!({
+                "model": model,
+                "content": { "parts": [{ "text": doc }] },
+                "output_dimensionality": self.ndims,
             })
-            .collect();
-
-        let body = json!({ "requests": requests  });
+        });
+        let body = Value::Object(Map::from_iter([(
+            "requests".to_owned(),
+            Value::Array(requests.collect()),
+        )]));
 
         // Avoid allocating formatted batch JSON unless tracing consumes it.
         if tracing::enabled!(target: "rig::embedding", tracing::Level::TRACE)
