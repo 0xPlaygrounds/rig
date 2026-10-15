@@ -18,7 +18,7 @@
 //! ```
 
 use google_cloud_auth::credentials::CacheableResource;
-use rig_core::catalog::{Catalog, ModelFacts};
+use rig_core::catalog::Catalog;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
@@ -28,7 +28,7 @@ use rig_core::providers::anthropic::{ANTHROPIC, Addressing, AnthropicConfig, Mes
 use rig_core::providers::registry::ProviderId;
 use rig_core::wire::{Descriptor, Encoded, Mode, Secret, Wire, WireFrame};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::VertexAi;
 use crate::client::VertexAiClientError;
@@ -63,24 +63,43 @@ impl RawPredict {
         );
         let model = model.into();
         let messages = provider.completion(model.as_str());
-        let messages = match snapshot_facts(&model) {
-            Some(facts) => messages.with_facts(facts),
+        let messages = match ProviderId::catalog(ANTHROPIC.name) {
+            Some(anthropic) => messages.with_facts(catalog().facts(anthropic, &model)),
             None => messages,
         };
         Self { messages }
     }
 }
 
-/// The facts of a dated Vertex AI id (`claude-haiku-4-5@20251001`): the
-/// catalog's Claude model before the `@`, bound to the id as written, so its
-/// output limit, reasoning modes and pricing apply. `None` for an undated
-/// id, which the catalog reads as it is.
-fn snapshot_facts(model: &str) -> Option<ModelFacts> {
-    let (base, _) = model.split_once('@')?;
-    let anthropic = ProviderId::catalog(ANTHROPIC.name)?;
-    let mut spec = Catalog::builtin().get_exact(anthropic, base)?.clone();
-    spec.id = model.to_owned();
-    Some(ModelFacts::new(spec))
+/// The built-in catalog with every Claude model Vertex AI names by a dated
+/// id (`claude-haiku-4-5@20251001`) also listed as Anthropic's model under
+/// that id, so its output limit, reasoning modes and pricing apply to a
+/// wire or a request that names it.
+fn catalog() -> &'static Catalog {
+    static CATALOG: OnceLock<Catalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        let builtin = Catalog::builtin();
+        let mut catalog = builtin.clone();
+        let Some(anthropic) = ProviderId::catalog(ANTHROPIC.name) else {
+            return catalog;
+        };
+        let dated = builtin
+            .iter()
+            .filter(|spec| {
+                spec.provider.vendor() == crate::types::completion_response::PROVIDER_NAME
+            })
+            .filter_map(|spec| {
+                let (base, _) = spec.id.split_once('@')?;
+                let mut claude = builtin.get_exact(anthropic, base)?.clone();
+                claude.id = spec.id.clone();
+                Some(claude)
+            })
+            .collect::<Vec<_>>();
+        for claude in dated {
+            catalog.insert(claude);
+        }
+        catalog
+    })
 }
 
 /// The API host serving `location`.

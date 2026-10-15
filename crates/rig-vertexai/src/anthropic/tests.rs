@@ -133,6 +133,34 @@ async fn a_stream_posts_to_stream_raw_predict() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A request that names another dated Vertex AI id is sent to that model
+/// and takes its catalog facts too.
+#[tokio::test]
+async fn a_request_naming_a_dated_id_takes_its_facts() -> anyhow::Result<()> {
+    let http = SequencedHttpClient::new([MockHttpResponse::success(REPLY)]);
+    let mut request = CompletionRequest::new("hello");
+    request.model = Some("claude-opus-4-1@20250805".to_owned());
+    client("global", http.clone())?
+        .anthropic("claude-sonnet-4-6")
+        .call(request)
+        .await?;
+
+    let requests = http.requests();
+    let request = requests
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("no request"))?;
+    anyhow::ensure!(
+        request
+            .uri
+            .ends_with("/models/claude-opus-4-1@20250805:rawPredict"),
+        "{}",
+        request.uri
+    );
+    let body: serde_json::Value = serde_json::from_slice(&request.body)?;
+    anyhow::ensure!(body.get("max_tokens") == Some(&32_000.into()), "{body}");
+    Ok(())
+}
+
 /// `global` and the `us` and `eu` multi-regions have hosts of their own;
 /// any other location is a regional host.
 #[test]
