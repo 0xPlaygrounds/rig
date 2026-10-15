@@ -59,12 +59,12 @@ pub struct CallPlace {
 /// Registering a tool whose every call is built for its [`CallPlace`].
 pub trait AppPerCallExt {
     /// Registers `tool` with `options`, as
-    /// [`add_tool_with`](AppToolsExt::add_tool_with) does, and gives each of
-    /// its calls the handler of `make(place)` in
-    /// [`PrepareSystems::Compose`], so a plugin that wraps or replaces a
-    /// call's [`CallHandler`] in [`PrepareSystems::Edit`] gets that one. A
-    /// call of the tool can be previewed ([`Preview`](crate::preview::Preview)),
-    /// as `make` builds it on an overlay of the workspace.
+    /// [`add_tool_with`](rig_ecs::tools::AppToolsExt::add_tool_with) does, and
+    /// gives each of its calls the handler of `make(place)` in
+    /// [`PrepareSystems::Compose`], so a plugin that wraps or replaces a call's
+    /// [`CallHandler`] in [`PrepareSystems::Edit`] gets that one. A call of the
+    /// tool can be previewed ([`Preview`](crate::preview::Preview)), as `make`
+    /// builds it on an overlay of the workspace.
     fn add_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,

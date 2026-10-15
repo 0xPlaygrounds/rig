@@ -1,19 +1,9 @@
 //! Where this process keeps its session: the directory the launcher names,
-//! the store of the session's files, opened by [`StoreOpener`], which a
-//! plugin replaces to keep them elsewhere or sealed, the plain files of
-//! [`Scratch`] with the text log, panics routed to that log instead of
-//! the terminal, and the log's warnings and errors as [`Logged`] data. A
-//! plugin copies the session into a new one with [`ForkSession`] and
-//! removes another with [`DeleteSession`]; [`SessionForked`],
-//! [`SessionDeleted`] and [`SessionDeleteFailed`] tell every plugin, such as one keeping files of its
-//! own per session. Deleting is crash safe: a session marked deleting is
-//! hidden from listings, and the next start finishes it. A forked session
-//! names the session it came from ([`ForkedFrom`]). A rewrite of this
-//! session (`RewriteSession`) reaches its scratch files too, and
-//! [`rewrite_stopped`] rewrites a session no rig runs, scratch included.
-//! Why this app
-//! started, such as its session's first start or a `/reload`, is
-//! [`AppStart`]; what the user typed in a message is [`typed`].
+//! its store ([`StoreOpener`]), the plain [`Scratch`] files with the text
+//! log, and the log's warnings and errors as [`Logged`] data. Forking
+//! ([`ForkSession`]), deleting ([`DeleteSession`], crash-safe: the next start
+//! finishes it) and rewriting a stopped session ([`rewrite_stopped`]) are
+//! here, and so is why this app started ([`AppStart`]).
 
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Write};
@@ -73,25 +63,19 @@ impl Deref for SessionPaths {
 }
 
 /// Opens the store of a session's files: the running session's, a fork's,
-/// an import's, one `/resume` lists. A plugin replaces it while the app is
-/// built, such as with a store that seals what it keeps:
-/// `app.insert_resource(StoreOpener::new(|dir| ..))`. Once every plugin
-/// is built, the harness chooses the run's front and opens the running
-/// session's [`SessionStore`] from the front's own store
-/// ([`Front::session_store`](super::cli::Front::session_store)), else from
-/// this, unless one is there, and reads the session before anything is
-/// written; a run whose store does not open, or whose session cannot be
-/// read, is refused, and nothing of the session is changed. Every store it
-/// opens marks its session saved ([`SessionDir::mark_saved`]) the first
-/// time a log is written to it, so `/resume` lists the session, but a
-/// sessionless run's ([`Front::sessionless`](super::cli::Front::sessionless)).
-/// By default
-/// a session is kept in its directory ([`DirStore`]: `logs/`, `blobs/` and
-/// `files/`), which refuses a session an older rig saved.
+/// an import's, one `/resume` lists. By default a [`DirStore`] in the
+/// session's directory (`logs/`, `blobs/`, `files/`), which refuses a
+/// session from before `rig-session/2` ([`SessionError::OldLayout`]). A
+/// plugin replaces it while the app is built, such as with a sealed store:
+/// `app.insert_resource(StoreOpener::new(|dir| ..))`.
 ///
-/// It also keeps the listing ([`SessionMeta`]) of a session no rig runs up
-/// to date as it is written ([`Self::relist`]): once every plugin is built
-/// and the app started it knows the listed keys (`saved_as(..).listed()`).
+/// Once every plugin is built the harness opens the running session's
+/// [`SessionStore`] from the front's own store
+/// ([`Front::session_store`](super::cli::Front::session_store)), else from
+/// this, and reads it before writing; a run whose session does not open or
+/// read is refused, unchanged. Every store it opens marks its session saved
+/// on its first log write, so `/resume` lists it (not a sessionless run's),
+/// and keeps the listing of a session no rig runs current ([`Self::relist`]).
 #[derive(Resource, Clone)]
 pub struct StoreOpener {
     /// How a store is opened.
@@ -120,7 +104,7 @@ impl StoreOpener {
     /// # Errors
     ///
     /// When the store cannot be opened, such as without its key, or holds
-    /// a session an older rig saved.
+    /// a session from before `rig-session/2`.
     pub fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, SessionError> {
         Ok(Arc::new(Marking {
             inner: (self.open)(dir)?,
@@ -372,12 +356,12 @@ impl Plugin for SessionPlugin {
             );
     }
 
-    /// Every plugin chose the stores and the scratch place and offered its
-    /// fronts by now: chooses the run's front, opens the session's store,
-    /// or the one a test or a nested tool put in, and reads the session; only then moves the text log where [`Scratch`]
-    /// says. A session that cannot be opened or read refuses the run, and
-    /// the run writes nothing into its directory (`leave_session`). A
-    /// build describing itself opens none.
+    /// Every plugin chose the stores and the scratch place and offered its fronts
+    /// by now: chooses the run's front, opens the session's store, or the one a
+    /// test or a nested tool put in, and reads the session; only then moves the
+    /// text log where [`Scratch`] says. A session that cannot be opened or read
+    /// refuses the run, and the run writes nothing into its directory
+    /// (`leave_session`). A build describing itself opens none.
     fn finish(&self, app: &mut App) {
         if !app.world().contains_resource::<Describing>() {
             match open_store(app.world_mut()) {
@@ -1073,7 +1057,7 @@ fn delete_session(
 
 /// Removes the session in `session`, marked deleting: everything its store
 /// holds, then its directory. Running it again after a crash finishes it.
-/// A session an older rig saved has nothing outside its directory.
+/// A session in the layout before `rig-session/2` has nothing outside it.
 fn finish_delete(session: &SessionDir, stores: &StoreOpener) -> Result<(), SessionError> {
     match (stores.open)(session) {
         Ok(store) => store.destroy()?,

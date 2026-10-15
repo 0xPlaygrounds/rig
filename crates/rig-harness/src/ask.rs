@@ -1,30 +1,19 @@
-//! Questions for the user that any front answers: an approval, a choice,
-//! or a line of text. An [`Ask`] is an open effect: it moves through the
-//! stages and is recorded like any, and it is answered by deciding it
-//! ([`Decision`]) with [`Answer::outcome`], the first decision first. A plugin that
-//! waits on the answer usually spawns the `Ask` as a hold
-//! (`HoldOf(call)`) on what it asks about, so the call waits, and an
-//! interrupt, which despawns its turn's holds, closes the question in
+//! Questions for the user that any front answers: an approval, a choice or a
+//! line of text. An [`Ask`] is an open effect, recorded like any and answered
+//! by deciding it ([`Decision`]) with [`Answer::outcome`]; the first decision
+//! wins. A plugin that waits on the answer spawns it as a hold
+//! (`HoldOf(call)`) on what it asks about, so stopping the turn closes it in
 //! every front at once.
 //!
-//! A front that can show questions spawns an [`Answerer`] for the agents
-//! it shows, shows the open ones (`Query<(Entity, &Ask), Without<Outcome>>`),
-//! and answers them; once one is answered, `Added<Outcome>` on it closes
-//! it in the others. A front that answers in Gate does so after
-//! [`AskSystems`], so a line the user typed wins. A plugin asks only when [`Answerers::can_answer`] for
-//! the agent, else it applies its own policy for a run nobody answers,
-//! such as refusing. While a question that takes text is open, the next
-//! line the user sends the agent is its answer, not a message to the
-//! model, unless the question is [`inline`](Ask::inline).
-//!
-//! An [`Answer`] holds the choices taken and the text typed, so a question
-//! that takes text may be answered with a choice and a note on it. A
-//! question may take several of its choices ([`Ask::multiple`]), propose an answer for the user to edit
-//! ([`Ask::initial`]), take an answer of several lines
-//! ([`Ask::multiline`]), and be shown beside the work rather than in front
-//! of it ([`Ask::inline`]): the user keeps typing to the agent and answers
-//! it when they choose. A front that knows none of these shows it as an
-//! ordinary question.
+//! A front that shows questions spawns an [`Answerer`] for its agents, shows
+//! the open ones (`Query<(Entity, &Ask), Without<Outcome>>`) and answers in
+//! Gate after [`AskSystems`], so a line the user typed wins. A plugin asks only
+//! when [`Answerers::can_answer`], else it applies its own policy, such as
+//! refusing. While a question that takes text is open, the user's next line to
+//! the agent answers it, unless the question is [`inline`](Ask::inline). The
+//! plugin guide's
+//! [questions section](crate::plugin_guide#asking-the-user-questions-and-pickers)
+//! has the rest.
 //!
 //! ```
 //! use rig_harness::prelude::*;

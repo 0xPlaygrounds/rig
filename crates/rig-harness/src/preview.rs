@@ -1,45 +1,18 @@
 //! What a tool call would leave on disk, learned before it runs: put
-//! [`Preview`] on the call in [`Stage::Gate`], and the harness holds it,
-//! runs its tool on an [`Overlay`] of the workspace, which keeps every
-//! write from the disk, and puts the changes on it as [`Previewed`]. The
-//! call is then [`ReadyToStart`] again in a later pass, for the gate to decide
-//! with the changes in hand.
-//!
-//! ```
-//! use rig_harness::prelude::*;
-//!
-//! /// Asks before a call that would change more than 200 lines.
-//! fn guard(
-//!     calls: Query<(Entity, Option<&Previewed>), (ToolCalls, ReadyToStart)>,
-//!     mut commands: Commands,
-//! ) {
-//!     for (call, previewed) in &calls {
-//!         match previewed {
-//!             None => {
-//!                 commands.entity(call).insert(Preview);
-//!             }
-//!             Some(Previewed(Ok(changes))) => {
-//!                 let lines: usize = changes.iter().map(|it| it.added + it.removed).sum();
-//!                 if lines > 200 { /* hold it and ask, with the changes */ }
-//!             }
-//!             // Not previewable (not registered per call, or `shell`), or
-//!             // it would fail.
-//!             Some(Previewed(Err(_))) => {}
-//!         }
-//!     }
-//! }
-//!
-//! App::new().add_systems(AgentPass, guard.in_set(Stage::Gate));
-//! ```
+//! [`Preview`] on the call in [`Stage::Gate`], and the harness holds it, runs
+//! its tool on an [`Overlay`] of the workspace that keeps every write from
+//! the disk, and puts the changes on it as [`Previewed`]; the call is then
+//! ready to start again for the gate to decide with the changes in hand.
 //!
 //! Only a tool registered per call
 //! ([`add_tool_per_call`](crate::per_call::AppPerCallExt::add_tool_per_call))
 //! can be previewed; another gets `Previewed(Err(..))`. The tool runs for
-//! real but on the overlay: it can read every file, its writes, removals
-//! and renames stay in the overlay, and it cannot start a process (so a
-//! `shell` call's preview is the overlay's refusal). Anything the tool does
-//! other than through its [`CallPlace`]'s workspace, such as a request over
-//! the network, it does in the preview too.
+//! real on the overlay: it reads every file, its writes stay in the overlay,
+//! and it cannot start a process (so `shell` cannot be previewed). What it
+//! does other than through its [`CallPlace`]'s workspace, such as a network
+//! request, it does in the preview too. The plugin guide's
+//! [gating section](crate::plugin_guide#gating-and-reviewing-tool-calls) has
+//! an example.
 
 use std::sync::Arc;
 

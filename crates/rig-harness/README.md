@@ -1,65 +1,28 @@
 # rig-harness
 
-The core of the rig coding agent: a terminal coding agent that is a
+The harness of the rig coding agent: a terminal coding agent that is a
 [Bevy](https://bevy.org) app made of plugins, on the [`rig-ecs`](../rig-ecs)
-agent runtime and [Rig](https://github.com/0xPlaygrounds/rig)'s rig-core. The
-`rig` launcher generates a small Cargo project for it from
-`RIG_HOME/plugins.toml`, builds it and runs it; `/reload` rebuilds it with
-changed plugins and restarts in the same session. The
-[root README](../../README.md#the-rig-coding-agent) describes using it.
+kernel and [Rig](https://github.com/0xPlaygrounds/rig)'s rig-core. The `rig`
+launcher generates a small Cargo project for it from `RIG_HOME/plugins.toml`,
+builds it and runs it; `/reload` rebuilds it with changed plugins and restarts
+in the same session. The [root README](../../README.md#the-rig-coding-agent)
+describes using it.
 
-## A kernel, a core and plugins
+## A kernel, a harness and plugins
 
 - **The kernel** is rig-ecs: agents, turns and calls as entities, message
   delivery, tools as entities, the session log and its restore.
-- **The core** is this crate: what the binary needs to run and be
-  relaunched, and the few services every plugin shares. `HeadlessPlugins`
-  is Bevy's `MinimalPlugins` with the log, a clean exit on signals and a
-  loop that sleeps until there is work or a wall-clock `WakeAt`;
-  `RigHarnessPlugins` adds the session (its rig-memory store, opened by
-  the replaceable `StoreOpener`, which refuses a session an older rig
-  saved without changing it, the plain `Scratch` files, forking
-  (`ForkSessions`), rewriting a stopped session (`rewrite_stopped`; the
-  running one is the kernel's `RewriteSession`, which also maps its scratch
-  files and name) and deleting sessions), the kernel, the launcher protocol with how the agent
-  was started (`Invoked`: its arguments, the plugins' own options and
-  command, and whether stdin is a terminal) and why (`AppStart`: a new
-  session, a resumed one, a `/reload`, or a restart after a rollback),
-  the secrets plugins ask the
-  launcher for (`Secrets`), and how it exits (`Exit`: an effect a plugin
-  may hold until its work is done, never cancel), slash commands
-  (`add_command`, run from what the user types), and the shared services:
-  the user's settings for plugins (`settings.toml`), the `RIG_HOME`,
-  project root and the workspace it is in (`ProjectWorkspace`, this
-  machine's unless a plugin puts another in), an agent's own working
-  directory (`WorkDir`), child-process policy and tokio runtime, file
-  watches, where each plugin keeps its own files per session, project and
-  user (`PluginData`), questions and pickers any front answers (`Ask`,
-  `Picker`, one choice or several, with a note typed on them), one
-  question for every plugin that wants the user to approve an effect
-  (`NeedsApproval`, asked in `ApprovalSystems`), plugins' notes in an agent's
-  transcript (`Note` asides), tools built for each call's place in the
-  workspace (`add_tool_per_call`), what a call would change before it
-  runs (`Preview`, each change's hunks and text before, each side's size
-  and lines), what any call that may write anywhere changed (its
-  `FilesChanged`, from snapshots just before and after it, the one before
-  kept on the call as its `CallCheckpoint`, ignored paths named in
-  `CheckpointAlso` included; `[checkpoints]`), an agent's saved title
-  (`AgentTitle`), settings a project may override where a plugin lets it
-  (`add_project_setting`), a
-  running call's progress and live output (`ToolProgress`, `CallOutput`),
-  following an effect to the successor that took it over
-  (`follow_successor`, `resend`), and, with the `trace` feature, how long
-  each system ran, per plugin and schedule (`PluginTimings`). Plugins
-  offer fronts and one takes each run: `rig-tui` on an interactive
-  terminal, `rig-print` with `-p` or with stdin piped in, or a front whose
-  option or command (`rig <name> …`) was given, which may keep its runs'
-  session in a store of its own (`Front::session_store`) and continue a
-  resumed one (`rig -r <id or name> <name>`); an interactive run no
-  front takes says so and exits. A front nobody sits at runs headless,
-  until its agents are idle and no plugin keeps it going (`KeepRunning`). The generated `main.rs` ends with
-  `rig_harness::run`, which also answers the launcher's question of what
-  the build's plugins add to the command line.
+- **The harness** is this crate: what the binary needs to run and be
+  relaunched, and the services every plugin shares. `HeadlessPlugins` is
+  Bevy's `MinimalPlugins` with the log, a clean exit on signals and a loop that
+  sleeps until there is work. `RigHarnessPlugins` adds the session and its
+  store (`StoreOpener`, which refuses, unchanged, a session from before
+  `rig-session/2` or from a newer rig), the kernel, the launcher protocol
+  (`Invoked`, `AppStart`, `Secrets`, `Exit`), slash commands, fronts, and the
+  shared services: settings, the workspace and child processes, file watches,
+  plugin data, questions, pickers and approvals, transcript notes, and the
+  preview and checkpoint of tool calls. The generated `main.rs` ends with
+  `rig_harness::run`.
 - **Everything else is a plugin** in a crate of the repository's
   [`plugins/`](../../plugins) folder, listed in `plugins.toml` and built only
   on public API, exactly as a third-party plugin is: the compiler holds them
@@ -97,11 +60,8 @@ crates is published yet. A plugin crate that adds to the terminal view (status
 line items, pickers, tool renderers) does so behind a default `tui` cargo
 feature, so it also builds without `rig-tui`.
 
-Optional plugins are not in the default list: [`rig-inspect`](../../plugins/rig-inspect)'s
-`InspectPlugin` adds the `inspect` tool, with which the agent reads its own
-Bevy world through Bevy Remote (in process, read-only). It makes the build
-heavier, so it is commented out in the default `plugins.toml`; uncomment its
-entry, or run `rig plugin add rig_inspect::InspectPlugin --crate rig-inspect`.
+The optional [`rig-inspect`](../../plugins/rig-inspect) plugin adds the
+`inspect` tool, with which the agent reads its own Bevy world, read-only.
 [`rig-steel`](../../plugins/rig-steel) adds code mode.
 
 [`PLUGINS.md`](PLUGINS.md) shows how to write a plugin, with one example per
@@ -119,8 +79,5 @@ cargo install --path .
 rig
 ```
 
-It needs Rust 1.97.1 or newer and runs on Linux and macOS. With the
-optional `rig-inspect` plugin enabled, building the agent on Linux also
-needs the ALSA development headers (`libasound2-dev` on Debian and Ubuntu,
-`alsa-lib-devel` on Fedora, `alsa-lib` on Arch): Bevy Remote pulls in
-Bevy's audio crate. The agent plays no sound.
+It needs Rust 1.97.1 or newer and runs on Linux and macOS. The optional
+`rig-inspect` plugin needs more to build on Linux; its README says what.

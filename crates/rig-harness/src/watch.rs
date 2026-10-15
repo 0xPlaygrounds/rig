@@ -12,23 +12,9 @@
 //! machine the system tells it of changes; another workspace may look
 //! every second ([`Workspace::watch`]). It reports the files
 //! [`Workspace::files`] lists with the watch's [`Listing`] (by default
-//! leaving out ignored and hidden files and `target`).
-//!
-//! ```no_run
-//! use rig_harness::prelude::*;
-//!
-//! fn watch_templates(mut commands: Commands, root: Res<ProjectRoot>) {
-//!     commands.spawn(FileWatch::tree(root.0.join(".rig/templates")));
-//! }
-//!
-//! fn reload(mut changes: MessageReader<FileChanges>) {
-//!     for change in changes.read() {
-//!         for path in &change.paths {
-//!             println!("{} changed", path.display());
-//!         }
-//!     }
-//! }
-//! ```
+//! leaving out ignored and hidden files and `target`). The plugin guide's
+//! [files section](crate::plugin_guide#the-workspace-files-and-child-processes)
+//! has an example.
 
 use std::path::PathBuf;
 use std::sync::Arc;

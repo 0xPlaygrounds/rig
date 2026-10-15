@@ -169,14 +169,13 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
 }
 
 /// What a plugin keeps with the session, on the entity [`load`] spawned for
-/// it: the saved values it owns, by the key the journal saves them under
-/// (the type path, such as `my_plugin::Counter`, or a stable one such as
-/// `rig::model`), the kinds of the asides it versions, and its folders of
-/// session files in
+/// it: the saved values it owns, by their saved key (the type path, such as
+/// `my_plugin::Counter`, or a stable one such as `rig::model`), the kinds of
+/// the asides it versions, and its folders of session files in
 /// [`PluginData::session`](crate::prelude::PluginData::session), such as
 /// `vim`. A plugin says so in `build`, `finish` or `cleanup`
 /// ([`AppKeepsExt`]); nothing infers it. A saved value no plugin keeps is
-/// the core's, or one whose plugin did not say.
+/// the kernel's or the harness's, or one whose plugin did not say.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Default, Clone, Debug)]
 pub struct Keeps {

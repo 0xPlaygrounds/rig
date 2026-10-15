@@ -1,20 +1,9 @@
-//! The user's approval of an effect before it starts, such as a tool call,
-//! asked once however many plugins want it. A plugin that wants the user
-//! to approve an effect adds its reason ([`NeedsApproval::add`]) in
-//! Prepare or Gate, and the harness asks after every gate
-//! ([`ApprovalSystems`]): one [`Ask`] that holds the effect and lists every
-//! reason, answered [`ALLOW`] or [`DENY`], each with a note or not, or with
-//! a line of text alone, which denies it with that reason. An allowed
-//! effect is [`Approved`] and goes on, its note kept in the question's
-//! record; a denied one is refused with the user's note. With nobody to
-//! answer ([`Answerers`]) it is refused at once, with the reasons.
-//!
-//! A plugin that gathers approvals, such as one asking about a reply's
-//! calls together, runs before [`ApprovalSystems`] and holds or decides
-//! them; the harness asks only about what is undecided and unheld then.
-//! To batch a reply's later calls with its earlier ones, it marks them in
-//! Prepare (`Added<Admitted>`): a call waiting on an earlier one
-//! (`Waiting`) is not [`ReadyToStart`] there, so Gate never sees it.
+//! The user's approval of an effect before it starts, asked once however many
+//! plugins want it. A plugin adds its reason with [`NeedsApproval::add`] in
+//! Prepare or Gate; after every gate, [`ApprovalSystems`] holds the effect
+//! with one [`Ask`] listing every reason. [`ALLOW`] makes it [`Approved`];
+//! [`DENY`], or a text alone, refuses it with the user's note; with nobody to
+//! answer ([`Answerers`]) it is refused at once.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -97,8 +86,13 @@ pub struct Approved;
 
 /// The harness's asking, in Gate after every gate and before the kernel's
 /// fallback: `.after(GateSystems::After).before(GateSystems::Fallback)`.
-/// A plugin that holds or decides effects before they are asked about runs
-/// `.before(ApprovalSystems)`.
+///
+/// A plugin that gathers approvals, such as one asking about a reply's calls
+/// together, runs `.before(ApprovalSystems)` and holds or decides them; the
+/// harness asks only about what is undecided and unheld then. To batch a
+/// reply's later calls with its earlier ones, it marks them in Prepare
+/// (`Added<Admitted>`): a call waiting on an earlier one (`Waiting`) is not
+/// [`ReadyToStart`] there, so Gate never sees it.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ApprovalSystems;
 

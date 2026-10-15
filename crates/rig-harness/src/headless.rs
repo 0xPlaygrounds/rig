@@ -52,7 +52,7 @@ use crate::host::exit::{Exit, ExitReason, ExitRequest};
 use crate::host::launcher::Invoked;
 use crate::main_agent::{MainAgentQuery, main_agent};
 
-/// Running a headless run.
+/// Starts a run nobody sits at on an [`App`].
 pub trait AppHeadlessExt {
     /// Sends `prompt` to the primary agent once it has a model, and exits
     /// when no agent works any more and no [`KeepRunning`] exists. Without
