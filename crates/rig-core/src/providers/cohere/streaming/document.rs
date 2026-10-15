@@ -62,7 +62,10 @@ impl Reassemble<ChatEvent> for ChatResponse {
     fn absorb(&mut self, event: &ChatEvent) {
         let fields = &event.fields;
         let index = fields.u64("index").unwrap_or(0);
-        let stated = |key: &str| fields.at(&format!("/delta/message/{key}"));
+        let stated = |key: &str| {
+            let stated = fields.get("delta")?.get("message")?.get(key);
+            stated.filter(|value| !value.is_null())
+        };
         let object = |key: &str| stated(key).and_then(Value::as_object);
         match event.kind() {
             "" => self.whole = Some(fields.clone()),
