@@ -8,7 +8,7 @@ use lancedb::{
     query::{ExecutableQuery, VectorQuery},
 };
 use rig_core::vector_store::VectorStoreError;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// Runs a LanceDB query and converts its columnar result into JSON rows.
 pub(crate) async fn execute_query(
@@ -78,6 +78,17 @@ fn is_float_list(field: &Field) -> bool {
     )
 }
 
+/// A table row for one embedding of `document`: an object's own fields, or any
+/// other value under `document`, with the embedding under `column`.
+pub(crate) fn embedded_row(document: &Value, column: &str, embedding: Vec<f64>) -> Value {
+    let mut row = match document {
+        Value::Object(fields) => fields.clone(),
+        other => Map::from_iter([("document".to_string(), other.clone())]),
+    };
+    row.insert(column.to_string(), embedding.into());
+    Value::Object(row)
+}
+
 /// Decodes JSON object rows into one batch of `schema`, or `None` without rows.
 /// Fields the schema lacks are dropped and absent columns are null.
 pub(crate) fn rows_to_batch(
@@ -93,7 +104,7 @@ pub(crate) fn rows_to_batch(
     decoder.flush().map_err(VectorStoreError::datastore)
 }
 
-pub(crate) fn schema_error(message: String) -> VectorStoreError {
+fn schema_error(message: String) -> VectorStoreError {
     VectorStoreError::datastore(ArrowError::SchemaError(message))
 }
 

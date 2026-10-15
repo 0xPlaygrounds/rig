@@ -34,7 +34,7 @@ fn renders_header_value_lines_per_row_and_per_file() {
 }
 
 #[test]
-fn delimiter_and_headerless_input() {
+fn delimiter_headerless_and_flexible_input() {
     let rows = CsvFileLoader::from_bytes(b"Ada\t1815\nGrace\t1906\n".to_vec())
         .delimiter(b'\t')
         .has_headers(false)
@@ -46,6 +46,21 @@ fn delimiter_and_headerless_input() {
     assert_eq!(
         rows,
         vec!["Ada\n1815".to_string(), "Grace\n1906".to_string()]
+    );
+
+    let rows = CsvFileLoader::from_bytes(b"name,born\nAda\nGrace,1906,admiral\n".to_vec())
+        .flexible(true)
+        .rows()
+        .ignore_errors()
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rows,
+        vec![
+            "name: Ada".to_string(),
+            "name: Grace\nborn: 1906\nadmiral".to_string()
+        ]
     );
 }
 

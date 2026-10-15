@@ -57,6 +57,7 @@ impl Loadable for Vec<u8> {
 struct CsvFormat {
     delimiter: u8,
     has_headers: bool,
+    flexible: bool,
 }
 
 impl Default for CsvFormat {
@@ -64,17 +65,19 @@ impl Default for CsvFormat {
         Self {
             delimiter: b',',
             has_headers: true,
+            flexible: false,
         }
     }
 }
 
 impl CsvFormat {
-    /// Parses `bytes` and renders each record. Fails on the first malformed
-    /// record, including one whose field count differs from the first row's.
+    /// Parses `bytes` and renders each record, failing on the first malformed
+    /// record.
     fn rows(self, bytes: &[u8]) -> Result<Vec<String>, CsvLoaderError> {
         let mut reader = ReaderBuilder::new()
             .delimiter(self.delimiter)
             .has_headers(self.has_headers)
+            .flexible(self.flexible)
             .from_reader(bytes);
         let headers = if self.has_headers {
             Some(reader.headers()?.clone())
@@ -92,16 +95,18 @@ impl CsvFormat {
     }
 }
 
-/// One line per field: `header: value` with headers, the bare value without.
+/// One line per field: `header: value` under a header, the bare value otherwise.
 fn render_row(headers: Option<&StringRecord>, record: &StringRecord) -> String {
-    let lines: Vec<String> = match headers {
-        Some(headers) => headers
-            .iter()
-            .zip(record)
-            .map(|(header, value)| format!("{header}: {value}"))
-            .collect(),
-        None => record.iter().map(str::to_string).collect(),
-    };
+    let lines: Vec<String> = record
+        .iter()
+        .enumerate()
+        .map(
+            |(column, value)| match headers.and_then(|headers| headers.get(column)) {
+                Some(header) => format!("{header}: {value}"),
+                None => value.to_string(),
+            },
+        )
+        .collect();
     lines.join("\n")
 }
 
@@ -109,14 +114,16 @@ fn render_row(headers: Option<&StringRecord>, record: &StringRecord) -> String {
 /// happen synchronously during iteration; per-item I/O and parse errors are
 /// yielded unless filtered.
 ///
-/// Input is comma-separated with a header row unless [`CsvFileLoader::delimiter`]
-/// or [`CsvFileLoader::has_headers`] say otherwise.
+/// Input is comma-separated, with a header row and the same number of fields in
+/// every row, unless [`CsvFileLoader::delimiter`], [`CsvFileLoader::has_headers`]
+/// or [`CsvFileLoader::flexible`] say otherwise.
 pub struct CsvFileLoader<'a, T> {
     iterator: Box<dyn Iterator<Item = T> + 'a>,
     format: CsvFormat,
 }
 
-impl<T> CsvFileLoader<'_, T> {
+#[allow(private_bounds)] // `Loadable` deliberately seals which states expose these methods
+impl<'a, T: Loadable + 'a> CsvFileLoader<'a, T> {
     /// Sets the field delimiter, such as `b'\t'` for tab-separated values.
     pub fn delimiter(mut self, delimiter: u8) -> Self {
         self.format.delimiter = delimiter;
@@ -129,10 +136,14 @@ impl<T> CsvFileLoader<'_, T> {
         self.format.has_headers = has_headers;
         self
     }
-}
 
-#[allow(private_bounds)] // `Loadable` deliberately seals which states expose these methods
-impl<'a, T: Loadable + 'a> CsvFileLoader<'a, T> {
+    /// Sets whether rows may have different numbers of fields. Otherwise such
+    /// a row fails its file. Fields beyond the header row render as bare values.
+    pub fn flexible(mut self, flexible: bool) -> Self {
+        self.format.flexible = flexible;
+        self
+    }
+
     /// Renders each file as one document, yielding I/O or parse errors.
     ///
     /// ```no_run

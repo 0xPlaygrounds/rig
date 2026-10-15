@@ -33,7 +33,7 @@ use rig_core::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use utils::{embedding_column, execute_query, filter_embeddings, rows_to_batch, schema_error};
+use utils::{embedded_row, embedding_column, execute_query, filter_embeddings, rows_to_batch};
 
 mod utils;
 
@@ -354,12 +354,13 @@ impl SearchParams {
 }
 
 impl InsertDocuments for LanceDbVectorIndex {
-    /// Appends one row per embedding. Each document must serialize to a JSON
-    /// object whose fields fill the table's columns of the same name; fields the
-    /// table lacks are dropped and absent columns are null. The embedding fills
-    /// the column named by [`SearchParams::column`], or else the table's only
-    /// fixed-size list of floats. Errors when a document is not an object or a
-    /// row does not fit the schema, such as an embedding of the wrong size.
+    /// Appends one row per embedding. A document serialized to a JSON object
+    /// fills the table's columns of the same name, and any other document fills
+    /// a `document` column. Fields the table lacks are dropped and absent
+    /// columns are null. The embedding fills the column named by
+    /// [`SearchParams::column`], or else the table's only fixed-size list of
+    /// floats. Errors when a row does not fit the schema, such as an embedding
+    /// of the wrong size or a missing non-nullable column.
     ///
     /// # Example
     /// ```no_run
@@ -394,13 +395,7 @@ impl InsertDocuments for LanceDbVectorIndex {
             .map_err(VectorStoreError::datastore)?;
         let column = embedding_column(&schema, self.search_params.column.as_deref())?;
         let rows = flatten_embedded(documents, |document, embedding| {
-            let Value::Object(mut row) = document.clone() else {
-                return Err(schema_error(
-                    "a document must serialize to a JSON object to fill a row".to_string(),
-                ));
-            };
-            row.insert(column.clone(), embedding.vec.into());
-            Ok(Value::Object(row))
+            Ok(embedded_row(document, &column, embedding.vec))
         })?;
 
         if let Some(batch) = rows_to_batch(schema, &rows)? {
