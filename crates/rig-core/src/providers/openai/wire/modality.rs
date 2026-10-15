@@ -708,12 +708,17 @@ impl Transcriptions {
         }
         if let Some(additional_params) = request.additional_params {
             for (name, value) in additional_params_object(&additional_params)? {
-                // Form strings must not acquire JSON quotation marks.
-                let value = match value {
-                    serde_json::Value::String(value) => value.clone(),
-                    other => other.to_string(),
-                };
-                form = form.text(name.clone(), value);
+                match value {
+                    // Arrays go as one `name[]` field per item, the form
+                    // encoding these endpoints read for lists such as
+                    // `timestamp_granularities`.
+                    serde_json::Value::Array(items) => {
+                        for item in items {
+                            form = form.text(format!("{name}[]"), form_text(item));
+                        }
+                    }
+                    other => form = form.text(name.clone(), form_text(other)),
+                }
             }
         }
         Ok(Body::Multipart(form))
@@ -756,6 +761,15 @@ impl Transcriptions {
         Ok(Body::Bytes(serde_json::to_vec(
             &serde_json::Value::Object(body),
         )?))
+    }
+}
+
+/// A form field's text: strings as they are, without JSON quotation marks,
+/// and other values as JSON.
+fn form_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => value.clone(),
+        other => other.to_string(),
     }
 }
 
