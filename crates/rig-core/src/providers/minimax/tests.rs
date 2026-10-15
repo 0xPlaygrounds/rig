@@ -179,6 +179,22 @@ async fn a_speech_request_nests_the_voice_and_decodes_hex_audio() {
             "audio_setting": {"format": "wav"},
         })
     );
+    // Without a caller `voice_setting`, the derived one goes out as is.
+    for params in [None, Some(json!({"language_boost": "auto"}))] {
+        let encoded = OpenAIConfig::with_key(&MINIMAX, "key")
+            .audio_generation(SPEECH_2_8_HD)
+            .encode(
+                AudioGenerationRequestBuilder::new("Hello", "English_Graceful_Lady")
+                    .additional_params(params)
+                    .build(),
+                Mode::Unary,
+            )
+            .expect("the request encodes");
+        assert_eq!(
+            json_body(&encoded.request)["voice_setting"],
+            json!({"voice_id": "English_Graceful_Lady", "speed": 1.0})
+        );
+    }
 
     let reply = json!({
         "data": {"audio": "52494646ff00", "status": 2},
