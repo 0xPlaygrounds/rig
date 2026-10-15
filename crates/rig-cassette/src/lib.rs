@@ -19,8 +19,7 @@
 //! ordered JSON maps and round-trip float parsing. `bedrock` extends it with
 //! AWS event-stream support. `jsonl` adds [`effect_log::jsonl`], effect
 //! logs appended to and read from JSON-lines files, also as a file of a
-//! session's store. No optional feature is enabled by default. Saving and
-//! resuming sessions is rig-memory's.
+//! session's store. No optional feature is enabled by default.
 //!
 //! ```
 //! let recorder = rig_cassette::effect_log::EffectLogRecorder::new();

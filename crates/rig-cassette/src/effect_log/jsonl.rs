@@ -34,7 +34,7 @@
 //! A [`Writer`] appends to a file by path, or to a file of a session's
 //! store, such as [`SESSION_EFFECT_LOG`] ([`Writer::on`]); [`read_from`]
 //! reads either back. The effect log is a recording for replay that no
-//! restore reads, not part of the saved session.
+//! restore reads; saving and resuming sessions is rig-memory's.
 //!
 //! The writer also leaves out the parts of a completion's raw provider
 //! document that echo the request (`instructions`, `tools`) and the

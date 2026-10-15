@@ -1,4 +1,4 @@
-//! Effect log headers, checkpoint envelopes, and stable JSON hashing.
+//! Effect log headers, resume points, and stable JSON hashing.
 //!
 //! ```
 //! let hash = rig_cassette::effect_log::stable_hash(&"run")?;
@@ -13,7 +13,7 @@ use rig_core::json_utils::to_canonical_string;
 use rig_core::serve::ServingPolicy;
 use serde::{Deserialize, Serialize};
 
-/// The checkpoint envelope format this crate writes and reads. This versions
+/// The resume-point format this crate writes and reads. This versions
 /// [`ResumePoint`], not [`LogHeader`]; logs have no global format number.
 pub const RESUME_POINT_FORMAT: u32 = 6;
 
@@ -167,7 +167,7 @@ impl EffectLog {
         }
     }
 
-    /// Return a checkpoint containing `state`, position `at`, and the next
+    /// Return a resume point holding `state`, position `at`, and the next
     /// record ID, together with the remaining log. Positions at or beyond the
     /// end produce an empty tail.
     pub fn checkpoint<S>(&self, at: usize, state: S) -> (ResumePoint<S>, Self) {
@@ -180,8 +180,9 @@ impl EffectLog {
         (checkpoint, self.tail(at))
     }
 
-    /// Validate and return `tail`, or an error if the checkpoint format or next
-    /// record ID does not match. An ending checkpoint requires an empty tail.
+    /// Validate and return `tail`, or an error if the resume point's format
+    /// or next record ID does not match. A resume point at the end requires
+    /// an empty tail.
     pub fn from_checkpoint<S>(
         checkpoint: &ResumePoint<S>,
         tail: Self,
