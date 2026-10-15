@@ -47,7 +47,7 @@ async fn queued_turns_chain_after_a_warmup() {
             let mut warmup = unstored("Answer every question with a number only.");
             warmup.chat_history.insert(
                 0,
-                rig::completion::Message::system("You are a terse arithmetic assistant."),
+                rig::completion::Message::system("You are a terse arithmetic assistant.").into(),
             );
             let warmed = socket.warmup(warmup).await.expect("the warmup prepares");
             assert!(warmed.starts_with("resp_"), "{warmed}");

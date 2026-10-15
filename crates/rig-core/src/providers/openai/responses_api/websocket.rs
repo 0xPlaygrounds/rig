@@ -129,6 +129,7 @@ impl Wire for ResponsesSocket {
     type Op = Completion;
     type Payload = ResponseCreate;
     type Frame = WireFrame;
+    type Event = super::streaming::ResponsesEvent;
     type Decoder<'id> = ResponsesDecoder;
     type Reassembler = document::Response;
 

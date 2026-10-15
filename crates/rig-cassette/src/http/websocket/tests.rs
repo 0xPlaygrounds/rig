@@ -65,7 +65,7 @@ impl Scratch {
 
     async fn start(&self, mode: CassetteMode) -> WebSocketCassette {
         WebSocketCassette::over(
-            ProviderCassette::start_with_attempts(
+            ProviderCassette::try_start_with_attempts(
                 RecordVia::Direct,
                 "openai",
                 CassetteSpec::new("websocket/turn"),
@@ -74,7 +74,8 @@ impl Scratch {
                 self.0.path().join("turn.yaml"),
                 self.0.path().join("attempts"),
             )
-            .await,
+            .await
+            .expect("the cassette starts"),
         )
     }
 }
