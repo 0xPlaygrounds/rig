@@ -126,7 +126,7 @@ fn a_new_cache_key_alone_does_not_diverge() {
         let mut request = rig_core::completion::CompletionRequest::new(prompt);
         request.options.cache_key = Some(key.to_owned());
         EffectKind::Completion {
-            request,
+            request: request.into(),
             stream: true,
         }
     };

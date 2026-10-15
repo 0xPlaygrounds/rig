@@ -4,17 +4,27 @@
 
 use serde_json::{Value, json};
 
+use super::super::GenerateContentDecoder;
 use super::GenerateContentResponse;
 use crate::wire::WireFrame;
-use crate::wire::document::Reassemble;
+use crate::wire::document::rebuild;
+
+/// The document `frames` add up to.
+fn rebuilt(frames: impl IntoIterator<Item = WireFrame>) -> Value {
+    rebuild(
+        &GenerateContentDecoder::default(),
+        GenerateContentResponse::default(),
+        frames,
+    )
+}
 
 /// The document `chunks` add up to.
 fn folded(chunks: impl IntoIterator<Item = Value>) -> Value {
-    let mut document = GenerateContentResponse::default();
-    for chunk in chunks {
-        document.absorb(&WireFrame::Text(chunk.to_string()));
-    }
-    document.finish()
+    rebuilt(
+        chunks
+            .into_iter()
+            .map(|chunk| WireFrame::Text(chunk.to_string())),
+    )
 }
 
 /// A chunk of the first candidate holding `parts`.
@@ -154,7 +164,8 @@ fn citations_append_and_metadata_keeps_its_last_value() {
 #[test]
 fn a_reply_with_no_chunk_has_no_document() {
     assert_eq!(folded([]), Value::Null);
-    let mut document = GenerateContentResponse::default();
-    document.absorb(&WireFrame::Text("not json".to_owned()));
-    assert_eq!(document.finish(), Value::Null);
+    assert_eq!(
+        rebuilt([WireFrame::Text("not json".to_owned())]),
+        Value::Null
+    );
 }

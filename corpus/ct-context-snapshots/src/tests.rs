@@ -90,7 +90,7 @@ fn switches(n: usize) -> impl Fn(&World) -> bool {
 fn user_texts(request: &rig_core::completion::CompletionRequest) -> Vec<String> {
     let mut texts = Vec::new();
     for message in &request.chat_history {
-        if let Message::User { content } = message {
+        if let Message::User { content } = &**message {
             for item in content.iter() {
                 if let UserContent::Text(text) = item {
                     texts.push(text.text.clone());

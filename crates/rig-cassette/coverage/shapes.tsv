@@ -2224,8 +2224,14 @@ openai	POST /v1/responses	reply	fcfb14b93507dc7c	1	openai/models/gpt_6_luna/sess
 openai	POST /v1/responses	reply	ff7dc2a313d21483	1	bank:openai/strict_tool_matrix/non_strict_tool_omits_optional_argument_streaming.yaml#0
 openrouter	GET /api/v1/models	request	$ empty	1	openrouter/models/list_models_smoke.yaml#0
 openrouter	GET /api/v1/models	reply	18138a3de070cad1	1	openrouter/models/list_models_smoke.yaml#0
+openrouter	POST /api/v1/audio/transcriptions	request	$ {input_audio:{},model:str,provider:{},response_format:str,timestamp_granularities:[str]}	1	openrouter/transcription/verbose_diarized_transcription_has_timed_speakers.yaml#0
 openrouter	POST /api/v1/audio/transcriptions	request	$ {input_audio:{},model:str}	1	openrouter/transcription/transcription_smoke.yaml#0
-openrouter	POST /api/v1/audio/transcriptions	request	$.input_audio {data:str,format:str}	1	openrouter/transcription/transcription_smoke.yaml#0
+openrouter	POST /api/v1/audio/transcriptions	request	$.input_audio {data:str,format:str}	2	openrouter/transcription/transcription_smoke.yaml#0
+openrouter	POST /api/v1/audio/transcriptions	request	$.provider {options:{}}	1	openrouter/transcription/verbose_diarized_transcription_has_timed_speakers.yaml#0
+openrouter	POST /api/v1/audio/transcriptions	request	$.provider.options {azure:{}}	1	openrouter/transcription/verbose_diarized_transcription_has_timed_speakers.yaml#0
+openrouter	POST /api/v1/audio/transcriptions	request	$.provider.options.azure {diarization:{}}	1	openrouter/transcription/verbose_diarized_transcription_has_timed_speakers.yaml#0
+openrouter	POST /api/v1/audio/transcriptions	request	$.provider.options.azure.diarization {enabled:bool}	1	openrouter/transcription/verbose_diarized_transcription_has_timed_speakers.yaml#0
+openrouter	POST /api/v1/audio/transcriptions	reply	0d1382b98b6ad0ea	1	openrouter/transcription/verbose_diarized_transcription_has_timed_speakers.yaml#0
 openrouter	POST /api/v1/audio/transcriptions	reply	8488933c599ef5aa	1	openrouter/transcription/transcription_smoke.yaml#0
 openrouter	POST /api/v1/chat/completions	request	$ {include_reasoning:bool,max_tokens:num,messages:[{}],model:str,reasoning:{},stream:bool,tools:[{}]}	2	openrouter/streaming_tools/stream_encrypted_reasoning_survives_into_the_next_turn.yaml#0
 openrouter	POST /api/v1/chat/completions	request	$ {include_reasoning:bool,max_tokens:num,messages:[{}],model:str,reasoning:{},stream:bool}	1	openrouter/reasoning_delta_hook/streaming.yaml#0

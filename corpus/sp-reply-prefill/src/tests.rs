@@ -136,9 +136,12 @@ fn ask(
 
 /// The assistant messages of `agent`'s conversation.
 fn answers(world: &World, agent: Entity) -> Vec<AssistantMessage> {
-    let messages = world
-        .get::<Conversation>(agent)
-        .map(|it| it.messages().to_vec());
+    let messages = world.get::<Conversation>(agent).map(|it| {
+        it.messages()
+            .iter()
+            .map(|m| (**m).clone())
+            .collect::<Vec<_>>()
+    });
     let messages = messages.unwrap_or_default().into_iter();
     messages
         .filter_map(|message| match message {
@@ -153,7 +156,7 @@ fn last_sent(model: &MockCompletionModel, at: usize) -> Option<Said> {
     let requests = model.requests();
     requests
         .get(at)
-        .and_then(|request| request.chat_history.last().cloned())
+        .and_then(|request| request.chat_history.last().map(|m| (**m).clone()))
 }
 
 /// The text of `message` if it is the model's.
@@ -258,7 +261,12 @@ fn a_prefill_starts_one_stored_reply_and_is_cleared_after_it() {
     let messages = app
         .world()
         .get::<Conversation>(agent)
-        .map(|it| it.messages().to_vec())
+        .map(|it| {
+            it.messages()
+                .iter()
+                .map(|m| (**m).clone())
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
     let answered = messages.iter().any(|message| match message {
         Said::User { content } => content.iter().any(|part| matches!(part, UserContent::ToolResult(result) if result.call.to_string() == "r1")),

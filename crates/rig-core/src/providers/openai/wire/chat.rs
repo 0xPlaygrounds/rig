@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::borrow::Cow;
+use std::sync::Arc;
 
 use crate::catalog::ModelFacts;
 use crate::completion::options::{BaseInput, RawAt, Rewrite, request_params};
@@ -21,6 +23,7 @@ use crate::message::{
 };
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
+use crate::providers::internal::object;
 use crate::providers::internal::openai_chat_completions_compatible::{
     finish_reason, native_finish_reason, provider_error_envelope,
 };
@@ -83,12 +86,12 @@ fn image_url(image: &crate::message::Image, user: bool) -> Result<Value, EncodeE
     if let Some(detail) = detail {
         part.insert("detail".to_owned(), serde_json::to_value(detail)?);
     }
-    Ok(json!({"type": "image_url", "image_url": part}))
+    Ok(object! {"type": "image_url", "image_url": part})
 }
 
 /// One user content part as Chat Completions carries it.
 fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
-    let file = |file: Value| json!({"type": "file", "file": file});
+    let file = |file: Value| object! {"type": "file", "file": file};
     Ok(match part {
         UserContent::Text(text) => json!({"type": "text", "text": text.text}),
         UserContent::Image(image) => image_url(image, true)?,
@@ -97,10 +100,10 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
             match &document.data {
                 DocumentData::Text(text) => json!({"type": "text", "text": text}),
                 DocumentData::File(Source::FileId(id)) => file(json!({ "file_id": id })),
-                DocumentData::File(Source::Base64(data)) if pdf => file(json!({
+                DocumentData::File(Source::Base64(data)) if pdf => file(object! {
                     "file_data": format!("data:application/pdf;base64,{data}"),
                     "filename": "document.pdf",
-                })),
+                }),
                 // OpenRouter and Mistral fetch a PDF a URL names.
                 DocumentData::File(Source::Url(url)) if pdf => {
                     file(json!({"file_data": url, "filename": "document.pdf"}))
@@ -118,7 +121,7 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
         UserContent::Video(video) => {
             let mime = video.media_type.as_ref().map(MimeType::to_mime_type);
             let url = media_url(&video.data, mime).ok_or_else(|| unsendable("a video"))?;
-            json!({"type": "video_url", "video_url": {"url": url}})
+            object! {"type": "video_url", "video_url": object! {"url": url}}
         }
         UserContent::ToolResult(_) => return Err(unsendable("a tool result as a content part")),
     })
@@ -128,41 +131,40 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
 /// into one string, or its parts as an array when the wire asks for one or
 /// it holds an image, which has no string form.
 fn tool_message(result: &ToolResult, ids: &WireIds, array: bool) -> Result<Value, EncodeError> {
-    let parts = result
-        .content
-        .iter()
-        .map(|part| match part {
-            ToolResultContent::Text(text) => Ok(json!({"type": "text", "text": text.text})),
-            ToolResultContent::Json { value } => {
-                Ok(json!({"type": "text", "text": value.to_string()}))
-            }
+    fn text(part: &ToolResultContent) -> Option<Cow<'_, str>> {
+        match part {
+            ToolResultContent::Text(text) => Some(Cow::Borrowed(&text.text)),
+            ToolResultContent::Json { value } => Some(Cow::Owned(value.to_string())),
+            ToolResultContent::Image(_) => None,
+        }
+    }
+    let image = |part: &ToolResultContent| matches!(part, ToolResultContent::Image(_));
+    let content = if array || result.content.iter().any(image) {
+        let parts = result.content.iter().map(|part| match part {
             ToolResultContent::Image(image) => image_url(image, false),
-        })
-        .collect::<Result<Vec<_>, EncodeError>>()?;
-    let content = if array
-        || parts
-            .iter()
-            .any(|part| part.str("type") == Some("image_url"))
-    {
-        Value::Array(parts)
+            _ => Ok(object! {"type": "text", "text": text(part).unwrap_or_default()}),
+        });
+        Value::Array(parts.collect::<Result<_, EncodeError>>()?)
     } else {
-        let texts: Vec<&str> = parts.iter().filter_map(|part| part.str("text")).collect();
+        let texts: Vec<Cow<'_, str>> = result.content.iter().filter_map(text).collect();
         Value::String(texts.join("\n"))
     };
     let id = ids.spell(&result.call);
-    Ok(json!({"role": "tool", "tool_call_id": id, "content": content}))
+    Ok(object! {"role": "tool", "tool_call_id": id, "content": content})
 }
 
 /// Push the user parts gathered so far as one message: a lone text part as
 /// a plain string.
 fn user_message(messages: &mut Vec<Value>, parts: &mut Vec<Value>) {
-    let content = match parts.as_slice() {
+    let content = match parts.as_mut_slice() {
         [] => return,
-        [part] if part.str("type") == Some("text") => part.get("text").cloned().unwrap_or_default(),
+        [part] if part.str("type") == Some("text") => {
+            part.get_mut("text").map(Value::take).unwrap_or_default()
+        }
         _ => Value::Array(std::mem::take(parts)),
     };
     parts.clear();
-    messages.push(json!({"role": "user", "content": content}));
+    messages.push(object! {"role": "user", "content": content});
 }
 
 impl Chat {
@@ -336,7 +338,7 @@ impl Chat {
                         function.insert("strict".to_owned(), Value::Bool(true));
                     }
                 }
-                tools.push(json!({"type": "function", "function": function}));
+                tools.push(object! {"type": "function", "function": function});
             }
             // Passthrough tools, function or native (Groq's `browser_search`),
             // join the typed ones in one array.
@@ -380,7 +382,7 @@ impl Chat {
             _ => None,
         };
 
-        let fields = [
+        Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
             ("messages", Some(Value::Array(messages))),
             ("tools", (!tools.is_empty()).then_some(Value::Array(tools))),
@@ -388,25 +390,22 @@ impl Chat {
             ("temperature", request.temperature.map(Value::from)),
             ("max_tokens", request.max_tokens.map(Value::from)),
             ("response_format", response_format),
-        ];
-        Ok(fields
-            .into_iter()
-            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect())
+        ]))
     }
 
     /// The history as Chat messages, each call and result spelled by one
     /// [`WireIds`].
     fn messages(
         &self,
-        history: &[Message],
+        history: &[Arc<Message>],
         model: &str,
         custom: &[String],
     ) -> Result<Vec<Value>, EncodeError> {
         let ids = WireIds::for_target(history, self, model);
+        let reasoning_field = self.reasoning_field(model);
         let mut messages = Vec::new();
         for message in history {
-            match message {
+            match &**message {
                 Message::System { content } => messages.push(json!({"role": "system",
                     "content": [{"type": "text", "text": content}]})),
                 Message::User { content } => {
@@ -423,7 +422,7 @@ impl Chat {
                     user_message(&mut messages, &mut parts);
                 }
                 Message::Assistant(turn) => {
-                    messages.extend(self.assistant(turn, &ids, custom, model));
+                    messages.extend(self.assistant(turn, &ids, custom, reasoning_field));
                 }
             }
         }
@@ -447,9 +446,8 @@ impl Chat {
         turn: &AssistantMessage,
         ids: &WireIds,
         custom: &[String],
-        model: &str,
+        reasoning_field: Option<&str>,
     ) -> Option<Value> {
-        let reasoning_field = self.reasoning_field(model);
         let (mut text, mut parts, mut has_parts) = (String::new(), Vec::new(), false);
         let mut reasoning: Vec<(String, String)> = Vec::new();
         let (mut fields, mut calls) = (Map::new(), Vec::new());
@@ -651,7 +649,7 @@ fn call_item(call: &ToolCall, replay: Replay<'_>, ids: &WireIds, custom: &[Strin
         };
         ("custom", "input", input)
     } else {
-        let arguments = Value::Object(call.function.arguments.clone()).to_string();
+        let arguments = serde_json::to_string(&call.function.arguments).unwrap_or_default();
         ("function", "arguments", arguments)
     };
     let slot = item
@@ -787,6 +785,7 @@ impl Wire for Chat {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ChatEvent;
     type Decoder<'id> = ChatDecoder;
     type Reassembler = document::ChatCompletion;
 
@@ -815,10 +814,6 @@ impl Wire for Chat {
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ChatDecoder::new(self.provider.dialect.quirks)
-    }
-
-    fn reassembler(&self) -> Self::Reassembler {
-        document::ChatCompletion::new(self.provider.dialect.quirks)
     }
 }
 
@@ -988,21 +983,22 @@ impl crate::completion::ReplayTarget for Chat {
     /// as a content part (Mistral's thinking), an opaque item only as a
     /// typed part, and never an image.
     fn sends_alone(&self, block: &AssistantContent) -> bool {
-        let ids = crate::providers::internal::wire_ids::WireIds::default();
-        match (block, block.replay(self, &ids)) {
-            (AssistantContent::ToolCall(_), _) => true,
-            (AssistantContent::Text(text), Replay::Item(item)) => {
-                !text.text.is_empty() || item.get("audio").is_some()
+        let replay = || block.replay(self, &WireIds::default());
+        match block {
+            AssistantContent::ToolCall(_) => true,
+            AssistantContent::Text(text) => {
+                !text.text.is_empty()
+                    || matches!(replay(), Replay::Item(item) if item.get("audio").is_some())
             }
-            (AssistantContent::Text(text), _) => !text.text.is_empty(),
-            (AssistantContent::Reasoning(_), Replay::Item(item)) => item.get("type").is_some(),
-            (AssistantContent::Reasoning(_), Replay::Identity(identity)) => {
-                identity.get("type").and_then(Value::as_str) == Some("thinking")
-            }
-            (AssistantContent::Opaque(opaque), _) => opaque.item.get("type").is_some(),
-            (AssistantContent::Reasoning(_), Replay::Rebuild) | (AssistantContent::Image(_), _) => {
-                false
-            }
+            AssistantContent::Reasoning(_) => match replay() {
+                Replay::Item(item) => item.get("type").is_some(),
+                Replay::Identity(identity) => {
+                    identity.get("type").and_then(Value::as_str) == Some("thinking")
+                }
+                Replay::Rebuild => false,
+            },
+            AssistantContent::Opaque(opaque) => opaque.item.get("type").is_some(),
+            AssistantContent::Image(_) => false,
         }
     }
 }
@@ -1150,12 +1146,16 @@ struct OpenCall {
 }
 
 impl OpenCall {
-    /// Whether its function arguments are already a whole object.
+    /// Whether its function arguments are already a whole object. Only a
+    /// text that ends in `}` (or says nothing) can be one, so no other is
+    /// parsed.
     fn complete(&self) -> bool {
-        matches!(
-            crate::json_utils::parse_tool_arguments(&self.arguments),
-            Ok(Value::Object(_))
-        )
+        let end = self.arguments.trim_end();
+        (end.is_empty() || end.ends_with('}'))
+            && matches!(
+                crate::json_utils::parse_tool_arguments(&self.arguments),
+                Ok(Value::Object(_))
+            )
     }
 }
 
@@ -1217,7 +1217,7 @@ impl ChatDecoder {
 
     /// Absorb the metadata every frame carries, and take its primary choice.
     /// Usage is the frame's, or its choice's where Moonshot reports it.
-    fn absorb(&mut self, frame: &Value) -> Option<Value> {
+    fn absorb<'f>(&mut self, frame: &'f Value) -> Option<&'f Value> {
         if let Some(id) = frame.str("id") {
             self.response_id = Some(id.to_owned());
         }
@@ -1226,17 +1226,13 @@ impl ChatDecoder {
         }
         // `n > 1` streams interleave candidates told apart only by
         // `choices[].index`; candidate 0 is the turn, as in a whole reply.
-        let choice = frame
-            .arr("choices")
-            .iter()
-            .find(|choice| {
-                let index = choice.get("index").and_then(Value::as_u64);
-                index.is_none_or(|index| index == 0)
-            })
-            .cloned();
+        let choice = frame.arr("choices").iter().find(|choice| {
+            let index = choice.get("index").and_then(Value::as_u64);
+            index.is_none_or(|index| index == 0)
+        });
         if let Some(usage) = frame
             .at("/usage")
-            .or_else(|| choice.as_ref().and_then(|choice| choice.at("/usage")))
+            .or_else(|| choice.and_then(|choice| choice.at("/usage")))
         {
             self.usage = Some(usage.clone());
         }
@@ -1568,15 +1564,14 @@ impl ChatDecoder {
                 },
             )?;
         }
-        let mut fields = call.as_object().cloned().unwrap_or_default();
-        // The index orders the stream; the call it assembles has none.
-        fields.shift_remove("index");
         out.edit(at, |item| {
             if !item.is_object() {
                 *item = Value::Object(Map::new());
             }
-            if let Value::Object(item) = item {
-                merge_fields(item, &fields);
+            if let (Value::Object(item), Some(fields)) = (item, call.as_object()) {
+                merge_fields(item, fields);
+                // The index orders the stream; the call it assembles has none.
+                item.shift_remove("index");
             }
         })
     }
@@ -1783,31 +1778,34 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
             return WireEvent::Known(ChatEvent::Done);
         }
         // The in-band error envelope arrives with a 200 status and is this
-        // wire's own terminal failure.
-        if let Some(error) = provider_error_envelope(&data) {
-            return WireEvent::Known(ChatEvent::Failure(error));
-        }
-        if self.quirks.accepts_bare_string_reply
-            && let Ok(Value::String(text)) = serde_json::from_str::<serde_json::Value>(&data)
-        {
-            return WireEvent::Known(ChatEvent::BareText(text));
-        }
-        classify_chat_completions_frame::<Value>(&data).map(|frame| {
-            // The `object` tag decides when the dialect sends one: stream
-            // chunks may carry whole messages. Several gateways omit it.
-            let whole = match frame.str("object") {
-                Some(object) => object == "chat.completion",
-                None => frame
-                    .arr("choices")
-                    .iter()
-                    .any(|choice| choice.obj("message").is_some()),
-            };
-            if whole {
-                ChatEvent::Whole(frame)
-            } else {
-                ChatEvent::Chunk(frame)
+        // wire's own terminal failure, whatever else the frame is.
+        let envelope = |value: &Value| provider_error_envelope(value, &data);
+        match classify_chat_completions_frame::<Value>(&data) {
+            WireEvent::Known(frame) => WireEvent::Known(match envelope(&frame) {
+                Some(error) => ChatEvent::Failure(error),
+                None => Self::chunk_or_whole(frame),
+            }),
+            WireEvent::Unknown { event_type, value } => {
+                if let Some(error) = envelope(value.value()) {
+                    WireEvent::Known(ChatEvent::Failure(error))
+                } else if let (true, Some(text)) = (
+                    self.quirks.accepts_bare_string_reply,
+                    value.value().as_str(),
+                ) {
+                    WireEvent::Known(ChatEvent::BareText(text.to_owned()))
+                } else {
+                    WireEvent::Unknown { event_type, value }
+                }
             }
-        })
+            // A frame with a duplicate `object` or `choices` is still JSON.
+            WireEvent::Corrupt(error) => match serde_json::from_str::<Value>(&data)
+                .ok()
+                .and_then(|value| envelope(&value))
+            {
+                Some(error) => WireEvent::Known(ChatEvent::Failure(error)),
+                None => WireEvent::Corrupt(error),
+            },
+        }
     }
 
     fn decode(
@@ -1887,6 +1885,24 @@ fn normalized_usage(usage: &Value, quirks: &Quirks) -> crate::completion::Usage 
 }
 
 impl ChatDecoder {
+    /// A classified frame as the chunk or whole reply it is. The `object`
+    /// tag decides when the dialect sends one: stream chunks may carry whole
+    /// messages. Several gateways omit it.
+    fn chunk_or_whole(frame: Value) -> ChatEvent {
+        let whole = match frame.str("object") {
+            Some(object) => object == "chat.completion",
+            None => frame
+                .arr("choices")
+                .iter()
+                .any(|choice| choice.obj("message").is_some()),
+        };
+        if whole {
+            ChatEvent::Whole(frame)
+        } else {
+            ChatEvent::Chunk(frame)
+        }
+    }
+
     /// Verdict, model, response id and error envelope, read off a raw
     /// payload before normalization discards them. The driver calls it for
     /// the unary reply and for every stream frame.

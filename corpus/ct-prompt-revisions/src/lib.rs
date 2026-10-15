@@ -112,7 +112,7 @@ pub fn slots(conversation: &Conversation) -> Vec<Slot> {
                 kept.inside.is_none()
                     && kept.at == entry.index
                     && ours(kept.id)
-                    && first.is_some_and(|first| matches!(first.message, Message::User { .. }))
+                    && first.is_some_and(|first| matches!(*first.message, Message::User { .. }))
             });
             let others = others.filter_map(|kept| {
                 let first = kept.branch.entries.first()?;

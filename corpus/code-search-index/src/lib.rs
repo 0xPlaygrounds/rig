@@ -770,11 +770,11 @@ impl TurnContext {
             return;
         };
         let found = history.messages().iter().rposition(|message| {
-            matches!(message, message::Message::User { content } if content.iter().any(typed))
+            matches!(&**message, message::Message::User { content } if content.iter().any(typed))
         });
         let entry = found.and_then(|at| Some((at, history.entry(at)?)));
         if let Some((at, mut entry)) = entry
-            && let message::Message::User { content } = &mut entry.message
+            && let message::Message::User { content } = std::sync::Arc::make_mut(&mut entry.message)
         {
             content.push(UserContent::text(text.clone()));
             history.splice(at..=at, [entry], Author::plugin("code-search-index"));

@@ -654,7 +654,7 @@ impl ShownNotice {
 
 /// The content items of message `index`.
 fn items(conversation: &conversation::Conversation, index: usize) -> usize {
-    match conversation.messages().get(index) {
+    match conversation.messages().get(index).map(|message| &**message) {
         Some(Message::User { content }) => content.len(),
         Some(Message::Assistant(assistant)) => assistant.content.len(),
         _ => 0,

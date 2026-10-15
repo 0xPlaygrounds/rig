@@ -6,7 +6,10 @@ use crate::{
     model::{ModelInfo, ModelList, listing},
     operation::{ModelListing, ModelPage, Verify},
     providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
-    wire::{Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame},
+    wire::{
+        Body, Decoder, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Out, Wire, WireEvent,
+        WireFrame,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -143,7 +146,8 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ModelsDecoder;
+    type Event = String;
+    type Decoder<'id> = DocumentDecoder<ModelListing, String>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -159,7 +163,7 @@ impl Wire for Models {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
+        models_decoder()
     }
 }
 
@@ -182,7 +186,8 @@ impl Wire for InteractionsModels {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ModelsDecoder;
+    type Event = String;
+    type Decoder<'id> = DocumentDecoder<ModelListing, String>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -198,39 +203,26 @@ impl Wire for InteractionsModels {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
+        models_decoder()
     }
 }
 
-/// Decode model pages and the cursor each names.
-#[derive(Default)]
-pub struct ModelsDecoder;
-
-impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    /// The page JSON, retained for model-entry error context.
-    type Event = String;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        let payload = frame.as_str().into_owned();
-        let classified = classify_marker_keyed_frame::<Value>(&payload, MODEL_PAGE_MARKERS);
-        classified.map(|_| payload)
-    }
-
-    fn decode(
-        &mut self,
-        payload: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        // Diagnostics identify the endpoint without retaining the previous page's cursor.
-        let path = list_models_path(None);
-        match parse_models_page(payload.as_bytes(), &path) {
-            Ok(page) => Ok(out.end(ModelPage {
+/// Decode model pages and the cursor each names, keeping the page JSON for
+/// model-entry error context.
+fn models_decoder() -> DocumentDecoder<ModelListing, String> {
+    DocumentDecoder::new(
+        |body| {
+            classify_marker_keyed_frame::<Value>(body, MODEL_PAGE_MARKERS).map(|_| body.to_owned())
+        },
+        |payload| {
+            // Diagnostics identify the endpoint without retaining the previous page's cursor.
+            let page = parse_models_page(payload.as_bytes(), &list_models_path(None))?;
+            Ok(ModelPage {
                 models: ModelList::new(page.models),
                 next: page.next_cursor,
-            })),
-            Err(error) => Err(error),
-        }
-    }
+            })
+        },
+    )
 }
 
 /// Check credentials with `GET /v1beta/models`, authenticating through the query.
@@ -251,6 +243,7 @@ impl Wire for VerifyKey {
     type Op = Verify;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ();
     type Decoder<'id> = VerifyKeyDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

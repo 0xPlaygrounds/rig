@@ -217,13 +217,38 @@ pub enum AssistantContent {
 
 impl AssistantContent {
     /// This block without its provider item: what a different provider can
-    /// use, and what its fingerprint covers.
+    /// use, and what its fingerprint covers. The item is not copied.
     pub fn canonical(&self) -> Self {
-        let mut block = self.clone();
-        if let Some(native) = block.native_slot() {
+        match self {
+            Self::Text(text) => Self::Text(Text {
+                text: text.text.clone(),
+                citations: text.citations.clone(),
+                native: None,
+            }),
+            Self::ToolCall(call) => {
+                Self::ToolCall(ToolCall::new(call.id.clone(), call.function.clone()))
+            }
+            Self::Reasoning(reasoning) => Self::Reasoning(Reasoning {
+                text: reasoning.text.clone(),
+                redacted: reasoning.redacted,
+                native: None,
+            }),
+            Self::Image(image) => Self::Image(Image {
+                data: image.data.clone(),
+                media_type: image.media_type.clone(),
+                detail: image.detail.clone(),
+                native: None,
+            }),
+            Self::Opaque(opaque) => Self::Opaque(opaque.clone()),
+        }
+    }
+
+    /// [`Self::canonical`], taking the block.
+    pub fn into_canonical(mut self) -> Self {
+        if let Some(native) = self.native_slot() {
             *native = None;
         }
-        block
+        self
     }
 
     /// Whether the block answers the user: text that is not blank, a call
@@ -258,35 +283,37 @@ impl AssistantContent {
     /// call id counts as one placeholder: rig issues a fresh id each time it
     /// decodes a call the provider sent without one.
     pub fn fingerprint(&self) -> Fingerprint {
-        Fingerprint::of(&self.projection())
-    }
-
-    /// Projection v1 of the canonical fields.
-    fn projection(&self) -> serde_json::Value {
-        use serde_json::json;
+        // Projection v1 of the canonical fields, as a JSON array. An image's
+        // media type and detail serialize as strings and its data as
+        // `{"type", "value"}` (keys in order, no floats), so only call
+        // arguments need `Canonical`.
         match self {
-            Self::Text(text) => json!(["v1", "text", text.text]),
+            Self::Text(text) => Fingerprint::of_canonical(&("v1", "text", &text.text)),
             Self::Reasoning(reasoning) => {
-                json!(["v1", "reasoning", reasoning.text, reasoning.redacted])
+                Fingerprint::of_canonical(&("v1", "reasoning", &reasoning.text, reasoning.redacted))
             }
             Self::ToolCall(call) => {
                 let id = match &call.id {
-                    CallId::Provider(id) => id.as_str().to_owned(),
-                    CallId::Local(_) => "~local".to_owned(),
+                    CallId::Provider(id) => id.as_str(),
+                    CallId::Local(_) => "~local",
                 };
-                json!([
+                Fingerprint::of_canonical(&(
                     "v1",
                     "call",
                     id,
                     call.function.name.as_str(),
-                    call.function.arguments,
-                    call.function.invalid_arguments,
-                ])
+                    native::Canonical(&call.function.arguments),
+                    &call.function.invalid_arguments,
+                ))
             }
-            Self::Image(image) => {
-                json!(["v1", "image", image.media_type, image.detail, image.data,])
-            }
-            Self::Opaque(_) => json!(["v1", "opaque"]),
+            Self::Image(image) => Fingerprint::of_canonical(&(
+                "v1",
+                "image",
+                &image.media_type,
+                &image.detail,
+                &image.data,
+            )),
+            Self::Opaque(_) => Fingerprint::of_canonical(&("v1", "opaque")),
         }
     }
 
@@ -310,9 +337,9 @@ impl AssistantContent {
         self
     }
 
-    /// The provider item of an edited block: no longer current, but its
-    /// identity keys still name the item it was.
-    pub(crate) fn stale_item(&self) -> Option<&serde_json::Value> {
+    /// The provider item the block holds, and whether it is still current
+    /// (the block is what it was decoded from), for one fingerprint.
+    pub(crate) fn native(&self) -> Option<(&serde_json::Value, bool)> {
         let native = match self {
             Self::Text(text) => text.native.as_ref(),
             Self::ToolCall(call) => call.native.as_ref(),
@@ -320,20 +347,21 @@ impl AssistantContent {
             Self::Image(image) => image.native.as_ref(),
             Self::Opaque(_) => None,
         }?;
-        (native.fingerprint != self.fingerprint()).then_some(&native.item)
+        Some((&native.item, native.fingerprint == self.fingerprint()))
+    }
+
+    /// The provider item of an edited block: no longer current, but its
+    /// identity keys still name the item it was.
+    pub(crate) fn stale_item(&self) -> Option<&serde_json::Value> {
+        self.native()
+            .and_then(|(item, current)| (!current).then_some(item))
     }
 
     /// The provider item, while the block is still what it was decoded
     /// from. An edited block has none: encoders rebuild it.
     pub fn native_item(&self) -> Option<&serde_json::Value> {
-        let native = match self {
-            Self::Text(text) => text.native.as_ref(),
-            Self::ToolCall(call) => call.native.as_ref(),
-            Self::Reasoning(reasoning) => reasoning.native.as_ref(),
-            Self::Image(image) => image.native.as_ref(),
-            Self::Opaque(_) => None,
-        }?;
-        (native.fingerprint == self.fingerprint()).then_some(&native.item)
+        self.native()
+            .and_then(|(item, current)| current.then_some(item))
     }
 }
 
@@ -585,12 +613,18 @@ impl ToolFunction {
         serde_json::Value::Object(self.arguments.clone())
     }
 
+    /// The arguments object as JSON text, as [`Self::arguments_value`]
+    /// prints, without copying it.
+    pub fn arguments_json(&self) -> String {
+        serde_json::to_string(&self.arguments).unwrap_or_default()
+    }
+
     /// The arguments as JSON text: what the model sent when it was not an
     /// object, else the object.
     pub fn raw_arguments(&self) -> String {
         self.invalid_arguments
             .clone()
-            .unwrap_or_else(|| self.arguments_value().to_string())
+            .unwrap_or_else(|| self.arguments_json())
     }
 }
 
@@ -1416,6 +1450,14 @@ impl FromStr for Text {
 impl From<&Message> for Message {
     fn from(msg: &Message) -> Self {
         msg.clone()
+    }
+}
+
+/// A shared message, such as a conversation's, taken out of its `Arc`:
+/// moved when nothing else holds it, else copied.
+impl From<std::sync::Arc<Message>> for Message {
+    fn from(msg: std::sync::Arc<Message>) -> Self {
+        std::sync::Arc::unwrap_or_clone(msg)
     }
 }
 

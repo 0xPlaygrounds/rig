@@ -99,7 +99,7 @@ async fn relay_connection(client: TcpStream, proxy: TcpStream, ledger: Arc<Ledge
     tokio::join!(upstream, downstream);
 }
 
-fn record(ledger: &LedgerTarget, created: Vec<TappedCreation>) {
+pub(crate) fn record(ledger: &LedgerTarget, created: Vec<TappedCreation>) {
     let entries: Vec<LedgerEntry> = created
         .into_iter()
         .filter(|creation| (200..300).contains(&creation.status))

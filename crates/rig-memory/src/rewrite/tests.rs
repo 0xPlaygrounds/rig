@@ -158,7 +158,12 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     assert_ne!(saved.conversation.lineage(), main.lineage());
     let rewrote = &saved.rewrites;
     assert!(matches!(rewrote.as_slice(), [LogRewrite { by: who, .. }] if *who == by));
-    let texts: Vec<String> = saved.conversation.messages().iter().map(text_of).collect();
+    let texts: Vec<String> = saved
+        .conversation
+        .messages()
+        .iter()
+        .map(|message| text_of(message))
+        .collect();
     assert_eq!(texts, ["look at [R]", "", "the key [R] is set"]);
     assert!(
         saved
@@ -173,7 +178,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     let other = session.agent("other").expect("other");
     assert_eq!(
         other.conversation.messages(),
-        [Message::user("a reset with [R]")]
+        [Message::user("a reset with [R]")].map(std::sync::Arc::new)
     );
     let mut stale = stale;
     stale.push(Message::user("more sk-1"));
@@ -285,7 +290,10 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
         .expect("rewritten");
     let main = rewritten.logs.first().expect("main");
     live.reread(main.conversation.clone()).expect("reread");
-    assert_eq!(live.messages(), [Message::user("my key is [R]")]);
+    assert_eq!(
+        live.messages(),
+        [Message::user("my key is [R]")].map(std::sync::Arc::new)
+    );
     // The host puts the rewritten value back: nothing is written.
     writer.save_value("main", "mode", Some(json!("[R]").into()), true);
     live.push(Message::assistant("ok"));
@@ -324,7 +332,10 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     assert_eq!(rewritten.logs.len(), 1);
     assert!(writer.failure().is_some() && !writer.is_live());
     let main = load(&*store, "main").expect("loaded");
-    assert_eq!(main.messages().last(), Some(&Message::assistant("fine")));
+    assert_eq!(
+        main.messages().last(),
+        Some(&Message::assistant("fine").into())
+    );
 }
 
 /// A writer without a store rewrites nothing. One with a store rewrites a
@@ -350,7 +361,10 @@ fn a_writer_rewrites_its_whole_store_and_without_one_nothing() {
     names.sort_unstable();
     assert_eq!(names, ["main", "other"]);
     let other = load(&*store, "other").expect("loaded");
-    assert_eq!(other.messages(), [Message::user("[R] there")]);
+    assert_eq!(
+        other.messages(),
+        [Message::user("[R] there")].map(std::sync::Arc::new)
+    );
     let main = rewritten.logs.iter().find(|log| log.log == "main");
     live.reread(main.expect("main").conversation.clone())
         .expect("reread");
@@ -405,7 +419,7 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
     let read = load(&store, "main").expect("read");
     let stashed = read.branches().into_iter().next().map(|kept| kept.branch);
     let first = stashed.as_ref().and_then(|branch| branch.entries.first());
-    assert_eq!(first.map(|entry| &entry.message), Some(&shown));
+    assert_eq!(first.map(|entry| &entry.message), Some(&shown.into()));
 
     let rewritten = rewrite(&store, Author::plugin("redact"), &redact()).expect("rewritten");
     assert_eq!(rewritten.logs.len(), 1);
@@ -432,7 +446,7 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
 
     read.switch_branch(id, by).expect("switched");
     let back = read.messages().get(2);
-    assert_eq!(back, Some(&Message::assistant("Seen [R].")));
+    assert_eq!(back, Some(&Message::assistant("Seen [R].").into()));
     save(&store, "main", &mut read).expect("saved");
     assert_eq!(load(&store, "main").expect("read"), read);
 }

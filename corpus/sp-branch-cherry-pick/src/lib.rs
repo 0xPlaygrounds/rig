@@ -233,7 +233,7 @@ fn prompt_line(entry: &conversation::Entry) -> Option<String> {
         .author
         .as_ref()
         .is_none_or(|author| matches!(author.kind, AuthorKind::User | AuthorKind::Agent));
-    let Said::User { content } = &entry.message else {
+    let Said::User { content } = &*entry.message else {
         return None;
     };
     let mut texts = content.iter().filter_map(|item| match item {
@@ -283,9 +283,9 @@ fn take(
         return Err("Those turns include a compaction point; pick turns after it.".to_owned());
     }
     let copies = copy(range);
-    let messages: Vec<Said> = copies.iter().map(|entry| entry.message.clone()).collect();
+    let messages: Vec<&Said> = copies.iter().map(|entry| &*entry.message).collect();
     if conversation::pairing::validate(&messages).is_err()
-        || !matches!(messages.last(), Some(Said::Assistant(_)))
+        || !matches!(messages.last(), Some(&&Said::Assistant(_)))
     {
         return Err("Those turns end without their reply or a call's result.".to_owned());
     }
@@ -348,7 +348,7 @@ fn copy(entries: &[conversation::Entry]) -> Vec<Entry> {
     };
     let mut copies = Vec::new();
     for entry in entries {
-        let message = match &entry.message {
+        let message = match &*entry.message {
             Said::Assistant(reply) => {
                 let mut content = Vec::new();
                 for block in &reply.content {
@@ -383,7 +383,7 @@ fn copy(entries: &[conversation::Entry]) -> Vec<Entry> {
             other => other.clone(),
         };
         copies.push(Entry {
-            message,
+            message: message.into(),
             author: entry.author.clone(),
             id: None,
             made: None,

@@ -3,6 +3,7 @@
 use super::super::tests::{recorded, recorded_json};
 use super::*;
 use crate::error::{ErrorKind, ProviderError};
+use crate::http_client::multipart::PartContent;
 use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
 use crate::providers::mistral::embedding::{CODESTRAL_EMBED, MISTRAL_EMBED};
 use crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002;
@@ -204,7 +205,9 @@ async fn a_recorded_model_listing_decodes() {
 }
 
 /// The transcription body is multipart, with the model as a form field
-/// everywhere but Azure.
+/// everywhere but Azure. Strings go bare and arrays go as one `name[]` field
+/// per item: OpenAI ignores a JSON-encoded list, Groq rejects an unbracketed
+/// name and Mistral rejects a JSON string.
 #[test]
 fn a_transcription_request_is_multipart() {
     let request = crate::transcription::TranscriptionRequest {
@@ -213,7 +216,10 @@ fn a_transcription_request_is_multipart() {
         language: Some("en".to_owned()),
         prompt: None,
         temperature: None,
-        additional_params: Some(serde_json::json!({"response_format": "verbose_json"})),
+        additional_params: Some(serde_json::json!({
+            "response_format": "verbose_json",
+            "timestamp_granularities": ["segment", "word"],
+        })),
     };
     let encoded = OpenAIConfig::new("sk-test")
         .transcription("whisper-1")
@@ -223,10 +229,24 @@ fn a_transcription_request_is_multipart() {
     let Body::Multipart(form) = http_request.body() else {
         panic!("a transcription body is multipart");
     };
-    let names: Vec<&str> = form.parts().iter().map(|part| part.name()).collect();
+    let fields: Vec<(&str, Option<&str>)> = form
+        .parts()
+        .iter()
+        .map(|part| match part.content() {
+            PartContent::Text(text) => (part.name(), Some(text.as_str())),
+            PartContent::Binary(_) => (part.name(), None),
+        })
+        .collect();
     assert_eq!(
-        names,
-        vec!["model", "file", "language", "response_format"],
+        fields,
+        vec![
+            ("model", Some("whisper-1")),
+            ("file", None),
+            ("language", Some("en")),
+            ("response_format", Some("verbose_json")),
+            ("timestamp_granularities[]", Some("segment")),
+            ("timestamp_granularities[]", Some("word")),
+        ],
         "field order is the order these endpoints were always sent in"
     );
     assert_eq!(

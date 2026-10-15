@@ -293,35 +293,43 @@ struct EchoDocument(Option<serde_json::Map<String, serde_json::Value>>);
 
 impl crate::wire::document::Serves<Completion> for EchoDocument {}
 
-impl crate::wire::document::Reassemble<WireFrame> for EchoDocument {
-    fn absorb(&mut self, frame: &WireFrame) {
-        let Ok(serde_json::Value::Object(frame)) = serde_json::from_str(&frame.as_str()) else {
-            return;
-        };
+impl crate::wire::document::Reassemble<Frame> for EchoDocument {
+    fn absorb(&mut self, frame: &Frame) {
         let document = self.0.get_or_insert_with(|| {
             serde_json::Map::from_iter([
                 ("type".to_owned(), json!("message")),
                 ("text".to_owned(), json!("")),
             ])
         });
-        match frame.get("type").and_then(serde_json::Value::as_str) {
-            Some("message") => *document = frame,
-            Some("delta") => {
-                let text = frame.get("text").and_then(serde_json::Value::as_str);
-                if let (Some(serde_json::Value::String(held)), Some(text)) =
-                    (document.get_mut("text"), text)
-                {
+        let usage = |usage: &Usage| json!({"output_tokens": usage.output_tokens});
+        match frame {
+            Frame::Message { text, usage: used } => {
+                *document = serde_json::Map::from_iter([
+                    ("type".to_owned(), json!("message")),
+                    ("text".to_owned(), json!(text)),
+                    ("usage".to_owned(), usage(used)),
+                ]);
+            }
+            Frame::Delta { text } => {
+                if let Some(serde_json::Value::String(held)) = document.get_mut("text") {
                     held.push_str(text);
                 }
             }
-            Some("stop" | "tool") => {
-                for (key, value) in frame {
-                    if key != "type" {
-                        document.insert(key, value);
-                    }
+            Frame::Stop { usage: used } => {
+                document.insert("usage".to_owned(), usage(used));
+            }
+            Frame::Tool {
+                name,
+                arguments,
+                usage: used,
+            } => {
+                document.insert("name".to_owned(), json!(name));
+                document.insert("arguments".to_owned(), json!(arguments));
+                if let Some(used) = used {
+                    document.insert("usage".to_owned(), usage(used));
                 }
             }
-            _ => {}
+            Frame::Error { .. } => {}
         }
     }
 
@@ -335,6 +343,7 @@ impl Wire for Echo {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = WireFrame;
+    type Event = Frame;
     type Decoder<'id> = EchoDecoder<'id>;
     type Reassembler = EchoDocument;
 
@@ -807,6 +816,7 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         type Op = Completion;
         type Payload = Encoded;
         type Frame = WireFrame;
+        type Event = Frame;
         type Decoder<'id> = EchoDecoder<'id>;
         type Reassembler = EchoDocument;
         fn describe(&self) -> Descriptor<'_> {

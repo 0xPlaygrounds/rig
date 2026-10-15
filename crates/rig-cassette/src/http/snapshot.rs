@@ -33,8 +33,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value, json};
 
 use super::{
-    CassetteError, CassettePolicy, CassetteScrubber, MultipartPart, canonical_json,
-    multipart_boundary, parse_multipart_parts, temporary_cassette_path,
+    CassetteError, CassetteScrubber, MultipartPart, canonical_json, multipart_boundary,
+    parse_multipart_parts, temporary_cassette_path,
 };
 
 const SNAPSHOT_ENV: &str = "RIG_CASSETTE_SNAPSHOTS";
@@ -300,7 +300,7 @@ fn write_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
 /// multipart `content_type`, `{"multipart": [part, ...]}`; else the scrubbed
 /// body as canonical JSON, or as a string when it is not JSON, or as
 /// `{"bytes", "fnv1a64"}` when it is not UTF-8.
-pub(super) fn body_view(policy: CassettePolicy, content_type: Option<&str>, body: &[u8]) -> Value {
+pub(super) fn body_view(content_type: Option<&str>, body: &[u8]) -> Value {
     if body.is_empty() {
         return Value::Null;
     }
@@ -309,15 +309,12 @@ pub(super) fn body_view(policy: CassettePolicy, content_type: Option<&str>, body
         .and_then(multipart_boundary)
         && let Some(parts) = parse_multipart_parts(body, &boundary)
     {
-        let parts = parts
-            .into_iter()
-            .map(|part| part_view(policy, part))
-            .collect();
+        let parts = parts.into_iter().map(part_view).collect();
         return json!({ "multipart": Value::Array(parts) });
     }
     match std::str::from_utf8(body) {
         Ok(text) => {
-            let scrubbed = CassetteScrubber::new(policy).scrub_body(text);
+            let scrubbed = CassetteScrubber::default().scrub_body(text);
             canonical_json(&scrubbed).unwrap_or(Value::String(scrubbed))
         }
         Err(_) => opaque(body),
@@ -326,7 +323,7 @@ pub(super) fn body_view(policy: CassettePolicy, content_type: Option<&str>, body
 
 /// A multipart part as `{"headers": {...}, "body": ...}`: the body as
 /// scrubbed text up to [`VERBATIM_PART_LIMIT`] UTF-8 bytes, else opaque.
-fn part_view(policy: CassettePolicy, part: MultipartPart) -> Value {
+fn part_view(part: MultipartPart) -> Value {
     let headers: Map<String, Value> = part
         .headers
         .into_iter()
@@ -334,7 +331,7 @@ fn part_view(policy: CassettePolicy, part: MultipartPart) -> Value {
         .collect();
     let body = match std::str::from_utf8(&part.body) {
         Ok(text) if text.len() <= VERBATIM_PART_LIMIT => {
-            Value::String(CassetteScrubber::new(policy).scrub_body(text))
+            Value::String(CassetteScrubber::default().scrub_body(text))
         }
         _ => opaque(&part.body),
     };

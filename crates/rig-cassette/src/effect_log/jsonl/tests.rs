@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use rig_core::effect::{Answered, EffectKind, HandlerKey};
@@ -154,7 +155,7 @@ fn completion_of(
         id: EffectId::from_raw(id),
         key: HandlerKey::from("model"),
         kind: EffectKind::Completion {
-            request: CompletionRequest::from(history),
+            request: CompletionRequest::from(history).into(),
             stream: true,
         },
         outcome: Ok(Answered::Completion(CompletionResponse::new(
@@ -482,4 +483,83 @@ fn a_writer_that_forgets_continues_the_rewritten_file_without_its_old_text() {
     );
     let log = read_from(text.as_bytes()).expect("read back");
     assert_eq!(log.records.last().map(history_of), Some(history_of(&next)));
+}
+
+/// The golden effect logs, each with every completion request's messages
+/// shared with the earlier requests that hold an equal message, as a
+/// conversation's requests share them.
+fn golden_logs_sharing_messages() -> Vec<(String, EffectLog)> {
+    use rig_core::completion::Message;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/effects");
+    let mut files: Vec<_> = std::fs::read_dir(&root)
+        .expect("the golden logs")
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.to_string_lossy().ends_with(".effects.json"))
+        .collect();
+    files.sort();
+    assert!(!files.is_empty(), "no golden logs under {}", root.display());
+    files
+        .into_iter()
+        .map(|file| {
+            let text = std::fs::read_to_string(&file).expect("a golden log");
+            let mut log: EffectLog = serde_json::from_str(&text).expect("a golden log parses");
+            let mut seen: HashMap<String, Arc<Message>> = HashMap::new();
+            for record in &mut log.records {
+                if let EffectKind::Completion { request, .. } = &mut record.kind {
+                    for message in &mut Arc::make_mut(request).chat_history {
+                        let text = serde_json::to_string(&**message).expect("a message");
+                        *message = Arc::clone(seen.entry(text).or_insert_with(|| message.clone()));
+                    }
+                }
+            }
+            (file.display().to_string(), log)
+        })
+        .collect()
+}
+
+/// A request's messages the writer already holds take the text it noted
+/// for them, so that text must be each message's own serialization: then
+/// sharing messages leaves every byte written as it is without sharing.
+#[test]
+fn shared_messages_are_written_as_unshared_ones() {
+    for (name, log) in golden_logs_sharing_messages() {
+        let shared = rig_memory::MemoryStore::default();
+        let mut writer = Writer::on(Arc::new(shared.clone()), SESSION_EFFECT_LOG);
+        for record in &log.records {
+            writer.append(&log.header, [record]).expect("append");
+            let EffectKind::Completion { request, .. } = &record.kind else {
+                continue;
+            };
+            let head = writer
+                .known
+                .as_ref()
+                .and_then(|known| known.head(record.id));
+            let noted: Vec<&str> = head
+                .map(|head| head.history.iter().map(|text| &*text.text).collect())
+                .unwrap_or_default();
+            let fresh: Vec<String> = request
+                .chat_history
+                .iter()
+                .map(|message| {
+                    serde_json::to_value(&**message)
+                        .expect("a message")
+                        .to_string()
+                })
+                .collect();
+            assert_eq!(noted, fresh, "{name}: record {}", record.id);
+        }
+
+        let unshared: EffectLog =
+            serde_json::from_value(serde_json::to_value(&log).expect("the log")).expect("a copy");
+        let alone = rig_memory::MemoryStore::default();
+        let mut writer = Writer::on(Arc::new(alone.clone()), SESSION_EFFECT_LOG);
+        for record in &unshared.records {
+            writer.append(&unshared.header, [record]).expect("append");
+        }
+        assert_eq!(
+            shared.read_file(SESSION_EFFECT_LOG).ok(),
+            alone.read_file(SESSION_EFFECT_LOG).ok(),
+            "{name}"
+        );
+    }
 }

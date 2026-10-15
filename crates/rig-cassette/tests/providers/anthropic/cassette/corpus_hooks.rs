@@ -44,7 +44,7 @@ pub(super) fn tool_result_texts(request: &rig::completion::CompletionRequest) ->
     request
         .chat_history
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::User { content } => Some(content.iter()),
             _ => None,
         })
@@ -165,7 +165,7 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
         let called = history
             .chat_history
             .iter()
-            .find_map(|message| match message {
+            .find_map(|message| match &**message {
                 Message::Assistant(rig::message::AssistantMessage { content, .. }) => {
                     content.iter().find_map(|c| match c {
                         AssistantContent::ToolCall(call) => Some(call.function.arguments_value()),

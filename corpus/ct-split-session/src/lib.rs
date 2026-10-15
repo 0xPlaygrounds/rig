@@ -305,7 +305,7 @@ fn turn_starts(conversation: &Conversation) -> Vec<usize> {
 
 /// Whether a cut before message `at` leaves every tool call with its
 /// result on its side.
-fn whole(messages: &[Message], at: usize) -> bool {
+fn whole(messages: &[std::sync::Arc<Message>], at: usize) -> bool {
     messages
         .get(..at)
         .is_some_and(|before| pending_calls(before).is_empty())
@@ -314,7 +314,7 @@ fn whole(messages: &[Message], at: usize) -> bool {
 /// `at`, else the turn start (or the end) nearest it that cuts no tool
 /// exchange, the earlier on a tie, within `allowed`.
 fn nearest_whole(
-    messages: &[Message],
+    messages: &[std::sync::Arc<Message>],
     starts: &[usize],
     at: usize,
     allowed: impl Fn(usize) -> bool,
@@ -376,7 +376,7 @@ fn range(
 /// the agent's own.
 fn summary_call(
     (split, part): (Entity, Part),
-    messages: &[Message],
+    messages: &[std::sync::Arc<Message>],
     own: Option<&Connection>,
     (settings, models): (&SplitSettings, &Models),
 ) -> Result<impl Bundle, String> {

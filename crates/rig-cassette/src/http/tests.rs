@@ -7,7 +7,7 @@ use super::*;
 /// Anthropic's `content_block_start.signature`, empty on the wire).
 #[test]
 fn scrubbing_an_empty_value_invents_nothing() {
-    let mut scrubber = CassetteScrubber::new(CassettePolicy::default());
+    let mut scrubber = CassetteScrubber::default();
     assert_eq!(scrubber.placeholder("", "signature_"), "");
     // A real value still redacts, and stays stable across occurrences.
     let first = scrubber.placeholder("sig-abc", "signature_");
@@ -106,19 +106,10 @@ fn query_matches_empty_expected_only_matches_empty_actual_query() {
 
 #[test]
 fn bodyless_cassette_request_only_matches_empty_actual_body() {
-    let policy = CassettePolicy::default();
     let headers = axum::http::HeaderMap::new();
 
-    assert!(body_matches(
-        policy,
-        &headers,
-        &[],
-        &[],
-        None,
-        BodyEncoding::Utf8
-    ));
+    assert!(body_matches(&headers, &[], &[], None, BodyEncoding::Utf8));
     assert!(!body_matches(
-        policy,
         &headers,
         &[],
         br#"{"unexpected":true}"#,
@@ -201,17 +192,17 @@ fn unordered_shape_matching_serves_the_closest_interaction() {
     ];
     let keys: Vec<Value> = interactions
         .iter()
-        .map(|interaction| shape::shape_key(&recorded_body_view(policy, &interaction.when)))
+        .map(|interaction| shape::shape_key(&recorded_body_view(&interaction.when)))
         .collect();
     let request = incoming_request("/v1/answer", json!({ "input": "second" }).to_string());
-    let sent = shape::shape_key(&incoming_body_view(policy, &request));
+    let sent = shape::shape_key(&incoming_body_view(&request));
     let shapes = Some(ShapeKeys {
         recorded: &keys,
         sent: &sent,
     });
     let distance = |index: usize| {
-        let recorded = recorded_body_view(policy, &interactions[index].when);
-        snapshot::diff(&recorded, &incoming_body_view(policy, &request)).len()
+        let recorded = recorded_body_view(&interactions[index].when);
+        snapshot::diff(&recorded, &incoming_body_view(&request)).len()
     };
 
     assert_eq!(
@@ -280,13 +271,10 @@ fn gemini_interactions_policy_requires_api_key_header() {
 
 #[tokio::test]
 async fn direct_recorder_omits_sigv4_headers() {
-    let policy =
-        CassettePolicy::for_scenario("bedrock", CassetteSpec::new("agent/completion_smoke"));
     let interactions = Arc::new(Mutex::new(Vec::new()));
     let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
     let recorder = DirectRecorder {
         interactions: interactions.clone(),
-        policy,
         ledger: Arc::new(relay::LedgerTarget {
             path: ledger_dir.path().join("ledger.jsonl"),
             provider: "bedrock".to_owned(),
@@ -597,12 +585,10 @@ fn scrubber_reframes_binary_event_stream_payloads() {
 
 #[test]
 fn body_matching_compares_base64_bytes() {
-    let policy = CassettePolicy::default();
     let headers = axum::http::HeaderMap::new();
     let expected = BASE64_STANDARD.encode([0, 159, 146, 150]);
 
     assert!(body_matches(
-        policy,
         &headers,
         &[],
         &[0, 159, 146, 150],
@@ -688,7 +674,7 @@ fn recording_scrubs_every_redact_kind() {
         .collect::<std::collections::HashSet<_>>();
     assert_eq!(kinds.len(), keys.len(), "one sample per kind: {kinds:?}");
 
-    let mut scrubber = CassetteScrubber::new(CassettePolicy::default());
+    let mut scrubber = CassetteScrubber::default();
     for key in keys {
         let mut request = cassette_request("/v1/messages");
         request.query_param.push(query_pair("q", key));

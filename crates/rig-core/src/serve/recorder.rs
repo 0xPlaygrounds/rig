@@ -101,7 +101,7 @@ impl super::Observe for RecordingObserver {
         self.recorder.adapter_context(self.id)
     }
 
-    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
+    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
         if let Some(output) = self
             .published
             .as_ref()
@@ -109,7 +109,7 @@ impl super::Observe for RecordingObserver {
         {
             self.recorder.tool_output(self.id, output);
         }
-        self.recorder.resolve(self.id, outcome.clone());
+        self.recorder.resolve(self.id, outcome);
     }
 
     fn keep_events(&self) -> bool {
@@ -136,61 +136,6 @@ impl super::Observe for RecordingObserver {
 
     fn patch(&mut self, kind: &EffectKind) {
         self.recorder.patch(self.id, kind.clone());
-    }
-}
-
-/// The record of an effect no handler serves, such as a tool call a person
-/// or another program answers: begun when it opens, resolved by
-/// [`Self::settle`], and recorded as cancelled when dropped unsettled.
-/// Without a recorder it only carries the effect's id.
-///
-/// ```
-/// use std::sync::Arc;
-/// use rig_core::effect::{EffectId, EffectKind, tool_key};
-/// use rig_core::serve::{OpenRecord, DispatchContext, Recorder};
-/// # fn demo(recorder: Arc<dyn Recorder + Send + Sync>) {
-/// let kind = EffectKind::ToolCall { name: "ask".into(), args: "{}".into() };
-/// let mut open = OpenRecord::begin(Some(recorder), EffectId::from_raw(1), tool_key("ask"), kind, DispatchContext::default());
-/// open.settle(Err(rig_core::serve::cancelled()));
-/// # }
-/// ```
-pub struct OpenRecord {
-    recorder: Option<Arc<dyn Recorder + Send + Sync>>,
-    id: EffectId,
-}
-
-impl OpenRecord {
-    /// Records the start of the effect `id`, `kind` routed to `key`, with
-    /// `recorder`, if any.
-    pub fn begin(
-        recorder: Option<Arc<dyn Recorder + Send + Sync>>,
-        id: EffectId,
-        key: HandlerKey,
-        kind: EffectKind,
-        origin: DispatchContext,
-    ) -> Self {
-        if let Some(recorder) = &recorder {
-            recorder.begin(id, key, kind, origin);
-        }
-        Self { recorder, id }
-    }
-
-    /// The effect's id.
-    pub fn id(&self) -> EffectId {
-        self.id
-    }
-
-    /// Records `outcome` as the effect's outcome; only the first counts.
-    pub fn settle(&mut self, outcome: Result<Answered, ErrorReport>) {
-        if let Some(recorder) = self.recorder.take() {
-            recorder.resolve(self.id, outcome);
-        }
-    }
-}
-
-impl Drop for OpenRecord {
-    fn drop(&mut self) {
-        self.settle(Err(super::cancelled()));
     }
 }
 

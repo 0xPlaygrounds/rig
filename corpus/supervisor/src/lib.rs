@@ -306,7 +306,7 @@ fn count_calls(
         };
         let results = entries
             .iter()
-            .filter_map(|entry| match &entry.message {
+            .filter_map(|entry| match &*entry.message {
                 message::Message::User { content } => Some(content),
                 _ => None,
             })
@@ -403,10 +403,10 @@ fn send_check(
 
 /// The text of a check: the goal, the worker's activity in `messages` from
 /// `from` on, and its last text.
-fn digest(goal: &str, messages: &[message::Message], from: usize) -> String {
+fn digest(goal: &str, messages: &[std::sync::Arc<message::Message>], from: usize) -> String {
     let mut lines = Vec::new();
     for message in messages.get(from.min(messages.len())..).unwrap_or_default() {
-        match message {
+        match &**message {
             message::Message::User { content } => lines.extend(content.iter().filter_map(asked)),
             message::Message::Assistant(reply) => {
                 lines.extend(reply.content.iter().filter_map(did))
@@ -422,7 +422,7 @@ fn digest(goal: &str, messages: &[message::Message], from: usize) -> String {
     if activity.is_empty() {
         activity = "(nothing since the last check)".to_owned();
     }
-    let last = messages.iter().rev().find_map(|message| match message {
+    let last = messages.iter().rev().find_map(|message| match &**message {
         message::Message::Assistant(reply) => {
             let text = reply.text();
             (!text.trim().is_empty()).then(|| clip(&text, TEXT))

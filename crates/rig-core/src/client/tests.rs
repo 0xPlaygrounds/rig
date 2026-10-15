@@ -195,7 +195,9 @@ fn a_signed_in_model_checks_without_a_credential() {
     )
     .expect("connects");
     let kind = crate::effect::EffectKind::Completion {
-        request: crate::completion::CompletionRequest::new("hi").top_p(0.9),
+        request: crate::completion::CompletionRequest::new("hi")
+            .top_p(0.9)
+            .into(),
         stream: true,
     };
     let left_out: Vec<String> = ErasedHandler::new(model)

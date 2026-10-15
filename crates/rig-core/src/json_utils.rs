@@ -1,6 +1,5 @@
+use serde::Deserialize;
 use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
-use serde::{Deserialize, Serialize, Serializer};
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
@@ -11,40 +10,6 @@ use std::str::FromStr;
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn is_false(value: &bool) -> bool {
     !value
-}
-
-/// Serializes a `HashMap` in lexicographic key order, propagating serializer errors.
-/// Stable ordering avoids randomized map iteration changing request bytes.
-pub fn serialize_map_sorted<S, V>(
-    map: &HashMap<String, V>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-    V: Serialize,
-{
-    let mut entries: Vec<_> = map.iter().collect();
-    entries.sort_by_key(|(key, _)| *key);
-    serializer.collect_map(entries)
-}
-
-/// [`serialize_map_sorted`] for an optional map.
-///
-/// Pairs with `#[serde(skip_serializing_if = "Option::is_none")]`: serde still
-/// routes `Some` through this function, and the `None` arm only runs for a field
-/// that is serialized unconditionally.
-pub fn serialize_optional_map_sorted<S, V>(
-    map: &Option<HashMap<String, V>>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-    V: Serialize,
-{
-    match map {
-        Some(map) => serialize_map_sorted(map, serializer),
-        None => serializer.serialize_none(),
-    }
 }
 
 /// Renders compact JSON with lexicographically sorted object keys at every depth,
@@ -117,25 +82,6 @@ pub fn value_to_json_string(value: &serde_json::Value) -> String {
         serde_json::Value::String(s) => s.clone(),
         other => other.to_string(),
     }
-}
-
-/// Serializes compact JSON, retaining quotes and escaping for string values.
-pub fn serialize_json_value(value: &serde_json::Value) -> String {
-    value.to_string()
-}
-
-/// Deserializes strings verbatim and other non-null values as compact JSON text.
-/// Null becomes `None`; fields that may be absent need a serde default.
-/// Object key order depends on serde_json's enabled features.
-pub fn deserialize_json_string_or_value<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(match value {
-        None | Some(serde_json::Value::Null) => None,
-        Some(v) => Some(value_to_json_string(&v)),
-    })
 }
 
 /// Parse tool arguments from a streamed string payload.
@@ -321,48 +267,6 @@ fn without_partial_escape(text: &str) -> &str {
         text.get(..at).unwrap_or(text)
     } else {
         text
-    }
-}
-
-/// Serde adapters for JSON encoded inside strings. Empty or whitespace-only
-/// strings deserialize to empty objects.
-pub mod stringified_json {
-    use super::parse_tool_arguments;
-    use serde::{self, Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let s = value.to_string();
-        serializer.serialize_str(&s)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        if s.trim().is_empty() {
-            return Ok(serde_json::Value::Object(serde_json::Map::new()));
-        }
-        serde_json::from_str(&s).map_err(serde::de::Error::custom)
-    }
-
-    /// Parses string contents as JSON and passes other values through unchanged.
-    /// Empty or whitespace-only strings become empty objects.
-    pub fn deserialize_maybe_stringified<'de, D>(
-        deserializer: D,
-    ) -> Result<serde_json::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        match serde_json::Value::deserialize(deserializer)? {
-            serde_json::Value::String(s) => {
-                parse_tool_arguments(&s).map_err(serde::de::Error::custom)
-            }
-            other => Ok(other),
-        }
     }
 }
 

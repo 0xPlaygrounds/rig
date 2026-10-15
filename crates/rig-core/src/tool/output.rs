@@ -200,23 +200,29 @@ where
     T: Serialize + 'static,
 {
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
-        // Preserve explicit content types before the serialization fallback so
-        // multimodal blocks are not converted into JSON objects.
-        let value = &self as &dyn Any;
-        if let Some(output) = value.downcast_ref::<ToolOutput>() {
-            return Ok(output.clone());
+        // Take explicit content types and text as they are, before the
+        // serialization fallback, so multimodal blocks are not converted
+        // into JSON objects and nothing is copied.
+        let mut value = Some(self);
+        let slot = &mut value as &mut dyn Any;
+        if let Some(output) = take::<ToolOutput>(slot) {
+            return Ok(output);
         }
-        if let Some(content) = value.downcast_ref::<ToolResultContent>() {
-            return Ok(ToolOutput::one(content.clone()));
+        if let Some(content) = take::<ToolResultContent>(slot) {
+            return Ok(ToolOutput::one(content));
         }
-        if let Some(content) = value.downcast_ref::<Vec<ToolResultContent>>() {
+        if let Some(content) = take::<Vec<ToolResultContent>>(slot) {
             // Reject empty rich output as a tool failure rather than inventing
             // text or allowing an invalid result into history.
-            return ToolOutput::content(content.clone());
+            return ToolOutput::content(content);
         }
-        let is_explicit_json = value.is::<serde_json::Value>();
+        if let Some(text) = take::<String>(slot) {
+            return Ok(ToolOutput::text(text));
+        }
+        let is_explicit_json = slot.is::<Option<serde_json::Value>>();
 
-        serde_json::to_value(self)
+        // `Some(value)` serializes as `value`.
+        serde_json::to_value(value)
             .map(|value| match value {
                 serde_json::Value::String(text) if !is_explicit_json => ToolOutput::text(text),
                 value => ToolOutput::json(value),
@@ -226,6 +232,11 @@ where
                     .with_source(error)
             })
     }
+}
+
+/// The `T` in `slot`, an `Option<T>`, taken; `None` for another type.
+fn take<T: 'static>(slot: &mut dyn Any) -> Option<T> {
+    slot.downcast_mut::<Option<T>>().and_then(Option::take)
 }
 
 #[cfg(test)]

@@ -12,6 +12,8 @@
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::borrow::Cow;
+use std::sync::Arc;
 
 #[doc(hidden)]
 use super::wire::Messages;
@@ -24,6 +26,7 @@ use crate::message::{
     self, AssistantContent, DocumentData, DocumentMediaType, DocumentSourceKind, ImageMediaType,
     Message, ToolResultContent, UserContent,
 };
+use crate::providers::internal::set_fields;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::Mode;
 
@@ -225,7 +228,7 @@ fn base(
     let top = top_level_cache_control(input.param("cache_control"))?;
     let strict = wire.strict_tools && wire.provider.dialect.quirks.strict_tool_schemas;
     let eager = wire.tool_input_streaming == super::wire::ToolInputStreaming::Eager;
-    let mut tools = tools(request.tools.clone(), input.raw_tools()?, strict, eager);
+    let mut tools = tools(&request.tools, input.raw_tools()?, strict, eager);
     let (mut system, history) = split_system(
         &request.chat_history,
         takes_mid_conversation_system(&wire.facts, model),
@@ -240,7 +243,7 @@ fn base(
     for message in &history {
         let at = messages.len();
         messages.extend(message_json(message, wire, &ids)?);
-        if !matches!(message, Message::System { .. }) {
+        if !matches!(&**message, Message::System { .. }) {
             after.push(messages.len());
             turns.push((at, message));
         }
@@ -260,7 +263,7 @@ fn base(
                 let Some(&(at, turn)) = turns.get(message) else {
                     continue;
                 };
-                let blocks = match turn {
+                let blocks = match &**turn {
                     Message::User { content } => {
                         let mut blocks = 0;
                         for part in content.iter().take(items) {
@@ -310,7 +313,7 @@ fn base(
         .is_none()
         .then(|| container(&history))
         .flatten();
-    Ok(object([
+    Ok(set_fields([
         ("model", Some(json!(model))),
         ("messages", Some(Value::Array(messages))),
         ("max_tokens", Some(json!(max_tokens))),
@@ -332,14 +335,6 @@ fn base(
 /// A text content block.
 fn text(text: &str) -> Value {
     json!({ "type": "text", "text": text })
-}
-
-/// An object of the `fields` that are present, in order.
-pub(super) fn object<const N: usize>(fields: [(&str, Option<Value>); N]) -> Map<String, Value> {
-    fields
-        .into_iter()
-        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-        .collect()
 }
 
 /// `message` on the wire, its tool ids spelled by `ids`. `None` when no
@@ -366,7 +361,12 @@ fn message_json(
                 .collect(),
         ),
     };
-    Ok((!content.is_empty()).then(|| json!({ "role": role, "content": content })))
+    Ok((!content.is_empty()).then(|| {
+        Value::Object(set_fields([
+            ("role", Some(Value::from(role))),
+            ("content", Some(Value::Array(content))),
+        ]))
+    }))
 }
 
 /// One user block on the wire. `None` for blank text, which Anthropic
@@ -374,7 +374,10 @@ fn message_json(
 fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeError> {
     let image = |image: &message::Image| {
         let source = image_source(image).ok_or_else(unsendable)?;
-        Ok::<_, EncodeError>(json!({ "type": "image", "source": source }))
+        Ok::<_, EncodeError>(Value::Object(set_fields([
+            ("type", Some(Value::from("image"))),
+            ("source", Some(source)),
+        ])))
     };
     Ok(Some(match part {
         UserContent::Text(part) if part.text.trim().is_empty() => return Ok(None),
@@ -388,9 +391,9 @@ fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeE
                     ToolResultContent::Image(part) => image(part)?,
                 });
             }
-            Value::Object(object([
+            Value::Object(set_fields([
                 ("type", Some(json!("tool_result"))),
-                ("tool_use_id", Some(json!(ids.spell(&result.call)))),
+                ("tool_use_id", Some(Value::from(ids.spell(&result.call)))),
                 ("content", Some(Value::Array(content))),
                 ("is_error", result.is_error.then_some(Value::Bool(true))),
             ]))
@@ -413,7 +416,7 @@ fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
             EncodeError::request("Document `additional_params.citations` must be `{\"enabled\": bool}`")
         })? })),
     };
-    Ok(Value::Object(object([
+    Ok(Value::Object(set_fields([
         ("type", Some(json!("document"))),
         (
             "source",
@@ -455,9 +458,9 @@ pub(super) fn assistant_part(
             text(&reasoning.text)
         }
         AssistantContent::ToolCall(call) => {
-            let mut part = object([
+            let mut part = set_fields([
                 ("type", Some(json!("tool_use"))),
-                ("id", Some(json!(ids.spell(&call.id)))),
+                ("id", Some(Value::from(ids.spell(&call.id)))),
                 ("name", Some(json!(call.function.name.as_str()))),
                 (
                     "input",
@@ -547,19 +550,19 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
 /// input as it is written when `eager`, then `extra`, the tools
 /// `additional_params` names, verbatim.
 fn tools(
-    tools: Vec<completion::ToolDefinition>,
+    tools: &[completion::ToolDefinition],
     extra: Vec<Value>,
     strict: bool,
     eager: bool,
 ) -> Vec<Value> {
-    let rig = tools.into_iter().map(|tool| {
-        let mut schema = tool.parameters;
+    let rig = tools.iter().map(|tool| {
+        let mut schema = tool.parameters.clone();
         if strict {
             sanitize_strict_tool_schema(&mut schema);
         }
-        Value::Object(object([
-            ("name", Some(json!(tool.name.as_str()))),
-            ("description", Some(json!(tool.description))),
+        Value::Object(set_fields([
+            ("name", Some(Value::from(tool.name.as_str()))),
+            ("description", Some(Value::from(tool.description.as_str()))),
             ("input_schema", Some(schema)),
             ("strict", strict.then_some(Value::Bool(true))),
             ("eager_input_streaming", eager.then_some(Value::Bool(true))),
@@ -577,21 +580,24 @@ fn tools(
 /// the prompt prefix, which misses the cache from the first token and, on
 /// models that bind thinking blocks to their conversation, turns every earlier
 /// thinking block into a 400. It is hoisted only when no such slot exists.
-pub(super) fn split_system(history: &[Message], mid: bool) -> (Vec<Value>, Vec<Message>) {
+pub(super) fn split_system(
+    history: &[Arc<Message>],
+    mid: bool,
+) -> (Vec<Value>, Vec<Cow<'_, Message>>) {
     let mut system = Vec::new();
     let mut remaining = Vec::new();
     let mut deferred: Vec<&str> = Vec::new();
     let lead = history
         .iter()
-        .take_while(|message| matches!(message, Message::System { .. }))
+        .take_while(|message| matches!(&***message, Message::System { .. }))
         .count();
     for (index, message) in history.iter().enumerate() {
-        match message {
+        match &**message {
             Message::System { content } if content.is_empty() => {}
             // The system messages that lead the history are the prompt.
             Message::System { content } if index < lead => system.push(text(content)),
             Message::System { .. } if mid && valid_system_message(history, index) => {
-                remaining.push(message.clone());
+                remaining.push(Cow::Borrowed(&**message));
             }
             Message::System { content }
                 if mid
@@ -602,11 +608,11 @@ pub(super) fn split_system(history: &[Message], mid: bool) -> (Vec<Value>, Vec<M
             }
             Message::System { content } => system.push(text(content)),
             other => {
-                remaining.push(other.clone());
+                remaining.push(Cow::Borrowed(other));
                 if !deferred.is_empty() && system_slot(history, index) {
-                    remaining.push(Message::System {
+                    remaining.push(Cow::Owned(Message::System {
                         content: deferred.join("\n\n"),
-                    });
+                    }));
                     deferred.clear();
                 }
             }
@@ -619,26 +625,30 @@ pub(super) fn split_system(history: &[Message], mid: bool) -> (Vec<Value>, Vec<M
 /// user turn, and the next turn that is not a system message is an
 /// assistant turn or there is none, since Anthropic takes several system
 /// messages in a row there.
-fn system_slot(history: &[Message], index: usize) -> bool {
-    matches!(history.get(index), Some(Message::User { .. }))
-        && history
-            .get(index + 1..)
-            .into_iter()
-            .flatten()
-            .find(|message| !matches!(message, Message::System { .. }))
-            .is_none_or(|message| matches!(message, Message::Assistant(_)))
+fn system_slot(history: &[Arc<Message>], index: usize) -> bool {
+    matches!(
+        history.get(index).map(Arc::as_ref),
+        Some(Message::User { .. })
+    ) && history
+        .get(index + 1..)
+        .into_iter()
+        .flatten()
+        .map(Arc::as_ref)
+        .find(|message| !matches!(message, Message::System { .. }))
+        .is_none_or(|message| matches!(message, Message::Assistant(_)))
 }
 
 /// Whether the system message at `index` sits where Anthropic takes one:
 /// after a user turn, or an assistant turn ending in a server tool's result,
 /// and before an assistant turn or the end.
-fn valid_system_message(history: &[Message], index: usize) -> bool {
+fn valid_system_message(history: &[Arc<Message>], index: usize) -> bool {
     // A run of system messages shares one slot.
     let not_system = |message: &&Message| !matches!(message, Message::System { .. });
     let after = history
         .get(..index)
         .into_iter()
         .flatten()
+        .map(Arc::as_ref)
         .rev()
         .find(not_system);
     let follows = match after {
@@ -659,6 +669,7 @@ fn valid_system_message(history: &[Message], index: usize) -> bool {
             .get(index + 1..)
             .into_iter()
             .flatten()
+            .map(Arc::as_ref)
             .find(not_system)
             .is_none_or(|message| matches!(message, Message::Assistant(_)))
 }
@@ -668,11 +679,11 @@ fn valid_system_message(history: &[Message], index: usize) -> bool {
 /// keeps a code-execution session's state. The decoder keeps it as an
 /// opaque `container` block, which `adapt` leaves only on turns of the
 /// same model.
-fn container(history: &[Message]) -> Option<String> {
+fn container(history: &[Cow<'_, Message>]) -> Option<String> {
     history
         .iter()
         .rev()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::Assistant(turn) => Some(turn),
             Message::User { .. } | Message::System { .. } => None,
         })

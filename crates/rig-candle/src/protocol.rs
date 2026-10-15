@@ -111,7 +111,7 @@ fn validate_protocol_inputs(
         )?;
     }
     for message in request.chat_history.iter() {
-        match message {
+        match &**message {
             Message::System { content } => {
                 validate_protocol_text(content, "system message", protocol)?;
             }
@@ -330,7 +330,7 @@ fn render_plain_chat(
                 IM_START,
                 &["\n"],
                 &[IM_END, "\n"],
-                if matches!(messages.first(), Some(Message::System { .. })) {
+                if matches!(messages.first().map(|m| &**m), Some(Message::System { .. })) {
                     String::new()
                 } else {
                     format!("{IM_START}system\n{SMOLLM2_DEFAULT_SYSTEM_PROMPT}{IM_END}\n")
@@ -414,7 +414,7 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
     if !tools.is_empty() {
         rendered.push_str(IM_START);
         rendered.push_str("system\n");
-        if let Some(Message::System { content }) = messages.first() {
+        if let Some(Message::System { content }) = messages.first().map(|m| &**m) {
             rendered.push_str(content);
             rendered.push_str("\n\n");
             first_message = 1;
@@ -443,7 +443,7 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
         }
         rendered.push_str(IM_END);
         rendered.push('\n');
-    } else if let Some(Message::System { content }) = messages.first() {
+    } else if let Some(Message::System { content }) = messages.first().map(|m| &**m) {
         rendered.push_str(IM_START);
         rendered.push_str("system\n");
         rendered.push_str(content);

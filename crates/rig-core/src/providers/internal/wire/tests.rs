@@ -1,4 +1,7 @@
-use super::{WireEvent, classify_chat_completions_frame, classify_tagged_frame};
+use super::{
+    Key, Scan, WireEvent, classify_chat_completions_frame, classify_marker_keyed_frame,
+    classify_or_untagged, classify_tagged_frame,
+};
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "type")]
@@ -53,4 +56,68 @@ fn non_object_json_is_unknown_never_corrupt() {
             "tagged classifier must skip {frame}, got {event:?}"
         );
     }
+}
+
+/// A lone surrogate escape is not valid JSON text, though the key scan
+/// skips over it: a frame holding one is corrupt, never passed through as
+/// unknown.
+#[test]
+fn an_unknown_frame_that_is_not_valid_json_text_is_corrupt() {
+    let event =
+        classify_tagged_frame::<TestEvent>(r#"{"type":"ping","note":"\ud800"}"#, "type", known);
+    assert!(matches!(event, WireEvent::Corrupt(_)), "{event:?}");
+    let event = classify_marker_keyed_frame::<TestChunk>(r#"{"note":"\ud800"}"#, &["choices"]);
+    assert!(matches!(event, WireEvent::Corrupt(_)), "{event:?}");
+}
+
+/// A marker key may repeat; the frame still takes the typed decode.
+#[test]
+fn a_repeated_marker_key_is_recognized() {
+    let event = classify_marker_keyed_frame::<serde_json::Value>(
+        r#"{"choices":[1],"choices":[]}"#,
+        &["choices"],
+    );
+    assert!(matches!(event, WireEvent::Known(_)), "{event:?}");
+}
+
+/// Only a frame without the tag falls back: a tagged frame that fails its
+/// typed decode stays corrupt rather than passing for the fallback's shape.
+#[test]
+fn only_an_untagged_frame_falls_back() {
+    let classify = |frame: &str| {
+        classify_or_untagged(
+            frame,
+            "type",
+            |data| classify_tagged_frame::<TestEvent>(data, "type", known),
+            |_| {
+                WireEvent::Known(TestEvent::TextDelta {
+                    delta: "fallback".to_owned(),
+                })
+            },
+        )
+    };
+    let event = classify(r#"{"type":"text.delta","delta":5}"#);
+    assert!(matches!(event, WireEvent::Corrupt(_)), "{event:?}");
+    let event = classify(r#"{"delta":"hi"}"#);
+    assert!(matches!(event, WireEvent::Known(_)), "{event:?}");
+}
+
+/// The key scan says what it expected when handed something else.
+#[test]
+fn the_key_scan_names_what_it_expected() {
+    use serde::de::{DeserializeSeed, Deserializer};
+    let error = serde_json::Value::from(1)
+        .deserialize_map(Scan(&["type"]))
+        .expect_err("a number is no object");
+    assert!(
+        error.to_string().contains("expected a JSON object"),
+        "{error}"
+    );
+    let error = Key(&["type"])
+        .deserialize(serde_json::Value::from(1))
+        .expect_err("a number is no key");
+    assert!(
+        error.to_string().contains("expected an object key"),
+        "{error}"
+    );
 }

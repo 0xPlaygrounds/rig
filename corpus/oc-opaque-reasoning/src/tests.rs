@@ -351,7 +351,7 @@ fn reasoning_blobs_go_back_to_their_model_alone_and_never_stale() {
                 .find(|entry| blobs_in(entry.message) > 0)
                 .map(|entry| entry.index)?;
             let mut entry = conversation.entry(at)?;
-            if let ChatMessage::Assistant(turn) = &mut entry.message {
+            if let ChatMessage::Assistant(turn) = std::sync::Arc::make_mut(&mut entry.message) {
                 turn.content
                     .push(AssistantContent::Text(Text::new("Reading it now.")));
             }

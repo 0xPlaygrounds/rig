@@ -19,9 +19,12 @@ fn project() -> PathBuf {
 }
 
 /// The text of every tool result in `messages`.
-fn tool_results(messages: &[message::Message]) -> String {
+fn tool_results(messages: &[impl std::borrow::Borrow<message::Message>]) -> String {
     let mut text = String::new();
-    for message in messages {
+    for message in messages
+        .iter()
+        .map(std::borrow::Borrow::<message::Message>::borrow)
+    {
         if let message::Message::User { content } = message {
             for item in content.iter() {
                 if let UserContent::ToolResult(result) = item {

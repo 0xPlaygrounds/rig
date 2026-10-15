@@ -5,9 +5,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use super::{MessagesDecoder, MessagesEvent};
+use super::MessagesEvent;
 use crate::wire::document::Reassemble;
-use crate::wire::{Decoder, WireEvent, WireFrame};
 
 /// Rebuilds the `Message` a streamed Messages reply adds up to.
 ///
@@ -62,7 +61,7 @@ impl Message {
         }
     }
 
-    fn delta(&mut self, index: usize, delta: Map<String, Value>) {
+    fn delta(&mut self, index: usize, delta: &Map<String, Value>) {
         let kind = delta
             .get("type")
             .and_then(Value::as_str)
@@ -99,7 +98,7 @@ impl Message {
             return;
         }
         let mut item = Value::Object(std::mem::take(block));
-        crate::operation::completion::merge(&mut item, &delta);
+        crate::operation::completion::merge(&mut item, delta);
         if let Value::Object(item) = item {
             *block = item;
         }
@@ -163,16 +162,12 @@ fn fold(target: &mut Map<String, Value>, key: &str, value: &Value) {
 
 impl crate::wire::document::Serves<crate::operation::Completion> for Message {}
 
-impl Reassemble<WireFrame> for Message {
-    fn absorb(&mut self, frame: &WireFrame) {
-        // The driver reports what does not classify.
-        let WireEvent::Known(event) = MessagesDecoder::default().classify(frame.clone()) else {
-            return;
-        };
+impl Reassemble<MessagesEvent> for Message {
+    fn absorb(&mut self, event: &MessagesEvent) {
         match event.kind() {
             "message" => {
-                if let Value::Object(message) = event.fields {
-                    self.message = Some(message);
+                if let Value::Object(message) = &event.fields {
+                    self.message = Some(message.clone());
                     self.inputs.clear();
                 }
             }
@@ -187,7 +182,7 @@ impl Reassemble<WireFrame> for Message {
             "content_block_start" => {
                 if let (Ok(index), Ok(block)) = (event.index(), event.item("content_block")) {
                     self.inputs.remove(&index);
-                    self.place(index, block);
+                    self.place(index, block.clone());
                 }
             }
             "content_block_delta" => {
@@ -200,7 +195,7 @@ impl Reassemble<WireFrame> for Message {
                     self.settle(index);
                 }
             }
-            "message_delta" => self.message_delta(&event),
+            "message_delta" => self.message_delta(event),
             // `message_stop`, `ping` and `error` add nothing: a failed
             // reply keeps the message so far.
             _ => {}

@@ -55,7 +55,7 @@ fn written() -> Reply {
 
 fn completion(stream: bool) -> EffectKind {
     EffectKind::Completion {
-        request: crate::completion::CompletionRequest::new("hi"),
+        request: crate::completion::CompletionRequest::new("hi").into(),
         stream,
     }
 }
