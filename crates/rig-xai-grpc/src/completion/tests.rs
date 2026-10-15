@@ -12,6 +12,7 @@ use rig_core::message::{
 use rig_core::providers::xai::extension::{XaiExt, XaiOptions};
 use rig_core::streaming::{Item, StreamEvent};
 use serde_json::json;
+use std::sync::Arc;
 
 const MODEL: &str = "grok-4.3";
 
@@ -98,22 +99,25 @@ fn text(text: &str) -> Delta {
 #[test]
 fn a_conversation_with_tools_encodes_as_the_proto_request() {
     let mut request = CompletionRequest::new("What is 2 + 3?").preamble("Be brief.");
-    request.chat_history.extend([
-        Message::from(AssistantContent::tool_call(
-            "call_1",
-            add(),
-            json!({"x": 2, "y": 3}),
-        )),
-        Message::tool_result(CallId::from_wire("call_1"), add(), "5"),
-        Message::from(vec![
-            UserContent::text("And this?"),
-            UserContent::image_url(
-                "https://example.com/sum.png",
-                Some(ImageMediaType::PNG),
-                Some(ImageDetail::Low),
-            ),
-        ]),
-    ]);
+    request.chat_history.extend(
+        [
+            Message::from(AssistantContent::tool_call(
+                "call_1",
+                add(),
+                json!({"x": 2, "y": 3}),
+            )),
+            Message::tool_result(CallId::from_wire("call_1"), add(), "5"),
+            Message::from(vec![
+                UserContent::text("And this?"),
+                UserContent::image_url(
+                    "https://example.com/sum.png",
+                    Some(ImageMediaType::PNG),
+                    Some(ImageDetail::Low),
+                ),
+            ]),
+        ]
+        .map(Arc::new),
+    );
     request.tools = vec![ToolDefinition::new(
         add(),
         "Add two integers.",

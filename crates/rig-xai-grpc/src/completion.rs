@@ -74,6 +74,7 @@ impl Wire for GetCompletion {
     type Op = Completion;
     type Payload = GetCompletionsRequest;
     type Frame = XaiFrame;
+    type Event = XaiFrame;
     type Decoder<'id> = crate::streaming::GrpcAdapter;
     type Reassembler = crate::streaming::document::XaiDocument;
 
