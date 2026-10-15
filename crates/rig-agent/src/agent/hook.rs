@@ -1686,3 +1686,6 @@ impl<F: rig_core::effect::Family> std::fmt::Debug for RunHandle<'_, F> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(any(test, feature = "test-utils"))]
+pub(crate) mod testing;
