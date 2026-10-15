@@ -742,7 +742,8 @@ impl AgentBuilder<NoToolConfig> {
 
     /// Declare a provider-hosted tool, such as a web search the provider
     /// runs, on every request. The provider executes it and returns its
-    /// results in the response; rig never dispatches it.
+    /// results in the response; rig never dispatches it, and
+    /// [`tool_choice`](Self::tool_choice) counts only the tools rig runs.
     pub fn provider_tool(self, tool: ProviderToolDefinition) -> AgentBuilder<WithBuilderTools> {
         self.into_tool_builder().provider_tool(tool)
     }
@@ -839,7 +840,8 @@ impl AgentBuilder<WithBuilderTools> {
 
     /// Declare a provider-hosted tool, such as a web search the provider
     /// runs, on every request. The provider executes it and returns its
-    /// results in the response; rig never dispatches it.
+    /// results in the response; rig never dispatches it, and
+    /// [`tool_choice`](Self::tool_choice) counts only the tools rig runs.
     pub fn provider_tool(self, tool: ProviderToolDefinition) -> Self {
         self.map_server(|server| server.provider_tool(tool))
     }
