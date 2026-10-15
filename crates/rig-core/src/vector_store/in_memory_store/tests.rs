@@ -716,3 +716,34 @@ async fn top_n_excludes_non_finite_similarity() {
         .collect();
     assert_eq!(ids, vec!["good".to_string()]);
 }
+
+/// A store built empty builds its LSH index once a vector arrives, so later
+/// searches use the strategy the caller chose instead of a full scan.
+#[test]
+fn empty_lsh_store_indexes_its_first_vector() -> anyhow::Result<()> {
+    let mut store = InMemoryVectorStore::builder()
+        .index_strategy(IndexStrategy::LSH {
+            num_tables: 5,
+            num_hyperplanes: 10,
+        })
+        .build();
+    store.add_documents_with_ids([("bare", Product { price: 0.5 }, Vec::new())]);
+    anyhow::ensure!(store.lsh_index.is_none(), "no vector gives a dimension yet");
+
+    let (doc, embeddings) = product(1.5);
+    let query = embeddings
+        .first()
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("a fixture embedding"))?;
+    store.add_documents_with_ids([("first", doc, embeddings)]);
+    let candidates = store
+        .lsh_index
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("the first vector builds the index"))?
+        .query(&query.vec);
+    anyhow::ensure!(
+        candidates.iter().any(|id| id == "first"),
+        "the first vector is indexed: {candidates:?}"
+    );
+    Ok(())
+}

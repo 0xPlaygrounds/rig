@@ -65,24 +65,12 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         embeddings: HashMap<String, (D, Vec<Embedding>)>,
         index_strategy: IndexStrategy,
     ) -> Self {
-        let lsh_params = match &index_strategy {
-            IndexStrategy::LSH {
-                num_tables,
-                num_hyperplanes,
-            } => Some((*num_tables, *num_hyperplanes)),
-            IndexStrategy::BruteForce => None,
-        };
-
         let mut vector_store = Self {
             embeddings,
             index_strategy,
             lsh_index: None,
         };
-
-        if let Some((num_tables, num_hyperplanes)) = lsh_params {
-            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
-        }
-
+        vector_store.initialize_lsh_index();
         vector_store
     }
 
@@ -119,14 +107,21 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         store
     }
 
-    /// Inserts or replaces a document and adds its embeddings to any existing LSH index.
+    /// Inserts or replaces a document and indexes its embeddings, building
+    /// the LSH index once the store holds its first vector.
     fn insert_document(&mut self, id: String, doc: D, embeddings: Vec<Embedding>) {
-        if let Some(ref mut lsh_index) = self.lsh_index {
-            for embedding in embeddings.iter() {
-                lsh_index.insert(&id, &embedding.vec);
+        match &mut self.lsh_index {
+            Some(lsh_index) => {
+                for embedding in &embeddings {
+                    lsh_index.insert(&id, &embedding.vec);
+                }
+                self.embeddings.insert(id, (doc, embeddings));
+            }
+            None => {
+                self.embeddings.insert(id, (doc, embeddings));
+                self.initialize_lsh_index();
             }
         }
-        self.embeddings.insert(id, (doc, embeddings));
     }
 
     /// Tests whether a document satisfies the (optional) metadata filter.
@@ -275,24 +270,27 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         Ok(docs)
     }
 
-    /// Initialize LSH index from existing embeddings
-    fn initialize_lsh_index(&mut self, num_tables: usize, num_hyperplanes: usize) {
-        if self.embeddings.is_empty() {
+    /// Builds the LSH index from the stored embeddings when the strategy is
+    /// LSH and some embedding gives the dimension.
+    fn initialize_lsh_index(&mut self) {
+        let IndexStrategy::LSH {
+            num_tables,
+            num_hyperplanes,
+        } = self.index_strategy
+        else {
             return;
-        }
-
-        let first_embedding = self
+        };
+        let Some(dim) = self
             .embeddings
             .values()
-            .next()
-            .and_then(|(_, embeddings)| embeddings.iter().next())
-            .map_or(0, |e| e.vec.len());
-
-        if first_embedding == 0 {
+            .flat_map(|(_, embeddings)| embeddings)
+            .map(|embedding| embedding.vec.len())
+            .find(|&len| len > 0)
+        else {
             return;
-        }
+        };
 
-        let mut lsh_index = LSHIndex::new(first_embedding, num_tables, num_hyperplanes);
+        let mut lsh_index = LSHIndex::new(dim, num_tables, num_hyperplanes);
 
         for (id, (_, embeddings)) in self.embeddings.iter() {
             for embedding in embeddings.iter() {
