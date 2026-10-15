@@ -2131,8 +2131,7 @@ Gaps the research found (P3 lists every unverified entry in its PR body):
   https://platform.claude.com/docs/en/api/models/list). That recording lists
   no `xhigh` for `claude-opus-4-7` where the docs and models.dev do, so sync
   treats a missing key as unknown, not unsupported.
-- **Constants missing from models.dev**: `minimax::MINIMAX_M2_1_HIGHSPEED`
-  (`crates/rig-core/src/providers/minimax.rs:39`), `zai::GLM_4_6_AIR`
+- **Constants missing from models.dev**: `zai::GLM_4_6_AIR`
   (`crates/rig-core/src/providers/zai.rs:30`), `zai::GLM_4_6_X`
   (`zai.rs:32`), `zai::GLM_4_5_AIRX` (`zai.rs:40`). DeepSeek's models.dev rows
   are `deepseek-flash`, `deepseek-v4-flash`, `deepseek-v4-pro` and
