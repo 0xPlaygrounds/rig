@@ -64,9 +64,11 @@ use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
 use super::restore::{Restored, commit_results, mark_settled};
 use super::session_log::{ConversationChanged, SessionLog, save_conversation};
+#[cfg(doc)]
+use super::stage::Stage;
 use super::stage::{
-    Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
-    SupersededBy, Waiting, cancel, failed_in, release,
+    Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Started, SupersededBy,
+    Waiting, cancel, release,
 };
 use super::tasks::{Running, Wake};
 use super::tools::{Footprint, ToolDef, ToolRequest};
@@ -1019,9 +1021,6 @@ pub(crate) fn back_off(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if failed_in(Stage::Review).is_some() {
-        return;
-    }
     for (call, effect, Outcome(outcome), RetryVerdict(verdict), &CallOf(turn)) in &failed {
         let (Err(report), Verdict::Retry(delay)) = (outcome, verdict) else {
             continue;
@@ -1487,9 +1486,6 @@ pub(crate) fn end_turns(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if failed_in(Stage::Review).is_some() {
-        return;
-    }
     for (turn, &TurnOf(agent), outcome, ending, calls) in &turns {
         let Ok((id, mut conversation)) = agents.get_mut(agent) else {
             continue;

@@ -44,9 +44,10 @@ use super::agent::{
     ActiveTurn, Agent, CallOf, Conversation, EffectParent, Notice, TurnOf, TurnOutcome,
 };
 use super::model::Connection;
+#[cfg(doc)]
+use super::stage::Stage;
 use super::stage::{
-    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, ReadyToStart, Settled, Stage, Started,
-    failed_in, moved,
+    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, ReadyToStart, Settled, Started, moved,
 };
 use super::tasks::Wake;
 use super::turn::{Exiting, TurnCall, spawn_turn_call, take_outcome};
@@ -374,9 +375,6 @@ pub(crate) fn accept(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if failed_in(Stage::Gate).is_some() {
-        return;
-    }
     let mut ready: Vec<_> = ready.iter().collect();
     ready.sort_unstable_by_key(|(_, effect, ..)| effect.id());
     let at = SystemTime::now();

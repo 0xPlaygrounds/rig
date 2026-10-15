@@ -719,10 +719,10 @@ pub(crate) fn build(app: &mut App) {
                     .in_set(Stage::Arrive),
                 (
                     stop_calls,
-                    back_off,
+                    back_off.run_if(passed(Stage::Review)),
                     settle,
                     commit_replies,
-                    end_turns,
+                    end_turns.run_if(passed(Stage::Review)),
                     commit_turn_calls,
                 )
                     .chain()
@@ -745,7 +745,7 @@ pub(crate) fn build(app: &mut App) {
                     .chain()
                     .in_set(GateSystems::Fallback),
                 apply_decisions.in_set(Enter(Stage::Start)),
-                (accept, carry_on_accepted, start)
+                (accept.run_if(passed(Stage::Gate)), carry_on_accepted, start)
                     .chain()
                     .in_set(Stage::Start),
             ),
@@ -928,6 +928,12 @@ pub(crate) struct Failure {
 /// The first system that failed in `stage` this pass.
 pub(crate) fn failed_in(stage: Stage) -> Option<Failure> {
     FAILED.with_borrow(|failed| failed.iter().find(|failed| failed.stage == stage).cloned())
+}
+
+/// Whether no system failed in `stage` this pass: a run condition, read
+/// right before its system because the pass runs single-threaded.
+fn passed(stage: Stage) -> impl Fn() -> bool + Clone {
+    move || failed_in(stage).is_none()
 }
 
 /// The notice that a system failed and what that closed, once per system
