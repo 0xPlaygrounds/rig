@@ -165,7 +165,7 @@ fn a_credential_exchange_may_hold_a_conversation() {
     }
     assert_eq!(
         CREDENTIAL_EXCHANGES.len(),
-        7,
+        6,
         "a new credential exchange must be argued for, not added quietly"
     );
 

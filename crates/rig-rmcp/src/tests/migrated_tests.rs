@@ -40,8 +40,8 @@ impl DynamicToolServer {
     }
 }
 impl ServerHandler for DynamicToolServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_protocol_version(ProtocolVersion::LATEST)
             .with_server_info(Implementation::new("test-dynamic-server", "0.1.0"))
     }
@@ -58,11 +58,11 @@ impl ServerHandler for DynamicToolServer {
         &self,
         request: CallToolRequestParams,
         _: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
-            "called {}",
-            request.name
-        ))]))
+    ) -> Result<CallToolResponse, ErrorData> {
+        Ok(
+            CallToolResult::success(vec![ContentBlock::text(format!("called {}", request.name))])
+                .into(),
+        )
     }
 }
 
@@ -92,8 +92,8 @@ impl OrderedRefreshServer {
 }
 
 impl ServerHandler for OrderedRefreshServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_protocol_version(ProtocolVersion::LATEST)
             .with_server_info(Implementation::new("test-ordered-refresh-server", "0.1.0"))
     }
@@ -122,8 +122,8 @@ impl ServerHandler for OrderedRefreshServer {
 struct HangingListServer;
 
 impl ServerHandler for HangingListServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_protocol_version(ProtocolVersion::LATEST)
             .with_server_info(Implementation::new("test-hanging-list-server", "0.1.0"))
     }
@@ -159,12 +159,9 @@ fn make_dynamic_tool(name: &str, description: &str) -> DynamicTool {
 
 async fn connect<S>(
     server: S,
-    handle: rig_agent::tool::server::ToolServerHandle,
+    handler: McpClientHandler<rig_agent::tool::server::ToolServerHandle>,
 ) -> (
-    rmcp::service::RunningService<
-        rmcp::RoleClient,
-        McpClientHandler<rig_agent::tool::server::ToolServerHandle>,
-    >,
+    McpConnection,
     tokio::task::JoinHandle<rmcp::service::RunningService<rmcp::RoleServer, S>>,
 )
 where
@@ -174,11 +171,14 @@ where
     let (s2c, cfs) = tokio::io::duplex(8192);
     let server_task =
         tokio::spawn(async move { server.serve((sfc, s2c)).await.expect("server start") });
-    let service = McpClientHandler::new(ClientInfo::default(), handle)
-        .connect((cfs, c2s))
-        .await
-        .expect("connect");
-    (service, server_task)
+    let connection = handler.connect((cfs, c2s)).await.expect("connect");
+    (connection, server_task)
+}
+
+fn handler(
+    handle: &rig_agent::tool::server::ToolServerHandle,
+) -> McpClientHandler<rig_agent::tool::server::ToolServerHandle> {
+    McpClientHandler::new(ClientConfig::default(), handle.clone())
 }
 
 #[tokio::test]
@@ -188,13 +188,13 @@ async fn client_handler_registers_initial_tools() {
         make_tool("tool_b", "Second"),
     ]);
     let handle = ToolServer::new().run();
-    let (client, task) = connect(server, handle.clone()).await;
+    let (client, task) = connect(server, handler(&handle)).await;
     let defs = handle.tool_defs(None).await.unwrap();
     assert_eq!(
         defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
         vec!["tool_a", "tool_b"]
     );
-    client.cancel().await.unwrap();
+    client.close().await;
     task.abort();
 }
 
@@ -202,10 +202,10 @@ async fn client_handler_registers_initial_tools() {
 async fn disconnected_handler_tools_are_retired_on_snapshot() {
     let server = DynamicToolServer::new(vec![make_tool("tool_a", "First")]);
     let handle = ToolServer::new().run();
-    let (client, task) = connect(server, handle.clone()).await;
+    let (client, task) = connect(server, handler(&handle)).await;
     assert_eq!(handle.tool_defs(None).await.unwrap().len(), 1);
 
-    client.cancel().await.unwrap();
+    client.close().await;
 
     let defs = handle.tool_defs(None).await.unwrap();
     assert!(
@@ -219,10 +219,10 @@ async fn disconnected_handler_tools_are_retired_on_snapshot() {
 async fn disconnected_handler_tools_are_retired_on_direct_dispatch() {
     let server = DynamicToolServer::new(vec![make_tool("tool_a", "First")]);
     let handle = ToolServer::new().run();
-    let (client, task) = connect(server, handle.clone()).await;
+    let (client, task) = connect(server, handler(&handle)).await;
     assert_eq!(handle.tool_defs(None).await.unwrap().len(), 1);
 
-    client.cancel().await.unwrap();
+    client.close().await;
 
     let result = handle
         .execute("tool_a", "{}", &mut rig_agent::tool::ToolContext::new())
@@ -245,14 +245,14 @@ async fn initial_tool_fetch_is_bounded_by_the_refresh_timeout() {
             .expect("server start")
     });
     let refresh_timeout = Duration::from_millis(25);
-    let result = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run())
+    let result = McpClientHandler::new(ClientConfig::default(), ToolServer::new().run())
         .with_refresh_timeout(refresh_timeout)
         .connect((cfs, c2s))
         .await;
 
     assert!(matches!(
         result,
-        Err(McpClientError::ToolFetchTimeout(timeout)) if timeout == refresh_timeout
+        Err(McpClientError::Timeout(timeout)) if timeout == refresh_timeout
     ));
     server_task.abort();
 }
@@ -262,7 +262,7 @@ async fn failed_handshake_keeps_the_typed_rmcp_error() {
     let (c2s, sfc) = tokio::io::duplex(8192);
     let (s2c, cfs) = tokio::io::duplex(8192);
     drop((sfc, s2c));
-    let result = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run())
+    let result = McpClientHandler::new(ClientConfig::default(), ToolServer::new().run())
         .connect((cfs, c2s))
         .await;
 
@@ -271,7 +271,7 @@ async fn failed_handshake_keeps_the_typed_rmcp_error() {
 
 #[tokio::test]
 async fn refresh_activity_is_bounded_and_coalesces_excess_notifications() {
-    let handler = McpClientHandler::new(ClientInfo::default(), ToolServer::new().run());
+    let handler = McpClientHandler::new(ClientConfig::default(), ToolServer::new().run());
 
     assert!(handler.try_start_refresh().await);
     assert!(handler.try_start_refresh().await);
@@ -298,7 +298,7 @@ async fn client_handler_refreshes_on_tool_list_changed() {
     let (s2c, cfs) = tokio::io::duplex(8192);
     let copy = server.clone();
     let task = tokio::spawn(async move { copy.serve((sfc, s2c)).await.expect("server start") });
-    let client = McpClientHandler::new(ClientInfo::default(), handle.clone())
+    let client = McpClientHandler::new(ClientConfig::default(), handle.clone())
         .connect((cfs, c2s))
         .await
         .unwrap();
@@ -327,7 +327,7 @@ async fn client_handler_refreshes_on_tool_list_changed() {
         .map(|d| d.name)
         .collect::<Vec<_>>();
     assert_eq!(names, vec!["beta", "gamma"]);
-    client.cancel().await.unwrap();
+    client.close().await;
 }
 
 #[tokio::test]
@@ -335,7 +335,9 @@ async fn concurrent_refreshes_cannot_roll_back_a_newer_tool_list() {
     let server = OrderedRefreshServer::new(vec![make_tool("stale", "Stale snapshot")]);
     let server_control = server.clone();
     let handle = ToolServer::new().run();
-    let (client, server_task) = connect(server, handle.clone()).await;
+    let handler = handler(&handle);
+    let managed_tools = handler.managed_tools.clone();
+    let (client, server_task) = connect(server, handler).await;
     let running_server = server_task.await.unwrap();
 
     running_server
@@ -351,7 +353,7 @@ async fn concurrent_refreshes_cannot_roll_back_a_newer_tool_list() {
     .expect("first refresh fetch started");
 
     assert!(
-        client.service().managed_tools.try_write().is_ok(),
+        managed_tools.try_write().is_ok(),
         "a hung network fetch must not hold the managed-registry lock"
     );
 
@@ -393,7 +395,7 @@ async fn concurrent_refreshes_cannot_roll_back_a_newer_tool_list() {
     assert_eq!(defs[0].name, "newest");
 
     assert_eq!(server_control.list_calls.load(Ordering::SeqCst), 3);
-    client.cancel().await.unwrap();
+    client.close().await;
 }
 
 #[tokio::test]
@@ -402,7 +404,7 @@ async fn refresh_rebuilds_owned_tools_in_latest_server_order() {
         DynamicToolServer::new(vec![make_tool("alpha", "Alpha"), make_tool("beta", "Beta")]);
     let server_control = server.clone();
     let handle = ToolServer::new().run();
-    let (client, server_task) = connect(server, handle.clone()).await;
+    let (client, server_task) = connect(server, handler(&handle)).await;
     server_control
         .set_tools(vec![
             make_tool("beta", "Beta refreshed"),
@@ -432,7 +434,7 @@ async fn refresh_rebuilds_owned_tools_in_latest_server_order() {
     })
     .await
     .expect("latest MCP order committed");
-    client.cancel().await.unwrap();
+    client.close().await;
 }
 
 #[tokio::test]
@@ -440,12 +442,12 @@ async fn one_refresh_reclaims_a_name_after_a_peer_owner_disappears() {
     let handle = ToolServer::new().run();
     let first_server = DynamicToolServer::new(vec![make_tool("shared", "First owner")]);
     let first_control = first_server.clone();
-    let (first_client, first_server_task) = connect(first_server, handle.clone()).await;
+    let (first_client, first_server_task) = connect(first_server, handler(&handle)).await;
     let first_running_server = first_server_task.await.unwrap();
 
     let second_server = DynamicToolServer::new(vec![make_tool("shared", "Second owner")]);
     let second_control = second_server.clone();
-    let (second_client, second_server_task) = connect(second_server, handle.clone()).await;
+    let (second_client, second_server_task) = connect(second_server, handler(&handle)).await;
     let second_running_server = second_server_task.await.unwrap();
     assert_eq!(
         handle.tool_defs(None).await.unwrap()[0].description,
@@ -492,8 +494,8 @@ async fn one_refresh_reclaims_a_name_after_a_peer_owner_disappears() {
     .await
     .expect("one refresh reclaimed the empty slot");
 
-    second_client.cancel().await.unwrap();
-    first_client.cancel().await.unwrap();
+    second_client.close().await;
+    first_client.close().await;
 }
 
 #[tokio::test]
@@ -501,7 +503,7 @@ async fn refresh_does_not_replace_a_newer_local_registration() {
     let server = DynamicToolServer::new(vec![make_tool("alpha", "MCP alpha")]);
     let server_control = server.clone();
     let handle = ToolServer::new().run();
-    let (client, server_task) = connect(server, handle.clone()).await;
+    let (client, server_task) = connect(server, handler(&handle)).await;
 
     handle.add_dynamic_tool(make_dynamic_tool("alpha", "Local alpha"));
     server_control
@@ -540,7 +542,7 @@ async fn refresh_does_not_replace_a_newer_local_registration() {
         .execute("alpha", "{}", &mut rig_agent::tool::ToolContext::new())
         .await;
     assert_eq!(result.output(), &ToolOutput::text("local"));
-    client.cancel().await.unwrap();
+    client.close().await;
 }
 
 #[tokio::test]
@@ -550,8 +552,8 @@ async fn one_handler_refresh_protects_live_peer_and_reclaims_after_disconnect() 
     let server_b = DynamicToolServer::new(vec![make_tool("alpha", "Handler B")]);
     let handle = ToolServer::new().run();
 
-    let (client_a, server_task_a) = connect(server_a, handle.clone()).await;
-    let (client_b, server_task_b) = connect(server_b, handle.clone()).await;
+    let (client_a, server_task_a) = connect(server_a, handler(&handle)).await;
+    let (client_b, server_task_b) = connect(server_b, handler(&handle)).await;
 
     server_a_control
         .set_tools(vec![
@@ -592,7 +594,7 @@ async fn one_handler_refresh_protects_live_peer_and_reclaims_after_disconnect() 
     // Once B disconnects, its generation must no longer shield the dead
     // registration from A. Otherwise the registry keeps advertising B and
     // execution fails with `Transport closed` indefinitely.
-    client_b.cancel().await.unwrap();
+    client_b.close().await;
     server_a_control
         .set_tools(vec![make_tool("alpha", "Reclaimed handler A")])
         .await;
@@ -625,12 +627,12 @@ async fn one_handler_refresh_protects_live_peer_and_reclaims_after_disconnect() 
         "reclaimed tool should execute: {result:?}"
     );
 
-    client_a.cancel().await.unwrap();
+    client_a.close().await;
 }
 
 #[test]
 fn client_handler_get_info_delegates() {
-    let info = ClientInfo::new(
+    let info = ClientConfig::new(
         ClientCapabilities::default(),
         Implementation::new("test-client", "1.0.0"),
     );
@@ -650,19 +652,15 @@ async fn mcp_tool_preserves_provider_definition() {
         let running = server.serve((sfc, s2c)).await.unwrap();
         running.waiting().await.unwrap();
     });
-    let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
+    let client = McpConnection::new(ClientConfig::default().serve((cfs, c2s)).await.unwrap());
     let handle = ToolServer::new()
-        .dynamic_tool(
-            McpTool::from_mcp_server(tool, client.peer().clone())
-                .try_into()
-                .expect("tool name"),
-        )
+        .dynamic_tool(McpTool::new(tool, &client).try_into().expect("tool name"))
         .run();
     let defs = handle.tool_defs(None).await.unwrap();
     assert_eq!(defs.len(), 1);
     assert_eq!(defs[0].name, "search_docs");
     assert_eq!(defs[0].description, "Search the docs");
-    client.cancel().await.unwrap();
+    client.close().await;
 
     let defs = handle.tool_defs(None).await.unwrap();
     assert!(
@@ -688,7 +686,7 @@ async fn mcp_output_schema_is_kept_and_malformed_schemas_are_skipped() {
         .expect("an object");
     let server = DynamicToolServer::new(vec![weather, broken]);
     let handle = ToolServer::new().run();
-    let (client, task) = connect(server, handle.clone()).await;
+    let (client, task) = connect(server, handler(&handle)).await;
     let defs = handle.tool_defs(None).await.unwrap();
     assert_eq!(
         defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
@@ -701,7 +699,7 @@ async fn mcp_output_schema_is_kept_and_malformed_schemas_are_skipped() {
             .map(|schema| (**schema).clone()),
         Some(output)
     );
-    client.cancel().await.unwrap();
+    client.close().await;
     task.abort();
 }
 
@@ -715,16 +713,12 @@ async fn disconnected_directly_registered_mcp_tool_is_retired_on_dispatch() {
         let running = server.serve((sfc, s2c)).await.unwrap();
         running.waiting().await.unwrap();
     });
-    let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
+    let client = McpConnection::new(ClientConfig::default().serve((cfs, c2s)).await.unwrap());
     let handle = ToolServer::new()
-        .dynamic_tool(
-            McpTool::from_mcp_server(tool, client.peer().clone())
-                .try_into()
-                .expect("tool name"),
-        )
+        .dynamic_tool(McpTool::new(tool, &client).try_into().expect("tool name"))
         .run();
 
-    client.cancel().await.unwrap();
+    client.close().await;
 
     let result = handle
         .execute(
@@ -750,8 +744,8 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
     use rig_agent::tool::DynamicTool;
     use rig_agent::tool::{ToolContext, ToolErrorKind};
     use rmcp::model::{
-        CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
-        ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
+        CallToolRequestParams, CallToolResponse, ClientConfig, ErrorData, Implementation,
+        ProtocolVersion, ServerCapabilities, ServerConfig, Tool,
     };
     use rmcp::service::RequestContext;
     use rmcp::{RoleServer, ServerHandler, ServiceExt};
@@ -759,8 +753,8 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
     #[derive(Clone)]
     struct HangingServer;
     impl ServerHandler for HangingServer {
-        fn get_info(&self) -> ServerInfo {
-            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+        fn get_info(&self) -> ServerConfig {
+            ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
                 .with_protocol_version(ProtocolVersion::LATEST)
                 .with_server_info(Implementation::new("builder-timeout-test", "0.1.0"))
         }
@@ -768,8 +762,8 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
             &self,
             _request: CallToolRequestParams,
             _context: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
-            std::future::pending::<Result<CallToolResult, ErrorData>>().await
+        ) -> Result<CallToolResponse, ErrorData> {
+            std::future::pending().await
         }
     }
 
@@ -787,30 +781,24 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
         let running = HangingServer.serve((sfc, s2c)).await.expect("server start");
         running.waiting().await.expect("server error");
     });
-    let client = ClientInfo::default()
-        .serve((cfs, c2s))
-        .await
-        .expect("client connect");
-    let peer = client.peer().clone();
+    let client = McpConnection::new(
+        ClientConfig::default()
+            .serve((cfs, c2s))
+            .await
+            .expect("client connect"),
+    );
 
-    // The default the plural builders pass, and a disabled timeout, both
-    // reach the built tool verbatim.
-    let built = McpTool::from_mcp_server(tool("a"), peer.clone());
+    // The default, and a disabled timeout, both reach the built tool verbatim.
+    let built = McpTool::new(tool("a"), &client);
     assert_eq!(built.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
     assert_eq!(built.with_timeout(None).timeout(), None);
-
-    // Every wrapped tool carries the same default timeout as the single-tool
-    // constructor: the list form cannot silently reintroduce an unbounded call.
-    for tool in tools_from_server([tool("a"), tool("b")], &peer) {
-        assert_eq!(tool.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
-    }
 
     // Every requested tool is registered against the shared client...
     let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
         .dynamic_tools(
-            tools_from_server([tool("a"), tool("b")], &peer)
+            [tool("a"), tool("b")]
                 .into_iter()
-                .map(|tool| DynamicTool::try_from(tool).expect("tool name"))
+                .map(|tool| DynamicTool::try_from(McpTool::new(tool, &client)).expect("tool name"))
                 .collect(),
         )
         .build();
@@ -825,13 +813,13 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
 
     // ...and the configured timeout actually bounds a hanging call.
     let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
-        .dynamic_tools(
-            tools_from_server([tool("hang_forever")], &peer)
-                .into_iter()
-                .map(|tool| tool.with_timeout(Duration::from_millis(200)))
-                .map(|tool| DynamicTool::try_from(tool).expect("tool name"))
-                .collect(),
-        )
+        .dynamic_tools(vec![
+            DynamicTool::try_from(
+                McpTool::new(tool("hang_forever"), &client)
+                    .with_timeout(Duration::from_millis(200)),
+            )
+            .expect("tool name"),
+        ])
         .build();
     let timed = tokio::time::timeout(Duration::from_secs(5), async {
         let mut context = ToolContext::new();

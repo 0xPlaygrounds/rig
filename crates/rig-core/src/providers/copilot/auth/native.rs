@@ -1,15 +1,13 @@
 use super::{
-    ApiKeyRecord, AuthContext, AuthError, Authenticator, DeviceCodePrompt, refresh_api_key,
+    ApiKeyRecord, AuthContext, AuthError, Authenticator, DeviceCodePrompt, STORE_KEY,
+    refresh_api_key,
 };
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::device::{
-    emit_device_code_prompt, read_json_record, token_expired, write_json_record, write_private,
-};
-use crate::providers::internal::auth::{request, send_json};
+use crate::providers::internal::auth::device::emit_device_code_prompt;
+use crate::providers::internal::auth::{load_record, request, save_record, send_json};
 use bytes::Bytes;
 use http::Method;
 use serde::Deserialize;
-use std::hash::{DefaultHasher, Hash, Hasher};
 
 const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
@@ -34,85 +32,58 @@ struct AccessTokenResponse {
     error_description: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct AccessTokenState {
-    token: String,
-    from_cache: bool,
-}
-
 impl Authenticator {
     pub(super) async fn auth_context_oauth<H>(&self, http: &H) -> Result<AuthContext, AuthError>
     where
         H: HttpClientExt,
     {
         let _refresh = self.refresh_lock.lock().await;
-        let record: ApiKeyRecord = read_json_record(self.api_key_file.as_deref())?;
-        let cached_access_token = self.read_access_token().ok().flatten();
-        if record.can_reuse_for_oauth(cached_access_token.as_deref()) {
+        let mut record: ApiKeyRecord = load_record(&*self.store, STORE_KEY).await?;
+        if record.can_reuse_for_oauth(record.github_token.as_deref()) {
             return Ok(record.into_context());
         }
 
-        let access_token = if let Some(token) = cached_access_token {
-            AccessTokenState {
-                token,
-                from_cache: true,
-            }
-        } else {
-            self.access_token(http).await?
+        let from_cache = record.github_token.is_some();
+        let github_token = match record.github_token.clone() {
+            Some(token) => token,
+            None => self.sign_in_to_github(http, &mut record).await?,
         };
-        let record = match refresh_api_key(http, &access_token.token).await {
-            Ok(record) => record.bind_to_bootstrap_token(&access_token.token),
-            Err(err) if access_token.from_cache && should_retry_with_fresh_access_token(&err) => {
-                self.clear_access_token()?;
-                let fresh_access_token = self.reauthenticate_access_token(http).await?;
-                refresh_api_key(http, &fresh_access_token)
+        let session = match refresh_api_key(http, &github_token).await {
+            Ok(session) => session.bound_to(&github_token, Some(github_token.clone())),
+            Err(err) if from_cache && should_retry_with_fresh_access_token(&err) => {
+                record.github_token = None;
+                save_record(&*self.store, STORE_KEY, &record).await?;
+                let fresh = self.sign_in_to_github(http, &mut record).await?;
+                refresh_api_key(http, &fresh)
                     .await?
-                    .bind_to_bootstrap_token(&fresh_access_token)
+                    .bound_to(&fresh, Some(fresh.clone()))
             }
             Err(err) => return Err(err),
         };
-        write_json_record(self.api_key_file.as_deref(), &record)?;
-        Ok(record.into_context())
+        save_record(&*self.store, STORE_KEY, &session).await?;
+        Ok(session.into_context())
     }
 
-    pub(super) async fn auth_context_with_github_access_token<H>(
+    /// Run the device flow when allowed, and keep the GitHub token it gets
+    /// in `record` and the store before the exchange that may fail.
+    async fn sign_in_to_github<H>(
         &self,
         http: &H,
-        access_token: &str,
-    ) -> Result<AuthContext, AuthError>
+        record: &mut ApiKeyRecord,
+    ) -> Result<String, AuthError>
     where
         H: HttpClientExt,
     {
-        let _refresh = self.refresh_lock.lock().await;
-        let record: ApiKeyRecord = read_json_record(self.api_key_file.as_deref())?;
-        if record.can_reuse_for_bootstrap_token(access_token) {
-            return Ok(record.into_context());
+        if !self.allow_device_flow {
+            return Err(AuthError::Message(
+                "GitHub Copilot sign-in required. Reconnect Copilot in Settings before using this provider."
+                    .into(),
+            ));
         }
-
-        let record = refresh_api_key(http, access_token)
-            .await?
-            .bind_to_bootstrap_token(access_token);
-        write_json_record(self.api_key_file.as_deref(), &record)?;
-        Ok(record.into_context())
-    }
-
-    async fn access_token<H>(&self, http: &H) -> Result<AccessTokenState, AuthError>
-    where
-        H: HttpClientExt,
-    {
-        if let Some(token) = self.read_access_token()? {
-            return Ok(AccessTokenState {
-                token,
-                from_cache: true,
-            });
-        }
-
-        self.reauthenticate_access_token(http)
-            .await
-            .map(|token| AccessTokenState {
-                token,
-                from_cache: false,
-            })
+        let token = self.login_device_flow(http).await?;
+        record.github_token = Some(token.clone());
+        save_record(&*self.store, STORE_KEY, record).await?;
+        Ok(token)
     }
 
     async fn login_device_flow<H>(&self, http: &H) -> Result<String, AuthError>
@@ -189,61 +160,6 @@ impl Authenticator {
             "Timed out waiting for GitHub Copilot device authorization".into(),
         ))
     }
-
-    fn read_access_token(&self) -> Result<Option<String>, AuthError> {
-        let Some(path) = &self.access_token_file else {
-            return Ok(None);
-        };
-
-        match std::fs::read_to_string(path) {
-            Ok(token) => {
-                let token = token.trim();
-                if token.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(token.to_owned()))
-                }
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(err) => Err(err.into()),
-        }
-    }
-
-    fn write_access_token(&self, token: &str) -> Result<(), AuthError> {
-        let Some(path) = &self.access_token_file else {
-            return Ok(());
-        };
-
-        write_private(path, token.as_bytes())?;
-        Ok(())
-    }
-
-    fn clear_access_token(&self) -> Result<(), AuthError> {
-        let Some(path) = &self.access_token_file else {
-            return Ok(());
-        };
-
-        match std::fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(err.into()),
-        }
-    }
-
-    async fn reauthenticate_access_token<H>(&self, http: &H) -> Result<String, AuthError>
-    where
-        H: HttpClientExt,
-    {
-        if !self.allow_device_flow {
-            return Err(AuthError::Message(
-                "GitHub Copilot sign-in required. Reconnect Copilot in Settings before using this provider."
-                    .into(),
-            ));
-        }
-        let token = self.login_device_flow(http).await?;
-        self.write_access_token(&token)?;
-        Ok(token)
-    }
 }
 
 impl ApiKeyRecord {
@@ -254,33 +170,6 @@ impl ApiKeyRecord {
 
         bootstrap_token.is_none_or(|bootstrap_token| self.matches_bootstrap_token(bootstrap_token))
     }
-
-    fn can_reuse_for_bootstrap_token(&self, bootstrap_token: &str) -> bool {
-        self.has_live_api_key() && self.matches_bootstrap_token(bootstrap_token)
-    }
-
-    fn bind_to_bootstrap_token(mut self, bootstrap_token: &str) -> Self {
-        self.bootstrap_token_fingerprint = Some(bootstrap_token_fingerprint(bootstrap_token));
-        self
-    }
-
-    fn has_live_api_key(&self) -> bool {
-        self.token
-            .as_ref()
-            .is_some_and(|token| !token.trim().is_empty())
-            && !token_expired(self.expires_at, 0)
-    }
-
-    fn matches_bootstrap_token(&self, bootstrap_token: &str) -> bool {
-        self.bootstrap_token_fingerprint.as_deref()
-            == Some(bootstrap_token_fingerprint(bootstrap_token).as_str())
-    }
-}
-
-fn bootstrap_token_fingerprint(bootstrap_token: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    bootstrap_token.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
 }
 
 fn normalize_poll_interval_seconds(interval: Option<u64>) -> u64 {

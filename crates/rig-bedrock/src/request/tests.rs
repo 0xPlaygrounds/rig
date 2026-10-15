@@ -116,6 +116,31 @@ fn tool_choice_has_its_converse_form() {
     assert_eq!(config(Some(ToolChoice::Auto), Vec::new()), None);
 }
 
+/// Converse forces at most one tool, so a `ToolChoice::Specific` naming none
+/// or several is refused rather than narrowed to its first name.
+#[test]
+fn specific_tool_choice_names_exactly_one_tool() {
+    for names in [vec![], vec![name("add"), name("sub")]] {
+        let mut request = CompletionRequest::new("q");
+        request.tool_choice = Some(ToolChoice::Specific {
+            function_names: names,
+        });
+        request.tools = vec![tool("add"), tool("sub")];
+        let request =
+            Completion::prepare(request, &Converse::new(NOVA).describe()).expect("prepares");
+        let error = Converse::new(NOVA)
+            .encode(request, Mode::Unary)
+            .err()
+            .map(|error| error.to_string());
+        assert!(
+            error
+                .as_deref()
+                .is_some_and(|error| error.contains("exactly one specific tool")),
+            "{error:?}"
+        );
+    }
+}
+
 /// The inference configuration is always sent, with the temperature as the
 /// 32-bit float Converse reads; the additional fields and the structured
 /// output schema go as given.
