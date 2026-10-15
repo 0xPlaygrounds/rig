@@ -276,8 +276,7 @@ is built for each call's `CallPlace`: the app's workspace (an overlay of it
 for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
 `WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
 for a tool registered with `add_live_tool_per_call` the `Live` its output
-goes to, as the coding tools and
-rig-coding-tools' `ListTool` (`list`, off by default) are.
+goes to, as the coding tools and `ListTool` (`list`, off by default) are.
 
 ```rust,no_run
 use std::path::PathBuf;
