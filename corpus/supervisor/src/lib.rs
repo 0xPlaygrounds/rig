@@ -306,7 +306,7 @@ fn count_calls(
         };
         let results = entries
             .iter()
-            .filter_map(|entry| match &**&entry.message {
+            .filter_map(|entry| match &*entry.message {
                 message::Message::User { content } => Some(content),
                 _ => None,
             })
