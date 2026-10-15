@@ -61,7 +61,7 @@ impl Message {
         }
     }
 
-    fn delta(&mut self, index: usize, delta: Map<String, Value>) {
+    fn delta(&mut self, index: usize, delta: &Map<String, Value>) {
         let kind = delta
             .get("type")
             .and_then(Value::as_str)
@@ -98,7 +98,7 @@ impl Message {
             return;
         }
         let mut item = Value::Object(std::mem::take(block));
-        crate::operation::completion::merge(&mut item, &delta);
+        crate::operation::completion::merge(&mut item, delta);
         if let Value::Object(item) = item {
             *block = item;
         }
@@ -182,7 +182,7 @@ impl Reassemble<MessagesEvent> for Message {
             "content_block_start" => {
                 if let (Ok(index), Ok(block)) = (event.index(), event.item("content_block")) {
                     self.inputs.remove(&index);
-                    self.place(index, block);
+                    self.place(index, block.clone());
                 }
             }
             "content_block_delta" => {
