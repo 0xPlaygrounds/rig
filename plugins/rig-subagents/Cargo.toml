@@ -7,8 +7,6 @@ license = "MIT"
 readme = "README.md"
 description = "A rig-harness plugin: subagents, with the task, message and wait tools."
 repository = "https://github.com/0xPlaygrounds/rig"
-# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
-publish = false
 
 [lints]
 workspace = true
@@ -24,10 +22,9 @@ tui = ["dep:rig-tui"]
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness" }
-rig-tui = { path = "../rig-tui", optional = true }
+rig-harness = { path = "../../crates/rig-harness", version = "0.44.0" }
+rig-tui = { path = "../rig-tui", version = "0.44.0", optional = true }
 # The tools' parameters, derived from their arguments types.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

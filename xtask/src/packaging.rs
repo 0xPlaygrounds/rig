@@ -60,6 +60,29 @@ const CRATES_IO_CAP: u64 = 10 * 1024 * 1024;
 /// Raising it is fine, as a reviewed diff, which is the point.
 const SIZE_CEILING: u64 = 8 * 1024 * 1024;
 
+/// Crates a derive expands to without the source naming them: Bevy's derives
+/// write paths into `bevy_ecs` and `bevy_reflect`, which the crate deriving
+/// must therefore depend on directly.
+const DERIVED_DEPENDENCIES: &[(&str, &[&str])] = &[
+    (
+        "bevy_ecs",
+        &[
+            "Bundle",
+            "Component",
+            "EntityEvent",
+            "Event",
+            "Message",
+            "QueryData",
+            "QueryFilter",
+            "Resource",
+            "ScheduleLabel",
+            "SystemParam",
+            "SystemSet",
+        ],
+    ),
+    ("bevy_reflect", &["Reflect"]),
+];
+
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     let metadata = metadata(workspace, &["--no-deps"])?;
     let packages = packages(&metadata)?;
@@ -178,7 +201,10 @@ fn dependencies_are_used(packages: &BTreeMap<String, Package>) -> Result<Vec<Str
         let mut unused: Vec<String> = Vec::new();
         for dependency in &package.dependencies {
             let identifier = dependency.identifier();
-            if !sources.iter().any(|source| names(source, &identifier)) {
+            if !sources
+                .iter()
+                .any(|source| names(source, &identifier) || derives_into(source, &identifier))
+            {
                 unused.push(format!(
                     "{} (as `{identifier}`)",
                     dependency
@@ -345,6 +371,25 @@ fn names(source: &str, identifier: &str) -> bool {
     source.match_indices(identifier).any(|(at, _)| {
         boundary(at.checked_sub(1).and_then(|before| bytes.get(before)))
             && boundary(bytes.get(at + identifier.len()))
+    })
+}
+
+/// Whether `source` derives a macro that expands to the crate `identifier`.
+fn derives_into(source: &str, identifier: &str) -> bool {
+    let Some((_, macros)) = DERIVED_DEPENDENCIES
+        .iter()
+        .find(|(dependency, _)| *dependency == identifier)
+    else {
+        return false;
+    };
+    source.split("derive(").skip(1).any(|rest| {
+        rest.split(')').next().is_some_and(|list| {
+            list.split(',').any(|derived| {
+                let derived = derived.trim();
+                let derived = derived.rsplit("::").next().unwrap_or(derived);
+                macros.contains(&derived)
+            })
+        })
     })
 }
 

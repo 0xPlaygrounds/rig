@@ -7,8 +7,6 @@ license = "MIT"
 readme = "README.md"
 description = "The harness of the rig coding agent on the rig-ecs kernel: the session and the launcher protocol; every other part is a Bevy plugin crate."
 repository = "https://github.com/0xPlaygrounds/rig"
-# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
-publish = false
 
 [lints]
 workspace = true
