@@ -782,11 +782,8 @@ fn fingerprint(bencher: divan::Bencher, block: &str) {
 
 // The effect log.
 
-/// The completion record of `id` whose request is `history` with the tools,
-/// answered by a short reply.
-fn completion_record(id: u64, history: &[Message]) -> EffectRecord {
-    let mut request = request(history);
-    request.chat_history.pop();
+/// The completion record of `id` with `request`, answered by a short reply.
+fn completion_record(id: u64, request: CompletionRequest) -> EffectRecord {
     EffectRecord {
         purpose: None,
         turn: None,
@@ -817,16 +814,19 @@ fn completion_record(id: u64, history: &[Message]) -> EffectRecord {
 
 /// Appending the completion record of a request of `MESSAGES` messages to
 /// an effect log whose last record is the same request four messages
-/// earlier: the continuation every model call writes. Each sample appends
-/// to a fresh log holding that earlier record.
+/// earlier: the continuation every model call writes. The two requests
+/// share their messages, as a conversation's requests do. Each sample
+/// appends to a fresh log holding that earlier record.
 #[divan::bench(consts = [100, 1_000, 3_000], sample_count = 20, sample_size = 1)]
 fn effect_log_append<const MESSAGES: usize>(bencher: divan::Bencher) {
-    let messages = history(MESSAGES / 4, &Native::of("responses"), false);
-    let earlier = EffectLog::from_records(vec![completion_record(
-        1,
-        messages.get(..MESSAGES - 4).unwrap_or_default(),
-    )]);
-    let next = EffectLog::from_records(vec![completion_record(2, &messages)]);
+    let mut sent = request(&history(MESSAGES / 4, &Native::of("responses"), false));
+    sent.chat_history.pop();
+    let mut before = sent.clone();
+    before
+        .chat_history
+        .truncate(sent.chat_history.len().saturating_sub(4));
+    let earlier = EffectLog::from_records(vec![completion_record(1, before)]);
+    let next = EffectLog::from_records(vec![completion_record(2, sent)]);
     let primed = || {
         let store = rig_memory::MemoryStore::default();
         let mut writer = jsonl::Writer::on(Arc::new(store.clone()), jsonl::SESSION_EFFECT_LOG);
