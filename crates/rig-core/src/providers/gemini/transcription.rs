@@ -39,10 +39,9 @@ fn transcription_body(
     let mime_type = mime_guess::from_path(Path::new(&request.filename))
         .first()
         .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
-    let data = BASE64_STANDARD.encode(request.data);
-    let body = json!({
+    let mut body = json!({
         "contents": [{
-            "parts": [{ "inlineData": { "mimeType": mime_type, "data": data }, "thought": false }],
+            "parts": [{ "inlineData": { "mimeType": mime_type, "data": null }, "thought": false }],
             "role": "user",
         }],
         "generationConfig": generation_config,
@@ -53,6 +52,10 @@ fn transcription_body(
             "role": "model",
         },
     });
+    // The audio moves in: `json!` would copy it.
+    if let Some(data) = body.pointer_mut("/contents/0/parts/0/inlineData/data") {
+        *data = Value::String(BASE64_STANDARD.encode(request.data));
+    }
     tracing::trace!(
         target: "rig::transcription",
         "Sending completion request to Gemini API {}",
