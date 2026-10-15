@@ -217,9 +217,30 @@ pub enum AssistantContent {
 
 impl AssistantContent {
     /// This block without its provider item: what a different provider can
-    /// use, and what its fingerprint covers.
+    /// use, and what its fingerprint covers. The item is not copied.
     pub fn canonical(&self) -> Self {
-        self.clone().into_canonical()
+        match self {
+            Self::Text(text) => Self::Text(Text {
+                text: text.text.clone(),
+                citations: text.citations.clone(),
+                native: None,
+            }),
+            Self::ToolCall(call) => {
+                Self::ToolCall(ToolCall::new(call.id.clone(), call.function.clone()))
+            }
+            Self::Reasoning(reasoning) => Self::Reasoning(Reasoning {
+                text: reasoning.text.clone(),
+                redacted: reasoning.redacted,
+                native: None,
+            }),
+            Self::Image(image) => Self::Image(Image {
+                data: image.data.clone(),
+                media_type: image.media_type.clone(),
+                detail: image.detail.clone(),
+                native: None,
+            }),
+            Self::Opaque(opaque) => Self::Opaque(opaque.clone()),
+        }
     }
 
     /// [`Self::canonical`], taking the block.
