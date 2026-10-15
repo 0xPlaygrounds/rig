@@ -192,7 +192,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(follow_successor::<SpawnSubagent>)
         .add_observer(follow_successor::<TaskCall>)
         .add_observer(answer_task)
-        .add_observer(end_with_call)
+        .add_observer(despawn_open_children::<TaskCall>)
         .add_observer(retire_once)
         .add_systems(AgentPass, refuse_too_deep.in_set(SubagentSystems::Gate));
 }
@@ -465,21 +465,6 @@ fn answer_task(
     };
     if let Ok(mut call) = calls.get_mut(of.parent()) {
         call.decide(Decider::plugin("rig-subagents"), output);
-    }
-}
-
-/// Ends the request of a `task` call that settles first, as when an
-/// interrupt ends the call while a gate holds the request: it is despawned,
-/// which records it as cancelled and ends whatever held it.
-fn end_with_call(
-    settled: On<Add<Settled>>,
-    children: Query<&Children>,
-    open: Query<(), (With<TaskCall>, Without<Settled>)>,
-    mut commands: Commands,
-) {
-    let requests = children.get(settled.entity).into_iter().flatten();
-    for &request in requests.filter(|&&request| open.contains(request)) {
-        commands.entity(request).despawn();
     }
 }
 

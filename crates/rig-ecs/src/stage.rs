@@ -492,6 +492,58 @@ pub struct Supersedes(Vec<Entity>);
 #[reflect(Component, Default)]
 pub struct Settled;
 
+/// When an effect carrying `M` is superseded, moves `M`, and the hold the
+/// effect keeps ([`HoldOf`]), to the successor, so the plugin that owns the
+/// effect by `M` takes the successor's outcome. The successor's hold is
+/// inserted before the old one is removed, so the held effect is never
+/// unheld in between: `app.add_observer(follow_successor::<Summarizing>)`.
+pub fn follow_successor<M: Component>(
+    superseded: On<Add<SupersededBy>>,
+    owned: Query<(&SupersededBy, Option<&HoldOf>), With<M>>,
+    mut commands: Commands,
+) {
+    let old = superseded.entity;
+    let Ok((by, hold)) = owned.get(old) else {
+        return;
+    };
+    let new = by.successor();
+    let held = hold.map(|&HoldOf(held)| held);
+    commands.queue(move |world: &mut World| {
+        let Ok(mut to) = world.get_entity_mut(new) else {
+            return;
+        };
+        if let Some(held) = held {
+            to.insert(HoldOf(held));
+        }
+        let Ok(mut from) = world.get_entity_mut(old) else {
+            return;
+        };
+        let marker = from.take::<M>();
+        if held.is_some() {
+            from.remove::<HoldOf>();
+        }
+        if let (Some(marker), Ok(mut to)) = (marker, world.get_entity_mut(new)) {
+            to.insert(marker);
+        }
+    });
+}
+
+/// When an effect settles, despawns its `ChildOf` children carrying `M`
+/// that are still open, such as a request a gate holds when a stop ends
+/// the call that made it: each is recorded as cancelled, which ends
+/// whatever held it. `app.add_observer(despawn_open_children::<TaskCall>)`.
+pub fn despawn_open_children<M: Component>(
+    settled: On<Add<Settled>>,
+    children: Query<&Children>,
+    open: Query<(), (With<M>, Without<Settled>)>,
+    mut commands: Commands,
+) {
+    let children = children.get(settled.entity).into_iter().flatten();
+    for &child in children.filter(|&&child| open.contains(child)) {
+        commands.entity(child).despawn();
+    }
+}
+
 /// The record of every effect that settled or was cancelled, in settle
 /// order, and of the dispatches nested in their handlers. Only effects of a
 /// kind the kernel knows, such as an [`EffectRequest`], have a record.

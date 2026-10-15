@@ -169,7 +169,7 @@ pub mod prelude {
         SessionEntry, SessionFilter, SessionItem, SessionPicked, SessionPicker, SessionSource,
     };
     pub use crate::settings::{AppSettingsExt, Settings};
-    pub use crate::successor::{follow_successor, resend};
+    pub use crate::successor::resend;
     pub use crate::timings::{PluginTimings, SystemTimings};
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::workspace::ProjectWorkspace;

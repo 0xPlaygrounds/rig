@@ -5,6 +5,7 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::stage::{Decision, Holds, Started};
 
 use super::*;
+use rig_ecs::stage::{HoldOf, follow_successor};
 
 /// The owner's marker on its effect.
 #[derive(Component)]

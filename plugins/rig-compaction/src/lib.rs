@@ -40,7 +40,6 @@ use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::settings::AppSettingsExt;
-use rig_harness::successor::follow_successor;
 use rig_harness::{AppKeepsExt, PluginEntity, ProvidedBy};
 use rig_memory::{
     Cleared, CompactReason, CompactionOverrides, CompactionPolicy, Cut, CutRules, Summarizer,

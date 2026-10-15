@@ -79,6 +79,7 @@ pub mod prelude {
         ForAgent, GateSystems, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
         PluginEffects, PrepareSystems, Published, ReadyToSettle, ReadyToStart, ReviewSystems,
         Settled, Stage, Started, SupersededBy, Supersedes, ToolCalls, Waiting,
+        despawn_open_children, follow_successor,
     };
     pub use crate::tasks::{Done, PollTasks, Running, Wake};
     pub use crate::tools::{
