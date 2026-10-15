@@ -97,7 +97,12 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
         GenerateContentChunk(data): GenerateContentChunk,
         mut out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
-        let data = Value::Object(data);
+        let mut data = Value::Object(data);
+        // The parts move into their blocks; the rest of the chunk is read
+        // in place.
+        let parts = data
+            .pointer_mut("/candidates/0/content/parts")
+            .map(Value::take);
         // Gemini repeats both on every chunk. Record a value when it changes:
         // every span record counts against the exporter's attribute limit.
         let span = tracing::Span::current();
@@ -113,8 +118,8 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             span.record("gen_ai.response.model", model);
             self.model_version = Some(model.to_owned());
         }
-        if let Some(usage) = data.get("usageMetadata") {
-            self.usage = Some(usage.clone());
+        if let Some(usage) = data.get_mut("usageMetadata") {
+            self.usage = Some(usage.take());
         }
         if let Some(error) = data.at("/error") {
             // An in-band failure is a provider error, not a truncation.
@@ -147,7 +152,7 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
         }
         let parts = match candidate.get("content") {
             None | Some(Value::Null) => None,
-            Some(content @ Value::Object(_)) => content.get("parts"),
+            Some(Value::Object(_)) => parts,
             Some(_) => return Err(malformed("candidate content that is not an object")),
         };
         match parts {
@@ -156,7 +161,7 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
                 self.chunks += 1;
                 self.placed.clear();
                 for part in parts {
-                    self.part(part.clone(), &mut out)?;
+                    self.part(part, &mut out)?;
                     self.placed.push(self.placement.take());
                 }
             }
@@ -285,15 +290,16 @@ impl GenerateContentDecoder {
                         self.placement = self.answer.push(index, text).map(|at| (index, at));
                     }
                     out.push(index, text)?;
-                    out.edit(index, |item| merge_part(item, &part))
+                    out.edit(index, |item| merge_part(item, part))
                 }
-                _ if thought => self.open(
-                    Block::Reasoning { redacted: false },
-                    part.clone(),
-                    text,
-                    out,
-                ),
-                _ => self.open(Block::Text, part.clone(), text, out),
+                _ => {
+                    let block = match thought {
+                        true => Block::Reasoning { redacted: false },
+                        false => Block::Text,
+                    };
+                    let text = text.to_owned();
+                    self.open(block, part, &text, out)
+                }
             };
         }
         if let Some(call) = part.obj("functionCall") {
@@ -308,7 +314,7 @@ impl GenerateContentDecoder {
                 .get("args")
                 .map_or_else(|| "{}".to_owned(), Value::to_string);
             let id = CallId::from_wire(call.get("id").and_then(Value::as_str).unwrap_or_default());
-            return self.open(Block::Call { id, name }, part.clone(), &args, out);
+            return self.open(Block::Call { id, name }, part, &args, out);
         }
         if !thought
             && let (Some(mime_type), Some(data)) =
@@ -322,7 +328,7 @@ impl GenerateContentDecoder {
                 detail: None,
                 native: None,
             };
-            return self.open(Block::Image(image), part.clone(), "", out);
+            return self.open(Block::Image(image), part, "", out);
         }
         let bare = ["thought", "thoughtSignature", "partMetadata"];
         let data = fields.keys().any(|key| !bare.contains(&key.as_str()));
@@ -337,7 +343,7 @@ impl GenerateContentDecoder {
                 }
             });
         }
-        self.open(Block::Opaque { replay: data }, part.clone(), "", out)
+        self.open(Block::Opaque { replay: data }, part, "", out)
     }
 
     /// Whether `frame` carries a response id and nothing else, a repeated
@@ -388,19 +394,21 @@ fn malformed(what: &str) -> ProviderError {
 /// Merge a streamed part into the part its block holds so far: the text
 /// appends, a non-empty `thoughtSignature` replaces the one held, and any
 /// other field replaces its namesake.
-fn merge_part(item: &mut Value, part: &Value) {
-    let (Value::Object(held), Value::Object(part)) = (&mut *item, part) else {
-        *item = part.clone();
-        return;
-    };
-    for (key, value) in part {
-        if key == "text"
-            && let (Some(Value::String(text)), Value::String(more)) = (held.get_mut("text"), value)
-        {
-            text.push_str(more);
-        } else if key != "thoughtSignature" || value.as_str() != Some("") {
-            held.insert(key.clone(), value.clone());
+fn merge_part(item: &mut Value, part: Value) {
+    match (item, part) {
+        (Value::Object(held), Value::Object(part)) => {
+            for (key, value) in part {
+                if key == "text"
+                    && let (Some(Value::String(text)), Value::String(more)) =
+                        (held.get_mut("text"), &value)
+                {
+                    text.push_str(more);
+                } else if key != "thoughtSignature" || value.as_str() != Some("") {
+                    held.insert(key, value);
+                }
+            }
         }
+        (item, part) => *item = part,
     }
 }
 

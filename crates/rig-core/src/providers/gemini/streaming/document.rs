@@ -180,7 +180,7 @@ fn part_into(
             && (last.bool("thought") == Some(true)) == thought
             && !(signed(last) && signature.is_some())
         {
-            merge_part(last, &part);
+            merge_part(last, part);
             return;
         }
     } else if let Value::Object(fields) = &part {
