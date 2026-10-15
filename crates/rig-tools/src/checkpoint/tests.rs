@@ -453,3 +453,48 @@ fn git_snapshots_taken_at_once_all_succeed() {
     std::fs::remove_dir_all(repo).ok();
     std::fs::remove_dir_all(keep).ok();
 }
+
+/// Git snapshot changes created, modified and deleted at once each carry
+/// their own content: the text before and after of every file.
+#[test]
+fn git_changes_carry_each_files_own_content() {
+    let repo = scratch("checkpoint-sides");
+    let keep = scratch("checkpoint-sides-keep");
+    assert!(git_in(&repo, &["init", "-q"]));
+    for (name, text) in [("a", "a1\n"), ("b", "b1\n"), ("d", "")] {
+        std::fs::write(repo.join(name), text).ok();
+    }
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        also: Vec::new(),
+    };
+    let first = snapshot(&Local, &repo, &taking, None);
+    assert!(first.is_ok(), "{first:?}");
+    let Ok(first) = first else { return };
+    std::fs::write(repo.join("a"), "a2\n").ok();
+    std::fs::remove_file(repo.join("b")).ok();
+    std::fs::write(repo.join("c"), "c2\n").ok();
+    std::fs::write(repo.join("d"), "d2\n").ok();
+    let second = snapshot(&Local, &repo, &taking, Some(&first));
+    let changes = second.and_then(|second| second.changes_since(&first));
+    let sides: Vec<_> = changes
+        .unwrap_or_default()
+        .into_iter()
+        .map(|change| {
+            let after = change.after_text();
+            (change.kind, change.before_text, after)
+        })
+        .collect();
+    let text = |text: &str| Some(text.to_owned());
+    assert_eq!(
+        sides,
+        [
+            (ChangeKind::Modified, text("a1\n"), text("a2\n")),
+            (ChangeKind::Deleted, text("b1\n"), None),
+            (ChangeKind::Created, None, text("c2\n")),
+            (ChangeKind::Modified, text(""), text("d2\n")),
+        ]
+    );
+    std::fs::remove_dir_all(repo).ok();
+    std::fs::remove_dir_all(keep).ok();
+}

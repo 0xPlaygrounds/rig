@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Write as _};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -496,9 +496,42 @@ impl Git {
         Ok(String::from_utf8_lossy(&tree).trim().to_owned())
     }
 
-    /// The bytes of the object `id`.
-    fn blob(&self, id: &str) -> io::Result<Vec<u8>> {
-        self.run(&["cat-file", "blob", id].map(OsStr::new))
+    /// The bytes of each object in `ids` (an id, or `tree:path`), in order,
+    /// read by one `git cat-file --batch`.
+    fn blobs(&self, ids: &[&str]) -> io::Result<Vec<Vec<u8>>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut child = self
+            .command(&["cat-file", "--batch"].map(OsStr::new))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let input: String = ids.iter().map(|id| format!("{id}\n")).collect();
+        let stdin = child.stdin.take();
+        // Written beside the read, so neither pipe fills while the other waits.
+        let output = std::thread::scope(|scope| {
+            scope.spawn(|| stdin.map(|mut stdin| stdin.write_all(input.as_bytes())));
+            child.wait_with_output()
+        })?;
+        let mut rest = output.stdout.as_slice();
+        let mut blobs = Vec::with_capacity(ids.len());
+        for id in ids {
+            // `<id> <type> <size>\n<bytes>\n`, or `<id> missing\n`.
+            let missing = || io::Error::new(ErrorKind::NotFound, format!("git has no {id}"));
+            let end = rest.iter().position(|byte| *byte == b'\n');
+            let header = rest.get(..end.ok_or_else(missing)?).unwrap_or_default();
+            let size = String::from_utf8_lossy(header)
+                .rsplit(' ')
+                .next()
+                .map(str::parse);
+            let size: usize = size.and_then(Result::ok).ok_or_else(missing)?;
+            let body = rest.get(header.len() + 1..).unwrap_or_default();
+            blobs.push(body.get(..size).ok_or_else(missing)?.to_vec());
+            rest = body.get(size + 1..).unwrap_or_default();
+        }
+        Ok(blobs)
     }
 
     /// The bytes `path`, under the root as given or the work tree's top,
@@ -513,7 +546,8 @@ impl Git {
                 })?
                 .to_path_buf(),
         };
-        self.blob(&format!("{tree}:{}", below.to_string_lossy()))
+        let spec = format!("{tree}:{}", below.to_string_lossy());
+        self.run(&["cat-file", "blob", &spec].map(OsStr::new))
     }
 
     /// The file git names `path` (below `top`), spelled under the root as
@@ -543,22 +577,28 @@ impl Git {
         )?;
         let text = String::from_utf8_lossy(&raw);
         let mut fields = text.split('\0');
-        let mut changes = Vec::new();
+        let mut changed = Vec::new();
         while let (Some(header), Some(path)) = (fields.next(), fields.next()) {
             // `:old-mode new-mode old-id new-id status`
             let mut parts = header.split(' ').skip(2);
-            let (Some(old), Some(new)) = (parts.next(), parts.next()) else {
-                continue;
-            };
-            if old == new {
-                continue;
+            if let (Some(old), Some(new)) = (parts.next(), parts.next())
+                && old != new
+            {
+                changed.push((path, old, new));
             }
-            let missing = |id: &str| id.bytes().all(|byte| byte == b'0');
-            let was = (!missing(old)).then(|| self.blob(old)).transpose()?;
-            let now = (!missing(new)).then(|| self.blob(new)).transpose()?;
-            changes.push(change(&self.shown(path), was, now.as_deref()));
         }
-        Ok(changes)
+        // An id of zeros is no file on that side.
+        let present = |id: &&str| id.bytes().any(|byte| byte != b'0');
+        let sides = changed.iter().flat_map(|(_, old, new)| [*old, *new]);
+        let mut blobs = self
+            .blobs(&sides.filter(present).collect::<Vec<_>>())?
+            .into_iter();
+        let mut side = |id: &str| present(&id).then(|| blobs.next()).flatten();
+        let changes = changed.into_iter().map(|(path, old, new)| {
+            let (was, now) = (side(old), side(new));
+            change(&self.shown(path), was, now.as_deref())
+        });
+        Ok(changes.collect())
     }
 }
 
