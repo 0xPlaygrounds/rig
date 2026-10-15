@@ -47,7 +47,8 @@
 //!
 //! let recorder = EffectLogRecorder::new();
 //! let mut writer = jsonl::Writer::new("effects.jsonl");
-//! writer.append(&recorder.take())?;
+//! let log = recorder.take();
+//! writer.append(&log.header, &log.records)?;
 //! let next = writer.last_id()?.map_or(0, |id| id.as_u64() + 1);
 //! let log = jsonl::read("effects.jsonl")?;
 //! # Ok::<(), std::io::Error>(())
@@ -122,8 +123,8 @@ impl Writer {
         }
     }
 
-    /// Appends `log`'s records, after a header line with what its header
-    /// adds to the file's when it differs from the last one appended.
+    /// Appends `records`, after a header line with what `header` adds to
+    /// the file's when it differs from the last one appended.
     /// Writes nothing when it has no records: a header alone waits for the
     /// first record it describes, so a session that never made one leaves
     /// no file.
@@ -132,22 +133,27 @@ impl Writer {
     ///
     /// When the file cannot be read or written. The next append reads it
     /// again, so nothing of a failed append is referred to.
-    pub fn append(&mut self, log: &EffectLog) -> io::Result<()> {
-        if log.records.is_empty() {
+    pub fn append<'a>(
+        &mut self,
+        header: &LogHeader,
+        records: impl IntoIterator<Item = &'a EffectRecord>,
+    ) -> io::Result<()> {
+        let mut records = records.into_iter().peekable();
+        if records.peek().is_none() {
             return Ok(());
         }
         let mut known = self.fold()?;
-        let header_due = self.given.as_ref() != Some(&log.header);
+        let header_due = self.given.as_ref() != Some(header);
         let mut lines = Vec::new();
         if header_due {
-            let delta = delta(&known.header, &log.header);
+            let delta = delta(&known.header, header);
             if !known.has_lines || delta != LogHeader::default() {
                 serde_json::to_writer(&mut lines, &HeaderLine { header: &delta })?;
                 lines.push(b'\n');
                 merge(&mut known.header, delta);
             }
         }
-        for record in &log.records {
+        for record in records {
             Self::encode(&mut known, record, &mut lines)?;
             known.highest = known.highest.max(Some(record.id));
             lines.push(b'\n');
@@ -163,7 +169,7 @@ impl Writer {
         known.has_lines = true;
         self.known = Some(known);
         if header_due {
-            self.given = Some(log.header.clone());
+            self.given = Some(header.clone());
         }
         Ok(())
     }

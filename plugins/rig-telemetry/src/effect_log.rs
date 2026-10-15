@@ -15,6 +15,7 @@
 //! it knew of the old lines, and the records not written yet go through
 //! the same map.
 
+use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 
@@ -22,7 +23,7 @@ use bevy_log::error;
 #[cfg(feature = "tui")]
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
-use rig_cassette::effect_log::{self, EffectFilter, LogHeader, jsonl};
+use rig_cassette::effect_log::{EffectFilter, LogHeader, jsonl};
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
 use rig_ecs::WriteLogs;
 use rig_ecs::effects::Effects;
@@ -198,7 +199,10 @@ fn write_effects(
     mut failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let mut records: Vec<_> = recorded.read().map(|recorded| recorded.0.clone()).collect();
+    let mut records: Vec<_> = recorded
+        .read()
+        .map(|recorded| Cow::Borrowed(&recorded.0))
+        .collect();
     let EffectLogFile { header, writer } = &mut *log;
     for rewritten in rewrites.read() {
         // The file pass rewrote the file: nothing of its old lines is kept.
@@ -208,7 +212,7 @@ fn write_effects(
         let before = records.len();
         records = records
             .into_iter()
-            .filter_map(|record| mapped(record, with))
+            .filter_map(|record| mapped(record.into_owned(), with).map(Cow::Owned))
             .collect();
         if records.len() < before {
             error!("effect records the rewrite left unreadable were not logged");
@@ -225,11 +229,7 @@ fn write_effects(
             .insert_if_absent(record.key.clone(), family);
     }
     // The writer states only what the header adds to the file's.
-    let taken = effect_log::EffectLog {
-        header: header.clone(),
-        records,
-    };
-    if let Err(failure) = writer.append(&taken)
+    if let Err(failure) = writer.append(header, records.iter().map(|record| &**record))
         && !*failed
     {
         *failed = true;
