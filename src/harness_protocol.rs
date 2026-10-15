@@ -272,10 +272,10 @@ impl Home {
         self.root.join("defaults.json")
     }
 
-    /// `auth/<provider>.json`, the subscription credential `/login` keeps
-    /// for `provider`, such as `chatgpt`.
-    pub fn auth(&self, provider: &str) -> PathBuf {
-        self.root.join("auth").join(format!("{provider}.json"))
+    /// `auth/`, where `/login` keeps each subscription credential, as
+    /// `<provider>.json`.
+    pub fn auth(&self) -> PathBuf {
+        self.root.join("auth")
     }
 
     /// The generated agent project.

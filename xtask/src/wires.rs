@@ -44,16 +44,16 @@ const SESSION_EXCEPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
 /// rather than matched by path so adding one is reviewable; the tests assert the
 /// list's length.
 const CREDENTIAL_EXCHANGES: &[&str] = &[
-    // GitHub Copilot: device flow, API-key refresh, on-disk token cache.
+    // GitHub Copilot: device flow, API-key refresh, the kept session.
     "copilot/auth/mod.rs",
     "copilot/auth/native.rs",
-    "copilot/auth/wasm.rs",
     // ChatGPT: the same shape over OpenAI's own device flow.
     "chatgpt/auth/mod.rs",
     "chatgpt/auth/native.rs",
-    "chatgpt/auth/wasm.rs",
     // The request/send helpers both exchanges round-trip through.
     "internal/auth.rs",
+    // The token stores both exchanges keep their credentials in.
+    "internal/auth/store.rs",
 ];
 
 /// Run the check over `crates/rig-core/src/providers/`.

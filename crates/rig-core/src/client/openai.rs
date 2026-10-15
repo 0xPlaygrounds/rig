@@ -114,11 +114,11 @@ impl OpenAI {
     /// Every other setting is kept.
     ///
     /// ```no_run
-    /// use rig_core::providers::chatgpt::{self, auth::{AuthSource, Authenticator, DeviceCodeHandler}};
+    /// use rig_core::providers::chatgpt::{self, auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore}};
     /// use rig_core::providers::openai::OpenAIConfig;
     ///
     /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-    /// let authenticator = Authenticator::new(AuthSource::OAuth, None, DeviceCodeHandler::default(), true);
+    /// let authenticator = Authenticator::new(AuthSource::OAuth, FileTokenStore::new("/path/to/credentials"), DeviceCodeHandler::default(), true);
     /// let chatgpt = OpenAIConfig::with_key(&chatgpt::DIALECT, "")
     ///     .connect(http)
     ///     .authenticate(&authenticator)
