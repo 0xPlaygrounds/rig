@@ -20,7 +20,8 @@ each plugin added): ask it before reading rig's source.
 
 - **Crates.** The **kernel** is rig-ecs (never "runtime" or "core"), the
   **harness** rig-harness, the **launcher** the std-only `rig` binary; a
-  **plugin** is a Bevy plugin `plugins.toml` lists.
+  **plugin** is a Bevy plugin `plugins.toml` lists. Sources: `crates/<name>`
+  for libraries, kernel and harness; `plugins/<name>` for default plugins.
 - **Agents.** An **agent** is an entity with `Agent`, a conversation and a
   model; a **subagent** is one another agent spawned (`SpawnedBy`). The **main
   agent** is the first unspawned one (`main_order`), the **shown agent** the one
