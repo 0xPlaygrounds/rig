@@ -572,13 +572,7 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             .as_ref()
             .map(Usage::to_normalized)
             .unwrap_or_default();
-        let vectors = event.data.into_iter().map(|datum| {
-            datum
-                .embedding
-                .into_iter()
-                .filter_map(|number| number.as_f64())
-                .collect()
-        });
+        let vectors = event.data.into_iter().map(|datum| datum.embedding);
         let model = if event.model.is_empty() {
             self.model.clone()
         } else {
