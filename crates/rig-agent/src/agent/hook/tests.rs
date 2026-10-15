@@ -8,6 +8,12 @@ fn call_id() -> &'static CallId {
 
 use crate::tool::{ToolErrorKind, ToolExecutionError};
 
+/// The dispatch scratchpad the shared test events carry.
+fn scratchpad() -> &'static Scratchpad {
+    static PAD: std::sync::OnceLock<Scratchpad> = std::sync::OnceLock::new();
+    PAD.get_or_init(Scratchpad::default)
+}
+
 /// Builds a dispatch event for `kind` answering the shared test block.
 fn dispatch_event(kind: &EffectKind) -> DispatchEvent<'_> {
     DispatchEvent {
@@ -16,6 +22,7 @@ fn dispatch_event(kind: &EffectKind) -> DispatchEvent<'_> {
         turn: 1,
         call_id: Some(call_id()),
         context: None,
+        scratchpad: scratchpad(),
     }
 }
 
@@ -31,6 +38,7 @@ fn outcome_event<'a>(
         turn: 1,
         call_id: Some(call_id()),
         context: None,
+        scratchpad: scratchpad(),
     }
 }
 
@@ -109,7 +117,7 @@ async fn tool_call_rewrites_chain_in_registration_order() {
         args: r#"{"step":0}"#.into(),
     };
     let action = stack
-        .on_dispatch(&HookContext::new(false, None, None), dispatch_event(&kind))
+        .on_dispatch(&HookContext::new(), dispatch_event(&kind))
         .await;
 
     assert_eq!(
@@ -175,7 +183,7 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
     });
     let action = stack
         .on_outcome(
-            &HookContext::new(false, None, None),
+            &HookContext::new(),
             outcome_event_with(&kind, &outcome, &context),
         )
         .await;
@@ -220,7 +228,7 @@ use std::sync::{
 use serde_json::{Value, json};
 
 fn ctx() -> HookContext {
-    HookContext::new(false, Some("test-agent".to_string()), None)
+    HookContext::new().with_agent_name("test-agent")
 }
 
 struct InvalidResponder {
@@ -246,22 +254,7 @@ fn tool_call_kind() -> EffectKind {
 }
 
 fn invalid_tool_call_context() -> InvalidToolCallContext {
-    let call = rig_core::message::ToolCall::from_wire(
-        "tc1",
-        rig_core::message::ToolFunction::new(
-            rig_core::message::ToolName::new("unknown").expect("tool name"),
-            serde_json::json!({}),
-        ),
-    );
-    crate::run::TurnPolicy::new(["add".to_string()].into(), None, None)
-        .expect("policy")
-        .invalid_call_context(
-            &call,
-            Some("{}".into()),
-            vec![],
-            false,
-            crate::run::policy::InvalidToolCallReason::UnknownTool,
-        )
+    InvalidToolCallContext::new("unknown", InvalidToolCallReason::UnknownTool)
 }
 
 #[tokio::test]
@@ -354,12 +347,36 @@ fn scratchpad_is_shared_across_clones() {
 
 #[test]
 fn hook_context_reports_identity_and_turn() {
-    let context = HookContext::new(true, Some("agent".into()), None);
+    let context = HookContext::new()
+        .with_streaming(true)
+        .with_agent_name("agent");
     assert!(context.is_streaming());
     assert_eq!(context.agent_name(), Some("agent"));
     context.set_turn(3);
     assert_eq!(context.turn(), 3);
     assert!(context.run_id().to_raw() > 0);
+}
+
+/// A detached context stands in for a run: it carries seeded entries beside
+/// new appends and keeps the first finish request.
+#[test]
+fn detached_context_seeds_entries_and_keeps_the_first_finish() {
+    let seeded = Aside::new("budget", Author::rig(), json!({"spent": 1}));
+    let context = HookContext::default().with_entries([seeded]);
+    context
+        .append_entry("budget", &json!({"spent": 2}))
+        .expect("serializes");
+    let spent: Vec<Option<Value>> = context
+        .entries("budget")
+        .into_iter()
+        .map(|entry| entry.value.get("spent").cloned())
+        .collect();
+    assert_eq!(spent, [Some(json!(1)), Some(json!(2))]);
+
+    assert_eq!(context.requested_finish(), None);
+    context.finish("first");
+    context.finish("second");
+    assert_eq!(context.requested_finish().as_deref(), Some("first"));
 }
 
 struct RewriteHook(Value);

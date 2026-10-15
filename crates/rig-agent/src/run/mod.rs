@@ -1102,6 +1102,42 @@ impl AgentRun {
         AgentRunStep::Done(response)
     }
 
+    /// End the run successfully with `output` in place of its pending model
+    /// call: `output` is committed as a hand-built assistant turn and is the
+    /// final response's output. [`Self::next_step`] then returns
+    /// [`AgentRunStep::Done`].
+    ///
+    /// # Errors
+    /// A protocol violation, changing nothing, unless the run is about to
+    /// call the model or awaits a model response not yet fed or recorded.
+    pub fn finish_with(&mut self, output: impl Into<String>) -> Result<(), PromptError> {
+        if self.try_finish(output.into()) {
+            Ok(())
+        } else {
+            Err(self.protocol_violation(
+                "finish_with called while the run is not waiting for a model call",
+            ))
+        }
+    }
+
+    /// [`Self::finish_with`], answering whether the run was waiting for a
+    /// model call and so finished.
+    pub(crate) fn try_finish(&mut self, output: String) -> bool {
+        let awaits_model_call = matches!(
+            self.state,
+            RunState::PreparingRequest {
+                rollback_owed: false
+            } | RunState::AwaitingModel { recorded: false }
+        );
+        if awaits_model_call {
+            let content = vec![AssistantContent::text(output)];
+            self.history
+                .commit(assistant_turn(AssistantMessage::default(), content.clone()));
+            self.finish(content, 0);
+        }
+        awaits_model_call
+    }
+
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
     /// ingestion paths converge here, differing only in the `skipped` map.

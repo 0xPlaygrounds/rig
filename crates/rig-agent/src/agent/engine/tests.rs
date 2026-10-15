@@ -2033,6 +2033,141 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
     );
 }
 
+/// Keeps each tool call's arguments in its dispatch scratchpad and checks
+/// that its outcome reads them back; the `x == 1` call's outcome asks the run
+/// to finish.
+#[derive(Clone, Default)]
+struct CallStateFinishHook {
+    outcomes: Arc<AtomicU32>,
+    mismatches: Arc<AtomicU32>,
+}
+
+impl AgentHook for CallStateFinishHook {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if let Some(args) = event.tool_args() {
+            event.scratchpad.insert(args.to_owned());
+        }
+        DispatchAction::proceed()
+    }
+
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(args) = event.tool_args() else {
+            return OutcomeAction::proceed();
+        };
+        self.outcomes.fetch_add(1, SeqCst);
+        if event.scratchpad.get::<String>().as_deref() != Some(args) {
+            self.mismatches.fetch_add(1, SeqCst);
+        }
+        if args.contains(r#""x":1"#) {
+            ctx.finish("finished by a hook");
+        }
+        OutcomeAction::proceed()
+    }
+}
+
+/// Per-call state and a graceful finish on both surfaces. The two calls run
+/// concurrently and settle out of order, yet each outcome reads what its own
+/// dispatch stored. The first call's outcome asks to finish: the batch still
+/// commits both results, then the run ends with the requested output in place
+/// of the next model call, though no model-call budget is left.
+#[tokio::test]
+async fn call_scratchpads_stay_per_call_and_a_finish_replaces_the_next_model_call() {
+    let blocking_hook = CallStateFinishHook::default();
+    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::from_contents([
+            tool_call_content("tc1", json!({"x": 1, "y": 0})),
+            tool_call_content("tc2", json!({"x": 2, "y": 0})),
+        ]),
+        MockTurn::text("unreachable"),
+    ]))
+    .tool(OutOfOrderTool {
+        gate: Arc::new(Notify::new()),
+        order: Arc::new(AtomicU32::new(0)),
+    })
+    .build()
+    .prompt("go")
+    .max_turns(1)
+    .tool_concurrency(2)
+    .add_hook(blocking_hook.clone())
+    .run()
+    .await
+    .expect("a finish ends the run successfully");
+
+    let streaming_hook = CallStateFinishHook::default();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 0})),
+            MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 0})),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+        vec![
+            MockStreamEvent::text("unreachable"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+    ]))
+    .tool(OutOfOrderTool {
+        gate: Arc::new(Notify::new()),
+        order: Arc::new(AtomicU32::new(0)),
+    })
+    .build()
+    .prompt("go")
+    .max_turns(1)
+    .tool_concurrency(2)
+    .add_hook(streaming_hook.clone())
+    .stream();
+    let streamed = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        drive_to_final_response(stream),
+    )
+    .await
+    .expect("the streamed tools run concurrently");
+
+    for (response, hook) in [(&blocking, &blocking_hook), (&streamed, &streaming_hook)] {
+        assert_eq!(response.output(), "finished by a hook");
+        assert_eq!(response.completion_calls.len(), 1);
+        assert_eq!(tool_result_ids(&response.messages), ["tc1", "tc2"]);
+        assert!(matches!(
+            response.messages.last(),
+            Some(Message::Assistant(turn)) if turn.text() == "finished by a hook"
+        ));
+        assert_eq!(hook.outcomes.load(SeqCst), 2);
+        assert_eq!(hook.mismatches.load(SeqCst), 0);
+    }
+}
+
+/// A finish requested before a model call is issued replaces that call.
+#[tokio::test]
+async fn a_finish_from_a_completion_call_hook_issues_no_model_call() {
+    struct FinishOnSecondCall;
+    impl AgentHook for FinishOnSecondCall {
+        async fn on_completion_call(
+            &self,
+            ctx: &HookContext,
+            event: CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            if event.turn == 2 {
+                ctx.finish("budget spent");
+            }
+            CompletionCallAction::continue_run()
+        }
+    }
+
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::from_contents([tool_call_content("tc1", json!({"x": 1, "y": 2}))]),
+        MockTurn::text("unreachable"),
+    ]))
+    .tool(MockAddTool)
+    .build()
+    .prompt("go")
+    .max_turns(3)
+    .add_hook(FinishOnSecondCall)
+    .run()
+    .await
+    .expect("a finish ends the run successfully");
+    assert_eq!(response.output(), "budget spent");
+    assert_eq!(response.completion_calls.len(), 1);
+}
+
 /// A the event-specific stop action from the `ToolCall` event with a reason keyed by the
 /// call's `x` arg, forcing the `x == 2` call (tc2) to terminate *before* the
 /// `x == 1` call (tc1): tc2 opens the gate after terminating, tc1 awaits it

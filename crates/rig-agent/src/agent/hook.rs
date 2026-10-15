@@ -4,6 +4,13 @@
 //! registration order. Blocking and streaming runs share lifecycle decisions;
 //! streamed deltas remain provisional until the model turn is accepted.
 //!
+//! Hooks run in registration order for one event, but the events of concurrent
+//! tool calls interleave. A hook that needs only the event acts on it directly.
+//! State one dispatch's hooks share goes in the event's
+//! [`scratchpad`](DispatchEvent::scratchpad); state that spans the run goes in
+//! [`HookContext::scratchpad`]. A hook is tested without an agent by calling it
+//! with a detached [`HookContext::new`].
+//!
 //! ```
 //! use rig_agent::agent::{AgentHook, HookContext, OutcomeAction, OutcomeEvent};
 //!
@@ -51,8 +58,9 @@ use crate::{
 
 pub use rig_core::id::RunId;
 
-/// Run-scoped typed storage shared by hooks. Clones share in-process state;
-/// entries are neither serialized nor rewound when a run is forked.
+/// Typed storage shared by hooks. [`HookContext::scratchpad`] spans the run;
+/// [`DispatchEvent::scratchpad`] spans one dispatch. Clones share in-process
+/// state; entries are neither serialized nor rewound when a run is forked.
 /// Use [`HookContext::append_entry`] for state that must travel with the run.
 #[derive(Clone, Default)]
 pub struct Scratchpad {
@@ -120,7 +128,8 @@ impl std::fmt::Debug for Scratchpad {
     }
 }
 
-/// Run-scoped context supplied to hooks.
+/// Run-scoped context supplied to hooks. A run builds its own; a test builds a
+/// detached one with [`HookContext::new`] and calls hooks directly.
 #[derive(Debug)]
 pub struct HookContext {
     /// The bus the run dispatches through, when it has one.
@@ -141,25 +150,97 @@ pub struct HookContext {
     /// Appends not yet flushed into the [`AgentRun`](crate::agent::AgentRun)
     /// by the driver.
     pending_entries: std::sync::Mutex<Vec<Aside>>,
+    /// The final answer a hook asked the run to finish with; the first wins.
+    finish: std::sync::Mutex<Option<String>>,
+}
+
+impl Default for HookContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HookContext {
-    pub(crate) fn new(
-        is_streaming: bool,
-        agent_name: Option<String>,
-        dispatcher: Option<crate::bus::Dispatcher>,
-    ) -> Self {
+    /// A context outside any run: a fresh run id, turn 0, not streaming, no
+    /// agent name, no entries and no bus, so [`bind`](Self::bind) fails.
+    /// Pass it to a hook or a [`HookStack`] to test them without an agent.
+    ///
+    /// ```
+    /// use rig_agent::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext};
+    /// use rig_core::message::Message;
+    ///
+    /// struct Budget;
+    ///
+    /// impl AgentHook for Budget {
+    ///     async fn on_completion_call(
+    ///         &self,
+    ///         ctx: &HookContext,
+    ///         event: CompletionCallEvent<'_>,
+    ///     ) -> CompletionCallAction {
+    ///         if event.turn > 2 {
+    ///             ctx.finish("Out of budget.");
+    ///         }
+    ///         CompletionCallAction::continue_run()
+    ///     }
+    /// }
+    ///
+    /// let ctx = HookContext::new();
+    /// let prompt = Message::user("hi");
+    /// let event = CompletionCallEvent { prompt: &prompt, history: &[], turn: 3 };
+    /// futures::executor::block_on(Budget.on_completion_call(&ctx, event));
+    /// assert_eq!(ctx.requested_finish().as_deref(), Some("Out of budget."));
+    /// ```
+    pub fn new() -> Self {
         Self {
-            dispatcher,
+            dispatcher: None,
             run_id: RunId::new(),
             turn: AtomicUsize::new(0),
-            is_streaming,
-            agent_name,
+            is_streaming: false,
+            agent_name: None,
             scratchpad: Scratchpad::default(),
             salvaged_patches: std::sync::Mutex::new(HashMap::new()),
             entries: std::sync::Mutex::new(Vec::new()),
             pending_entries: std::sync::Mutex::new(Vec::new()),
+            finish: std::sync::Mutex::new(None),
         }
+    }
+
+    /// The context of one run, on its bus.
+    pub(crate) fn for_run(
+        is_streaming: bool,
+        agent_name: Option<String>,
+        dispatcher: crate::bus::Dispatcher,
+    ) -> Self {
+        Self {
+            dispatcher: Some(dispatcher),
+            is_streaming,
+            agent_name,
+            ..Self::new()
+        }
+    }
+
+    /// This context reporting `name` as the agent's name.
+    pub fn with_agent_name(mut self, name: impl Into<String>) -> Self {
+        self.agent_name = Some(name.into());
+        self
+    }
+
+    /// This context reporting whether the streaming surface drives the run.
+    pub fn with_streaming(mut self, is_streaming: bool) -> Self {
+        self.is_streaming = is_streaming;
+        self
+    }
+
+    /// This context holding `entries`, as a resumed run carries them.
+    pub fn with_entries(self, entries: impl IntoIterator<Item = Aside>) -> Self {
+        self.lock_entries().extend(entries);
+        self
+    }
+
+    fn lock_entries(&self) -> std::sync::MutexGuard<'_, Vec<Aside>> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Record the patch a stack had accumulated when one of its hooks denied
@@ -186,10 +267,7 @@ impl HookContext {
     /// Seed the entries a resumed run carried; called by the driver at run
     /// start, before any hook fires.
     pub(crate) fn seed_entries(&self, entries: &[Aside]) {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .extend_from_slice(entries);
+        self.lock_entries().extend_from_slice(entries);
     }
 
     /// Drain the appends not yet flushed into the run; called by the driver
@@ -203,7 +281,9 @@ impl HookContext {
         )
     }
 
-    pub(crate) fn set_turn(&self, turn: usize) {
+    /// Set the one-based model-call index [`turn`](Self::turn) reports. The
+    /// driver sets it before each model call; a test sets it to simulate one.
+    pub fn set_turn(&self, turn: usize) {
         self.turn.store(turn, Ordering::Relaxed);
     }
 
@@ -277,9 +357,31 @@ impl HookContext {
         self.agent_name.as_deref()
     }
 
-    /// Shared run scratchpad.
+    /// The run's scratchpad, shared by every hook for the whole run. Events
+    /// of concurrent tool calls interleave on it, so state about one call
+    /// belongs in that call's [`DispatchEvent::scratchpad`].
     pub fn scratchpad(&self) -> &Scratchpad {
         &self.scratchpad
+    }
+
+    /// End the run successfully with `output` as its final answer in place of
+    /// its next model call. Tool calls the model already made still run and are
+    /// answered first. A run that ends on its own first keeps its own answer.
+    /// The first request wins. `output` is committed as an assistant turn and
+    /// is the response's output; a streamed run surfaces it in its final item.
+    pub fn finish(&self, output: impl Into<String>) {
+        self.finish
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_or_insert_with(|| output.into());
+    }
+
+    /// The output a hook asked the run to [`finish`](Self::finish) with.
+    pub fn requested_finish(&self) -> Option<String> {
+        self.finish
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     /// Serialize and append an entry: an [`Aside`] of `kind` by
@@ -294,10 +396,7 @@ impl HookContext {
         value: &T,
     ) -> Result<(), serde_json::Error> {
         let entry = Aside::new(kind, Author::rig(), serde_json::to_value(value)?);
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(entry.clone());
+        self.lock_entries().push(entry.clone());
         self.pending_entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -308,9 +407,7 @@ impl HookContext {
     /// Clone all entries of `kind`, including resumed entries and new appends,
     /// in append order. Reading does not consume entries.
     pub fn entries(&self, kind: &str) -> Vec<Aside> {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.lock_entries()
             .iter()
             .filter(|entry| entry.kind == kind)
             .cloned()
@@ -319,9 +416,7 @@ impl HookContext {
 
     /// Clone the most recent entry of `kind`, if present.
     pub fn last_entry(&self, kind: &str) -> Option<Aside> {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.lock_entries()
             .iter()
             .rev()
             .find(|entry| entry.kind == kind)
@@ -633,6 +728,10 @@ pub struct DispatchEvent<'a> {
     pub call_id: Option<&'a CallId>,
     /// Tool invocation context, carried separately from the effect.
     pub context: Option<&'a ToolContext>,
+    /// State scoped to this dispatch: every hook's `on_dispatch` and
+    /// `on_outcome` for this id share it, no other dispatch sees it, and it is
+    /// dropped once the outcome hooks return.
+    pub scratchpad: &'a Scratchpad,
 }
 
 /// Dispatch-boundary action.
@@ -772,6 +871,8 @@ pub struct OutcomeEvent<'a> {
     pub call_id: Option<&'a CallId>,
     /// Published tool context, carried separately from the outcome.
     pub context: Option<&'a ToolContext>,
+    /// The dispatch's scratchpad, as [`DispatchEvent::scratchpad`].
+    pub scratchpad: &'a Scratchpad,
 }
 
 /// Outcome-boundary action.
@@ -796,7 +897,8 @@ impl OutcomeAction {
 
     /// Stop the run with `reason`: a replacement whose error is `Cancelled`
     /// terminates the run instead of being delivered. This is how a hook
-    /// that observed an answer (a completion, a tool result) ends the run.
+    /// that observed an answer (a completion, a tool result) cancels the run;
+    /// [`HookContext::finish`] ends it successfully instead.
     /// The cancellation short-circuits nested hook stacks; later hooks cannot
     /// replace it with a successful answer.
     pub fn stop(reason: impl Into<String>) -> Self {

@@ -192,13 +192,24 @@ the model and result-content telemetry; handler recording retains the original
 answer. Streaming deltas are provisional, and `ModelTurnRetried` tells consumers
 to discard a rejected turn.
 
+Hooks run in registration order for one event, but the events of concurrent
+tool calls interleave. A hook that needs only the event acts on it directly.
 Keep hook-private state in the hook, keyed by run ID when shared across runs.
-Use `Scratchpad` for transient cross-hook state and run entries (rig-core
+State that hooks share about one dispatch goes in the event's `scratchpad`,
+which its `on_dispatch` and `on_outcome` see and which is dropped after the
+outcome. Use the run's `HookContext::scratchpad` for transient state across
+calls, such as a failure budget, and run entries (rig-core
 `conversation::Aside`s) for state that must serialize or follow forks. Full snapshots read through `last_entry` avoid
 custom replay folds; event-shaped state can instead fold `entries`. Entries
 appended during settlement do not enter the finished run. Context-bound handles
 use delegation rather than `Deref` so hooks cannot clone an owned dispatch
 capability out of their borrowed view.
+
+`OutcomeAction::stop` and the other stops cancel the run. `HookContext::finish`
+ends it successfully instead: the run answers its pending tool calls, then
+returns the hook's output in place of its next model call. `HookContext::new`
+builds a context outside any run, so a hook or `HookStack` can be tested by
+calling it with hand-built events.
 
 Retries of tool-free turns consume the ordinary model-call budget. Hooks may
 impose narrower limits in run-local state. `ModelTurnFinished` exposes the

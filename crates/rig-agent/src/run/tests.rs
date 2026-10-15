@@ -354,6 +354,35 @@ fn tool_roundtrip_threads_history_and_usage() {
     assert_eq!(response.messages.len(), 4);
 }
 
+/// A host answers a pending model call with its own final output instead:
+/// refused while tool calls are open, accepted once they are answered, and
+/// the run ends on a hand-built assistant turn with no model call recorded.
+#[test]
+fn finish_with_answers_a_pending_model_call() {
+    let mut run = AgentRun::new("add things").max_turns(1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(tool_call_turn("call_1", "add"))
+            .expect("model_response should succeed"),
+    );
+    expect_call_tools(&mut run);
+    assert!(run.finish_with("too early").is_err());
+
+    answer_calls(&mut run, "2").expect("the answer should be accepted");
+    run.finish_with("done")
+        .expect("the run awaits a model call");
+
+    let response = expect_done(&mut run);
+    assert_eq!(response.output(), "done");
+    assert_eq!(response.completion_calls.len(), 1);
+    assert_eq!(
+        response.messages.last(),
+        Some(&Message::Assistant(AssistantMessage::new(vec![
+            AssistantContent::text("done")
+        ])))
+    );
+}
+
 /// A turn that calls `add` and ends with `stop` at `finish`.
 fn ended_call_turn(stop: StopReason, finish: FinishReason) -> ModelTurn {
     ModelTurn::new(

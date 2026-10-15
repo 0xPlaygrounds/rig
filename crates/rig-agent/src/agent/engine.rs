@@ -249,8 +249,16 @@ where
             }
         }
 
+        // Set once a hook's finish request ended the run in place of a model
+        // call, so the final item carries the requested output.
+        let mut finished = false;
+
         'outer: loop {
             flush_entries!();
+            // A finish requested mid-turn waits for the turn's tool calls.
+            if let Some(output) = hook_ctx.requested_finish() {
+                finished |= run.try_finish(output);
+            }
             // A failed step is not projected: a failed turn may have committed
             // calls it never answers, and the error carries that history.
             let step = match run.next_step() {
@@ -306,6 +314,14 @@ where
                         Ok(model) => model,
                         Err(report) => fail!(PromptError::Report(report), break 'outer),
                     };
+                    // A completion-call or selection hook may have asked to
+                    // finish: the call is never issued.
+                    if let Some(output) = hook_ctx.requested_finish()
+                        && run.try_finish(output)
+                    {
+                        finished = true;
+                        continue 'outer;
+                    }
 
                     // Telemetry uses the effective preamble before output-mode augmentation.
                     let effective_preamble = request_patch
@@ -431,7 +447,13 @@ where
                     // Build the final item only when the surface forwards it
                     // (streaming). The blocking fold discards it, so its source
                     // returns `None` and the extra full-response clone is skipped.
-                    if let Some(final_item) = source.final_item(&response) {
+                    // A finished run's answer is the requested output, not the
+                    // last model turn the source saw.
+                    let final_item = match finished {
+                        true => S::STREAMS.then(|| Surfaced::Final(response.clone())),
+                        false => source.final_item(&response),
+                    };
+                    if let Some(final_item) = final_item {
                         yield Ok(DriveItem::Surfaced(final_item));
                     }
                     yield Ok(DriveItem::Done(response));
