@@ -1,15 +1,18 @@
 //! A unified diff a tool returned, drawn in the transcript: each line
-//! with its numbers in the old and the new file, removed lines on red and
-//! added ones on green ([`Theme`]), and the words a changed line changed
-//! on a stronger shade of each.
+//! with its numbers in the old and the new file, in the colors of the
+//! file's language ([`highlight`](crate::highlight)), removed lines on red
+//! and added ones on green ([`Theme`]), and the words a changed line
+//! changed on a stronger shade of each.
 
 use std::collections::HashMap;
+use std::ops::Range;
 
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use similar::{ChangeTag, TextDiff};
 
 use crate::Theme;
+use crate::highlight::{Language, highlight};
 
 /// What a line of the diff is.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,32 +49,33 @@ pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
         .unwrap_or_default()
         .to_string()
         .len();
-    let mut words = changed_words(&lines, theme);
+    let mut words = changed_words(&lines);
+    let mut code = highlighted(&lines);
     let drawn = lines.iter().enumerate().map(|(at, (kind, text))| {
         let number = |at: Option<usize>| at.map_or(" ".repeat(width), |at| format!("{at:>width$}"));
         let gutter =
             |old, new, sign| Span::from(format!("    {} {} {sign} ", number(old), number(new)));
-        let text_of = |words: Option<Vec<Span<'static>>>| {
-            words.unwrap_or_else(|| vec![Span::from(text.clone())])
-        };
+        let spans = code
+            .remove(&at)
+            .unwrap_or_else(|| vec![Span::from(text.clone())]);
+        let mut marked =
+            |shade| overlay(spans.clone(), &words.remove(&at).unwrap_or_default(), shade);
         match *kind {
             Kind::Other => Line::from(format!("    {text}")).dim(),
             Kind::File => Line::from(format!("    {text}")).bold(),
             Kind::Hunk => Line::from(format!("    {text}")).dim(),
             Kind::Same(old, new) => {
-                let mut spans = vec![gutter(Some(old), Some(new), ' ').dim()];
-                spans.push(Span::from(text.clone()));
-                Line::from(spans)
+                Line::from([vec![gutter(Some(old), Some(new), ' ').dim()], spans].concat())
             }
             Kind::Removed(old) => {
-                let mut spans = vec![gutter(Some(old), None, '-')];
-                spans.extend(text_of(words.remove(&at)));
-                Line::from(spans).style(Style::new().red().bg(theme.removed))
+                let shade = Style::new().bg(theme.removed_word);
+                let gutter = gutter(Some(old), None, '-').red();
+                Line::from([vec![gutter], marked(shade)].concat()).bg(theme.removed)
             }
             Kind::Added(new) => {
-                let mut spans = vec![gutter(None, Some(new), '+')];
-                spans.extend(text_of(words.remove(&at)));
-                Line::from(spans).style(Style::new().green().bg(theme.added))
+                let shade = Style::new().bg(theme.added_word);
+                let gutter = gutter(None, Some(new), '+').green();
+                Line::from([vec![gutter], marked(shade)].concat()).bg(theme.added)
             }
         }
     });
@@ -138,11 +142,50 @@ fn header(line: &str) -> Option<((usize, usize), (usize, usize))> {
     Some((range(old)?, range(new)?))
 }
 
-/// The text of each removed line followed by an added one, and of that
-/// added line, as spans with the words that changed between them on the
-/// stronger shade, by the line's index. Removed and added lines pair up
-/// in order; a pair with no word in common is left whole.
-fn changed_words(lines: &[(Kind, String)], theme: &Theme) -> HashMap<usize, Vec<Span<'static>>> {
+/// Each code line's spans in the colors of the file's language, by the
+/// line's index: the hunk's old side (same and removed lines) and its new
+/// side (same and added) highlighted apart. None when the diff names no
+/// file, or one whose language has no grammar.
+fn highlighted(lines: &[(Kind, String)]) -> HashMap<usize, Vec<Span<'static>>> {
+    let mut spans = HashMap::new();
+    let files = lines.iter().filter(|(kind, _)| *kind == Kind::File);
+    let mut paths = files.filter_map(|(_, line)| line.get(4..)).map(str::trim);
+    let Some(path) = paths.rfind(|path| *path != "/dev/null") else {
+        return spans;
+    };
+    let hunks = lines
+        .iter()
+        .enumerate()
+        .collect::<Vec<_>>()
+        .chunk_by(|_, (_, (kind, _))| *kind != Kind::Hunk)
+        .map(<[_]>::to_vec)
+        .collect::<Vec<_>>();
+    let old = |kind: &Kind| matches!(kind, Kind::Same(..) | Kind::Removed(_));
+    let new = |kind: &Kind| matches!(kind, Kind::Same(..) | Kind::Added(_));
+    for hunk in &hunks {
+        for side in [&old as &dyn Fn(&Kind) -> bool, &new] {
+            let side: Vec<(usize, &String)> = hunk
+                .iter()
+                .filter(|(_, (kind, _))| side(kind))
+                .map(|(at, (_, text))| (*at, text))
+                .collect();
+            let code: Vec<&str> = side.iter().map(|(_, text)| text.as_str()).collect();
+            let Some(drawn) = highlight(&code.join("\n"), Language::File(path)) else {
+                return spans;
+            };
+            for ((at, _), line) in side.iter().zip(drawn) {
+                spans.entry(*at).or_insert(line);
+            }
+        }
+    }
+    spans
+}
+
+/// The bytes of each removed line followed by an added one, and of that
+/// added line, that changed between them, by the line's index. Removed
+/// and added lines pair up in order; a pair with too little in common is
+/// left unmarked.
+fn changed_words(lines: &[(Kind, String)]) -> HashMap<usize, Vec<Range<usize>>> {
     let mut words = HashMap::new();
     let removed = |at: &usize| matches!(lines.get(*at), Some((Kind::Removed(_), _)));
     let added = |at: &usize| matches!(lines.get(*at), Some((Kind::Added(_), _)));
@@ -167,15 +210,22 @@ fn changed_words(lines: &[(Kind, String)], theme: &Theme) -> HashMap<usize, Vec<
                 continue;
             }
             let (mut was, mut is) = (Vec::new(), Vec::new());
+            let (mut was_at, mut is_at) = (0, 0);
             for change in diff.iter_all_changes() {
-                let word = change.value().to_owned();
+                let length = change.value().len();
                 match change.tag() {
                     ChangeTag::Equal => {
-                        was.push(Span::from(word.clone()));
-                        is.push(Span::from(word));
+                        was_at += length;
+                        is_at += length;
                     }
-                    ChangeTag::Delete => was.push(Span::from(word).bg(theme.removed_word)),
-                    ChangeTag::Insert => is.push(Span::from(word).bg(theme.added_word)),
+                    ChangeTag::Delete => {
+                        was.push(was_at..was_at + length);
+                        was_at += length;
+                    }
+                    ChangeTag::Insert => {
+                        is.push(is_at..is_at + length);
+                        is_at += length;
+                    }
                 }
             }
             words.insert(old, was);
@@ -184,6 +234,45 @@ fn changed_words(lines: &[(Kind, String)], theme: &Theme) -> HashMap<usize, Vec<
         at = added_end.max(at + 1);
     }
     words
+}
+
+/// `spans` with `shade` laid over the bytes `ranges` of their joined
+/// text, each span split where a range starts or ends inside it.
+fn overlay(spans: Vec<Span<'static>>, ranges: &[Range<usize>], shade: Style) -> Vec<Span<'static>> {
+    if ranges.is_empty() {
+        return spans;
+    }
+    let mut laid = Vec::new();
+    let mut start = 0;
+    for span in spans {
+        let text = span.content.as_ref();
+        let end = start + text.len();
+        let mut cuts = vec![0, text.len()];
+        let inside = ranges.iter().flat_map(|range| [range.start, range.end]);
+        cuts.extend(
+            inside
+                .filter(|at| start < *at && *at < end)
+                .map(|at| at - start),
+        );
+        cuts.sort_unstable();
+        cuts.dedup();
+        for pair in cuts.windows(2) {
+            let [from, to] = pair else { continue };
+            let Some(piece) = text.get(*from..*to) else {
+                continue;
+            };
+            let at = start + from;
+            let marked = ranges.iter().any(|range| range.contains(&at));
+            let style = if marked {
+                span.style.patch(shade)
+            } else {
+                span.style
+            };
+            laid.push(Span::styled(piece.to_owned(), style));
+        }
+        start = end;
+    }
+    laid
 }
 
 #[cfg(test)]

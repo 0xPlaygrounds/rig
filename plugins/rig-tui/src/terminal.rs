@@ -316,6 +316,7 @@ pub(crate) fn open_terminal(
 ) {
     // Asked before the terminal is read, which would take its answer.
     commands.insert_resource(Theme::of_terminal());
+    super::highlight::warm_up();
     // Stray output goes to the text log, or nowhere without a place for it.
     let log = scratch.map(|scratch| scratch.log().unwrap_or_else(|| PathBuf::from(NOWHERE)));
     let opened =

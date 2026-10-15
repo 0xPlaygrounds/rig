@@ -27,7 +27,8 @@
 //! - **The terminal:** [`RunInTerminal`], [`TerminalWrite`],
 //!   [`CopyToClipboard`], [`TuiFrame`], [`TerminalFocus`]; a test draws to a
 //!   [`TuiTestScreen`].
-//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`text_rows`], and
+//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`highlight`],
+//!   [`text_rows`], and
 //!   the colors of what each thing is, [`Theme`].
 //!
 //! The view shows every plugin's pickers and every agent's questions, one
@@ -39,6 +40,7 @@ mod clipboard;
 mod complete;
 pub mod diff;
 mod editor;
+pub mod highlight;
 mod history;
 mod input;
 mod jsonl;

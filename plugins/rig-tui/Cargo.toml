@@ -39,6 +39,10 @@ serde_json = { workspace = true }
 similar = { workspace = true }
 # The terminal's background, which the transcript's colors are mixed from.
 terminal-colorsaurus = { workspace = true }
+# Code highlighted in the terminal's own colors: bat's grammars and its
+# `ansi` theme.
+syntect = { workspace = true }
+two-face = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 # The terminal view sends stray stdout and stderr to the session log.

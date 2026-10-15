@@ -1,12 +1,14 @@
 //! How the terminal view (rig-tui) draws the tools' calls: each shows its
-//! arguments and its whole result. `edit` shows its change as a diff,
-//! `write` the new file, `delete` and `move` the paths, and `shell` the
-//! command and its output.
+//! arguments and its whole result. `read` shows the file's lines and
+//! `write` the new file in the colors of its language, `edit` its change
+//! as a diff, `delete` and `move` the paths, and `shell` the command, as
+//! bash, and its output.
 
 use rig_harness::rig_core::tool::{FilesRead, LinesShown};
-use rig_tui::ratatui::style::{Style, Stylize};
-use rig_tui::ratatui::text::Line;
-use rig_tui::{ToolCallView, text_rows};
+use rig_tui::ToolCallView;
+use rig_tui::highlight::{Language, code_rows, highlight};
+use rig_tui::ratatui::style::Stylize;
+use rig_tui::ratatui::text::{Line, Span};
 
 pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
@@ -23,8 +25,43 @@ pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let shown = shown.and_then(|read| read.0.first().and_then(|file| file.lines));
     let detail = shown.map_or(range, span);
     let mut rows = vec![view.header(format!("read {path}"), detail)];
-    rows.extend(view.result_lines());
+    match view.result_text() {
+        Some(text) if !view.failed() => rows.extend(numbered_rows(&text, &path)),
+        _ => rows.extend(view.result_lines()),
+    }
     rows
+}
+
+/// A read's line split into its number and its code, if it is one.
+fn numbered(line: &str) -> Option<(&str, &str)> {
+    let (number, code) = line.split_once('\t')?;
+    let digits = number.trim();
+    let is_number = !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit());
+    is_number.then_some((number, code))
+}
+
+/// A read's numbered lines, the numbers dim and the code in the colors of
+/// `path`'s language; any other line, such as a note of the lines left,
+/// dim.
+fn numbered_rows(text: &str, path: &str) -> Vec<Line<'static>> {
+    let code: Vec<&str> = text
+        .lines()
+        .filter_map(numbered)
+        .map(|(_, code)| code)
+        .collect();
+    let colored = highlight(&code.join("\n"), Language::File(path)).unwrap_or_default();
+    let mut colored = colored.into_iter();
+    let rows = text.lines().enumerate().map(|(index, line)| {
+        let prefix = if index == 0 { "  ⎿ " } else { "    " };
+        let Some((number, code)) = numbered(line) else {
+            return Line::from(format!("{prefix}{line}")).dim();
+        };
+        let plain = || vec![Span::from(code.replace('\t', "    "))];
+        let code = colored.next().unwrap_or_else(plain);
+        let number = Span::from(format!("{number}  ")).dim();
+        Line::from([vec![Span::from(prefix), number], code].concat())
+    });
+    rows.collect()
 }
 
 /// The lines a read showed: "12 lines" for a whole file, else which of
@@ -68,7 +105,7 @@ pub(super) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     if view.failed() {
         rows.extend(view.result_lines());
     } else {
-        rows.extend(text_rows(content, Style::new().dim()));
+        rows.extend(code_rows(content, Language::File(&path)));
     }
     rows
 }
@@ -94,13 +131,20 @@ pub(super) fn moved(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
 
 pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let command = view.argument("command").unwrap_or_default();
+    let colored = highlight(command, Language::Named("bash")).unwrap_or_default();
     let mut lines = Vec::new();
     for (index, line) in command.lines().enumerate() {
-        if index == 0 {
-            lines.push(view.header(format!("$ {line}"), ""));
+        let plain = || vec![Span::from(line.to_owned()).bold()];
+        let code = colored.get(index).cloned().unwrap_or_else(plain);
+        let mut row = if index == 0 {
+            view.header("$", "")
         } else {
-            lines.push(Line::from(format!("    {line}")).bold());
-        }
+            Line::default()
+        };
+        row.spans
+            .push(Span::from(if index == 0 { " " } else { "    " }));
+        row.spans.extend(code);
+        lines.push(row);
     }
     if lines.is_empty() {
         lines.push(view.header("$", ""));

@@ -90,3 +90,27 @@ fn a_call_draws_every_line() {
         "{wrote}"
     );
 }
+
+#[test]
+fn a_read_file_is_drawn_in_its_languages_colors() {
+    let Ok(name) = ToolName::new("read") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "path": "a.rs" })));
+    let output = "     1\tfn main() {}\n";
+    let result = call.answer(&ToolResult::success(output.to_owned().into()));
+    let view = ToolCallView::new(&call, Some(&result), CallState::Done);
+    let lines = read(&view);
+    let code = lines
+        .get(1)
+        .map(|line| line.spans.clone())
+        .unwrap_or_default();
+    assert!(
+        code.iter().skip(2).any(|span| span.style.fg.is_some()),
+        "{code:?}"
+    );
+    assert_eq!(
+        lines.get(1).map(ToString::to_string).as_deref(),
+        Some("  ⎿      1  fn main() {}")
+    );
+}

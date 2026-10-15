@@ -26,6 +26,15 @@ fn each_line_has_its_numbers_and_its_band() {
             "    11 11   }",
         ]
     );
+    // a.rs is Rust: its code is in the terminal's palette.
+    let same = lines
+        .get(4)
+        .map(|line| line.spans.clone())
+        .unwrap_or_default();
+    assert!(
+        same.iter().skip(1).any(|span| span.style.fg.is_some()),
+        "{same:?}"
+    );
     let bands: Vec<_> = lines.iter().map(|line| line.style.bg).collect();
     assert_eq!(
         bands.get(5..7),
