@@ -1,6 +1,6 @@
 ## Rig-VertexAI
 
-This companion crate integrates Google Cloud Vertex AI (hosted models including Gemini) as a model provider with Rig.
+This companion crate integrates Google Cloud Vertex AI as a model provider with Rig: Gemini through `GenerateContent`, and Anthropic's Claude through the `anthropic` publisher's `rawPredict` endpoint.
 
 ## Usage
 
@@ -29,6 +29,33 @@ fn recover(response: CompletionResponse) -> Result<GenerateContentResponse, serd
     serde_json::from_value(response.raw)
 }
 ```
+
+## Claude
+
+`VertexAi::anthropic(model)` sends Anthropic's Messages API to Vertex AI's
+`rawPredict` endpoint (`streamRawPredict` when streamed) with the client's
+Google credentials. Requests, replies, Anthropic typed options and history
+rules are Anthropic's; the model is named in the URL and the body carries
+`anthropic_version: "vertex-2023-10-16"`. Use Vertex AI's model ids, such as
+`claude-sonnet-4-6` or `claude-haiku-4-5@20251001`. `global` and the `us` and
+`eu` multi-regions have their own hosts; any other location is a region.
+
+```rust,no_run
+use rig_core::completion::CompletionRequest;
+use rig_vertexai::VertexAi;
+
+# async fn example() -> anyhow::Result<()> {
+let claude = VertexAi::from_env()?.anthropic("claude-sonnet-4-6");
+let reply = claude.call(CompletionRequest::new("Hello, Claude").max_tokens(256)).await?;
+# let _ = reply;
+# Ok(())
+# }
+```
+
+Claude requests travel over HTTP, through the shared reqwest client unless
+`VertexAiBuilder::with_http_client` supplies another. They need the
+credentials the client resolves, so a client built on a supplied prediction
+service cannot send them.
 
 ## Setup
 

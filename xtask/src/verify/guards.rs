@@ -50,6 +50,7 @@ pub(crate) const COMPLETION_WIRE_FILES: &[&str] = &[
     "crates/rig-candle/src/model.rs",
     "crates/rig-candle/src/protocol.rs",
     "crates/rig-gemini-grpc/src/completion.rs",
+    "crates/rig-vertexai/src/anthropic.rs",
     "crates/rig-vertexai/src/completion.rs",
 ];
 

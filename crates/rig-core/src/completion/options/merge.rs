@@ -109,6 +109,12 @@ pub enum Rewrite {
     /// For rig's own crates; not covered by semver.
     #[doc(hidden)]
     DropUnboundThinking,
+    /// Anthropic on a platform whose URL names the model: `model` removed
+    /// and `anthropic_version` set to this value.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
+    AnthropicVersionInBody(String),
     /// Anthropic streams: a default `tool_choice` beside tools, none without
     /// them.
     ///
@@ -881,6 +887,10 @@ fn apply(
             if adaptive {
                 crate::providers::anthropic::completion::drop_unbound_thinking(body);
             }
+        }
+        Rewrite::AnthropicVersionInBody(version) => {
+            body.shift_remove("model");
+            body.insert("anthropic_version".to_owned(), version.as_str().into());
         }
         Rewrite::ToolChoiceNeedsTools => {
             let has_tools = body
