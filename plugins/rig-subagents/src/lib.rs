@@ -15,7 +15,7 @@
 //! - A subagent's [`Lifecycle`] says whether it works, waits on an agent
 //!   that owes it a report, or finished. Its final answer is its report.
 //!   Of several `task` reports from one reply, only the last carries the
-//!   parent on; the others are notes.
+//!   parent on; the others are Inform messages.
 //! - Subagents are told their role in prompt sections of their own
 //!   ([`SectionOf`]). A request or `wait` that would make agents wait on
 //!   each other is refused.
@@ -85,6 +85,7 @@ mod spawn;
 mod tools;
 
 pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
+pub use tools::{MESSAGE, TASK, WAIT};
 
 /// The plugin's stage system sets.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -98,7 +99,6 @@ pub enum SubagentSystems {
     /// removing `Interrupted` alone is not enough.
     StopRestored,
 }
-pub use tools::{MESSAGE, TASK, WAIT};
 
 /// Adds the `task`, `message` and `wait` tools, spawning the agents
 /// [`SpawnSubagent`] asks for, the subagents' lifecycle and the reports

@@ -114,7 +114,8 @@ fn preview(
             spill: None,
         };
         let name = request.call.function.name.as_str();
-        let Some(Handler(handler)) = per_call(&tools, name).map(|made| made.build(place)) else {
+        let Some(Handler(handler)) = per_call(&tools, name).map(|per_call| per_call.build(place))
+        else {
             let report = ErrorReport::new(
                 ErrorKind::Tool(ToolErrorKind::Other),
                 format!("`{name}` cannot be previewed: it is not registered per call"),

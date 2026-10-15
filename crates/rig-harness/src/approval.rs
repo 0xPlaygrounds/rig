@@ -84,8 +84,9 @@ impl NeedsApproval {
 #[component(storage = "SparseSet")]
 pub struct Approved;
 
-/// The harness's asking, in Gate after every gate and before the kernel's
-/// fallback: `.after(GateSystems::After).before(GateSystems::Fallback)`.
+/// The harness's asking, in Gate after every gate and preview and before the
+/// kernel's fallback:
+/// `.after(GateSystems::After).after(PreviewSystems).before(GateSystems::Fallback)`.
 ///
 /// A plugin that gathers approvals, such as one asking about a reply's calls
 /// together, runs `.before(ApprovalSystems)` and holds or decides them; the

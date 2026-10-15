@@ -67,7 +67,7 @@ pub struct PickItem {
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
 pub struct Picker {
-    /// The agent an item's command runs for; `None` for the agent shown.
+    /// The agent an item's command runs for; `None` for the shown agent.
     pub agent: Option<Entity>,
     /// What is picked.
     pub title: String,

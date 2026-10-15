@@ -81,7 +81,8 @@ pub(super) struct AgentData {
     pub(super) peers: Has<Peers>,
     pub(super) busy: Has<ActiveTurn>,
     pub(super) lifecycle: Option<&'static Lifecycle>,
-    pub(super) family: (Option<&'static Spawned>, Option<&'static SpawnedBy>),
+    pub(super) children: Option<&'static Spawned>,
+    pub(super) parent: Option<&'static SpawnedBy>,
     effect_parent: Option<&'static EffectParent>,
 }
 

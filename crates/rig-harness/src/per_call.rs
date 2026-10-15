@@ -131,7 +131,10 @@ impl Plugin for PerCallPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
-            .add_systems(AgentPass, give_place.in_set(PrepareSystems::Compose));
+            .add_systems(
+                AgentPass,
+                build_per_call_handlers.in_set(PrepareSystems::Compose),
+            );
     }
 }
 
@@ -159,7 +162,7 @@ pub(crate) fn per_call<'a>(
     tools
         .iter()
         .find(|(tool, _)| tool.0.name == name)
-        .map(|(_, made)| made)
+        .map(|(_, per_call)| per_call)
 }
 
 /// The base of a call of `agent`'s, and whether it confines the call: its
@@ -177,7 +180,7 @@ pub(crate) fn base(
 
 /// Gives each call of these tools admitted this pass the handler of its
 /// tool built for its [`CallPlace`], and a live call its [`CallOutput`].
-fn give_place(
+fn build_per_call_handlers(
     mut calls: Query<
         (Entity, &ToolRequest, Option<&ForAgent>, &mut CallHandler),
         (ToolCalls, Added<Admitted>),
@@ -193,10 +196,10 @@ fn give_place(
     mut commands: Commands,
 ) {
     for (call, request, agent, mut handler) in &mut calls {
-        let Some(made) = per_call(&tools, request.call.function.name.as_str()) else {
+        let Some(per_call) = per_call(&tools, request.call.function.name.as_str()) else {
             continue;
         };
-        let live = made.live.then(|| {
+        let live = per_call.live.then(|| {
             let (output, live) = CallOutput::new(&wake);
             commands.entity(call).insert(output);
             live
@@ -209,7 +212,7 @@ fn give_place(
             live,
             spill: scratch.as_ref().and_then(|scratch| scratch.spill()),
         };
-        *handler = CallHandler(made.build(place));
+        *handler = CallHandler(per_call.build(place));
     }
 }
 
