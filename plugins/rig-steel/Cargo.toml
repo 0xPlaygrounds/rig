@@ -27,7 +27,7 @@ schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The Scheme interpreter, in process.
-steel = { workspace = true }
+steel-core = { workspace = true }
 # The ids of requests a program sends.
 uuid = { workspace = true, features = ["v4"] }
 

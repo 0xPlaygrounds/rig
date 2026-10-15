@@ -77,6 +77,10 @@ const GENERATED_CODE_DEPENDENCIES: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Dependencies whose library is named other than the package: sources
+/// name the library.
+const LIBRARY_NAMES: &[(&str, &str)] = &[("steel-core", "steel")];
+
 /// Crates a derive expands to without the source naming them: Bevy's derives
 /// write paths into `bevy_ecs` and `bevy_reflect`, which the crate deriving
 /// must therefore depend on directly.
@@ -454,8 +458,13 @@ struct Dependency {
 
 impl Dependency {
     fn identifier(&self) -> String {
+        let library = LIBRARY_NAMES
+            .iter()
+            .find(|(package, _)| *package == self.name)
+            .map(|(_, library)| (*library).to_owned());
         self.rename
             .clone()
+            .or(library)
             .unwrap_or_else(|| self.name.clone())
             .replace('-', "_")
     }
