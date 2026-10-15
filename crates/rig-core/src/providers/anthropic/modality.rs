@@ -50,6 +50,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ModelsPage;
     type Decoder<'id> = ModelsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -148,6 +149,7 @@ impl Wire for Verify {
     type Op = VerifyOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ();
     type Decoder<'id> = VerifyDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

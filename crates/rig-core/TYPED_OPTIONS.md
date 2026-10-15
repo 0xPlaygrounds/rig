@@ -57,7 +57,7 @@ hidden in it.
 | 2 | Precedence lives in one place. | `options::request_params` is the one merge: base body, mapped options, provider options (P4) and `additional_params`, in that order. It returns a `FinalBody`, whose field is private to `completion::options`, so no wire can construct one. `FinalBody` has no `&mut` access, and `FinalBody::into_body` is how a completion wire gets its request bytes. | The `options-precedence` guard, over the completion-wire files (section 2.1), rejects reading `additional_params` as a field or through a struct pattern, any path to `Body::Bytes` or `Body::Multipart` (an expression or a pattern), an `impl` on `Body` (whose `Self::Bytes` it cannot resolve), a qualified `<Body>::..` path, `Body` itself in a macro's tokens, a `.body_mut()` call, any `.body(..)` call whose argument is not `FinalBody::into_body()` or `Body::empty()`, `FinalBody::deserialize` turbofished to `Value` or `Map`, and `serde_json::to_value`, `to_vec` or `to_string` of a function parameter typed `CompletionRequest`. It sees only the listed files and names, not types, so it does not stop every copy of a `FinalBody` or of the request into JSON, nor a `Body` built by a helper or macro in an unlisted file (section 1.1). | P2 (merge, `FinalBody`, guard), P4 (provider layer) | `body.insert("cache_control".into(), top)` on a `FinalBody`: `error[E0599]: no method named 'insert' found for struct 'FinalBody'`. `FinalBody(map)` in a wire: `error[E0423]: cannot initialize a tuple struct which contains private fields`. `let raw = request.additional_params.clone();` in `anthropic/completion.rs`: `options-precedence: crates/rig-core/src/providers/anthropic/completion.rs:<line>: reads additional_params outside request_params`. `Body::Bytes(serde_json::to_vec(&body)?)` in a completion wire: `options-precedence: <file>:<line>: builds a request body without FinalBody::into_body`. |
 | 3 | The decoding path cannot depend on typed views. | Each provider's `Options` and `Extras` live in `providers::<p>::extension`, a module no other provider module names. Rust has no visibility that hides a module from its siblings while keeping it public, so the prompt makes a source guard this guarantee's mechanism. | The `extras-off-decode-path` guard parses each file with `syn` and resolves every `use` tree (grouped, aliased, glob, `self`, `super`) before matching. Outside an `extension` module, no non-test file under rig-core's `providers` tree or a companion provider crate's `src` may name a path through an `extension` module, or `ReplyExtras` or `ProviderExtension`. A `pub use` or `pub type` of an extension item is rejected everywhere. The guard's own tests cover each import form (section 2.5). | P4 | `use crate::providers::openrouter::{extension as ext};` in `openai/wire/chat.rs`: `source-guards` fails `extras-off-decode-path: crates/rig-core/src/providers/openai/wire/chat.rs:<line>: names crate::providers::openrouter::extension`. `fn read<P: ProviderExtension>(raw: &Value)` in a decoder: `<file>:<line>: names ProviderExtension`. |
 | 4 | Every public model constant has a catalog entry. | The catalog is data, and the constants are `pub const`. No type links them, so this guarantee is a guard test, as the prompt specifies. | A guard test walks every public string model constant in rig-core's provider modules and the companion provider crates (a `pub const` or `pub static`, a `pub` associated `const`, any `const` in a trait impl, a `pub` trait's default `const`, and a `pub use` of any of these, named or glob, a glob followed through its target module's own `pub use` items, filed under the re-exporting module's vendor, with `rig_core::` paths resolved in rig-core) and looks it up in `Catalog::builtin()`. An item is a string constant when its type is a reference to `str` by any path or a `type` alias of one, or when its value is a string literal or resolves to a string constant, whatever its type is spelled as. An item-level macro call the guard has not read fails it. A `pub use` whose target the guard cannot resolve to a constant (an external crate's item) is read as no constant. | P3 | Add `pub const GPT_7: &str = "gpt-7";` with no entry: `every_public_model_constant_has_a_catalog_entry` fails `openai::GPT_7 ("gpt-7") has no catalog entry`. |
-| 5 | Streamed and unary `raw` agree for every API. | `Out::raw` moves behind `Emit = Free`, so a completion decoder cannot write `raw` (E0599). Every `Wire` names an associated `type Reassembler: Reassemble<Self::Frame> + Serves<Self::Op>`. `Unreassembled`, which records nothing, serves only `Emit = Free` operations, so a completion wire must name a reassembler that rebuilds its document. The driver, not the decoder, feeds it every frame of a stream and records its `finish()` as `raw`, so no decoder can skip a frame. | A whole-document parity test runs over every recorded unary and streamed pair, and a guard test fails when the corpus records a turn both ways (the same request body, streaming switches aside, to the same endpoint) that has no parity row. | P5 | `out.raw(json!({"response_id": "x"}))` in a completion decoder: `error[E0599]: the method 'raw' exists for struct 'Out<'_, Completion>', but its trait bounds were not satisfied`. An `impl Wire` without a `Reassembler`: `error[E0046]: not all trait items implemented, missing: 'Reassembler'`. `type Reassembler = Unreassembled;` on a completion wire: `error[E0271]: type mismatch resolving '<Completion as Operation>::Emit == Free'`. |
+| 5 | Streamed and unary `raw` agree for every API. | `Out::raw` moves behind `Emit = Free`, so a completion decoder cannot write `raw` (E0599). Every `Wire` names an associated `type Reassembler: Reassemble<Self::Event> + Serves<Self::Op>`, over its decoder's classified event. `Unreassembled`, which records nothing, serves only `Emit = Free` operations, so a completion wire must name a reassembler that rebuilds its document. The driver, not the decoder, feeds it every known event of a stream and records its `finish()` as `raw`, so no decoder can skip one. | A whole-document parity test runs over every recorded unary and streamed pair, and a guard test fails when the corpus records a turn both ways (the same request body, streaming switches aside, to the same endpoint) that has no parity row. | P5 | `out.raw(json!({"response_id": "x"}))` in a completion decoder: `error[E0599]: the method 'raw' exists for struct 'Out<'_, Completion>', but its trait bounds were not satisfied`. An `impl Wire` without a `Reassembler`: `error[E0046]: not all trait items implemented, missing: 'Reassembler'`. `type Reassembler = Unreassembled;` on a completion wire: `error[E0271]: type mismatch resolving '<Completion as Operation>::Emit == Free'`. |
 
 Decisions B and E have type checks of their own (sections 3 and 5). B gives
 E0308, E0609 and E0616 on misplaced provider options. E gives E0451 and
@@ -155,8 +155,8 @@ listed with what covers it.
   The item-level macros it allows (`openai_vendor!`, `anthropic_vendor!`,
   `rest_messages!`, `tonic::include_proto!`) were read by hand; a change to
   one that makes it emit a model constant is not seen.
-- **Guarantee 5.** The type ensures every frame reaches a reassembler that
-  is not `Unreassembled`. It cannot ensure the reassembler folds each frame
+- **Guarantee 5.** The type ensures every known event reaches a reassembler
+  that is not `Unreassembled`. It cannot ensure the reassembler folds each event
   correctly: a wire may name a fold that drops a field, or one that
   records nothing at all, and implement `Serves<Completion>` for it. That
   is the parity test's job, over every recorded pair, and review's for a
@@ -1178,12 +1178,14 @@ stream. An `Extras` type is written once, against the unary document, and
 reads both paths.
 
 **Mechanism.**
-- Every `Wire` names `type Reassembler: Reassemble<Self::Frame>`. Whenever
-  the transport reports no whole document (every stream, and a unary reply
-  whose body is an event stream, as the ChatGPT backend sends), the driver
-  hands each frame to the reassembler before the decoder sees it, and when
+- Every `Wire` names `type Reassembler: Reassemble<Self::Event>`, its
+  decoder's classified event. Whenever the transport reports no whole
+  document (every stream, and a unary reply whose body is an event stream,
+  as the ChatGPT backend sends), the driver classifies each frame once and
+  hands each known event to the reassembler before the decoder decodes it
+  (unknown and corrupt frames add nothing to a document), and when
   the reply ends records `finish()` as the reply's `raw` (a `Null` records
-  nothing). A decoder cannot skip a frame, because it never feeds the
+  nothing). A decoder cannot skip an event, because it never feeds the
   reassembler. On a truncated or failed stream the driver records the
   partial document, which is more than today's `Null`. `Wire::reassembler`
   builds one per reply; it defaults to `Default`, and a wire that picks its
@@ -1239,8 +1241,8 @@ reads both paths.
 
 ```rust
 // rig_core::wire::document
-pub trait Reassemble<Frame>: Default + WasmCompatSend + 'static {
-    fn absorb(&mut self, frame: &Frame);
+pub trait Reassemble<Event>: Default + WasmCompatSend + 'static {
+    fn absorb(&mut self, event: &Event);
     fn finish(self) -> serde_json::Value;
 }
 /// The operations whose wires may name a reassembler.
@@ -1248,13 +1250,15 @@ pub trait Serves<Op: Operation> {}
 /// For wires whose operation is not a completion: records nothing.
 #[derive(Debug, Default)]
 pub struct Unreassembled;
-impl<F> Reassemble<F> for Unreassembled { /* finish() is Value::Null */ }
+impl<E> Reassemble<E> for Unreassembled { /* finish() is Value::Null */ }
 impl<Op: Operation<Emit = Free>> Serves<Op> for Unreassembled {}
 
 // rig_core::wire
 pub trait Wire {
     // ...the existing items, then:
-    type Reassembler: Reassemble<Self::Frame> + Serves<Self::Op>;
+    type Event: WasmCompatSend + 'static;
+    type Decoder<'id>: Decoder<'id, Self::Op, Self::Frame, Event = Self::Event>;
+    type Reassembler: Reassemble<Self::Event> + Serves<Self::Op>;
     fn reassembler(&self) -> Self::Reassembler { Self::Reassembler::default() }
 }
 impl<Op: Operation<Emit = Free>> Out<'_, Op> { pub fn raw(&mut self, raw: serde_json::Value); }
@@ -1322,8 +1326,8 @@ To add a completion API:
    (a `document` module with sibling tests, as in
    `providers::anthropic::streaming::document`). It is a plain JSON fold: a `#[derive(Default)]`
    struct named for the unary document type, with
-   `impl Reassemble<W::Frame>` and `impl Serves<Completion>`. `absorb` sees
-   every frame in arrival order, frames the decoder skips included; `finish`
+   `impl Reassemble<W::Event>` and `impl Serves<Completion>`. `absorb` sees
+   every known event in arrival order, before the decoder decodes it; `finish`
    returns the unary document, partial when the stream was cut, or `Null`
    for none. It names no typed provider struct and no `Extras` type, since
    the `extras-off-decode-path` guard covers it. It follows the shared rules

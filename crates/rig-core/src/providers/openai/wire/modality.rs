@@ -596,6 +596,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = CompatibleEmbeddingResponse;
     type Decoder<'id> = EmbeddingsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -818,6 +819,7 @@ impl Wire for Transcriptions {
     type Op = Transcription;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = crate::providers::openai::transcription::TranscriptionResponse;
     type Decoder<'id> = TranscriptionsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1006,6 +1008,7 @@ impl Wire for Images {
     type Op = crate::operation::ImageGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ImagesEvent;
     type Decoder<'id> = ImagesDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1166,6 +1169,7 @@ impl Wire for Speech {
     type Op = crate::operation::AudioGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Vec<u8>;
     type Decoder<'id> = SpeechDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1329,6 +1333,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ModelsReply;
     type Decoder<'id> = ModelsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1459,6 +1464,7 @@ impl Wire for Rerank {
     type Op = RerankOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = RerankReply;
     type Decoder<'id> = RerankDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1532,6 +1538,7 @@ impl Wire for Verify {
     type Op = VerifyOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ();
     type Decoder<'id> = VerifyDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

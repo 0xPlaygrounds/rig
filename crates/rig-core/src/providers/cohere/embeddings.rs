@@ -113,6 +113,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Result<EmbeddingResponse, String>;
     type Decoder<'id> = EmbeddingsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -189,6 +190,7 @@ impl Wire for ImageEmbeddings {
     type Op = ImageEmbedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Result<ImageEmbeddingResponse, String>;
     type Decoder<'id> = ImageEmbeddingsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

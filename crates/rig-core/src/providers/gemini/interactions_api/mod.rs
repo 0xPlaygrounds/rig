@@ -67,6 +67,7 @@ impl crate::wire::Wire for Interactions {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = streaming::InteractionsEvent;
     type Decoder<'id> = streaming::InteractionsDecoder;
     type Reassembler = streaming::document::Interaction;
 
@@ -259,6 +260,7 @@ impl crate::wire::Wire for InteractionResume {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = streaming::InteractionsEvent;
     type Decoder<'id> = streaming::InteractionsDecoder;
     type Reassembler = streaming::document::Interaction;
 

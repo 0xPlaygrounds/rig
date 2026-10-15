@@ -85,6 +85,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Value;
     type Decoder<'id> = ModelsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

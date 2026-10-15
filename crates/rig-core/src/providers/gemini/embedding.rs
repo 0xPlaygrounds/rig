@@ -73,6 +73,7 @@ impl Wire for Embeddings {
     type Op = crate::operation::Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = gemini_api_types::EmbeddingResponse;
     type Decoder<'id> = EmbeddingsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

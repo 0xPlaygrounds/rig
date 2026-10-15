@@ -87,6 +87,7 @@ impl Wire for Transcriptions {
     type Op = Transcription;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Value;
     type Decoder<'id> = TranscriptionsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

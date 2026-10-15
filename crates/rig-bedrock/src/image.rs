@@ -60,6 +60,7 @@ impl Wire for Images {
     type Op = ImageGeneration;
     type Payload = InvokeModel;
     type Frame = Vec<u8>;
+    type Event = Vec<u8>;
     type Decoder<'id> = ImagesDecoder;
     type Reassembler = rig_core::wire::document::Unreassembled;
 

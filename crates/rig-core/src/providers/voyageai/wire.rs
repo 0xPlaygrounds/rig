@@ -160,6 +160,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = VoyageEmbeddingResponse;
     type Decoder<'id> = EmbeddingsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -268,6 +269,7 @@ impl Wire for Rerank {
     type Op = RerankOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Result<RerankApiResponse, String>;
     type Decoder<'id> = RerankDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

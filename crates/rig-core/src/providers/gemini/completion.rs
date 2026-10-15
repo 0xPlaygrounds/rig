@@ -172,6 +172,7 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = super::streaming::GenerateContentChunk;
     type Decoder<'id> = super::streaming::GenerateContentDecoder;
     type Reassembler = super::streaming::document::GenerateContentResponse;
 

@@ -87,6 +87,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = EmbeddingResponse;
     type Decoder<'id> = EmbeddingsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

@@ -407,6 +407,7 @@ impl Wire for NativeChat {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = super::streaming::ChatEvent;
     type Decoder<'id> = ChatDecoder;
     type Reassembler = super::streaming::document::ChatResponse;
 

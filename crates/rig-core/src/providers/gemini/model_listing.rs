@@ -143,6 +143,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = String;
     type Decoder<'id> = ModelsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -182,6 +183,7 @@ impl Wire for InteractionsModels {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = String;
     type Decoder<'id> = ModelsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -251,6 +253,7 @@ impl Wire for VerifyKey {
     type Op = Verify;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ();
     type Decoder<'id> = VerifyKeyDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

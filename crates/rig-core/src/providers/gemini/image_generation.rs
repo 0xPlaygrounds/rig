@@ -134,6 +134,7 @@ impl Wire for Images {
     type Op = ImageGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Value;
     type Decoder<'id> = ImagesDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

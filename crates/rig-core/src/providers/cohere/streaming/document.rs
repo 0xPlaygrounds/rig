@@ -5,10 +5,9 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 
-use super::ChatDecoder;
+use super::ChatEvent;
 use crate::json_utils::Lenient;
 use crate::wire::document::Reassemble;
-use crate::wire::{Decoder, WireEvent, WireFrame};
 
 /// The native chat response a stream of events adds up to.
 ///
@@ -23,8 +22,6 @@ use crate::wire::{Decoder, WireEvent, WireFrame};
 /// reply, `error`. A whole reply is its own document.
 #[derive(Debug, Default)]
 pub struct ChatResponse {
-    /// The decoder's classifier.
-    classifier: ChatDecoder,
     /// The top-level fields: `id`, then what `message-end` states.
     top: Map<String, Value>,
     /// The message fields `message-start` states.
@@ -61,11 +58,8 @@ fn listed<T: Into<Value>>(slots: BTreeMap<u64, T>) -> Value {
 
 impl crate::wire::document::Serves<crate::operation::Completion> for ChatResponse {}
 
-impl Reassemble<WireFrame> for ChatResponse {
-    fn absorb(&mut self, frame: &WireFrame) {
-        let WireEvent::Known(event) = self.classifier.classify(frame.clone()) else {
-            return;
-        };
+impl Reassemble<ChatEvent> for ChatResponse {
+    fn absorb(&mut self, event: &ChatEvent) {
         let fields = &event.fields;
         let index = fields.u64("index").unwrap_or(0);
         let stated = |key: &str| fields.at(&format!("/delta/message/{key}"));

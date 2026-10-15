@@ -16,10 +16,9 @@
 
 use serde_json::{Map, Value};
 
-use super::{GenerateContentChunk, GenerateContentDecoder, merge_part};
+use super::{GenerateContentChunk, merge_part};
 use crate::json_utils::Lenient;
 use crate::wire::document::Reassemble;
-use crate::wire::{Decoder, WireEvent, WireFrame};
 
 /// The `generateContent` body a stream of chunks adds up to.
 ///
@@ -35,8 +34,6 @@ use crate::wire::{Decoder, WireEvent, WireFrame};
 /// document.
 #[derive(Debug, Default)]
 pub struct GenerateContentResponse {
-    /// The decoder's classifier.
-    classifier: GenerateContentDecoder,
     document: Map<String, Value>,
     /// The `index` of each candidate held, in order.
     indices: Vec<u64>,
@@ -240,14 +237,9 @@ fn slot<'a, T: Default>(
 
 impl crate::wire::document::Serves<crate::operation::Completion> for GenerateContentResponse {}
 
-impl Reassemble<WireFrame> for GenerateContentResponse {
-    fn absorb(&mut self, frame: &WireFrame) {
-        // The driver reports what does not classify.
-        if let WireEvent::Known(GenerateContentChunk(chunk)) =
-            self.classifier.classify(frame.clone())
-        {
-            self.chunk(chunk);
-        }
+impl Reassemble<GenerateContentChunk> for GenerateContentResponse {
+    fn absorb(&mut self, GenerateContentChunk(chunk): &GenerateContentChunk) {
+        self.chunk(chunk.clone());
     }
 
     fn finish(self) -> Value {

@@ -9,9 +9,8 @@
 
 use serde_json::{Map, Value};
 
-use super::{CallKind, ChatDecoder, ChatEvent, Quirks, REASONING_DETAILS, merge_details};
+use super::{CallKind, ChatEvent, REASONING_DETAILS, merge_details};
 use crate::wire::document::Reassemble;
-use crate::wire::{Decoder, WireEvent, WireFrame};
 
 /// The unary document's tag.
 const OBJECT: &str = "chat.completion";
@@ -25,14 +24,11 @@ const APPENDED_LISTS: [&str; 2] = ["annotations", "images"];
 /// A `chat.completion` being rebuilt from the frames of one reply.
 ///
 /// Chunks fold into the document, and a whole `chat.completion` frame
-/// replaces its choices' messages. The `[DONE]` sentinel, frames that do not
-/// classify and the in-band error envelope add nothing. A bare-string reply
+/// replaces its choices' messages. The `[DONE]` sentinel and the in-band
+/// error envelope add nothing. A bare-string reply
 /// has no document, so it finishes `null`, as does a reply no frame added to.
 #[derive(Default)]
 pub struct ChatCompletion {
-    /// The decoder's classifier for the dialect, so a frame counts exactly
-    /// when the decoder reads it.
-    classifier: ChatDecoder,
     /// Top-level fields, in arrival order. `choices` holds its place and is
     /// filled at the finish.
     envelope: Map<String, Value>,
@@ -53,14 +49,6 @@ struct Choice {
 }
 
 impl ChatCompletion {
-    /// A reassembler for a dialect with `quirks`.
-    pub(super) fn new(quirks: Quirks) -> Self {
-        Self {
-            classifier: ChatDecoder::new(quirks),
-            ..Self::default()
-        }
-    }
-
     /// Fold one `chat.completion` or `chat.completion.chunk` object.
     fn frame(&mut self, frame: &Value) {
         for (key, value) in frame.as_object().into_iter().flatten() {
@@ -131,16 +119,14 @@ impl ChatCompletion {
 
 impl crate::wire::document::Serves<crate::operation::Completion> for ChatCompletion {}
 
-impl Reassemble<WireFrame> for ChatCompletion {
-    fn absorb(&mut self, frame: &WireFrame) {
-        match self.classifier.classify(frame.clone()) {
-            WireEvent::Known(ChatEvent::Chunk(frame) | ChatEvent::Whole(frame)) => {
-                self.frame(&frame);
-            }
-            WireEvent::Known(ChatEvent::BareText(_)) => self.bare = true,
-            // The sentinel, the error envelope and what does not classify
-            // are not part of the document.
-            _ => {}
+impl Reassemble<ChatEvent> for ChatCompletion {
+    fn absorb(&mut self, event: &ChatEvent) {
+        match event {
+            ChatEvent::Chunk(frame) | ChatEvent::Whole(frame) => self.frame(frame),
+            ChatEvent::BareText(_) => self.bare = true,
+            // The sentinel and the error envelope are not part of the
+            // document.
+            ChatEvent::Done | ChatEvent::Failure(_) => {}
         }
     }
 

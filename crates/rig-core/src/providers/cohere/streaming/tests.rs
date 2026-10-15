@@ -3,7 +3,6 @@ use crate::completion::{AssistantContent, CompletionResponse};
 use crate::driver::{Decoded, feed_frames};
 use crate::streaming::{Item, StreamEvent};
 use crate::wire::AdapterEvent;
-use crate::wire::document::Reassemble;
 use serde_json::json;
 
 /// `frames` decoded, classifier included, as one native reply.
@@ -20,11 +19,13 @@ fn fed(frames: &[Value]) -> Decoded<Completion> {
 
 /// The document the native reassembler rebuilds from `frames`.
 fn rebuilt(frames: &[Value]) -> Value {
-    let mut document = document::ChatResponse::default();
-    for frame in frames {
-        document.absorb(&WireFrame::Text(frame.to_string()));
-    }
-    document.finish()
+    crate::wire::document::rebuild(
+        &ChatDecoder::default(),
+        document::ChatResponse::default(),
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+    )
 }
 
 /// The response `frames` fold into.

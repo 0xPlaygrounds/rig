@@ -788,6 +788,7 @@ impl Wire for Chat {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ChatEvent;
     type Decoder<'id> = ChatDecoder;
     type Reassembler = document::ChatCompletion;
 
@@ -811,10 +812,6 @@ impl Wire for Chat {
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ChatDecoder::new(self.provider.dialect.quirks)
-    }
-
-    fn reassembler(&self) -> Self::Reassembler {
-        document::ChatCompletion::new(self.provider.dialect.quirks)
     }
 }
 

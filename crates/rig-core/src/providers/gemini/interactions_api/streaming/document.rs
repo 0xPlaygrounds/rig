@@ -3,17 +3,21 @@
 //! included, which `interaction.completed` leaves out.
 //!
 //! ```
+//! use rig_core::providers::gemini::interactions_api::streaming::InteractionsDecoder;
 //! use rig_core::providers::gemini::interactions_api::streaming::document::Interaction;
-//! use rig_core::wire::WireFrame;
 //! use rig_core::wire::document::Reassemble;
+//! use rig_core::wire::{Decoder, WireEvent, WireFrame};
 //!
+//! let decoder = InteractionsDecoder::default();
 //! let mut document = Interaction::default();
-//! for event in [
+//! for frame in [
 //!     r#"{"event_type":"step.start","index":0,"step":{"type":"model_output"}}"#,
 //!     r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"42"}}"#,
 //!     r#"{"event_type":"interaction.completed","interaction":{"id":"v1_a","status":"completed"}}"#,
 //! ] {
-//!     document.absorb(&WireFrame::Text(event.to_owned()));
+//!     if let WireEvent::Known(event) = decoder.classify(WireFrame::Text(frame.to_owned())) {
+//!         document.absorb(&event);
+//!     }
 //! }
 //! let document = document.finish();
 //! assert_eq!(document["steps"][0]["content"][0]["text"], "42");
@@ -24,11 +28,10 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use super::{InteractionsDecoder, InteractionsEvent, SseEvent};
+use super::{InteractionsEvent, SseEvent};
 use crate::json_utils::Lenient;
 use crate::operation::completion::merge;
 use crate::wire::document::Reassemble;
-use crate::wire::{Decoder, WireEvent, WireFrame};
 
 /// The interaction resource a stream of Interactions events adds up to.
 ///
@@ -44,8 +47,6 @@ use crate::wire::{Decoder, WireEvent, WireFrame};
 /// interaction frame is the document as sent.
 #[derive(Default)]
 pub struct Interaction {
-    /// The decoder's classifier.
-    classifier: InteractionsDecoder,
     document: Map<String, Value>,
     steps: BTreeMap<usize, Value>,
     /// The argument JSON each call step streamed so far.
@@ -172,15 +173,11 @@ fn list<'a>(step: &'a mut Value, key: &str) -> Option<&'a mut Vec<Value>> {
 
 impl crate::wire::document::Serves<crate::operation::Completion> for Interaction {}
 
-impl Reassemble<WireFrame> for Interaction {
-    fn absorb(&mut self, frame: &WireFrame) {
-        // The driver reports what does not classify.
-        let WireEvent::Known(event) = self.classifier.classify(frame.clone()) else {
-            return;
-        };
+impl Reassemble<InteractionsEvent> for Interaction {
+    fn absorb(&mut self, event: &InteractionsEvent) {
         let SseEvent { event_type, fields } = match event {
             InteractionsEvent::Whole(interaction) => {
-                self.whole = Some(interaction);
+                self.whole = Some(interaction.clone());
                 return;
             }
             InteractionsEvent::Sse(event) => event,
@@ -189,26 +186,25 @@ impl Reassemble<WireFrame> for Interaction {
             .get("index")
             .and_then(Value::as_u64)
             .and_then(|index| usize::try_from(index).ok());
-        let mut fields = fields;
         match (event_type.as_str(), index) {
             ("interaction.created" | "interaction.completed", _) => {
-                if let Some(Value::Object(interaction)) = fields.shift_remove("interaction") {
-                    self.fields(interaction);
+                if let Some(Value::Object(interaction)) = fields.get("interaction") {
+                    self.fields(interaction.clone());
                 }
             }
             ("interaction.status_update", _) => {
-                if let Some(status) = fields.shift_remove("status") {
-                    self.fields(Map::from_iter([("status".to_owned(), status)]));
+                if let Some(status) = fields.get("status") {
+                    self.fields(Map::from_iter([("status".to_owned(), status.clone())]));
                 }
             }
             ("step.start", Some(index)) => {
-                if let Some(step @ Value::Object(_)) = fields.shift_remove("step") {
-                    self.steps.insert(index, step);
+                if let Some(step @ Value::Object(_)) = fields.get("step") {
+                    self.steps.insert(index, step.clone());
                 }
             }
             ("step.delta", Some(index)) => {
-                if let Some(Value::Object(delta)) = fields.shift_remove("delta") {
-                    self.delta(index, delta);
+                if let Some(Value::Object(delta)) = fields.get("delta") {
+                    self.delta(index, delta.clone());
                 }
             }
             ("step.stop", Some(index)) => self.stop(index),

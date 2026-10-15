@@ -395,6 +395,7 @@ impl Wire for MockScript {
     type Op = Completion;
     type Payload = CompletionRequest;
     type Frame = MockFrame;
+    type Event = MockFrame;
     type Decoder<'id> = MockDecoder<'id>;
     type Reassembler = MockDocument;
 

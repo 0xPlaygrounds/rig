@@ -453,8 +453,9 @@ where
 /// Read one reply: open it, classify each frame, decode it into the reply's
 /// writer, and stop at the provider's end. The stream yields once per frame
 /// read, so its items reach the consumer frame by frame. When the transport
-/// reported no whole document, the wire's reassembler sees every frame
-/// first, and what it rebuilds is the reply's `raw` however the reply ends.
+/// reported no whole document, the wire's reassembler sees every known
+/// event before the decoder decodes it, and what it rebuilds is the reply's
+/// `raw` however the reply ends.
 ///
 /// The reply's `'id` brand is the borrow of its shared state inside this
 /// stream: the decoder and every part handle it holds are tied to it, and
@@ -603,8 +604,9 @@ pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<Item<E>, ProviderError> {
     }
 }
 
-/// Hand one frame to `reassembler`, then classify it and decode it into
-/// `reply`, counting it in `tally` when the reply is observed.
+/// Classify one frame and decode it into `reply`, handing a known event to
+/// `reassembler` first, and count the frame in `tally` when the reply is
+/// observed.
 pub(crate) fn step<'id, Op, F, D, R>(
     decoder: &mut D,
     reassembler: Option<&mut R>,
@@ -615,11 +617,8 @@ pub(crate) fn step<'id, Op, F, D, R>(
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
-    R: Reassemble<F>,
+    R: Reassemble<D::Event>,
 {
-    if let Some(reassembler) = reassembler {
-        reassembler.absorb(&frame);
-    }
     let exempt = tally
         .as_ref()
         .and_then(|tally| tally.analysis_only)
@@ -636,7 +635,12 @@ where
         }
     }
     match triage(classified)? {
-        Item::Event(event) => decoder.decode(event, Out::new(reply)),
+        Item::Event(event) => {
+            if let Some(reassembler) = reassembler {
+                reassembler.absorb(&event);
+            }
+            decoder.decode(event, Out::new(reply))
+        }
         Item::Unknown(value) => {
             Out::new(reply).unknown(value);
             Ok(Flow::More)
@@ -682,7 +686,7 @@ pub(crate) fn feed<'id, Op, F, D, R>(
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
-    R: Reassemble<F>,
+    R: Reassemble<D::Event>,
 {
     let fed = feed_until_end(decoder, reassembler.as_mut(), reply, frames);
     record(reply, reassembler.map(|document| document.finish()));
@@ -698,7 +702,7 @@ fn feed_until_end<'id, Op, F, D, R>(
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
-    R: Reassemble<F>,
+    R: Reassemble<D::Event>,
 {
     for frame in frames {
         if let Flow::Ended(_) = step(decoder, reassembler.as_deref_mut(), reply, frame, None)? {
@@ -897,8 +901,8 @@ pub(crate) use decode_events;
 
 /// Decode `frames` through `decoder`, classifier included, as one
 /// completion reply from `provider`: what the driver does with frames it
-/// read. A reassembler, when given, sees each frame first and its document
-/// is the reply's `raw`.
+/// read. A reassembler, when given, sees each known event first and its
+/// document is the reply's `raw`.
 #[cfg(test)]
 macro_rules! feed_frames {
     ($decoder:expr, $provider:expr, $frames:expr) => {
@@ -941,7 +945,7 @@ impl<'id, Op: Operation> Replying<'id, Op> {
     }
 
     /// Feed frames through `reassembler` and `decoder`, as the driver does.
-    pub(crate) fn feed<F, D: Decoder<'id, Op, F>, R: Reassemble<F>>(
+    pub(crate) fn feed<F, D: Decoder<'id, Op, F>, R: Reassemble<D::Event>>(
         &self,
         decoder: &mut D,
         reassembler: Option<R>,

@@ -3,9 +3,8 @@
 
 use serde_json::{Map, Value};
 
-use super::{ChatDecoder, ChatRecord};
+use super::ChatRecord;
 use crate::wire::document::Reassemble;
-use crate::wire::{Decoder, WireEvent, WireFrame};
 
 /// The `/api/chat` reply a stream of records adds up to.
 ///
@@ -17,8 +16,6 @@ use crate::wire::{Decoder, WireEvent, WireFrame};
 /// beside what arrived before it.
 #[derive(Debug, Default)]
 pub struct ChatResponse {
-    /// The decoder's classifier.
-    classifier: ChatDecoder,
     document: Map<String, Value>,
 }
 
@@ -54,13 +51,9 @@ fn fold(into: &mut Map<String, Value>, fields: Map<String, Value>, appended: &[&
 
 impl crate::wire::document::Serves<crate::operation::Completion> for ChatResponse {}
 
-impl Reassemble<WireFrame> for ChatResponse {
-    fn absorb(&mut self, frame: &WireFrame) {
-        // The driver reports what does not classify.
-        let WireEvent::Known(ChatRecord(mut fields)) = self.classifier.classify(frame.clone())
-        else {
-            return;
-        };
+impl Reassemble<ChatRecord> for ChatResponse {
+    fn absorb(&mut self, ChatRecord(fields): &ChatRecord) {
+        let mut fields = fields.clone();
         if let Some(Value::Object(message)) = fields.shift_remove("message") {
             match self.document.get_mut("message") {
                 Some(Value::Object(into)) => fold(into, message, APPENDED),

@@ -738,15 +738,18 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     type Payload: WasmCompatSend + 'static;
     /// One unit of a reply, as the transport delivers it.
     type Frame: WasmCompatSend + 'static;
+    /// The decoder's classified event, which the reassembler reads too.
+    type Event: WasmCompatSend + 'static;
     /// The decoder for one of its replies, branded with that reply.
-    type Decoder<'id>: Decoder<'id, Self::Op, Self::Frame> + WasmCompatSend;
-    /// What rebuilds a reply's provider document from its frames when the
+    type Decoder<'id>: Decoder<'id, Self::Op, Self::Frame, Event = Self::Event> + WasmCompatSend;
+    /// What rebuilds a reply's provider document from its events when the
     /// transport reports no whole document, as for a stream. The driver
-    /// feeds it every frame and records what it finishes with as `raw`.
-    /// A wire whose operation's decoders record `raw` themselves names
-    /// [`document::Unreassembled`]; a completion wire cannot, because it
-    /// does not [`Serve`](document::Serves) completions.
-    type Reassembler: document::Reassemble<Self::Frame> + document::Serves<Self::Op>;
+    /// hands it every known event before the decoder decodes it, and
+    /// records what it finishes with as `raw`. A wire whose operation's
+    /// decoders record `raw` themselves names [`document::Unreassembled`];
+    /// a completion wire cannot, because it does not
+    /// [`Serve`](document::Serves) completions.
+    type Reassembler: document::Reassemble<Self::Event> + document::Serves<Self::Op>;
 
     /// What the wire says about itself.
     fn describe(&self) -> Descriptor<'_>;

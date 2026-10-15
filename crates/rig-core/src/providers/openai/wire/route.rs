@@ -180,6 +180,7 @@ impl Wire for OpenAiWire {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = OpenAiEvent;
     type Decoder<'id> = OpenAiDecoder;
     type Reassembler = OpenAiReassembler;
 
@@ -223,9 +224,14 @@ impl Default for OpenAiReassembler {
 
 impl crate::wire::document::Serves<crate::operation::Completion> for OpenAiReassembler {}
 
-impl Reassemble<WireFrame> for OpenAiReassembler {
-    fn absorb(&mut self, frame: &WireFrame) {
-        on_route!(self, document => document.absorb(frame));
+impl Reassemble<OpenAiEvent> for OpenAiReassembler {
+    fn absorb(&mut self, event: &OpenAiEvent) {
+        match (self, event) {
+            (Self::Chat(document), OpenAiEvent::Chat(event)) => document.absorb(event),
+            (Self::Responses(document), OpenAiEvent::Responses(event)) => document.absorb(event),
+            // The route's decoder classifies only its own events.
+            _ => {}
+        }
     }
 
     fn finish(self) -> serde_json::Value {
