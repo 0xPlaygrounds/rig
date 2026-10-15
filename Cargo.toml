@@ -329,6 +329,7 @@ lancedb = { version = "0.30", default-features = false }
 libc = "0.2.186"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
+memchr = "2"
 mime = "0.3"
 mime_guess = "2"
 # 3.2: 3.0/3.1 no longer build against their own `^3` macro crate.

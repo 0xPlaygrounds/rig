@@ -425,11 +425,8 @@ pub(crate) struct LogLines {
 
 impl LogLines {
     pub fn parse(bytes: Vec<u8>) -> Self {
-        let mut ends: Vec<usize> = bytes
-            .iter()
-            .enumerate()
-            .filter(|(_, byte)| **byte == b'\n')
-            .map(|(at, _)| at + 1)
+        let mut ends: Vec<usize> = memchr::memchr_iter(b'\n', &bytes)
+            .map(|at| at + 1)
             .collect();
         let last_start = ends
             .len()

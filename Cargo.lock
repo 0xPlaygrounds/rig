@@ -17507,6 +17507,7 @@ version = "0.44.0"
 dependencies = [
  "base64 0.22.1",
  "divan",
+ "memchr",
  "rig-core",
  "serde",
  "serde_json",
