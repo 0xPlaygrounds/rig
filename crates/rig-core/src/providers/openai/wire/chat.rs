@@ -1210,7 +1210,7 @@ impl ChatDecoder {
 
     /// Absorb the metadata every frame carries, and take its primary choice.
     /// Usage is the frame's, or its choice's where Moonshot reports it.
-    fn absorb(&mut self, frame: &Value) -> Option<Value> {
+    fn absorb<'f>(&mut self, frame: &'f Value) -> Option<&'f Value> {
         if let Some(id) = frame.str("id") {
             self.response_id = Some(id.to_owned());
         }
@@ -1219,17 +1219,13 @@ impl ChatDecoder {
         }
         // `n > 1` streams interleave candidates told apart only by
         // `choices[].index`; candidate 0 is the turn, as in a whole reply.
-        let choice = frame
-            .arr("choices")
-            .iter()
-            .find(|choice| {
-                let index = choice.get("index").and_then(Value::as_u64);
-                index.is_none_or(|index| index == 0)
-            })
-            .cloned();
+        let choice = frame.arr("choices").iter().find(|choice| {
+            let index = choice.get("index").and_then(Value::as_u64);
+            index.is_none_or(|index| index == 0)
+        });
         if let Some(usage) = frame
             .at("/usage")
-            .or_else(|| choice.as_ref().and_then(|choice| choice.at("/usage")))
+            .or_else(|| choice.and_then(|choice| choice.at("/usage")))
         {
             self.usage = Some(usage.clone());
         }
@@ -1561,15 +1557,14 @@ impl ChatDecoder {
                 },
             )?;
         }
-        let mut fields = call.as_object().cloned().unwrap_or_default();
-        // The index orders the stream; the call it assembles has none.
-        fields.shift_remove("index");
         out.edit(at, |item| {
             if !item.is_object() {
                 *item = Value::Object(Map::new());
             }
-            if let Value::Object(item) = item {
-                merge_fields(item, &fields);
+            if let (Value::Object(item), Some(fields)) = (item, call.as_object()) {
+                merge_fields(item, fields);
+                // The index orders the stream; the call it assembles has none.
+                item.shift_remove("index");
             }
         })
     }

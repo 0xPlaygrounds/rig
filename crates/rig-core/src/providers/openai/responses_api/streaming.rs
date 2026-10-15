@@ -677,7 +677,7 @@ impl ResponsesDecoder {
     fn item_event(
         &mut self,
         kind: &str,
-        frame: Value,
+        mut frame: Value,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         match kind {
@@ -710,7 +710,11 @@ impl ResponsesDecoder {
                     Some((_, false, true)) => return Ok(()),
                     _ => self.added(index, item, out)?,
                 };
-                self.done(slot, item.clone(), out)
+                let item = frame
+                    .as_object_mut()
+                    .and_then(|frame| frame.shift_remove("item"))
+                    .unwrap_or_default();
+                self.done(slot, item, out)
             }
             // A refusal is the assistant's message for that turn.
             "response.output_text.delta" | "response.refusal.delta" => {
@@ -738,7 +742,7 @@ impl ResponsesDecoder {
         &self,
         index: usize,
         item: &Value,
-        output: &[Value],
+        kinds: &[Kind],
         taken: &HashSet<usize>,
     ) -> Option<usize> {
         let id = item_id(item);
@@ -769,9 +773,7 @@ impl ResponsesDecoder {
                     (id.is_none() || slot.id.is_none())
                         && self.indexed.iter().any(|(streamed, indexed)| {
                             *indexed == at
-                                && output
-                                    .get(*streamed)
-                                    .is_none_or(|other| Kind::of(other) != slot.kind)
+                                && kinds.get(*streamed).is_none_or(|other| *other != slot.kind)
                         })
                 })
             })
@@ -784,10 +786,13 @@ impl ResponsesDecoder {
     /// first.
     fn finish(
         &mut self,
-        response: Value,
+        mut response: Value,
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
-        let output = response.arr("output");
+        let output = match response.get_mut("output") {
+            Some(Value::Array(output)) => std::mem::take(output),
+            _ => Vec::new(),
+        };
         if self.slots.is_empty()
             && !output.iter().any(|item| Kind::of(item) == Kind::Reasoning)
             && let Some(reasoning) = response.str("reasoning").filter(|text| !text.is_empty())
@@ -802,12 +807,13 @@ impl ResponsesDecoder {
             )?;
         }
         let mut taken = HashSet::new();
+        let kinds: Vec<Kind> = output.iter().map(Kind::of).collect();
         for (index, item) in output
-            .iter()
+            .into_iter()
             .enumerate()
             .filter(|(_, item)| item.is_object())
         {
-            let known = self.restated(index, item, output, &taken).and_then(|at| {
+            let known = self.restated(index, &item, &kinds, &taken).and_then(|at| {
                 let slot = self.slots.get(at)?;
                 Some((at, slot.open, slot.kind, slot.at))
             });
@@ -832,12 +838,12 @@ impl ResponsesDecoder {
                 Some((slot, ..)) => slot,
                 None => self.added(
                     Some(index).filter(|index| !self.indexed.contains_key(index)),
-                    item,
+                    &item,
                     &mut out,
                 )?,
             };
             taken.insert(slot);
-            self.done(slot, item.clone(), &mut out)?;
+            self.done(slot, item, &mut out)?;
         }
         // Reasoning still waiting is complete when nothing after it is left
         // open.
@@ -966,15 +972,19 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
         // their place by output index.
         out.order_by_index();
         match event {
-            ResponsesEvent::Frame { kind, frame, raw } => match kind.as_str() {
+            ResponsesEvent::Frame {
+                kind,
+                mut frame,
+                raw,
+            } => match kind.as_str() {
                 // `response.incomplete` is a genuine terminal that keeps the
                 // partial output and usage. It is incomplete whatever its
                 // `status` says, where pi reads a missing status as a stop.
                 "response.completed" | "response.incomplete" => {
                     let mut response = frame
-                        .get("response")
-                        .filter(|response| response.is_object())
-                        .cloned()
+                        .as_object_mut()
+                        .and_then(|frame| frame.shift_remove("response"))
+                        .filter(Value::is_object)
                         .unwrap_or_else(|| json!({}));
                     if let (true, Some(fields)) =
                         (kind == "response.incomplete", response.as_object_mut())
