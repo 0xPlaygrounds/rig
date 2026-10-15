@@ -936,13 +936,13 @@ impl rig_core::serve::Serve for NoteTaker {
                         })
                         .expect("an ack serializes"),
                     }),
-                    Err(error) => Err(rig_core::error::ErrorReport::new(
+                    Err(error) => Err(rig_core::error::RigError::new(
                         rig_core::error::ErrorKind::Request,
                         format!("not a note: {error}"),
                     )),
                 }
             }
-            other => Err(rig_core::error::ErrorReport::new(
+            other => Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Request,
                 format!("a note, not {other:?}"),
             )),
@@ -1586,7 +1586,7 @@ impl rig_core::serve::Serve for Lookup {
         dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
         let rig_core::effect::EffectKind::ToolCall { args, .. } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Request,
                 "a tool call",
             )));
@@ -1643,7 +1643,7 @@ impl rig_core::serve::Serve for Relay {
         dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
         let rig_core::effect::EffectKind::Custom { payload, .. } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Request,
                 "a relay note",
             )));
@@ -1752,7 +1752,7 @@ macro_rules! keep_after {
             &self,
             _id: rig_core::effect::EffectId,
             _kind: &rig_core::effect::EffectKind,
-            _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+            _outcome: &Result<rig_core::effect::Answered, rig_core::error::RigError>,
         ) -> rig_core::serve::AfterServe {
             rig_core::serve::AfterServe::Keep
         }
@@ -1838,7 +1838,7 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-        outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+        outcome: &Result<rig_core::effect::Answered, rig_core::error::RigError>,
     ) -> rig_core::serve::AfterServe {
         match outcome {
             Ok(rig_core::effect::Answered::ToolResult { result }) if is_add(kind) => {
@@ -1879,7 +1879,7 @@ impl rig_core::serve::Intercept for ApprovalLayer {
         match decided.await {
             Ok(decision) => decision,
             Err(futures::channel::oneshot::Canceled) => {
-                rig_core::serve::BeforeServe::Deny(rig_core::error::ErrorReport::new(
+                rig_core::serve::BeforeServe::Deny(rig_core::error::RigError::new(
                     rig_core::error::ErrorKind::Internal,
                     "layer `ApprovalLayer`: the world closed the answer channel without deciding",
                 ))
@@ -1960,9 +1960,9 @@ impl rig_core::serve::Intercept for CancelStreamLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::RigError>,
     ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Replace(Err(rig_core::error::ErrorReport::new(
+        rig_core::serve::AfterServe::Replace(Err(rig_core::error::RigError::new(
             rig_core::error::ErrorKind::Cancelled,
             CANCEL_STREAM_REASON,
         )))

@@ -50,10 +50,10 @@ async fn test_generate_content_response_deserializes_without_candidates_or_respo
         .await
         .expect_err("a blocked prompt is an error");
     assert!(
-        matches!(&error, ProviderError::ProviderResponse(response) if response.body.contains("blocked the prompt") && response.body.contains("SAFETY") && response.refusal && response.code.as_deref() == Some("SAFETY")),
+        matches!(&error, crate::error::RigError { kind: crate::error::ErrorKind::ProviderResponse, detail: None, provider_response: Some(response), .. } if response.body.contains("blocked the prompt") && response.body.contains("SAFETY") && response.refusal && response.code.as_deref() == Some("SAFETY")),
         "{error}"
     );
-    let report = crate::error::ErrorReport::from(&error);
+    let report = &error;
     assert!(
         report.refusal,
         "the verdict is a refusal on the report: {report:?}"
@@ -114,7 +114,11 @@ async fn test_unspecified_block_reason_is_not_a_block() {
     )
     .await
     .expect_err("no candidates");
-    assert!(matches!(error, ProviderError::Truncated), "{error}");
+    assert_eq!(
+        error.detail,
+        Some(crate::error::ErrorDetail::Truncated),
+        "{error}"
+    );
 }
 
 #[test]
@@ -523,7 +527,7 @@ async fn block_reasons_split_into_final_refusals_and_transient_blocks() {
         .await
         .expect_err(reason);
         assert_eq!(error.is_retryable(), retryable, "{reason}: {error:?}");
-        let report = crate::error::ErrorReport::from(&error);
+        let report = &error;
         assert_eq!(report.retryable, retryable, "{reason}: {report:?}");
         assert!(
             report.message.contains(&format!("block_reason={reason}")),
@@ -531,7 +535,7 @@ async fn block_reasons_split_into_final_refusals_and_transient_blocks() {
             report.message
         );
         assert!(
-            matches!(&error, ProviderError::ProviderResponse(response) if response.status == Some(http::StatusCode::OK) && response.refusal != retryable && response.code.as_deref() == Some(reason)),
+            matches!(&error, crate::error::RigError { kind: crate::error::ErrorKind::ProviderResponse, detail: None, provider_response: Some(response), .. } if response.status == Some(http::StatusCode::OK) && response.refusal != retryable && response.code.as_deref() == Some(reason)),
             "{reason}: {error:?}"
         );
         assert_eq!(report.kind, crate::error::ErrorKind::ProviderResponse);
@@ -576,7 +580,7 @@ fn wire(model: &str) -> GenerateContent {
 async fn fold_unary(
     model: &str,
     body: impl Into<bytes::Bytes>,
-) -> Result<crate::completion::CompletionResponse, ProviderError> {
+) -> Result<crate::completion::CompletionResponse, crate::error::RigError> {
     crate::driver::Model::new(wire(model), RecordingHttpClient::new(body))
         .call(wire_request("probe"))
         .await

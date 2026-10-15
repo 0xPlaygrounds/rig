@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use rig_core::effect::{Answered, Disposition, EffectKind, EffectRecord};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::tool::ToolErrorKind;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -49,7 +49,7 @@ impl Status {
     }
 
     /// How `outcome` ended.
-    fn of(outcome: &Result<Answered, ErrorReport>) -> Self {
+    fn of(outcome: &Result<Answered, RigError>) -> Self {
         match outcome {
             Ok(Answered::ToolResult { result }) if result.is_refused() => Self::Denied,
             Ok(Answered::ToolResult { result }) => match result.error().map(|e| e.kind()) {

@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use bevy_ecs::system::SystemParam;
 use corpus_model_router::RouteSystems;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use serde::{Deserialize, Deserializer};
 
 #[cfg(test)]
@@ -142,13 +142,13 @@ impl Chain<'_> {
 
 /// Whether a turn falls back after `report`: a rate limit, an overload, a
 /// server error or a refused key; not a request too long for the model.
-fn falls_back(report: &ErrorReport) -> bool {
+fn falls_back(report: &RigError) -> bool {
     !report.is_context_overflow()
         && (report.is_retryable() || matches!(report.http_status, Some(401 | 403)))
 }
 
 /// "claude-opus-4-5 overloaded; continuing on gpt-5".
-fn switched(failed: &Connection, report: &ErrorReport, next: &Connection) -> String {
+fn switched(failed: &Connection, report: &RigError, next: &Connection) -> String {
     let why = match report.http_status {
         Some(429) => "rate-limited",
         Some(401 | 403) => "refused the credentials",

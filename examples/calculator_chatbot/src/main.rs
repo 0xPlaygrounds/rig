@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -243,7 +242,7 @@ impl ToolEmbedding for Divide {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
 

@@ -18,7 +18,7 @@ struct WordDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)

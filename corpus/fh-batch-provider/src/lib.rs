@@ -28,7 +28,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Catalog, ModelFacts, ModelSpec, Transport};
 use rig_harness::rig_core::completion::{CompletionRequest, ModelRef};
 use rig_harness::rig_core::effect::{self, FamilyDescriptor, HandlerDescriptor, model_key};
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::http_client::{Bytes, DynHttpClient, HeaderMap, HttpClientExt, Request};
 use rig_harness::rig_core::providers::anthropic::AnthropicConfig;
 use rig_harness::rig_core::providers::anthropic::wire::Messages;
@@ -261,7 +261,7 @@ fn task_pool() -> &'static bevy_tasks::TaskPool {
 }
 
 fn failed(why: impl Into<String>) -> Outcome {
-    Outcome(Err(ErrorReport::new(ErrorKind::Provider, why)))
+    Outcome(Err(RigError::new(ErrorKind::Provider, why)))
 }
 
 /// `request` to the batch model `spec`, encoded as a live unary call to

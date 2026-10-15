@@ -15,7 +15,7 @@
 use futures::{SinkExt, StreamExt, channel::mpsc};
 
 use crate::{
-    error::{ErrorReport, ProviderError},
+    error::{ProviderError, RigError},
     message::{AssistantContent, CallId, LocalCallId, Origin, ToolCall, ToolFunction, ToolName},
     operation::{Block, Finish, ReplyFold},
     streaming::{Item, Relayed, StreamEvent},
@@ -30,7 +30,7 @@ use crate::wasm_compat::WasmCompatSend;
 /// with the response it folds into, while a writer dropped without it
 /// leaves a truncated stream.
 pub struct StreamWriter {
-    events: mpsc::Sender<Result<Relayed, ErrorReport>>,
+    events: mpsc::Sender<Result<Relayed, RigError>>,
     origin: Origin,
     turn: ReplyFold,
     items: std::collections::VecDeque<Result<Item<StreamEvent>, ProviderError>>,
@@ -93,7 +93,7 @@ impl StreamWriter {
 
     async fn write(&mut self, block: Block, fragment: &str) -> Result<(), SinkClosed> {
         if let Err(error) = self.turn.run_item(&mut self.items, block, fragment) {
-            return self.error(ErrorReport::from(&error)).await;
+            return self.error(RigError::from(&error)).await;
         }
         self.flush().await
     }
@@ -106,7 +106,7 @@ impl StreamWriter {
     ) -> Result<(), SinkClosed> {
         let Ok(name) = ToolName::new(name) else {
             return self
-                .error(ErrorReport::from(&ProviderError::Response(
+                .error(RigError::from(&ProviderError::Response(
                     "a tool call needs a name".to_owned(),
                 )))
                 .await;
@@ -120,7 +120,7 @@ impl StreamWriter {
                 .write_content(&mut self.items, AssistantContent::ToolCall(call))
         });
         if let Err(error) = written {
-            return self.error(ErrorReport::from(&error)).await;
+            return self.error(RigError::from(&error)).await;
         }
         self.flush().await
     }
@@ -138,7 +138,7 @@ impl StreamWriter {
     }
 
     /// An in-band error: the consumer's last item.
-    pub async fn error(&mut self, report: ErrorReport) -> Result<(), SinkClosed> {
+    pub async fn error(&mut self, report: RigError) -> Result<(), SinkClosed> {
         self.flush().await.map_err(|_| SinkClosed)?;
         self.events.send(Err(report)).await.map_err(|_| SinkClosed)
     }
@@ -157,7 +157,7 @@ impl StreamWriter {
         let turn = std::mem::replace(&mut self.turn, ReplyFold::new(self.origin.clone()));
         let item = match turn.finish(finish, reply) {
             Ok(response) => Ok(Relayed::Done(Box::new(response))),
-            Err(error) => Err(ErrorReport::from(&error)),
+            Err(error) => Err(RigError::from(&error)),
         };
         self.events.send(item).await.map_err(|_| SinkClosed)
     }
@@ -177,7 +177,7 @@ impl StreamWriter {
                     }
                     Ok(Relayed::Item(item))
                 }
-                Err(error) => Err(ErrorReport::from(&error)),
+                Err(error) => Err(RigError::from(&error)),
             };
             self.events.send(item).await.map_err(|_| SinkClosed)?;
         }

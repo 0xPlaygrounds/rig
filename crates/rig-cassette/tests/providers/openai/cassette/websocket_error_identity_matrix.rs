@@ -73,14 +73,14 @@
 //! bytes instead, as an earlier version did, could not have detected an HTTP
 //! regression at all.
 
-use rig::error::ProviderError;
+use rig::RigError;
 
 use super::super::support::with_openai_websocket_cassette;
 use rig::completion::CompletionRequest;
 
 /// What a caller can actually learn from a failed connection — the three
 /// accessors the rig#2314/#2315 contract is written in terms of.
-fn observable(error: &ProviderError) -> (Option<u16>, bool, bool) {
+fn observable(error: &RigError) -> (Option<u16>, bool, bool) {
     (
         error
             .provider_response_status()

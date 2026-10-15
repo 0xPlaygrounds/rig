@@ -10,11 +10,12 @@
 //! Needs `OPENAI_API_KEY`. Run with `cargo run -p rmcp_example`.
 
 use rig::{
+    RigError,
     prelude::*,
     providers::openai::{self, OpenAI},
     tool::{
         DynamicTool,
-        rmcp::{McpClientHandler, McpConnection},
+        rmcp::{McpClientError, McpClientHandler, McpConnection},
         server::ToolServer,
     },
 };
@@ -104,14 +105,16 @@ impl ServerHandler for Calculator {
 }
 
 /// Serves [`Calculator`] at `http://localhost:8080` until the process ends.
-async fn serve() -> anyhow::Result<()> {
+async fn serve() -> Result<(), RigError> {
     let service = StreamableHttpService::new(
         || Ok(Calculator::new()),
         LocalSessionManager::default().into(),
         Default::default(),
     );
     let router = axum::Router::new().fallback_service(service);
-    let listener = tokio::net::TcpListener::bind("localhost:8080").await?;
+    let listener = tokio::net::TcpListener::bind("localhost:8080")
+        .await
+        .map_err(RigError::other)?;
     tokio::spawn(async move { axum::serve(listener, router).await });
     Ok(())
 }
@@ -124,14 +127,19 @@ fn client_config() -> ClientConfig {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt::init();
     serve().await?;
     let openai = OpenAI::from_env()?;
 
     // Owned connection: the tools keep it open, so nothing else must be held.
     let transport = StreamableHttpClientTransport::from_uri("http://localhost:8080");
-    let connection = McpConnection::new(client_config().serve(transport).await?);
+    let connection = McpConnection::new(
+        client_config()
+            .serve(transport)
+            .await
+            .map_err(McpClientError::from)?,
+    );
     let tools = connection
         .tools()
         .await?

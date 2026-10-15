@@ -20,7 +20,6 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
-use anyhow::Result;
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, OutcomeAction, OutcomeEvent,
     RequestPatch,
@@ -149,7 +148,7 @@ impl AgentHook for TurnCounterHook {
 // ---------------------------------------------------------------------------
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();

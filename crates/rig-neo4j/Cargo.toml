@@ -23,7 +23,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest"] }
-anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
 textwrap = { workspace = true }
 term_size = { workspace = true }

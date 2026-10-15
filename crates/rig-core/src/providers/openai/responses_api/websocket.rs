@@ -10,7 +10,7 @@
 use crate::completion;
 use crate::completion::options::FinalBody;
 use crate::driver::Model;
-use crate::error::{EncodeError, ProviderError};
+use crate::error::{EncodeError, ProviderError, RigError};
 use crate::http_client::{self, NoBody};
 use crate::operation::{Completion, ReplyFold};
 use crate::providers::openai::responses_api::streaming::{
@@ -253,27 +253,24 @@ impl ResponsesWebSocketSessionBuilder {
     /// timeouts. Return handshake construction, transport, or provider errors.
     #[cfg(all(feature = "tungstenite", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "tungstenite")))]
-    pub async fn connect(self) -> Result<ResponsesWebSocketSession, ProviderError> {
+    pub async fn connect(self) -> Result<ResponsesWebSocketSession, RigError> {
         self.connect_with(&rig_tungstenite::TungsteniteClient::new())
             .await
     }
 
     /// Open a session over `backend` with the configured timeouts.
     /// Return handshake construction, transport, or provider errors.
-    pub async fn connect_with<W>(
-        self,
-        backend: &W,
-    ) -> Result<ResponsesWebSocketSession, ProviderError>
+    pub async fn connect_with<W>(self, backend: &W) -> Result<ResponsesWebSocketSession, RigError>
     where
         W: WebSocketClientExt,
     {
-        ResponsesWebSocketSession::connect_with_timeouts(
+        Ok(ResponsesWebSocketSession::connect_with_timeouts(
             backend,
             self.wire,
             self.connect_timeout,
             self.event_timeout,
         )
-        .await
+        .await?)
     }
 }
 
@@ -347,7 +344,7 @@ impl ResponsesWebSocketSession {
     pub async fn send(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<(), RigError> {
         self.send_with_options(
             completion_request,
             ResponsesWebSocketCreateOptions::default(),
@@ -357,6 +354,15 @@ impl ResponsesWebSocketSession {
 
     /// Sends a `response.create` event with explicit websocket-mode options.
     pub async fn send_with_options(
+        &mut self,
+        completion_request: crate::completion::CompletionRequest,
+        options: ResponsesWebSocketCreateOptions,
+    ) -> Result<(), RigError> {
+        Ok(self.send_create(completion_request, options).await?)
+    }
+
+    /// [`Self::send_with_options`], failing with the provider's error.
+    async fn send_create(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
         options: ResponsesWebSocketCreateOptions,
@@ -420,8 +426,8 @@ impl ResponsesWebSocketSession {
     }
 
     /// Reads the next server event for the current in-flight turn.
-    pub async fn next_event(&mut self) -> Result<ResponsesWebSocketEvent, ProviderError> {
-        self.next_event_with_payload().await.map(|(event, _)| event)
+    pub async fn next_event(&mut self) -> Result<ResponsesWebSocketEvent, RigError> {
+        Ok(self.next_event_with_payload().await?.0)
     }
 
     /// Reads the next lifecycle event and retains its payload for content decoding
@@ -477,8 +483,8 @@ impl ResponsesWebSocketSession {
     pub async fn warmup(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<String, ProviderError> {
-        self.send_with_options(
+    ) -> Result<String, RigError> {
+        self.send_create(
             completion_request,
             ResponsesWebSocketCreateOptions::warmup(),
         )
@@ -496,8 +502,12 @@ impl ResponsesWebSocketSession {
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, ProviderError> {
-        self.send(completion_request).await?;
+    ) -> Result<completion::CompletionResponse, RigError> {
+        self.send_create(
+            completion_request,
+            ResponsesWebSocketCreateOptions::default(),
+        )
+        .await?;
         Ok(self.wait_for_terminal_response().await?.1)
     }
 
@@ -505,7 +515,7 @@ impl ResponsesWebSocketSession {
     ///
     /// Call this when you are finished with the session so the websocket can
     /// terminate with a clean close handshake.
-    pub async fn close(&mut self) -> Result<(), ProviderError> {
+    pub async fn close(&mut self) -> Result<(), RigError> {
         if self.closed {
             return Ok(());
         }
@@ -516,7 +526,7 @@ impl ResponsesWebSocketSession {
             .await
             .map_err(websocket_provider_error);
         self.mark_closed();
-        result
+        Ok(result?)
     }
 
     /// The `response.create` body: the HTTP body, without the `stream` and

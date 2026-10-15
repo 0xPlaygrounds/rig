@@ -181,7 +181,7 @@ fn a_blocked_prompt_is_a_refusal_on_grpc() {
         ..Default::default()
     };
     let error = complete(blocked).expect_err("a blocked prompt is no answer");
-    assert!(error.report().refusal, "{error:?}");
+    assert!(error.refusal, "{error:?}");
     let message = error.to_string();
     assert!(
         message.contains("block_reason=SAFETY")

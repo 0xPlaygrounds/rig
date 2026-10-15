@@ -10,7 +10,6 @@ workspace = true
 
 [dependencies]
 rig = { workspace = true, features = ["rmcp"] }
-anyhow = { workspace = true }
 axum = { workspace = true }
 rmcp = { workspace = true, features = ["client", "macros", "reqwest", "transport-streamable-http-client-reqwest", "transport-streamable-http-server"] }
 schemars = { workspace = true }

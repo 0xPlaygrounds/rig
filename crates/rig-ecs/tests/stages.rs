@@ -210,7 +210,7 @@ fn has<C: Component>(app: &App, entity: Entity) -> bool {
 }
 
 /// An outcome as it is written in a log.
-fn output(outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>) -> String {
+fn output(outcome: &Result<rig_core::effect::Answered, rig_core::error::RigError>) -> String {
     serde_json::to_string(outcome).unwrap_or_default()
 }
 

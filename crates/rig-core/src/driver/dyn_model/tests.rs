@@ -237,7 +237,10 @@ async fn check_lists_first_what_the_call_refuses() {
     let Err(CheckError::Unsupported(refused)) = model.check(&request) else {
         panic!("Claude Fable 5 takes no sampling parameters");
     };
-    let Err(crate::error::ProviderError::UnsupportedOption(first)) = model.call(request).await
+    let Err(crate::error::RigError {
+        detail: Some(crate::error::ErrorDetail::UnsupportedOption(first)),
+        ..
+    }) = model.call(request).await
     else {
         panic!("the call is refused");
     };

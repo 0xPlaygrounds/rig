@@ -4,7 +4,7 @@
 //! use rig_cassette::effect_log::{EffectLog, EffectLogReplayer};
 //! let handlers = EffectLogReplayer::for_log(&EffectLog::default())?;
 //! assert!(handlers.is_empty());
-//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! # Ok::<(), rig_core::error::RigError>(())
 //! ```
 
 use std::{
@@ -18,7 +18,7 @@ use rig_core::{
         EffectFamily, EffectId, EffectKind, EffectRecord, EmbedModality, FamilyDescriptor,
         HandlerDescriptor, HandlerKey,
     },
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
 };
 
 use rig_core::serve::{Dispatch, Reply, Serve};
@@ -80,7 +80,7 @@ impl EffectLogReplayer {
     /// Build an ordered replayer for `key`, validating the log header.
     /// Required keys without records return divergence on dispatch. Returns an
     /// error if the key is unknown or lacks enough metadata to describe it.
-    pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
+    pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Result<Self, RigError> {
         let records = Self::records_of(log, key);
         let by_position: VecDeque<EffectRecord> = records.into();
         let first = by_position.front().cloned();
@@ -89,7 +89,7 @@ impl EffectLogReplayer {
 
     /// A replayer for `key` answering by id: see the type's docs. Described
     /// as [`for_key`](Self::for_key) describes.
-    pub fn for_key_by_id(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
+    pub fn for_key_by_id(log: &EffectLog, key: &HandlerKey) -> Result<Self, RigError> {
         let records = Self::records_of(log, key);
         let first = records.first().cloned();
         let by_id: BTreeMap<EffectId, EffectRecord> = records
@@ -113,7 +113,7 @@ impl EffectLogReplayer {
         key: &HandlerKey,
         first: Option<EffectRecord>,
         records: Records,
-    ) -> Result<Self, ErrorReport> {
+    ) -> Result<Self, RigError> {
         Self::check_header(log)?;
         // A replayer supplies recorded data beneath the application's layers.
         // Preserve the recorded family (including model identity/capabilities),
@@ -131,7 +131,7 @@ impl EffectLogReplayer {
             let family = std::iter::once(&log.header.required)
                 .chain(log.header.programs.values().map(|program| &program.required))
                 .find_map(|row| row.get(key)).copied().ok_or_else(|| {
-                    ErrorReport::new(ErrorKind::HandlerUnavailable, format!(
+                    RigError::new(ErrorKind::HandlerUnavailable, format!(
                         "`{key}` has no records in the log, no entry in its handler table and no place in its required row: nothing describes it"
                     ))
                 })?;
@@ -177,7 +177,7 @@ impl EffectLogReplayer {
     /// Build replayers in record first-appearance order, followed by missing keys
     /// from the required and scoped program rows. Returns an error for invalid
     /// headers or keys that cannot be described.
-    pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
+    pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, RigError> {
         Self::check_header(log)?;
         Self::keys_of(log)
             .iter()
@@ -186,7 +186,7 @@ impl EffectLogReplayer {
     }
 
     /// [`for_log`](Self::for_log) with every replayer answering by id.
-    pub fn for_log_by_id(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
+    pub fn for_log_by_id(log: &EffectLog) -> Result<Vec<Self>, RigError> {
         Self::check_header(log)?;
         Self::keys_of(log)
             .iter()
@@ -220,7 +220,7 @@ impl EffectLogReplayer {
     /// Validate stream error positions, consistent key families and descriptors,
     /// and descriptor coverage for scoped programs. Returns an error for invalid
     /// or conflicting metadata.
-    pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
+    pub fn check_header(log: &EffectLog) -> Result<(), RigError> {
         for (id, errors) in &log.header.stream_errors {
             let events = log
                 .records
@@ -228,20 +228,20 @@ impl EffectLogReplayer {
                 .find(|record| record.id == *id && record.kind.streams())
                 .and_then(|record| record.events.as_ref())
                 .ok_or_else(|| {
-                    ErrorReport::new(
+                    RigError::new(
                         ErrorKind::Divergence,
                         format!("stream errors for {id} require a kept stream record"),
                     )
                 })?;
             let total = events.len().checked_add(errors.len()).ok_or_else(|| {
-                ErrorReport::new(ErrorKind::Divergence, "stream item count overflow")
+                RigError::new(ErrorKind::Divergence, "stream item count overflow")
             })?;
             if errors.iter().any(|error| error.item >= total)
                 || errors
                     .windows(2)
                     .any(|pair| matches!(pair, [first, second] if first.item >= second.item))
             {
-                return Err(ErrorReport::new(
+                return Err(RigError::new(
                     ErrorKind::Divergence,
                     format!("invalid stream error positions for {id}"),
                 ));
@@ -273,7 +273,7 @@ impl EffectLogReplayer {
             if let Some(previous) = families.insert(key, family)
                 && previous != family
             {
-                return Err(ErrorReport::new(
+                return Err(RigError::new(
                     ErrorKind::Internal,
                     format!(
                         "replay refused: conflicting families for `{key}`: {previous} and {family}"
@@ -286,7 +286,7 @@ impl EffectLogReplayer {
             if let Some(previous) = descriptors.insert(&descriptor.key, descriptor)
                 && previous != descriptor
             {
-                return Err(ErrorReport::new(
+                return Err(RigError::new(
                     ErrorKind::Internal,
                     format!(
                         "replay refused: conflicting descriptors for `{}`",
@@ -298,7 +298,7 @@ impl EffectLogReplayer {
         for (scope, program) in &log.header.programs {
             for key in program.required.keys() {
                 if !descriptors.contains_key(key) {
-                    return Err(ErrorReport::new(
+                    return Err(RigError::new(
                         ErrorKind::HandlerUnavailable,
                         format!(
                             "replay refused: scope `{scope}` requires `{key}` but its recorded descriptor is missing"
@@ -452,7 +452,7 @@ fn describe_required(
     key: &HandlerKey,
     family: EffectFamily,
     log: &EffectLog,
-) -> Result<FamilyDescriptor, ErrorReport> {
+) -> Result<FamilyDescriptor, RigError> {
     if let Some(installed) = log
         .header
         .handlers
@@ -462,7 +462,7 @@ fn describe_required(
         return Ok(installed.family.clone());
     }
     let gap = |what: &str| {
-        ErrorReport::new(
+        RigError::new(
             ErrorKind::HandlerUnavailable,
             format!(
                 "the required key `{key}` ({family}) cannot be described: {what}; the log's handler table has no entry for it"
@@ -583,9 +583,9 @@ impl Serve for EffectLogReplayer {
         {
             let outcome =
                 match next {
-                    None => Err(ErrorReport::new(ErrorKind::Divergence, missing)),
+                    None => Err(RigError::new(ErrorKind::Divergence, missing)),
                     Some(record) => match divergence_under(self.check, &record.kind, &kind) {
-                        Some(what) => Err(ErrorReport::new(
+                        Some(what) => Err(RigError::new(
                             ErrorKind::Divergence,
                             format!(
                                 "replay divergence: `{}` recorded {} ({}) but received {}: {what}",
@@ -600,7 +600,7 @@ impl Serve for EffectLogReplayer {
                                 let Some(published) =
                                     dispatch.scope::<rig_core::tool::PublishedContext>()
                                 else {
-                                    return Reply::Outcome(Err(ErrorReport::new(
+                                    return Reply::Outcome(Err(RigError::new(
                                         ErrorKind::Divergence,
                                         "replay requires a tool-result publication slot",
                                     )));

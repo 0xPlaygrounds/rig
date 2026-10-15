@@ -31,7 +31,7 @@ use rig::prelude::*;
 use rig_gemini_grpc::GeminiGrpc;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let transport = GeminiGrpc::from_env().await?;
 
     let agent = AgentBuilder::new(transport.completion("gemini-2.5-flash"))

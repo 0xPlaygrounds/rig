@@ -1,5 +1,5 @@
-use anyhow::Result;
 use futures::StreamExt;
+use rig::RigError;
 use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::extension::{
@@ -38,7 +38,7 @@ fn deep_research_request(
     agent: impl Into<String>,
     prompt: impl Into<String>,
     stream: bool,
-) -> Result<CompletionRequest> {
+) -> Result<CompletionRequest, RigError> {
     // Deep Research is selected by `agent`, which suppresses `model` in the
     // outgoing body — matching the official Gemini Deep Research examples.
     let mut interactions = InteractionsOptions::new().agent(agent).background(true);
@@ -89,7 +89,7 @@ struct Interaction {
 }
 
 impl Interaction {
-    fn from_response(response: CompletionResponse) -> Result<Self> {
+    fn from_response(response: CompletionResponse) -> Result<Self, RigError> {
         let status = response
             .extras::<GeminiExt>()
             .transpose()?
@@ -138,7 +138,7 @@ async fn poll_until_terminal(
     gemini: &Gemini,
     interaction_id: &str,
     request: &CompletionRequest,
-) -> Result<Interaction> {
+) -> Result<Interaction, RigError> {
     let model = gemini.interaction(interaction_id);
 
     loop {
@@ -199,7 +199,7 @@ fn finish_research(state: &mut StreamState, response: CompletionResponse) {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();

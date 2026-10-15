@@ -31,7 +31,7 @@ use futures::StreamExt;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_harness::rig_core::effect::{Answered as Answer, EffectKind, HandlerDescriptor, family};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::message::{Fingerprint, Message};
 use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
@@ -371,7 +371,7 @@ impl Chained {
         request: Arc<CompletionRequest>,
         stream: bool,
         dispatch: &Dispatch,
-    ) -> Result<Reply, ErrorReport> {
+    ) -> Result<Reply, RigError> {
         let mut inner = Dispatch::new(dispatch.id(), dispatch.is_stream());
         for scope in dispatch.scopes() {
             inner = inner.with_scope(scope);

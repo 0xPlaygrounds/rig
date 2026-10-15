@@ -6,10 +6,11 @@
 //! # Example
 //!
 //! ```no_run
+//! use rig_core::RigError;
 //! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
-//! # fn example() -> anyhow::Result<()> {
+//! # fn example() -> Result<(), RigError> {
 //! let openai = openai::OpenAI::from_env()?;
 //! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //!
@@ -17,7 +18,7 @@
 //!     embedding_model,
 //!     "your-account-id",
 //!     "your-index-name",
-//!     std::env::var("CLOUDFLARE_API_TOKEN")?,
+//!     rig_core::client::env::required("CLOUDFLARE_API_TOKEN")?,
 //! );
 //! # let _ = vector_store;
 //! # Ok(())
@@ -45,6 +46,12 @@ use uuid::Uuid;
 impl From<VectorizeError> for VectorStoreError {
     fn from(err: VectorizeError) -> Self {
         VectorStoreError::datastore(err)
+    }
+}
+
+impl From<VectorizeError> for rig_core::error::RigError {
+    fn from(error: VectorizeError) -> Self {
+        VectorStoreError::from(error).into()
     }
 }
 

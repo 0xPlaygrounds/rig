@@ -29,7 +29,7 @@ use rig_core::effect::EffectFamily;
 
 use rig_core::error::ErrorKind;
 
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 
 use rig_core::observe::Action;
 
@@ -442,7 +442,7 @@ pub struct Drained {
     /// Final responses: a successful run yields exactly one.
     pub finals: usize,
     /// Every error item, as a report.
-    pub errors: Vec<ErrorReport>,
+    pub errors: Vec<RigError>,
 }
 
 /// Drain a runner stream to EOF.
@@ -465,12 +465,11 @@ pub async fn drain(stream: &mut StreamingResult) -> Drained {
 }
 
 /// The report a runner stream error carries.
-pub fn report_of(error: &PromptError) -> ErrorReport {
+pub fn report_of(error: &PromptError) -> RigError {
     match error {
-        PromptError::Provider(error) => ErrorReport::from(error),
-        PromptError::Report(report) => report.clone(),
+        PromptError::Failed(report) => report.clone(),
         PromptError::Cancelled { reason, .. } => {
-            ErrorReport::new(ErrorKind::Cancelled, reason.clone())
+            RigError::new(ErrorKind::Cancelled, reason.clone())
         }
         other => panic!("a provider-shaped failure, not {other:?}"),
     }
@@ -478,7 +477,7 @@ pub fn report_of(error: &PromptError) -> ErrorReport {
 
 /// The error the one completion record holds. A fault cell records exactly
 /// one completion and nothing after it: no tool, no memory, no retry.
-pub fn sole_failed_completion(log: &EffectLog) -> &ErrorReport {
+pub fn sole_failed_completion(log: &EffectLog) -> &RigError {
     assert_eq!(
         families(log),
         [EffectFamily::Completion],
@@ -492,7 +491,7 @@ pub fn sole_failed_completion(log: &EffectLog) -> &ErrorReport {
 
 /// The recorded stream error items of the one completion, as
 /// `(position, report)`.
-pub fn recorded_stream_errors(log: &EffectLog) -> Vec<(usize, ErrorReport)> {
+pub fn recorded_stream_errors(log: &EffectLog) -> Vec<(usize, RigError)> {
     log.header
         .stream_errors
         .values()
@@ -505,7 +504,7 @@ pub fn recorded_stream_errors(log: &EffectLog) -> Vec<(usize, ErrorReport)> {
 /// Both runtimes surface the recorded status and body under the wire's own
 /// classification (`kind`), record the one completion as that failure and
 /// stream nothing.
-pub fn assert_setup_failure(report: &ErrorReport, kind: ErrorKind, status: u16) {
+pub fn assert_setup_failure(report: &RigError, kind: ErrorKind, status: u16) {
     assert_eq!(report.kind, kind, "{report:?}");
     assert_eq!(report.http_status, Some(status), "{report:?}");
     let body = report

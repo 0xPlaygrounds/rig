@@ -1,6 +1,6 @@
 //! Typed definitions bind each question to its answer type.
 use crate::types::{Answer, Question};
-use rig_core::error::ProviderError;
+use rig_core::error::RigError;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -106,17 +106,14 @@ impl<L: Ord> Score<L> {
     pub fn new<const N: usize, D: Serialize>(
         instructions: impl Serialize,
         levels: [(L, D); N],
-    ) -> Result<Self, ProviderError> {
+    ) -> Result<Self, RigError> {
         const { assert!(N >= 2 && N <= 10, "score requires 2 to 10 levels") };
         Self::try_from_iter(instructions, levels)
     }
 
     /// Define a typed rubric from a runtime collection, validating its size and
     /// rejecting repeated variants before evaluation.
-    pub fn try_from_iter<I, D>(
-        instructions: impl Serialize,
-        levels: I,
-    ) -> Result<Self, ProviderError>
+    pub fn try_from_iter<I, D>(instructions: impl Serialize, levels: I) -> Result<Self, RigError>
     where
         I: IntoIterator<Item = (L, D)>,
         D: Serialize,
@@ -125,13 +122,13 @@ impl<L: Ord> Score<L> {
         let mut criteria = Vec::new();
         for (level, description) in levels {
             if variants.contains(&level) {
-                return Err(ProviderError::request("score levels must be unique"));
+                return Err(crate::invalid("score levels must be unique"));
             }
             variants.push(level);
             criteria.push(content(description)?);
         }
         if !(2..=10).contains(&criteria.len()) {
-            return Err(ProviderError::request("score requires 2 to 10 levels"));
+            return Err(crate::invalid("score requires 2 to 10 levels"));
         }
         Ok(Self {
             instructions: content(instructions)?,
@@ -144,18 +141,19 @@ impl<L: Ord> Score<L> {
 impl<L: Ord + Clone + WasmCompatSend + WasmCompatSync> Query for Score<L> {
     type Response = Answer;
     type Output = ScoreAnswer<L>;
-    fn decode(&self, response: Answer) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Answer) -> Result<Self::Output, RigError> {
         let answer: DynamicScoreAnswer = decode_question(&self.definition(), &response)?;
         let probabilities = answer
             .probabilities
             .into_iter()
             .map(|(index, probability)| {
-                let level = self.levels.get(index).ok_or_else(|| {
-                    ProviderError::Response(format!("unknown score level: {index}"))
-                })?;
+                let level = self
+                    .levels
+                    .get(index)
+                    .ok_or_else(|| crate::unexpected(format!("unknown score level: {index}")))?;
                 Ok((level.clone(), probability))
             })
-            .collect::<Result<_, ProviderError>>()?;
+            .collect::<Result<_, RigError>>()?;
         Ok(ScoreAnswer {
             score: answer.score,
             confidence: answer.confidence,
@@ -172,22 +170,22 @@ impl<L> Score<L> {
     }
 }
 
-fn content(value: impl Serialize) -> Result<Value, ProviderError> {
+fn content(value: impl Serialize) -> Result<Value, RigError> {
     let value = serde_json::to_value(value)?;
     if !matches!(
         value,
         Value::String(_) | Value::Object(_) | Value::Array(_) | Value::Null
     ) {
-        return Err(ProviderError::request(
+        return Err(crate::invalid(
             "question content must be a string, object, array, or null",
         ));
     }
     Ok(value)
 }
-fn question_id(id: impl Into<String>) -> Result<String, ProviderError> {
+fn question_id(id: impl Into<String>) -> Result<String, RigError> {
     let id = id.into();
     if id.is_empty() {
-        return Err(ProviderError::request("question ID cannot be empty"));
+        return Err(crate::invalid("question ID cannot be empty"));
     }
     Ok(id)
 }
@@ -203,7 +201,7 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
     pub fn new<const N: usize, D: Serialize>(
         instructions: impl Serialize,
         alternatives: [(T, D); N],
-    ) -> Result<Self, ProviderError> {
+    ) -> Result<Self, RigError> {
         const { assert!(N >= 2 && N <= 255, "choice requires 2 to 255 alternatives") };
         Self::try_from_iter(instructions, alternatives)
     }
@@ -212,7 +210,7 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
     pub fn try_from_iter<I, D>(
         instructions: impl Serialize,
         alternatives: I,
-    ) -> Result<Self, ProviderError>
+    ) -> Result<Self, RigError>
     where
         I: IntoIterator<Item = (T, D)>,
         D: Serialize,
@@ -220,18 +218,14 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
         let mut criteria = BTreeMap::new();
         for (value, description) in alternatives {
             let Value::String(label) = serde_json::to_value(&value)? else {
-                return Err(ProviderError::request(
-                    "choice values must serialize to strings",
-                ));
+                return Err(crate::invalid("choice values must serialize to strings"));
             };
             let decoded: T =
                 serde_json::from_value(Value::String(label.clone())).map_err(|_| {
-                    ProviderError::request(
-                        "choice labels must deserialize to their original values",
-                    )
+                    crate::invalid("choice labels must deserialize to their original values")
                 })?;
             if decoded != value {
-                return Err(ProviderError::request(
+                return Err(crate::invalid(
                     "choice labels must round-trip without changing values",
                 ));
             }
@@ -241,15 +235,11 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
                 description => Some(content(description)?),
             };
             if label.is_empty() || criteria.insert(label, description).is_some() {
-                return Err(ProviderError::request(
-                    "choice labels must be nonempty and unique",
-                ));
+                return Err(crate::invalid("choice labels must be nonempty and unique"));
             }
         }
         if !(2..=255).contains(&criteria.len()) {
-            return Err(ProviderError::request(
-                "choice requires 2 to 255 alternatives",
-            ));
+            return Err(crate::invalid("choice requires 2 to 255 alternatives"));
         }
         Ok(Self {
             instructions: content(instructions)?,
@@ -269,16 +259,13 @@ impl DynamicScore {
     pub fn new<const N: usize, D: Serialize>(
         instructions: impl Serialize,
         levels: [D; N],
-    ) -> Result<Self, ProviderError> {
+    ) -> Result<Self, RigError> {
         const { assert!(N >= 2 && N <= 10, "score requires 2 to 10 levels") };
         Self::try_from_iter(instructions, levels)
     }
 
     /// Define a runtime-supplied rubric, validating its count at construction.
-    pub fn try_from_iter<I, D>(
-        instructions: impl Serialize,
-        levels: I,
-    ) -> Result<Self, ProviderError>
+    pub fn try_from_iter<I, D>(instructions: impl Serialize, levels: I) -> Result<Self, RigError>
     where
         I: IntoIterator<Item = D>,
         D: Serialize,
@@ -288,7 +275,7 @@ impl DynamicScore {
             .map(content)
             .collect::<Result<Vec<_>, _>>()?;
         if !(2..=10).contains(&criteria.len()) {
-            return Err(ProviderError::request("score requires 2 to 10 levels"));
+            return Err(crate::invalid("score requires 2 to 10 levels"));
         }
         Ok(Self {
             instructions: content(instructions)?,
@@ -298,18 +285,14 @@ impl DynamicScore {
 }
 impl Noul {
     /// Define a statement or question for which a high probability means yes.
-    pub fn new(instructions: impl Serialize) -> Result<Self, ProviderError> {
+    pub fn new(instructions: impl Serialize) -> Result<Self, RigError> {
         Ok(Self {
             instructions: content(instructions)?,
             criteria: None,
         })
     }
     /// Clarify outcomes using strings, objects, arrays, or null descriptions.
-    pub fn criteria(
-        mut self,
-        yes: impl Serialize,
-        no: impl Serialize,
-    ) -> Result<Self, ProviderError> {
+    pub fn criteria(mut self, yes: impl Serialize, no: impl Serialize) -> Result<Self, RigError> {
         self.criteria = Some(BTreeMap::from([
             ("true".into(), content(yes)?),
             ("false".into(), content(no)?),
@@ -324,7 +307,7 @@ impl Noul {
 /// against its original question and converts it to its application answer.
 ///
 /// ```
-/// use rig_core::error::ProviderError;
+/// use rig_core::error::RigError;
 /// use rig_typesafeai::{Noul, NoulAnswer, Query};
 /// use serde::{Serialize, Deserialize};
 ///
@@ -339,7 +322,7 @@ impl Noul {
 ///     type Response = Assessment<R::Response, V::Response>;
 ///     type Output = Assessment<R::Output, V::Output>;
 ///
-///     fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+///     fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
 ///         Ok(Assessment {
 ///             ready: self.ready.decode(response.ready)?,
 ///             needs_review: self.needs_review.decode(response.needs_review)?,
@@ -351,7 +334,7 @@ impl Noul {
 ///     ready: Noul::new("Is this ready to ship?")?,
 ///     needs_review: Noul::new("Does this need human review?")?,
 /// };
-/// # Ok::<(), ProviderError>(())
+/// # Ok::<(), RigError>(())
 /// ```
 pub trait Query: Serialize + WasmCompatSend + WasmCompatSync {
     /// The intermediate response shape deserialized by Serde.
@@ -360,10 +343,10 @@ pub trait Query: Serialize + WasmCompatSend + WasmCompatSync {
     type Output;
     /// Validate and convert a deserialized response. Composite queries delegate
     /// to their fields, keeping validation inside the evaluation error boundary.
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError>;
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError>;
 
     /// Give a standalone question a runtime ID. Named struct fields do not need this.
-    fn named(self, id: impl Into<String>) -> Result<NamedQuery<Self>, ProviderError>
+    fn named(self, id: impl Into<String>) -> Result<NamedQuery<Self>, RigError>
     where
         Self: Sized,
     {
@@ -417,15 +400,15 @@ impl<Q: Serialize> Serialize for NamedQuery<Q> {
 impl<Q: Query> Query for NamedQuery<Q> {
     type Response = BTreeMap<String, Q::Response>;
     type Output = Q::Output;
-    fn decode(&self, mut response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, mut response: Self::Response) -> Result<Self::Output, RigError> {
         if response.len() != 1 {
-            return Err(ProviderError::Response(
-                "response question IDs differ from request".into(),
+            return Err(crate::unexpected(
+                "response question IDs differ from request",
             ));
         }
         let answer = response
             .remove(&self.id)
-            .ok_or_else(|| ProviderError::Response(format!("missing answer: {}", self.id)))?;
+            .ok_or_else(|| crate::unexpected(format!("missing answer: {}", self.id)))?;
         self.question.decode(answer)
     }
 }
@@ -441,7 +424,7 @@ pub struct JoinedQuery<A, B> {
 impl<A: Query, B: Query> Query for JoinedQuery<A, B> {
     type Response = Value;
     type Output = (A::Output, B::Output);
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
         Ok((
             self.first
                 .decode(select_response(&self.first, &response)?)?,
@@ -451,14 +434,14 @@ impl<A: Query, B: Query> Query for JoinedQuery<A, B> {
     }
 }
 
-fn select_response<Q: Query>(query: &Q, response: &Value) -> Result<Q::Response, ProviderError> {
+fn select_response<Q: Query>(query: &Q, response: &Value) -> Result<Q::Response, RigError> {
     let definitions = serde_json::to_value(query)?;
     let definitions = definitions
         .as_object()
-        .ok_or_else(|| ProviderError::request("joined queries must serialize as objects"))?;
+        .ok_or_else(|| crate::invalid("joined queries must serialize as objects"))?;
     let response = response
         .as_object()
-        .ok_or_else(|| ProviderError::Response("answers must be an object".into()))?;
+        .ok_or_else(|| crate::unexpected("answers must be an object"))?;
     let selected = definitions
         .keys()
         .map(|id| {
@@ -466,7 +449,7 @@ fn select_response<Q: Query>(query: &Q, response: &Value) -> Result<Q::Response,
                 .get(id)
                 .cloned()
                 .map(|value| (id.clone(), value))
-                .ok_or_else(|| ProviderError::Response(format!("missing answer: {id}")))
+                .ok_or_else(|| crate::unexpected(format!("missing answer: {id}")))
         })
         .collect::<Result<serde_json::Map<_, _>, _>>()?;
     Ok(serde_json::from_value(Value::Object(selected))?)
@@ -486,24 +469,24 @@ where
 {
     type Response = Q::Response;
     type Output = A;
-    fn decode(&self, response: Self::Response) -> Result<A, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<A, RigError> {
         Ok((self.map)(self.questions.decode(response)?))
     }
 }
 impl<Q: Query + ?Sized> Query for &Q {
     type Response = Q::Response;
     type Output = Q::Output;
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
         (**self).decode(response)
     }
 }
 impl<Q: Query> Query for BTreeMap<String, Q> {
     type Response = BTreeMap<String, Q::Response>;
     type Output = BTreeMap<String, Q::Output>;
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
         if !self.keys().eq(response.keys()) {
-            return Err(ProviderError::Response(
-                "response question IDs differ from request".into(),
+            return Err(crate::unexpected(
+                "response question IDs differ from request",
             ));
         }
         self.iter()
@@ -516,7 +499,7 @@ impl<Q: Query> Query for BTreeMap<String, Q> {
 fn decode_question<A: crate::decode::DecodeAnswer>(
     question: &Question,
     answer: &Answer,
-) -> Result<A, ProviderError> {
+) -> Result<A, RigError> {
     validate(question, answer)?;
     A::decode(answer)
 }
@@ -530,7 +513,7 @@ macro_rules! primitive {
         impl $($generics)* Query for $question {
             type Response = Answer;
             type Output = $answer;
-            fn decode(&self, response: Answer) -> Result<Self::Output, ProviderError> {
+            fn decode(&self, response: Answer) -> Result<Self::Output, RigError> {
                 decode_question(&self.definition(), &response)
             }
         }
@@ -565,7 +548,7 @@ impl Serialize for Noul {
     }
 }
 
-pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), ProviderError> {
+pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), RigError> {
     question_id(id)?;
     match question {
         Question::Choice {
@@ -574,9 +557,7 @@ pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), P
         } => {
             content(instructions)?;
             if !(2..=255).contains(&criteria.len()) || criteria.keys().any(String::is_empty) {
-                return Err(ProviderError::request(
-                    "choice requires 2 to 255 nonempty labels",
-                ));
+                return Err(crate::invalid("choice requires 2 to 255 nonempty labels"));
             }
             for description in criteria.values().flatten() {
                 content(description)?;
@@ -588,7 +569,7 @@ pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), P
         } => {
             content(instructions)?;
             if !(2..=10).contains(&criteria.len()) {
-                return Err(ProviderError::request("score requires 2 to 10 levels"));
+                return Err(crate::invalid("score requires 2 to 10 levels"));
             }
             for description in criteria {
                 content(description)?;
@@ -604,7 +585,7 @@ pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), P
                     || !criteria.contains_key("true")
                     || !criteria.contains_key("false")
                 {
-                    return Err(ProviderError::request(
+                    return Err(crate::invalid(
                         "Noul criteria require true and false descriptions",
                     ));
                 }
@@ -617,10 +598,10 @@ pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), P
     Ok(())
 }
 
-fn probability(value: f64) -> Result<(), ProviderError> {
+fn probability(value: f64) -> Result<(), RigError> {
     if !value.is_finite() || !(0.0..=1.0).contains(&value) {
-        return Err(ProviderError::Response(
-            "probability or confidence is outside [0, 1]".into(),
+        return Err(crate::unexpected(
+            "probability or confidence is outside [0, 1]",
         ));
     }
     Ok(())
@@ -631,7 +612,7 @@ fn rounded_to_hundredths(probabilities: &BTreeMap<String, f64>) -> bool {
         (cents - cents.round()).abs() <= 1e-9
     })
 }
-pub(crate) fn distribution(probabilities: &BTreeMap<String, f64>) -> Result<(), ProviderError> {
+pub(crate) fn distribution(probabilities: &BTreeMap<String, f64>) -> Result<(), RigError> {
     for &weight in probabilities.values() {
         probability(weight)?;
     }
@@ -645,13 +626,11 @@ pub(crate) fn distribution(probabilities: &BTreeMap<String, f64>) -> Result<(), 
         1e-3
     };
     if (probabilities.values().sum::<f64>() - 1.0).abs() > tolerance {
-        return Err(ProviderError::Response(
-            "probabilities do not sum to one".into(),
-        ));
+        return Err(crate::unexpected("probabilities do not sum to one"));
     }
     Ok(())
 }
-pub(crate) fn validate(question: &Question, answer: &Answer) -> Result<(), ProviderError> {
+pub(crate) fn validate(question: &Question, answer: &Answer) -> Result<(), RigError> {
     match (question, answer) {
         (
             Question::Choice { criteria, .. },
@@ -662,19 +641,18 @@ pub(crate) fn validate(question: &Question, answer: &Answer) -> Result<(), Provi
             },
         ) => {
             if !criteria.contains_key(choice) || !criteria.keys().eq(probabilities.keys()) {
-                return Err(ProviderError::Response(
-                    "choice labels differ from the requested alternatives".into(),
+                return Err(crate::unexpected(
+                    "choice labels differ from the requested alternatives",
                 ));
             }
             distribution(probabilities)?;
             probability(*confidence)?;
-            let selected = probabilities.get(choice).copied().ok_or_else(|| {
-                ProviderError::Response("selected choice has no probability".into())
-            })?;
+            let selected = probabilities
+                .get(choice)
+                .copied()
+                .ok_or_else(|| crate::unexpected("selected choice has no probability"))?;
             if probabilities.values().any(|p| *p > selected + 1e-6) {
-                return Err(ProviderError::Response(
-                    "selected choice is not a maximum".into(),
-                ));
+                return Err(crate::unexpected("selected choice is not a maximum"));
             }
         }
         (
@@ -692,16 +670,14 @@ pub(crate) fn validate(question: &Question, answer: &Answer) -> Result<(), Provi
                 .map(|(i, v)| (i.to_string(), v.clone()))
                 .collect::<BTreeMap<_, _>>();
             if &expected != legend || !expected.keys().eq(probabilities.keys()) {
-                return Err(ProviderError::Response(
-                    "score levels differ from the requested rubric".into(),
+                return Err(crate::unexpected(
+                    "score levels differ from the requested rubric",
                 ));
             }
             distribution(probabilities)?;
             probability(*confidence)?;
             if !score.is_finite() || *score < 0.0 || *score > (criteria.len() - 1) as f64 {
-                return Err(ProviderError::Response(
-                    "score is outside the rubric".into(),
-                ));
+                return Err(crate::unexpected("score is outside the rubric"));
             }
             let total = probabilities.values().sum::<f64>();
             // Keys were checked against the zero-based rubric above (at most ten
@@ -724,25 +700,23 @@ pub(crate) fn validate(question: &Question, answer: &Answer) -> Result<(), Provi
                 0.0
             };
             if (*score - mean).abs() > weight_error + 0.005 + 1e-12 {
-                return Err(ProviderError::Response(
-                    "score differs from the probability-weighted mean".into(),
+                return Err(crate::unexpected(
+                    "score differs from the probability-weighted mean",
                 ));
             }
         }
         (Question::Noul { .. }, Answer::Noul { noul }) => probability(*noul)?,
         _ => {
-            return Err(ProviderError::Response(
-                "answer kind differs from question kind".into(),
-            ));
+            return Err(crate::unexpected("answer kind differs from question kind"));
         }
     }
     Ok(())
 }
 
-pub(crate) fn state(value: impl Serialize) -> Result<Value, ProviderError> {
+pub(crate) fn state(value: impl Serialize) -> Result<Value, RigError> {
     let value = content(value)?;
     if value.is_null() {
-        return Err(ProviderError::request("state cannot be null"));
+        return Err(crate::invalid("state cannot be null"));
     }
     Ok(value)
 }

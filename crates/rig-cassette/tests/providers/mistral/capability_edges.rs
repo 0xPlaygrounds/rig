@@ -50,7 +50,7 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
     .await
 }
 
-fn assert_batch_cap_rejection(error: &rig::error::ProviderError) {
+fn assert_batch_cap_rejection(error: &rig::RigError) {
     let rendered = error.to_string();
     assert!(
         rendered.contains("Too many inputs"),

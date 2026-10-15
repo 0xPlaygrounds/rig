@@ -1,3 +1,4 @@
+use rig::RigError;
 use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{Message, ToolName, ToolResultContent};
 use rig::providers::openai::{self, OpenAI};
@@ -11,7 +12,7 @@ struct AddArgs {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), RigError> {
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 
     let add = ToolDefinition::new(

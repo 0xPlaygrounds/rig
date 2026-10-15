@@ -294,7 +294,7 @@ async fn failed_attempt_error_carries_its_own_request_id() {
     .await
     .expect_err("the second attempt fails");
 
-    let PromptError::Report(ref report) = error else {
+    let PromptError::Failed(ref report) = error else {
         panic!("expected the failing attempt's report, got {error:?}");
     };
     assert_eq!(
@@ -5571,7 +5571,7 @@ async fn denied_completion_has_no_outcome() -> anyhow::Result<()> {
         async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
             match event.kind {
                 rig_core::effect::EffectKind::Completion { .. } => DispatchAction::deny(
-                    rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::Denied, "no"),
+                    rig_core::error::RigError::new(rig_core::error::ErrorKind::Denied, "no"),
                 ),
                 _ => DispatchAction::proceed(),
             }
@@ -5612,7 +5612,7 @@ async fn unsettled_close_ignores_a_replacement() -> anyhow::Result<()> {
         async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
             let completion = matches!(event.kind, rig_core::effect::EffectKind::Completion { .. });
             if completion && self.0.fetch_add(1, SeqCst) == 0 {
-                return OutcomeAction::Replace(Err(rig_core::error::ErrorReport::new(
+                return OutcomeAction::Replace(Err(rig_core::error::RigError::new(
                     rig_core::error::ErrorKind::Other,
                     "replaced",
                 )));

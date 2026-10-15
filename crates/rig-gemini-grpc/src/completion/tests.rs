@@ -51,7 +51,7 @@ fn hello() -> CompletionRequest {
 /// `response` as the unary endpoint answers it.
 pub(crate) fn complete(
     response: GenerateContentResponse,
-) -> Result<rig_core::completion::CompletionResponse, ProviderError> {
+) -> Result<rig_core::completion::CompletionResponse, rig_core::RigError> {
     futures::executor::block_on(scripted(vec![Ok(response)]).call(hello()))
 }
 

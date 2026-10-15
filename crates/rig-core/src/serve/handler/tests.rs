@@ -9,7 +9,7 @@ use crate::streaming::{Item, Part, Relayed, StreamEvent, UnknownPayload};
 
 #[derive(Default)]
 struct Seen {
-    outcomes: Vec<Result<Answered, ErrorReport>>,
+    outcomes: Vec<Result<Answered, RigError>>,
     events: usize,
     discard_events: bool,
 }
@@ -18,7 +18,7 @@ struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
     fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
+    fn outcome(&mut self, outcome: Result<Answered, RigError>) {
         self.0.lock().expect("seen").outcomes.push(outcome);
     }
 
@@ -125,7 +125,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
     use crate::message::{AssistantContent, DocumentSourceKind, Image};
 
     type Shape = fn() -> Reply;
-    fn terminal() -> Result<Relayed, ErrorReport> {
+    fn terminal() -> Result<Relayed, RigError> {
         Ok(Relayed::Done(Box::new(CompletionResponse::new(
             vec![AssistantContent::text("body")],
             Default::default(),
@@ -133,10 +133,10 @@ fn an_observer_never_changes_what_the_consumer_receives() {
             serde_json::json!({}),
         ))))
     }
-    fn text(fragment: &str) -> Result<Relayed, ErrorReport> {
+    fn text(fragment: &str) -> Result<Relayed, RigError> {
         Ok(text_item(fragment))
     }
-    fn items(items: Vec<Result<Relayed, ErrorReport>>) -> Reply {
+    fn items(items: Vec<Result<Relayed, RigError>>) -> Reply {
         Reply::Stream(Box::pin(futures::stream::iter(items)))
     }
     let shapes: [(&str, Shape); 6] = [
@@ -155,11 +155,11 @@ fn an_observer_never_changes_what_the_consumer_receives() {
             ))))
         }),
         ("a setup failure", || {
-            Reply::Outcome(Err(ErrorReport::new(ErrorKind::Provider, "refused")))
+            Reply::Outcome(Err(RigError::new(ErrorKind::Provider, "refused")))
         }),
         ("an in-band error before the terminal", || {
             items(vec![
-                Err(ErrorReport::new(ErrorKind::Response, "mid-stream")),
+                Err(RigError::new(ErrorKind::Response, "mid-stream")),
                 text("after"),
                 terminal(),
             ])
@@ -234,7 +234,7 @@ fn text_item(fragment: &str) -> Relayed {
 }
 
 /// A response the origin folded, carrying `text`.
-fn done(text: &str) -> Result<Relayed, ErrorReport> {
+fn done(text: &str) -> Result<Relayed, RigError> {
     Ok(Relayed::Done(Box::new(CompletionResponse::new(
         vec![crate::message::AssistantContent::text(text)],
         Default::default(),
@@ -247,8 +247,8 @@ fn done(text: &str) -> Result<Relayed, ErrorReport> {
 /// nothing observed after it yields another.
 #[test]
 fn the_tap_yields_only_its_first_outcome() {
-    let items: Vec<Result<Relayed, ErrorReport>> = vec![
-        Err(ErrorReport::new(ErrorKind::Provider, "reset")),
+    let items: Vec<Result<Relayed, RigError>> = vec![
+        Err(RigError::new(ErrorKind::Provider, "reset")),
         Ok(text_item("late")),
         done("late"),
     ];
@@ -308,7 +308,7 @@ fn a_model_handler_names_what_its_model_leaves_out() {
             &self,
             _: EffectId,
             _: &EffectKind,
-            _: &Result<Answered, ErrorReport>,
+            _: &Result<Answered, RigError>,
         ) -> crate::serve::AfterServe {
             crate::serve::AfterServe::Keep
         }

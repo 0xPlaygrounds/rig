@@ -8,7 +8,6 @@ publish = false
 workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
 futures = { workspace = true }
 image = { workspace = true, features = ["jpeg", "png"] }
 rig = { workspace = true, features = ["candle"] }

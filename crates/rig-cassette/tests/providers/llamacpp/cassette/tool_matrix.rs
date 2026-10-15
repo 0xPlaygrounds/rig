@@ -84,7 +84,7 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
         .expect("opening the stream must fail before anything is sent");
 
     assert!(
-        matches!(error, rig::error::ProviderError::Request(_)),
+        error.kind == rig::ErrorKind::Request,
         "the refusal must be rig's own, not the connection error the dead \
          address would produce: {error:?}"
     );

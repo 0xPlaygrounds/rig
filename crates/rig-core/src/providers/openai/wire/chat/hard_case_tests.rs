@@ -62,8 +62,8 @@ async fn stream(
     dialect: &'static Dialect,
     chunks: &[String],
 ) -> (
-    Vec<Result<Item<StreamEvent>, ProviderError>>,
-    Result<CompletionResponse, ProviderError>,
+    Vec<Result<Item<StreamEvent>, crate::error::RigError>>,
+    Result<CompletionResponse, crate::error::RigError>,
 ) {
     let model = crate::driver::Model::new(
         wire(dialect),

@@ -24,7 +24,7 @@ use bevy_log::warn;
 use regex::{Captures, Regex};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::redact;
 use rig_harness::rig_core::serve::{self, AfterServe as Answer, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
@@ -446,7 +446,7 @@ impl Intercept for RedactRequest {
         &self,
         _: EffectId,
         _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
+        _: &Result<Answered, RigError>,
     ) -> impl Future<Output = Answer> + Send {
         ready(Answer::Keep)
     }

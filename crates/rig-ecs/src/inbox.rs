@@ -35,7 +35,7 @@ use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author, AuthorKind, Entry, Halt};
 use rig_core::effect::{EffectKind, HandlerKey};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 use web_time::SystemTime;
@@ -379,7 +379,7 @@ pub(crate) fn accept(
         let Some((agent, (mut conversation, connection, busy))) =
             agent.and_then(|agent| Some((agent, agents.get_mut(agent).ok()?)))
         else {
-            let why = ErrorReport::new(ErrorKind::Internal, "a message needs an agent");
+            let why = RigError::new(ErrorKind::Internal, "a message needs an agent");
             commands.entity(entity).try_insert_if_new(Outcome(Err(why)));
             continue;
         };

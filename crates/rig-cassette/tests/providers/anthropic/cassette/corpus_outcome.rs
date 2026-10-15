@@ -186,7 +186,7 @@ async fn model_error_effect_log_is_the_golden_fixture() {
             .await
             .expect_err("an invalid key is refused");
         let kind = match &error {
-            PromptError::Report(report) => report.kind,
+            PromptError::Failed(report) => report.kind,
             other => panic!("a report, not {other:?}"),
         };
         assert_eq!(kind, ErrorKind::ProviderResponse, "{error:?}");

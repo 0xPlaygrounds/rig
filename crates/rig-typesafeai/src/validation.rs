@@ -1,6 +1,6 @@
 //! Inspect wire object keys without collecting question definitions into a map.
 use crate::types::Question;
-use rig_core::error::ProviderError;
+use rig_core::error::RigError;
 use serde::Deserializer;
 use serde::de::{DeserializeOwned, MapAccess, Visitor};
 use serde_json::value::RawValue;
@@ -8,10 +8,10 @@ use std::{collections::BTreeSet, fmt, marker::PhantomData};
 
 fn object_ids<T: DeserializeOwned>(
     raw: &RawValue,
-    validate: fn(&str, &T) -> Result<(), ProviderError>,
+    validate: fn(&str, &T) -> Result<(), RigError>,
 ) -> Result<BTreeSet<String>, serde_json::Error> {
     struct Keys<T> {
-        validate: fn(&str, &T) -> Result<(), ProviderError>,
+        validate: fn(&str, &T) -> Result<(), RigError>,
         marker: PhantomData<T>,
     }
     impl<'de, T: DeserializeOwned> Visitor<'de> for Keys<T> {
@@ -41,15 +41,15 @@ fn object_ids<T: DeserializeOwned>(
     Ok(ids)
 }
 
-pub(crate) fn request_ids(raw: &RawValue) -> Result<BTreeSet<String>, ProviderError> {
+pub(crate) fn request_ids(raw: &RawValue) -> Result<BTreeSet<String>, RigError> {
     let ids = object_ids::<Question>(raw, crate::questions::validate_definition)
-        .map_err(|error| ProviderError::request(error.to_string()))?;
+        .map_err(|error| crate::invalid(error.to_string()))?;
     if ids.is_empty() {
-        return Err(ProviderError::request("at least one question is required"));
+        return Err(crate::invalid("at least one question is required"));
     }
     Ok(ids)
 }
-pub(crate) fn response_ids(raw: &RawValue) -> Result<BTreeSet<String>, ProviderError> {
+pub(crate) fn response_ids(raw: &RawValue) -> Result<BTreeSet<String>, RigError> {
     object_ids::<serde::de::IgnoredAny>(raw, |_, _| Ok(()))
-        .map_err(|error| ProviderError::Response(error.to_string()))
+        .map_err(|error| crate::unexpected(error.to_string()))
 }

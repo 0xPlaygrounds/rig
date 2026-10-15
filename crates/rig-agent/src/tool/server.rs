@@ -19,7 +19,7 @@ use std::sync::{
 
 use crate::bus::Registrar;
 use indexmap::IndexMap;
-use rig_core::error::ProviderError;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::serve::adapters::RetrieveAdapter;
 use rig_core::{
     effect::Key,
@@ -694,7 +694,7 @@ impl ToolServerHandle {
                         ) => ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>(),
                         other => {
                             return Err(rig_core::vector_store::VectorStoreError::DatastoreError(
-                                Box::new(rig_core::error::ErrorReport::new(
+                                Box::new(rig_core::error::RigError::new(
                                     rig_core::error::ErrorKind::Internal,
                                     format!(
                                         "tool retrieval answered with a {} outcome",
@@ -711,7 +711,7 @@ impl ToolServerHandle {
 
             futures::future::try_join_all(search_futures)
                 .await
-                .map_err(|e| ToolServerError::DefinitionError(ProviderError::request(e)))?
+                .map_err(|e| ToolServerError::DefinitionError(ProviderError::request(e).into()))?
                 .into_iter()
                 .flatten()
                 .collect::<Vec<String>>()
@@ -776,7 +776,16 @@ const _: () = {
 pub enum ToolServerError {
     /// The advertised definitions could not be computed.
     #[error("Failed to retrieve tool definitions: {0}")]
-    DefinitionError(ProviderError),
+    DefinitionError(RigError),
+}
+
+impl From<ToolServerError> for RigError {
+    fn from(error: ToolServerError) -> Self {
+        let message = error.to_string();
+        match error {
+            ToolServerError::DefinitionError(error) => error.context(message),
+        }
+    }
 }
 
 impl ManagedToolSink for ToolServerHandle {

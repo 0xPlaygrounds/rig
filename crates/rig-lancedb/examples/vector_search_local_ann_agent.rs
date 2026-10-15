@@ -1,6 +1,7 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig_agent::AgentBuilder;
+use rig_core::RigError;
 use rig_core::providers::openai;
 use rig_core::{embeddings::EmbeddingsBuilder, providers::openai::OpenAI};
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
@@ -9,7 +10,7 @@ use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 mod fixture;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Initialize the OpenAI Chat Completions provider. Use this to generate embeddings (and generate test data for RAG demo).
     let openai_client = OpenAI::from_env()?;
 
@@ -19,7 +20,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .erase();
 
     // Initialize LanceDB locally.
-    let db = lancedb::connect("data/lancedb-store").execute().await?;
+    let db = lancedb::connect("data/lancedb-store")
+        .execute()
+        .await
+        .map_err(RigError::other)?;
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())
@@ -40,33 +44,46 @@ async fn main() -> Result<(), anyhow::Error> {
     let table = if db
         .table_names()
         .execute()
-        .await?
+        .await
+        .map_err(RigError::other)?
         .contains(&"definitions".to_string())
     {
-        db.open_table("definitions").execute().await?
+        db.open_table("definitions")
+            .execute()
+            .await
+            .map_err(RigError::other)?
     } else {
         db.create_table(
             "definitions",
-            vec![as_record_batch(embeddings, model.capabilities().ndims)?],
+            vec![as_record_batch(embeddings, model.capabilities().ndims).map_err(RigError::other)?],
         )
         .execute()
-        .await?
+        .await
+        .map_err(RigError::other)?
     };
 
     // See [LanceDB indexing](https://lancedb.github.io/lancedb/concepts/index_ivfpq/#product-quantization) for more information
-    if table.index_stats("embedding").await?.is_none() {
+    if table
+        .index_stats("embedding")
+        .await
+        .map_err(RigError::other)?
+        .is_none()
+    {
         table
             .create_index(
                 &["embedding"],
                 lancedb::index::Index::IvfPq(IvfPqIndexBuilder::default()),
             )
             .execute()
-            .await?;
+            .await
+            .map_err(RigError::other)?;
     }
 
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();
-    let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
+    let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params)
+        .await
+        .map_err(RigError::other)?;
 
     // Build RAG agent with dynamic context.
     // Use OpenAI-compatible API interface to build agent

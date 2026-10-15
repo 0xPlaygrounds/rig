@@ -51,8 +51,8 @@ use std::time::Duration;
 use futures::{Stream, StreamExt};
 use rig::completion::Usage;
 use rig::completion::{CompletionRequest, Reasoning};
-use rig::error::ErrorReport;
 use rig::error::ProviderError;
+use rig::error::RigError;
 use rig::message::AssistantContent;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::extension::GeminiOptions;
@@ -109,7 +109,7 @@ impl Disrupt {
 }
 
 impl Stream for Disrupt {
-    type Item = Result<Relayed, ErrorReport>;
+    type Item = Result<Relayed, RigError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -134,7 +134,7 @@ impl Stream for Disrupt {
                 Disruption::TransportError => {
                     // The same in-band shape a real transport failure takes:
                     // the provider's error, mapped to the stream's report.
-                    return Poll::Ready(Some(Err(ErrorReport::from(&ProviderError::Provider(
+                    return Poll::Ready(Some(Err(RigError::from(&ProviderError::Provider(
                         "injected mid-stream transport drop".to_string(),
                     )))));
                 }
@@ -202,9 +202,9 @@ async fn drain_with_accounting<S>(
     http: &reqwest::Client,
     api_key: &str,
     prompt_text: &str,
-) -> anyhow::Result<Report>
+) -> Result<Report, RigError>
 where
-    S: Stream<Item = Result<Relayed, ErrorReport>> + Unpin,
+    S: Stream<Item = Result<Relayed, RigError>> + Unpin,
 {
     let mut output = String::new();
     let mut authoritative: Option<Usage> = None;
@@ -290,7 +290,7 @@ where
 
 /// Call Gemini's free `countTokens` endpoint on arbitrary text. Returns 0 for
 /// empty input (the endpoint rejects empty `contents`).
-async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyhow::Result<u64> {
+async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> Result<u64, RigError> {
     if text.is_empty() {
         return Ok(0);
     }
@@ -304,9 +304,11 @@ async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyh
         .post(url)
         .json(&body)
         .send()
-        .await?
-        .error_for_status()?;
-    let value: serde_json::Value = resp.json().await?;
+        .await
+        .map_err(RigError::other)?
+        .error_for_status()
+        .map_err(RigError::other)?;
+    let value: serde_json::Value = resp.json().await.map_err(RigError::other)?;
     let total = value
         .get("totalTokens")
         .and_then(serde_json::Value::as_u64)
@@ -330,7 +332,7 @@ async fn run_scenario(
     prompt: &str,
     http: &reqwest::Client,
     api_key: &str,
-) -> anyhow::Result<Report> {
+) -> Result<Report, RigError> {
     let model = Gemini::from_env()?.completion(MODEL);
 
     let stream = model.stream(no_thinking(
@@ -372,9 +374,8 @@ fn print_report(report: &Report) {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("GEMINI_API_KEY")
-        .map_err(|_| anyhow::anyhow!("GEMINI_API_KEY must be set"))?;
+async fn main() -> Result<(), RigError> {
+    let api_key = rig::client::env::required("GEMINI_API_KEY")?;
     let http = reqwest::Client::new();
 
     // Short prompt for the clean baseline (completes quickly, real usage).

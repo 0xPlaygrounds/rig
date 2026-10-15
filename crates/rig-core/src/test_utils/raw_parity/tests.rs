@@ -1028,7 +1028,7 @@ fn dialect(provider: &str) -> &'static Dialect {
 }
 
 /// The `raw` pair `pair` decodes to on the wire and route that recorded it.
-async fn decoded(pair: &Pair) -> Result<(Value, Value), crate::error::ProviderError> {
+async fn decoded(pair: &Pair) -> Result<(Value, Value), crate::error::RigError> {
     let unary = Recorded::named(pair.provider, pair.unary);
     let streamed = Recorded::named(pair.provider, pair.streamed).reply;
     let model = unary.model().unwrap_or("model").to_owned();

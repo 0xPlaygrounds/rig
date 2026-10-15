@@ -2,7 +2,7 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to map a short sentence into a structured sentiment enum.
 
-use anyhow::Result;
+use rig::RigError;
 use rig::extractor::ExtractorBuilder;
 use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
@@ -23,7 +23,7 @@ struct DocumentSentiment {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = OpenAI::from_env()?;
     let extractor =
         ExtractorBuilder::<DocumentSentiment>::new(client.completion(openai::GPT_4)).build();

@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{FinishReason, Message};
-use rig_core::error::ProviderError;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolCall, ToolName};
 use rig_core::streaming::{Item, PartKind, StreamEvent};
 
@@ -306,14 +306,12 @@ impl StreamedTurnAssembler {
     /// # Errors
     /// Returns an error when an invalid tool call is still awaiting
     /// resolution.
-    pub fn ingest(
-        &mut self,
-        item: &Item<StreamEvent>,
-    ) -> Result<Vec<StreamedTurnEvent>, ProviderError> {
+    pub fn ingest(&mut self, item: &Item<StreamEvent>) -> Result<Vec<StreamedTurnEvent>, RigError> {
         if self.pending_invalid.is_some() {
             return Err(ProviderError::Response(
                 "streamed turn ingested while an invalid tool call awaits resolution".to_string(),
-            ));
+            )
+            .into());
         }
         let event = match item {
             Item::Event(event) => event,

@@ -80,7 +80,12 @@ async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
         .await
         .expect_err("should fail with provider error envelope");
 
-    let ProviderError::ProviderResponse(stored) = &error else {
+    assert_eq!(
+        error.kind,
+        crate::error::ErrorKind::ProviderResponse,
+        "{error:?}"
+    );
+    let Some(stored) = &error.provider_response else {
         panic!("expected ProviderResponse, got {error:?}");
     };
     assert_eq!(stored.body, body);

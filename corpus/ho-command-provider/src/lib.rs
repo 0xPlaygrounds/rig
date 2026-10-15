@@ -60,7 +60,7 @@ use rig_harness::rig_core::completion::{CompletionRequest, Cost, ProviderCapabil
 use rig_harness::rig_core::effect::{
     EffectKind, FamilyDescriptor, HandlerDescriptor, family, model_key,
 };
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::message::{
     AssistantContent, Message as ChatMessage, Origin, ToolResultContent, UserContent,
 };
@@ -378,7 +378,7 @@ impl Serve for ProgramHandler {
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let EffectKind::Completion { request, .. } = kind else {
             let why = format!("{} serves completions only", self.reference);
-            return Reply::Outcome(Err(ErrorReport::new(ErrorKind::Internal, why)));
+            return Reply::Outcome(Err(RigError::new(ErrorKind::Internal, why)));
         };
         let id = dispatch.id().as_u64();
         let line = request_line(id, &self.reference, &request);
@@ -558,7 +558,7 @@ async fn relay(
                 return;
             }
             Event::Failed(why) => {
-                let report = ErrorReport::new(ErrorKind::Provider, format!("`{model}`: {why}"));
+                let report = RigError::new(ErrorKind::Provider, format!("`{model}`: {why}"));
                 writer.error(report).await.ok();
                 return;
             }
@@ -578,7 +578,7 @@ async fn relay(
                 Ok(())
             }
             Ok(Line::Error { error, retry }) => {
-                let report = ErrorReport::new(ErrorKind::Provider, format!("`{model}`: {error}"));
+                let report = RigError::new(ErrorKind::Provider, format!("`{model}`: {error}"));
                 writer.error(report.with_retryable(retry)).await.ok();
                 return;
             }
@@ -597,7 +597,7 @@ async fn relay(
                 let quoted: String = line.chars().take(QUOTED).collect();
                 let why = format!("`{model}` wrote a malformed line {number}: {quoted}");
                 writer
-                    .error(ErrorReport::new(ErrorKind::Response, why))
+                    .error(RigError::new(ErrorKind::Response, why))
                     .await
                     .ok();
                 return;
@@ -609,23 +609,23 @@ async fn relay(
     }
     let why = format!("`{model}` stopped without an answer");
     writer
-        .error(ErrorReport::new(ErrorKind::Provider, why))
+        .error(RigError::new(ErrorKind::Provider, why))
         .await
         .ok();
 }
 
 /// The failure of a program that ended before it was done.
-fn exited(model: &str, code: Option<i32>, stderr: &str) -> ErrorReport {
+fn exited(model: &str, code: Option<i32>, stderr: &str) -> RigError {
     let status = code.map_or_else(|| "a signal".to_owned(), |code| format!("code {code}"));
     if code == Some(TRY_AGAIN) {
         let why = format!("`{model}` asked to be tried again (exit {status})");
-        return ErrorReport::new(ErrorKind::Provider, why).with_retryable(true);
+        return RigError::new(ErrorKind::Provider, why).with_retryable(true);
     }
     let why = format!(
         "`{model}` exited with {status} before `done`: {}",
         stderr.trim()
     );
-    ErrorReport::new(ErrorKind::Provider, why)
+    RigError::new(ErrorKind::Provider, why)
 }
 
 /// A running program: its stdin, its stdout's lines and the end of its

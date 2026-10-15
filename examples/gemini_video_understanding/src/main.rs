@@ -2,7 +2,6 @@
 //! Requires `GEMINI_API_KEY`.
 //! Run it to see a single prompt combine text instructions with a video URL input.
 
-use anyhow::Result;
 use rig::message::{Message, UserContent, Video};
 use rig::prelude::*;
 use rig::providers::gemini::extension::{CandidateCount, GeminiOptions};
@@ -12,7 +11,7 @@ use serde_json::json;
 const MODEL: &str = gemini::completion::GEMINI_2_5_PRO_EXP_03_25;
 const VIDEO_URL: &str = "https://www.youtube.com/watch?v=emtHJIxLwEc";
 
-fn build_video_prompt() -> Result<Message> {
+fn build_video_prompt() -> Result<Message, RigError> {
     Ok(Message::User {
         content: vec![
             UserContent::text("Summarize the video."),
@@ -26,7 +25,7 @@ fn build_video_prompt() -> Result<Message> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = Gemini::from_env()?;
     let agent = AgentBuilder::new(client.completion(MODEL))
         .preamble("Be creative and concise. Answer directly and clearly.")

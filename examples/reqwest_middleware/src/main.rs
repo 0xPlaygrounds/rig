@@ -2,9 +2,9 @@
 //! Requires `ANTHROPIC_API_KEY` and the `reqwest-middleware` feature.
 //! Run it to verify a wire can be bound to your preconfigured HTTP stack.
 
-use anyhow::{Context, Result};
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
+use rig::RigError;
 use rig::{prelude::*, providers::anthropic, providers::anthropic::Anthropic};
 
 fn build_http_client() -> rig::rig_reqwest::ReqwestMiddlewareClient {
@@ -16,8 +16,8 @@ fn build_http_client() -> rig::rig_reqwest::ReqwestMiddlewareClient {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set")?;
+async fn main() -> Result<(), RigError> {
+    let api_key = rig::client::env::required("ANTHROPIC_API_KEY")?;
     let http_client = build_http_client();
     let agent = AgentBuilder::new(
         Anthropic::new(api_key)

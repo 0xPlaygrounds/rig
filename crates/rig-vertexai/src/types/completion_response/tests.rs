@@ -36,11 +36,11 @@ pub(crate) fn replay(
 
 /// The reply as the unary endpoint answers it.
 pub(crate) trait Complete {
-    fn complete(self) -> Result<CompletionResponse, ProviderError>;
+    fn complete(self) -> Result<CompletionResponse, rig_core::RigError>;
 }
 
 impl Complete for vertexai::model::GenerateContentResponse {
-    fn complete(self) -> Result<CompletionResponse, ProviderError> {
+    fn complete(self) -> Result<CompletionResponse, rig_core::RigError> {
         let model = Model::new(
             crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH),
             Reply(self),
@@ -51,7 +51,7 @@ impl Complete for vertexai::model::GenerateContentResponse {
 
 pub(crate) fn complete(
     response: vertexai::model::GenerateContentResponse,
-) -> Result<CompletionResponse, ProviderError> {
+) -> Result<CompletionResponse, rig_core::RigError> {
     response.complete()
 }
 use rig_core::message::{AssistantContent, Text};

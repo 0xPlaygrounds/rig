@@ -46,6 +46,12 @@ impl From<PrepareError> for ProviderError {
     }
 }
 
+impl From<PrepareError> for rig_core::error::RigError {
+    fn from(error: PrepareError) -> Self {
+        ProviderError::from(error).into()
+    }
+}
+
 /// Everything a model call carries that the protocol decides, as owned data.
 ///
 /// Apply it to a provider's request builder with [`apply`](Self::apply); the

@@ -343,10 +343,10 @@ pub enum OnUnsupported {
     Ignore,
 }
 
-/// An option the wire or model cannot honour. Carried by
-/// [`ProviderError::UnsupportedOption`](crate::error::ProviderError::UnsupportedOption).
+/// An option the wire or model cannot honour. A caller reads it from
+/// [`ErrorDetail::UnsupportedOption`](crate::error::ErrorDetail::UnsupportedOption).
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error, serde::Serialize, serde::Deserialize)]
 #[error("`{option}` is not supported by {provider} model `{model}`: {reason}")]
 pub struct UnsupportedOption {
     /// The [`GenerationOptions`] field name, such as `"reasoning"`, a
@@ -392,7 +392,7 @@ pub enum CheckError {
     /// history. Refusals met before it are not listed, since the build
     /// stopped there.
     #[error(transparent)]
-    Invalid(crate::error::ProviderError),
+    Invalid(crate::error::RigError),
 }
 
 /// The refusals, one per clause.

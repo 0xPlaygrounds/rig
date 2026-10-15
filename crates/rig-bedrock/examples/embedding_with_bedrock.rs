@@ -1,5 +1,6 @@
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
+use rig_core::RigError;
 use rig_core::embeddings::EmbeddingsBuilder;
 use tracing::info;
 
@@ -10,7 +11,7 @@ struct Greetings {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_target(false)

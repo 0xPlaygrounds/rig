@@ -63,7 +63,7 @@ impl Server {
         &self,
         request: &CompletionRequest,
         model: &str,
-    ) -> Result<CompletionResponse, ErrorReport> {
+    ) -> Result<CompletionResponse, RigError> {
         let mut books = self.books();
         let previous = previous_of(request).map(str::to_owned);
         let items: Vec<Message> = body(request).into_iter().cloned().collect();
@@ -78,7 +78,7 @@ impl Server {
         });
         let Some(mut conversation) = known else {
             let mut report =
-                ErrorReport::new(ErrorKind::ProviderResponse, "Previous response not found.");
+                RigError::new(ErrorKind::ProviderResponse, "Previous response not found.");
             report.code = Some(NOT_FOUND.to_owned());
             return Err(report);
         };
@@ -94,7 +94,7 @@ impl Server {
             books
                 .replies
                 .pop_front()
-                .ok_or_else(|| ErrorReport::new(ErrorKind::Provider, "no reply scripted"))?
+                .ok_or_else(|| RigError::new(ErrorKind::Provider, "no reply scripted"))?
         };
         books.next += 1;
         let id = format!("resp_{}", books.next);
@@ -131,7 +131,7 @@ impl Serve for ServerModel {
 
     async fn serve(&self, kind: EffectKind, _: Dispatch) -> Reply {
         let EffectKind::Completion { request, stream } = kind else {
-            return Reply::Outcome(Err(ErrorReport::new(
+            return Reply::Outcome(Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 "completions only",
             )));

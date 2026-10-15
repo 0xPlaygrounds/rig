@@ -46,6 +46,17 @@ pub enum GeminiGrpcError {
     Transport(#[from] tonic::transport::Error),
 }
 
+impl From<GeminiGrpcError> for rig_core::error::RigError {
+    fn from(error: GeminiGrpcError) -> Self {
+        use rig_core::error::ErrorKind;
+        match error {
+            GeminiGrpcError::Env(error) => error.into(),
+            GeminiGrpcError::InvalidApiKey(_) => Self::from_error(ErrorKind::Configuration, &error),
+            GeminiGrpcError::Transport(_) => Self::from_error(ErrorKind::Http, &error),
+        }
+    }
+}
+
 /// The transport every Gemini gRPC wire is sent through. Clones share one
 /// channel.
 #[derive(Clone)]

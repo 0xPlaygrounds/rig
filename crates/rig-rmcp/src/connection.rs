@@ -33,7 +33,7 @@ use rig_core::effect::{
     Answered, EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey,
     RetrieveQuery, RetrievedDocuments, family,
 };
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::serve::{Dispatch, Reply, Serve};
 
 use crate::{DEFAULT_MCP_REFRESH_TIMEOUT, McpClientError, McpTool, send_mcp_request};
@@ -205,7 +205,7 @@ pub struct McpResourceContext {
 }
 
 impl McpResourceContext {
-    async fn read(&self, samples: usize) -> Result<Vec<ResourceContents>, ErrorReport> {
+    async fn read(&self, samples: usize) -> Result<Vec<ResourceContents>, RigError> {
         let mut contents = Vec::new();
         for uri in &self.uris {
             if contents.len() >= samples {
@@ -216,7 +216,7 @@ impl McpResourceContext {
                 .read_resource(uri.as_str())
                 .await
                 .map_err(|error| {
-                    ErrorReport::new(
+                    RigError::new(
                         ErrorKind::Provider,
                         format!("failed to read MCP resource `{uri}`: {error}"),
                     )
@@ -251,7 +251,7 @@ impl Serve for McpResourceContext {
         let query = match kind {
             EffectKind::Retrieve { query } => query,
             other => {
-                return Reply::Outcome(Err(ErrorReport::new(
+                return Reply::Outcome(Err(RigError::new(
                     ErrorKind::HandlerUnavailable,
                     format!(
                         "a {} handler cannot serve a `{}` effect",
@@ -273,7 +273,7 @@ impl Serve for McpResourceContext {
                                 .map(|document| (1.0, resource_uri(contents), document))
                         })
                         .collect::<Result<_, _>>()
-                        .map_err(|error| ErrorReport::new(ErrorKind::Json, error.to_string()))?,
+                        .map_err(|error| RigError::new(ErrorKind::Json, error.to_string()))?,
                 ),
                 RetrieveQuery::TopNIds { .. } => RetrievedDocuments::Ids(
                     contents

@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::message::{Reasoning, Text};
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
@@ -197,7 +197,7 @@ impl Intercept for LeaveOutReasoning {
         &self,
         _: EffectId,
         _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
+        _: &Result<Answered, RigError>,
     ) -> AfterServe {
         AfterServe::Keep
     }

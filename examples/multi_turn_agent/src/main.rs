@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)

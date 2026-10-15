@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::completion::CompletionResponse;
 use crate::driver::{lock, record_request_id};
-use crate::error::{ErrorReport, ProviderError};
+use crate::error::{ProviderError, RigError};
 pub use crate::json_utils::parse_partial_arguments;
 use crate::operation::{Completion, ReplyFold};
 use crate::wasm_compat::WasmBoxedStream;
@@ -81,14 +81,15 @@ pub enum Relayed {
 }
 
 /// A completion stream as the bus carries it.
-pub type StreamEvents = WasmBoxedStream<'static, Result<Relayed, ErrorReport>>;
+pub type StreamEvents = WasmBoxedStream<'static, Result<Relayed, RigError>>;
 
 /// One reply as it arrives: its events, and the fold that has seen each of
 /// them. It is what [`Model::stream`](crate::Model::stream) returns for
 /// every operation, and what a call finishes.
 ///
-/// An error is the last item: the stream ends after it. Stop polling to
-/// pause; drop the stream to cancel.
+/// An error is the last item: the stream ends after it, and
+/// [`partial`](Streamed::partial) holds what arrived before it. Stop polling
+/// to pause; drop the stream to cancel.
 pub struct Streamed<Op: Operation> {
     /// The reading of the reply; `None` once it ended.
     reading: Option<WasmBoxedStream<'static, ()>>,
@@ -156,10 +157,12 @@ impl<Op: Operation> Streamed<Op> {
     /// Read the rest of the reply, then fold it with the provider's end into
     /// the response: what [`Model::call`](crate::Model::call) returns for
     /// the same reply. An error the stream yielded, now or before, is the
-    /// result; a reply the provider did not end is
-    /// [`ProviderError::Truncated`].
-    pub async fn finish(self) -> Result<Op::Response, ProviderError> {
-        self.finish_routed().await.map_err(|(error, _)| error)
+    /// result; a reply the provider did not end fails with
+    /// [`ErrorDetail::Truncated`](crate::error::ErrorDetail::Truncated).
+    pub async fn finish(self) -> Result<Op::Response, RigError> {
+        self.finish_routed()
+            .await
+            .map_err(|(error, _)| RigError::from(error))
     }
 
     /// [`Self::finish`], with a failure paired with the request path of the
@@ -262,20 +265,20 @@ impl Streamed<Completion> {
         let origin = lock(&self.shared).fold.origin().clone();
         Box::pin(async_stream::stream! {
             yield Ok(Relayed::Origin(origin));
-            while let Some(item) = self.next().await {
+            while let Some(item) = futures::future::poll_fn(|cx| self.poll_item(cx)).await {
                 match item {
                     Ok(item) => yield Ok(Relayed::Item(item)),
                     Err(ProviderError::Truncated) => return,
                     Err(error) => {
-                        yield Err(ErrorReport::from(&error));
+                        yield Err(RigError::from(&error));
                         return;
                     }
                 }
             }
-            match self.finish().await {
+            match self.finish_routed().await {
                 Ok(response) => yield Ok(Relayed::Done(Box::new(response))),
-                Err(ProviderError::Truncated) => {}
-                Err(error) => yield Err(ErrorReport::from(&error)),
+                Err((ProviderError::Truncated, _)) => {}
+                Err((error, _)) => yield Err(RigError::from(&error)),
             }
         })
     }
@@ -297,10 +300,12 @@ impl Streamed<Completion> {
 }
 
 impl<Op: Operation> Stream for Streamed<Op> {
-    type Item = Result<Item<Op::Event>, ProviderError>;
+    type Item = Result<Item<Op::Event>, RigError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.get_mut().poll_item(cx)
+        self.get_mut()
+            .poll_item(cx)
+            .map(|item| item.map(|item| item.map_err(RigError::from)))
     }
 }
 

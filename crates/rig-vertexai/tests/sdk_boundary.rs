@@ -22,7 +22,7 @@ mod support;
 use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::Model;
 use rig_core::completion::{CompletionRequest, ToolDefinition};
-use rig_core::error::ProviderError;
+use rig_core::error::ErrorKind;
 use rig_core::message::{AssistantContent, Message, Text, ToolChoice, UserContent};
 use rig_vertexai::VertexAi;
 use rig_vertexai::client::VertexAiClientError;
@@ -291,8 +291,8 @@ async fn supplying_both_a_client_and_credentials_is_refused() {
 }
 
 /// On the deferred path Rig builds the SDK client on the first completion, so
-/// an initialization failure surfaces there — as a Rig-side request error
-/// carrying the SDK's typed error, not as a provider reply — and the cached failure is reported identically to
+/// an initialization failure surfaces there as a Rig-side request error
+/// carrying the SDK's error, not as a provider reply, and the cached failure is reported identically to
 /// every later caller.
 #[tokio::test]
 async fn deferred_client_initialization_failure_surfaces_on_first_use() {
@@ -313,13 +313,11 @@ async fn deferred_client_initialization_failure_surfaces_on_first_use() {
             .call(request("hello"))
             .await
             .expect_err("the SDK client cannot be built");
-        let client_error = match &error {
-            ProviderError::Request(source) => source.downcast_ref::<VertexAiClientError>(),
-            _ => None,
-        };
         assert!(
-            matches!(client_error, Some(VertexAiClientError::PredictionService(sdk))
-                if sdk.is_universe_domain_mismatch()),
+            error.kind == ErrorKind::Request
+                && matches!(error.source_chain.as_slice(), [client, sdk]
+                    if client == "failed to build Vertex AI prediction service"
+                        && sdk.contains("does not match the universe domain found in the credentials")),
             "attempt {attempt}: unexpected error: {error:?}"
         );
         assert_eq!(

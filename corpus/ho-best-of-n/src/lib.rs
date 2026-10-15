@@ -28,7 +28,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_tools::process::{KillOnDrop, Launcher, OutputLine, Spawn};
 use rig_tools::{MAX_BYTES, OutputLimit, Shell, ShellArgs, blocking};
@@ -487,7 +487,7 @@ fn start_job(
     let task = async move {
         match done.await {
             Ok(payload) => Outcome::custom(payload),
-            Err(why) => Outcome(Err(ErrorReport::from(ToolExecutionError::other(why)))),
+            Err(why) => Outcome(Err(RigError::from(ToolExecutionError::other(why)))),
         }
     };
     commands

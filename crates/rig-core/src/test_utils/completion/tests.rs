@@ -110,11 +110,11 @@ async fn missing_completion_turn_returns_provider_error() {
         .await
         .expect_err("missing turn should error");
 
-    assert!(matches!(
-        err,
-        ProviderError::Provider(message)
-            if message.contains("no scripted completion turn")
-    ));
+    assert_eq!(err.kind, ErrorKind::Provider, "{err:?}");
+    assert!(
+        err.message.contains("no scripted completion turn"),
+        "{err:?}"
+    );
 }
 
 #[tokio::test]
@@ -171,7 +171,7 @@ async fn stream_error_event_is_returned() {
         .expect("stream should yield one event")
         .expect_err("scripted event should error");
 
-    assert_eq!(err.kind(), ErrorKind::Provider);
+    assert_eq!(err.kind, ErrorKind::Provider);
     assert_eq!(err.to_string(), "ProviderError: boom");
 }
 

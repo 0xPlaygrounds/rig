@@ -1,9 +1,9 @@
-use anyhow::Context;
+use rig_core::RigError;
 use rig_core::completion::CompletionRequest;
 use rig_vertexai::VertexAi;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().with_target(false).init();
 
     // Uses ADC credentials and expects GOOGLE_CLOUD_PROJECT to be set. See
@@ -15,7 +15,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = model
         .call(request)
         .await
-        .context("Failed to get completion")?;
+        .map_err(|error| error.context("Failed to get completion"))?;
 
     let mut response_text = String::new();
     for content in response.choice.iter() {

@@ -10,7 +10,7 @@
 
 use super::Whole;
 use crate::driver::{Model, Transport};
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::wire::{Call, Decoder, Flow, Free, Operation, Out, Wire, WireEvent, WireFrame};
 
 /// Checks credentials using response status. HTTP 401/403 indicate invalid
@@ -60,9 +60,11 @@ where
     T: Transport<W>,
 {
     /// Check that the provider accepts the configured credentials. A 401 or
-    /// 403 reply is [`ProviderError::InvalidAuthentication`].
-    pub async fn verify(&self) -> Result<(), ProviderError> {
-        self.call(()).await.map_err(authentication)
+    /// 403 reply fails with
+    /// [`ErrorDetail::InvalidAuthentication`](crate::error::ErrorDetail::InvalidAuthentication).
+    pub async fn verify(&self) -> Result<(), RigError> {
+        self.call_provider(()).await.map_err(authentication)?;
+        Ok(())
     }
 }
 

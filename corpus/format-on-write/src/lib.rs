@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
 use rig_harness::rig_ecs::effects::Handler;
@@ -146,7 +146,7 @@ impl Intercept for Formatting {
         &self,
         _: EffectId,
         kind: &EffectKind,
-        outcome: &Result<Answered, ErrorReport>,
+        outcome: &Result<Answered, RigError>,
     ) -> AfterServe {
         let (EffectKind::ToolCall { args, .. }, Ok(Answered::ToolResult { result })) =
             (kind, outcome)

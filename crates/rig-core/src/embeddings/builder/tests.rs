@@ -73,8 +73,8 @@ async fn test_build_rejects_a_document_that_embeds_no_text() {
         .expect_err("a document with no texts has no embeddings");
 
     assert!(
-        matches!(error, ProviderError::Response(_)),
-        "unexpected error variant: {error:?}"
+        error.kind == crate::error::ErrorKind::Response,
+        "unexpected error kind: {error:?}"
     );
     assert!(
         error.to_string().contains("document 0 produced no text"),

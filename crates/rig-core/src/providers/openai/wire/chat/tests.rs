@@ -214,14 +214,23 @@ async fn the_done_sentinel_without_a_finish_fails() {
         .finish()
         .await
         .expect_err("a stream the provider never finished has no response");
-    assert!(matches!(error, ProviderError::Truncated), "{error:?}");
+    assert!(
+        matches!(
+            error,
+            crate::error::RigError {
+                detail: Some(crate::error::ErrorDetail::Truncated),
+                ..
+            }
+        ),
+        "{error:?}"
+    );
 }
 
 /// Drive `body` through a gateway whose quirks end a `[DONE]` stream that
 /// names no finish reason.
 async fn lenient_stream(
     body: &'static str,
-) -> Result<crate::completion::CompletionResponse, ProviderError> {
+) -> Result<crate::completion::CompletionResponse, crate::error::RigError> {
     use crate::providers::openai::wire::{Dialect, Quirks};
 
     // Built at run time: the quirk is a `const fn` callers use in constants.
@@ -294,7 +303,13 @@ async fn the_done_quirk_still_fails_a_stream_with_no_chunk() {
             .await
             .expect_err("a stream with no chunk has no response");
         assert!(
-            matches!(error, ProviderError::Truncated),
+            matches!(
+                error,
+                crate::error::RigError {
+                    detail: Some(crate::error::ErrorDetail::Truncated),
+                    ..
+                }
+            ),
             "{body}: {error:?}"
         );
     }
@@ -311,7 +326,16 @@ async fn the_done_quirk_does_not_end_a_stream_without_the_sentinel() {
     let error = lenient_stream(BODY)
         .await
         .expect_err("a stream cut before the sentinel has no response");
-    assert!(matches!(error, ProviderError::Truncated), "{error:?}");
+    assert!(
+        matches!(
+            error,
+            crate::error::RigError {
+                detail: Some(crate::error::ErrorDetail::Truncated),
+                ..
+            }
+        ),
+        "{error:?}"
+    );
 }
 
 /// The wire's in-band error envelope arrives with a 200 status, so only the
@@ -371,7 +395,7 @@ async fn an_in_band_envelope_with_a_status_code_is_classified_by_it() -> anyhow:
             }
         }
         anyhow::ensure!(errors.len() == 1, "one terminal failure: {errors:?}");
-        let report = errors[0].report();
+        let report = &errors[0];
         anyhow::ensure!(
             report.retryable,
             "code {code} must be retryable: {report:?}"
@@ -557,7 +581,13 @@ async fn a_gateway_may_answer_with_a_bare_string() {
             .call(prompt("ask"))
             .await;
     assert!(
-        matches!(strict, Err(ProviderError::Truncated)),
+        matches!(
+            strict,
+            Err(crate::error::RigError {
+                detail: Some(crate::error::ErrorDetail::Truncated),
+                ..
+            })
+        ),
         "openai does not answer with a bare string: {strict:?}"
     );
 }

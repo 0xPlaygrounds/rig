@@ -56,7 +56,7 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
                 response.finish_reason(),
                 Some(rig::completion::FinishReason::Stop)
             );
-            Ok::<(), rig::error::ProviderError>(())
+            Ok::<(), rig::RigError>(())
         },
     )
     .await
@@ -98,7 +98,7 @@ async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
                 Some(rig::completion::FinishReason::Stop)
             );
             assert!(!outcome.text.contains("ZEBRA"));
-            Ok::<(), rig::error::ProviderError>(())
+            Ok::<(), rig::RigError>(())
         },
     )
     .await
@@ -130,7 +130,7 @@ async fn low_reasoning_effort_produces_a_reasoning_turn() {
                     .any(|part| matches!(part, rig::message::AssistantContent::Reasoning(_))),
                 "reasoning_effort should enable a reasoning turn"
             );
-            Ok::<(), rig::error::ProviderError>(())
+            Ok::<(), rig::RigError>(())
         },
     )
     .await

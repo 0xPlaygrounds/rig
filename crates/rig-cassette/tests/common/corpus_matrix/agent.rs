@@ -21,7 +21,7 @@ use rig_core::effect::HandlerKey;
 
 use rig_core::error::ErrorKind;
 
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 
 use rig_core::serve::ErasedHandler;
 
@@ -53,15 +53,14 @@ pub(crate) fn record_summary(log: &rig_cassette::effect_log::EffectLog) -> Vec<S
 enum RunFailure {
     Cancelled(String),
     MaxTurns,
-    Report(ErrorReport),
+    Report(RigError),
 }
 
 fn classify_prompt(error: PromptError) -> RunFailure {
     match error {
         PromptError::Cancelled { reason, .. } => RunFailure::Cancelled(reason),
         PromptError::MaxTurns { .. } => RunFailure::MaxTurns,
-        PromptError::Report(report) => RunFailure::Report(report),
-        PromptError::Provider(error) => RunFailure::Report(ErrorReport::from(&error)),
+        PromptError::Failed(report) => RunFailure::Report(report),
         other => panic!("the run fails as one of the program's endings, not {other:?}"),
     }
 }

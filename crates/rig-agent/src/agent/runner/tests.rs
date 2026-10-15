@@ -753,7 +753,7 @@ fn sent_bodies(http: &rig_core::test_utils::RecordingHttpClient) -> Vec<serde_js
 fn refused(error: &crate::completion::PromptError, option: &str, model: &str) -> bool {
     matches!(
         error,
-        crate::completion::PromptError::Report(report)
+        crate::completion::PromptError::Failed(report)
             if report.kind == rig_core::error::ErrorKind::Request
                 && report.message.contains(&format!(
                     "`{option}` is not supported by anthropic model `{model}`"

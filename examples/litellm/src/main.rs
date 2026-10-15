@@ -2,15 +2,16 @@
 //! Requires a running proxy and `LITELLM_API_KEY`; see the adjacent README
 //! for setup and the optional `LITELLM_BASE_URL` and `LITELLM_MODEL` overrides.
 
-use anyhow::{Context, Result};
 use rig::prelude::*;
 use rig::providers::openai::OpenAIConfig;
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let api_key = std::env::var("LITELLM_API_KEY").context(
-        "Set LITELLM_API_KEY to your proxy key (or 'unused' for an unauthenticated proxy)",
-    )?;
+async fn main() -> Result<(), RigError> {
+    let api_key = rig::client::env::required("LITELLM_API_KEY").map_err(|error| {
+        RigError::from(error).context(
+            "Set LITELLM_API_KEY to your proxy key (or 'unused' for an unauthenticated proxy)",
+        )
+    })?;
     let base_url =
         std::env::var("LITELLM_BASE_URL").unwrap_or_else(|_| "http://localhost:4000/v1".to_owned());
     let model = std::env::var("LITELLM_MODEL").unwrap_or_else(|_| "rig-chat".to_owned());

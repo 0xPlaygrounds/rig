@@ -3,7 +3,7 @@ use rig_gemini_grpc::GeminiGrpc;
 
 #[tracing::instrument(ret)]
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)

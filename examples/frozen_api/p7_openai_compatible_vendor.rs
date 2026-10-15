@@ -1,3 +1,4 @@
+use rig::RigError;
 use rig::providers::openai::OpenAIConfig;
 use rig::providers::openai::wire::{Dialect, Quirks};
 
@@ -16,7 +17,7 @@ pub const ACME: Dialect = Dialect::gateway("acme", "https://api.acme.test/v1", "
     );
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), RigError> {
     let acme = OpenAIConfig::from_env_with(&ACME)?.client();
     let model = acme.completion("acme-large");
 

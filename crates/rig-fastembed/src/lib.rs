@@ -60,6 +60,17 @@ impl fmt::Display for FastembedError {
 
 impl StdError for FastembedError {}
 
+impl From<FastembedError> for rig_core::error::RigError {
+    fn from(error: FastembedError) -> Self {
+        use rig_core::error::ErrorKind;
+        let kind = match error {
+            FastembedError::UnknownModel(_) => ErrorKind::Configuration,
+            FastembedError::Initialization(_) => ErrorKind::Other,
+        };
+        Self::from_error(kind, &error)
+    }
+}
+
 /// The local embedding wire of `model` at `ndims` dimensions, named
 /// `fastembed` and addressing the model by its `fastembed` name. `None`
 /// takes the width from the model metadata, which errors for models

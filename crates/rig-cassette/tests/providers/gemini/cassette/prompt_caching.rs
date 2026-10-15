@@ -50,7 +50,6 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::error::ProviderError;
 use rig::providers::gemini::{self};
 use rig_test_support::cassette_models::GeminiModels;
 
@@ -242,7 +241,8 @@ fn cache_tokens_details_are_populated_and_agree_with_the_aggregate() {
 // ---------------------------------------------------------------------------
 
 /// A handle that no longer exists must surface as
-/// [`ProviderError::CacheExpired`], not as a raw status code.
+/// [`ErrorDetail::CacheExpired`](rig::ErrorDetail::CacheExpired), not as a raw
+/// status code.
 ///
 /// This variant exists because it is the one failure a caller is expected to
 /// *handle* rather than propagate: a cache that lapsed mid-run is recreated. It
@@ -268,7 +268,9 @@ async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
                 .get(&cache.name)
                 .await
                 .expect_err("a deleted handle should not resolve");
-            let ProviderError::CacheExpired { name, response } = &error else {
+            let (Some(rig::ErrorDetail::CacheExpired { name }), Some(response)) =
+                (&error.detail, &error.provider_response)
+            else {
                 panic!(
                     "a handle that is gone should report CacheExpired, not a bare status: {error:?}"
                 );

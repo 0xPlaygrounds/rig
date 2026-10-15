@@ -1,7 +1,5 @@
 //! Gemini model listing smoke test.
 
-use rig::error::ProviderError;
-
 use super::super::support::{with_gemini_cassette, with_gemini_cassette_bogus_key};
 
 #[tokio::test]
@@ -77,7 +75,9 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
                 .await
                 .expect_err("a bogus key must not list models");
 
-            let ProviderError::ProviderResponse(response) = &error else {
+            let (rig::error::ErrorKind::ProviderResponse, Some(response), None) =
+                (error.kind, &error.provider_response, &error.detail)
+            else {
                 panic!(
                     "a rejected listing must keep the provider's reply, not a bare transport \
                      error\nDisplay: {error}\nDebug: {error:#?}"

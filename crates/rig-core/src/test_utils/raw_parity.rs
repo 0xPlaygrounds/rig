@@ -3,7 +3,7 @@
 //! decode them and compared after [`comparable`].
 //!
 //! ```no_run
-//! # async fn example() -> Result<(), rig_core::error::ProviderError> {
+//! # async fn example() -> Result<(), rig_core::RigError> {
 //! use rig_core::providers::openai::OpenAIConfig;
 //! use rig_core::test_utils::raw_parity::assert_raw_parity;
 //!
@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use crate::completion::CompletionRequest;
 use crate::driver::{Model, Transport};
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::operation::Completion;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::Wire;
@@ -97,7 +97,7 @@ pub async fn raw_pair<W>(
     wire: W,
     unary: impl Into<Bytes>,
     streamed: impl Into<Bytes>,
-) -> Result<(Value, Value), ProviderError>
+) -> Result<(Value, Value), RigError>
 where
     W: Wire<Op = Completion>,
     RecordingHttpClient: Transport<W>,
@@ -120,7 +120,7 @@ pub async fn raw_pair_over<W, U, S>(
     wire: W,
     unary: U,
     streamed: S,
-) -> Result<(Value, Value), ProviderError>
+) -> Result<(Value, Value), RigError>
 where
     W: Wire<Op = Completion>,
     U: Transport<W>,
@@ -220,7 +220,7 @@ pub async fn assert_raw_parity<W>(
     unary: impl Into<Bytes>,
     streamed: impl Into<Bytes>,
     minted: &[&str],
-) -> Result<(), ProviderError>
+) -> Result<(), RigError>
 where
     W: Wire<Op = Completion>,
     RecordingHttpClient: Transport<W>,

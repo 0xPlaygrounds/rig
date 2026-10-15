@@ -20,7 +20,7 @@ pub use questions::{
     Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
 use rig_core::driver::{Model, Transport};
-use rig_core::error::ProviderError;
+use rig_core::error::{BoxError, ProviderError, RigError};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::Serialize;
 pub use wire::{Evaluation, Jev, JevConfig};
@@ -45,7 +45,7 @@ pub trait Evaluate {
     ///
     /// ```compile_fail
     /// use rig_typesafeai::{Evaluate, EvaluationResult, DynamicScoreAnswer, Noul, Query};
-    /// async fn wrong(client: impl Evaluate) -> Result<(), rig_core::error::ProviderError> {
+    /// async fn wrong(client: impl Evaluate) -> Result<(), rig_core::error::RigError> {
     ///     let question = Noul::new("Ready?")?.named("ready")?;
     ///     let result: EvaluationResult<DynamicScoreAnswer> = client.evaluate(&"state", question).await?;
     ///     Ok(())
@@ -55,8 +55,7 @@ pub trait Evaluate {
         &self,
         state: &S,
         questions: Q,
-    ) -> impl std::future::Future<Output = Result<EvaluationResult<Q::Output>, ProviderError>>
-    + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<EvaluationResult<Q::Output>, RigError>> + WasmCompatSend
     where
         S: Serialize + WasmCompatSync,
         Q: Query;
@@ -66,7 +65,7 @@ impl<T: Transport<JevConfig>> Evaluate for Model<JevConfig, T> {
         &self,
         state: &S,
         questions: Q,
-    ) -> Result<EvaluationResult<Q::Output>, ProviderError>
+    ) -> Result<EvaluationResult<Q::Output>, RigError>
     where
         S: Serialize + WasmCompatSync,
         Q: Query,
@@ -79,8 +78,8 @@ impl<T: Transport<JevConfig>> Evaluate for Model<JevConfig, T> {
         };
         let response = self.call(request).await?;
         if ids != validation::response_ids(&response.answers)? {
-            return Err(ProviderError::Response(
-                "response question IDs differ from request".into(),
+            return Err(crate::unexpected(
+                "response question IDs differ from request",
             ));
         }
         Ok(EvaluationResult {
@@ -90,6 +89,16 @@ impl<T: Transport<JevConfig>> Evaluate for Model<JevConfig, T> {
             provider_request_id: response.provider_request_id,
         })
     }
+}
+
+/// A question set or state a request cannot carry.
+pub(crate) fn invalid(reason: impl Into<BoxError>) -> RigError {
+    ProviderError::request(reason).into()
+}
+
+/// Answers that do not answer the question set.
+pub(crate) fn unexpected(message: impl Into<String>) -> RigError {
+    ProviderError::Response(message.into()).into()
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use bevy_app::TaskPoolPlugin;
 use rig_core::effect::{Answered as EffectOutcome, EffectId};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{ToolFunction, ToolName};
 use rig_core::tool::ChangeKind;
 use rig_tools::Write;
@@ -23,7 +23,7 @@ fn preview_then_refuse(
                 commands.entity(call).insert(Preview);
             }
             Some(_) => {
-                let refused = ErrorReport::new(ErrorKind::Denied, "refused");
+                let refused = RigError::new(ErrorKind::Denied, "refused");
                 decision.decide(Decider::plugin("test"), Err::<EffectOutcome, _>(refused));
             }
         }

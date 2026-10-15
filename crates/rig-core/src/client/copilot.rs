@@ -3,7 +3,7 @@
 
 use crate::client::macros::http_client;
 use crate::driver::Model;
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::model::ModelList;
 
 use crate::providers::copilot::auth::{AuthError, Authenticator};
@@ -44,7 +44,7 @@ impl Copilot {
     }
 
     /// The models this session can use.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.model(self.config.models()).list().await
     }
 

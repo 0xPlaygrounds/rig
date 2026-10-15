@@ -1,6 +1,7 @@
+use rig::RigError;
+use rig::error::ErrorKind;
 use std::io::Write;
 
-use anyhow::Context;
 use futures::StreamExt;
 use rig::candle::extension::CandleExt;
 use rig::candle::{CandleModel, ModelData};
@@ -8,7 +9,7 @@ use rig::completion::CompletionRequest;
 use rig::streaming::{Item, StreamEvent};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     let project_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let model_dir = match std::env::var_os("MODEL_DIR") {
         Some(directory) => std::path::PathBuf::from(directory),
@@ -22,9 +23,9 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let candle = CandleModel::from_gguf(ModelData {
-        config: std::fs::read(model_dir.join("config.json"))?,
-        tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
-        weights: std::fs::read(model_dir.join("model.gguf"))?,
+        config: std::fs::read(model_dir.join("config.json")).map_err(RigError::other)?,
+        tokenizer: std::fs::read(model_dir.join("tokenizer.json")).map_err(RigError::other)?,
+        weights: std::fs::read(model_dir.join("model.gguf")).map_err(RigError::other)?,
     })?;
     let model = candle.completion();
     let request = CompletionRequest::new(prompt)
@@ -40,15 +41,17 @@ async fn main() -> anyhow::Result<()> {
     while let Some(item) = stream.next().await {
         if let Item::Event(StreamEvent::Text { text, .. }) = item? {
             print!("{text}");
-            std::io::stdout().flush()?;
+            std::io::stdout().flush().map_err(RigError::other)?;
         }
     }
     let response = stream.finish().await?;
     println!();
     let extras = response
         .extras::<CandleExt>()
-        .context("the response did not come from Candle")?
-        .context("Candle's terminal record did not deserialize")?;
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "the response did not come from Candle"))?
+        .map_err(|error| {
+            RigError::from(error).context("Candle's terminal record did not deserialize")
+        })?;
     let show = |value: Option<u64>| value.map_or_else(|| "n/a".to_string(), |n| n.to_string());
     let prompt_tokens = extras.prompt_tokens.unwrap_or_default();
     let generated_tokens = extras.generated_tokens.unwrap_or_default();

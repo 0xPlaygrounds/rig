@@ -202,13 +202,13 @@ pub async fn decode(
     );
     let model = Model::new(wire, http);
     if !interaction.streaming {
-        return model.call("parity").await.map_err(|error| error.kind());
+        return model.call("parity").await.map_err(|error| error.kind);
     }
-    let mut stream = model.stream("parity").map_err(|error| error.kind())?;
+    let mut stream = model.stream("parity").map_err(|error| error.kind)?;
     while let Some(item) = stream.next().await {
-        item.map_err(|error| error.kind())?;
+        item.map_err(|error| error.kind)?;
     }
-    stream.finish().await.map_err(|error| error.kind())
+    stream.finish().await.map_err(|error| error.kind)
 }
 
 /// A recorded reply's frames, as they arrived, whatever mode reads them.
@@ -245,13 +245,13 @@ pub async fn both_paths(
         "parity",
     );
     let model = Model::new(wire, frames);
-    let called = model.call("parity").await.map_err(|error| error.kind());
+    let called = model.call("parity").await.map_err(|error| error.kind);
     let streamed = match model.stream("parity") {
         Ok(mut stream) => {
             while stream.next().await.is_some() {}
-            stream.finish().await.map_err(|error| error.kind())
+            stream.finish().await.map_err(|error| error.kind)
         }
-        Err(error) => Err(error.kind()),
+        Err(error) => Err(error.kind),
     };
     (called, streamed)
 }

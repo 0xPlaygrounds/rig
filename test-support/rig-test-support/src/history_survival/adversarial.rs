@@ -228,16 +228,14 @@ async fn complete(
     model: &rig_core::DynModel<rig_core::operation::Completion>,
     request: CompletionRequest,
     streamed: bool,
-) -> Result<CompletionResponse, rig_core::error::ProviderError> {
+) -> Result<CompletionResponse, rig_core::RigError> {
     if !streamed {
         return model.call(request).await;
     }
     use futures::StreamExt;
     let mut stream = model.stream(request)?;
     while let Some(item) = stream.next().await {
-        if let Err(error) = item {
-            return Err(rig_core::error::ProviderError::Response(error.to_string()));
-        }
+        item?;
     }
     stream.finish().await
 }

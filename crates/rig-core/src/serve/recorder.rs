@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::{
     effect::{Answered, EffectId, EffectKind, HandlerDescriptor, HandlerKey},
-    error::ErrorReport,
+    error::RigError,
     streaming::{Item, StreamEvent},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -74,7 +74,7 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn event(&self, id: EffectId, item: &Item<StreamEvent>);
     /// An error item at its original position in a kept stream. Unlike the
     /// folded outcome, this includes errors after an earlier terminal item.
-    fn stream_error(&self, _id: EffectId, _error: &ErrorReport) {}
+    fn stream_error(&self, _id: EffectId, _error: &RigError) {}
     /// Who the streamed reply of `id` is from, before its first item, when
     /// [`keep_events`](Self::keep_events) says so.
     fn origin(&self, id: EffectId, origin: &crate::message::Origin);
@@ -83,7 +83,7 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// caller's published context.
     fn tool_output(&self, id: EffectId, output: crate::tool::ToolResultContext);
     /// The outcome of `id`.
-    fn resolve(&self, id: EffectId, outcome: Result<Answered, ErrorReport>);
+    fn resolve(&self, id: EffectId, outcome: Result<Answered, RigError>);
 }
 
 /// The [`Observe`](super::Observe) a recording driver installs on each
@@ -101,7 +101,7 @@ impl super::Observe for RecordingObserver {
         self.recorder.adapter_context(self.id)
     }
 
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
+    fn outcome(&mut self, outcome: Result<Answered, RigError>) {
         if let Some(output) = self
             .published
             .as_ref()
@@ -120,7 +120,7 @@ impl super::Observe for RecordingObserver {
         self.recorder.event(self.id, item);
     }
 
-    fn stream_error(&mut self, error: &ErrorReport) {
+    fn stream_error(&mut self, error: &RigError) {
         self.recorder.stream_error(self.id, error);
     }
 
@@ -147,8 +147,8 @@ impl super::Observe for RecordingObserver {
 pub fn catch_panics<T>(
     recorder: Option<Arc<dyn Recorder + Send + Sync>>,
     id: EffectId,
-    work: impl Future<Output = Result<T, ErrorReport>>,
-) -> impl Future<Output = Result<T, ErrorReport>> {
+    work: impl Future<Output = Result<T, RigError>>,
+) -> impl Future<Output = Result<T, RigError>> {
     use futures::FutureExt;
     async move {
         std::panic::AssertUnwindSafe(work)
@@ -160,7 +160,7 @@ pub fn catch_panics<T>(
                     .copied()
                     .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
                     .unwrap_or("no message");
-                let report = ErrorReport::new(
+                let report = RigError::new(
                     crate::error::ErrorKind::Internal,
                     format!("panicked: {message}"),
                 );

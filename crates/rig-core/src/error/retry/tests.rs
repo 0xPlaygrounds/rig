@@ -1,11 +1,11 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{RetryPolicy, Verdict};
-use crate::error::{ErrorKind, ErrorReport};
+use crate::error::{ErrorKind, RigError};
 use crate::provider_response::ProviderResponseError;
 
-fn report(message: &str) -> ErrorReport {
-    ErrorReport::new(ErrorKind::Provider, message)
+fn report(message: &str) -> RigError {
+    RigError::new(ErrorKind::Provider, message)
 }
 
 #[test]

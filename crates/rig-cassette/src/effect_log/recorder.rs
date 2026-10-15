@@ -15,7 +15,7 @@ use std::{
 use rig_core::serve::{DispatchContext, RecordBuffer, Recorder};
 use rig_core::{
     effect::{Answered, EffectId, EffectKind, HandlerDescriptor, HandlerKey},
-    error::ErrorReport,
+    error::RigError,
     streaming::{Item, StreamEvent},
 };
 
@@ -153,7 +153,7 @@ impl Recorder for EffectLogRecorder {
         }
     }
 
-    fn stream_error(&self, id: EffectId, error: &ErrorReport) {
+    fn stream_error(&self, id: EffectId, error: &RigError) {
         let mut header = self.lock_header();
         let Some(kept) = self.records.kept_events(id) else {
             return;
@@ -255,7 +255,7 @@ impl Recorder for EffectLogRecorder {
         self.records.origin(id, origin);
     }
 
-    fn resolve(&self, id: EffectId, outcome: Result<Answered, ErrorReport>) {
+    fn resolve(&self, id: EffectId, outcome: Result<Answered, RigError>) {
         self.records.resolve(id, outcome);
     }
 }

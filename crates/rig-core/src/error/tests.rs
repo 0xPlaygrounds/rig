@@ -38,7 +38,7 @@ fn vector_http_reports_preserve_response_details() {
     );
     let chain = vec![transport.to_string()];
     let error = VectorStoreError::from(transport);
-    let report = ErrorReport::from(&error);
+    let report = RigError::from(&error);
     assert_eq!(report.kind, ErrorKind::ProviderResponse);
     assert_eq!(report.http_status, Some(429));
     assert_eq!(
@@ -66,7 +66,7 @@ fn vector_http_reports_preserve_response_details() {
     );
     assert_eq!(report.message, error.to_string());
     assert_eq!(report.source_chain, chain);
-    assert_eq!(ErrorReport::from(error), report);
+    assert_eq!(RigError::from(error), report);
 }
 
 /// Both store reply paths must use the existing response code and status policy.
@@ -134,7 +134,7 @@ fn vector_reply_reports_preserve_machine_codes_and_status_retryability() {
                     transport_chain,
                 ),
             ] {
-                let report = ErrorReport::from(&error);
+                let report = RigError::from(&error);
                 assert_eq!(report.kind, ErrorKind::ProviderResponse, "{error}");
                 assert_eq!(report.http_status, Some(status.as_u16()));
                 assert_eq!(report.provider_response_status(), Some(status));
@@ -150,7 +150,7 @@ fn vector_reply_reports_preserve_machine_codes_and_status_retryability() {
                 assert_eq!(report.provider_request_id(), None);
                 assert_eq!(report.message, error.to_string());
                 assert_eq!(report.source_chain, chain);
-                assert_eq!(ErrorReport::from(error), report);
+                assert_eq!(RigError::from(error), report);
             }
         }
     }
@@ -200,7 +200,7 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
         let mut chain = vec![transport.to_string()];
         chain.extend(sources);
         let error = VectorStoreError::from(transport);
-        let report = ErrorReport::from(&error);
+        let report = RigError::from(&error);
         assert_eq!(report.kind, ErrorKind::Http, "{error}");
         assert_eq!(report.retryable, retryable, "{error}");
         assert_eq!(report.http_status, None);
@@ -210,7 +210,7 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
         assert!(!report.refusal);
         assert_eq!(report.message, error.to_string());
         assert_eq!(report.source_chain, chain);
-        assert_eq!(ErrorReport::from(error), report);
+        assert_eq!(RigError::from(error), report);
     }
 }
 
@@ -220,7 +220,7 @@ fn samples_out_of_range_is_a_non_retryable_request_error() {
         requested: u64::MAX,
         max: i64::MAX as u64,
     };
-    let report = ErrorReport::from(&error);
+    let report = RigError::from(&error);
     assert_eq!(report.kind, ErrorKind::Request);
     assert!(!report.retryable);
     assert_eq!(report.http_status, None);
@@ -249,7 +249,7 @@ fn tool_error_survives_a_report_round_trip() {
     assert_eq!(back.http_status(), Some(429));
     assert!(!back.is_refusal());
     assert_eq!(
-        back.downcast_ref::<ErrorReport>().map(|report| report.kind),
+        back.downcast_ref::<RigError>().map(|report| report.kind),
         Some(ErrorKind::Tool(ToolErrorKind::RateLimited))
     );
 
@@ -269,7 +269,7 @@ fn dispatch_report_kinds_map_to_tool_kinds() {
         (ErrorKind::ProviderResponse, ToolErrorKind::Provider),
         (ErrorKind::Internal, ToolErrorKind::Other),
     ] {
-        let error = ToolExecutionError::from(ErrorReport::new(kind, "failed").with_retryable(true));
+        let error = ToolExecutionError::from(RigError::new(kind, "failed").with_retryable(true));
         assert_eq!(error.kind(), expected, "{kind:?}");
         assert_eq!(error.retryable(), Some(true), "{kind:?}");
     }
@@ -295,12 +295,12 @@ fn source_chain_is_outermost_first() {
 
 #[test]
 fn report_round_trips_through_serde() {
-    let report = ErrorReport::new(ErrorKind::Tool(ToolErrorKind::RateLimited), "slow down")
+    let report = RigError::new(ErrorKind::Tool(ToolErrorKind::RateLimited), "slow down")
         .with_retryable(true)
         .with_code("429")
         .with_http_status(429);
     let json = serde_json::to_string(&report).expect("serialize");
-    let back: ErrorReport = serde_json::from_str(&json).expect("deserialize");
+    let back: RigError = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back, report);
     assert_eq!(report.to_string(), "slow down");
 }
@@ -317,7 +317,7 @@ fn a_provider_response_travels_with_the_report() {
             .with_provider_request_id(Some("req-9".to_owned()))
             .with_headers(Some(headers)),
     );
-    let report = ErrorReport::from(&error);
+    let report = RigError::from(&error);
     assert_eq!(report.kind, ErrorKind::ProviderResponse);
     assert_eq!(
         report.provider_response_status(),
@@ -347,7 +347,7 @@ fn a_provider_response_travels_with_the_report() {
     // Through serde the report keeps the response's identity and drops
     // its headers, which are the transport's and never the same twice.
     let json = serde_json::to_string(&report).expect("serialize");
-    let back: ErrorReport = serde_json::from_str(&json).expect("deserialize");
+    let back: RigError = serde_json::from_str(&json).expect("deserialize");
     assert!(back.provider_response_headers().is_none());
     let mut without_headers = report.clone();
     without_headers.provider_response = without_headers
@@ -357,13 +357,13 @@ fn a_provider_response_travels_with_the_report() {
 
     // A non-success reply the transport rejected carries its status and body
     // the same way; a diagnostic with no provider response carries nothing.
-    let http = ErrorReport::from(&http_error(503));
+    let http = RigError::from(&http_error(503));
     assert_eq!(
         http.provider_response_status(),
         Some(StatusCode::SERVICE_UNAVAILABLE)
     );
     assert_eq!(http.provider_response_body(), Some("body"));
-    let plain = ErrorReport::from(&ProviderError::Provider("oops".to_owned()));
+    let plain = RigError::from(&ProviderError::Provider("oops".to_owned()));
     assert!(plain.provider_response.is_none());
     assert_eq!(plain.provider_response_body(), None);
 }
@@ -374,15 +374,15 @@ fn provider_reports_retain_structured_provider_metadata() {
         .with_provider_request_id(Some("req-retained".into()));
     let direct = ProviderError::ProviderResponse(response.clone());
     let wrapped =
-        VectorStoreError::EmbeddingError(ProviderError::ProviderResponse(response.clone()));
-    for report in [ErrorReport::from(&direct), ErrorReport::from(&wrapped)] {
+        VectorStoreError::EmbeddingError(ProviderError::ProviderResponse(response.clone()).into());
+    for report in [RigError::from(&direct), RigError::from(&wrapped)] {
         assert_eq!(report.request_id.as_deref(), Some("req-retained"));
         assert_eq!(
             serde_json::to_value(report.provider_response.as_ref()).unwrap(),
             serde_json::to_value(Some(&response)).unwrap()
         );
         assert!(report.retryable);
-        let restored: ErrorReport =
+        let restored: RigError =
             serde_json::from_value(serde_json::to_value(&report).unwrap()).unwrap();
         assert_eq!(restored.request_id, report.request_id);
         assert!(restored.provider_response.is_some());
@@ -399,7 +399,7 @@ fn wrapped_document_error_retains_nested_sources() {
     assert!(
         std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
     );
-    let report = ErrorReport::from(&error);
+    let report = RigError::from(&error);
     assert_eq!(report.source_chain, vec!["backend failed", "document"]);
     assert_eq!(report.message, error.to_string());
 }
@@ -571,6 +571,118 @@ fn verdicts_on_a_handle_or_credential_keep_the_reply() {
         assert_eq!(error.boundary(), AdapterErrorBoundary::ProviderResponse);
     }
     assert_eq!(expired.provider_request_id(), Some("req_c"));
+    assert_eq!(
+        expired.report().detail,
+        Some(ErrorDetail::CacheExpired {
+            name: "cachedContents/abc".into()
+        })
+    );
+    assert_eq!(
+        rejected.report().detail,
+        Some(ErrorDetail::InvalidAuthentication)
+    );
+}
+
+/// The typed failures a caller acts on keep their facts as a detail, which
+/// crosses serde; a report without one serializes as it did before details.
+#[test]
+fn typed_failures_carry_their_detail_through_serde() {
+    let option = crate::completion::UnsupportedOption::new("reasoning", "openai", "gpt", "no");
+    let cases = [
+        (
+            ProviderError::MismatchedDimensions {
+                provider: "openai".into(),
+                requested: 3,
+                returned: 2,
+            },
+            ErrorDetail::MismatchedDimensions {
+                requested: 3,
+                returned: 2,
+            },
+            r#"{"type":"mismatched_dimensions","requested":3,"returned":2}"#,
+        ),
+        (
+            ProviderError::UnsupportedOption(option.clone()),
+            ErrorDetail::UnsupportedOption(option),
+            r#"{"type":"unsupported_option","option":"reasoning","provider":"openai","model":"gpt","reason":"no"}"#,
+        ),
+        (
+            ProviderError::Truncated,
+            ErrorDetail::Truncated,
+            r#"{"type":"truncated"}"#,
+        ),
+    ];
+    for (error, detail, json) in cases {
+        let report = RigError::from(&error);
+        assert_eq!(report.kind, error.kind());
+        assert_eq!(report.message, error.to_string());
+        assert_eq!(report.detail.as_ref(), Some(&detail));
+        let value = serde_json::to_value(&report).expect("serialize");
+        assert_eq!(
+            value.get("detail"),
+            Some(&serde_json::from_str::<serde_json::Value>(json).expect("json")),
+        );
+        let back: RigError = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(back, report);
+    }
+    let plain = serde_json::to_value(RigError::from(&http_error(503))).expect("serialize");
+    assert!(plain.get("detail").is_none(), "{plain}");
+}
+
+/// Rig's own errors convert with a classification, so an application
+/// propagates them with `?`; foreign ones go through `other`.
+#[test]
+fn rig_errors_convert_into_one_classified_error() {
+    let missing = RigError::from(crate::client::env::EnvError::Variable {
+        name: "RIG_TEST_KEY",
+        source: std::env::VarError::NotPresent,
+    });
+    assert_eq!(missing.kind, ErrorKind::Configuration);
+    assert!(!missing.retryable);
+    assert_eq!(
+        missing.message,
+        "environment variable `RIG_TEST_KEY` is not set or is invalid"
+    );
+    assert_eq!(
+        missing.source_chain,
+        ["environment variable not found".to_string()]
+    );
+
+    let refused = RigError::from(crate::completion::CheckError::Unsupported(vec![
+        crate::completion::UnsupportedOption::new("seed", "openai", "gpt", "no"),
+    ]));
+    assert_eq!(refused.kind, ErrorKind::Request);
+
+    let tool = RigError::from(ToolExecutionError::from_error(RigError::from(
+        ProviderError::from(json_error()),
+    )));
+    assert_eq!(tool.kind, ErrorKind::Tool(ToolErrorKind::Other));
+    assert_eq!(tool.source_chain.len(), 2, "{:?}", tool.source_chain);
+    assert!(
+        tool.source_chain
+            .first()
+            .is_some_and(|m| m.starts_with("JsonError: "))
+    );
+
+    let option = crate::completion::UnsupportedOption::new("seed", "openai", "gpt", "no");
+    assert_eq!(
+        RigError::from(option.clone()).detail,
+        Some(ErrorDetail::UnsupportedOption(option))
+    );
+
+    let foreign = RigError::other(std::io::Error::other("disk full"));
+    assert_eq!(foreign.kind, ErrorKind::Other);
+    assert_eq!(foreign.message, "disk full");
+
+    let explained = RigError::from(&http_error(503)).context("loading the index");
+    assert_eq!(explained.kind, ErrorKind::ProviderResponse);
+    assert!(explained.retryable);
+    assert_eq!(explained.http_status, Some(503));
+    assert_eq!(explained.message, "loading the index");
+    assert_eq!(
+        format!("{explained:?}"),
+        "loading the index [provider_response]\n\nCaused by:\n    0: ProviderResponseError: status 503 Service Unavailable: body"
+    );
 }
 
 /// Request-building failures from every operation share `Request` and its
@@ -602,7 +714,7 @@ fn request_building_failures_share_one_shape() {
 /// the relayed report unchanged.
 #[test]
 fn a_relayed_report_keeps_its_provider_response() {
-    let report = ErrorReport::from(&http_error(503));
+    let report = RigError::from(&http_error(503));
     let relayed = ProviderError::Relayed(Box::new(report.clone()));
     assert_eq!(
         relayed.provider_response(),
@@ -615,7 +727,7 @@ fn a_relayed_report_keeps_its_provider_response() {
     );
     assert_eq!(relayed.kind(), ErrorKind::ProviderResponse);
     assert!(relayed.is_retryable());
-    assert_eq!(ErrorReport::from(&relayed), report);
+    assert_eq!(RigError::from(&relayed), report);
 }
 
 #[test]
@@ -636,6 +748,7 @@ fn every_error_kind_has_its_own_stable_code() {
         (ErrorKind::HandlerUnavailable, "handler_unavailable"),
         (ErrorKind::Divergence, "divergence"),
         (ErrorKind::Denied, "denied"),
+        (ErrorKind::Configuration, "configuration"),
         (ErrorKind::Other, "other"),
     ];
     for (kind, code) in kinds {
@@ -645,7 +758,7 @@ fn every_error_kind_has_its_own_stable_code() {
 
 #[test]
 fn a_report_carries_its_refusal_and_request_id() {
-    let report = ErrorReport::new(ErrorKind::Provider, "declined")
+    let report = RigError::new(ErrorKind::Provider, "declined")
         .refused()
         .with_request_id("req_123");
     assert!(report.refusal);

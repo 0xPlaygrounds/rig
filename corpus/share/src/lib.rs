@@ -18,7 +18,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::http_client::{self, HttpClientExt, Method, Request};
-use rig_harness::rig_core::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::{ErrorKind, RigError};
 use rig_tui::CopyToClipboard;
 use serde::{Deserialize, Serialize};
 
@@ -322,7 +322,7 @@ fn upload(
             Ok(link) => Ok(Answered::Custom {
                 payload: serde_json::to_value(link).unwrap_or_default(),
             }),
-            Err(why) => Err(ErrorReport::new(ErrorKind::Other, why)),
+            Err(why) => Err(RigError::new(ErrorKind::Other, why)),
         };
         Outcome(outcome)
     };

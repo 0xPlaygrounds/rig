@@ -662,6 +662,15 @@ pub enum UndoError {
     Load(#[from] SessionError),
 }
 
+impl From<UndoError> for rig_core::error::RigError {
+    fn from(error: UndoError) -> Self {
+        match error {
+            UndoError::Load(error) => error.into(),
+            other => Self::from_error(rig_core::error::ErrorKind::Request, &other),
+        }
+    }
+}
+
 /// Undoes the newest compaction of `conversation`, the conversation saved
 /// in the log `log` of `store`: the entries its summary replaced, read
 /// from that log as they were just before it, are put back in the
@@ -864,6 +873,13 @@ impl fmt::Display for SummaryError {
 }
 
 impl std::error::Error for SummaryError {}
+
+/// The model's reply did not answer the summary request.
+impl From<SummaryError> for rig_core::error::RigError {
+    fn from(error: SummaryError) -> Self {
+        Self::from_error(rig_core::error::ErrorKind::Response, &error)
+    }
+}
 
 impl Summarizer {
     /// The request to `spec` for a summary of `older`, merged into

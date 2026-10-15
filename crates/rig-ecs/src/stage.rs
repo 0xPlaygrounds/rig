@@ -57,7 +57,7 @@ use rig_core::completion::CompletionResponse;
 use rig_core::effect::{
     self, Decider, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
 };
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::serve::{DispatchContext, Recorder, Reply, cancelled};
 use rig_core::tool::{ToolExecutionError, ToolResult, ToolResultContext};
 use rig_core::{millis, now_ms};
@@ -227,7 +227,7 @@ pub struct Effect {
     /// How its first answer came.
     answered: Option<Disposition>,
     /// The first answer, which a reviewer may edit.
-    raw: Option<Result<effect::Answered, ErrorReport>>,
+    raw: Option<Result<effect::Answered, RigError>>,
     /// Who decided the answer, when the kernel applied a decision.
     decided_by: Option<Decider>,
 }
@@ -318,13 +318,13 @@ pub struct Started {
 /// tool call's answer is its result: `Outcome::from(ToolResult)`.
 #[derive(Component, Clone, Debug)]
 #[component(on_insert = answered)]
-pub struct Outcome(pub Result<effect::Answered, ErrorReport>);
+pub struct Outcome(pub Result<effect::Answered, RigError>);
 
 impl Outcome {
     /// A refusal for `why`, decided before the effect ran. A tool call's
     /// refusal reaches the model as the tool's refusal.
     pub fn refused(why: impl Into<String>) -> Self {
-        Self(Err(ErrorReport::new(ErrorKind::Denied, why).refused()))
+        Self(Err(RigError::new(ErrorKind::Denied, why).refused()))
     }
 
     /// The response a model call answered with, if it did.
@@ -363,8 +363,8 @@ impl From<ToolResult> for Outcome {
     }
 }
 
-impl From<Result<effect::Answered, ErrorReport>> for Outcome {
-    fn from(outcome: Result<effect::Answered, ErrorReport>) -> Self {
+impl From<Result<effect::Answered, RigError>> for Outcome {
+    fn from(outcome: Result<effect::Answered, RigError>) -> Self {
         Self(outcome)
     }
 }
@@ -1040,7 +1040,7 @@ fn answer_unprepared(
     };
     let why = format!("{} in Prepare: {}", failure.system, failure.error);
     for entity in &admitted {
-        let failed = ErrorReport::new(ErrorKind::Internal, why.clone());
+        let failed = RigError::new(ErrorKind::Internal, why.clone());
         commands
             .entity(entity)
             .try_insert_if_new(Outcome(Err(failed)));
@@ -1321,7 +1321,7 @@ pub(crate) fn cancel(world: &mut World, entity: Entity, why: &str) {
     if !effect.contains::<Outcome>() {
         let stopped = match effect.get::<IfStopped>() {
             Some(IfStopped(outcome)) => outcome.clone(),
-            None => Outcome(Err(ErrorReport::new(ErrorKind::Cancelled, why))),
+            None => Outcome(Err(RigError::new(ErrorKind::Cancelled, why))),
         };
         effect.insert(stopped);
     }
@@ -1373,7 +1373,7 @@ fn assemble(
         .or(effect.answered.filter(|_| outcome.is_some()))
         .unwrap_or(Disposition::Cancelled);
     let outcome = outcome.unwrap_or_else(|| match disposition {
-        Disposition::Superseded => Err(ErrorReport::new(
+        Disposition::Superseded => Err(RigError::new(
             ErrorKind::Cancelled,
             "superseded before it was answered",
         )),

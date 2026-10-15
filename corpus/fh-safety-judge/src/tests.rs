@@ -66,7 +66,7 @@ impl Serve for ScriptedJudge {
             .or(self.routes.last());
         match route {
             Some((_, handler)) => handler.serve(kind, dispatch).await,
-            None => Reply::Outcome(Err(ErrorReport::new(ErrorKind::Other, "no judge"))),
+            None => Reply::Outcome(Err(RigError::new(ErrorKind::Other, "no judge"))),
         }
     }
 }

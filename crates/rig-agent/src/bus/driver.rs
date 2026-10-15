@@ -21,7 +21,7 @@ use tracing::Instrument;
 
 use rig_core::{
     effect::{EffectId, HandlerDescriptor, HandlerKey},
-    error::ErrorReport,
+    error::RigError,
     serve::{Dispatch, DispatchContext, Recorder},
     wasm_compat::WasmBoxedFuture,
 };
@@ -104,7 +104,7 @@ impl BusDriver {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         self.register_erased(key, ErasedHandler::new(handler))
     }
 
@@ -113,7 +113,7 @@ impl BusDriver {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         self.registrar().register_erased(key, handler)?;
         self.apply(self.mailbox.take_pending());
         Ok(())
@@ -125,7 +125,7 @@ impl BusDriver {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<rig_core::effect::Key<F>, ErrorReport> {
+    ) -> Result<rig_core::effect::Key<F>, RigError> {
         let key = key.into();
         let handler = ErasedHandler::new(handler);
         let descriptor = handler.descriptor();

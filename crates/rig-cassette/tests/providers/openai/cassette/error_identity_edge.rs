@@ -2,8 +2,6 @@
 //! follow-up): auth, validation, reference errors, and the streaming
 //! handshake, on both APIs where the class differs.
 
-use rig::error::ProviderError;
-
 use super::super::support::{with_openai_cassette, with_openai_cassette_bogus_key};
 use crate::support::assert_transport_request_id;
 
@@ -51,7 +49,10 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
                 .await
                 .expect_err("a bogus key must fail the listing");
             assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
+                matches!(
+                    (error.kind, &error.provider_response, &error.detail),
+                    (rig::error::ErrorKind::ProviderResponse, Some(_), None)
+                ),
                 "the review's P1 fix, proven live: {error:?}"
             );
             let message = error.to_string();

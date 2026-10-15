@@ -528,7 +528,7 @@ fn a_record_carries_its_purpose_turn_times_review_disposition_and_decider_when_s
     record.purpose = Some("summary".into());
     record.turn = Some(3);
     (record.started_ms, record.finished_ms) = (Some(1), Some(2));
-    record.reviewed = Some(Err(ErrorReport::new(ErrorKind::Internal, "redacted")));
+    record.reviewed = Some(Err(RigError::new(ErrorKind::Internal, "redacted")));
     record.disposition = Disposition::AnsweredWhileRunning;
     record.decided_by = Some(Decider::plugin("protected-paths"));
     let wire = serde_json::to_value(&record).expect("serializes");

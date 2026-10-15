@@ -64,15 +64,14 @@ impl Matrix {
     async fn call(
         &self,
         request: CompletionRequest,
-    ) -> Result<RigCompletionResponse, rig::error::ProviderError> {
+    ) -> Result<RigCompletionResponse, rig::RigError> {
         self.model.call(self.request(request)).await
     }
 
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<rig::streaming::Streamed<rig::operation::Completion>, rig::error::ProviderError>
-    {
+    ) -> Result<rig::streaming::Streamed<rig::operation::Completion>, rig::RigError> {
         self.model.stream(self.request(request))
     }
 }

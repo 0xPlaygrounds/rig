@@ -529,6 +529,19 @@ pub enum McpClientError {
     Timeout(Duration),
 }
 
+impl From<McpClientError> for rig_core::error::RigError {
+    fn from(error: McpClientError) -> Self {
+        use rig_core::error::ErrorKind;
+        match error {
+            McpClientError::Connection(_) => Self::from_error(ErrorKind::Http, &error),
+            McpClientError::Request(_) => Self::from_error(ErrorKind::Provider, &error),
+            McpClientError::Timeout(_) => {
+                Self::from_error(ErrorKind::Timeout, &error).with_retryable(true)
+            }
+        }
+    }
+}
+
 /// Publishes structured content, response metadata, and the raw result to context.
 /// Returns context insertion errors; earlier insertions are not rolled back.
 /// These values are host-visible and are not automatically sent to the model.

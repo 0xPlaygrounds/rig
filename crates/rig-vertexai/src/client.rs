@@ -53,6 +53,13 @@ pub enum VertexAiClientError {
     Credentials(#[source] Arc<google_cloud_auth::errors::CredentialsError>),
 }
 
+/// Every failure to build a client is the caller's setup.
+impl From<VertexAiClientError> for rig_core::error::RigError {
+    fn from(error: VertexAiClientError) -> Self {
+        Self::from_error(rig_core::error::ErrorKind::Configuration, &error)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct VertexAiBuilder {
     project: Option<String>,
@@ -113,11 +120,13 @@ impl VertexAiBuilder {
     ///
     /// ```no_run
     /// # use google_cloud_aiplatform_v1::client::PredictionService;
-    /// # async fn example() -> anyhow::Result<()> {
+    /// # use rig_core::RigError;
+    /// # async fn example() -> Result<(), RigError> {
     /// let service = PredictionService::builder()
     ///     .with_endpoint("https://us-central1-aiplatform.googleapis.com")
     ///     .build()
-    ///     .await?;
+    ///     .await
+    ///     .map_err(RigError::other)?;
     /// let client = rig_vertexai::VertexAi::builder()
     ///     .with_project("my-project")
     ///     .with_location("us-central1")

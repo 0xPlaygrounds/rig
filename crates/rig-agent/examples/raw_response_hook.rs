@@ -21,12 +21,12 @@
 //! ```
 //!
 
-use anyhow::Result;
 use futures::StreamExt;
 use rig_agent::{
     agent::{OutcomeAction, OutcomeEvent},
     prelude::*,
 };
+use rig_core::RigError;
 use rig_core::providers::openai;
 use rig_core::providers::openai::extension::OpenAiExt;
 use rig_core::providers::openai::{OpenAIConfig, Route};
@@ -60,7 +60,7 @@ impl AgentHook for PrintOpenAiFields {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     // The Chat Completions route, whose response carries `system_fingerprint`;
     // OpenAI's default route is the Responses API, so the configuration is
     // routed once and the agent follows.

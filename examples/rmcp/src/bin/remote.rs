@@ -8,11 +8,15 @@
 //! Set `MCP_AUTH_TOKEN` for a server that wants a bearer token. Needs
 //! `OPENAI_API_KEY`.
 
-use anyhow::Context;
 use rig::{
+    RigError,
+    error::ErrorKind,
     prelude::*,
     providers::openai::{self, OpenAI},
-    tool::{DynamicTool, rmcp::McpConnection},
+    tool::{
+        DynamicTool,
+        rmcp::{McpClientError, McpConnection},
+    },
 };
 use rmcp::{
     ServiceExt,
@@ -23,9 +27,11 @@ use rmcp::{
 };
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     let mut args = std::env::args().skip(1);
-    let url = args.next().context("usage: remote <mcp-url> [prompt]")?;
+    let url = args.next().ok_or_else(|| {
+        RigError::new(ErrorKind::Configuration, "usage: remote <mcp-url> [prompt]")
+    })?;
     let prompt = args.next().unwrap_or_else(|| {
         "Which tools do you have? Call the most useful one once and report what it returned."
             .to_owned()
@@ -42,7 +48,8 @@ async fn main() -> anyhow::Result<()> {
     let connection = McpConnection::new(
         client
             .serve(StreamableHttpClientTransport::from_config(config))
-            .await?,
+            .await
+            .map_err(McpClientError::from)?,
     );
 
     let tools = connection.tools().await?;

@@ -17,7 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::clock::ClockPlugin;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::{Deserialize, Serialize};
 
@@ -215,7 +215,7 @@ fn model_due(
         let why = format!("the model sent nothing for {}", human(quiet));
         if decision.decide(
             Decider::plugin("ho-stall-watchdog"),
-            Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why))),
+            Outcome(Err(RigError::new(ErrorKind::Timeout, why))),
         ) {
             stall.ended = Some("failed");
         }
@@ -268,7 +268,7 @@ fn tool_due(
         let why = format!("stopped by the stall watchdog after {}", human(kill));
         if decision.decide(
             Decider::plugin("ho-stall-watchdog"),
-            Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why))),
+            Outcome(Err(RigError::new(ErrorKind::Timeout, why))),
         ) {
             let text = format!("{name} stopped after {}.", human(ran));
             notices.write(Notice::warn(agent, text));

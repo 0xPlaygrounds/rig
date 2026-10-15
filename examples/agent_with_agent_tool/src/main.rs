@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::{providers, tool::Tool};
@@ -97,7 +96,7 @@ impl Tool for Subtract {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)

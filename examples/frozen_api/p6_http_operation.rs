@@ -1,3 +1,4 @@
+use rig::RigError;
 use std::convert::Infallible;
 
 use rig::driver::Model;
@@ -97,8 +98,11 @@ impl Wire for Jev {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = Model::new(Jev::new(std::env::var("JEV_TOKEN")?), rig_reqwest::shared());
+async fn main() -> Result<(), RigError> {
+    let model = Model::new(
+        Jev::new(rig::client::env::required("JEV_TOKEN")?),
+        rig_reqwest::shared(),
+    );
     let verdict = model
         .call(EvalRequest {
             state: json!({"door": "open"}),

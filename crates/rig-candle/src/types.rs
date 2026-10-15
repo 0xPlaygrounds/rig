@@ -224,6 +224,12 @@ impl From<CandleError> for ProviderError {
     }
 }
 
+impl From<CandleError> for rig_core::error::RigError {
+    fn from(error: CandleError) -> Self {
+        ProviderError::from(error).into()
+    }
+}
+
 /// The reason local generation ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

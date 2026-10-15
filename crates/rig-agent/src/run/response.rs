@@ -7,7 +7,7 @@
 //! ```
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
-use rig_core::error::ProviderError;
+use rig_core::error::{ErrorKind, ProviderError, RigError};
 use rig_core::message::{AssistantContent, Message};
 use serde::{Deserialize, Serialize};
 
@@ -228,19 +228,15 @@ use thiserror::Error;
 
 /// Why an agent run failed, whether it was awaited or streamed.
 ///
-/// Variants that wrap another error display it unchanged and forward its
-/// source.
+/// Variants that wrap another error display it unchanged.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum PromptError {
-    /// A provider completion failed.
-    #[error(transparent)]
-    Provider(ProviderError),
-
-    /// Structured effect failure from the bus, a handler, a hook, or a stream
-    /// item. A provider failure relayed over the bus arrives as its report.
-    #[error(transparent)]
-    Report(#[from] rig_core::error::ErrorReport),
+    /// A model call, the bus, a handler, a hook or a stream failed. A
+    /// provider failure reads the same whether the run called the model
+    /// directly or over the bus.
+    #[error("{0}")]
+    Failed(#[from] RigError),
 
     /// The run exhausted its total model-call budget.
     #[error("reached the max turns limit of {max_turns}")]
@@ -282,22 +278,32 @@ pub enum PromptError {
 /// A failure relayed over the bus is the report the origin sent.
 impl From<ProviderError> for PromptError {
     fn from(error: ProviderError) -> Self {
-        match error {
-            ProviderError::Relayed(report) => Self::Report(*report),
-            error => Self::Provider(error),
-        }
+        Self::Failed(error.into())
+    }
+}
+
+/// A run's failure as the one error a caller handles: a failed call is its
+/// own error, and the run's own outcomes are classified.
+impl From<PromptError> for RigError {
+    fn from(error: PromptError) -> Self {
+        let kind = match error {
+            PromptError::Failed(error) => return error,
+            PromptError::Cancelled { .. } => ErrorKind::Cancelled,
+            PromptError::UnknownToolCall { .. } => ErrorKind::Response,
+            PromptError::MaxTurns { .. } => ErrorKind::Other,
+        };
+        Self::from_error(kind, &error)
     }
 }
 
 /// Forward provider response accessors through wrapped errors and optional reports.
 macro_rules! forward_provider_response_helpers {
-    ($err:ident, $variant:ident, $inner:literal $(, report = $report:ident)?) => {
+    ($err:ident, $variant:ident, $inner:literal) => {
         impl $err {
             #[doc = concat!("Returns the provider response body exposed by a wrapped ", $inner, ".")]
             pub fn provider_response_body(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_response_body(),
-                    $(Self::$report(report) => report.provider_response_body(),)?
                     _ => None,
                 }
             }
@@ -308,36 +314,30 @@ macro_rules! forward_provider_response_helpers {
             ) -> Result<Option<serde_json::Value>, serde_json::Error> {
                 match self {
                     Self::$variant(error) => error.provider_response_json(),
-                    $(Self::$report(report) => report.provider_response_json(),)?
                     _ => Ok(None),
                 }
             }
 
-            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, ", or carried by a wire report.")]
+            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, ".")]
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_request_id(),
-                    $(Self::$report(report) => report.request_id.as_deref(),)?
                     _ => None,
                 }
             }
 
-            #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ", or carried by a wire report.")]
+            #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ".")]
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::$variant(error) => error.provider_response_status(),
-                    $(Self::$report(report) => report
-                        .http_status
-                        .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
                     _ => None,
                 }
             }
 
-            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, " or report.")]
+            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, ".")]
             pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
                 match self {
                     Self::$variant(error) => error.provider_response_headers(),
-                    $(Self::$report(report) => report.provider_response_headers(),)?
                     _ => None,
                 }
             }
@@ -347,7 +347,7 @@ macro_rules! forward_provider_response_helpers {
 
 pub(crate) use forward_provider_response_helpers;
 
-forward_provider_response_helpers!(PromptError, Provider, "completion error", report = Report);
+forward_provider_response_helpers!(PromptError, Failed, "failure");
 
 impl PromptError {
     /// Build a [`PromptError::Cancelled`]. A driver gets the history from

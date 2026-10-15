@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig_agent::prelude::*;
 use rig_agent::tool::ToolContext;
 use rig_vertexai::VertexAi;
@@ -45,7 +44,7 @@ impl Tool for Adder {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().with_target(false).init();
 
     // Create the Vertex AI model using implicit credentials

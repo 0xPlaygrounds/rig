@@ -1,6 +1,7 @@
 use rig_agent::extractor::ExtractorBuilder;
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_core::RigError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -13,7 +14,7 @@ struct Person {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_target(false)

@@ -28,7 +28,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use glob::Pattern;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged};
 use rig_tools::{MAX_BYTES, OutputLimit, Shell, ShellArgs};
 use serde::{Deserialize, Serialize};
@@ -297,7 +297,7 @@ fn run_check(
                 };
                 Outcome::custom(serde_json::to_value(ran).unwrap_or_default())
             }
-            Err(error) => Outcome(Err(ErrorReport::from(error))),
+            Err(error) => Outcome(Err(RigError::from(error))),
         }
     };
     commands

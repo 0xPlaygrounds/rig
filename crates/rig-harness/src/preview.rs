@@ -20,7 +20,7 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use rig_core::effect::{Answered, EffectKind};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::serve::serve_inline;
 use rig_core::tool::{FileChange, ToolErrorKind};
 use rig_ecs::effects::Handler;
@@ -51,7 +51,7 @@ pub struct Preview;
 /// registered per call, or a command it would start, whose writes cannot be
 /// kept from the disk.
 #[derive(Component, Clone, Debug)]
-pub struct Previewed(pub Result<Vec<FileChange>, ErrorReport>);
+pub struct Previewed(pub Result<Vec<FileChange>, RigError>);
 
 /// Previews the tool calls that ask for it ([`Preview`]), after every gate,
 /// before Start. [`RigHarnessPlugins`](crate::RigHarnessPlugins) adds it; a
@@ -81,10 +81,10 @@ impl Plugin for PreviewPlugin {
 
 /// What a preview's run found, on its hold.
 #[derive(Component)]
-struct Ran(Result<Vec<FileChange>, ErrorReport>);
+struct Ran(Result<Vec<FileChange>, RigError>);
 
-impl From<Result<Vec<FileChange>, ErrorReport>> for Ran {
-    fn from(ran: Result<Vec<FileChange>, ErrorReport>) -> Self {
+impl From<Result<Vec<FileChange>, RigError>> for Ran {
+    fn from(ran: Result<Vec<FileChange>, RigError>) -> Self {
         Self(ran)
     }
 }
@@ -116,7 +116,7 @@ fn preview(
         let name = request.call.function.name.as_str();
         let Some(Handler(handler)) = per_call(&tools, name).map(|per_call| per_call.build(place))
         else {
-            let report = ErrorReport::new(
+            let report = RigError::new(
                 ErrorKind::Tool(ToolErrorKind::Other),
                 format!("`{name}` cannot be previewed: it is not registered per call"),
             );
@@ -126,7 +126,7 @@ fn preview(
         let kind = EffectKind::from(&request.call);
         let work = async move {
             if let Answered::ToolResult { result } = serve_inline(&handler, kind).await? {
-                result.into_result().map_err(ErrorReport::from)?;
+                result.into_result().map_err(RigError::from)?;
             }
             Ok(overlay.changes())
         };

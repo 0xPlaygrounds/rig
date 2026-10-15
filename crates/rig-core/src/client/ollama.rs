@@ -3,7 +3,7 @@
 
 use crate::client::macros::http_client;
 use crate::driver::Model;
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::model::ModelList;
 
 use crate::providers::ollama::{self, Embeddings, OllamaConfig};
@@ -59,7 +59,7 @@ impl Ollama {
     }
 
     /// The models the daemon serves.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.model(self.config.models()).list().await
     }
 }

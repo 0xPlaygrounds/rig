@@ -385,8 +385,10 @@ fn a_failed_turn_runs_no_tools_and_ends_the_run() {
     );
     let error = run.next_step().expect_err("the failed turn ends the run");
     assert!(
-        matches!(&error, PromptError::Provider(ProviderError::Response(message))
-            if message.contains("none of its tool calls ran") && message.contains(reason)),
+        matches!(&error, PromptError::Failed(failure)
+            if failure.kind == rig_core::error::ErrorKind::Response
+                && failure.message.contains("none of its tool calls ran")
+                && failure.message.contains(reason)),
         "{error}"
     );
     let kept = run.messages().last().expect("the failed turn is kept");

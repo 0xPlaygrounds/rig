@@ -20,7 +20,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::{Message, ToolDefinition};
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::serve::{self, AfterServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
@@ -232,7 +232,7 @@ impl Intercept for AdaptRequest {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
+        _outcome: &Result<Answered, RigError>,
     ) -> AfterServe {
         AfterServe::Keep
     }

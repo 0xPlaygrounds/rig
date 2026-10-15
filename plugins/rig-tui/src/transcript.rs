@@ -17,7 +17,7 @@ use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Line;
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::conversation;
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
 use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
 use rig_core::tool::ToolResultContext;
@@ -463,7 +463,7 @@ impl CallTree {
 /// (`tool`), else a model's reply, or why it failed; neither before it
 /// has one.
 pub(crate) fn answer(
-    outcome: Option<&Result<effect::Answered, ErrorReport>>,
+    outcome: Option<&Result<effect::Answered, RigError>>,
     tool: bool,
 ) -> (bool, Option<String>) {
     let (failed, line) = match (outcome, tool) {

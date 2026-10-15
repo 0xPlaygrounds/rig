@@ -38,7 +38,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_coding_tools::AttachSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::message::{Message as ChatMessage, UserContent};
 use rig_harness::rig_core::tool::{
     FileRead, FilesRead, ToolContext, ToolExecutionError, content_hash,
@@ -597,7 +597,7 @@ impl Adding<'_, '_> {
 /// Answers the description call `describe` with a timeout after `secs`,
 /// unless it was answered first.
 fn time_out(describe: Entity, secs: u64, commands: &mut Commands) {
-    let late = ErrorReport::new(ErrorKind::Timeout, format!("it took longer than {secs} s"));
+    let late = RigError::new(ErrorKind::Timeout, format!("it took longer than {secs} s"));
     commands
         .delayed()
         .duration(Duration::from_secs(secs))

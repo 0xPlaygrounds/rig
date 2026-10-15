@@ -17,9 +17,10 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
+use rig::RigError;
+use rig::error::ErrorKind;
 use std::collections::BTreeSet;
 
-use anyhow::Result;
 use rig::agent::run::{
     AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy,
 };
@@ -90,7 +91,7 @@ impl AgentHook for ToolLoggerHook {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let openai = OpenAI::from_env()?;
     let model = openai.completion(openai::GPT_4O).erase();
     let agent = rig::agent::AgentBuilder::new(model.clone())
@@ -154,7 +155,10 @@ async fn main() -> Result<()> {
                 let suspended = serde_json::to_string(&run)?;
                 let mut run_resumed: AgentRun = serde_json::from_str(&suspended)?;
                 let AgentRunStep::CallTools { calls } = run_resumed.next_step()? else {
-                    anyhow::bail!("resumed run must re-emit the pending tool calls");
+                    return Err(RigError::new(
+                        ErrorKind::Other,
+                        "resumed run must re-emit the pending tool calls",
+                    ));
                 };
 
                 for call in calls {
@@ -171,7 +175,12 @@ async fn main() -> Result<()> {
                         PendingToolCall::Malformed(call) => {
                             run_resumed.answer(call.answer(None))?
                         }
-                        other => anyhow::bail!("unsupported pending call {other:?}"),
+                        other => {
+                            return Err(RigError::new(
+                                ErrorKind::Other,
+                                format!("unsupported pending call {other:?}"),
+                            ));
+                        }
                     }
                 }
                 run = run_resumed;

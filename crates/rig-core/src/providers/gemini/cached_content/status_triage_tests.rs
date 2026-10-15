@@ -42,9 +42,12 @@ async fn a_non_success_response_is_triaged_rather_than_deserialized() {
     .await
     .expect_err("a missing handle should not resolve");
 
-    let ProviderError::CacheExpired { name, response } = &error else {
+    let (Some(crate::error::ErrorDetail::CacheExpired { name }), Some(response)) =
+        (&error.detail, &error.provider_response)
+    else {
         panic!("an Ok-wrapped 404 should report CacheExpired, not a parse error: {error:?}");
     };
+    assert_eq!(error.kind, crate::error::ErrorKind::ProviderResponse);
     assert_eq!(name, "cachedContents/abc123");
     assert!(
         response.body.contains("permission denied"),
@@ -70,7 +73,9 @@ async fn a_403_on_create_is_an_api_error_not_an_expiry() {
     .await
     .expect_err("a refused create should not succeed");
 
-    let ProviderError::ProviderResponse(response) = &error else {
+    let (None, crate::error::ErrorKind::ProviderResponse, Some(response)) =
+        (&error.detail, error.kind, &error.provider_response)
+    else {
         panic!("a create that never made a handle cannot be CacheExpired: {error:?}");
     };
     assert_eq!(response.status, Some(http::StatusCode::FORBIDDEN));
@@ -94,7 +99,9 @@ async fn a_server_error_reports_the_status_rather_than_an_expiry() {
     .await
     .expect_err("a 500 should not resolve");
 
-    let ProviderError::ProviderResponse(response) = &error else {
+    let (None, crate::error::ErrorKind::ProviderResponse, Some(response)) =
+        (&error.detail, error.kind, &error.provider_response)
+    else {
         panic!("a 500 is not an expiry: {error:?}");
     };
     assert_eq!(

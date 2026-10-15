@@ -357,7 +357,7 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::Provider(ProviderError::Response(
+                PromptError::from(ProviderError::Response(
                     "agent run ended without producing a final response".to_string(),
                 ))
             })
@@ -378,6 +378,17 @@ pub enum StreamToStdoutError {
     /// The stream ended without a final response.
     #[error("the stream ended without a final response")]
     Incomplete,
+}
+
+impl From<StreamToStdoutError> for rig_core::error::RigError {
+    fn from(error: StreamToStdoutError) -> Self {
+        use rig_core::error::ErrorKind;
+        match error {
+            StreamToStdoutError::Run(error) => error.into(),
+            StreamToStdoutError::Io(_) => Self::from_error(ErrorKind::Other, &error),
+            StreamToStdoutError::Incomplete => Self::from_error(ErrorKind::Response, &error),
+        }
+    }
 }
 
 /// Print a streamed run's assistant text and reasoning to stdout and return
