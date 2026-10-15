@@ -250,7 +250,9 @@ fn user_content_and_results_are_cohere_messages() {
     ];
     let wire = NativeChat::new(CohereConfig::new("key"), "command-a-vision-07-2025");
     let mut request = CompletionRequest::new("next").tool(tool("lookup"));
-    request.chat_history.splice(0..0, history);
+    request
+        .chat_history
+        .splice(0..0, history.into_iter().map(Into::into));
     let (_, body) = sent(&wire, request, Mode::Unary);
     assert_eq!(
         body["messages"],
@@ -357,7 +359,9 @@ fn continued(turn: &CompletionResponse) -> CompletionRequest {
                     call.result(vec![ToolResultContent::text("Dock Seven")]),
                 )],
             },
-        ],
+        ]
+        .into_iter()
+        .map(Into::into),
     );
     request
 }

@@ -510,7 +510,11 @@ impl Intercept for Local {
             return BeforeServe::Proceed;
         };
         let mut request = request.clone();
-        let Some(Message::System { content }) = request.chat_history.first_mut() else {
+        let Some(Message::System { content }) = std::sync::Arc::make_mut(&mut request)
+            .chat_history
+            .first_mut()
+            .map(std::sync::Arc::make_mut)
+        else {
             return BeforeServe::Proceed;
         };
         content.push_str(&format!("\n\n<{TAG}>\n{NO_TOOLS}\n</{TAG}>"));

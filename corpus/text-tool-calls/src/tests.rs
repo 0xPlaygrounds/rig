@@ -76,8 +76,8 @@ fn first_agent(world: &mut World) -> Option<Entity> {
 }
 
 /// The arguments of the `read` calls in `messages`.
-fn read_calls(messages: &[Message]) -> Vec<String> {
-    let calls = messages.iter().filter_map(|message| match message {
+fn read_calls(messages: &[std::sync::Arc<Message>]) -> Vec<String> {
+    let calls = messages.iter().filter_map(|message| match &**message {
         Message::Assistant(assistant) => Some(assistant.tool_calls()),
         _ => None,
     });
@@ -135,7 +135,7 @@ fn a_streamed_text_block_runs_as_a_real_tool_call() {
     assert_eq!(shown, ["Let me look.", "It says x."]);
 
     // The result went back as user text, with no native call or result.
-    let result_as_text = second.chat_history.iter().any(|message| match message {
+    let result_as_text = second.chat_history.iter().any(|message| match &**message {
         Message::User { content } => content.iter().any(
             |content| matches!(content, UserContent::Text(text) if text.text() == "Result of read: x"),
         ),
@@ -156,7 +156,7 @@ fn a_streamed_text_block_runs_as_a_real_tool_call() {
         .unwrap_or_default();
     assert_eq!(read_calls(&messages), [r#"{"path":"a.txt"}"#]);
     let has_result = messages.iter().any(|message| {
-        matches!(message, Message::User { content }
+        matches!(&**message, Message::User { content }
             if content.iter().any(|content| matches!(content, UserContent::ToolResult(_))))
     });
     assert!(has_result, "{messages:?}");

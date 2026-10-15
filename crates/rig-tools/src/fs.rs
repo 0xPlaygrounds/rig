@@ -3,11 +3,11 @@
 //! the path rules here are this machine's ([`Local`]); a tool reads through
 //! its [`Workspace`].
 
-use std::borrow::Cow;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use rig_core::tool::{FileChange, FileState, Hunk, HunkLine, Lines, ToolExecutionError};
 use serde::Serialize;
@@ -290,7 +290,20 @@ fn local() -> &'static dyn Workspace {
 /// assert_eq!(deleted.unified(), "--- a.rs\n+++ /dev/null\n@@ -1 +0,0 @@\n-one\n");
 /// ```
 pub fn file_change(path: &str, before: Option<&str>, after: Option<&str>) -> FileChange {
-    let diff = similar::TextDiff::from_lines(before.unwrap_or_default(), after.unwrap_or_default());
+    let mut change = diff(path, before, after);
+    change.before_text = before.map(str::to_owned);
+    change.before = before.map(|text| FileState::of(text.as_bytes()));
+    change.after = after.map(|text| FileState::of(text.as_bytes()));
+    change
+}
+
+/// [`file_change`] without the text before and the states, for a caller
+/// that has them.
+pub(crate) fn diff(path: &str, before: Option<&str>, after: Option<&str>) -> FileChange {
+    // Past the deadline the diff is still exact, only less minimal.
+    let diff = similar::TextDiff::configure()
+        .timeout(Duration::from_millis(100))
+        .diff_lines(before.unwrap_or_default(), after.unwrap_or_default());
     let hunks: Vec<Hunk> = diff
         .grouped_ops(3)
         .iter()
@@ -305,9 +318,6 @@ pub fn file_change(path: &str, before: Option<&str>, after: Option<&str>) -> Fil
         (Some(_), Some(_)) => FileChange::modified(path, added, removed),
     };
     change.hunks = hunks;
-    change.before_text = before.map(str::to_owned);
-    change.before = before.map(|text| FileState::of(text.as_bytes()));
-    change.after = after.map(|text| FileState::of(text.as_bytes()));
     change
 }
 
@@ -351,13 +361,13 @@ pub(crate) struct Previous {
 
 impl Previous {
     /// A file that held `bytes`.
-    pub(crate) fn of(bytes: &[u8]) -> Self {
-        let text = String::from_utf8_lossy(bytes);
-        Self {
-            exact: matches!(text, Cow::Borrowed(_)),
-            text: text.into_owned(),
-            state: Some(FileState::of(bytes)),
-        }
+    pub(crate) fn of(bytes: Vec<u8>) -> Self {
+        let state = Some(FileState::of(&bytes));
+        let (text, exact) = match String::from_utf8(bytes) {
+            Ok(text) => (text, true),
+            Err(error) => (String::from_utf8_lossy(error.as_bytes()).into(), false),
+        };
+        Self { text, exact, state }
     }
 
     /// A file of `size` bytes that was not read.
@@ -372,14 +382,15 @@ impl Previous {
     /// The change from this file (`None`: none) to `after` (`None`: removed):
     /// a [`file_change`] with this file's own state and text (none unless
     /// [`exact`](Self::exact)), and the state of the bytes `after` holds.
-    pub(crate) fn change(this: Option<&Self>, path: &str, after: Option<&[u8]>) -> FileChange {
+    pub(crate) fn change(this: Option<Self>, path: &str, after: Option<&[u8]>) -> FileChange {
         let text = after.map(String::from_utf8_lossy);
-        let mut change = file_change(path, this.map(|it| it.text.as_str()), text.as_deref());
-        change.before = this.and_then(|it| it.state.clone());
-        if this.is_some_and(|it| !it.exact) {
-            change.before_text = None;
-        }
+        let before = this.as_ref().map(|it| it.text.as_str());
+        let mut change = diff(path, before, text.as_deref());
         change.after = after.map(FileState::of);
+        if let Some(this) = this {
+            change.before = this.state;
+            change.before_text = this.exact.then_some(this.text);
+        }
         change
     }
 }

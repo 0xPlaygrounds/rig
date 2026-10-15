@@ -10,6 +10,7 @@
 //! ```
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -26,6 +27,7 @@ use crate::message::{
     MimeType, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
 use crate::operation::Completion;
+use crate::providers::internal::object;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::{Capabilities, Descriptor, Encoded, Framing, Mode, Wire};
 
@@ -132,7 +134,7 @@ impl NativeChat {
             .output_schema
             .clone()
             .map(|schema| json!({"type": "json_object", "schema": schema.to_value()}));
-        let fields = [
+        Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
             ("messages", Some(Value::Array(messages))),
             (
@@ -152,20 +154,16 @@ impl NativeChat {
                 "stream",
                 (mode == Mode::Streaming).then_some(Value::Bool(true)),
             ),
-        ];
-        Ok(fields
-            .into_iter()
-            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect())
+        ]))
     }
 
     /// The history as Cohere messages, each call and result spelled by one
     /// [`WireIds`].
-    fn messages(&self, history: &[Message], model: &str) -> Result<Vec<Value>, EncodeError> {
+    fn messages(&self, history: &[Arc<Message>], model: &str) -> Result<Vec<Value>, EncodeError> {
         let ids = WireIds::for_target(history, self, model);
         let mut messages = Vec::new();
         for message in history {
-            match message {
+            match &**message {
                 Message::System { content } => {
                     messages.push(json!({"role": "system", "content": content}));
                 }
@@ -247,7 +245,9 @@ impl NativeChat {
                             .insert("name".to_owned(), Value::from(call.function.name.as_str()));
                         function.insert(
                             "arguments".to_owned(),
-                            Value::String(call.function.arguments_value().to_string()),
+                            Value::String(
+                                serde_json::to_string(&call.function.arguments).unwrap_or_default(),
+                            ),
                         );
                     }
                     calls.push(Value::Object(item));
@@ -268,7 +268,7 @@ impl NativeChat {
         if content.is_empty() && calls.is_empty() {
             return None;
         }
-        let fields = [
+        Some(Value::Object(crate::providers::internal::set_fields([
             ("role", Some(Value::from("assistant"))),
             (
                 "content",
@@ -286,13 +286,7 @@ impl NativeChat {
                 "citations",
                 (!citations.is_empty()).then_some(Value::Array(citations)),
             ),
-        ];
-        Some(Value::Object(
-            fields
-                .into_iter()
-                .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-                .collect(),
-        ))
+        ])))
     }
 }
 
@@ -361,7 +355,7 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
                 (Source::Base64(data), Some(mime)) => format!("data:{mime};base64,{data}"),
                 _ => return Err(unsendable("an image")),
             };
-            json!({"type": "image_url", "image_url": {"url": url}})
+            object! {"type": "image_url", "image_url": object! {"url": url}}
         }
         UserContent::Document(document) => match &document.data {
             DocumentData::Text(text) => json!({"type": "text", "text": text}),
@@ -384,7 +378,7 @@ fn user_message(messages: &mut Vec<Value>, parts: &mut Vec<Value>) {
     if parts.is_empty() {
         return;
     }
-    messages.push(json!({"role": "user", "content": std::mem::take(parts)}));
+    messages.push(object! {"role": "user", "content": std::mem::take(parts)});
 }
 
 /// A result as the `tool` message that answers its call, its parts as text.
@@ -393,19 +387,21 @@ fn tool_message(result: &ToolResult, ids: &WireIds) -> Value {
         .content
         .iter()
         .filter_map(|part| match part {
-            ToolResultContent::Text(text) => Some(text.text.clone()),
-            ToolResultContent::Json { value } => Some(value.to_string()),
+            ToolResultContent::Text(text) => Some(json!({"type": "text", "text": text.text})),
+            ToolResultContent::Json { value } => {
+                Some(json!({"type": "text", "text": value.to_string()}))
+            }
             ToolResultContent::Image(_) => None,
         })
-        .map(|text| json!({"type": "text", "text": text}))
         .collect();
-    json!({"role": "tool", "tool_call_id": ids.spell(&result.call), "content": content})
+    object! {"role": "tool", "tool_call_id": ids.spell(&result.call), "content": content}
 }
 
 impl Wire for NativeChat {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = super::streaming::ChatEvent;
     type Decoder<'id> = ChatDecoder;
     type Reassembler = super::streaming::document::ChatResponse;
 
@@ -452,19 +448,8 @@ impl crate::completion::ReplayTarget for NativeChat {
         request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        use crate::completion::options::{Mapping, OptionFields, OptionMap};
+        use crate::completion::options::{Mapping, OptionMap};
         use crate::completion::{CacheRetention, Effort, Reasoning};
-        let OptionFields {
-            reasoning,
-            cache,
-            service_tier,
-            verbosity,
-            parallel_tool_calls,
-            top_p,
-            seed,
-            stop,
-            cache_key,
-        } = fields;
         let model = request.model.as_deref().unwrap_or(&self.model);
         // A model that thinks does so by default. An id the catalog does
         // not list thinks when its name says `reasoning`.
@@ -472,7 +457,7 @@ impl crate::completion::ReplayTarget for NativeChat {
         let reasons = thinks.unwrap_or_else(|| model.contains("reasoning"));
         const NO_FIELD: &str = "Cohere's chat API has no such field";
         OptionMap {
-            reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+            reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
                 Reasoning::Off if reasons => {
                     Mapping::Send(json!({"thinking": {"type": "disabled"}}))
                 }
@@ -491,32 +476,32 @@ impl crate::completion::ReplayTarget for NativeChat {
                     "thinking": {"type": "enabled", "token_budget": tokens},
                 })),
             }),
-            cache: Mapping::of(cache, |cache| match cache {
+            cache: Mapping::of(fields.cache, |cache| match cache {
                 CacheRetention::None => Mapping::Omit("Cohere does not cache prompts"),
                 CacheRetention::Short | CacheRetention::Long => {
                     Mapping::unsupported("Cohere has no prompt cache")
                 }
             }),
-            service_tier: Mapping::of(service_tier, |_| {
+            service_tier: Mapping::of(fields.service_tier, |_| {
                 Mapping::unsupported("Cohere's `priority` is a queue position, not a tier")
             }),
-            verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(NO_FIELD)),
-            parallel_tool_calls: Mapping::of(parallel_tool_calls, |_| {
+            verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(NO_FIELD)),
+            parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |_| {
                 Mapping::unsupported(NO_FIELD)
             }),
-            top_p: Mapping::of(top_p, |top_p| {
+            top_p: Mapping::of(fields.top_p, |top_p| {
                 if (0.01..=0.99).contains(&top_p) {
                     Mapping::Send(json!({ "p": top_p }))
                 } else {
                     Mapping::unsupported("Cohere takes `p` from 0.01 to 0.99")
                 }
             }),
-            seed: Mapping::of(seed, |seed| Mapping::Send(json!({ "seed": seed }))),
-            stop: Mapping::of_stop(stop, |stop| match stop.len() {
+            seed: Mapping::of(fields.seed, |seed| Mapping::Send(json!({ "seed": seed }))),
+            stop: Mapping::of_stop(fields.stop, |stop| match stop.len() {
                 0..=5 => Mapping::Send(json!({ "stop_sequences": stop })),
                 _ => Mapping::unsupported("Cohere takes at most 5 stop sequences"),
             }),
-            cache_key: Mapping::unrouted(cache_key),
+            cache_key: Mapping::unrouted(fields.cache_key),
         }
     }
 

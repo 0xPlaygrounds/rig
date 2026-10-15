@@ -5,14 +5,17 @@ use crate::completion::FinishReason;
 use crate::error::ProviderError;
 use crate::providers::openai::wire::Quirks;
 
-/// The wire's in-band provider error envelope, when this frame is one.
+/// The wire's in-band provider error envelope, when `value`, the frame
+/// `data` parsed, is one.
 ///
 /// Delivered with a 200 status, so it is not an HTTP failure: the frame is
 /// this wire's own terminal failure and the decoder models it as an event.
 /// A `null` or empty `error` can accompany valid terminal usage, and only a
 /// populated `choices` array establishes content that outranks the error.
-pub(crate) fn provider_error_envelope(data: &str) -> Option<ProviderError> {
-    let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
+pub(crate) fn provider_error_envelope(
+    value: &serde_json::Value,
+    data: &str,
+) -> Option<ProviderError> {
     let error = value
         .get("error")
         .filter(|error| error.is_object() || error.as_str().is_some_and(|s| !s.is_empty()))?;

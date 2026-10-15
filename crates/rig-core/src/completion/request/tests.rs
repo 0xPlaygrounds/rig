@@ -303,17 +303,17 @@ fn documents_join_the_first_user_message_so_roles_alternate() {
         .message(Message::system("System prompt"))
         .message(Message::user("Earlier user turn"))
         .document(test_document("doc1", "Document text."));
-    let history = request.chat_history_with_documents();
+    let history = request.messages_for_telemetry();
     let roles: Vec<&str> = history
         .iter()
-        .map(|message| match message {
+        .map(|message| match &**message {
             Message::System { .. } => "system",
             Message::User { .. } => "user",
             Message::Assistant(_) => "assistant",
         })
         .collect();
     assert_eq!(roles, ["system", "user", "user"]);
-    let Message::User { content } = &history[1] else {
+    let Message::User { content } = &*history[1] else {
         panic!("the first user message: {history:?}");
     };
     assert!(matches!(content.first(), Some(UserContent::Document(_))));
@@ -419,7 +419,7 @@ mod unknown_finish_reasons {
         let replayed = model.requests()[1]
             .chat_history
             .iter()
-            .any(|message| matches!(message, Message::Assistant(_)));
+            .any(|message| matches!(&**message, Message::Assistant(_)));
         (message, failure, replayed)
     }
 

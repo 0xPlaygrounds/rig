@@ -55,7 +55,7 @@ fn think_keep_alive_and_num_ctx_land_where_the_daemon_reads_them() {
     let mut request = with_params(json!({"think": true, "keep_alive": "-1m", "num_ctx": 4096}));
     request
         .chat_history
-        .insert(0, Message::system("You are a helpful assistant."));
+        .insert(0, Message::system("You are a helpful assistant.").into());
     request.temperature = Some(0.7);
     request.max_tokens = Some(1024);
     assert_eq!(
@@ -182,12 +182,13 @@ fn the_output_schema_is_format_once_tools_are_answered() {
     assert!(body(calling.clone()).get("format").is_none());
 
     calling.chat_history = vec![
-        Message::user("hi"),
+        Message::user("hi").into(),
         Message::Assistant(AssistantMessage::new(vec![AssistantContent::tool_call(
             "call_1",
             name("lookup"),
             json!({}),
-        )])),
+        )]))
+        .into(),
         Message::User {
             content: vec![UserContent::ToolResult(ToolResult {
                 call: CallId::from_wire("call_1"),
@@ -195,7 +196,8 @@ fn the_output_schema_is_format_once_tools_are_answered() {
                 content: vec![ToolResultContent::text("found")],
                 is_error: false,
             })],
-        },
+        }
+        .into(),
     ];
     assert_eq!(
         body(calling).get("format"),
@@ -224,7 +226,7 @@ fn messages_carry_images_thinking_calls_and_results() {
     let mut request = CompletionRequest::new("thanks");
     request.tools = vec![tool("lookup")];
     request.chat_history = vec![
-        Message::system("Be brief."),
+        Message::system("Be brief.").into(),
         Message::User {
             content: vec![
                 UserContent::text("What is this?"),
@@ -235,8 +237,9 @@ fn messages_carry_images_thinking_calls_and_results() {
                     native: None,
                 }),
             ],
-        },
-        turn,
+        }
+        .into(),
+        turn.into(),
         Message::User {
             content: vec![
                 UserContent::ToolResult(ToolResult {
@@ -252,7 +255,8 @@ fn messages_carry_images_thinking_calls_and_results() {
                 }),
                 UserContent::text("thanks"),
             ],
-        },
+        }
+        .into(),
     ];
     assert_eq!(
         body(request)["messages"],
@@ -269,11 +273,12 @@ fn messages_carry_images_thinking_calls_and_results() {
     // Another model's reasoning is sent as text.
     let mut request = CompletionRequest::new("next");
     request.chat_history = vec![
-        Message::user("first"),
+        Message::user("first").into(),
         Message::Assistant(AssistantMessage::new(vec![
             AssistantContent::Reasoning(Reasoning::new("theirs")),
             AssistantContent::text("Answer."),
-        ])),
+        ]))
+        .into(),
     ];
     let messages = body(request)["messages"].clone();
     assert!(messages[1].get("thinking").is_none(), "{messages}");
@@ -298,8 +303,8 @@ fn a_same_model_turn_replays_its_call_items() {
     let mut request = CompletionRequest::new("next");
     request.tools = vec![tool("lookup")];
     request.chat_history = vec![
-        Message::user("first"),
-        turn.message().expect("the turn is a message"),
+        Message::user("first").into(),
+        turn.message().expect("the turn is a message").into(),
         Message::User {
             content: vec![UserContent::ToolResult(ToolResult {
                 call: CallId::from_wire("call_9"),
@@ -307,7 +312,8 @@ fn a_same_model_turn_replays_its_call_items() {
                 content: vec![ToolResultContent::text("found")],
                 is_error: false,
             })],
-        },
+        }
+        .into(),
     ];
     let messages = body(request)["messages"].clone();
     assert_eq!(
@@ -351,9 +357,12 @@ fn unprepared_content_is_refused() {
     use crate::message::{Audio, DocumentContent, Video};
     let unprepared = |content: UserContent| {
         let mut request = CompletionRequest::new("hi");
-        request.chat_history = vec![Message::User {
-            content: vec![content],
-        }];
+        request.chat_history = vec![
+            Message::User {
+                content: vec![content],
+            }
+            .into(),
+        ];
         wire()
             .encode(request, Mode::Unary)
             .expect_err("the content is refused")

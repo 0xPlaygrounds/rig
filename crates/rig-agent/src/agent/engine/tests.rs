@@ -3908,7 +3908,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
     }
 
     fn request_has_sentinel(req: &crate::completion::CompletionRequest) -> bool {
-        req.chat_history.iter().any(|m| match m {
+        req.chat_history.iter().any(|m| match &**m {
             Message::User { content } => content
                 .iter()
                 .any(|c| matches!(c, UserContent::Text(text) if text.text.contains(SENTINEL))),
@@ -4819,12 +4819,13 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        vec![Message::User {
+        [Message::User {
             content: vec![
                 UserContent::text("question"),
                 UserContent::text("provide an answer")
             ],
-        }],
+        }]
+        .map(std::sync::Arc::new),
         "the retry request holds no empty assistant message, and the user messages it separated become one"
     );
 }

@@ -77,8 +77,8 @@ fn result_of(request: Option<&CompletionRequest>, id: &str) -> String {
 }
 
 /// The text of the result of call `id` in `messages`.
-fn result_in(messages: &[Message], id: &str) -> String {
-    let results = messages.iter().filter_map(|message| match message {
+fn result_in(messages: &[std::sync::Arc<Message>], id: &str) -> String {
+    let results = messages.iter().filter_map(|message| match &**message {
         Message::User { content } => Some(content.iter()),
         _ => None,
     });

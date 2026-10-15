@@ -42,7 +42,7 @@ pub enum EncodingFormat {
 pub struct EmbeddingData {
     #[serde(default)]
     pub object: String,
-    pub embedding: Vec<serde_json::Number>,
+    pub embedding: Vec<f64>,
     #[serde(default)]
     pub index: usize,
 }

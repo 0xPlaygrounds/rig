@@ -62,7 +62,7 @@ fn state(app: &mut App) -> (Vec<String>, Option<u32>) {
     let texts = conversation
         .messages()
         .iter()
-        .map(|message| match message {
+        .map(|message| match &**message {
             Message::User { content } => content
                 .iter()
                 .filter_map(|item| match item {

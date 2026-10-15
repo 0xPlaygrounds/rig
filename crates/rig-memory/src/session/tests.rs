@@ -27,7 +27,7 @@ fn edit(conversation: &mut Conversation) {
     conversation.push(Message::assistant("a cat"));
     conversation.push(Entry::new(Message::user("report")).by(Author::plugin("ci")));
     let mut first = conversation.entry(0).expect("an entry");
-    first.message = Message::user("look again");
+    first.message = Message::user("look again").into();
     conversation.splice(0..1, [first], Author::plugin("editor"));
     conversation.halt(Halt::Stopped);
     conversation.push(Message::user("go on"));
@@ -422,7 +422,7 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
     let before = as_of(&store, "main", made).expect("as of");
     assert_eq!(
         before.messages(),
-        &[Message::user("one"), Message::assistant("two")]
+        [Message::user("one"), Message::assistant("two")].map(std::sync::Arc::new)
     );
 
     let forked = MemoryStore::default();

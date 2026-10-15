@@ -117,8 +117,15 @@ fn history(home: &Home, id: &SessionId) -> Vec<Message> {
         .agents
         .into_iter()
         .find(|agent| agent.parent.is_none());
-    main.map(|agent| agent.conversation.messages().to_vec())
-        .unwrap_or_default()
+    main.map(|agent| {
+        agent
+            .conversation
+            .messages()
+            .iter()
+            .map(|message| (**message).clone())
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 /// Whether `messages` has a user message saying `text`.

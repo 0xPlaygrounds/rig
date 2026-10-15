@@ -124,6 +124,16 @@ fn splitting_a_body_at_every_offset_yields_the_same_events() {
         );
         assert_eq!(events, whole, "split at {split}");
     }
+    let mut framer = SseFramer::new();
+    let mut bytewise = Vec::new();
+    for byte in body {
+        bytewise.extend(
+            framer
+                .push(&[*byte])
+                .map(|event| (event.event, event.data, event.id)),
+        );
+    }
+    assert_eq!(bytewise, whole, "one byte at a time");
 }
 
 #[test]
@@ -142,4 +152,10 @@ fn ndjson_lines_split_across_chunks_rejoin() {
     assert_eq!(framer.push(b"{\"a\":").len(), 0);
     let lines: Vec<_> = framer.push(b"1}\r\n").collect();
     assert_eq!(lines, vec![b"{\"a\":1}".to_vec()]);
+    let mut lines = Vec::new();
+    for byte in b"{\"b\":2}\r\n\n{\"c\":3}\n{\"d\"" {
+        lines.extend(framer.push(&[*byte]));
+    }
+    assert_eq!(lines, vec![b"{\"b\":2}".to_vec(), b"{\"c\":3}".to_vec()]);
+    assert_eq!(framer.finish(), Some(b"{\"d\"".to_vec()));
 }

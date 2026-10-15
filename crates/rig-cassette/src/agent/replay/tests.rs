@@ -263,7 +263,7 @@ fn custom(payload: serde_json::Value) -> EffectKind {
 
 fn completion_kind(stream: bool) -> EffectKind {
     EffectKind::Completion {
-        request: CompletionRequest::from(vec![Message::user("hi")]),
+        request: CompletionRequest::from(vec![Message::user("hi")]).into(),
         stream,
     }
 }

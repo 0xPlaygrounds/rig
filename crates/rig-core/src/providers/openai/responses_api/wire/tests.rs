@@ -220,7 +220,7 @@ fn prepared_body_of(wire: &Responses, request: CompletionRequest) -> serde_json:
 /// The bare [`prompt`] with a history of its own.
 fn turn(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
-        chat_history,
+        chat_history: chat_history.into_iter().map(Into::into).collect(),
         ..prompt()
     }
 }

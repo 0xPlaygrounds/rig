@@ -393,13 +393,16 @@ fn openrouter_gets_a_placeholder_for_a_file_id_document() {
 
     let body = |chat: Chat| {
         let mut request = prompt("read this");
-        request.chat_history = vec![Message::User {
-            content: vec![UserContent::Document(DocumentContent {
-                data: DocumentSourceKind::FileId("file-abc".to_owned()).into(),
-                media_type: None,
-                additional_params: None,
-            })],
-        }];
+        request.chat_history = vec![
+            Message::User {
+                content: vec![UserContent::Document(DocumentContent {
+                    data: DocumentSourceKind::FileId("file-abc".to_owned()).into(),
+                    media_type: None,
+                    additional_params: None,
+                })],
+            }
+            .into(),
+        ];
         let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
             request,
             &chat.describe(),
@@ -434,7 +437,7 @@ fn foreign_reasoning_goes_under_the_reasoning_field_when_asked() {
         let mut request = prompt("go on");
         request.foreign_reasoning = asked;
         request.chat_history = vec![
-            Message::user("start"),
+            Message::user("start").into(),
             Message::Assistant(AssistantMessage {
                 content: vec![
                     AssistantContent::Reasoning(Reasoning::new("plan")),
@@ -442,8 +445,9 @@ fn foreign_reasoning_goes_under_the_reasoning_field_when_asked() {
                 ],
                 origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
                 stop: Some(crate::message::StopReason::Stop),
-            }),
-            Message::user("go on"),
+            })
+            .into(),
+            Message::user("go on").into(),
         ];
         let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
             request,
@@ -683,7 +687,10 @@ fn an_invented_call_field_replays_and_an_invented_message_field_does_not() {
                 ),
             ],
             &wire,
-        );
+        )
+        .into_iter()
+        .map(Into::into)
+        .collect();
         let body = json_body(&wire.encode(request, Mode::Unary).expect("encodes").request);
         let replayed = &body["messages"][1];
         assert!(
@@ -912,4 +919,64 @@ async fn per_choice_usage_is_observed_as_the_decoder_reads_it() {
         .collect();
     assert_eq!(counts, [(Some(3), Some(4))], "per-choice usage is observed");
     assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
+}
+
+/// A whole reply must hold a choice, and its choice a message.
+#[test]
+fn a_whole_reply_without_a_choice_or_its_message_fails() {
+    for (choices, says) in [
+        (serde_json::json!([]), "Response contained no choices"),
+        (
+            serde_json::json!([{"index": 0, "finish_reason": "stop"}]),
+            "did not contain a valid message",
+        ),
+    ] {
+        let whole = frame(&serde_json::json!({
+            "id": "chatcmpl-1",
+            "object": "chat.completion",
+            "model": "gpt-4.1-nano",
+            "choices": choices,
+        }));
+        let decoded =
+            crate::test_utils::history::decode(&wire(), crate::wire::Mode::Unary, [whole]);
+        assert!(
+            matches!(&decoded, Err(ProviderError::Response(message)) if message.contains(says)),
+            "{decoded:?}"
+        );
+    }
+}
+
+/// A part Chat Completions cannot carry is refused when it is encoded: a
+/// document file that is not a PDF, or audio a URL names.
+#[test]
+fn a_part_chat_cannot_carry_is_refused() {
+    use crate::message::{Audio, Document};
+    let parts = [
+        UserContent::Document(Document {
+            data: Source::base64("YSxiCjEsMgo=").into(),
+            media_type: Some(DocumentMediaType::CSV),
+            additional_params: None,
+        }),
+        UserContent::Audio(Audio {
+            data: Source::url("https://example.invalid/a.mp3"),
+            media_type: None,
+        }),
+    ];
+    for part in parts {
+        let error = user_part(&part).expect_err("the part is refused");
+        assert!(
+            error.to_string().contains("Chat Completions cannot carry"),
+            "{error}"
+        );
+    }
+}
+
+/// Chat Completions forces one named tool at most.
+#[test]
+fn chat_forces_one_named_tool_at_most() {
+    let names = ["a", "b"].map(|name| crate::message::ToolName::new(name).expect("a name"));
+    let choice = crate::message::ToolChoice::Specific {
+        function_names: names.to_vec(),
+    };
+    assert!(tool_choice_value(choice).is_err());
 }
