@@ -1376,7 +1376,7 @@ fn inbox_lines(inbox: &[&Incoming], theme: &Theme, lines: &mut Vec<Line<'static>
         let text = message.text();
         let mut rows = text.lines();
         let first = Line::from(vec![
-            Span::from(format!("  ⏵ {when}: ")).cyan(),
+            Span::from(format!("  ⏵ {when}: ")).dim(),
             Span::from(rows.next().unwrap_or_default().to_owned()).dim(),
         ]);
         let rest = rows.map(|row| Line::from(format!("    {row}")).dim());

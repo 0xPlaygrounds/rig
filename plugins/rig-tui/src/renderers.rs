@@ -643,11 +643,11 @@ impl MessageView<'_> {
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         match self.role {
             Role::User => {
-                let style = Style::new().cyan().bold();
                 let lines = self.text.lines().enumerate();
                 let rows = lines.map(|(index, line)| {
                     let prefix = if index == 0 { "› " } else { "  " };
-                    Line::styled(format!("{prefix}{}", line.replace('\t', "    ")), style)
+                    let text = line.replace('\t', "    ");
+                    Line::from(vec![Span::from(prefix).dim(), Span::from(text).bold()])
                 });
                 rows.collect()
             }

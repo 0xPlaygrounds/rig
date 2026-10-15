@@ -11,23 +11,24 @@ use bevy_ecs::prelude::*;
 use ratatui::style::Color;
 
 /// The background assumed when the terminal does not say its own.
-const DARK: Rgb = (0x1e, 0x1e, 0x2e);
+const DARK: Rgb = (0x1c, 0x1c, 0x1c);
 
 /// The colors each band leans to, and how far.
-const USER: (Rgb, f32) = ((0x6c, 0x8c, 0xff), 0.14);
 const ADDED: (Rgb, f32) = ((0x3f, 0xb9, 0x50), 0.16);
 const ADDED_WORD: (Rgb, f32) = ((0x3f, 0xb9, 0x50), 0.38);
 const REMOVED: (Rgb, f32) = ((0xf8, 0x51, 0x49), 0.16);
 const REMOVED_WORD: (Rgb, f32) = ((0xf8, 0x51, 0x49), 0.38);
 const SELECTED: (Rgb, f32) = ((0xd2, 0x99, 0x22), 0.30);
-/// How far the tool band leans from the background to the foreground.
-const TOOL: f32 = 0.07;
+/// How far the user's and the tool band lean from the background to the
+/// foreground: gray, the user's the lighter.
+const USER: f32 = 0.12;
+const TOOL: f32 = 0.06;
 
 /// The bands of a terminal without 24-bit color, of its 256: on a dark
 /// background and on a light one. A tint mixed as above would fall on
 /// the same few grays.
-const DARK_256: Theme = indexed([17, 236, 22, 28, 52, 88, 58]);
-const LIGHT_256: Theme = indexed([189, 254, 194, 157, 224, 217, 230]);
+const DARK_256: Theme = indexed([238, 236, 22, 28, 52, 88, 58]);
+const LIGHT_256: Theme = indexed([252, 254, 194, 157, 224, 217, 230]);
 
 type Rgb = (u8, u8, u8);
 
@@ -74,7 +75,7 @@ impl Theme {
             Color::Rgb(r, g, b)
         };
         Self {
-            user: lean(USER),
+            user: lean((contrast, USER)),
             tool: lean((contrast, TOOL)),
             added: lean(ADDED),
             added_word: lean(ADDED_WORD),

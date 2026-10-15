@@ -57,7 +57,7 @@ pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
         match *kind {
             Kind::Other => Line::from(format!("    {text}")).dim(),
             Kind::File => Line::from(format!("    {text}")).bold(),
-            Kind::Hunk => Line::from(format!("    {text}")).cyan(),
+            Kind::Hunk => Line::from(format!("    {text}")).dim(),
             Kind::Same(old, new) => {
                 let mut spans = vec![gutter(Some(old), Some(new), ' ').dim()];
                 spans.push(Span::from(text.clone()));
