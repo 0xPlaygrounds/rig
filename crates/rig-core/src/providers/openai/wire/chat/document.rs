@@ -162,10 +162,15 @@ impl Reassemble<ChatEvent> for ChatCompletion {
 }
 
 /// Keep `value` at `key`: a non-null value replaces, and `null` only fills
-/// an absent field.
+/// an absent field. Most fields restate the same value in every chunk,
+/// which needs no copy.
 fn keep(map: &mut Map<String, Value>, key: &str, value: &Value) {
-    if !value.is_null() || !map.contains_key(key) {
-        map.insert(key.to_owned(), value.clone());
+    match map.get_mut(key) {
+        Some(held) if !value.is_null() && held != value => *held = value.clone(),
+        Some(_) => {}
+        None => {
+            map.insert(key.to_owned(), value.clone());
+        }
     }
 }
 
