@@ -230,19 +230,24 @@ fn the_dialect_decides_the_credential_header() {
     assert_eq!(keyed["authorization"], "Bearer local");
 }
 
-/// The ChatGPT backend routes its prompt cache by the `session_id` header,
+/// The ChatGPT backend routes its prompt cache by the `session-id` header,
 /// so a completion's cache key goes there; without one each request gets a
 /// fresh id.
 #[test]
 fn the_chatgpt_session_id_is_the_cache_key() {
     let config = OpenAIConfig::with_key(&crate::providers::chatgpt::DIALECT, "tok");
     let session = |key: Option<&str>| {
-        config
+        let request = config
             .headers_in_session(http::Request::get("https://example.invalid/"), key)
             .body(())
-            .expect("builds")
+            .expect("builds");
+        assert!(
+            !request.headers().contains_key("session_id"),
+            "the backend ignores the underscored spelling"
+        );
+        request
             .headers()
-            .get("session_id")
+            .get("session-id")
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned)
     };
