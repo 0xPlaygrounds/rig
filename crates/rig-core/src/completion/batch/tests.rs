@@ -59,4 +59,6 @@ fn a_batch_price_applies_per_kind_of_token() {
         (Some(1.0), Some(2.0), Some(1.0), 4.0)
     );
     assert_eq!(Cost::from_total(3.0).at(BatchPrice::HALF).total, 1.5);
+    let partly_known = Cost::from_total(1.0).input(0.25).at(BatchPrice::HALF);
+    assert_eq!(partly_known.total, 0.5);
 }
