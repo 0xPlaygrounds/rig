@@ -2,8 +2,7 @@
 # same definitions `cargo xtask verify` selects from locally; the slow lanes
 # (all-features run with the Docker suites, dependency floors) live in
 # slow.yaml. Each job that has a warm entry restores it and saves only on a
-# trusted push (cd.yaml on main, cache-warm.yaml on the development base),
-# so fork PRs never write shared caches.
+# trusted push (cd.yaml on main), so fork PRs never write shared caches.
 name: Lint & Test
 
 on:
@@ -87,7 +86,7 @@ jobs:
   # The default-member sweep plus the facade's `bedrock` feature (the bedrock
   # wire-conformance suite compiles into that binary). No provider keys
   # anywhere in CI: cassettes replay with a dummy key and live tests are
-  # `#[ignore]`. The cache entry is the one cache-warm.yaml populates.
+  # `#[ignore]`.
   test:
     name: stable / test
     runs-on: ubuntu-latest
@@ -202,8 +201,8 @@ jobs:
       - run: cargo xtask verify --check loom
 
   # nextest does not run doctests. All features, so feature-gated examples
-  # compile; the `all-features` entry is the same dependency graph slow.yaml's
-  # test-all-features restores and cache-warm.yaml populates.
+  # compile; the `all-features` entry it saves is the same dependency graph
+  # slow.yaml's test-all-features restores.
   doctest:
     name: stable / doctest
     runs-on: ubuntu-latest
@@ -216,7 +215,7 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           shared-key: all-features
-          save-if: "false"
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check doctests
 
   doc:

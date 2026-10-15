@@ -42,7 +42,6 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
             "doctests",
             "docs",
             "full-tests",
-            "full-test-build",
             "dependency-floors",
         ]
         .contains(&check.id.as_str())

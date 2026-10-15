@@ -146,14 +146,10 @@ compiling anything; a missing tool is a failed run.
 - `slow.yaml`: a plan job runs `verify --lanes` on PRs and gates the
   all-features run and the dependency floors on its answer; the merge queue,
   the 06:00 UTC schedule, manual dispatch and the release gate run both.
-- `cd.yaml`: both gates on every push to `main`, then release-plz.
-- `cache-warm.yaml`: on trusted pushes, compiles the default/bedrock test
-  graph (`default-test-build`, development base only) and the all-features
-  test graph (`full-test-build`, shared key `all-features`, both branches)
-  with nextest `--no-run`, executing nothing. Only pushes save caches; PRs
-  restore their base branch's entries. rust-cache runs at job level
-  everywhere so a failed or cancelled job saves nothing, and warms are never
-  cancelled mid-build.
+- `cd.yaml`: both gates on every push to `main`, then release-plz. Only
+  these pushes save caches (the doctest job saves the shared `all-features`
+  entry); PRs restore their base branch's entries. rust-cache runs at job
+  level everywhere so a failed or cancelled job saves nothing.
 
 Every cassette-backed test source lives in `crates/rig-cassette`: the provider
 targets, the agent corpus cells inside them, the cache-prefix guard, the
