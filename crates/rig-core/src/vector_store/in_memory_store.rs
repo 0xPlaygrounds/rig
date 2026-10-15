@@ -119,14 +119,41 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         store
     }
 
-    /// Inserts or replaces a document and adds its embeddings to any existing LSH index.
+    /// Inserts or replaces a document and initializes a deferred LSH index when possible.
     fn insert_document(&mut self, id: String, doc: D, embeddings: Vec<Embedding>) {
+        let first_dimension = match (&self.index_strategy, &self.lsh_index) {
+            (IndexStrategy::LSH { .. }, None) => embeddings
+                .iter()
+                .find(|embedding| !embedding.vec.is_empty())
+                .map(|embedding| embedding.vec.len()),
+            _ => None,
+        };
         if let Some(ref mut lsh_index) = self.lsh_index {
             for embedding in embeddings.iter() {
                 lsh_index.insert(&id, &embedding.vec);
             }
         }
         self.embeddings.insert(id, (doc, embeddings));
+
+        if let (
+            Some(dim),
+            IndexStrategy::LSH {
+                num_tables,
+                num_hyperplanes,
+            },
+        ) = (first_dimension, &self.index_strategy)
+        {
+            let mut lsh_index = LSHIndex::new(dim, *num_tables, *num_hyperplanes);
+            for (id, (_, embeddings)) in &self.embeddings {
+                for embedding in embeddings
+                    .iter()
+                    .filter(|embedding| !embedding.vec.is_empty())
+                {
+                    lsh_index.insert(id, &embedding.vec);
+                }
+            }
+            self.lsh_index = Some(lsh_index);
+        }
     }
 
     /// Tests whether a document satisfies the (optional) metadata filter.
