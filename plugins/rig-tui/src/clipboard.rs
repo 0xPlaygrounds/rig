@@ -1,14 +1,4 @@
-//! The view's clipboard: Ctrl+V saves the clipboard's image in the
-//! session's [`Scratch::images`](rig_harness::prelude::Scratch::images)
-//! directory and types `@path` for it, or says there is none, and a pasted
-//! path to an image file (a file dropped on the terminal) becomes `@path`
-//! too. The message attaches what `@path` names (see
-//! [`attach`](rig_tools::attach)). A [`CopyToClipboard`] goes to the
-//! terminal (OSC 52) and to this machine's clipboard as well, for a
-//! terminal that ignores OSC 52. The clipboard is read and written through
-//! [`rig_tools::clipboard`], with programs started as the app's
-//! [`Processes`](rig_harness::prelude::Processes) start every program, off
-//! the main thread; a plugin uses that module the same way.
+//! The view's clipboard.
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};

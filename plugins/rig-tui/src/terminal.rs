@@ -77,7 +77,9 @@ pub struct TerminalFocus(pub Option<bool>);
 pub struct TerminalWrite(pub Vec<u8>);
 
 /// Puts the text on the system clipboard through the terminal (OSC 52),
-/// which works over SSH too, where the terminal allows it.
+/// which works over SSH too, where the terminal allows it, and on this
+/// machine's clipboard through [`rig_tools::clipboard`], for a terminal
+/// that ignores OSC 52.
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct CopyToClipboard(pub String);
 

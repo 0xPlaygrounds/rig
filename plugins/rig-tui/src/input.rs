@@ -1,39 +1,5 @@
-//! Terminal input, read on a thread of its own that wakes the loop for
-//! each event, as in Bevy's `examples/async_tasks/external_source_external_thread.rs`.
-//! Each event joins the frame's [`PendingInput`], which the view takes
-//! one item at a time, in order, running the [`TuiKeys`] schedule for
-//! each: plugins read and change the item in [`InputSystems::Filter`],
-//! with the input and the [`InputContext`] as the keys before it left
-//! them, and the view does it in [`InputSystems::Dispatch`]: the shown
-//! picker or question takes the key, else a
-//! [`KeyBinding`](crate::KeyBinding) (the view's own editing keys are
-//! bindings too), else a character is typed into the input. What a key
-//! sets off, such as a panel a binding opens, takes the next key.
-//!
-//! ```no_run
-//! use rig_harness::prelude::*;
-//! use rig_tui::crossterm::event::{Event, KeyCode};
-//! use rig_tui::{Editor, InputSystems, KeyInput, MainEditor, PendingInput, InputContext, TuiKeys};
-//!
-//! /// `/` on an empty input opens a search instead of a slash command.
-//! fn slash_searches(
-//!     mut events: ResMut<PendingInput>,
-//!     input: Single<&Editor, With<MainEditor>>,
-//!     state: Res<InputContext>,
-//! ) {
-//!     let slash = |item: &KeyInput| {
-//!         matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'))
-//!     };
-//!     if input.is_empty() && state.picking().is_none() && events.0.first().is_some_and(slash) {
-//!         events.0.remove(0);
-//!         // open the search
-//!     }
-//! }
-//!
-//! fn build(app: &mut App) {
-//!     app.add_systems(TuiKeys, slash_searches.in_set(InputSystems::Filter));
-//! }
-//! ```
+//! Terminal input, read on a thread that wakes the loop, as in Bevy's
+//! `examples/async_tasks/external_source_external_thread.rs`.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -78,16 +44,40 @@ const POLL: Duration = Duration::from_millis(100);
 /// keeps drawing.
 const KEYS_PER_FRAME: usize = 1024;
 
-/// What the terminal reported, and the actions plugins put in, in the
-/// order the view does them. The view takes them one at a time: in
-/// [`TuiKeys`], it holds the one item being done, which filters in
-/// [`InputSystems::Filter`] read, change, drop or replace with several,
-/// such as to take a key before any binding sees it or only while the
-/// input is empty; [`InputSystems::Dispatch`] does what is left and
-/// empties it. What a run leaves in it, such as an action an observer of
-/// the key pushed, is done next, before the frame's other keys. A plugin
-/// may also push to it at any other time, such as the keys of a macro:
-/// they are done in the next frame.
+/// The frame's input, in order: what the terminal reported and the
+/// actions plugins pushed. The view does one item at a time, running
+/// [`TuiKeys`] for each: [`InputSystems::Filter`] systems may change, drop
+/// or replace it (with the main [`Editor`](crate::Editor) and
+/// [`InputContext`] as the keys before it left them), and
+/// [`InputSystems::Dispatch`] does it. The picker or question shown takes
+/// it first, then a [`KeyBinding`](crate::KeyBinding), then the input.
+/// Items left by a run are done next; a push outside [`TuiKeys`] waits for
+/// the next frame.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::crossterm::event::{Event, KeyCode};
+/// use rig_tui::{Editor, InputSystems, KeyInput, MainEditor, PendingInput, InputContext, TuiKeys};
+///
+/// /// `/` on an empty input opens a search instead of a slash command.
+/// fn slash_searches(
+///     mut events: ResMut<PendingInput>,
+///     input: Single<&Editor, With<MainEditor>>,
+///     state: Res<InputContext>,
+/// ) {
+///     let slash = |item: &KeyInput| {
+///         matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'))
+///     };
+///     if input.is_empty() && state.picking().is_none() && events.0.first().is_some_and(slash) {
+///         events.0.remove(0);
+///         // open the search
+///     }
+/// }
+///
+/// fn build(app: &mut App) {
+///     app.add_systems(TuiKeys, slash_searches.in_set(InputSystems::Filter));
+/// }
+/// ```
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct PendingInput(pub Vec<KeyInput>);
 

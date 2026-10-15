@@ -125,10 +125,10 @@ impl StatusItem {
     }
 }
 
-/// Status line items, one of each name. On an agent and on its running
-/// turn, which every agent and turn has, they are shown while the agent
-/// is, by place (side and order), items at one place by name; a view
-/// redraws when they change.
+/// Status line items of an agent or of its running turn, one per name
+/// (every agent and turn has this component). The line shows those of the
+/// agent shown, its turn and the [`AppStatus`], ordered by side, then
+/// `order`, then name. A change redraws it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
 pub struct StatusItems(Vec<StatusItem>);
@@ -167,10 +167,10 @@ pub struct AppStatus(pub StatusItems);
 #[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Side {
-    /// After the items before it, from the left edge.
+    /// Left-aligned, after the items of lower `order`.
     #[default]
     Left,
-    /// The meter, at the right edge.
+    /// Right-aligned, in the meter.
     Right,
 }
 

@@ -1,12 +1,4 @@
-//! Completion in the input: `/` at the start completes a command name,
-//! `@` a path of the project, and a word after a command, or after a
-//! marker such as `#`, one of the candidates plugins add for it
-//! ([`CompletionSource`]). Paths come from a walk of the
-//! [`ProjectRoot`] in the app's [`ProjectWorkspace`] that honours
-//! `.gitignore`, done off the main thread, whatever the workspace, and
-//! kept until a [`FileWatch`] of the root says something there changed.
-//! An item matches when it contains the query, ignoring case; the earlier
-//! the match, the higher it ranks.
+//! Completion in the input.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -34,10 +26,15 @@ const SHOWN: usize = 50;
 /// a word starting with a marker anywhere in the input, such as `#` for
 /// issues ([`CompletionSource::marker`]), or for an argument of a slash
 /// command, such as `/model`'s models ([`CompletionSource::arg`]). The
-/// word typed completes to the candidates it matches. Several for one
-/// trigger add up; keep one current by inserting it again, such as when
-/// a lookup of what is typed ([`InputContext::typed`]) finished: an open
-/// list follows.
+/// view itself completes `/` at the start to a command name and `@` to a
+/// path of the [`ProjectRoot`] (walked off the main thread, honouring
+/// `.gitignore`, until a [`FileWatch`] of the root sees a change).
+///
+/// A candidate matches when it contains the word typed, ignoring case; the
+/// earlier the match, the higher it ranks. Several sources for one trigger
+/// add up; keep one current by inserting it again, such as when a lookup
+/// of what is typed ([`InputContext::typed`]) finished: an open list
+/// follows.
 ///
 /// ```
 /// use rig_harness::prelude::*;

@@ -1,12 +1,10 @@
 //! The transcript's wrapped rows, kept per message. A frame re-renders and
 //! re-wraps only the messages that changed (a message's look also depends
-//! on its neighbours: a tool call is drawn with the result the next message
-//! carries, and on the notices written inside it, and on what is expanded),
+//! on the next message's results, its notices and what is expanded),
 //! re-wraps without re-rendering when the width changed, and copies out
 //! only the rows on screen. Each message keeps where its items are (the
 //! message, its calls), so the view can scroll to one, select it and say
-//! which is at the top. Before, every frame and every streamed delta
-//! re-wrapped the whole history.
+//! which is at the top.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};

@@ -1,7 +1,7 @@
 //! Markdown in the model's answers drawn as styled lines: headings,
 //! emphasis, inline code, fenced code, lists, quotes, links, rules and
-//! tables. Parsing is pulldown-cmark's, with the options codex's terminal
-//! view turns on (`references/codex/codex-rs/tui/src/markdown_render.rs:400-403`).
+//! tables. Parsing is pulldown-cmark's, with strikethrough, tables and task
+//! lists on.
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style, Stylize};

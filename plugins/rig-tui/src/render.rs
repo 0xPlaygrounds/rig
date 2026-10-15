@@ -1,5 +1,7 @@
-//! Draws the focused agent: transcript, status line, input editor with its
-//! completion list, and the picker or question shown.
+//! The frame: when one is due ([`needs_redraw`]), where each panel goes
+//! ([`layout`]), how a transcript is laid out and lit
+//! ([`TranscriptLayout`]), and the compositor that copies every panel's
+//! canvas to the terminal under the view's overlays ([`render`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
@@ -70,16 +72,10 @@ pub(crate) struct Paced {
     waiting: bool,
 }
 
-/// Whether anything drawn changed since the last frame: the view state (a
-/// key, a notice, a resize, a picker or question), the input and who has
-/// the keys, an agent's drawn components, a turn's calls and where a tool
-/// call stands (held, waiting, started, its progress, answered), a
-/// streaming reply, a status line item (a retry's wait counts down there),
-/// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
-/// conversation or comes with a notice. A streaming reply alone draws at
-/// most every [`STREAM_FRAME`]; the text that waits is drawn by one of the
-/// frames the kernel runs after the wake that brought it (see
-/// [`Wake`](rig_ecs::tasks::Wake)), 16 ms apart, under any loop.
+/// Whether anything drawn changed since the last frame; the parameters
+/// are the list. A streaming reply alone draws at most every
+/// [`STREAM_FRAME`]; its waiting text is drawn by one of the frames the
+/// kernel runs after the wake that brought it ([`Wake`](rig_ecs::tasks::Wake)).
 pub(crate) fn needs_redraw(
     (view, notices, facts): (Res<TuiView>, Res<Notices>, Res<CallFacts>),
     (focus, shown, screen): (Res<KeyFocus>, Res<ShownAgent>, Res<TerminalSize>),

@@ -1,35 +1,17 @@
-//! Key bindings: every key the terminal view acts on is a [`KeyBinding`]
-//! on an entity of its own, the view's own editing keys included, so a
-//! plugin binds a key or a sequence of keys (`ctrl+x ctrl+e`) as the
-//! view does, and `/keys`-style listings and conflict checks read them
-//! as data.
+//! Key bindings: every key the view acts on, its own editing keys
+//! included, is a [`KeyBinding`] entity named `key:<keys>`, so a plugin
+//! binds a key or a sequence (`ctrl+x ctrl+e`) as the view does, and
+//! listings read them as data.
 //!
-//! As with tools, commands and tool renderers, the first binding of a key
-//! stays: [`AppKeyBindingsExt::add_key_binding`] refuses one whose keys
-//! another binding of an overlapping [`KeyScope`] takes, or starts, or is
-//! started by, with a warning. A global binding does not conflict with
-//! the input's own: it shadows the input's binding of the same keys, such
-//! as the view's `ctrl+e` (the end of the line) for an editor key, while
-//! no panel has the keys. While the person reads the transcript (an item
-//! of it selected), its bindings ([`KeyScope::Transcript`]) shadow the
-//! input's too, such as a plugin's `/` for a search, and typing ends the
-//! reading. Bevy's `Disabled` on a binding frees its keys;
-//! do it in `Plugin::finish`, once every plugin's `build` ran. A plugin
-//! that wants keys before every binding, or only in some states, such as a
-//! modal editor or `/` on an empty input, takes them from the
+//! The first binding of a key stays ([`AppKeyBindingsExt::add_key_binding`]
+//! warns on a conflict); `Disabled` on a binding, in `Plugin::finish`,
+//! frees its keys. [`KeyScope`] says where a binding applies and which
+//! shadows which. A pressed binding triggers [`KeyPressed`] on its entity,
+//! unless it has an [`InputAction`], which the view does instead. A
+//! [`TuiPanel`](crate::TuiPanel) takes the keys while it is the
+//! [`KeyFocus`]. For keys before any binding, filter
 //! [`PendingInput`](crate::PendingInput) in
-//! [`InputSystems::Filter`](crate::InputSystems::Filter) instead.
-//!
-//! A plugin's pressed binding triggers [`KeyPressed`] on its entity,
-//! which the observer given with it handles, unless the entity has an
-//! [`InputAction`], which the view does instead (the view's own keys are
-//! such bindings); one made with
-//! [`KeyBinding::with_releases`] also triggers it when the key is let go,
-//! where the terminal reports that. A panel takes the keys while it is the
-//! [`KeyFocus`], which only an entity with a [`TuiPanel`](crate::TuiPanel) can be: its own
-//! bindings ([`KeyScope::Panel`]) and the global ones apply, the input's
-//! do not, and Esc that it does not bind gives the keys back to the input,
-//! as does the panel going.
+//! [`InputSystems::Filter`](crate::InputSystems::Filter).
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -364,7 +346,8 @@ impl KeyBinding {
         self
     }
 
-    /// The same binding, also triggered when its key is let go.
+    /// The same binding, also triggered when its key is let go, where the
+    /// terminal reports that.
     pub fn with_releases(mut self) -> Self {
         self.releases = true;
         self
@@ -535,7 +518,11 @@ pub enum InputAction {
     Send,
     /// Closes the completion, else interrupts the agent shown.
     Stop,
-    /// Pastes an image from the clipboard as an attachment.
+    /// Saves the clipboard's image in the session's
+    /// [`Scratch::images`](rig_harness::prelude::Scratch::images) and types
+    /// `@path` for it, which attaches it to the message, or says there is
+    /// none. A pasted path to an image file (a file dropped on the
+    /// terminal) becomes `@path` too.
     PasteImage,
     /// Selects the item of the transcript above the one selected, or the
     /// newest.

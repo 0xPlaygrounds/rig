@@ -66,8 +66,9 @@ pub enum TuiSystems {
     /// Plugins draw their panels into their [`PanelCanvas`]. Runs only for
     /// a frame that is drawn.
     Draw,
-    /// The view draws the frame: the transcript, the status line, the
-    /// input, the panels, and its own overlays over everything.
+    /// The view composites the panels' canvases (the transcript, status
+    /// line and input are panels too) and draws its overlays over them:
+    /// the picker or question, the completion list and the caret.
     Render,
 }
 

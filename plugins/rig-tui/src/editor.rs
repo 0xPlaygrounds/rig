@@ -1,22 +1,4 @@
-//! The input editor: multiline text with a cursor and emacs-style editing
-//! keys. An [`Editor`] is a component, so a panel can hold one; the default
-//! screen's is the [`MainEditor`], which [`MainInput`] reads, and a plugin
-//! reads and edits its draft as the keys do (a template, a dictated
-//! message, the text an editor wrote): `is_changed` on it says the draft
-//! was edited. Up and Down move between lines and, from the first or last
-//! line, through the [`PromptHistory`](crate::PromptHistory), saving the
-//! draft as pi's editor does
-//! (`references/pi/packages/tui/src/components/editor.ts:344-347,457-470`).
-//!
-//! ```no_run
-//! use rig_harness::prelude::*;
-//! use rig_tui::MainInput;
-//!
-//! /// Puts a template in the input.
-//! fn template(mut input: MainInput) {
-//!     input.set("Review the diff for:\n- ");
-//! }
-//! ```
+//! The input editor.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
@@ -40,12 +22,27 @@ const PROMPT: &str = "› ";
 /// keep the cursor in sight.
 const MOST_LINES: usize = 10;
 
-/// A text being typed, with its cursor, and where it is in the prompt
-/// history while Up and Down browse it. The keys type into the
-/// [`MainEditor`], or into the editor of the panel with the
-/// [`KeyFocus`](crate::KeyFocus); Enter sends the main one's text to the
-/// agent shown. In a panel placed at the top, the bottom or below the
-/// input, it is as tall as its text, up to ten lines.
+/// A text being typed: multiline, with a cursor and emacs-style editing
+/// keys. The keys type into the [`MainEditor`], or into the editor of the
+/// panel with the [`KeyFocus`](crate::KeyFocus); Enter sends the main
+/// one's text to the agent shown. A plugin reads and edits a draft as the
+/// keys do (a template, a dictated message, the text an editor wrote), the
+/// main one through [`MainInput`]; `is_changed` on it says the draft was
+/// edited. Up and Down move between lines and, from the first or last
+/// line, through the [`PromptHistory`](crate::PromptHistory), keeping the
+/// draft, which Down past the newest prompt brings back. In a panel placed
+/// at the top, the bottom or below the input, it is as tall as its text, up
+/// to ten lines.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::MainInput;
+///
+/// /// Puts a template in the input.
+/// fn template(mut input: MainInput) {
+///     input.set("Review the diff for:\n- ");
+/// }
+/// ```
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[reflect(Component, Default)]
 #[require(Caret)]

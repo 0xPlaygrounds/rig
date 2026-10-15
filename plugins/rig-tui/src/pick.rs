@@ -1,40 +1,4 @@
-//! Choices over the transcript: the pickers of [`rig_harness::pick`] and
-//! the questions ([`Ask`]) of any plugin, which the view answers for
-//! every agent. One is shown at a time, in the order they came; the next
-//! waits until it is closed. What the user did in the one shown is its
-//! [`PickerInput`], on its entity. A new [`Picker`] on the same entity
-//! fills it in place, as a search that finds more does: what is typed
-//! stays, and so does the item selected, found again by its command, else
-//! its label. The item highlighted is [`Highlighted`] on the entity, and a
-//! plugin's [`PickPreview`] there is drawn beside the list: text, or a
-//! conversation in a [`TranscriptPane`](crate::TranscriptPane). The user's
-//! choice is a [`Pick`](rig_harness::pick::Pick), which the harness
-//! carries out.
-//!
-//! A picker or question that takes several items shows a tick box on each:
-//! Tab ticks the selected item and moves on. Enter answers the selected
-//! one until ticks are in play (an item started ticked, or the user ticked
-//! or unticked one); from then on it answers exactly the ticked ones, even
-//! none. A question that takes text shows them too, so a choice goes with
-//! a note: Tab ticks a choice (one only, unless it takes several), and
-//! Enter on the typed answer answers the ticked choices with it as their
-//! note. Right shows what a choice says beyond its label
-//! ([`Choice::more`](rig_harness::ask::Choice::more)) in place of the
-//! body, and Left hides it. A long body above the list scrolls with
-//! Shift+Up and Shift+Down; PageUp and PageDown page the list. A picker or
-//! question may bind keys of its own ([`ChoiceKeys`]).
-//!
-//! A question superseded by another (`SupersededBy`, how a plugin changes
-//! an open [`Ask`]) is not shown; when it was the one shown, its successor
-//! takes its place with what the user did carried over by choice id: the
-//! ticks, what was typed and the choice selected.
-//!
-//! A question with initial text or a multi-line answer is answered in the
-//! input instead: its text replaces the draft until Enter answers or Esc
-//! refuses, and the draft comes back. A question shown beside the work
-//! ([`Ask::inline`]) waits in a strip above the input, which keeps the
-//! keys; Alt+1 to Alt+9 pick its choices, or answer it in the input, and
-//! Alt+0 dismisses it.
+//! Pickers and questions over the transcript.
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -98,8 +62,27 @@ pub enum ChoiceAction {
 }
 
 /// What the user did in the [`Picker`] or [`Ask`] the view shows, on its
-/// entity while it is shown: what is typed to filter or answer it, the row
-/// selected, what is ticked.
+/// entity while shown: the filter or answer typed, the row selected and
+/// what is ticked. The view shows every agent's and plugin's, one at a
+/// time, in the order they came. A new `Picker` on the entity refills the
+/// list and keeps all three (the selected row found again by its command,
+/// else its label). A question superseded by another (`SupersededBy`)
+/// hands them to its successor, by choice id. The item highlighted is
+/// [`Highlighted`] on the entity, and a [`PickPreview`] there is drawn
+/// beside the list.
+///
+/// Keys:
+/// - **Tab** ticks the selected row in one that takes several (or the
+///   choice a typed note goes with). Once anything is ticked, Enter
+///   answers exactly the ticked rows.
+/// - **Right** and **Left** show and hide a choice's
+///   [`more`](rig_harness::ask::Choice::more).
+/// - **Shift+Up** and **Shift+Down** scroll a long body; **PageUp** and
+///   **PageDown** page the list. A picker adds keys with [`ChoiceKeys`].
+/// - A question with initial text or a multi-line answer is answered in
+///   the input; Esc refuses it and brings the draft back.
+/// - An [`Ask::inline`] question waits in a strip above the input:
+///   Alt+1 to Alt+9 pick, and Alt+0 dismisses.
 #[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
 pub struct PickerInput {
     /// What is typed.
