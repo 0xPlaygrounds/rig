@@ -375,7 +375,7 @@ pub trait Observe: Send + Sync {
     /// The completed handler response, or the fold of a streaming handler's
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
-    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>);
+    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>);
     /// Whether streamed items are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
     /// One item pulled from the original handler stream. This is recording
@@ -393,7 +393,7 @@ pub trait Observe: Send + Sync {
     fn stream_item(
         &mut self,
         item: &Result<Relayed, ErrorReport>,
-        outcome: Option<&Result<Answered, ErrorReport>>,
+        outcome: Option<Result<Answered, ErrorReport>>,
     ) {
         if self.keep_events() {
             match item {
@@ -517,7 +517,7 @@ impl Reply {
     fn observed(self, streaming: bool, mut seen: Option<Observed>, folded: Option<Folded>) -> Self {
         if !streaming && let Self::Outcome(outcome) = self {
             if let Some(seen) = &mut seen {
-                seen.outcome(&outcome);
+                seen.outcome(outcome.clone());
             }
             return Self::Outcome(outcome);
         }
@@ -528,7 +528,7 @@ impl Reply {
                 self
             };
         }
-        let original = match &self {
+        let mut original = match &self {
             Self::Outcome(Ok(Answered::Completion(response))) => {
                 Some(Ok(Answered::Completion(response.clone())))
             }
@@ -543,32 +543,33 @@ impl Reply {
                 Poll::Ready(item) => item,
             };
             if let Some(item) = &item {
-                let outcome = if finished { None } else { fold.observe(item) };
+                let mut outcome = if finished { None } else { fold.observe(item) };
+                finished |= outcome.is_some();
                 if let Some(seen) = &mut seen {
-                    let recorded = outcome.as_ref().map(|outcome| {
-                        if matches!(item, Ok(Relayed::Done(_))) {
-                            original.as_ref().unwrap_or(outcome)
-                        } else {
-                            outcome
+                    // A unary answer made a stream is recorded as answered;
+                    // the fold's slot, when there is one, keeps the outcome.
+                    let recorded = match &outcome {
+                        None => None,
+                        Some(_) if matches!(item, Ok(Relayed::Done(_))) && original.is_some() => {
+                            original.take()
                         }
-                    });
+                        Some(_) if folded.is_none() => outcome.take(),
+                        Some(outcome) => Some(outcome.clone()),
+                    };
                     if streaming {
                         seen.item(item, recorded);
                     } else if let Some(recorded) = recorded {
                         seen.outcome(recorded);
                     }
                 }
-                if let Some(outcome) = outcome {
-                    finished = true;
-                    if let Some(folded) = &folded {
-                        *lock(folded) = Some(outcome);
-                    }
+                if let (Some(outcome), Some(folded)) = (outcome, &folded) {
+                    *lock(folded) = Some(outcome);
                 }
             } else if !finished {
                 finished = true;
                 let outcome = Err(stream_truncated());
                 if let Some(seen) = &mut seen {
-                    seen.outcome(&outcome);
+                    seen.outcome(outcome.clone());
                 }
                 if let Some(folded) = &folded {
                     *lock(folded) = Some(outcome);
@@ -765,7 +766,7 @@ struct Observed {
 }
 
 impl Observed {
-    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
+    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
         if !self.told {
             self.told = true;
             self.observer.outcome(outcome);
@@ -775,7 +776,7 @@ impl Observed {
     fn item(
         &mut self,
         item: &Result<Relayed, ErrorReport>,
-        outcome: Option<&Result<Answered, ErrorReport>>,
+        outcome: Option<Result<Answered, ErrorReport>>,
     ) {
         let outcome = outcome.filter(|_| !self.told);
         self.told |= outcome.is_some();
@@ -785,7 +786,7 @@ impl Observed {
 
 impl Drop for Observed {
     fn drop(&mut self) {
-        self.outcome(&Err(cancelled()));
+        self.outcome(Err(cancelled()));
     }
 }
 

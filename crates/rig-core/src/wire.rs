@@ -356,18 +356,11 @@ pub(crate) mod reply {
 
         /// What the driver learned about the reply so far, from `provider`.
         pub(crate) fn reply(&self, provider: &str) -> Reply {
-            Reply {
-                provider: provider.to_owned(),
-                // A whole body is the reply's document; a stream's is what
-                // the wire's reassembler rebuilt, or what the decoder of an
-                // operation with free events recorded.
-                raw: self
-                    .document
-                    .clone()
-                    .or_else(|| self.raw.clone())
-                    .unwrap_or(serde_json::Value::Null),
-                provider_request_id: self.request_id.clone(),
-            }
+            reply(
+                provider,
+                self.document.clone().or_else(|| self.raw.clone()),
+                self.request_id.clone(),
+            )
         }
 
         /// Fold the absorbed reply with the provider's end into the
@@ -377,9 +370,20 @@ pub(crate) mod reply {
             if let Some(response) = self.response {
                 return Ok(response);
             }
-            let reply = self.reply(provider);
+            let reply = reply(provider, self.document.or(self.raw), self.request_id);
             let end = self.end.ok_or(ProviderError::Truncated)?;
             self.fold.finish(end, reply)
+        }
+    }
+
+    /// The reply from `provider` whose document is `raw`: a whole body, or
+    /// what the wire's reassembler rebuilt of a stream, or what the decoder
+    /// of an operation with free events recorded.
+    fn reply(provider: &str, raw: Option<serde_json::Value>, request_id: Option<String>) -> Reply {
+        Reply {
+            provider: provider.to_owned(),
+            raw: raw.unwrap_or(serde_json::Value::Null),
+            provider_request_id: request_id,
         }
     }
 

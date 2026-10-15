@@ -18,8 +18,8 @@ struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
     fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
-        self.0.lock().expect("seen").outcomes.push(outcome.clone());
+    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
+        self.0.lock().expect("seen").outcomes.push(outcome);
     }
 
     fn keep_events(&self) -> bool {

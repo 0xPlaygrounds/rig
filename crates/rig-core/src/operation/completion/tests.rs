@@ -988,10 +988,10 @@ fn late_citations_land_on_the_closed_text() {
     let whole = |url: &str| WireCitation::new(None, vec![url_source(url)]);
     turn.cite_item(&mut items, 0, vec![whole("https://a.example")], false);
     turn.cite_item(&mut items, 0, vec![whole("https://b.example")], false);
-    let response = turn.response(Finish::default(), reply());
+    let response = turn.partial(Some(&Finish::default()), &reply(), None);
     assert_eq!(cited(&response).len(), 2);
     turn.cite_item(&mut items, 0, vec![whole("https://c.example")], true);
-    let response = turn.response(Finish::default(), reply());
+    let response = turn.partial(Some(&Finish::default()), &reply(), None);
     assert_eq!(
         cited(&response),
         [(

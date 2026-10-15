@@ -101,7 +101,7 @@ impl super::Observe for RecordingObserver {
         self.recorder.adapter_context(self.id)
     }
 
-    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
+    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
         if let Some(output) = self
             .published
             .as_ref()
@@ -109,7 +109,7 @@ impl super::Observe for RecordingObserver {
         {
             self.recorder.tool_output(self.id, output);
         }
-        self.recorder.resolve(self.id, outcome.clone());
+        self.recorder.resolve(self.id, outcome);
     }
 
     fn keep_events(&self) -> bool {

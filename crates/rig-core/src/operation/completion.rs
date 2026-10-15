@@ -1021,17 +1021,6 @@ impl ReplyFold {
         );
     }
 
-    /// The parts taken so far, in their position (in wire-index order on a
-    /// wire that asked for it, after the lead block); a part that has not
-    /// ended is not among them, and parts from the first incomplete one on
-    /// keep no provider item.
-    pub fn snapshot(&self) -> Vec<AssistantContent> {
-        self.ordered(
-            self.choice.iter().cloned().enumerate().collect(),
-            self.first_incomplete,
-        )
-    }
-
     /// Who the reply is from.
     pub fn origin(&self) -> &Origin {
         &self.origin
@@ -1050,7 +1039,8 @@ impl ReplyFold {
         reply: &Reply,
         failure: Option<&ProviderError>,
     ) -> CompletionResponse {
-        let mut response = self.response(end.cloned().unwrap_or_default(), reply.clone());
+        let mut response =
+            self.response(end.cloned().unwrap_or_default(), reply.clone(), Vec::new());
         if end.is_none() {
             match failure {
                 Some(error) => {
@@ -1118,7 +1108,13 @@ impl ReplyFold {
         parts.into_iter().map(|(_, part)| part).collect()
     }
 
-    fn response(&self, end: Finish, reply: Reply) -> CompletionResponse {
+    /// The response of `choice`, the reply's parts, ended by `end`.
+    fn response(
+        &self,
+        end: Finish,
+        reply: Reply,
+        choice: Vec<AssistantContent>,
+    ) -> CompletionResponse {
         let Finish {
             usage,
             reason,
@@ -1151,7 +1147,7 @@ impl ReplyFold {
                 Some(_) => None,
             }
         });
-        let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
+        let mut response = CompletionResponse::new(choice, usage, origin, reply.raw)
             .with_optional_finish_reason(reason)
             .accept_unknown_finish_reasons(self.accept_unknown_finish)
             .with_unfinished_calls(self.unfinished.clone());
@@ -1318,7 +1314,7 @@ impl Fold<Completion> for ReplyFold {
         Ok(())
     }
 
-    fn finish(self, end: Finish, reply: Reply) -> Result<CompletionResponse, ProviderError> {
+    fn finish(mut self, end: Finish, reply: Reply) -> Result<CompletionResponse, ProviderError> {
         if let Some(FinishReason::Other(reason)) = &end.reason {
             tracing::warn!(
                 provider = %self.origin.provider,
@@ -1327,7 +1323,12 @@ impl Fold<Completion> for ReplyFold {
                 "the provider ended the reply with an unknown finish reason"
             );
         }
-        let response = self.response(end, reply);
+        // The parts taken, in their position (in wire-index order on a wire
+        // that asked for it, after the lead block); parts from the first
+        // incomplete one on keep no provider item.
+        let parts = std::mem::take(&mut self.choice).into_iter().enumerate();
+        let choice = self.ordered(parts.collect(), self.first_incomplete);
+        let response = self.response(end, reply, choice);
         self.span
             .record_response(response.response_id(), response.model(), &response.usage);
         Ok(response)
