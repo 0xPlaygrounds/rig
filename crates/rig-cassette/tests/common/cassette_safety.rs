@@ -553,7 +553,7 @@ fn cassette_sites_in_file(
 ) -> Result<Vec<rig_test_support::scenario_registry::ScenarioSite>, String> {
     let source = fs::read_to_string(path)
         .map_err(|error| format!("{} should be readable: {error}", display_repo_path(path)))?;
-    rig_test_support::scenario_registry::conventional_cassette_scenario_sites(&source)
+    rig_test_support::scenario_registry::cassette_scenario_sites(&source)
         .map_err(|error| format!("{}: {error}", display_repo_path(path)))
 }
 

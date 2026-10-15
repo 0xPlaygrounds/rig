@@ -1,7 +1,5 @@
 use super::*;
 
-const WRAPPERS: &[&str] = &["with_cassette"];
-
 #[test]
 fn direct_calls_specs_and_ignored_functions_keep_their_registration_semantics() {
     let source = r#"
@@ -11,7 +9,7 @@ fn direct_calls_specs_and_ignored_functions_keep_their_registration_semantics() 
         fn unrelated() { with_other("other", callback); }
     "#;
     assert_eq!(
-        cassette_scenarios(source, WRAPPERS).expect("registrations"),
+        cassette_scenarios(source).expect("registrations"),
         ["direct", "spec"]
     );
     for source in [
@@ -20,10 +18,7 @@ fn direct_calls_specs_and_ignored_functions_keep_their_registration_semantics() 
         "fn bad() { with_cassette(); }",
         "not Rust",
     ] {
-        assert!(
-            cassette_scenarios(source, WRAPPERS).is_err(),
-            "accepted {source}"
-        );
+        assert!(cassette_scenarios(source).is_err(), "accepted {source}");
     }
 }
 
@@ -48,7 +43,7 @@ fn qualified_matrix_invocations_in_modules_claim_only_recorded_rows() {
         }
     "#;
     assert_eq!(
-        cassette_scenarios(source, WRAPPERS).expect("matrix rows"),
+        cassette_scenarios(source).expect("matrix rows"),
         ["first", "tools"]
     );
 }
@@ -60,11 +55,7 @@ fn comments_strings_and_macro_definitions_are_not_invocations() {
         const TEXT: &str = "with_cassette(\"string\", callback)";
         macro_rules! definition { () => { with_cassette("definition", callback); }; }
     "#;
-    assert!(
-        cassette_scenarios(source, WRAPPERS)
-            .expect("source")
-            .is_empty()
-    );
+    assert!(cassette_scenarios(source).expect("source").is_empty());
 }
 
 #[test]
@@ -74,10 +65,7 @@ fn malformed_matrix_rows_fail_instead_of_vanishing() {
         "case_matrix! { family: wire_matrix_case; missing_attribute: truncation; }",
         "case_matrix! { wrapper: with_cassette, family: family; #[tokio::test] a: (\"a\", row); #[tokio::test] a: (\"b\", row); }",
     ] {
-        assert!(
-            cassette_scenarios(source, WRAPPERS).is_err(),
-            "accepted {source}"
-        );
+        assert!(cassette_scenarios(source).is_err(), "accepted {source}");
     }
 }
 
@@ -86,7 +74,7 @@ fn sites_keep_the_wrapper_and_the_specs_declarations() {
     let source = r#"
         async fn cells() {
             with_x_cassette("plain/cell", |c| async {}).await;
-            with_x_bogus_key(
+            with_x_cassette_bogus_key(
                 CassetteSpec::new("auth/cell")
                     .unordered()
                     .expects_account_failure(crate::cassettes::AccountFailure::Auth),
@@ -95,8 +83,7 @@ fn sites_keep_the_wrapper_and_the_specs_declarations() {
             .await;
         }
     "#;
-    let sites = cassette_scenario_sites(source, &["with_x_cassette", "with_x_bogus_key"])
-        .expect("sites parse");
+    let sites = cassette_scenario_sites(source).expect("sites parse");
     assert_eq!(
         sites,
         [
@@ -107,7 +94,7 @@ fn sites_keep_the_wrapper_and_the_specs_declarations() {
             },
             ScenarioSite {
                 scenario: "auth/cell".into(),
-                wrapper: "with_x_bogus_key".into(),
+                wrapper: "with_x_cassette_bogus_key".into(),
                 declared: vec!["Auth".into()],
             },
         ]
@@ -211,7 +198,7 @@ fn convention_finds_wrapper_calls_and_skips_wrapper_bodies() {
             with_other("not/a/wrapper", |c| async {}).await;
         }
     "#;
-    let scenarios: Vec<_> = conventional_cassette_scenario_sites(source)
+    let scenarios: Vec<_> = cassette_scenario_sites(source)
         .expect("sites parse")
         .into_iter()
         .map(|site| (site.scenario, site.wrapper))
