@@ -65,7 +65,9 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
 
     /// The schema of the output, usually
     /// [`Schema::of::<Self::Output>()`](Schema::of), for providers that read
-    /// one; none by default.
+    /// one; none by default. It describes JSON output: a text output reaches
+    /// the model as text, not as a JSON string, so a tool returning text
+    /// declares none.
     fn output_schema(&self) -> Option<Schema> {
         None
     }

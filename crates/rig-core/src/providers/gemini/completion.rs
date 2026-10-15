@@ -552,22 +552,34 @@ fn declaration(tool: crate::completion::ToolDefinition) -> Value {
 }
 
 /// The schema of the `response` a tool's result goes back in
-/// ([`user_part`]): its output under `result`. The output's root `$defs`
-/// move to the new root, so its references still resolve.
+/// ([`user_part`]): its output under `result`, with the output's local
+/// references (`#`, `#/$defs/...`) moved there too, so they still resolve.
 fn response_schema(output: crate::tool::Schema) -> Value {
     let mut output = output.into_value();
-    let mut response = Map::new();
-    response.insert("type".to_owned(), json!("object"));
-    for key in ["$defs", "definitions"] {
-        if let Some(definitions) = output
-            .as_object_mut()
-            .and_then(|root| root.shift_remove(key))
-        {
-            response.insert(key.to_owned(), definitions);
+    under_result(&mut output);
+    json!({ "type": "object", "properties": { "result": output } })
+}
+
+/// Points every local `$ref` in `schema` below `/properties/result`.
+fn under_result(schema: &mut Value) {
+    match schema {
+        Value::Object(map) => {
+            for (key, value) in map.iter_mut() {
+                match value {
+                    Value::String(reference) if key == "$ref" => {
+                        if let Some(pointer) = reference.strip_prefix('#')
+                            && (pointer.is_empty() || pointer.starts_with('/'))
+                        {
+                            *reference = format!("#/properties/result{pointer}");
+                        }
+                    }
+                    value => under_result(value),
+                }
+            }
         }
+        Value::Array(items) => items.iter_mut().for_each(under_result),
+        _ => {}
     }
-    response.insert("properties".to_owned(), json!({ "result": output }));
-    Value::Object(response)
 }
 
 /// An object of the entries that are set.

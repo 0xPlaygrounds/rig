@@ -53,7 +53,7 @@ pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
     fn parameters(&self) -> super::Schema;
 
     /// The schema of the output, for providers that read one; none by
-    /// default.
+    /// default ([`Tool::output_schema`](super::Tool::output_schema)).
     fn output_schema(&self) -> Option<super::Schema> {
         None
     }

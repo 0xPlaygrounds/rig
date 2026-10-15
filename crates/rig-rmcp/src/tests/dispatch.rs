@@ -320,6 +320,19 @@ fn structured_constructors_replace_their_canonical_text_fallback() {
     }
 }
 
+/// A server's compatibility text is the structured value however it is
+/// spaced, so it is replaced too rather than sent beside it.
+#[test]
+fn a_pretty_printed_text_fallback_is_replaced() {
+    let value = json!({"answer": 42});
+    let mut result = CallToolResult::structured(value.clone());
+    result.content = vec![ContentBlock::text("{\n  \"answer\": 42\n}")];
+    assert_eq!(
+        mcp_result_output(&result).expect("MCP structured output"),
+        ToolOutput::json(value)
+    );
+}
+
 #[test]
 fn structured_content_is_kept_alongside_real_rich_blocks() {
     let value = json!({"answer": 42});

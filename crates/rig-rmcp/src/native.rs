@@ -375,15 +375,19 @@ pub(crate) fn mcp_content_block_to_tool_content(
 /// Build the model presentation without flattening or reparsing MCP blocks.
 pub fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutionError> {
     let structured = result.structured_content.as_ref();
-    let canonical_fallback = structured.map(serde_json::Value::to_string);
     let mut replaced_fallback = false;
     let mut mapped = Vec::with_capacity(result.content.len());
 
     for block in &result.content {
         let fallback_structured = if !replaced_fallback {
-            match (block, canonical_fallback.as_deref(), structured) {
-                (ContentBlock::Text(text), Some(fallback), Some(structured))
-                    if text.text == fallback =>
+            // The compatibility text is the structured value serialized,
+            // however the server spaced it.
+            match (block, structured) {
+                (ContentBlock::Text(text), Some(structured))
+                    if serde_json::from_str::<serde_json::Value>(&text.text)
+                        .ok()
+                        .as_ref()
+                        == Some(structured) =>
                 {
                     Some(structured)
                 }
