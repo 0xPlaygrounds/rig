@@ -497,8 +497,9 @@ impl Session {
         if self.dirty {
             self.drain(event_timeout, drain_timeout, slot).await?;
         }
+        let previous = self.chain.begin_turn();
         if payload.chain && payload.body.get("previous_response_id").is_none() {
-            payload.previous_response_id = self.chain.previous.get();
+            payload.previous_response_id = previous;
         }
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -509,7 +510,6 @@ impl Session {
         // Set before the write: a write cut off midway may still have
         // reached the provider, whose reply must not reach the next turn.
         self.dirty = true;
-        self.chain.begin_turn();
         if let Err(error) = self.socket.send(Frame::Text(text)).await {
             self.mark_failed();
             transport_failed(slot);
@@ -655,8 +655,10 @@ impl Previous {
         self.lock().id.clone()
     }
 
-    fn epoch(&self) -> u64 {
-        self.lock().epoch
+    /// The chain's response and clearing count, read together.
+    fn snapshot(&self) -> (Option<String>, u64) {
+        let chained = self.lock();
+        (chained.id.clone(), chained.epoch)
     }
 
     /// End the chain.
@@ -737,10 +739,13 @@ impl Chain {
         self.current_response_id = None;
     }
 
-    /// A turn is sent: it continues the chain unless a caller clears it.
-    fn begin_turn(&mut self) {
+    /// A turn is about to be sent: it continues the chain, whose response
+    /// this returns, unless a caller clears it.
+    fn begin_turn(&mut self) -> Option<String> {
         self.end_turn();
-        self.epoch = self.previous.epoch();
+        let (previous, epoch) = self.previous.snapshot();
+        self.epoch = epoch;
+        previous
     }
 
     /// Whether `probe` names a response other than the one this turn opened,
