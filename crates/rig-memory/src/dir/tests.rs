@@ -6,7 +6,7 @@ use std::sync::Arc;
 use rig_core::completion::Message;
 use rig_core::conversation::Conversation;
 
-use super::DirStore;
+use super::{DirFiles, DirStore};
 use crate::{Files, Session, SessionError, Store, Writer, as_of, history, load, save};
 
 /// A fresh directory for test `name`.
@@ -203,5 +203,22 @@ fn a_replaced_log_takes_the_next_append_and_a_crashed_replace_is_not_a_log() {
     store.remove_blob("abc.png").expect("removed");
     store.remove_blob("abc.png").expect("removed again");
     assert!(store.blobs().expect("blobs").is_empty());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_part_file_is_never_listed_or_named_and_a_blob_is_written_once() {
+    let dir = scratch("parts");
+    let files = DirFiles::new(dir.join("plugins"));
+    files.write_file("notes/a.json", b"{}").expect("a file");
+    // A write that crashed before its rename leaves a part file beside it.
+    fs::write(dir.join("plugins/notes/b.json.rig-part"), b"half").expect("a part");
+    assert_eq!(files.files().expect("files"), ["notes/a.json"]);
+    assert!(files.write_file("c.json.rig-part", b"{}").is_err());
+
+    let store = DirStore::open(dir.join("session")).expect("opened");
+    store.put_blob("abc.png", b"first").expect("a blob");
+    store.put_blob("abc.png", b"second").expect("the same blob");
+    assert_eq!(store.blob("abc.png").expect("read"), b"first");
     let _ = fs::remove_dir_all(&dir);
 }
