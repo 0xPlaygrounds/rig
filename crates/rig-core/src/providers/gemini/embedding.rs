@@ -145,13 +145,10 @@ impl<'id> Decoder<'id, crate::operation::Embedding> for EmbeddingsDecoder {
         event: Self::Event,
         out: Out<'id, crate::operation::Embedding>,
     ) -> Result<Flow, ProviderError> {
-        let vectors = event.embeddings.into_iter().map(|embedding| {
-            embedding
-                .values
-                .into_iter()
-                .filter_map(|value| value.as_f64())
-                .collect()
-        });
+        let vectors = event
+            .embeddings
+            .into_iter()
+            .map(|embedding| embedding.values);
         // Gemini supplies no usage or response id; the driver attaches the raw body.
         Ok(out.end(embeddings::EmbeddingResponse::from_vectors(vectors)))
     }
@@ -175,7 +172,7 @@ pub mod gemini_api_types {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EmbeddingValues {
         #[serde(default)]
-        pub values: Vec<serde_json::Number>,
+        pub values: Vec<f64>,
     }
 }
 

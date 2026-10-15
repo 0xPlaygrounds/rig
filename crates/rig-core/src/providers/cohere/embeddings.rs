@@ -163,15 +163,11 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             .as_ref()
             .map(|meta| meta.billed_units.to_usage())
             .unwrap_or_default();
-        let vectors = reply
-            .embeddings
-            .into_iter()
-            .map(|vector| vector.into_iter().filter_map(|n| n.as_f64()).collect());
         // Cohere's `/v1/embed` reply names no model.
         Ok(out.end(crate::embeddings::EmbeddingResponse {
             response_id: Some(reply.id),
             usage,
-            ..crate::embeddings::EmbeddingResponse::from_vectors(vectors)
+            ..crate::embeddings::EmbeddingResponse::from_vectors(reply.embeddings)
         }))
     }
 }
@@ -259,11 +255,10 @@ impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
             .unwrap_or_default();
         // The fold names the input: an image has no text, and its bytes
         // must never travel back in a response.
-        let vector = vector.iter().filter_map(|n| n.as_f64()).collect();
         Ok(out.end(crate::embeddings::EmbeddingResponse {
             usage,
             response_id: reply.id,
-            ..crate::embeddings::EmbeddingResponse::from_vectors([vector])
+            ..crate::embeddings::EmbeddingResponse::from_vectors([vector.clone()])
         }))
     }
 }
@@ -275,7 +270,7 @@ pub struct EmbeddingResponse {
     #[serde(default)]
     pub response_type: Option<String>,
     pub id: String,
-    pub embeddings: Vec<Vec<serde_json::Number>>,
+    pub embeddings: Vec<Vec<f64>>,
     pub texts: Vec<String>,
     #[serde(default)]
     pub meta: Option<Meta>,
@@ -346,7 +341,7 @@ pub struct ImageEmbeddingResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FloatEmbeddings {
     #[serde(rename = "float")]
-    pub values: Vec<Vec<serde_json::Number>>,
+    pub values: Vec<Vec<f64>>,
 }
 
 impl BilledUnits {
