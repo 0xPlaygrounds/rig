@@ -13,7 +13,7 @@
 //! # async fn run(graph: KnowledgeGraph) -> Result<(), anyhow::Error> {
 //! let model = OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //! let client = Neo4jClient::connect("neo4j://localhost:7687", "neo4j", "password").await?;
-//! let store = client.graph_store();
+//! let store = client.graph_store().await?;
 //! store.insert_graph(graph.clone()).await?;
 //! let embedded = rig_core::embeddings::EmbeddingsBuilder::new(model.clone())
 //!     .documents(graph.nodes)?
@@ -108,7 +108,7 @@ struct EdgeRow {
 struct EmbeddedNode {
     #[serde(flatten)]
     node: Node,
-    embedding: Vec<f64>,
+    embedding: Option<Vec<f64>>,
 }
 
 /// A knowledge graph stored in Neo4j.
@@ -118,9 +118,17 @@ pub struct Neo4jGraphStore {
 }
 
 impl Neo4jGraphStore {
-    /// A store over `graph`.
-    pub fn new(graph: Graph) -> Self {
-        Self { graph }
+    /// A store over `graph`. Creates the uniqueness constraint on
+    /// `Entity.id` if it is missing, so concurrent inserts merge rather
+    /// than duplicate entities.
+    pub async fn new(graph: Graph) -> Result<Self, VectorStoreError> {
+        graph
+            .run(neo4rs::query(
+                "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (n:Entity) REQUIRE n.id IS UNIQUE",
+            ))
+            .await
+            .map_err(VectorStoreError::datastore)?;
+        Ok(Self { graph })
     }
 
     /// Merges each node as [`GraphStore::insert_graph`] does and stores its
@@ -132,20 +140,20 @@ impl Neo4jGraphStore {
     ) -> Result<(), VectorStoreError> {
         let nodes: Vec<BoltType> = nodes
             .into_iter()
-            .filter_map(|(node, embeddings)| {
-                embeddings.into_iter().next().map(|embedding| {
-                    EmbeddedNode {
-                        node,
-                        embedding: embedding.vec,
-                    }
-                    .to_bolt_type()
-                })
+            .map(|(node, embeddings)| {
+                EmbeddedNode {
+                    node,
+                    embedding: embeddings.into_iter().next().map(|embedding| embedding.vec),
+                }
+                .to_bolt_type()
             })
             .collect();
         self.graph
             .run(
-                neo4rs::query(&format!("{MERGE_NODES}, n.embedding = node.embedding"))
-                    .param("nodes", nodes),
+                neo4rs::query(&format!(
+                    "{MERGE_NODES}, n.embedding = coalesce(node.embedding, n.embedding)"
+                ))
+                .param("nodes", nodes),
             )
             .await
             .map_err(VectorStoreError::datastore)
@@ -154,8 +162,8 @@ impl Neo4jGraphStore {
 
 impl Neo4jClient {
     /// A [`Neo4jGraphStore`] over this client's database.
-    pub fn graph_store(&self) -> Neo4jGraphStore {
-        Neo4jGraphStore::new(self.graph.clone())
+    pub async fn graph_store(&self) -> Result<Neo4jGraphStore, VectorStoreError> {
+        Neo4jGraphStore::new(self.graph.clone()).await
     }
 }
 

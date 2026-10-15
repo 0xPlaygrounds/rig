@@ -194,7 +194,7 @@ async fn graph_retrieval_test() {
         return;
     }
     let (_container, client) = start_neo4j().await;
-    let store = client.graph_store();
+    let store = client.graph_store().await.expect("graph store");
 
     let lumen = Node::new("Lumen cell", "product", "A solid-state battery.");
     let mira = Node::new("Mira Okonkwo", "person", "A materials scientist.");
