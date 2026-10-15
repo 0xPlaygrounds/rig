@@ -3,8 +3,8 @@
 //! sending a stalled call again ([`resend`]): the old effect then settles
 //! as superseded, with no outcome applied. The plugin that owns the effect,
 //! and waits for its outcome by a marker of its own, follows it with the
-//! kernel's [`follow_successor`](rig_ecs::stage::follow_successor), so the successor's outcome is the one it
-//! takes.
+//! kernel's [`follow_successor`](rig_ecs::stage::follow_successor), so the
+//! successor's outcome is the one it takes.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;

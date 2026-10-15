@@ -38,7 +38,7 @@
 //! real but on the overlay: it can read every file, its writes, removals
 //! and renames stay in the overlay, and it cannot start a process (so a
 //! `shell` call's preview is the overlay's refusal). Anything the tool does
-//! other than through its [`Place`]'s workspace, such as a request over
+//! other than through its [`CallPlace`]'s workspace, such as a request over
 //! the network, it does in the preview too.
 
 use std::sync::Arc;

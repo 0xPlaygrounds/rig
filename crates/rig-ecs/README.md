@@ -61,7 +61,7 @@ What it holds, by module:
   current, the answer the kernel gives if it stops the effect first. Every
   settled effect is `EffectRecorded`, with its raw and reviewed outcome. A
   failing Prepare, Gate or Review system closes its stage for that pass.
-- `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
+- `tasks`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens.
 - `tools`, `prompt`: tools and system prompt sections are entities that
   plugins register (`AppToolsExt`, `PromptSection`, for every agent or,
@@ -81,7 +81,7 @@ What it holds, by module:
   rig-core's `catalog::Connector`.
 - `effects`: the one dispatch path, recorded into the kernel's own buffer
   and written as `EffectRecorded` when each effect settles.
-- `journal`, `restore`: the session log, appended to while the session
+- `session_log`, `restore`: the session log, appended to while the session
   runs, and its restore. An
   agent's `Conversation` component is rig-core's conversation (it derefs
   to it): a plugin changes it by calling its methods (push, splice with

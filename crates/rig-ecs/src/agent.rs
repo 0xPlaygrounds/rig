@@ -105,7 +105,8 @@ pub struct EffectParent(pub EffectId);
 ///
 /// Each change is kept in the conversation's outbox until the kernel saves
 /// it to the agent's log and announces it as a
-/// [`ConversationChanged`](super::session_log::ConversationChanged) (see [`journal`](super::session_log)).
+/// [`ConversationChanged`](super::session_log::ConversationChanged) (see
+/// [`session_log`](super::session_log)).
 /// A value inserted in place of the agent's own is saved as one reset, the
 /// changes the old one had not saved first. It is reflected opaquely and
 /// saved through serde.
