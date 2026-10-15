@@ -114,6 +114,9 @@ pub struct SubagentsPlugin;
 
 impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<ApprovalPlugin>() {
+            app.add_plugins(ApprovalPlugin);
+        }
         app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate))
             .keeps_saved::<Subtask>()
             .keeps_saved::<Helper>()

@@ -19,9 +19,12 @@ describes using it.
   store (`StoreOpener`, which refuses, unchanged, a session from before
   `rig-session/2` or from a newer rig), the kernel, the launcher protocol
   (`Invoked`, `AppStart`, `Secrets`, `Exit`), slash commands, fronts, and the
-  shared services: settings, the workspace and child processes, file watches,
-  plugin data, questions, pickers and approvals, transcript notes, and the
-  preview and checkpoint of tool calls. The generated `main.rs` ends with
+  shared services every agent uses: settings, the workspace and child
+  processes, file watches, plugin data, questions and pickers, and transcript
+  notes. The services only some plugins use are plugins of this crate that
+  those plugins add: approvals (`ApprovalPlugin`), the preview and the
+  checkpoint of tool calls (`PreviewPlugin`, `CheckpointPlugin`) and the
+  session picker (`SessionPickerPlugin`). The generated `main.rs` ends with
   `rig_harness::run`.
 - **Everything else is a plugin** in a crate of the repository's
   [`plugins/`](../../plugins) folder, listed in `plugins.toml` and built only
@@ -42,7 +45,7 @@ The default `plugins.toml`, in order:
 | `rig-compaction` | `CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
 | `rig-telemetry` | `UsagePlugin` | what model calls cost; `/usage` |
 | `rig-activity` | `ActivityPlugin` | what each agent is doing, for views |
-| `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace (`SearchTool`, `DeleteTool`, `MoveTool` and `ListTool` are there too, not listed by default) |
+| `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
 | `rig-coding-tools` | `AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-reload` | `ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and the system prompt's section on what the agent is (its plugins, commands and tools) and how it writes plugins |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit` |

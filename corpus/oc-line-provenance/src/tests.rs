@@ -38,7 +38,6 @@ fn session(home: &Home, dir: &Path, model: &MockCompletionModel) -> (App, Receiv
             EditTool,
             WriteTool,
             ShellTool,
-            CheckpointPlugin,
             LineProvenancePlugin,
         ))
         .init_resource::<Ended>()

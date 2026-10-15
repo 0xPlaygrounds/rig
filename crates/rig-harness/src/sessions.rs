@@ -849,7 +849,8 @@ fn picked(pick: On<Pick>, mut pickers: Query<(&SessionView, &mut SessionPicked)>
     }
 }
 
-/// Fills and previews every [`SessionPicker`].
+/// Fills and previews every [`SessionPicker`]. A plugin that shows one
+/// adds it, unless `app.is_plugin_added::<SessionPickerPlugin>()`.
 pub struct SessionPickerPlugin;
 
 impl Plugin for SessionPickerPlugin {

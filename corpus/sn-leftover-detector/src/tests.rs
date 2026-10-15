@@ -126,7 +126,6 @@ fn added_leftovers_get_one_nudge_and_kept_ones_are_not_raised_again() {
             SessionLogPlugin,
             EditTool,
             ShellTool,
-            CheckpointPlugin,
             LeftoverDetectorPlugin,
         ))
         .init_resource::<Ended>()

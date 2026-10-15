@@ -101,7 +101,8 @@ pub struct ApprovalSystems;
 #[derive(Component)]
 struct Approving;
 
-/// Asks the user to approve each effect that [`NeedsApproval`].
+/// Asks the user to approve each effect that [`NeedsApproval`]. A plugin
+/// that asks adds it, unless `app.is_plugin_added::<ApprovalPlugin>()`.
 pub struct ApprovalPlugin;
 
 impl Plugin for ApprovalPlugin {

@@ -4,7 +4,6 @@ use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::approval::ApprovalPlugin;
 use rig_harness::ask::AskPlugin;
 use rig_harness_test_support::{
     MemoryStore, app_on, calls, first_agent, pass_wall_clock, reply, scratch_home, scripted_models,
@@ -232,7 +231,7 @@ fn headless_items_fail_deny_approvals_and_retry_after_a_restart() {
     ]);
     let models = scripted_models([("test/main", &main)]);
     let (mut app, wakes) = start(&root, models);
-    app.add_plugins((AskPlugin, ApprovalPlugin))
+    app.add_plugins(AskPlugin)
         .add_systems(
             AgentPass,
             ask_for_shell.in_set(Stage::Gate).before(ApprovalSystems),

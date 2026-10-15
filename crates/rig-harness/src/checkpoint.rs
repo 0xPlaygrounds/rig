@@ -148,10 +148,9 @@ impl CallCheckpoint {
     }
 }
 
-/// Wraps every tool call that may write anywhere in a [`Checkpointed`].
-/// [`RigHarnessPlugins`](crate::RigHarnessPlugins) adds it; a small test
-/// app without that group adds it alone. It is not idempotent: a plugin
-/// never adds it itself.
+/// Wraps every tool call that may write anywhere in a [`Checkpointed`]. A
+/// plugin that reads what such calls changed adds it, unless
+/// `app.is_plugin_added::<CheckpointPlugin>()`.
 pub struct CheckpointPlugin;
 
 impl Plugin for CheckpointPlugin {

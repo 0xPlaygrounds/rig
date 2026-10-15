@@ -275,6 +275,9 @@ pub struct GithubMentionPlugin;
 
 impl Plugin for GithubMentionPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<ApprovalPlugin>() {
+            app.add_plugins(ApprovalPlugin);
+        }
         let env = app
             .world()
             .get_resource::<GithubEnv>()

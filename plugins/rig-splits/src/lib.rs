@@ -41,6 +41,9 @@ pub struct SplitsPlugin;
 
 impl Plugin for SplitsPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<SessionPickerPlugin>() {
+            app.add_plugins(SessionPickerPlugin);
+        }
         let asker = app.world_mut().spawn(Name::new("rig-splits")).id();
         app.insert_resource(Asker(asker))
             .add_command(

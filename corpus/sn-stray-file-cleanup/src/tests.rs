@@ -74,7 +74,6 @@ fn after_a_turn(
     app.insert_resource(scripted_models([(MODEL, model)]))
         .insert_resource(ProjectRoot(dir.to_path_buf()))
         .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, PickPlugin))
-        .add_plugins(CheckpointPlugin)
         .add_plugins((WriteTool, EditTool, ShellTool, StrayFilesPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);

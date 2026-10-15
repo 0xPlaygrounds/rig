@@ -113,7 +113,9 @@ pub mod prelude {
     pub use bevy_app::OnAppExitSystems;
 
     pub use crate::agent_title::AgentTitle;
-    pub use crate::approval::{ApprovalReason, ApprovalSystems, Approved, NeedsApproval};
+    pub use crate::approval::{
+        ApprovalPlugin, ApprovalReason, ApprovalSystems, Approved, NeedsApproval,
+    };
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
     pub use crate::checkpoint::{
         CallCheckpoint, CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint,
@@ -141,7 +143,8 @@ pub mod prelude {
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::sessions::{
-        SessionEntry, SessionFilter, SessionItem, SessionPicked, SessionPicker, SessionSource,
+        SessionEntry, SessionFilter, SessionItem, SessionPicked, SessionPicker,
+        SessionPickerPlugin, SessionSource,
     };
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::resend;
@@ -160,9 +163,14 @@ pub mod prelude {
 
 /// The harness: the session and its log, the kernel
 /// ([`rig_ecs::AgentPlugin`], [`rig_ecs::session_log::SessionLogPlugin`]),
-/// the launcher protocol, and the services every plugin shares (the modules
-/// of this crate). Everything else is a plugin `plugins.toml` lists, which
-/// can leave it out.
+/// the launcher protocol, and the services every agent uses: slash
+/// commands, the clock the loop sleeps by, file watches, the questions and
+/// pickers every front answers, and tool progress. The services only some
+/// plugins use are plugins of this crate those plugins add, unless
+/// `app.is_plugin_added::<P>()`: [`approval::ApprovalPlugin`],
+/// [`preview::PreviewPlugin`], [`checkpoint::CheckpointPlugin`] and
+/// [`sessions::SessionPickerPlugin`]. Everything else is a plugin
+/// `plugins.toml` lists, which can leave it out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {
@@ -178,12 +186,8 @@ impl PluginGroup for RigHarnessPlugins {
             .add(clock::ClockPlugin)
             .add(watch::WatchPlugin)
             .add(ask::AskPlugin)
-            .add(approval::ApprovalPlugin)
             .add(pick::PickPlugin)
-            .add(sessions::SessionPickerPlugin)
             .add(progress::ProgressPlugin)
-            .add(preview::PreviewPlugin)
-            .add(checkpoint::CheckpointPlugin)
     }
 }
 

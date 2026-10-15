@@ -1,8 +1,11 @@
 //! What a tool call would leave on disk, learned before it runs: put
-//! [`Preview`] on the call in [`Stage::Gate`], and the harness holds it, runs
-//! its tool on an [`Overlay`] of the workspace that keeps every write from
-//! the disk, and puts the changes on it as [`Previewed`]; the call is then
-//! ready to start again for the gate to decide with the changes in hand.
+//! [`Preview`] on the call in [`Stage::Gate`], and the harness holds it,
+//! runs its tool on an [`Overlay`] of the workspace that keeps every write
+//! from the disk, and puts the changes on it as [`Previewed`]; the call is
+//! then ready to start again for the gate to decide with the changes in
+//! hand.
+//!
+//! [`Stage::Gate`]: rig_ecs::prelude::Stage::Gate
 //!
 //! Only a tool registered per call
 //! ([`add_tool_per_call`](crate::per_call::AppPerCallExt::add_tool_per_call))
@@ -25,8 +28,8 @@ use rig_core::serve::serve_inline;
 use rig_core::tool::{FileChange, ToolErrorKind};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    AgentPass, ForAgent, GateSystems, HoldOf, Running, Stage, Started, ToolCalls, ToolDef,
-    ToolRequest, Wake,
+    AgentPass, ForAgent, GateSystems, HoldOf, Running, Started, ToolCalls, ToolDef, ToolRequest,
+    Wake,
 };
 use rig_tools::overlay::Overlay;
 
@@ -41,6 +44,8 @@ use rig_ecs::prelude::ReadyToStart;
 /// learn what it would leave on disk: the harness holds the call, runs its
 /// tool on an overlay of the workspace off the main thread, then puts
 /// [`Previewed`] on it and releases it.
+///
+/// [`Stage::Gate`]: rig_ecs::prelude::Stage::Gate
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Preview;
 
@@ -54,13 +59,12 @@ pub struct Preview;
 pub struct Previewed(pub Result<Vec<FileChange>, ErrorReport>);
 
 /// Previews the tool calls that ask for it ([`Preview`]), after every gate,
-/// before Start. [`RigHarnessPlugins`](crate::RigHarnessPlugins) adds it; a
-/// small test app without that group adds it alone. It is not idempotent:
-/// a plugin never adds it itself.
+/// before Start. A plugin that puts [`Preview`] on calls adds it, unless
+/// `app.is_plugin_added::<PreviewPlugin>()`.
 pub struct PreviewPlugin;
 
 /// Where [`PreviewPlugin`] holds the calls it previews, after
-/// [`GateSystems::After`] and before Start.
+/// [`GateSystems::After`] and before [`GateSystems::Fallback`].
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PreviewSystems;
 
@@ -72,7 +76,7 @@ impl Plugin for PreviewPlugin {
                 AgentPass,
                 PreviewSystems
                     .after(GateSystems::After)
-                    .before(Stage::Start),
+                    .before(GateSystems::Fallback),
             )
             .add_systems(AgentPass, preview.in_set(PreviewSystems))
             .add_observer(previewed);

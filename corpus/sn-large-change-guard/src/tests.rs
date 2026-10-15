@@ -61,7 +61,7 @@ fn start(
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin, PreviewPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin))
         .add_plugins((WriteTool, EditTool))
         .add_plugins(LargeChangeGuardPlugin)
         .init_resource::<Ended>()

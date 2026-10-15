@@ -136,6 +136,9 @@ pub struct StrayFilesPlugin;
 
 impl Plugin for StrayFilesPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<CheckpointPlugin>() {
+            app.add_plugins(CheckpointPlugin);
+        }
         app.add_setting::<StraySettings>("stray");
         let watched = app.world().get_resource::<StraySettings>();
         let watched = watched

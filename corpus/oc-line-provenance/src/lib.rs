@@ -64,6 +64,9 @@ pub struct LineProvenancePlugin;
 
 impl Plugin for LineProvenancePlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<CheckpointPlugin>() {
+            app.add_plugins(CheckpointPlugin);
+        }
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .add_observer(call_settled)

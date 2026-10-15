@@ -333,7 +333,7 @@ is built for each call's `CallPlace`: the app's workspace (an overlay of it
 for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
 `WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
 for a tool registered with `add_live_tool_per_call` the `Live` its output
-goes to, as the coding tools and `ListTool` (`list`, off by default) are.
+goes to, as the coding tools are.
 
 ```rust,no_run
 use std::path::PathBuf;
@@ -438,8 +438,9 @@ A tool call is an effect with a `ToolRequest` (the model's `ToolCall`) and the
   tool, one `ToolAccess` leaves out, arguments that do not fit.
 - **Gate** refuses a call about to run (`Outcome::refused(why)`, which the
   model reads), answers it (a cached result), holds it, or wants the user to
-  approve it, `commands.entity(call).queue(NeedsApproval::add(plugin, why))`.
-  Every plugin's reasons make one question in `ApprovalSystems`:
+  approve it, `commands.entity(call).queue(NeedsApproval::add(plugin, why))`,
+  with `ApprovalPlugin` added. Every plugin's reasons make one question in
+  `ApprovalSystems`:
   `approval::ALLOW` makes the call `Approved` (its note kept in the
   question's record), `DENY` or a text alone refuses it with the note, and
   with nobody to answer it is refused at once.
@@ -452,8 +453,8 @@ Each time Gate opens, a call gets the `Footprint` of the call as it stands, so
 a held call whose `ToolRequest` was edited is gated again ([why a call
 waits](#a-held-call-holds-back-the-later-calls-of-its-reply)).
 
-**What a call would change**, before it runs: a gate puts `Preview` on it,
-the harness holds it, runs its tool on an overlay of the workspace that
+**What a call would change**, before it runs: with `PreviewPlugin` added, a
+gate puts `Preview` on it, the harness holds it, runs its tool on an overlay of the workspace that
 keeps every write from the disk, and puts `Previewed(Ok(changes))` on it,
 `ReadyToStart` again: each `FileChange`, a deletion's too, with its hunks, the
 text before and after (`after_text()`), and each side's `FileState`
@@ -1538,8 +1539,8 @@ tool resolves paths with `workspace.place(base, confine, path)`;
 **What a call changed.** The file tools publish the files they write as
 `FilesChanged`, each change with the `FileState` before and after, its
 `hunks` (`unified()`, `changed_lines()`) and, for a text file read whole,
-`before_text` (`after_text()` applies the hunks to it). The harness wraps
-each call that may write anywhere (`Writes(Anything)`: `shell`, a tool that
+`before_text` (`after_text()` applies the hunks to it). With
+`CheckpointPlugin` added, the harness wraps each call that may write anywhere (`Writes(Anything)`: `shell`, a tool that
 does not say) in rig-tools' `Checkpointed`, which publishes the difference
 between snapshots just before and after it runs; `CallCheckpoint::before()`
 on the call and `TurnCheckpoint::first()` on the turn keep the files before,
@@ -1742,7 +1743,8 @@ and `merge` go to one, show it beside the active line, and bring it back
 live conversation. What must follow each line is
 [`Follows`](#saved-state-counting-every-tool-call).
 
-A `SessionPicker` on a `Picker` is the native view of the saved sessions
+A `SessionPicker` on a `Picker` (with `SessionPickerPlugin` added) is the
+native view of the saved sessions
 (`SessionSource::Saved`, `Sessions(ids)`), a session's lines (`Lines`) or
 a line's entries (`Entries`): filled in place from tasks as they are
 read, filtered by `SessionFilter` (running ones, a project, a family, a
@@ -1921,8 +1923,8 @@ out of the call's `ToolRequest` in Prepare if the tool would refuse it.
 # Testing a plugin
 
 A plugin's test builds a small app: the kernel (`AgentPlugin`,
-`SessionLogPlugin`), the plugin, and what it needs (`CheckpointPlugin` or
-`PreviewPlugin` alone, never beside the harness's group), run frame by
+`SessionLogPlugin`), the plugin, and the harness services it needs
+(`ApprovalPlugin`, `PreviewPlugin`, `CheckpointPlugin`), run frame by
 frame with scripted models. `rig-harness-test-support` (a path
 dev-dependency) has the parts: apps on a scratch session or a store in
 memory (`app_in`, `app_on`), scripted models (`scripted_models`, `reply`,
