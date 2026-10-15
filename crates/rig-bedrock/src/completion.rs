@@ -265,7 +265,7 @@ impl Converse {
 }
 
 /// [`Converse::spec`] in `facts`.
-fn spec_in<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
+pub(crate) fn spec_in<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
     let id = model.rsplit('/').next().unwrap_or(model);
     let base = id
         .split_once('.')
