@@ -26,7 +26,7 @@ impl rig_core::wire::document::Reassemble<vertexai::model::GenerateContentRespon
         // fails the reply.
         rest_chunk(frame)
             .into_iter()
-            .for_each(|chunk| self.0.chunk(chunk));
+            .for_each(|chunk| self.0.chunk(&chunk));
     }
 
     fn finish(self) -> Value {

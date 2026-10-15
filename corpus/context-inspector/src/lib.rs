@@ -24,6 +24,7 @@
 //! directory. Nothing calls a model.
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{
@@ -380,8 +381,12 @@ fn tool_tokens(tool: &ToolDefinition) -> u64 {
 }
 
 /// The system prompt and the messages of a request.
-fn split(request: &CompletionRequest) -> (&str, &[Message]) {
-    match request.chat_history.split_first() {
+fn split(request: &CompletionRequest) -> (&str, &[Arc<Message>]) {
+    match request
+        .chat_history
+        .split_first()
+        .map(|(first, rest)| (&**first, rest))
+    {
         Some((Message::System { content }, rest)) => (content.as_str(), rest),
         _ => ("", request.chat_history.as_slice()),
     }

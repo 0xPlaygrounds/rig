@@ -116,7 +116,7 @@ async fn runner_applies_per_run_request_overrides() {
     let requests = model.requests();
     let request = requests.first().expect("one request");
     assert!(request.chat_history.iter().any(
-        |message| matches!(message, crate::completion::Message::System { content } if content == "run preamble")
+        |message| matches!(&**message, crate::completion::Message::System { content } if content == "run preamble")
     ));
     let documents = rig_core::test_utils::sent_documents(request);
     assert!(
@@ -618,7 +618,7 @@ async fn runner_can_clear_configured_request_defaults() {
         !request
             .chat_history
             .iter()
-            .any(|message| matches!(message, crate::completion::Message::System { .. }))
+            .any(|message| matches!(&**message, crate::completion::Message::System { .. }))
     );
     assert_eq!(request.temperature, None);
     assert_eq!(request.max_tokens, None);

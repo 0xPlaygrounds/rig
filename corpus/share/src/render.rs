@@ -18,10 +18,10 @@ pub struct Rendered {
 }
 
 /// Renders `messages` as an HTML page titled `title`, secrets redacted.
-pub fn render(title: &str, messages: &[Message]) -> Rendered {
+pub fn render(title: &str, messages: &[std::sync::Arc<Message>]) -> Rendered {
     let mut page = Page::default();
     for message in messages {
-        match message {
+        match &**message {
             Message::System { content } => page.section("system", "System", content),
             Message::User { content } => {
                 for item in content {

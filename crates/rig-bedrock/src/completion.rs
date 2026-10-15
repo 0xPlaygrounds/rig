@@ -214,6 +214,7 @@ impl Wire for Converse {
     type Op = Completion;
     type Payload = ConverseRequest;
     type Frame = ConverseFrame;
+    type Event = ConverseFrame;
     type Decoder<'id> = StreamState;
     type Reassembler = crate::streaming::document::ConverseOutput;
 

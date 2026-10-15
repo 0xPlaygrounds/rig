@@ -428,13 +428,13 @@ fn recall(
         let Some((at, recalled)) = history
             .messages()
             .iter()
-            .rposition(|message| message == asked)
+            .rposition(|message| **message == *asked)
             .zip(recalled)
         else {
             continue;
         };
         if let Some(mut entry) = history.entry(at)
-            && let message::Message::User { content } = &mut entry.message
+            && let message::Message::User { content } = std::sync::Arc::make_mut(&mut entry.message)
         {
             content.push(UserContent::text(recalled));
             history.splice(at..=at, [entry], Author::plugin("long-term-memory"));
@@ -443,7 +443,7 @@ fn recall(
                 .messages()
                 .iter()
                 .take(at)
-                .filter(|message| !matches!(message, message::Message::System { .. }))
+                .filter(|message| !matches!(&***message, message::Message::System { .. }))
                 .count();
             let point = CachePoint::Messages(turns);
             let request = &mut call.request;

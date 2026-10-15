@@ -1465,8 +1465,8 @@ fn prepared_for(
     tools: Vec<ToolDefinition>,
 ) -> Result<CompletionRequest, ProviderError> {
     let mut request = CompletionRequest::new("next").tools(tools);
-    request.chat_history = history;
-    request.chat_history.push(Message::user("next"));
+    request.chat_history = history.into_iter().map(Into::into).collect();
+    request.chat_history.push(Message::user("next").into());
     <rig_core::operation::Completion as rig_core::wire::Operation>::prepare(
         request,
         &rig_core::wire::Wire::describe(wire),
@@ -1517,16 +1517,19 @@ fn another_models_tool_history_renders_for_a_plain_protocol()
     for protocol in [ConversationProtocol::Llama3, ConversationProtocol::SmolLm2] {
         let wire = local(protocol);
         let declared = prepared_for(&wire, history.clone(), vec![add.clone()])?;
-        let structured = declared.chat_history.iter().any(|message| match message {
-            Message::Assistant(turn) => turn
-                .content
-                .iter()
-                .any(|block| matches!(block, AssistantContent::ToolCall(_))),
-            Message::User { content } => content
-                .iter()
-                .any(|part| matches!(part, UserContent::ToolResult(_))),
-            Message::System { .. } => false,
-        });
+        let structured = declared
+            .chat_history
+            .iter()
+            .any(|message| match &**message {
+                Message::Assistant(turn) => turn
+                    .content
+                    .iter()
+                    .any(|block| matches!(block, AssistantContent::ToolCall(_))),
+                Message::User { content } => content
+                    .iter()
+                    .any(|part| matches!(part, UserContent::ToolResult(_))),
+                Message::System { .. } => false,
+            });
         assert!(!structured, "{protocol:?}: {:?}", declared.chat_history);
         let request = prepared_for(&wire, history.clone(), Vec::new())?;
         let prompt = wire.prompt(&request)?;

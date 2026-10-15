@@ -83,18 +83,24 @@ async fn text_only_stream_without_terminal_record_is_rejected_as_truncated() {
     );
 }
 
-fn history_contains_tool_call(history: &[Message], tool_name: &str) -> bool {
-    history.iter().any(|message| {
-        matches!(
-            message,
-            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
-                if content.iter().any(|item| matches!(
-                    item,
-                    AssistantContent::ToolCall(tool_call)
-                        if tool_call.function.name == tool_name
-                ))
-        )
-    })
+fn history_contains_tool_call(
+    history: &[impl std::borrow::Borrow<Message>],
+    tool_name: &str,
+) -> bool {
+    history
+        .iter()
+        .map(std::borrow::Borrow::<Message>::borrow)
+        .any(|message| {
+            matches!(
+                message,
+                Message::Assistant(rig_core::message::AssistantMessage { content, .. })
+                    if content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.function.name == tool_name
+                    ))
+            )
+        })
 }
 
 /// The invalid-call retry transcript pairs 1:1 by construction: every tool
@@ -140,25 +146,28 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     );
 }
 
-fn history_contains_text(history: &[Message], expected: &str) -> bool {
-    history.iter().any(|message| {
-        matches!(
-            message,
-            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
-                if content.iter().any(|item| matches!(
-                    item,
-                    AssistantContent::Text(text) if text.text == expected
-                ))
-        )
-    })
+fn history_contains_text(history: &[impl std::borrow::Borrow<Message>], expected: &str) -> bool {
+    history
+        .iter()
+        .map(std::borrow::Borrow::<Message>::borrow)
+        .any(|message| {
+            matches!(
+                message,
+                Message::Assistant(rig_core::message::AssistantMessage { content, .. })
+                    if content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::Text(text) if text.text == expected
+                    ))
+            )
+        })
 }
 
 fn assistant_reasoning_precedes_tool_call(
-    history: &[Message],
+    history: &[impl std::borrow::Borrow<Message>],
     expected_reasoning: &str,
     tool_name: &str,
 ) -> bool {
-    history.iter().any(|message| {
+    history.iter().map(std::borrow::Borrow::<Message>::borrow).any(|message| {
         let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
         else {
             return false;
@@ -183,44 +192,47 @@ fn assistant_reasoning_precedes_tool_call(
 }
 
 fn assistant_reasoning_precedes_text_and_tool_call(
-    history: &[Message],
+    history: &[impl std::borrow::Borrow<Message>],
     expected_reasoning: &str,
     expected_text: &str,
     tool_name: &str,
 ) -> bool {
-    history.iter().any(|message| {
-        let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
-        else {
-            return false;
-        };
+    history
+        .iter()
+        .map(std::borrow::Borrow::<Message>::borrow)
+        .any(|message| {
+            let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
+            else {
+                return false;
+            };
 
-        // A replay to another model carries reasoning as text.
-        let reasoning_index = content.iter().position(|item| match item {
-            AssistantContent::Reasoning(reasoning) => reasoning.text == expected_reasoning,
-            AssistantContent::Text(text) => text.text == expected_reasoning,
-            _ => false,
-        });
-        let text_index = content.iter().position(|item| {
-            matches!(
-                item,
-                AssistantContent::Text(text) if text.text == expected_text
-            )
-        });
-        let tool_index = content.iter().position(|item| {
-            matches!(
-                item,
-                AssistantContent::ToolCall(tool_call)
-                    if tool_call.function.name == tool_name
-            )
-        });
+            // A replay to another model carries reasoning as text.
+            let reasoning_index = content.iter().position(|item| match item {
+                AssistantContent::Reasoning(reasoning) => reasoning.text == expected_reasoning,
+                AssistantContent::Text(text) => text.text == expected_reasoning,
+                _ => false,
+            });
+            let text_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text == expected_text
+                )
+            });
+            let tool_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.function.name == tool_name
+                )
+            });
 
-        // The parts keep the order they started in; both precede the call.
-        matches!(
-            (reasoning_index, text_index, tool_index),
-            (Some(reasoning), Some(text), Some(tool))
-                if reasoning < tool && text < tool
-        )
-    })
+            // The parts keep the order they started in; both precede the call.
+            matches!(
+                (reasoning_index, text_index, tool_index),
+                (Some(reasoning), Some(text), Some(tool))
+                    if reasoning < tool && text < tool
+            )
+        })
 }
 
 #[derive(Clone)]
@@ -1516,7 +1528,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
     assert_eq!(requests.len(), 2);
     let follow_up_history = requests[1].chat_history.clone();
     assert!(matches!(
-        follow_up_history.get(2),
+        follow_up_history.get(2).map(|message| &**message),
         Some(Message::User { content })
             if content.iter().any(|item| matches!(
                 item,
@@ -1604,7 +1616,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
     let retry_history = requests[1].chat_history.clone();
     assert_eq!(retry_history.len(), 3);
     assert!(matches!(
-        retry_history.get(1),
+        retry_history.get(1).map(|message| &**message),
         Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
@@ -1624,7 +1636,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 ))
     ));
     assert!(matches!(
-        retry_history.get(2),
+        retry_history.get(2).map(|message| &**message),
         Some(Message::User { content })
             if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
                 && content.iter().any(|item| matches!(
@@ -1731,7 +1743,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
     let follow_up_history = requests[1].chat_history.clone();
     assert_eq!(follow_up_history.len(), 3);
     assert!(matches!(
-        follow_up_history.get(1),
+        follow_up_history.get(1).map(|message| &**message),
         Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
@@ -1751,7 +1763,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 ))
     ));
     assert!(matches!(
-        follow_up_history.get(2),
+        follow_up_history.get(2).map(|message| &**message),
         Some(Message::User { content })
             if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
                 && content.iter().any(|item| matches!(
@@ -1930,7 +1942,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
     assert_eq!(requests.len(), 2);
     let retry_history = requests[1].chat_history.clone();
     assert!(matches!(
-        retry_history.get(1),
+        retry_history.get(1).map(|message| &**message),
         Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
@@ -1952,7 +1964,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
             ))
     ));
     assert!(matches!(
-        retry_history.get(2),
+        retry_history.get(2).map(|message| &**message),
         Some(Message::User { content })
             if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
                 && content.iter().any(|item| matches!(
@@ -2115,7 +2127,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
     assert_eq!(requests.len(), 2);
     let follow_up_history = requests[1].chat_history.clone();
     assert!(matches!(
-        follow_up_history.get(1),
+        follow_up_history.get(1).map(|message| &**message),
         Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
@@ -2137,7 +2149,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
             ))
     ));
     assert!(matches!(
-        follow_up_history.get(2),
+        follow_up_history.get(2).map(|message| &**message),
         Some(Message::User { content })
             if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
                 && content.iter().any(|item| matches!(

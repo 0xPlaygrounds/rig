@@ -73,7 +73,7 @@ fn base(
     let leading = request
         .chat_history
         .iter()
-        .take_while(|message| matches!(message, Message::System { .. }))
+        .take_while(|message| matches!(&***message, Message::System { .. }))
         .count();
     let (system, history) = request
         .chat_history
@@ -81,7 +81,7 @@ fn base(
         .unwrap_or_default();
     let mut system: Vec<Value> = system
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::System { content } if !content.is_empty() => Some(json!({ "text": content })),
             _ => None,
         })
@@ -95,7 +95,7 @@ fn base(
     let mut messages: Vec<Value> = Vec::new();
     for message in history {
         let mut content = Vec::new();
-        let role = match message {
+        let role = match &**message {
             // `adapt` sends a later system message as user text.
             Message::System { content: text } => {
                 content.push(json!({ "text": text }));

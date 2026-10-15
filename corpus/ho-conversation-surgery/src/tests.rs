@@ -79,7 +79,13 @@ fn typed(app: &mut App, agent: Entity, line: &str) -> String {
 
 fn messages(app: &App, agent: Entity) -> Vec<Message> {
     let conversation = app.world().get::<Conversation>(agent);
-    conversation.map_or_else(Vec::new, |conversation| conversation.messages().to_vec())
+    conversation.map_or_else(Vec::new, |conversation| {
+        conversation
+            .messages()
+            .iter()
+            .map(|message| (**message).clone())
+            .collect()
+    })
 }
 
 fn json<T: serde::Serialize>(value: &T) -> String {

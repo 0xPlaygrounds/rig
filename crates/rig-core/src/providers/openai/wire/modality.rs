@@ -23,8 +23,8 @@ use crate::providers::openai::embedding::{
 };
 use crate::transcription::TranscriptionRequest;
 use crate::wire::{
-    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent,
-    WireFrame,
+    Body, Capabilities, Decoder, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Out, Wire,
+    WireEvent, WireFrame,
 };
 
 use super::OpenAIConfig;
@@ -572,13 +572,7 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             .as_ref()
             .map(Usage::to_normalized)
             .unwrap_or_default();
-        let vectors = event.data.into_iter().map(|datum| {
-            datum
-                .embedding
-                .into_iter()
-                .filter_map(|number| number.as_f64())
-                .collect()
-        });
+        let vectors = event.data.into_iter().map(|datum| datum.embedding);
         let model = if event.model.is_empty() {
             self.model.clone()
         } else {
@@ -596,6 +590,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = CompatibleEmbeddingResponse;
     type Decoder<'id> = EmbeddingsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -794,31 +789,12 @@ fn audio_format_of(filename: &str) -> &'static str {
     }
 }
 
-/// The transcription decoder.
-#[derive(Default)]
-pub struct TranscriptionsDecoder;
-
-impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
-    type Event = crate::providers::openai::transcription::TranscriptionResponse;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, Transcription>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(event.normalize()?))
-    }
-}
-
 impl Wire for Transcriptions {
     type Op = Transcription;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = TranscriptionsDecoder;
+    type Event = crate::providers::openai::transcription::TranscriptionResponse;
+    type Decoder<'id> = DocumentDecoder<Transcription, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -846,7 +822,10 @@ impl Wire for Transcriptions {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        TranscriptionsDecoder
+        DocumentDecoder::new(
+            |body| classify_untyped_line(body.as_bytes()),
+            |event| event.normalize(),
+        )
     }
 }
 
@@ -1006,6 +985,7 @@ impl Wire for Images {
     type Op = crate::operation::ImageGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ImagesEvent;
     type Decoder<'id> = ImagesDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1166,6 +1146,7 @@ impl Wire for Speech {
     type Op = crate::operation::AudioGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Vec<u8>;
     type Decoder<'id> = SpeechDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1301,35 +1282,12 @@ pub struct ModelsReply {
     pub data: Vec<ModelEntry>,
 }
 
-/// Decode a complete model catalogue without pagination.
-#[derive(Default)]
-pub struct ModelsDecoder;
-
-impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    type Event = ModelsReply;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        let models = event.data.into_iter().map(ModelInfo::from).collect();
-        Ok(out.end(ModelPage {
-            models: ModelList::new(models),
-            next: None,
-        }))
-    }
-}
-
 impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ModelsDecoder;
+    type Event = ModelsReply;
+    type Decoder<'id> = DocumentDecoder<ModelListing, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -1341,8 +1299,18 @@ impl Wire for Models {
         get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
+    /// Decode a complete model catalogue without pagination.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
+        DocumentDecoder::new(
+            |body| classify_untyped_line(body.as_bytes()),
+            |event| {
+                let models = event.data.into_iter().map(ModelInfo::from).collect();
+                Ok(ModelPage {
+                    models: ModelList::new(models),
+                    next: None,
+                })
+            },
+        )
     }
 }
 
@@ -1414,52 +1382,12 @@ pub struct RerankReply {
     pub usage: Option<RerankUsage>,
 }
 
-/// The rerank decoder.
-#[derive(Default)]
-pub struct RerankDecoder;
-
-impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
-    type Event = RerankReply;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, RerankOp>,
-    ) -> Result<Flow, ProviderError> {
-        let usage = event
-            .usage
-            .map(|usage| crate::completion::Usage {
-                input_tokens: Some(usage.prompt_tokens),
-                total_tokens: Some(usage.total_tokens),
-                ..Default::default()
-            })
-            .unwrap_or_default();
-        let results = event
-            .results
-            .into_iter()
-            .map(|result| crate::rerank::RerankResult {
-                index: result.index,
-                document: result.document,
-                relevance_score: result.relevance_score,
-            })
-            .collect();
-        Ok(out.end(crate::rerank::RerankResponse {
-            model: event.model,
-            usage,
-            ..crate::rerank::RerankResponse::new(results)
-        }))
-    }
-}
-
 impl Wire for Rerank {
     type Op = RerankOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = RerankDecoder;
+    type Event = RerankReply;
+    type Decoder<'id> = DocumentDecoder<RerankOp, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -1508,7 +1436,33 @@ impl Wire for Rerank {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        RerankDecoder
+        DocumentDecoder::new(
+            |body| classify_untyped_line(body.as_bytes()),
+            |event| {
+                let usage = event
+                    .usage
+                    .map(|usage| crate::completion::Usage {
+                        input_tokens: Some(usage.prompt_tokens),
+                        total_tokens: Some(usage.total_tokens),
+                        ..Default::default()
+                    })
+                    .unwrap_or_default();
+                let results = event
+                    .results
+                    .into_iter()
+                    .map(|result| crate::rerank::RerankResult {
+                        index: result.index,
+                        document: result.document,
+                        relevance_score: result.relevance_score,
+                    })
+                    .collect();
+                Ok(crate::rerank::RerankResponse {
+                    model: event.model,
+                    usage,
+                    ..crate::rerank::RerankResponse::new(results)
+                })
+            },
+        )
     }
 }
 
@@ -1532,6 +1486,7 @@ impl Wire for Verify {
     type Op = VerifyOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ();
     type Decoder<'id> = VerifyDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

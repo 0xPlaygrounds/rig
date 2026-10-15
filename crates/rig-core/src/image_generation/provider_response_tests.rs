@@ -1,4 +1,4 @@
-use super::*;
+use crate::error::ProviderError;
 use crate::provider_response;
 
 #[test]

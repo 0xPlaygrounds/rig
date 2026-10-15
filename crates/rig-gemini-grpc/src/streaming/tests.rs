@@ -212,7 +212,10 @@ fn a_part_of_an_undeclared_kind_never_replays_without_data() {
     ];
     let wire = crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH);
     let mut request = rig_core::completion::CompletionRequest::new("next");
-    request.chat_history = rig_core::completion::adapt(&history, &wire);
+    request.chat_history = rig_core::completion::adapt(&history, &wire)
+        .into_iter()
+        .map(Into::into)
+        .collect();
     let request = rig_core::wire::Wire::encode(&wire, request, rig_core::wire::Mode::Unary)
         .expect("the history encodes");
     let parts: Vec<_> = request.contents.iter().flat_map(|c| &c.parts).collect();

@@ -60,6 +60,7 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = GenerateContentRequest;
     type Frame = GenerateContentResponse;
+    type Event = GenerateContentResponse;
     type Decoder<'id> = crate::streaming::GrpcAdapter;
     type Reassembler = rig_core::providers::gemini::streaming::document::GenerateContentResponse;
 

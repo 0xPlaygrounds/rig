@@ -25,6 +25,8 @@
 //! `/state` says, for the agent it is typed for, the chain's id, how many
 //! requests went incrementally and in full, and why the last full one was.
 
+use std::sync::Arc;
+
 use futures::StreamExt;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, CompletionResponse};
@@ -327,7 +329,7 @@ impl Serve for Chained {
                     uploaded: body(&upload).len(),
                     retried: false,
                 };
-                match self.open(upload, stream, &dispatch).await {
+                match self.open(upload.into(), stream, &dispatch).await {
                     Ok(reply) => return self.tell(reply, request, sent, &dispatch),
                     Err(report) if report.code.as_deref() == Some(NOT_FOUND) => {
                         "previous response not found".to_owned()
@@ -366,7 +368,7 @@ impl Chained {
     /// handler gives.
     async fn open(
         &self,
-        request: CompletionRequest,
+        request: Arc<CompletionRequest>,
         stream: bool,
         dispatch: &Dispatch,
     ) -> Result<Reply, ErrorReport> {
@@ -404,7 +406,7 @@ impl Chained {
     fn tell(
         &self,
         reply: Reply,
-        request: CompletionRequest,
+        request: Arc<CompletionRequest>,
         sent: Sent,
         dispatch: &Dispatch,
     ) -> Reply {
@@ -449,13 +451,23 @@ fn fingerprint(value: &impl Serialize) -> String {
 /// The request's system prompt.
 fn system(request: &CompletionRequest) -> Vec<&Message> {
     let system = |message: &&Message| matches!(message, Message::System { .. });
-    request.chat_history.iter().filter(system).collect()
+    request
+        .chat_history
+        .iter()
+        .map(|message| &**message)
+        .filter(system)
+        .collect()
 }
 
 /// The request's messages but its system prompt.
 fn body(request: &CompletionRequest) -> Vec<&Message> {
     let other = |message: &&Message| !matches!(message, Message::System { .. });
-    request.chat_history.iter().filter(other).collect()
+    request
+        .chat_history
+        .iter()
+        .map(|message| &**message)
+        .filter(other)
+        .collect()
 }
 
 /// The previous response id and the first message to upload, or why the
@@ -512,7 +524,7 @@ fn upload(request: &CompletionRequest, previous: &str, from: usize) -> Completio
     let mut upload = request.clone();
     let mut at = 0;
     upload.chat_history.retain(|message| {
-        if matches!(message, Message::System { .. }) {
+        if matches!(&**message, Message::System { .. }) {
             return true;
         }
         at += 1;

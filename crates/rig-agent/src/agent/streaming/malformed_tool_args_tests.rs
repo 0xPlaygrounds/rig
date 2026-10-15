@@ -193,19 +193,22 @@ async fn run(
 }
 
 /// The result answering the call of model turn `turn` in `history`.
-fn answer(history: &[Message], turn: usize) -> Option<&ToolResult> {
+fn answer(history: &[impl std::borrow::Borrow<Message>], turn: usize) -> Option<&ToolResult> {
     let id = call_id(turn);
-    history.iter().find_map(|message| match message {
-        Message::User { content } => content.iter().find_map(|item| match item {
-            UserContent::ToolResult(result)
-                if result.call.provider().map(|id| id.as_str()) == Some(id.as_str()) =>
-            {
-                Some(result)
-            }
-            _ => None,
-        }),
-        Message::System { .. } | Message::Assistant(_) => None,
-    })
+    history
+        .iter()
+        .map(std::borrow::Borrow::<Message>::borrow)
+        .find_map(|message| match message {
+            Message::User { content } => content.iter().find_map(|item| match item {
+                UserContent::ToolResult(result)
+                    if result.call.provider().map(|id| id.as_str()) == Some(id.as_str()) =>
+                {
+                    Some(result)
+                }
+                _ => None,
+            }),
+            Message::System { .. } | Message::Assistant(_) => None,
+        })
 }
 
 fn answer_text(requests: &[CompletionRequest], turn: usize) -> String {

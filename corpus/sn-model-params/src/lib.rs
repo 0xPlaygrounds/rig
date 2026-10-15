@@ -558,7 +558,11 @@ fn suffix(prompt: Prompt<'_>, value: &Value) {
             parts.take(SUFFIX_TAG);
             parts.sections.push(Section::new(SUFFIX_TAG, text));
         }
-        Prompt::Message(request) => match request.chat_history.first_mut() {
+        Prompt::Message(request) => match request
+            .chat_history
+            .first_mut()
+            .map(std::sync::Arc::make_mut)
+        {
             Some(message::Message::System { content }) => {
                 if !content.ends_with(text) {
                     content.push_str("\n\n");
@@ -567,7 +571,7 @@ fn suffix(prompt: Prompt<'_>, value: &Value) {
             }
             _ => request
                 .chat_history
-                .insert(0, message::Message::system(text)),
+                .insert(0, message::Message::system(text).into()),
         },
     }
 }

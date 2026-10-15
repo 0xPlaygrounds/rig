@@ -31,7 +31,7 @@ pub use log::{
     canonical_local_ids, stable_hash,
 };
 pub use recorder::EffectLogRecorder;
-pub use replay::{EffectLogReplayer, ReplayRefusals, RequestCheck};
+pub use replay::{EffectLogReplayer, RequestCheck};
 
 #[cfg(test)]
 mod tests;

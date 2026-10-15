@@ -105,7 +105,7 @@ struct Editing(Entity);
 /// Where the newest `keep` turns of `messages` start, the first `from`
 /// being summaries: at the `keep`-th newest message the user typed.
 /// `None` when no turn before them would be summarized.
-fn newest_turns(messages: &[Message], from: usize, keep: usize) -> Option<usize> {
+fn newest_turns(messages: &[std::sync::Arc<Message>], from: usize, keep: usize) -> Option<usize> {
     if keep == 0 {
         return Some(messages.len());
     }
@@ -116,7 +116,7 @@ fn newest_turns(messages: &[Message], from: usize, keep: usize) -> Option<usize>
         _ => false,
     };
     let starts: Vec<usize> = (from..messages.len())
-        .filter(|&at| messages.get(at).is_some_and(typed))
+        .filter(|&at| messages.get(at).is_some_and(|message| typed(message)))
         .collect();
     let first_kept = starts.len().checked_sub(keep)?;
     starts.get(first_kept).copied()

@@ -56,10 +56,10 @@ fn tool(name: &str) -> ToolDefinition {
 
 /// The tools the calls and results of `history` name, so that the request
 /// boundary sends them as calls and results rather than as text.
-fn tools_of(history: &[Message]) -> Vec<ToolDefinition> {
+fn tools_of(history: &[std::sync::Arc<Message>]) -> Vec<ToolDefinition> {
     let mut names: Vec<String> = Vec::new();
     for message in history {
-        let named: Vec<String> = match message {
+        let named: Vec<String> = match &**message {
             Message::Assistant(turn) => turn
                 .tool_calls()
                 .map(|call| call.function.name.to_string())

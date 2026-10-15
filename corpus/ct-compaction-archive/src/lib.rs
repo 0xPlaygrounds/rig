@@ -289,7 +289,7 @@ fn keep_latest(
     for entry in entries {
         let Some(id) = entry.id else { continue };
         if !(in_place_skipped && latest.contains_key(&id)) {
-            latest.insert(id, entry.message);
+            latest.insert(id, std::sync::Arc::unwrap_or_clone(entry.message));
         }
     }
 }
@@ -615,7 +615,7 @@ pub fn mark(conversation: &mut Chat, id: MessageId) -> bool {
         return false;
     }
     let line = format!("\n\n{ARCHIVED_LINE}");
-    match &mut entry.message {
+    match std::sync::Arc::make_mut(&mut entry.message) {
         message::Message::User { content } => {
             match content.iter_mut().rev().find_map(|item| match item {
                 UserContent::Text(text) => Some(text),
