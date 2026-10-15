@@ -277,7 +277,7 @@ fn a_stopped_turns_edits_are_not_the_users() {
     assert_eq!(texts, ["go on"]);
     let conversation = app.world().get::<Conversation>(agent);
     let last = conversation.and_then(|conversation| conversation.messages().last());
-    let content = match last {
+    let content = match last.map(|message| &**message) {
         Some(message::Message::User { content }) => content.as_slice(),
         _ => &[],
     };

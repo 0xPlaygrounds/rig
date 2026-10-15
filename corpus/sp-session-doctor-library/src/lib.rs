@@ -497,7 +497,7 @@ fn write_copy(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, Strin
 /// What an agent is compared by: its messages, its branch tree, its saved
 /// values, and its whole conversation.
 type Shape<'a> = (
-    &'a [Message],
+    &'a [Arc<Message>],
     Vec<KeptBranch>,
     &'a BTreeMap<String, Versioned>,
     &'a Conversation,

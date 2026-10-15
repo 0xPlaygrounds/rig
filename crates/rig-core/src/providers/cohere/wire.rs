@@ -149,6 +149,7 @@ impl Wire for CohereChat {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = WireFrame;
+    type Event = CohereEvent;
     type Decoder<'id> = CohereDecoder;
     type Reassembler = document::Routed;
 

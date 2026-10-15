@@ -140,7 +140,7 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
             };
             let last = history.messages().len().saturating_sub(1);
             if let Some(mut entry) = history.entry(last)
-                && let Message::User { content } = &mut entry.message
+                && let Message::User { content } = std::sync::Arc::make_mut(&mut entry.message)
             {
                 content.push(UserContent::text(INJECTED));
                 history.splice(last.., [entry], Author::plugin("inject"));
@@ -190,8 +190,9 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     // that is the user's; the kept messages keep their ids.
     let live = entries(app.world(), agent);
     assert!(live.first().is_some_and(holds_summary), "{live:?}");
-    let alone = matches!(live.first(), Some(Entry { message: Message::User { content }, .. })
-        if content.len() == 1);
+    let alone = live.first().is_some_and(
+        |entry| matches!(&*entry.message, Message::User { content } if content.len() == 1),
+    );
     let kept = live.get(usize::from(alone));
     assert!(
         kept.is_some_and(|kept| before.iter().any(|old| old.id == kept.id)),
@@ -757,7 +758,7 @@ fn notices(app: &App) -> Vec<String> {
 #[test]
 fn an_agents_own_policy_and_a_named_cut_decide_its_compaction() {
     let (mut app, wakes) = start(&MemoryStore::default());
-    app.add_compaction_cut("never", |_: &[Message], _, _, _| None);
+    app.add_compaction_cut("never", |_: &[std::sync::Arc<Message>], _, _, _| None);
     let model = MockCompletionModel::from_stream_turns([reply("## Goal\nThe summary.")]);
     let Some(agent) = agent(&mut app, &model, 1_000_000, long_conversation(3)) else {
         return;

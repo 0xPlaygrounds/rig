@@ -57,6 +57,7 @@ impl Wire for GenerateContent {
     /// the transport qualifies it with the project and location.
     type Payload = vertexai::model::GenerateContentRequest;
     type Frame = vertexai::model::GenerateContentResponse;
+    type Event = vertexai::model::GenerateContentResponse;
     type Decoder<'id> = VertexDecoder;
     type Reassembler = crate::types::completion_response::VertexDocument;
 

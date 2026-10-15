@@ -180,26 +180,25 @@ fn multipart_type() -> String {
 
 #[test]
 fn bodies_read_as_scrubbed_canonical_json_text_or_parts() {
-    let policy = CassettePolicy::default();
-    assert_eq!(body_view(policy, None, b""), Value::Null);
+    assert_eq!(body_view(None, b""), Value::Null);
     assert_eq!(
-        serde_json::to_string(&body_view(policy, None, br#"{"b":1,"a":{"d":2,"c":3}}"#))
+        serde_json::to_string(&body_view(None, br#"{"b":1,"a":{"d":2,"c":3}}"#))
             .expect("view serializes"),
         r#"{"a":{"c":3,"d":2},"b":1}"#
     );
     assert_eq!(
-        body_view(policy, None, br#"{"created_at":"2026-01-01T00:00:00Z"}"#),
+        body_view(None, br#"{"created_at":"2026-01-01T00:00:00Z"}"#),
         json!({ "created_at": "1970-01-01T00:00:00Z" })
     );
-    assert_eq!(body_view(policy, None, b"plain text"), json!("plain text"));
+    assert_eq!(body_view(None, b"plain text"), json!("plain text"));
     assert_eq!(
-        body_view(policy, None, &[0xff, 0x00]),
+        body_view(None, &[0xff, 0x00]),
         json!({ "bytes": 2, "fnv1a64": format!("{:016x}", fnv1a64(&[0xff, 0x00])) })
     );
     let large = vec![b'x'; VERBATIM_PART_LIMIT + 1];
     let body = multipart(&[("model", b"whisper-1"), ("file", &large)]);
     assert_eq!(
-        body_view(policy, Some(&multipart_type()), &body),
+        body_view(Some(&multipart_type()), &body),
         json!({ "multipart": [
             {
                 "headers": { "content-disposition": "form-data; name=\"model\"" },

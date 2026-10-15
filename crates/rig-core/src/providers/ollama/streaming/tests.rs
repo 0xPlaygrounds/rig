@@ -589,11 +589,11 @@ fn the_projection_reads_verdict_and_error() {
 
 /// The document the native reassembler rebuilds from `records`.
 fn rebuilt(records: &[Value]) -> Value {
-    let mut document = document::ChatResponse::default();
-    for frame in frames(records) {
-        crate::wire::document::Reassemble::absorb(&mut document, &frame);
-    }
-    crate::wire::document::Reassemble::finish(document)
+    crate::wire::document::rebuild(
+        &ChatDecoder::default(),
+        document::ChatResponse::default(),
+        frames(records),
+    )
 }
 
 /// A stream rebuilds the `/api/chat` body: `content` and `thinking` join,

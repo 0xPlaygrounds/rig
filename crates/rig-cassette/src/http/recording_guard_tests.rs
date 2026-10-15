@@ -33,7 +33,7 @@ impl Session {
     }
 
     async fn start(&self, spec: CassetteSpec, upstream: &httpmock::MockServer) -> ProviderCassette {
-        ProviderCassette::start_with_attempts(
+        ProviderCassette::try_start_with_attempts(
             RecordVia::Proxy,
             "openai",
             spec,
@@ -43,6 +43,7 @@ impl Session {
             self.attempts.clone(),
         )
         .await
+        .expect("recording session starts")
     }
 
     fn attempt_files(&self) -> Vec<PathBuf> {

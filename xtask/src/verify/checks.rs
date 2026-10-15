@@ -165,17 +165,41 @@ pub(super) fn all() -> Vec<Check> {
         ),
         check(
             "default-check",
-            // A dependency's #[cfg(test)] bodies are not compiled by the
-            // facade's test targets after moving helpers into this crate.
-            vec![cargo(&[
-                "check",
-                "--locked",
-                "-p",
-                "rig",
-                "-p",
-                "rig-test-support",
-                "--tests",
-            ])],
+            vec![
+                // A dependency's #[cfg(test)] bodies are not compiled by the
+                // facade's test targets after moving helpers into this crate.
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig",
+                    "-p",
+                    "rig-test-support",
+                    "--tests",
+                ]),
+                // The divan benches compile here and run nowhere in CI.
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-cassette",
+                    "--features",
+                    "http,jsonl",
+                    "--bench",
+                    "wire",
+                ]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-memory",
+                    "--features",
+                    "fs",
+                    "--bench",
+                    "session",
+                ]),
+                cargo(&["check", "--locked", "-p", "rig-tools", "--bench", "tools"]),
+            ],
         ),
         check(
             "default-tests",

@@ -49,7 +49,8 @@ fn sent_messages(model: &MockCompletionModel, index: usize) -> Vec<Message> {
         .map(|request| request.chat_history.clone());
     let history = history.unwrap_or_default().into_iter();
     history
-        .filter(|message| !matches!(message, Message::System { .. }))
+        .filter(|message| !matches!(&**message, Message::System { .. }))
+        .map(std::sync::Arc::unwrap_or_clone)
         .collect()
 }
 
@@ -107,7 +108,7 @@ fn a_fitting_example_goes_first_in_the_request_and_nowhere_else() {
     let conversation = app.world().get::<Conversation>(agent);
     let messages = conversation.map(|conversation| conversation.messages().to_vec());
     assert!(
-        matches!(messages.as_deref(), Some([user, _answer]) if *user == Message::user("commit this")),
+        matches!(messages.as_deref(), Some([user, _answer]) if *user == Message::user("commit this").into()),
         "{messages:#?}"
     );
     let sent = app.world().get::<SentExamples>(agent).cloned();

@@ -53,6 +53,7 @@ use crate::message::{
     MimeType, ToolChoice, ToolResultContent, UserContent,
 };
 use crate::operation::Completion;
+use crate::providers::internal::set_fields;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::telemetry::GenAiOperation;
 use crate::wire::{Descriptor, Encoded, Framing, Mode, Wire};
@@ -172,6 +173,7 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = super::streaming::GenerateContentChunk;
     type Decoder<'id> = super::streaming::GenerateContentDecoder;
     type Reassembler = super::streaming::document::GenerateContentResponse;
 
@@ -467,22 +469,18 @@ fn base(
         request.temperature.map(Value::from),
         request.max_tokens.map(Value::from),
     );
-    let typed = [
+    let config = set_fields([
         ("responseMimeType", mime),
         ("responseJsonSchema", schema),
         ("temperature", temperature),
         ("maxOutputTokens", max_tokens),
-    ];
-    let config: Map<String, Value> = typed
-        .into_iter()
-        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-        .collect();
+    ]);
     let (mut system, mut history) = (Vec::new(), Vec::new());
     for message in &request.chat_history {
-        match message {
+        match &**message {
             Message::System { content } if content.is_empty() => {}
-            Message::System { content } => system.push(text_part(content.clone())),
-            message => history.push(message.clone()),
+            Message::System { content } => system.push(text_part(content)),
+            message => history.push(message),
         }
     }
     // Gemini rejects a field set twice, and merges a tool choice set twice,
@@ -504,22 +502,21 @@ fn base(
             )));
         }
     }
-    let declared = request
-        .tools
-        .iter()
-        .cloned()
-        .map(declaration)
-        .collect::<Vec<_>>();
-    let declared = (!declared.is_empty())
-        .then(|| json!({ "functionDeclarations": declared, "codeExecution": null }));
+    let declared: Vec<Value> = request.tools.iter().map(declaration).collect();
+    let declared = (!declared.is_empty()).then(|| {
+        Value::Object(set_fields([
+            ("functionDeclarations", Some(Value::Array(declared))),
+            ("codeExecution", Some(Value::Null)),
+        ]))
+    });
     let tools: Vec<Value> = declared.into_iter().chain(extra_tools).collect();
-    let contents = Value::Array(contents(history, target, model)?);
-    let system = (!system.is_empty()).then(|| json!({ "parts": system, "role": "model" }));
+    let contents = Value::Array(contents(&history, target, model)?);
+    let system = (!system.is_empty()).then(|| content(system, "model"));
     let tool_config = request
         .tool_choice
         .clone()
         .map_or(Value::Null, calling_config);
-    Ok(object([
+    Ok(set_fields([
         ("contents", Some(contents)),
         (
             "generationConfig",
@@ -539,21 +536,13 @@ fn base(
 /// A tool as its function declaration: its JSON Schema goes as
 /// `parametersJsonSchema`, which reads full JSON Schema, as pi sends it. A
 /// tool with no schema declares none.
-fn declaration(tool: crate::completion::ToolDefinition) -> Value {
-    let parameters = (!tool.parameters.is_null()).then_some(tool.parameters);
-    Value::Object(object([
-        ("name", Some(json!(tool.name))),
-        ("description", Some(json!(tool.description))),
+fn declaration(tool: &crate::completion::ToolDefinition) -> Value {
+    let parameters = (!tool.parameters.is_null()).then(|| tool.parameters.clone());
+    Value::Object(set_fields([
+        ("name", Some(Value::from(tool.name.as_str()))),
+        ("description", Some(Value::from(tool.description.as_str()))),
         ("parametersJsonSchema", parameters),
     ]))
-}
-
-/// An object of the entries that are set.
-fn object<const N: usize>(entries: [(&str, Option<Value>); N]) -> Map<String, Value> {
-    let entries = entries.into_iter();
-    entries
-        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-        .collect()
 }
 
 /// Proto3 JSON accepts both lowerCamelCase and original proto field names.
@@ -575,7 +564,7 @@ fn calling_config(choice: ToolChoice) -> Value {
         ToolChoice::Required => ("ANY", None),
         ToolChoice::Specific { function_names } => ("ANY", Some(json!(function_names))),
     };
-    let config = object([
+    let config = set_fields([
         ("mode", Some(json!(mode))),
         ("allowed_function_names", names),
     ]);
@@ -589,17 +578,17 @@ fn calling_config(choice: ToolChoice) -> Value {
 /// poorly. Calls and their responses carry the ids [`WireIds`] spells when
 /// `model` takes ids.
 fn contents(
-    history: Vec<Message>,
+    history: &[&Message],
     target: &dyn ReplayTarget,
     model: &str,
 ) -> Result<Vec<Value>, EncodeError> {
-    let ids = WireIds::for_target(&history, target, model);
-    let with_ids = requires_tool_call_id(model);
+    let ids = WireIds::for_target(history, target, model);
+    let (with_ids, gemini3) = (requires_tool_call_id(model), gemini_3_or_later(model));
     let mut contents = Vec::with_capacity(history.len());
     let mut push = |role: &str, parts: Vec<Value>| {
         // Gemini rejects a content with no parts, as pi skips one.
         if !parts.is_empty() {
-            contents.push(json!({ "parts": parts, "role": role }));
+            contents.push(content(parts, role));
         }
     };
     for message in history {
@@ -609,7 +598,7 @@ fn contents(
                 let mut run = Vec::new();
                 let mut responses = false;
                 for part in content {
-                    let id = match &part {
+                    let id = match part {
                         UserContent::ToolResult(result) => {
                             Some(ids.of(&result.call).filter(|_| with_ids))
                         }
@@ -627,7 +616,7 @@ fn contents(
                 let parts = turn
                     .content
                     .iter()
-                    .map(|block| assistant_part(block, target, &ids, model));
+                    .map(|block| assistant_part(block, target, &ids, with_ids, gemini3));
                 push(
                     "model",
                     parts
@@ -642,7 +631,15 @@ fn contents(
     Ok(contents)
 }
 
-fn text_part(text: String) -> Value {
+/// A content of `parts` in `role`.
+fn content(parts: Vec<Value>, role: &str) -> Value {
+    Value::Object(set_fields([
+        ("parts", Some(Value::Array(parts))),
+        ("role", Some(Value::from(role))),
+    ]))
+}
+
+fn text_part(text: &str) -> Value {
     json!({ "text": text, "thought": false })
 }
 
@@ -653,7 +650,7 @@ fn mime<M: MimeType>(media_type: Option<M>) -> Option<String> {
 /// Where `source` puts media on every Gemini wire, REST and Interactions
 /// alike: a URL by reference (`true`) and base64 data inline. Each wire's
 /// `encodes` refuses every other form, so the adapter passes none.
-pub(super) fn carried(source: Source) -> Result<(bool, String), EncodeError> {
+pub(super) fn carried(source: &Source) -> Result<(bool, &str), EncodeError> {
     match source {
         Source::Url(uri) => Ok((true, uri)),
         Source::Base64(data) => Ok((false, data)),
@@ -666,7 +663,7 @@ pub(super) fn carried(source: Source) -> Result<(bool, String), EncodeError> {
 /// `source` of `mime_type` as GenerateContent part data, file data by URI
 /// or inline data, which needs a media type; a whole `part` is marked as no
 /// thought.
-fn media(mime_type: Option<String>, source: Source, part: bool) -> Result<Value, EncodeError> {
+fn media(mime_type: Option<String>, source: &Source, part: bool) -> Result<Value, EncodeError> {
     let (uri, data) = carried(source)?;
     let data = match (uri, mime_type) {
         (true, mime) => ("fileData", json!({ "mimeType": mime, "fileUri": data })),
@@ -677,7 +674,7 @@ fn media(mime_type: Option<String>, source: Source, part: bool) -> Result<Value,
             ));
         }
     };
-    Ok(Value::Object(object([
+    Ok(Value::Object(set_fields([
         (data.0, Some(data.1)),
         ("thought", part.then_some(Value::Bool(false))),
     ])))
@@ -688,17 +685,17 @@ fn media(mime_type: Option<String>, source: Source, part: bool) -> Result<Value,
 /// the tool failed, as the Gemini SDKs spell a function's failure. Images
 /// the adapter leaves in a result (a model that reads them) go in its
 /// `parts`, in order.
-fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> {
+fn user_part(part: &UserContent, id: Option<&str>) -> Result<Value, EncodeError> {
     Ok(match part {
-        UserContent::Text(text) => text_part(text.text),
+        UserContent::Text(text) => text_part(&text.text),
         UserContent::ToolResult(result) => {
             let (mut values, mut parts) = (Vec::new(), Vec::new());
-            for item in result.content {
+            for item in &result.content {
                 match item {
-                    ToolResultContent::Text(text) => values.push(Value::String(text.text)),
-                    ToolResultContent::Json { value } => values.push(value),
+                    ToolResultContent::Text(text) => values.push(Value::from(text.text.as_str())),
+                    ToolResultContent::Json { value } => values.push(value.clone()),
                     ToolResultContent::Image(image) => {
-                        parts.push(media(mime(image.media_type), image.data, false)?);
+                        parts.push(media(mime(image.media_type.clone()), &image.data, false)?);
                     }
                 }
             }
@@ -708,27 +705,33 @@ fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> 
                 1 => values.pop(),
                 _ => Some(Value::Array(values)),
             };
-            let response = object([
+            let response = set_fields([
                 ("name", Some(json!(result.name))),
                 ("id", id.map(Value::from)),
-                ("response", value.map(|value| json!({ key: value }))),
+                (
+                    "response",
+                    value.map(|value| Value::Object(Map::from_iter([(key.into(), value)]))),
+                ),
                 ("parts", (!parts.is_empty()).then_some(Value::Array(parts))),
             ]);
-            json!({ "functionResponse": response, "thought": false })
+            Value::Object(set_fields([
+                ("functionResponse", Some(Value::Object(response))),
+                ("thought", Some(Value::Bool(false))),
+            ]))
         }
-        UserContent::Image(image) => media(mime(image.media_type), image.data, true)?,
+        UserContent::Image(image) => media(mime(image.media_type.clone()), &image.data, true)?,
         // A text document goes as text, so that RAG context reads as prose.
-        UserContent::Document(document) => match document.data {
+        UserContent::Document(document) => match &document.data {
             DocumentData::Text(text) => text_part(text),
-            DocumentData::File(data) => media(mime(document.media_type), data, true)?,
+            DocumentData::File(data) => media(mime(document.media_type.clone()), data, true)?,
         },
-        UserContent::Audio(audio) => media(mime(audio.media_type), audio.data, true)?,
+        UserContent::Audio(audio) => media(mime(audio.media_type.clone()), &audio.data, true)?,
         UserContent::Video(video) => {
-            let mut part = media(mime(video.media_type), video.data, true)?;
+            let mut part = media(mime(video.media_type.clone()), &video.data, true)?;
             if let (Some(Value::Object(extra)), Some(part)) =
-                (video.additional_params, part.as_object_mut())
+                (&video.additional_params, part.as_object_mut())
             {
-                part.extend(extra);
+                part.extend(extra.clone());
             }
             part
         }
@@ -737,17 +740,17 @@ fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> 
 
 /// One assistant block as a Gemini part: its provider item while that is
 /// current, else a part rebuilt from its canonical fields, or `None` when
-/// it has nothing to send. Calls carry ids only when `model` takes them. A
-/// rebuilt call on Gemini 3 carries Google's placeholder signature, since
+/// it has nothing to send. Calls carry ids only `with_ids`. A rebuilt call
+/// on Gemini 3 (`gemini3`) carries Google's placeholder signature, since
 /// Gemini 3 rejects a call it did not sign without one ("Function call is
 /// missing a thought_signature in functionCall parts").
 fn assistant_part(
     block: &AssistantContent,
     target: &dyn ReplayTarget,
     ids: &WireIds,
-    model: &str,
+    with_ids: bool,
+    gemini3: bool,
 ) -> Result<Option<Value>, EncodeError> {
-    let with_ids = requires_tool_call_id(model);
     if let Replay::Item(item) = block.replay(target, ids) {
         let mut item = item.into_owned();
         if let Some(part) = item.as_object_mut() {
@@ -780,17 +783,14 @@ fn assistant_part(
             let id = ids.of(&call.id).filter(|_| with_ids).map(Value::from);
             let name = Some(json!(call.function.name));
             let args = Some(json!(call.function.arguments));
-            let signature =
-                gemini_3_or_later(model).then(|| json!("skip_thought_signature_validator"));
-            let call = Value::Object(object([("name", name), ("args", args), ("id", id)]));
-            Value::Object(object([
+            let signature = gemini3.then(|| json!("skip_thought_signature_validator"));
+            let call = Value::Object(set_fields([("name", name), ("args", args), ("id", id)]));
+            Value::Object(set_fields([
                 ("functionCall", Some(call)),
                 ("thoughtSignature", signature),
             ]))
         }
-        AssistantContent::Image(image) => {
-            media(mime(image.media_type.clone()), image.data.clone(), true)?
-        }
+        AssistantContent::Image(image) => media(mime(image.media_type.clone()), &image.data, true)?,
         AssistantContent::Opaque(opaque) => opaque.item.clone(),
     }))
 }
@@ -871,6 +871,15 @@ pub fn map_google_finish_reason(wire_name: &str) -> crate::completion::FinishRea
         | "MODEL_ARMOR" => FinishReason::ContentFilter,
         other => FinishReason::Other(other.to_owned()),
     }
+}
+
+/// A whole `generateContent` reply, as the image and transcription wires
+/// read one.
+pub(crate) fn classify_reply(body: &str) -> crate::wire::WireEvent<Value> {
+    crate::providers::internal::wire::classify_marker_keyed_frame(
+        body,
+        &["candidates", "promptFeedback", "usageMetadata"],
+    )
 }
 
 /// Rig's usage for a `usageMetadata` document, read leniently: a count that

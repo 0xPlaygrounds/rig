@@ -109,30 +109,40 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     let source = RigSource::detect()?;
     project::generate(home, &list, &source)?;
     // `/reload` shows the latest of these lines and of cargo's.
-    log.say("Resolving dependencies…");
-    let rig_crates = project::rig_crates(&list, &source);
-    check_bevy(
-        home,
-        &list,
-        &rig_crates,
-        &project::rig_version(&source),
-        log,
-    )
-    .map_err(|failure| match source {
-        // Nothing the agent is made of is on crates.io yet.
-        RigSource::Registry => format!(
-            "{failure}. rig-harness and the rig plugin crates are not published yet, so the \
-                 agent builds only from a rig checkout: set RIG_SOURCE to one, or install this \
-                 launcher from one with `cargo install --path`"
-        )
-        .into(),
-        RigSource::Local(_) => failure,
-    })?;
     log.say("Compiling the agent…");
     let mut command = cargo(home);
     command.args(["build", "--package", PACKAGE]);
     show_progress(&mut command);
     let status = log.run(command)?;
+    // The check reads the graph the build resolved into `Cargo.lock`, so a
+    // lock it passed passes again; after a failed build it runs anyway, to
+    // say in plain words when a foreign Bevy or rig crate is why.
+    let lock = fs::read(home.project().join("Cargo.lock")).ok();
+    let checked = home.project().join("Cargo.lock.checked");
+    if !status.success() || lock.is_none() || lock != fs::read(&checked).ok() {
+        log.say("Resolving dependencies…");
+        let rig_crates = project::rig_crates(&list, &source);
+        check_bevy(
+            home,
+            &list,
+            &rig_crates,
+            &project::rig_version(&source),
+            log,
+        )
+        .map_err(|failure| match source {
+            // Nothing the agent is made of is on crates.io yet.
+            RigSource::Registry => format!(
+                "{failure}. rig-harness and the rig plugin crates are not published yet, so \
+                 the agent builds only from a rig checkout: set RIG_SOURCE to one, or install \
+                 this launcher from one with `cargo install --path`"
+            )
+            .into(),
+            RigSource::Local(_) => failure,
+        })?;
+        if let Some(lock) = lock {
+            fs::write(&checked, lock).ok();
+        }
+    }
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
@@ -505,7 +515,7 @@ fn stamp(binary: &Path) -> Result<String> {
     Ok(format!("{modified} {}\n", metadata.len()))
 }
 
-/// Resolves the project (writing `Cargo.lock`) and fails, in plain words,
+/// Reads the project's resolved graph and fails, in plain words,
 /// when a plugin pulls in a Bevy other than [`BEVY_VERSION`] or rig crates
 /// other than the agent's.
 fn check_bevy(

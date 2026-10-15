@@ -15,10 +15,7 @@ use crate::image_generation;
 use crate::image_generation::ImageGenerationRequest;
 use crate::json_utils::Lenient;
 use crate::operation::ImageGeneration;
-use crate::providers::internal::wire::classify_marker_keyed_frame;
-use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::{Value, json};
@@ -76,35 +73,24 @@ fn create_request_body(generation_request: ImageGenerationRequest) -> Value {
         "safetySettings": null,
         "systemInstruction": null,
     });
-    if let Some(additional_params) = generation_request.additional_params {
-        merge_json_deep(&mut body, additional_params);
+    match (&mut body, generation_request.additional_params) {
+        (Value::Object(body), Some(Value::Object(params))) => {
+            crate::completion::options::deep_merge(body, params);
+        }
+        (body, Some(params)) => *body = params,
+        (_, None) => {}
     }
     body
-}
-
-fn merge_json_deep(target: &mut Value, source: Value) {
-    match (target, source) {
-        (Value::Object(target), Value::Object(source)) => {
-            for (key, value) in source {
-                if let Some(existing) = target.get_mut(&key) {
-                    merge_json_deep(existing, value);
-                } else {
-                    target.insert(key, value);
-                }
-            }
-        }
-        (target, source) => *target = source,
-    }
 }
 
 fn aspect_ratio(width: u32, height: u32) -> Option<String> {
     match (width, height) {
         (0, _) | (_, 0) => None,
         (w, h) if w == h => Some("1:1".to_string()),
-        (w, h) if w.saturating_mul(3) == h.saturating_mul(4) => Some("3:4".to_string()),
-        (w, h) if w.saturating_mul(4) == h.saturating_mul(3) => Some("4:3".to_string()),
-        (w, h) if w.saturating_mul(9) == h.saturating_mul(16) => Some("9:16".to_string()),
-        (w, h) if w.saturating_mul(16) == h.saturating_mul(9) => Some("16:9".to_string()),
+        (w, h) if w.saturating_mul(3) == h.saturating_mul(4) => Some("4:3".to_string()),
+        (w, h) if w.saturating_mul(4) == h.saturating_mul(3) => Some("3:4".to_string()),
+        (w, h) if w.saturating_mul(9) == h.saturating_mul(16) => Some("16:9".to_string()),
+        (w, h) if w.saturating_mul(16) == h.saturating_mul(9) => Some("9:16".to_string()),
         _ => None,
     }
 }
@@ -134,7 +120,8 @@ impl Wire for Images {
     type Op = ImageGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ImagesDecoder;
+    type Event = Value;
+    type Decoder<'id> = DocumentDecoder<ImageGeneration, Value>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -155,32 +142,10 @@ impl Wire for Images {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    /// The first non-thought image; missing image data and invalid base64
+    /// are response errors.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ImagesDecoder
-    }
-}
-
-/// Decode the first non-thought image in a `generateContent` reply.
-/// Missing image data and invalid base64 produce response errors.
-#[derive(Default)]
-pub struct ImagesDecoder;
-
-impl<'id> Decoder<'id, ImageGeneration> for ImagesDecoder {
-    type Event = Value;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_marker_keyed_frame(
-            &frame.as_str(),
-            &["candidates", "promptFeedback", "usageMetadata"],
-        )
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, ImageGeneration>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(image_of(&event)?))
+        DocumentDecoder::new(super::completion::classify_reply, |reply| image_of(&reply))
     }
 }
 

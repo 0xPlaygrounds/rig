@@ -31,7 +31,7 @@ fn ids_survive_splices_and_nothing_merges() {
     assert!(first < second && second < third);
 
     let mut edited = conversation.entry(1).expect("entry 1");
-    edited.message = Message::user("two, edited");
+    edited.message = Message::user("two, edited").into();
     let copy = edited.clone();
     let outsider = conversation.entry(2).expect("entry 2");
     let fresh = Entry::new(Message::user("new"));
@@ -300,8 +300,14 @@ fn edit_each_rewrites_in_place_as_one_change() {
             .collect::<Vec<_>>()
     );
     assert_eq!(ids(&conversation), before);
-    assert_eq!(conversation.messages().get(4), Some(&Message::user("4!")));
-    assert_eq!(conversation.messages().get(2), Some(&Message::user("c")));
+    assert_eq!(
+        conversation.messages().get(4),
+        Some(&Message::user("4!").into())
+    );
+    assert_eq!(
+        conversation.messages().get(2),
+        Some(&Message::user("c").into())
+    );
     assert_eq!(conversation.author(4), Some(&Author::plugin("notes")));
     let unsaved = conversation.take_unsaved();
     assert_eq!(unsaved.len(), 3, "the push, the extend and one edit");
@@ -329,7 +335,7 @@ fn made_times_fold_as_live_survive_edits_and_resets_and_stay_out_of_equality() {
     let first = live.key(0).expect("a key");
     assert_eq!(first.made, 1_000);
     let mut edited = live.entry(0).expect("entry 0");
-    edited.message = Message::user("a, edited");
+    edited.message = Message::user("a, edited").into();
     let fresh = Entry::new(Message::user("new"));
     live.dated(2_000, |conversation| {
         conversation.splice(0..1, [edited, fresh], Author::plugin("edit"))
@@ -431,7 +437,7 @@ fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
 
     let mut wanted: Vec<Entry> = (0..3).filter_map(|at| live.entry(at)).collect();
     if let Some(last) = wanted.last_mut() {
-        last.message = Message::user("c, edited");
+        last.message = Message::user("c, edited").into();
     }
     let revision = live.revision();
     let set = live.set_entries(wanted.clone(), Author::plugin("editor"));

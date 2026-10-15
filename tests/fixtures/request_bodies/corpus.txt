@@ -1987,6 +1987,8 @@ hunyuan-image-v3-latest
 hunyuan-image-v3:latest
 ibm-granite/granite-4.0-h-micro
 ibm-granite/granite-4.2-8b
+image-01
+image-01-live
 in.anthropic.claude-haiku-4-5-20251001-v1:0
 in.anthropic.claude-opus-5
 in.anthropic.claude-sonnet-5
@@ -3175,6 +3177,12 @@ sonar_pro-2026-01-01
 sonar_pro-20260101
 sonar_pro-latest
 sonar_pro:latest
+speech-02-hd
+speech-02-turbo
+speech-2.6-hd
+speech-2.6-turbo
+speech-2.8-hd
+speech-2.8-turbo
 ssd
 stability.sd3-5-large
 stability.sd3-5-large-v1:0

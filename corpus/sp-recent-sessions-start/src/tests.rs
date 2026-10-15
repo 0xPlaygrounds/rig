@@ -320,7 +320,7 @@ fn lists_filters_and_resumes_recent_sessions_without_writing() {
         .map(|request| request.chat_history.clone())
         .unwrap_or_default();
     let said = |message: &Message| format!("{message:?}").contains("Fix the yak retry test");
-    assert!(history.iter().any(said), "{history:?}");
+    assert!(history.iter().any(|message| said(message)), "{history:?}");
     drop(app);
 
     // With no saved session, the input comes first.

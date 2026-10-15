@@ -77,7 +77,7 @@ pub fn sent_documents(request: &crate::completion::CompletionRequest) -> Vec<(St
     request
         .chat_history
         .iter()
-        .flat_map(|message| match message {
+        .flat_map(|message| match &**message {
             crate::message::Message::User { content } => content.iter().collect::<Vec<_>>(),
             crate::message::Message::System { .. } | crate::message::Message::Assistant(_) => {
                 Vec::new()
