@@ -1,12 +1,16 @@
 //! MongoDB vector store for Rig.
 //!
 //! [`MongoDbVectorIndex`] queries an existing MongoDB Atlas Vector Search index
-//! through an aggregation pipeline, filtered by [`MongoDbSearchFilter`]. The
-//! `rig` facade re-exports this crate as `rig::mongodb` under the `mongodb`
+//! through an aggregation pipeline, filtered by [`MongoDbSearchFilter`].
+//! Creating an index names `rig-mongodb` in the client's handshake metadata.
+//! The `rig` facade re-exports this crate as `rig::mongodb` under the `mongodb`
 //! feature.
 
 use futures::StreamExt;
-use mongodb::bson::{self, Bson, Document, doc, to_bson};
+use mongodb::{
+    bson::{self, Bson, Document, doc, to_bson},
+    options::DriverInfo,
+};
 
 use rig_core::{
     Embed,
@@ -242,12 +246,26 @@ where
     /// field. Errors when the index is missing, not queryable, or defines no
     /// fields. See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/)
     /// on creating vector indexes.
+    ///
+    /// Also adds `rig-mongodb` and its version to the client's handshake
+    /// metadata, so connections the client opens from then on identify Rig to
+    /// the server.
     pub async fn new(
         collection: mongodb::Collection<C>,
         model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {
+        collection
+            .client()
+            .append_metadata(
+                DriverInfo::builder()
+                    .name("rig-mongodb")
+                    .version(env!("CARGO_PKG_VERSION").to_string())
+                    .build(),
+            )
+            .map_err(VectorStoreError::datastore)?;
+
         let search_index = SearchIndex::get_search_index(collection.clone(), index_name).await?;
 
         if !search_index.queryable {

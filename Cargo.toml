@@ -67,6 +67,7 @@ features = [
     "bedrock",
     "candle",
     "cassette",
+    "csv",
     "derive",
     "epub",
     "facade-build-tests",
@@ -254,6 +255,7 @@ rig-core = { path = "crates/rig-core", version = "0.44.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", default-features = false }
 anyhow = "1"
 arrow-array = "58"
+arrow-json = "58.2"
 assert_fs = "1"
 # 2.3: `force_send`, which Bevy Remote answers an in-process request with
 # (`BrpMessage::sender`).
@@ -293,6 +295,7 @@ chrono = "0.4"
 convert_case = "0.11"
 crossbeam-channel = "0.5.15"
 crossterm = "0.29"
+csv = "1.3"
 ctrlc = "3.4.4"
 dotenvy = "0.15"
 epub = "2"
@@ -329,7 +332,7 @@ lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
 mime = "0.3"
 mime_guess = "2"
 # 3.2: 3.0/3.1 no longer build against their own `^3` macro crate.
-mongodb = "3.2"
+mongodb = "3.5"
 neo4rs = "0.8"
 # rig-tools' `Local::watch`: file events instead of polling.
 notify = "8"
@@ -538,6 +541,7 @@ image = ["rig-core/image", "rig-agent?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
+csv = ["rig-core/csv"]
 rmcp = ["dep:rig-rmcp"]
 socks = ["reqwest", "rig-reqwest/socks"]
 # Provider clients built with no transport named (`OpenAI::from_env()`) send
