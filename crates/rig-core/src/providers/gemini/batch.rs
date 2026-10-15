@@ -196,6 +196,7 @@ impl Wire for Batches {
     type Op = BatchCall<BatchRequest, BatchReply>;
     type Payload = Encoded;
     type Frame = WireFrame;
+    type Event = BatchReply;
     type Decoder<'id> = BatchesDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

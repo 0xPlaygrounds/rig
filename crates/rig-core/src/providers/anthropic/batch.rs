@@ -204,6 +204,7 @@ impl Wire for MessageBatches {
     type Op = BatchCall<MessageBatchRequest, MessageBatchReply>;
     type Payload = Encoded;
     type Frame = WireFrame;
+    type Event = MessageBatchReply;
     type Decoder<'id> = MessageBatchesDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
