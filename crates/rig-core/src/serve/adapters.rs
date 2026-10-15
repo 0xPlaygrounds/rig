@@ -29,7 +29,7 @@ use crate::{
         FamilyDescriptor, HandlerDescriptor, HandlerKey, RetrieveQuery, RetrievedDocuments,
         ToolEmbeddingDescriptor,
     },
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     operation::{Completion, Embedding, Rerank},
     providers::registry::ProviderId,
     tool::{ErasedTool, Tool, ToolEmbedding},
@@ -41,8 +41,8 @@ use crate::{
 use super::{Dispatch, Reply, Serve};
 use crate::effect::family;
 
-fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
-    ErrorReport::new(
+fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> RigError {
+    RigError::new(
         ErrorKind::HandlerUnavailable,
         format!(
             "a {handler} handler cannot serve a `{}` effect",
@@ -184,14 +184,14 @@ impl Serve for ModelAdapter<Completion> {
                 stream: false,
             } => {
                 let result = model.finished(Arc::unwrap_or_clone(request), sending).await;
-                Reply::Outcome(result.map(Answered::Completion).map_err(ErrorReport::from))
+                Reply::Outcome(result.map(Answered::Completion).map_err(RigError::from))
             }
             EffectKind::Completion {
                 request,
                 stream: true,
             } => match model.opened(Arc::unwrap_or_clone(request), sending) {
                 Ok(stream) => Reply::Stream(stream.into_relay()),
-                Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+                Err(error) => Reply::Outcome(Err(RigError::from(error))),
             },
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
@@ -237,11 +237,11 @@ impl Serve for ModelAdapter<Embedding> {
                     .finished(texts, sending)
                     .await
                     .map(|response| Answered::Embeddings(EmbedOutputs::Texts(response)))
-                    .map_err(ErrorReport::from),
+                    .map_err(RigError::from),
             ),
             EffectKind::Embed {
                 inputs: EmbedInputs::Images(_),
-            } => Reply::Outcome(Err(ErrorReport::new(
+            } => Reply::Outcome(Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 "a text embedding handler cannot embed images",
             ))),
@@ -284,7 +284,7 @@ impl Serve for ModelAdapter<Rerank> {
                     .finished(request, sending)
                     .await
                     .map(Answered::Reranked)
-                    .map_err(ErrorReport::from),
+                    .map_err(RigError::from),
             ),
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
@@ -388,7 +388,7 @@ where
         match kind {
             EffectKind::ToolCall { name, .. } if name != T::NAME => {
                 // Key routing must not invoke a different tool than the bound target.
-                Reply::Outcome(Err(ErrorReport::new(
+                Reply::Outcome(Err(RigError::new(
                     ErrorKind::Internal,
                     format!("tool handler `{}` asked to run `{name}`", T::NAME),
                 )))
@@ -569,8 +569,8 @@ where
                                             .collect(),
                                     ))
                                 })
-                                .map_err(ErrorReport::from),
-                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
+                                .map_err(RigError::from),
+                            Err(error) => Err(RigError::from(VectorStoreError::from(error))),
                         }
                     }
                     RetrieveQuery::TopNIds { req } => {
@@ -587,8 +587,8 @@ where
                                             .collect(),
                                     ))
                                 })
-                                .map_err(ErrorReport::from),
-                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
+                                .map_err(RigError::from),
+                            Err(error) => Err(RigError::from(VectorStoreError::from(error))),
                         }
                     }
                 };

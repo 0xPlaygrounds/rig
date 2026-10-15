@@ -37,5 +37,16 @@ pub enum StructuredOutputError {
     EmptyResponse,
 }
 
+/// A failed run is its own error; output that is not the requested type is
+/// a reply that does not answer the request.
+impl From<StructuredOutputError> for rig_core::error::RigError {
+    fn from(error: StructuredOutputError) -> Self {
+        match error {
+            StructuredOutputError::Prompt(error) => error.into(),
+            other => Self::from_error(rig_core::error::ErrorKind::Response, &other),
+        }
+    }
+}
+
 #[cfg(test)]
 mod provider_response_tests;

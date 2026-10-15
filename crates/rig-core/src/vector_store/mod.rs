@@ -14,7 +14,7 @@ pub use request::VectorSearchRequest;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::{
     Embed,
     embeddings::Embedding,
@@ -33,7 +33,7 @@ pub mod request;
 pub enum VectorStoreError {
     /// Embedding generation failed while preparing a vector query or insert.
     #[error("Embedding error: {0}")]
-    EmbeddingError(#[from] ProviderError),
+    EmbeddingError(#[from] RigError),
 
     /// JSON serialization or deserialization failed.
     #[error("Json error: {0}")]

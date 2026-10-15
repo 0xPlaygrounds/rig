@@ -17,12 +17,11 @@
 //! too, so every failure class shares one shape.
 //!
 //! Streaming status failures open a rig stream successfully and surface the
-//! preserved `ProviderError` as its first in-band item. The matrix treats
+//! preserved `RigError` as its first in-band item. The matrix treats
 //! that as the streaming contract and proves the body/status match blocking.
 
 use futures::StreamExt;
-use rig::error::ErrorReport;
-use rig::error::ProviderError;
+use rig::error::RigError;
 use rig::providers::doubleword;
 use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::json;
@@ -45,13 +44,9 @@ fn assert_nested_error_envelope(json: &serde_json::Value) {
     );
 }
 
-fn assert_preserved_client_error(error: &ProviderError, expected_status: u16) {
-    assert_preserved_client_error_report(&ErrorReport::from(error), expected_status);
-}
-
-/// The streaming twin: an in-band stream failure is an `ErrorReport`, which
-/// carries the same preserved provider response as the `ProviderError`.
-fn assert_preserved_client_error_report(report: &ErrorReport, expected_status: u16) {
+/// Blocking and in-band stream failures alike carry the preserved provider
+/// response.
+fn assert_preserved_client_error(report: &RigError, expected_status: u16) {
     let status = report
         .provider_response_status()
         .expect("provider status should be preserved");
@@ -134,7 +129,7 @@ async fn invalid_temperature_streaming_body(client: OpenAiModels) {
             None => panic!("invalid-temperature stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error_report(&rig::ErrorReport::from(&error), 400);
+    assert_preserved_client_error(&error, 400);
 }
 
 #[tokio::test]

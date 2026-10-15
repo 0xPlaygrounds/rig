@@ -2,7 +2,6 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to watch the extractor keep counting upward until the stop condition is met.
 
-use anyhow::Result;
 use rig::operation::Completion;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -32,7 +31,7 @@ fn build_counter_extractor(
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let extractor = build_counter_extractor(OpenAI::from_env()?.completion(openai::GPT_4));
     let mut current_number = 0;
     let mut step = 1;

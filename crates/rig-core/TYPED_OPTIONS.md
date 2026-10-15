@@ -301,8 +301,8 @@ pub struct UnsupportedOption {
   `EncodeError::unsupported_option(&self) -> Option<&UnsupportedOption>`. Its
   `ErrorKind` is `Request`, as every encode error's is (`crates/rig-core/src/error.rs:668-671`).
   `Completion::prepare` returns it as the `ProviderError` it converts into,
-  before the wire encodes, so a caller of `Model::call` or `stream` matches
-  `ProviderError::UnsupportedOption`.
+  before the wire encodes, so a caller of `Model::call` or `stream` reads
+  `ErrorDetail::UnsupportedOption` on the `RigError`.
 - Under `OnUnsupported::Ignore` the option is skipped with one
   `tracing::warn!` carrying the fields `option`, `provider`, `model` and
   `reason`.

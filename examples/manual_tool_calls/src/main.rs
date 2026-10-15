@@ -9,8 +9,9 @@
 //! 4. feeds the tool results back to the model, and
 //! 5. repeats until the model returns a final text answer.
 
-use anyhow::{Result, bail};
+use rig::RigError;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolOutput, ToolSet};
@@ -127,7 +128,7 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     const MAX_ROUNDS: usize = 8;
 
     let model = OpenAI::from_env()?.completion(openai::GPT_4O_MINI);
@@ -194,9 +195,17 @@ async fn main() -> Result<()> {
 
         current_prompt = match history.pop() {
             Some(prompt) => prompt,
-            None => bail!("tool loop history unexpectedly empty"),
+            None => {
+                return Err(RigError::new(
+                    ErrorKind::Other,
+                    "tool loop history unexpectedly empty",
+                ));
+            }
         };
     }
 
-    bail!("manual tool loop exceeded {MAX_ROUNDS} rounds")
+    return Err(RigError::new(
+        ErrorKind::Other,
+        format!("manual tool loop exceeded {MAX_ROUNDS} rounds"),
+    ));
 }

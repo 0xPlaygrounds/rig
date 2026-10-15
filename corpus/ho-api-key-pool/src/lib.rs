@@ -30,10 +30,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime};
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::ProviderError;
 use rig_harness::rig_core::catalog::Connector;
 use rig_harness::rig_core::effect::EffectId;
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::ProviderError;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::error::retry::Verdict;
 use rig_harness::rig_core::http_client::{
     self, Bytes, DynHttpClient, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request,
@@ -191,7 +191,7 @@ impl Pool {
             return Failed::Up;
         };
         let reply = ProviderError::from_http_response(status, body);
-        let report = ErrorReport::from(reply.with_response_headers(Some(headers.clone())));
+        let report = RigError::from(reply.with_response_headers(Some(headers.clone())));
         let Some(key) = self.keys.get_mut(index) else {
             return Failed::Up;
         };

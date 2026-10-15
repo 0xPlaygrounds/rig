@@ -9,8 +9,8 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
+use rig::RigError;
 use rig::completion::CompletionRequest;
-use rig::error::ProviderError;
 use rig::test_utils::TraceCapture;
 use serde_json::Value;
 
@@ -79,7 +79,7 @@ pub async fn run<W, T, Wm, Tr>(
         .finish()
         .await
         .expect("the stream ends with a final record");
-    let error: ProviderError = rejected
+    let error: RigError = rejected
         .call(reject(
             CompletionRequest::new("Reply with exactly: rejected")
                 .max_tokens(64)

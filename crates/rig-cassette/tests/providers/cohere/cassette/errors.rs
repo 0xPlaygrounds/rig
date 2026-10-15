@@ -5,7 +5,6 @@
 //! place the reason for the failure appears.
 
 use axum::http;
-use rig::error::ProviderError;
 
 use super::super::support::with_cohere_cassette;
 use crate::support::BASIC_PROMPT;
@@ -27,7 +26,10 @@ async fn completion_error_preserves_status_and_body() {
                 .expect_err("an unknown model should fail");
 
             assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
+                matches!(
+                    (error.kind, &error.provider_response, &error.detail),
+                    (rig::error::ErrorKind::ProviderResponse, Some(_), None)
+                ),
                 "the provider's reply is preserved as its response, got {error:?}"
             );
             assert_eq!(

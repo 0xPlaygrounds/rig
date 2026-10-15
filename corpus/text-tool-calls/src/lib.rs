@@ -17,7 +17,7 @@ use std::sync::Arc;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Message, ToolDefinition};
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::message::{ToolFunction, ToolName, ToolResultContent};
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
@@ -136,7 +136,7 @@ impl Intercept for WriteAsText {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
+        _outcome: &Result<Answered, RigError>,
     ) -> AfterServe {
         AfterServe::Keep
     }

@@ -23,7 +23,6 @@ futures = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest"] }
 rig-agent.workspace = true
 tokio = { workspace = true }
-anyhow = { workspace = true }
 httpmock = { workspace = true }
 
 [features]

@@ -85,7 +85,10 @@ async fn auth_rejection_keeps_transport_shape() {
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
-                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
+                matches!(
+                    (error.kind, &error.provider_response, &error.detail),
+                    (rig::error::ErrorKind::ProviderResponse, Some(_), None)
+                ),
                 "the reply is the provider's, id contract or not: {error:?}"
             );
             assert_eq!(error.provider_request_id(), None);

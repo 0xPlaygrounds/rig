@@ -10,7 +10,9 @@ fn stream_of(events: Vec<MockStreamEvent>) -> CompletionStream {
 }
 
 /// Every item of `stream`, read to its end.
-async fn items_of(stream: &mut CompletionStream) -> Vec<Result<Item<StreamEvent>, ProviderError>> {
+async fn items_of(
+    stream: &mut CompletionStream,
+) -> Vec<Result<Item<StreamEvent>, crate::error::RigError>> {
     let mut items = Vec::new();
     while let Some(item) = stream.next().await {
         items.push(item);

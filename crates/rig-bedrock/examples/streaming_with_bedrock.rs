@@ -1,9 +1,10 @@
 use rig_agent::{agent::stream_to_stdout, prelude::*};
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_core::RigError;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Create streaming agent with a single context prompt
     let agent = AgentBuilder::new(BedrockRuntime::from_env().completion(AMAZON_NOVA_LITE))
         .preamble("Be precise and concise.")

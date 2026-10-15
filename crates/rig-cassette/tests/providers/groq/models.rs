@@ -10,7 +10,6 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
-use rig::error::ProviderError;
 use rig::providers::openai::wire::GROQ;
 
 use super::support::{with_groq_cassette_bogus_key_result, with_groq_cassette_result};
@@ -74,7 +73,9 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
                 .await
                 .expect_err("a bogus key must not list models");
 
-            let ProviderError::ProviderResponse(response) = &error else {
+            let (rig::error::ErrorKind::ProviderResponse, Some(response), None) =
+                (error.kind, &error.provider_response, &error.detail)
+            else {
                 anyhow::bail!(
                     "a rejected listing must keep the provider's reply\nDisplay: {error}\n\
                      Debug: {error:#?}"

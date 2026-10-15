@@ -42,7 +42,7 @@ use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{Author, Halt, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::retry::{RetryPolicy, Verdict};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, UserContent};
 use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
@@ -672,7 +672,7 @@ pub(crate) fn build_requests(
         let Some((agent, mut builder)) =
             agent.and_then(|agent| Some((agent, agents.get_mut(agent).ok()?)))
         else {
-            let why = ErrorReport::new(ErrorKind::Internal, "a model call needs an agent");
+            let why = RigError::new(ErrorKind::Internal, "a model call needs an agent");
             built.try_insert_if_new(Outcome(Err(why)));
             continue;
         };
@@ -693,7 +693,7 @@ pub(crate) fn build_requests(
             deliver(agent, spec, waiting, conversation, &mut notices, into);
         }
         if call.turn_call && builder.conversation.messages().is_empty() {
-            let why = ErrorReport::new(ErrorKind::Internal, "The conversation is empty.");
+            let why = RigError::new(ErrorKind::Internal, "The conversation is empty.");
             commands
                 .entity(call.entity)
                 .try_insert_if_new(Outcome(Err(why)));
@@ -784,7 +784,7 @@ impl ModelStarts<'_, '_> {
         model: &ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-    ) -> Result<(Connection, CompletionRequest), ErrorReport> {
+    ) -> Result<(Connection, CompletionRequest), RigError> {
         let mut model = model.clone();
         let (connection, _) = self.start(&mut model, adapters, agent, true)?;
         Ok((connection, model.request))
@@ -800,7 +800,7 @@ impl ModelStarts<'_, '_> {
         model: &ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-    ) -> Result<Vec<UnsupportedOption>, ErrorReport> {
+    ) -> Result<Vec<UnsupportedOption>, RigError> {
         let mut model = model.clone();
         let (connection, mut dropped) = self.start(&mut model, adapters, agent, true)?;
         let kind = EffectKind::Completion {
@@ -834,10 +834,10 @@ impl ModelStarts<'_, '_> {
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
         send: bool,
-    ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
+    ) -> Result<(Connection, Vec<UnsupportedOption>), RigError> {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
         let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
-            return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
+            return Err(RigError::new(ErrorKind::HandlerUnavailable, NO_MODEL));
         };
         if let Some(adapters) = adapters {
             connection = adapters.apply(connection);
@@ -880,7 +880,7 @@ pub(crate) async fn stream_reply(
     reply: Reply,
     feed: Sender<Fed>,
     wake: Wake,
-) -> Result<effect::Answered, ErrorReport> {
+) -> Result<effect::Answered, RigError> {
     let mut events = reply.into_stream();
     while let Some(item) = events.next().await {
         let event = match item {
@@ -1091,7 +1091,7 @@ pub(crate) fn stop_calls(
             if !answered {
                 let stopped = match if_stopped {
                     Some(IfStopped(outcome)) => outcome.clone(),
-                    None => Outcome(Err(ErrorReport::new(ErrorKind::Cancelled, why.clone()))),
+                    None => Outcome(Err(RigError::new(ErrorKind::Cancelled, why.clone()))),
                 };
                 commands.entity(call).try_insert_if_new(stopped);
             }
@@ -1171,7 +1171,7 @@ pub(crate) fn commit_turn_calls(
                 continue;
             }
             _ if stopped.is_some() => continue,
-            Ok(other) => ErrorReport::new(
+            Ok(other) => RigError::new(
                 ErrorKind::Internal,
                 format!("the model answered with a {} outcome", other.family()),
             ),

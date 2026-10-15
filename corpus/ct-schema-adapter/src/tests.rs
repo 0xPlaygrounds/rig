@@ -119,7 +119,7 @@ impl Intercept for StrictProvider {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
+        _outcome: &Result<Answered, RigError>,
     ) -> AfterServe {
         AfterServe::Keep
     }

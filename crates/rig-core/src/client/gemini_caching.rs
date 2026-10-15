@@ -7,7 +7,7 @@ use futures::StreamExt;
 use serde::Deserialize;
 
 use crate::driver::{Exchange, Model, Opened, Opening, Transport};
-use crate::error::ProviderError;
+use crate::error::{ErrorDetail, ProviderError};
 use crate::providers::gemini::cached_content::CachedContents;
 use crate::providers::gemini::caching::{
     CacheBook, Create, Lease, Parsed, cache_body, digests, is_user_text, parse, short_digest,
@@ -50,7 +50,10 @@ impl CacheBook {
     {
         for lease in self.leases() {
             let result = caches.delete(&lease.name).await;
-            let gone = matches!(result, Ok(()) | Err(ProviderError::CacheExpired { .. }));
+            let gone = match result {
+                Ok(()) => true,
+                Err(error) => matches!(error.detail, Some(ErrorDetail::CacheExpired { .. })),
+            };
             if !gone {
                 tracing::warn!(target: "gemini.cache", name = %lease.name, "cache delete failed");
             }

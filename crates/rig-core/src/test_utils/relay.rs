@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use crate::completion::{ModelRef, ProviderCapabilities};
 use crate::effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, family};
-use crate::error::{ErrorKind, ErrorReport};
+use crate::error::{ErrorKind, RigError};
 use crate::serve::{Dispatch, Reply, Serve};
 
 use super::{MockFrame, MockScript, MockStreamEvent};
@@ -53,7 +53,7 @@ impl Serve for MockRelay {
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         if !matches!(kind, EffectKind::Completion { .. }) {
-            return Reply::Outcome(Err(ErrorReport::new(
+            return Reply::Outcome(Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!(
                     "a {} handler cannot serve a `{}` effect",
@@ -68,7 +68,7 @@ impl Serve for MockRelay {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .pop_front();
         let Some(turn) = turn else {
-            return Reply::Outcome(Err(ErrorReport::new(
+            return Reply::Outcome(Err(RigError::new(
                 ErrorKind::Provider,
                 "mock relay has no scripted turn",
             )));

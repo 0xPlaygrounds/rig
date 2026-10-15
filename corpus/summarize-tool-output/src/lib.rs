@@ -19,7 +19,7 @@ use rig_coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::Answered;
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::tool::ToolOutput;
 use serde::Deserialize;
 
@@ -247,7 +247,7 @@ fn summarize(
             summary.insert(CallOf(turn));
         }
         let (summary, secs) = (summary.id(), config.timeout_secs);
-        let late = ErrorReport::new(ErrorKind::Timeout, format!("it took longer than {secs} s"));
+        let late = RigError::new(ErrorKind::Timeout, format!("it took longer than {secs} s"));
         commands
             .delayed()
             .duration(Duration::from_secs(secs))

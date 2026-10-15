@@ -27,7 +27,7 @@ use rig_core::serve::{
 use rig_core::{
     completion::{CompletionRequest, Message},
     effect::{Answered, EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::AssistantContent,
     streaming::{Item, Relayed, StreamEvent, StreamRecord},
     test_utils::{MockCompletionModel, MockStreamEvent},
@@ -38,7 +38,7 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
-    struct Items(Vec<Result<Relayed, ErrorReport>>);
+    struct Items(Vec<Result<Relayed, RigError>>);
     impl Serve for Items {
         type Family = rig_core::effect::family::Completion;
         fn descriptor(&self) -> HandlerDescriptor {
@@ -56,7 +56,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
         }
     }
     for error_first in [false, true] {
-        let error = Err(ErrorReport::new(ErrorKind::Response, "first error"));
+        let error = Err(RigError::new(ErrorKind::Response, "first error"));
         let terminal = Ok(Relayed::Done(Box::new(
             rig_core::completion::CompletionResponse::new(
                 Vec::new(),
@@ -70,7 +70,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
         } else {
             vec![terminal, error]
         };
-        items.push(Err(ErrorReport::new(ErrorKind::Provider, "late error")));
+        items.push(Err(RigError::new(ErrorKind::Provider, "late error")));
         let key = HandlerKey::from("model");
         let (dispatcher, _, mut driver) = Bus::channel();
         let recorder = EffectLogRecorder::keeping_stream_events();
@@ -97,7 +97,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
         .await;
         // What a consumer reads: the items up to the first that ends the
         // stream, a response or an error.
-        let read = |items: Vec<Result<Relayed, ErrorReport>>| {
+        let read = |items: Vec<Result<Relayed, RigError>>| {
             let end = items
                 .iter()
                 .position(|item| !matches!(item, Ok(Relayed::Item(_))))
@@ -313,7 +313,7 @@ impl Serve for Echo {
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
                 EffectKind::Custom { payload, .. } => Ok(Answered::Custom { payload }),
-                other => Err(ErrorReport::new(
+                other => Err(RigError::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
                 )),
@@ -1025,7 +1025,7 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     let events = log.records[0].events.as_mut().expect("events kept");
     let first = events.items()[0].clone();
     *events = StreamRecord::from_items(vec![first.clone()]).expect("a prefix");
-    log.records[0].outcome = Err(ErrorReport::new(ErrorKind::Cancelled, "dropped mid-stream"));
+    log.records[0].outcome = Err(RigError::new(ErrorKind::Cancelled, "dropped mid-stream"));
 
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     super::register_all(&log, &mut driver).expect("fresh keys");

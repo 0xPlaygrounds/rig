@@ -20,7 +20,7 @@ use bevy_ecs::prelude::*;
 use bevy_tasks::ConditionalSendFuture;
 use rig_core::effect::Answered;
 use rig_core::effect::{EffectId, EffectKind};
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 use rig_core::serve::{
     Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Reply, catch_panics,
 };
@@ -28,7 +28,7 @@ use rig_core::tool::{PublishedContext, ToolContext, ToolResultContext};
 
 /// What a handler's run left: its answer, and what a tool published beside
 /// it, if anything.
-pub(crate) type Ran = (Result<Answered, ErrorReport>, Option<ToolResultContext>);
+pub(crate) type Ran = (Result<Answered, RigError>, Option<ToolResultContext>);
 
 /// The effect ids, and the records of the effects running.
 #[derive(Resource)]
@@ -73,7 +73,7 @@ impl Effects {
         consume: impl FnOnce(Reply) -> F + Send + 'static,
     ) -> impl ConditionalSendFuture<Output = Ran> + 'static
     where
-        F: ConditionalSendFuture<Output = Result<Answered, ErrorReport>> + 'static,
+        F: ConditionalSendFuture<Output = Result<Answered, RigError>> + 'static,
     {
         let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(self.buffer.clone());
         recorder.begin(id, handler.key().clone(), kind.clone(), origin);

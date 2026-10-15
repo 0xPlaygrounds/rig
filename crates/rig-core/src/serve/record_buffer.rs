@@ -24,7 +24,7 @@ use crate::{
     effect::{
         Answered, Disposition, EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey,
     },
-    error::ErrorReport,
+    error::RigError,
     streaming::{Item, StreamEvent, StreamRecord},
     tool::ToolResultContext,
 };
@@ -55,7 +55,7 @@ struct Slot {
     key: HandlerKey,
     kind: EffectKind,
     origin: DispatchContext,
-    outcome: Option<Result<Answered, ErrorReport>>,
+    outcome: Option<Result<Answered, RigError>>,
     events: Option<Vec<Item<StreamEvent>>>,
     stream_origin: Option<crate::message::Origin>,
     tool_output: Option<ToolResultContext>,
@@ -281,7 +281,7 @@ impl Recorder for RecordBuffer {
         self.with_slot(id, open, |slot| slot.tool_output = Some(output));
     }
 
-    fn resolve(&self, id: EffectId, outcome: Result<Answered, ErrorReport>) {
+    fn resolve(&self, id: EffectId, outcome: Result<Answered, RigError>) {
         let finished_ms = self.now();
         self.with_slot(
             id,

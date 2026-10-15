@@ -6,7 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::{Model, Sending, Transport};
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::observe::AdapterContext;
 use crate::streaming::Streamed;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -153,7 +153,7 @@ impl<Op: Operation> DynModel<Op> {
     pub fn call(
         &self,
         request: impl Into<Op::Request>,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Op::Response, RigError>> + WasmCompatSend + 'static {
         self.finished(request.into(), Sending::default())
     }
 
@@ -162,7 +162,7 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: impl Into<Op::Request>,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Op::Response, RigError>> + WasmCompatSend + 'static {
         self.finished(request.into(), Sending::observed(observation))
     }
 
@@ -171,13 +171,13 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: Op::Request,
         sending: Sending,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Op::Response, RigError>> + WasmCompatSend + 'static {
         let inner = self.inner.clone();
         async move { inner.open(request, Mode::Unary, sending)?.finish().await }
     }
 
     /// Open a streamed reply; [`Model::stream`] with the model erased.
-    pub fn stream(&self, request: impl Into<Op::Request>) -> Result<Streamed<Op>, ProviderError> {
+    pub fn stream(&self, request: impl Into<Op::Request>) -> Result<Streamed<Op>, RigError> {
         self.opened(request.into(), Sending::default())
     }
 
@@ -186,7 +186,7 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: impl Into<Op::Request>,
         observation: AdapterContext,
-    ) -> Result<Streamed<Op>, ProviderError> {
+    ) -> Result<Streamed<Op>, RigError> {
         self.opened(request.into(), Sending::observed(observation))
     }
 
@@ -195,8 +195,8 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: Op::Request,
         sending: Sending,
-    ) -> Result<Streamed<Op>, ProviderError> {
-        self.inner.open(request, Mode::Streaming, sending)
+    ) -> Result<Streamed<Op>, RigError> {
+        Ok(self.inner.open(request, Mode::Streaming, sending)?)
     }
 }
 

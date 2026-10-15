@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::{
@@ -125,7 +124,7 @@ impl ToolEmbedding for Subtract {
     }
 }
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // required to enable CloudWatch error logging by the runtime
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)

@@ -49,7 +49,7 @@ use rig_harness::rig_core::effect::{
     self, EffectId, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
     family, model_key,
 };
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::providers::registry::ConnectError;
 use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_harness::rig_ecs::effects::Handler;
@@ -575,7 +575,7 @@ impl Serve for FromRecord {
         let answer = {
             let mut answers = lock(&self.answers);
             if let Some(why) = answers.past() {
-                let stopped = ErrorReport::new(ErrorKind::Divergence, why);
+                let stopped = RigError::new(ErrorKind::Divergence, why);
                 (!self.flags.continue_live).then_some(Err(stopped))
             } else {
                 let key = self.live.descriptor().key;
@@ -588,8 +588,7 @@ impl Serve for FromRecord {
                         Some(Ok(record))
                     }
                     Err(divergence) => {
-                        let report =
-                            ErrorReport::new(ErrorKind::Divergence, divergence.to_string());
+                        let report = RigError::new(ErrorKind::Divergence, divergence.to_string());
                         answers.divergences.push(divergence);
                         (!self.flags.continue_live).then_some(Err(report))
                     }
@@ -977,7 +976,7 @@ impl Serve for Unreachable {
     }
 
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
-        Reply::Outcome(Err(ErrorReport::new(
+        Reply::Outcome(Err(RigError::new(
             ErrorKind::HandlerUnavailable,
             self.why.clone(),
         )))
@@ -1047,7 +1046,7 @@ fn answer_from_record(
                 }
             }
             Err(divergence) => {
-                let report = ErrorReport::new(ErrorKind::Divergence, divergence.to_string());
+                let report = RigError::new(ErrorKind::Divergence, divergence.to_string());
                 answers.divergences.push(divergence);
                 if replay.flags.continue_live {
                     return;

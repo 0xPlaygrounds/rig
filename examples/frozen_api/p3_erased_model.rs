@@ -1,5 +1,5 @@
 use rig::DynModel;
-use rig::error::ProviderError;
+use rig::RigError;
 use rig::operation::Completion;
 use rig::providers::openai::{self, OpenAI};
 
@@ -9,18 +9,18 @@ struct AppState {
 }
 
 /// A request handler: it names the operation, never the provider.
-async fn ask(state: AppState, question: String) -> Result<String, ProviderError> {
+async fn ask(state: AppState, question: String) -> Result<String, RigError> {
     let response = state.model.call(question).await?;
     Ok(response.text())
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), RigError> {
     let state = AppState {
         model: OpenAI::from_env()?.completion(openai::GPT_5_2).erase(),
     };
 
     let handler = tokio::spawn(ask(state.clone(), "What is a monad?".to_owned()));
-    println!("{}", handler.await??);
+    println!("{}", handler.await.map_err(RigError::other)??);
     Ok(())
 }

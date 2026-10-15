@@ -6,6 +6,7 @@
 //! cargo run -p rig-memory --example recent_messages_and_compaction
 //! ```
 
+use rig_core::RigError;
 use rig_core::completion::Message;
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName, UserContent,
@@ -13,7 +14,7 @@ use rig_core::message::{
 use rig_memory::recent::{LastMessages, TokenBudget, view};
 use rig_memory::{ClearToolOutputs, MemoryStore, load, save, summary_author};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), RigError> {
     let store = MemoryStore::default();
 
     // Each turn is loaded, extended and saved, as a server would per request.

@@ -37,7 +37,7 @@ fn calculator(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().pretty().init();
 
     let calculator_agent =

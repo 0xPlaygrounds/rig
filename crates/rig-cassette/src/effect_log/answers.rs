@@ -20,14 +20,14 @@
 //! assert!(matches!(b.outcome, Ok(Answered::Custom { payload }) if payload == "B"));
 //! assert!(answers.answer(Some("agent-1"), &call("{\"path\":\"c\"}")).is_err());
 //! assert_eq!(answers.remaining(), 1);
-//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! # Ok::<(), rig_core::error::RigError>(())
 //! ```
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 
 use rig_core::effect::{EffectKind, EffectRecord};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 
 use super::replay::divergence_under;
 use super::{EffectLog, RequestCheck};
@@ -109,7 +109,7 @@ impl RecordedAnswers {
             .filter(|queue| !queue.is_empty())
             .ok_or_else(|| Divergence {
                 expected: None,
-                report: ErrorReport::new(
+                report: RigError::new(
                     ErrorKind::Divergence,
                     format!(
                         "replay divergence: `{shown}` made a `{name}` effect the log has no more of"
@@ -130,7 +130,7 @@ impl RecordedAnswers {
                     .unwrap_or_default();
                 Err(Divergence {
                     expected,
-                    report: ErrorReport::new(
+                    report: RigError::new(
                         ErrorKind::Divergence,
                         format!(
                             "replay divergence: no recorded `{name}` of `{shown}` matches: {what}"
@@ -158,10 +158,10 @@ pub struct Divergence {
     /// `None` when the log has no more of them.
     pub expected: Option<EffectRecord>,
     /// An [`ErrorKind::Divergence`] report naming the first difference.
-    pub report: ErrorReport,
+    pub report: RigError,
 }
 
-impl From<Divergence> for ErrorReport {
+impl From<Divergence> for RigError {
     fn from(divergence: Divergence) -> Self {
         divergence.report
     }

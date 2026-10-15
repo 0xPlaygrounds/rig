@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities},
     embeddings::EmbeddingResponse,
-    error::ErrorReport,
+    error::RigError,
     operation::RerankRequest,
     rerank::RerankResponse,
     streaming::StreamRecord,
@@ -244,12 +244,12 @@ pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     /// none (a [`CustomEffect`] whose `Serialize` fails). The in-tree
     /// families always have one; a typed dispatch of a request without one
     /// is pre-failed by the bus and never reaches a handler or a log.
-    fn wrap(request: Self::Request) -> Result<EffectKind, ErrorReport>;
+    fn wrap(request: Self::Request) -> Result<EffectKind, RigError>;
     /// The typed answer, or the report for an outcome of another family.
-    fn unwrap(outcome: Answered) -> Result<Self::Answer, ErrorReport>;
+    fn unwrap(outcome: Answered) -> Result<Self::Answer, RigError>;
     /// The report [`Family::unwrap`] gives for an outcome of another family.
-    fn mismatch(outcome: &Answered) -> ErrorReport {
-        ErrorReport::new(
+    fn mismatch(outcome: &Answered) -> RigError {
+        RigError::new(
             crate::error::ErrorKind::Internal,
             format!(
                 "expected a {} outcome, the handler answered {}",
@@ -348,7 +348,7 @@ pub mod family {
     };
     use crate::{
         completion::{CompletionRequest, CompletionResponse},
-        error::{ErrorKind, ErrorReport},
+        error::{ErrorKind, RigError},
         operation::RerankRequest,
         rerank::RerankResponse,
         tool::ToolResult,
@@ -367,13 +367,13 @@ pub mod family {
                 type Request = $request;
                 type Answer = $answer;
 
-                fn wrap(request: Self::Request) -> Result<EffectKind, ErrorReport> {
+                fn wrap(request: Self::Request) -> Result<EffectKind, RigError> {
                     let wrap: fn(Self::Request) -> EffectKind = $wrap;
                     Ok(wrap(request))
                 }
 
-                fn unwrap(outcome: Answered) -> Result<Self::Answer, ErrorReport> {
-                    let unwrap: fn(Answered) -> Result<Self::Answer, ErrorReport> = $unwrap;
+                fn unwrap(outcome: Answered) -> Result<Self::Answer, RigError> {
+                    let unwrap: fn(Answered) -> Result<Self::Answer, RigError> = $unwrap;
                     unwrap(outcome)
                 }
             }
@@ -478,7 +478,7 @@ pub mod family {
         type Request = E;
         type Answer = E::Answer;
 
-        fn wrap(request: E) -> Result<EffectKind, ErrorReport> {
+        fn wrap(request: E) -> Result<EffectKind, RigError> {
             // Reject unencodable requests before dispatch so no handler or log
             // receives an effect without a wire representation.
             serde_json::to_value(&request)
@@ -487,18 +487,18 @@ pub mod family {
                     payload,
                 })
                 .map_err(|error| {
-                    ErrorReport::new(
+                    RigError::new(
                         ErrorKind::Request,
                         format!("the `{}` effect did not serialize: {error}", E::KIND),
                     )
                 })
         }
 
-        fn unwrap(outcome: Answered) -> Result<E::Answer, ErrorReport> {
+        fn unwrap(outcome: Answered) -> Result<E::Answer, RigError> {
             match outcome {
                 Answered::Custom { payload: value } => {
                     serde_json::from_value(value).map_err(|error| {
-                        ErrorReport::new(
+                        RigError::new(
                             ErrorKind::Internal,
                             format!(
                                 "the answer to the `{}` effect did not deserialize: {error}",
@@ -872,7 +872,7 @@ pub struct EffectRecord {
     /// The effect.
     pub kind: EffectKind,
     /// The answer.
-    pub outcome: Result<Answered, ErrorReport>,
+    pub outcome: Result<Answered, RigError>,
     /// A streamed dispatch's items, verbatim, when the recorder was asked
     /// to keep them (`EffectLogRecorder::keeping_stream_events`); `None`
     /// otherwise, and the answer is the fold. A replayer re-emits these
@@ -916,7 +916,7 @@ pub struct EffectRecord {
     /// replaced it. A replayer answers with [`Self::outcome`] and lets the
     /// reviewers run again, as it reruns layers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reviewed: Option<Result<Answered, ErrorReport>>,
+    pub reviewed: Option<Result<Answered, RigError>>,
     /// How the outcome came about.
     #[serde(default, skip_serializing_if = "Disposition::is_ran")]
     pub disposition: Disposition,
@@ -977,7 +977,7 @@ impl EffectRecord {
         id: EffectId,
         key: HandlerKey,
         kind: EffectKind,
-        outcome: Result<Answered, ErrorReport>,
+        outcome: Result<Answered, RigError>,
     ) -> Self {
         Self {
             published: None,

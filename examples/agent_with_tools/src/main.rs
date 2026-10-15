@@ -2,7 +2,6 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
-use anyhow::Result;
 use rig::message::{EmptyToolName, ToolName};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -58,7 +57,7 @@ fn runtime_tools() -> Result<Vec<DynamicTool>, EmptyToolName> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \

@@ -18,7 +18,7 @@
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
 use rig_core::completion::CompletionRequest;
-use rig_core::error::ProviderError;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 use rig_core::test_utils::streaming_conformance::{
@@ -91,8 +91,8 @@ fn spawn_server(listener: TcpListener, messages: Vec<String>, abort: bool) {
 /// Responses decoder and fold the session's `completion` runs. A session
 /// failure ends the frames, as a transport failure ends a stream.
 async fn drain_openai_responses_websocket_events(
-    events: Vec<Result<ResponsesWebSocketEvent, ProviderError>>,
-) -> Result<conformance::DrainedStream, ProviderError> {
+    events: Vec<Result<ResponsesWebSocketEvent, RigError>>,
+) -> Result<conformance::DrainedStream, RigError> {
     let mut body = String::new();
     let mut failed = false;
     for event in events {

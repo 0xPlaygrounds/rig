@@ -9,5 +9,4 @@ workspace = true
 
 [dependencies]
 rig = { workspace = true, features = ["memory"] }
-anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

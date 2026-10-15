@@ -650,7 +650,7 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::Provider(ProviderError::Response(
+                PromptError::from(ProviderError::Response(
                     "agent run ended without producing a final response".to_string(),
                 ))
             })

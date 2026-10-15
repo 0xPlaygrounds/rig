@@ -9,6 +9,7 @@
 //!
 //! ```no_run
 //! use neo4rs::ConfigBuilder;
+//! use rig_core::RigError;
 //! use rig_core::providers::openai::{self, OpenAI};
 //! use rig_core::vector_store::VectorStoreIndex;
 //! use rig_core::vector_store::request::VectorSearchRequest;
@@ -22,7 +23,7 @@
 //! }
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), anyhow::Error> {
+//! async fn main() -> Result<(), RigError> {
 //!     let openai = OpenAI::from_env()?;
 //!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 //!
@@ -32,7 +33,8 @@
 //!             .db("recommendations")
 //!             .user("recommendations")
 //!             .password("recommendations")
-//!             .build()?,
+//!             .build()
+//!             .map_err(RigError::other)?,
 //!     )
 //!     .await?;
 //!

@@ -22,7 +22,7 @@ fn dispatch_event(kind: &EffectKind) -> DispatchEvent<'_> {
 /// Builds an outcome event for `kind` that resolved to `outcome`.
 fn outcome_event<'a>(
     kind: &'a EffectKind,
-    outcome: &'a Result<Answered, ErrorReport>,
+    outcome: &'a Result<Answered, RigError>,
 ) -> OutcomeEvent<'a> {
     OutcomeEvent {
         id: EffectId::from_raw(1),
@@ -38,7 +38,7 @@ fn outcome_event<'a>(
 /// outcome as the engine carries it (format 5).
 fn outcome_event_with<'a>(
     kind: &'a EffectKind,
-    outcome: &'a Result<Answered, ErrorReport>,
+    outcome: &'a Result<Answered, RigError>,
     context: &'a ToolContext,
 ) -> OutcomeEvent<'a> {
     OutcomeEvent {

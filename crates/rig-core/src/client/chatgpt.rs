@@ -5,7 +5,7 @@ use crate::catalog::{Catalog, ModelSpec};
 use crate::completion::UnsupportedOption;
 use crate::driver::DynModel;
 use crate::effect::{EffectKind, HandlerDescriptor, family};
-use crate::error::{ErrorKind, ErrorReport};
+use crate::error::{ErrorKind, RigError};
 use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
 use crate::providers::registry::{ConnectError, ConnectOptions};
@@ -64,13 +64,13 @@ impl SignedInModel {
     }
 
     /// The model, connected with the current credential.
-    async fn connect(&self) -> Result<DynModel<Completion>, ErrorReport> {
+    async fn connect(&self) -> Result<DynModel<Completion>, RigError> {
         let context = self
             .authenticator
             .auth_context(&self.http)
             .await
             .map_err(|error| {
-                ErrorReport::new(
+                RigError::new(
                     ErrorKind::Provider,
                     format!("the ChatGPT sign-in gave no credential ({error}); sign in again"),
                 )
@@ -84,7 +84,7 @@ impl SignedInModel {
         }
         Catalog::builtin()
             .connect_with(&self.spec, options)
-            .map_err(|error| ErrorReport::new(ErrorKind::Internal, error.to_string()))
+            .map_err(|error| RigError::new(ErrorKind::Internal, error.to_string()))
     }
 }
 

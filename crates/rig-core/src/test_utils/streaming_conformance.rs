@@ -30,7 +30,7 @@ use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::error::ProviderError;
 use crate::{
     completion::FinishReason,
-    error::ErrorReport,
+    error::RigError,
     http_client,
     message::AssistantContent,
     streaming::{Item, StreamEvent},
@@ -41,7 +41,7 @@ use crate::{
 pub enum ConformanceError {
     /// Opening the stream failed before any wire frame was consumed.
     #[error(transparent)]
-    Completion(#[from] ProviderError),
+    Completion(#[from] RigError),
     /// The pipeline violated the streaming contract table.
     #[error("{scenario} conformance failed for {provider}: {details}")]
     Contract {
@@ -374,7 +374,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 /// 5. **Reasoning provenance.** The response contains a reasoning part only
 ///    if the stream ended one.
 pub fn assert_valid_event_stream(
-    items: &[Result<Item<StreamEvent>, ErrorReport>],
+    items: &[Result<Item<StreamEvent>, RigError>],
     choice: &[AssistantContent],
 ) {
     use crate::message::AssistantContent;
@@ -476,7 +476,7 @@ pub fn assert_valid_event_stream(
 #[derive(Debug)]
 pub struct DrainedStream {
     /// Every item the stream yielded, in order.
-    pub items: Vec<Result<Item<StreamEvent>, ErrorReport>>,
+    pub items: Vec<Result<Item<StreamEvent>, RigError>>,
     /// The parts that ended, in position: the response's choice, or what
     /// arrived before the stream stopped.
     pub choice: Vec<AssistantContent>,
@@ -570,9 +570,8 @@ impl DrainedStream {
     }
 }
 
-type DriveFn = Box<
-    dyn Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, ProviderError>> + Send + Sync,
->;
+type DriveFn =
+    Box<dyn Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, RigError>> + Send + Sync>;
 
 /// One provider's full streaming pipeline over scripted wire chunks.
 ///
@@ -589,7 +588,7 @@ impl WireDriver {
     /// Wrap a provider pipeline closure.
     pub fn new(
         provider: &'static str,
-        drive: impl Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, ProviderError>>
+        drive: impl Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, RigError>>
         + Send
         + Sync
         + 'static,
@@ -601,7 +600,7 @@ impl WireDriver {
     }
 
     /// Run the provider's full pipeline over `chunks` and drain it.
-    pub async fn drive(&self, chunks: WireChunks) -> Result<DrainedStream, ProviderError> {
+    pub async fn drive(&self, chunks: WireChunks) -> Result<DrainedStream, RigError> {
         (self.drive)(chunks).await
     }
 }
@@ -630,9 +629,7 @@ pub struct InterleavedReasoningFixture {
 }
 
 type BufferedDriveFn = Box<
-    dyn Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, ProviderError>>
-        + Send
-        + Sync,
+    dyn Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, RigError>> + Send + Sync,
 >;
 
 /// A buffered-body pipeline (the ChatGPT backend shape): the full SSE body is
@@ -647,7 +644,7 @@ impl BufferedBodyDriver {
     /// Wrap a buffered pipeline closure.
     pub fn new(
         provider: &'static str,
-        drive: impl Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, ProviderError>>
+        drive: impl Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, RigError>>
         + Send
         + Sync
         + 'static,
@@ -659,7 +656,7 @@ impl BufferedBodyDriver {
     }
 
     /// Run the buffered pipeline over a complete SSE body.
-    pub async fn drive(&self, body: String) -> Result<Vec<AssistantContent>, ProviderError> {
+    pub async fn drive(&self, body: String) -> Result<Vec<AssistantContent>, RigError> {
         (self.drive)(body).await
     }
 }
@@ -1527,7 +1524,7 @@ pub mod fixtures {
     pub async fn drain(mut stream: crate::streaming::CompletionStream) -> DrainedStream {
         let mut items = Vec::new();
         while let Some(item) = stream.next().await {
-            items.push(item.map_err(|error| ErrorReport::from(&error)));
+            items.push(item);
         }
         let partial = stream.partial().choice;
         let response = stream.finish().await.ok();
@@ -1552,7 +1549,7 @@ pub mod fixtures {
     pub async fn drain_observed<W, T>(
         model: &Model<W, T>,
         request: crate::completion::CompletionRequest,
-    ) -> Result<DrainedStream, ProviderError>
+    ) -> Result<DrainedStream, RigError>
     where
         W: Wire<Op = Completion>,
         T: Transport<W>,

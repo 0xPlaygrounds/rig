@@ -1,7 +1,7 @@
 use rig_core::{
     completion::{AssistantContent, CompletionRequest, CompletionResponse, Message, Usage},
     effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
 };
 
 use super::*;
@@ -175,7 +175,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
         id: stream,
         kind: DeliveryKind::Outcome,
     });
-    recorder.resolve(stream, Err(ErrorReport::new(ErrorKind::Response, "closed")));
+    recorder.resolve(stream, Err(RigError::new(ErrorKind::Response, "closed")));
     let final_log = recorder.take();
     assert_eq!(final_log.header.deliveries.as_ref().unwrap().len(), 2);
     assert!(recorder.header().deliveries.unwrap().is_empty());
@@ -230,7 +230,7 @@ fn stream_error_metadata_is_validated_and_released_with_its_records() {
             },
             DispatchContext::default(),
         );
-        let error = ErrorReport::new(ErrorKind::Response, "error item");
+        let error = RigError::new(ErrorKind::Response, "error item");
         recorder.stream_error(id, &error);
         if discarded {
             recorder.discard(id);
@@ -310,7 +310,7 @@ fn effect_record_and_log_round_trip() {
                 name: "add".into(),
                 args: "{}".into(),
             },
-            outcome: Err(ErrorReport::new(ErrorKind::Timeout, "slow")),
+            outcome: Err(RigError::new(ErrorKind::Timeout, "slow")),
             events: None,
         },
     ]);
@@ -883,7 +883,7 @@ fn a_timed_recorder_stamps_its_records_and_an_untimed_one_does_not() {
             args: "{}".into(),
         };
         recorder.begin(id, "t".into(), kind, origin.clone());
-        recorder.resolve(id, Err(ErrorReport::new(ErrorKind::Internal, "no")));
+        recorder.resolve(id, Err(RigError::new(ErrorKind::Internal, "no")));
         let log = recorder.take();
         let record = log.records.first().expect("one record");
         assert_eq!(record.purpose.as_deref(), Some("summary"));

@@ -21,7 +21,7 @@ use bevy_tasks::futures_lite::future;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_core::completion::ToolDefinition;
 use rig_core::effect::{Answered as Answer, EffectId, EffectKind};
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 use rig_core::message::ToolName;
 use rig_core::serve::{self, BeforeServe, ErasedHandler, Intercept};
 use rig_core::tool::DynamicTool;
@@ -471,7 +471,7 @@ impl Intercept for Disconnected {
         &self,
         _: EffectId,
         _: &EffectKind,
-        outcome: &Result<Answer, ErrorReport>,
+        outcome: &Result<Answer, RigError>,
     ) -> serve::AfterServe {
         let failed = match outcome {
             Ok(Answer::ToolResult { result }) => result.is_error(),

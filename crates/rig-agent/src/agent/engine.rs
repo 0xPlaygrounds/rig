@@ -15,7 +15,7 @@ use rig_core::error::ProviderError;
 use rig_core::{
     completion::ModelRef,
     effect::{Answered, EffectKind},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, Message, ToolCall, ToolFunction, ToolName},
     telemetry::SpanCombinator,
     wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync},
@@ -304,7 +304,7 @@ where
                     };
                     let selected_model: ModelHandle = match selected_model {
                         Ok(model) => model,
-                        Err(report) => fail!(PromptError::Report(report), break 'outer),
+                        Err(report) => fail!(PromptError::Failed(report), break 'outer),
                     };
 
                     // Telemetry uses the effective preamble before output-mode augmentation.
@@ -386,7 +386,7 @@ where
                         ));
                     }
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
-                        fail!(PromptError::Provider(ProviderError::Response(
+                        fail!(PromptError::from(ProviderError::Response(
                             "agent requested tool execution without a prepared registry snapshot"
                                 .to_string(),
                         )), break 'outer);
@@ -1160,13 +1160,13 @@ pub(crate) async fn settle_model_turn<M>(
             replaced = Some(replacement.choice);
         }
         OutcomeAction::Replace(Ok(other)) => {
-            return Err(PromptError::Report(wrong_outcome("a completion", &other)));
+            return Err(PromptError::Failed(wrong_outcome("a completion", &other)));
         }
         OutcomeAction::Replace(Err(report)) => {
             if report.kind == ErrorKind::Cancelled {
                 return Ok(ModelTurnDecision::Terminate(report.message));
             }
-            return Err(PromptError::Report(report));
+            return Err(PromptError::Failed(report));
         }
     }
     let identity = response.identity();
@@ -1240,7 +1240,7 @@ pub(crate) async fn dispatch_effect(
     ctx: &HookContext,
     key: &rig_core::effect::HandlerKey,
     kind: EffectKind,
-) -> Result<Answered, ErrorReport> {
+) -> Result<Answered, RigError> {
     let scope = DispatchScope::open(runner, ctx, kind, None)
         .await
         .map_err(|(_, report)| report)?;
@@ -1254,8 +1254,8 @@ pub(crate) async fn dispatch_effect(
     }
 }
 
-pub(crate) fn wrong_outcome(expected: &str, outcome: &Answered) -> ErrorReport {
-    ErrorReport::new(
+pub(crate) fn wrong_outcome(expected: &str, outcome: &Answered) -> RigError {
+    RigError::new(
         ErrorKind::Internal,
         format!(
             "expected {expected}, the handler answered with a {} outcome",
@@ -1594,7 +1594,7 @@ pub(crate) async fn dispatch_tool_call(
     };
     let mut published: Option<crate::tool::ToolContext> = None;
     let mut executed = false;
-    let outcome: Result<Answered, ErrorReport> = match denied {
+    let outcome: Result<Answered, RigError> = match denied {
         Some(report) => Ok(Answered::ToolResult {
             result: ToolResult::skipped(report.message),
         }),
@@ -1656,7 +1656,7 @@ pub(crate) async fn dispatch_tool_call(
                 ErrorKind::BusClosed | ErrorKind::HandlerUnavailable | ErrorKind::Divergence
             ) =>
         {
-            return Err(ToolExit::Fail(PromptError::Report(report)));
+            return Err(ToolExit::Fail(PromptError::Failed(report)));
         }
         Err(report) => ToolResult::failed(report.into()),
     };

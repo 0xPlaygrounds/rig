@@ -16,7 +16,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
 use rig::message::AssistantContent;
 use rig::prelude::*;
@@ -97,7 +96,7 @@ impl AgentHook for RetryOnMarker {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = OpenAI::from_env()?;
     // One model serves both agents: erase it once, clone the handle.
     let model = client.completion(openai::GPT_4O_MINI).erase();

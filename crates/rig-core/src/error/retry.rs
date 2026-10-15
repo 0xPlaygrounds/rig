@@ -5,13 +5,13 @@
 //! ```
 //! use std::time::{Duration, SystemTime};
 //! use rig_core::error::retry::{RetryPolicy, Verdict};
-//! use rig_core::error::{ErrorKind, ErrorReport};
+//! use rig_core::error::{ErrorKind, RigError};
 //!
-//! let overloaded = ErrorReport::new(ErrorKind::Provider, "overloaded").with_retryable(true);
+//! let overloaded = RigError::new(ErrorKind::Provider, "overloaded").with_retryable(true);
 //! let policy = RetryPolicy::DEFAULT;
 //! assert!(matches!(policy.verdict(&overloaded, 0, SystemTime::now()), Verdict::Retry(_)));
 //!
-//! let full = ErrorReport::new(ErrorKind::Provider, "prompt is too long: 210000 tokens");
+//! let full = RigError::new(ErrorKind::Provider, "prompt is too long: 210000 tokens");
 //! assert!(full.is_context_overflow());
 //! ```
 //!
@@ -20,7 +20,7 @@
 
 use std::time::{Duration, SystemTime};
 
-use super::{ErrorKind, ErrorReport};
+use super::{ErrorKind, RigError};
 
 /// How often and how long a failed call is retried.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,7 +48,7 @@ impl RetryPolicy {
 
     /// What to do about `report`, the failure of a call already retried
     /// `retries` times in a row, at `now`.
-    pub fn verdict(&self, report: &ErrorReport, retries: u32, now: SystemTime) -> Verdict {
+    pub fn verdict(&self, report: &RigError, retries: u32, now: SystemTime) -> Verdict {
         if report.is_context_overflow() {
             return Verdict::Overflow;
         }
@@ -94,7 +94,7 @@ pub enum Verdict {
     Final,
 }
 
-impl ErrorReport {
+impl RigError {
     /// The wait the provider asked for, as of `now`: the `retry-after-ms`
     /// header (OpenAI), else `retry-after` in seconds or as an HTTP date,
     /// else a hint in the body: Gemini's `"retryDelay": "2s"` or OpenAI's

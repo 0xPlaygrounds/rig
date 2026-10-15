@@ -14,7 +14,7 @@ use serde_json::json;
 
 use super::{Model, Transport};
 use crate::completion::CompletionRequest;
-use crate::error::{EncodeError, ProviderError};
+use crate::error::{EncodeError, ProviderError, RigError};
 use crate::http_client::framing::Framing;
 use crate::message::{CallId, ToolName};
 use crate::observe::{AdapterContext, AdapterVerdict, ObservationLog, Subject};
@@ -35,7 +35,7 @@ pub(crate) async fn call<W, H>(
     http: &H,
     request: crate::wire::Request<W>,
     context: Option<AdapterContext>,
-) -> Result<crate::wire::Response<W>, ProviderError>
+) -> Result<crate::wire::Response<W>, RigError>
 where
     W: Wire,
     H: Transport<W>,
@@ -53,7 +53,7 @@ pub(crate) fn stream<W, H>(
     http: &H,
     request: crate::wire::Request<W>,
     context: Option<AdapterContext>,
-) -> Result<Streamed<W::Op>, ProviderError>
+) -> Result<Streamed<W::Op>, RigError>
 where
     W: Wire,
     H: Transport<W>,
@@ -845,13 +845,27 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         error.to_string(),
         "RequestError: a multipart request cannot open a streamed reply"
     );
-    assert_eq!(error.kind(), crate::error::ErrorKind::Request);
-    assert_eq!(
-        error.boundary(),
-        crate::observe::AdapterErrorBoundary::Request
-    );
+    assert_eq!(error.kind, crate::error::ErrorKind::Request);
     assert!(!error.is_retryable());
     assert!(http.requests().is_empty(), "nothing was sent");
+
+    // The transport refuses the send as a request-boundary failure.
+    let payload = Multipart
+        .encode(prompt(), Mode::Streaming)
+        .expect("the request encodes");
+    let exchange = super::Exchange {
+        mode: Mode::Streaming,
+        observation: None,
+        extensions: http::Extensions::new(),
+    };
+    let opening = Transport::<Multipart>::send(&http, payload, exchange);
+    let Err(refused) = futures::executor::block_on(opening) else {
+        panic!("the transport opens no streamed multipart reply");
+    };
+    assert_eq!(
+        refused.boundary(),
+        crate::observe::AdapterErrorBoundary::Request
+    );
 }
 
 // ── request validation ─────────────────────────────────────────────────

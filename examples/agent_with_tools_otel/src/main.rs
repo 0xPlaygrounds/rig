@@ -6,7 +6,6 @@
 //! operations, which may cause issues.
 use std::time::Duration;
 
-use anyhow::Result;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
@@ -116,11 +115,12 @@ impl Tool for Subtract {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
-        .build()?;
+        .build()
+        .map_err(RigError::other)?;
     // Create a new OpenTelemetry trace pipeline that prints to stdout
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)

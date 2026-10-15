@@ -20,7 +20,6 @@
 //!
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
 
-use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -234,7 +233,7 @@ impl AgentHook for ApprovalHook {
 // ---------------------------------------------------------------------------
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))
         .preamble(
             "You are an operations assistant. Use the available tools to carry out the user's \

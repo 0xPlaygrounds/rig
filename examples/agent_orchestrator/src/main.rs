@@ -1,3 +1,4 @@
+use rig::RigError;
 use rig::extractor::ExtractorBuilder;
 use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
@@ -21,7 +22,7 @@ struct TaskResults {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     let model = openai_client.completion(openai::GPT_4).erase();

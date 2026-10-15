@@ -4,8 +4,8 @@
 //! finishes with the response.
 
 use futures::StreamExt;
+use rig_core::RigError;
 use rig_core::completion::CompletionResponse;
-use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
 use rig_core::streaming::{CompletionStream, Item, PartKind, StreamEvent, StreamRecord};
 
@@ -26,7 +26,7 @@ pub struct Updates {
     /// Every item, in order.
     pub items: Vec<Item<StreamEvent>>,
     /// The response, or the error that ended the stream.
-    pub response: Result<CompletionResponse, ProviderError>,
+    pub response: Result<CompletionResponse, RigError>,
 }
 
 /// Every item of `stream`, read to its end, and its response.

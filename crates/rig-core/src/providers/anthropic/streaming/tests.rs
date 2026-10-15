@@ -568,7 +568,7 @@ mod terminal_emission {
     ) -> (
         Vec<String>,
         bool,
-        Result<crate::completion::CompletionResponse, crate::error::ProviderError>,
+        Result<crate::completion::CompletionResponse, crate::error::RigError>,
     ) {
         let bound = crate::driver::Model::new(
             AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
@@ -584,7 +584,7 @@ mod terminal_emission {
     ) -> (
         Vec<String>,
         bool,
-        Result<crate::completion::CompletionResponse, crate::error::ProviderError>,
+        Result<crate::completion::CompletionResponse, crate::error::RigError>,
     ) {
         let mut texts = Vec::new();
         let mut saw_error = false;
@@ -719,7 +719,7 @@ mod terminal_emission {
 
     /// The first error a 200 stream carrying `frames` yields, with
     /// `request-id: req_stream` on the reply.
-    async fn in_band_error(frames: &[&str]) -> anyhow::Result<crate::error::ProviderError> {
+    async fn in_band_error(frames: &[&str]) -> anyhow::Result<crate::error::RigError> {
         let mut headers = http::HeaderMap::new();
         headers.insert(
             http::header::CONTENT_TYPE,
@@ -766,11 +766,9 @@ mod terminal_emission {
             error.is_retryable(),
             "the same envelope in-band must be retryable too: {error:?}"
         );
-        let report = error.report();
-        anyhow::ensure!(report.retryable, "the report must agree: {report:?}");
         anyhow::ensure!(
-            report.code.as_deref() == Some("overloaded_error"),
-            "the envelope's code is reported: {report:?}"
+            error.code.as_deref() == Some("overloaded_error"),
+            "the envelope's code is reported: {error:?}"
         );
         Ok(())
     }

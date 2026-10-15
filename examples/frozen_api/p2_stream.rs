@@ -1,3 +1,4 @@
+use rig::RigError;
 use std::io::Write;
 
 use futures::StreamExt;
@@ -5,7 +6,7 @@ use rig::providers::openai::{self, OpenAI};
 use rig::streaming::{Item, StreamEvent};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), RigError> {
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
     let mut stream = model.stream("Write a haiku about the borrow checker.")?;
 
@@ -14,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match item? {
             Item::Event(StreamEvent::Text { text, .. }) => {
                 print!("{text}");
-                std::io::stdout().flush()?;
+                std::io::stdout().flush().map_err(RigError::other)?;
             }
             Item::Event(_) => {}
             Item::Unknown(payload) => eprintln!("\n[unmodeled provider event: {payload:?}]"),

@@ -2,7 +2,7 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model identify the example that uses `FileLoader::with_glob`.
 
-use anyhow::Result;
+use rig::RigError;
 use rig::agent::AgentBuilder;
 use rig::loaders::FileLoader;
 use rig::providers::openai::{self, OpenAI};
@@ -10,7 +10,7 @@ use rig::providers::openai::{self, OpenAI};
 const LOADERS_GLOB: &str = "examples/*.rs";
 const LOADERS_PROMPT: &str = "Which example builds an agent from files loaded via FileLoader::with_glob(\"examples/*.rs\")? Answer with just the file name.";
 
-fn load_example_contexts() -> Result<impl Iterator<Item = (std::path::PathBuf, String)>> {
+fn load_example_contexts() -> Result<impl Iterator<Item = (std::path::PathBuf, String)>, RigError> {
     Ok(FileLoader::with_glob(LOADERS_GLOB)?
         .read_with_path()
         .ignore_errors()
@@ -18,7 +18,7 @@ fn load_example_contexts() -> Result<impl Iterator<Item = (std::path::PathBuf, S
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = OpenAI::from_env()?;
     let model = client.completion(openai::GPT_4O);
     let files = load_example_contexts()?;

@@ -8,7 +8,7 @@
 //! [`Serving`]. When the call's [`Outcome`] arrives, its reading becomes the
 //! latest [`Quota`] of the provider it was [`SentTo`] and the key it was
 //! sent with; a 429 marks the quota limited until the wait the provider
-//! asked for (rig-core's `ErrorReport::retry_after`). The plugin never sends
+//! asked for (rig-core's `RigError::retry_after`). The plugin never sends
 //! a request of its own.
 //!
 //! Each agent's status item shows its model's provider's latest quota,

@@ -38,11 +38,11 @@ mod hook;
 mod tools;
 mod view;
 
-use anyhow::{Context, Result, anyhow, bail};
 use futures::StreamExt;
 use rig::DynModel;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 use rig::message::{Message, ToolChoice, ToolResultContent};
 use rig::operation::Completion;
 use rig::prelude::*;
@@ -85,7 +85,7 @@ enum Provider {
 }
 
 impl Provider {
-    fn parse(name: &str) -> Result<Self> {
+    fn parse(name: &str) -> Result<Self, RigError> {
         Ok(match name {
             "anthropic" => Self::Anthropic,
             "openai" => Self::OpenAiChat,
@@ -95,10 +95,15 @@ impl Provider {
             "deepseek" => Self::DeepSeek,
             "deepseek-anthropic" => Self::DeepSeekAnthropic,
             "openrouter" => Self::OpenRouter,
-            other => bail!(
-                "unknown provider `{other}`: use anthropic, openai, openai-responses, gemini, \
+            other => {
+                return Err(RigError::new(
+                    ErrorKind::Configuration,
+                    format!(
+                        "unknown provider `{other}`: use anthropic, openai, openai-responses, gemini, \
                  gemini-interactions, deepseek, deepseek-anthropic or openrouter"
-            ),
+                    ),
+                ));
+            }
         })
     }
 
@@ -119,7 +124,7 @@ impl Provider {
         self,
         model: &str,
         streaming: Option<ToolInputStreaming>,
-    ) -> Result<DynModel<Completion>> {
+    ) -> Result<DynModel<Completion>, RigError> {
         let context = || format!("building the {self:?} client from the environment");
         let messages = |config: AnthropicConfig| {
             let mut model = config.client().completion(model);
@@ -129,32 +134,36 @@ impl Provider {
             model.erase()
         };
         Ok(match self {
-            Self::Anthropic => messages(AnthropicConfig::from_env().with_context(context)?),
-            Self::DeepSeekAnthropic => {
-                messages(AnthropicConfig::from_env_with(&DEEPSEEK_ANTHROPIC).with_context(context)?)
-            }
+            Self::Anthropic => messages(
+                AnthropicConfig::from_env()
+                    .map_err(|error| RigError::from(error).context(context()))?,
+            ),
+            Self::DeepSeekAnthropic => messages(
+                AnthropicConfig::from_env_with(&DEEPSEEK_ANTHROPIC)
+                    .map_err(|error| RigError::from(error).context(context()))?,
+            ),
             Self::OpenAiChat => openai::OpenAI::from_env()
-                .with_context(context)?
+                .map_err(|error| RigError::from(error).context(context()))?
                 .chat(model)
                 .erase(),
             Self::OpenAiResponses => openai::OpenAI::from_env()
-                .with_context(context)?
+                .map_err(|error| RigError::from(error).context(context()))?
                 .responses(model)
                 .erase(),
             Self::Gemini => gemini::Gemini::from_env()
-                .with_context(context)?
+                .map_err(|error| RigError::from(error).context(context()))?
                 .completion(model)
                 .erase(),
             Self::GeminiInteractions => gemini::Gemini::from_env()
-                .with_context(context)?
+                .map_err(|error| RigError::from(error).context(context()))?
                 .interactions(model)
                 .erase(),
             Self::DeepSeek => deepseek::from_env()
-                .with_context(context)?
+                .map_err(|error| RigError::from(error).context(context()))?
                 .chat(model)
                 .erase(),
             Self::OpenRouter => openrouter::from_env()
-                .with_context(context)?
+                .map_err(|error| RigError::from(error).context(context()))?
                 .chat(model)
                 .erase(),
         })
@@ -177,13 +186,14 @@ struct Options {
 }
 
 impl Options {
-    fn from_args() -> Result<Self> {
+    fn from_args() -> Result<Self, RigError> {
         let mut args = std::env::args().skip(1);
-        let provider = Provider::parse(
-            &args
-                .next()
-                .ok_or_else(|| anyhow!("name a provider, for example `anthropic`"))?,
-        )?;
+        let provider = Provider::parse(&args.next().ok_or_else(|| {
+            RigError::new(
+                ErrorKind::Configuration,
+                "name a provider, for example `anthropic`",
+            )
+        })?)?;
         let mut options = Self {
             provider,
             model: provider.default_model().to_owned(),
@@ -192,7 +202,11 @@ impl Options {
             tool_input_streaming: None,
         };
         while let Some(flag) = args.next() {
-            let mut value = || args.next().ok_or_else(|| anyhow!("`{flag}` needs a value"));
+            let mut value = || {
+                args.next().ok_or_else(|| {
+                    RigError::new(ErrorKind::Configuration, format!("`{flag}` needs a value"))
+                })
+            };
             match flag.as_str() {
                 "--model" => options.model = value()?,
                 "--mode" => {
@@ -200,11 +214,20 @@ impl Options {
                         "core" => Mode::Core,
                         "agent" => Mode::Agent,
                         "both" => Mode::Both,
-                        other => bail!("unknown mode `{other}`: use core, agent or both"),
+                        other => {
+                            return Err(RigError::new(
+                                ErrorKind::Configuration,
+                                format!("unknown mode `{other}`: use core, agent or both"),
+                            ));
+                        }
                     }
                 }
                 "--stop-after" => {
-                    options.stop_after = Some(value()?.parse().context("--stop-after")?);
+                    options.stop_after = Some(
+                        value()?
+                            .parse()
+                            .map_err(|error| RigError::other(error).context("--stop-after"))?,
+                    );
                 }
                 "--tool-input-streaming" => {
                     options.tool_input_streaming = Some(match value()?.as_str() {
@@ -212,11 +235,21 @@ impl Options {
                         "beta" => ToolInputStreaming::BetaHeader,
                         "off" => ToolInputStreaming::Off,
                         other => {
-                            bail!("unknown tool input streaming `{other}`: use eager, beta or off")
+                            return Err(RigError::new(
+                                ErrorKind::Configuration,
+                                format!(
+                                    "unknown tool input streaming `{other}`: use eager, beta or off"
+                                ),
+                            ));
                         }
                     });
                 }
-                other => bail!("unknown flag `{other}`"),
+                other => {
+                    return Err(RigError::new(
+                        ErrorKind::Configuration,
+                        format!("unknown flag `{other}`"),
+                    ));
+                }
             }
         }
         Ok(options)
@@ -232,7 +265,7 @@ fn tool_definitions() -> Vec<rig::completion::ToolDefinition> {
 
 /// One completion streamed straight from the model: the stream rig's
 /// decoders write, before any agent logic.
-async fn core_stream(model: &DynModel<Completion>) -> Result<bool> {
+async fn core_stream(model: &DynModel<Completion>) -> Result<bool, RigError> {
     println!("\n=== core completion stream ===\n");
     let request = CompletionRequest::new(Message::user(PROMPT))
         .preamble(PREAMBLE)
@@ -255,7 +288,10 @@ async fn core_stream(model: &DynModel<Completion>) -> Result<bool> {
 /// A full agent run over the same prompt: the agent forwards each call's
 /// fragments live, the hook sees each one first, and the tools run once
 /// the turn's calls have ended.
-async fn agent_stream(model: DynModel<Completion>, stop_after: Option<usize>) -> Result<bool> {
+async fn agent_stream(
+    model: DynModel<Completion>,
+    stop_after: Option<usize>,
+) -> Result<bool, RigError> {
     println!("\n=== agent stream ===\n");
     let write_file = WriteFile::default();
     let executed: Executed = write_file.executed.clone();
@@ -338,18 +374,24 @@ async fn agent_stream(model: DynModel<Completion>, stop_after: Option<usize>) ->
         (Some(reason), Some(_)) => {
             println!("run stopped: {reason}");
             if !executed.is_empty() {
-                bail!("a tool ran although the run stopped mid-call");
+                return Err(RigError::new(
+                    ErrorKind::Other,
+                    "a tool ran although the run stopped mid-call",
+                ));
             }
             println!("no tool ran: the run stopped before any call ended");
             Ok(view.summary() && all_match)
         }
-        (Some(reason), None) => bail!("the run failed: {reason}"),
+        (Some(reason), None) => Err(RigError::new(
+            ErrorKind::Other,
+            format!("the run failed: {reason}"),
+        )),
         (None, _) => Ok(all_match),
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let options = Options::from_args()?;
     let model = options
         .provider
@@ -364,7 +406,10 @@ async fn main() -> Result<()> {
         all_match &= agent_stream(model, options.stop_after).await?;
     }
     if !all_match {
-        bail!("a call's joined fragments differ from the arguments its end states");
+        return Err(RigError::new(
+            ErrorKind::Other,
+            "a call's joined fragments differ from the arguments its end states",
+        ));
     }
     println!("\nevery call's joined fragments are the arguments its end states");
     Ok(())

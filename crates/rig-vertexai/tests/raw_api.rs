@@ -1,8 +1,8 @@
 use google_cloud_aiplatform_v1::model::GenerateContentResponse;
 use rig_core::Model;
+use rig_core::RigError;
 use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
-use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
 use rig_vertexai::completion::{GEMINI_2_5_FLASH, GenerateContent};
 
@@ -20,7 +20,7 @@ impl Transport<GenerateContent> for Stored {
     }
 }
 
-fn complete(reply: GenerateContentResponse) -> Result<CompletionResponse, ProviderError> {
+fn complete(reply: GenerateContentResponse) -> Result<CompletionResponse, RigError> {
     futures::executor::block_on(
         Model::new(GenerateContent::new(GEMINI_2_5_FLASH), Stored(reply))
             .call(CompletionRequest::new("hello")),

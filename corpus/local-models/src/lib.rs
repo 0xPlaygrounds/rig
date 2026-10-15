@@ -37,7 +37,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Transport};
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::http_client::{
     DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response,
 };
@@ -504,7 +504,7 @@ impl Intercept for Local {
 
     async fn before(&self, _id: EffectId, kind: &EffectKind) -> BeforeServe {
         if let Self::Down(why) = self {
-            return BeforeServe::Deny(ErrorReport::new(ErrorKind::Http, why).with_retryable(false));
+            return BeforeServe::Deny(RigError::new(ErrorKind::Http, why).with_retryable(false));
         }
         let EffectKind::Completion { request, stream } = kind else {
             return BeforeServe::Proceed;
@@ -528,7 +528,7 @@ impl Intercept for Local {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
+        _outcome: &Result<Answered, RigError>,
     ) -> AfterServe {
         AfterServe::Keep
     }

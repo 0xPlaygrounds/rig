@@ -300,7 +300,7 @@ impl AgentConfig {
     }
 
     /// Bind the default model's typed view.
-    pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::ErrorReport> {
+    pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::RigError> {
         self.bus.dispatcher().bind(&self.model_key)
     }
 
@@ -331,7 +331,7 @@ impl AgentConfig {
     pub(crate) fn model_by_ref(
         &self,
         label: &ModelRef,
-    ) -> Result<ModelHandle, rig_core::error::ErrorReport> {
+    ) -> Result<ModelHandle, rig_core::error::RigError> {
         self.bus
             .dispatcher()
             .bind(&self.bus.model_key(label.as_str()))

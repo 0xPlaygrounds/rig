@@ -1,4 +1,3 @@
-use anyhow::Result;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
 use rig::{
@@ -8,7 +7,6 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::env;
 
 // Common error types
 #[derive(Debug, thiserror::Error)]
@@ -320,9 +318,9 @@ impl Tool for GetMetricsHistory {
     }
 }
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Get API keys from environment
-    let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY")?;
+    let echochambers_api_key = rig::client::env::required("ECHOCHAMBERS_API_KEY")?;
 
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;

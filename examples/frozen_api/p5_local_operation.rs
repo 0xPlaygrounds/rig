@@ -1,4 +1,5 @@
 use futures::{StreamExt, stream};
+use rig::RigError;
 use rig::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
 use rig::error::ProviderError;
 use rig::streaming::Item;
@@ -118,7 +119,7 @@ impl Transport<Local<PoseEstimation>> for PoseRuntime {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), RigError> {
     let model = Model::new(
         Local::<PoseEstimation>::new("candle-pose"),
         PoseRuntime { threshold: 0.5 },

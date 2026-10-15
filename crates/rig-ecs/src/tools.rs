@@ -13,7 +13,7 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_core::completion::ToolDefinition;
 use rig_core::effect::{EffectId, EffectKind};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
@@ -49,7 +49,7 @@ pub(crate) enum Serves {
 /// own components: its arguments parsed into the tool's arguments type, it
 /// is [`Started`] and its [`ToolCalled`] triggered. Why it cannot start,
 /// such as arguments that do not fit, and it is not started.
-pub(crate) type Open = fn(&mut World, Entity, Entity, Started) -> Result<(), ErrorReport>;
+pub(crate) type Open = fn(&mut World, Entity, Entity, Started) -> Result<(), RigError>;
 
 /// [`Open`] for the arguments type `A`. A call gone, or no tool call any
 /// more, is left alone.
@@ -58,8 +58,8 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
     tool: Entity,
     call: Entity,
     started: Started,
-) -> Result<(), ErrorReport> {
-    let refused = |kind, why| ErrorReport::new(ErrorKind::Tool(kind), why);
+) -> Result<(), RigError> {
+    let refused = |kind, why| RigError::new(ErrorKind::Tool(kind), why);
     let Ok(entity) = world.get_entity(call) else {
         return Ok(());
     };
@@ -424,7 +424,7 @@ pub(crate) enum ToolStart {
     /// The open call is started by its tool, the entity.
     Open(Open, Entity),
     /// Refused before it started.
-    Refused(ErrorReport),
+    Refused(RigError),
 }
 
 /// What starting a tool call reads: the registered tools and the agents'
@@ -440,13 +440,9 @@ impl ToolStarts<'_, '_> {
     /// it: no agent, no tool of its name is registered, the agent may not
     /// use it (a refusal, `Denied`), or its arguments do not fit the tool's
     /// parameters.
-    fn tool(
-        &self,
-        call: &ToolCall,
-        agent: Option<Entity>,
-    ) -> Result<(Entity, &Serves), ErrorReport> {
+    fn tool(&self, call: &ToolCall, agent: Option<Entity>) -> Result<(Entity, &Serves), RigError> {
         let name = call.function.name.as_str();
-        let refused = |kind, why| ErrorReport::new(ErrorKind::Tool(kind), why);
+        let refused = |kind, why| RigError::new(ErrorKind::Tool(kind), why);
         let Some(access) = agent.and_then(|agent| self.agents.get(agent).ok()) else {
             let why = "a tool call needs an agent".to_owned();
             return Err(refused(ToolErrorKind::NotFound, why));
@@ -462,7 +458,7 @@ impl ToolStarts<'_, '_> {
         if !access.is_some_and(|access| access.allows(name)) {
             // A refusal, recorded as one; the model reads what it reads for
             // a tool that does not exist.
-            return Err(ErrorReport::new(ErrorKind::Denied, missing).refused());
+            return Err(RigError::new(ErrorKind::Denied, missing).refused());
         }
         if let Some(why) = arguments_refusal(&def.0.parameters, call) {
             return Err(refused(ToolErrorKind::InvalidArgs, why));

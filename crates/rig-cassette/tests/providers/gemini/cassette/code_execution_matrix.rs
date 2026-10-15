@@ -259,8 +259,8 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 // --- 23-25: states a live turn cannot be made to produce ------------------
 
 mod unit {
+    use rig::RigError;
     use rig::completion::CompletionResponse;
-    use rig::error::ProviderError;
     use rig::message::AssistantContent;
     use rig::providers::gemini::GeminiConfig;
     use rig::test_utils::RecordingHttpClient;
@@ -305,7 +305,7 @@ mod unit {
     /// These part compositions cannot be produced live, so the bytes are
     /// stated here and carried by the real wire, driver and decoder — the
     /// same path every recorded cell above runs, with the reply substituted.
-    async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, ProviderError> {
+    async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, RigError> {
         let model = GeminiConfig::new("unit-key")
             .connect(RecordingHttpClient::new(reply_with(parts)))
             .completion("gemini-2.5-flash");

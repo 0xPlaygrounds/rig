@@ -1,7 +1,7 @@
 use super::{ResponsesDecoder, classify_responses_payload};
 use crate::completion::CompletionRequest;
 use crate::driver::{Decoded, feed_frames};
-use crate::error::{ErrorKind, ErrorReport};
+use crate::error::{ErrorKind, RigError};
 use crate::message::AssistantContent;
 use crate::operation::Completion;
 use crate::providers::internal::openai_chat_completions_compatible::tests::{
@@ -153,7 +153,6 @@ async fn streaming_error_event_preserves_full_payload_in_live_loop() {
         .await
         .expect("stream should yield an item")
         .expect_err("stream should surface a provider response error");
-    let err = ErrorReport::from(&err);
     assert_eq!(err.kind, ErrorKind::ProviderResponse);
     assert_eq!(err.http_status, None);
     assert!(
@@ -180,7 +179,6 @@ async fn streaming_non_http_transport_error_stays_a_transport_error() {
         .await
         .expect("stream should yield transport error")
         .expect_err("non-HTTP transport failure should surface as a transport error");
-    let err = ErrorReport::from(&err);
     assert_eq!(
         err.to_string(),
         "HttpError: Invalid content type was returned: \"application/json\""
@@ -241,14 +239,13 @@ fn texts_of(events: &[&StreamEvent]) -> Vec<String> {
         .collect()
 }
 
-async fn first_error_from_event(event: serde_json::Value) -> ErrorReport {
+async fn first_error_from_event(event: serde_json::Value) -> RigError {
     let mut stream = responses_stream_of(&[event]).await;
-    let error = stream
+    stream
         .next()
         .await
         .expect("stream should yield an item")
-        .expect_err("stream should surface a provider error");
-    ErrorReport::from(&error)
+        .expect_err("stream should surface a provider error")
 }
 
 /// Drain a stream whose provider fully delivered one tool call before a
@@ -256,7 +253,7 @@ async fn first_error_from_event(event: serde_json::Value) -> ErrorReport {
 /// nothing.
 async fn flushed_tool_call_then_error(
     stream: &mut crate::streaming::CompletionStream,
-) -> (crate::message::ToolCall, ErrorReport) {
+) -> (crate::message::ToolCall, RigError) {
     let mut tool_call = None;
     let err = loop {
         match stream
@@ -276,7 +273,7 @@ async fn flushed_tool_call_then_error(
                 ..
             })) => tool_call = Some(call),
             Ok(other) => panic!("expected the flushed tool call first, got {other:?}"),
-            Err(err) => break ErrorReport::from(&err),
+            Err(err) => break err,
         }
     };
     let tool_call = tool_call.expect("the flushed tool call must precede the terminal error");
@@ -629,7 +626,7 @@ async fn a_malformed_frame_ends_the_reply() {
     }
     assert_eq!(text, "hello");
     let error = error.expect("malformed frame should surface an error item");
-    assert_eq!(error.kind(), ErrorKind::Json, "{error:?}");
+    assert_eq!(error.kind, ErrorKind::Json, "{error:?}");
     assert!(
         stream.finish().await.is_err(),
         "the corrupt frame ended the reply"

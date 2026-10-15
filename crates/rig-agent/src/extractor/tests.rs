@@ -282,7 +282,7 @@ async fn exhausted_retries_return_error_from_final_attempt() {
         StructuredOutputError::Prompt(err)
             if matches!(
                 err,
-                PromptError::Report(ref report)
+                PromptError::Failed(ref report)
                     if report.kind == rig_core::error::ErrorKind::Provider
                         && report.message.ends_with("second")
             )

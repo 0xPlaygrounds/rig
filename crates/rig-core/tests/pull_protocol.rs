@@ -7,7 +7,7 @@ use rig_core::{
     effect::{
         Answered, EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, family,
     },
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, DocumentSourceKind, Image},
     operation::Finish,
     serve::{AfterServe, BeforeServe, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve},
@@ -33,7 +33,7 @@ struct Seen {
 struct Observer(Arc<Mutex<Seen>>);
 impl Observe for Observer {
     fn origin(&mut self, _origin: &rig_core::message::Origin) {}
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
+    fn outcome(&mut self, outcome: Result<Answered, RigError>) {
         self.0
             .lock()
             .unwrap()
@@ -50,7 +50,7 @@ impl Observe for Observer {
             .events
             .push(serde_json::to_value(event).unwrap());
     }
-    fn stream_error(&mut self, error: &ErrorReport) {
+    fn stream_error(&mut self, error: &RigError) {
         self.0
             .lock()
             .unwrap()
@@ -124,7 +124,7 @@ impl Intercept for Policy {
         &self,
         _: EffectId,
         _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
+        _: &Result<Answered, RigError>,
     ) -> AfterServe {
         *self.calls.lock().unwrap() += 1;
         let gate = self.gate.lock().unwrap().take();
@@ -167,7 +167,7 @@ fn unary_image_recording_survives_stream_projection_and_replacement() {
     let seen = Arc::default();
     let handler = ErasedHandler::new(ImageAnswer).layered(policy(
         BeforeServe::Proceed,
-        AfterServe::Replace(Err(ErrorReport::new(ErrorKind::Denied, "replacement"))),
+        AfterServe::Replace(Err(RigError::new(ErrorKind::Denied, "replacement"))),
     ));
     let items = block_on(
         block_on(handler.handle(kind(json!(null)), dispatch(true, &seen)))
@@ -237,7 +237,7 @@ fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
         }
         async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
             Reply::Stream(Box::pin(futures::stream::unfold((), |_| async {
-                None::<(Result<Relayed, ErrorReport>, ())>
+                None::<(Result<Relayed, RigError>, ())>
             })))
         }
     }
@@ -253,7 +253,7 @@ fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
             &self,
             _: EffectId,
             _: &EffectKind,
-            _: &Result<Answered, ErrorReport>,
+            _: &Result<Answered, RigError>,
         ) -> AfterServe {
             AfterServe::Keep
         }

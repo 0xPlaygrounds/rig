@@ -61,6 +61,13 @@ pub enum HelixError {
     },
 }
 
+/// As the store reports it: a datastore failure.
+impl From<HelixError> for rig_core::error::RigError {
+    fn from(error: HelixError) -> Self {
+        rig_core::vector_store::VectorStoreError::datastore(error).into()
+    }
+}
+
 impl HelixDB {
     /// Posts `data` to the named HelixDB query and decodes its response.
     pub async fn query<T, R>(&self, endpoint: &str, data: &T) -> Result<R, HelixError>
@@ -99,10 +106,11 @@ impl HelixDB {
 /// results are meaningless under another model.
 ///
 /// ```no_run
+/// use rig_core::RigError;
 /// use rig_core::providers::openai::OpenAI;
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
-/// # fn example() -> anyhow::Result<()> {
+/// # fn example() -> Result<(), RigError> {
 /// let openai_model = OpenAI::from_env()?.embedding("text-embedding-ada-002", None);
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);

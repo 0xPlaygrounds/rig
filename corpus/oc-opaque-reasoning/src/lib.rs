@@ -39,7 +39,7 @@ use rig_harness::rig_core::catalog::{
     Catalog, Compat, ModelFacts, ModelSpec, Provide, ReasoningSupport, Transport,
 };
 use rig_harness::rig_core::effect::{Answered as EffectOutcome, EffectKind};
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::message::{
     Api, AssistantMessage, Fingerprint, Message as ChatMessage, Native,
 };
@@ -398,7 +398,7 @@ fn prepare_requests(
 
 /// Whether `report` is a provider rejecting a request over a reasoning
 /// blob. Providers say so only in their error text.
-fn rejects_blob(report: &ErrorReport) -> bool {
+fn rejects_blob(report: &RigError) -> bool {
     let client_error = report
         .http_status
         .is_some_and(|status| (400..500).contains(&status));

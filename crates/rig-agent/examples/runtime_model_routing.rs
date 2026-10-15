@@ -6,9 +6,9 @@
 //! providers on the same bus under their own labels and apply the same hook
 //! policy.
 
+use rig_core::RigError;
 use std::convert::Infallible;
 
-use anyhow::Result;
 use futures::stream;
 use rig_agent::{
     AgentBuilder,
@@ -148,7 +148,7 @@ impl AgentHook for RouteModels {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::named_model("fast", local("fast", 3, fast_research))
         .model_route("strong", local("strong", 5, strong_synthesis))
         .tool(Search)

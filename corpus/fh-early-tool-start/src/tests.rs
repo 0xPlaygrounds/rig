@@ -7,7 +7,7 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use rig_core::catalog::Catalog;
 use rig_core::completion::{CompletionRequest, ProviderCapabilities};
 use rig_core::effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, family, model_key};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{Message as ChatMessage, Origin as Made, ToolResultContent};
 use rig_core::operation::Finish;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
@@ -78,7 +78,7 @@ impl Serve for Paced {
 
     async fn serve(&self, kind: EffectKind, _: Dispatch) -> Reply {
         let EffectKind::Completion { request, .. } = kind else {
-            let why = ErrorReport::new(ErrorKind::Internal, "completions only");
+            let why = RigError::new(ErrorKind::Internal, "completions only");
             return Reply::Outcome(Err(why));
         };
         if let Ok(mut requests) = self.requests.lock() {

@@ -7,12 +7,11 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
-use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))
         .preamble("You are a helpful assistant with persistent memory.")
         .build();

@@ -21,7 +21,7 @@ use rig_core::serve::{
 use rig_core::{
     completion::CompletionRequest,
     effect::{Answered, EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::AssistantContent,
     rerank::{RerankResponse, RerankResult},
     streaming::{Item, Relayed, StreamEvent},
@@ -103,7 +103,7 @@ impl Serve for Echo {
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
                 EffectKind::Custom { payload, .. } => Ok(Answered::Custom { payload }),
-                other => Err(ErrorReport::new(
+                other => Err(RigError::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
                 )),
@@ -579,7 +579,7 @@ impl Serve for AskUserHandler {
         let misbehave = self.misbehave;
         {
             let EffectKind::Custom { payload, .. } = kind else {
-                return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                return rig_core::serve::Reply::Outcome(Err(RigError::new(
                     ErrorKind::Internal,
                     "not custom",
                 )));
@@ -1017,7 +1017,7 @@ impl rig_core::serve::Recorder for Counting {
         false
     }
     fn event(&self, _id: rig_core::effect::EffectId, _event: &Item<StreamEvent>) {}
-    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Answered, ErrorReport>) {
+    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Answered, RigError>) {
         self.resolved.fetch_add(1, Ordering::SeqCst);
     }
 }
@@ -1086,7 +1086,7 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
 /// What a ticking host used to get from `Pending::poll_outcome`; the bus
 /// no longer offers it (a world holds no future to probe), and these tests
 /// keep it as a spelling of "poll once, no executor".
-fn probe(pending: &mut Pending) -> Option<Result<Answered, ErrorReport>> {
+fn probe(pending: &mut Pending) -> Option<Result<Answered, RigError>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     match pending.poll_unpin(&mut cx) {
         Poll::Ready(outcome) => Some(outcome),
@@ -1320,7 +1320,7 @@ impl Serve for Parent {
 fn drive_to_outcome(
     driver: &mut BusDriver,
     pending: &mut super::Pending,
-) -> Option<Result<Answered, ErrorReport>> {
+) -> Option<Result<Answered, RigError>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     for _ in 0..16 {
         if let Poll::Ready(result) = pending.poll_unpin(&mut cx) {
@@ -1401,7 +1401,7 @@ impl rig_core::serve::Intercept for Approval {
         self.asks.send((id, decide)).expect("the world listens");
         match decided.await {
             Ok(decision) => decision,
-            Err(oneshot::Canceled) => rig_core::serve::BeforeServe::Deny(ErrorReport::new(
+            Err(oneshot::Canceled) => rig_core::serve::BeforeServe::Deny(RigError::new(
                 ErrorKind::Internal,
                 "layer `approval`: the world closed the answer channel without deciding",
             )),
@@ -1412,7 +1412,7 @@ impl rig_core::serve::Intercept for Approval {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
+        _outcome: &Result<Answered, RigError>,
     ) -> rig_core::serve::AfterServe {
         rig_core::serve::AfterServe::Keep
     }

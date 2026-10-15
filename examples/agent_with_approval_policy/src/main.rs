@@ -19,7 +19,6 @@
 
 use std::collections::HashSet;
 
-use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -156,7 +155,7 @@ impl AgentHook for ApprovalPolicy {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))
         .preamble(
             "You are a banking assistant. Use the tools to carry out the user's request. \

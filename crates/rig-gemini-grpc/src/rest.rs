@@ -56,6 +56,12 @@ impl From<TranscodeError> for rig_core::error::ProviderError {
     }
 }
 
+impl From<TranscodeError> for rig_core::error::RigError {
+    fn from(error: TranscodeError) -> Self {
+        rig_core::error::ProviderError::from(error).into()
+    }
+}
+
 impl From<TranscodeError> for rig_core::error::EncodeError {
     fn from(error: TranscodeError) -> Self {
         Self::request(error.to_string())

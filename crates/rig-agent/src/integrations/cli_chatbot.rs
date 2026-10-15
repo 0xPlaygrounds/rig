@@ -233,7 +233,7 @@ where
         loop {
             print!("> ");
             stdout.flush().map_err(|e| {
-                PromptError::Provider(ProviderError::Response(format!(
+                PromptError::from(ProviderError::Response(format!(
                     "failed to flush stdout: {e}"
                 )))
             })?;

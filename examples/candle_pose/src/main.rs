@@ -1,10 +1,10 @@
-use anyhow::Context;
 use futures::StreamExt;
+use rig::RigError;
 use rig::candle::pose::{BodyPart, CandlePoseModel, ImageFrame, PoseRequest};
 use rig::streaming::Item;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     let model_dir = match std::env::var_os("MODEL_DIR") {
         Some(directory) => std::path::PathBuf::from(directory),
         None => std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("model"),
@@ -18,15 +18,18 @@ async fn main() -> anyhow::Result<()> {
         .iter()
         .map(|path| {
             let image = image::open(path)
-                .with_context(|| format!("decoding {}", path.display()))?
+                .map_err(|error| {
+                    RigError::other(error).context(format!("decoding {}", path.display()))
+                })?
                 .to_rgb8();
             let (width, height) = image.dimensions();
             Ok(ImageFrame::from_rgb8(width, height, image.into_raw())?)
         })
-        .collect::<anyhow::Result<PoseRequest>>()?;
+        .collect::<Result<PoseRequest, RigError>>()?;
 
-    let weights = std::fs::read(model_dir.join("yolov8n-pose.safetensors"))
-        .context("run ./examples/candle_pose/download_model.sh first")?;
+    let weights = std::fs::read(model_dir.join("yolov8n-pose.safetensors")).map_err(|error| {
+        RigError::other(error).context("run ./examples/candle_pose/download_model.sh first")
+    })?;
     let model = CandlePoseModel::from_safetensors_async(weights)
         .await?
         .pose();

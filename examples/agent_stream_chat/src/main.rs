@@ -2,15 +2,15 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see a streamed continuation of an existing exchange.
 
-use anyhow::{Result, anyhow};
 use futures::StreamExt;
+use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
 const PROMPT: &str = "Entertain me!";
 
-async fn collect_stream_final_response(stream: &mut StreamingResult) -> Result<String> {
+async fn collect_stream_final_response(stream: &mut StreamingResult) -> Result<String, RigError> {
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
@@ -19,7 +19,8 @@ async fn collect_stream_final_response(stream: &mut StreamingResult) -> Result<S
         }
     }
 
-    final_response.ok_or_else(|| anyhow!("stream finished without a final response"))
+    final_response
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "stream finished without a final response"))
 }
 
 fn sample_history() -> Vec<Message> {
@@ -30,7 +31,7 @@ fn sample_history() -> Vec<Message> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4))
         .preamble(PREAMBLE)
         .build();

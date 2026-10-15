@@ -105,7 +105,7 @@ async fn drive_frames(
     frames: &[&str],
 ) -> (
     Vec<Result<Item<StreamEvent>, String>>,
-    Result<crate::completion::CompletionResponse, ProviderError>,
+    Result<crate::completion::CompletionResponse, crate::error::RigError>,
 ) {
     use futures::StreamExt;
 

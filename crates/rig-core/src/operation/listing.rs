@@ -11,7 +11,7 @@
 
 use super::Whole;
 use crate::driver::{Model, Transport};
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::model::ModelList;
 use crate::wire::{Call, Free, Operation, Wire};
 
@@ -52,7 +52,7 @@ where
     /// A failed page names the provider and its request path. Paging stops
     /// at a cursor that repeats the one just answered, and after a bounded
     /// number of pages.
-    pub async fn list(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list(&self) -> Result<ModelList, RigError> {
         let provider = self.name();
         let pages = crate::driver::follow_cursors(provider, "model_listing", |cursor| async move {
             let page = self.call_routed(cursor).await.map_err(|(error, path)| {

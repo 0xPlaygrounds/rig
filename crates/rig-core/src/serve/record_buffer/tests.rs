@@ -18,7 +18,7 @@ fn tool(name: &str) -> EffectKind {
     }
 }
 
-fn answer(text: &str) -> Result<Answered, ErrorReport> {
+fn answer(text: &str) -> Result<Answered, RigError> {
     Ok(Answered::ToolResult {
         result: ToolResult::skipped(text),
     })
@@ -217,7 +217,7 @@ fn a_unary_dispatch_keeps_no_items() {
 }
 
 /// Work that panics before it answers.
-async fn boom() -> Result<(), ErrorReport> {
+async fn boom() -> Result<(), RigError> {
     explode();
     Ok(())
 }

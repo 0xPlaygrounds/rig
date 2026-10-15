@@ -11,7 +11,7 @@ pub mod chain;
 
 use std::path::{Path, PathBuf};
 
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::redact;
 use rig_core::tool::{ChangeKind, ExitStatus, FilesChanged};
 use rig_harness::prelude::*;
@@ -375,7 +375,7 @@ fn record(
         if how(&outcome).0 != Ran::Refused {
             let text = format!("The call ran, but the audit log could not record it: {why}.");
             notices.write(Notice::error(agent, text.clone()));
-            *outcome = Outcome(Err(ErrorReport::new(ErrorKind::Internal, text)));
+            *outcome = Outcome(Err(RigError::new(ErrorKind::Internal, text)));
         }
     }
 }

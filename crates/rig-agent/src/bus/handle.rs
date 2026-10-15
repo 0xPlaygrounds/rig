@@ -29,7 +29,7 @@ use rig_core::{
         FamilyDescriptor, HandlerDescriptor, HandlerKey, RetrieveQuery, RetrievedDocuments, family,
     },
     embeddings::{Embedding, EmbeddingResponse},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     operation::RerankRequest,
     streaming::CompletionStream,
     tool::ToolContext,
@@ -98,7 +98,7 @@ impl<F: Family> Handle<F> {
 
     /// Dispatch a wrapped request, or pre-fail the dispatch when the
     /// request had no wire form.
-    fn dispatch_wrapped(&self, kind: Result<EffectKind, ErrorReport>) -> Pending {
+    fn dispatch_wrapped(&self, kind: Result<EffectKind, RigError>) -> Pending {
         match kind {
             Ok(kind) => self.dispatch_kind(kind),
             Err(report) => self.dispatcher.refused(report),
@@ -110,8 +110,8 @@ fn family_mismatch(
     key: &HandlerKey,
     wanted: rig_core::effect::EffectFamily,
     found: &FamilyDescriptor,
-) -> ErrorReport {
-    ErrorReport::new(
+) -> RigError {
+    RigError::new(
         ErrorKind::HandlerUnavailable,
         format!(
             "handler `{key}` serves the {} family, not {wanted}",
@@ -124,7 +124,7 @@ impl Dispatcher {
     /// Bind a typed view to `key`, checking the handler's family against
     /// `F` now rather than at first dispatch: asking for a [`ModelHandle`]
     /// at a tool key is `HandlerUnavailable` here.
-    pub fn handle<F: Family>(&self, key: &HandlerKey) -> Result<Handle<F>, ErrorReport> {
+    pub fn handle<F: Family>(&self, key: &HandlerKey) -> Result<Handle<F>, RigError> {
         // Driver closure empties the table but must report a lifecycle error,
         // not a missing registration.
         if self.is_closed() {
@@ -146,7 +146,7 @@ impl Dispatcher {
     /// Bind a typed key, checking existence and current family.
     /// Returns `BusClosed` for closure or `HandlerUnavailable` for missing or
     /// incompatible registrations, including incorrectly asserted unchecked keys.
-    pub fn bind<F: Family>(&self, key: &Key<F>) -> Result<Handle<F>, ErrorReport> {
+    pub fn bind<F: Family>(&self, key: &Key<F>) -> Result<Handle<F>, RigError> {
         self.handle(key.raw())
     }
 
@@ -155,11 +155,11 @@ impl Dispatcher {
     pub fn custom<E: CustomEffect>(
         &self,
         key: &HandlerKey,
-    ) -> Result<Handle<family::Custom<E>>, ErrorReport> {
+    ) -> Result<Handle<family::Custom<E>>, RigError> {
         let handle = self.handle::<family::Custom<E>>(key)?;
         match &handle.descriptor.family {
             FamilyDescriptor::Custom { kind } if kind == E::KIND => Ok(handle),
-            FamilyDescriptor::Custom { kind } => Err(ErrorReport::new(
+            FamilyDescriptor::Custom { kind } => Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!(
                     "handler `{key}` serves the custom kind `{kind}`, not `{}`",
@@ -179,7 +179,7 @@ const F_CUSTOM: rig_core::effect::EffectFamily = rig_core::effect::EffectFamily:
 #[must_use = "a dispatch does nothing until polled"]
 pub struct Typed<F: Family, T = <F as Family>::Answer> {
     pending: Pending,
-    map: fn(F::Answer) -> Result<T, ErrorReport>,
+    map: fn(F::Answer) -> Result<T, RigError>,
 }
 
 impl<F: Family, T> Typed<F, T> {
@@ -193,7 +193,7 @@ impl<F: Family, T> Typed<F, T> {
         self.pending.id()
     }
 
-    fn narrow(pending: Pending, map: fn(F::Answer) -> Result<T, ErrorReport>) -> Self {
+    fn narrow(pending: Pending, map: fn(F::Answer) -> Result<T, RigError>) -> Self {
         Self { pending, map }
     }
 }
@@ -210,7 +210,7 @@ impl<F: Family, T> fmt::Debug for Typed<F, T> {
 impl<F: Family, T> Unpin for Typed<F, T> {}
 
 impl<F: Family, T> Future for Typed<F, T> {
-    type Output = Result<T, ErrorReport>;
+    type Output = Result<T, RigError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
@@ -269,7 +269,7 @@ impl fmt::Debug for ToolCall {
 impl Unpin for ToolCall {}
 
 impl Future for ToolCall {
-    type Output = Result<ToolAnswer, ErrorReport>;
+    type Output = Result<ToolAnswer, RigError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
@@ -303,8 +303,8 @@ impl<F: Family> Handle<F> {
     }
 }
 
-fn wrong_shape(expected: &'static str, family: rig_core::effect::EffectFamily) -> ErrorReport {
-    ErrorReport::new(
+fn wrong_shape(expected: &'static str, family: rig_core::effect::EffectFamily) -> RigError {
+    RigError::new(
         ErrorKind::Internal,
         format!("expected {expected}, the {family} handler answered another shape"),
     )
@@ -456,7 +456,7 @@ impl ToolHandle {
 /// JSON, the type parameter never crosses it.
 fn deserialize_scored<T: DeserializeOwned>(
     documents: RetrievedDocuments,
-) -> Result<Vec<VectorSearchResult<T>>, ErrorReport> {
+) -> Result<Vec<VectorSearchResult<T>>, RigError> {
     match documents {
         RetrievedDocuments::Scored(results) => results
             .into_iter()
@@ -467,7 +467,7 @@ fn deserialize_scored<T: DeserializeOwned>(
                         id,
                         document,
                     }),
-                    Err(error) => Err(ErrorReport::new(
+                    Err(error) => Err(RigError::new(
                         ErrorKind::Json,
                         format!("retrieved document `{id}` did not deserialize: {error}"),
                     )),
@@ -564,10 +564,10 @@ impl EmbedHandle {
 
     /// Embed one text document.
     pub fn embed_text(&self, text: &str) -> Typed<family::Embed, Embedding> {
-        fn first(outputs: EmbedOutputs) -> Result<Embedding, ErrorReport> {
+        fn first(outputs: EmbedOutputs) -> Result<Embedding, RigError> {
             match outputs {
                 EmbedOutputs::Texts(mut response) => response.embeddings.pop().ok_or_else(|| {
-                    ErrorReport::new(
+                    RigError::new(
                         ErrorKind::Response,
                         "embedding handler returned an empty response for embed_text",
                     )

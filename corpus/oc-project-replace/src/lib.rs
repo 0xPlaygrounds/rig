@@ -20,7 +20,7 @@ use regex::{NoExpand, Regex};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe as Dispatch, Intercept};
 use rig_harness::rig_core::tool::{
     ContentHash, ContextValue, FileRead, FilesChanged, FilesRead, ToolContext, content_hash,
@@ -566,7 +566,7 @@ impl Intercept for Previewed {
         &self,
         _: EffectId,
         _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
+        _: &Result<Answered, RigError>,
     ) -> AfterServe {
         AfterServe::Keep
     }
@@ -689,7 +689,7 @@ fn finish_undo(
             notices.write(Notice::info(agent, text.clone()));
         }
         Err(why) => {
-            let report = ErrorReport::new(ErrorKind::Internal, why.clone());
+            let report = RigError::new(ErrorKind::Internal, why.clone());
             decision.decide(Decider::plugin(NAME), Outcome(Err(report)));
             notices.write(Notice::error(agent, why.clone()));
         }

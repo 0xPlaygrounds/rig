@@ -28,7 +28,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::{EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::RigError;
 use rig_harness::rig_core::message::{
     AssistantContent, Message as ChatMessage, Opaque, SourceLocation, Text,
 };
@@ -194,7 +194,7 @@ impl Intercept for ProviderSide {
         &self,
         _: EffectId,
         _: &EffectKind,
-        _: &Result<rig_harness::rig_core::effect::Answered, ErrorReport>,
+        _: &Result<rig_harness::rig_core::effect::Answered, RigError>,
     ) -> impl Future<Output = AfterServe> + WasmCompatSend {
         ready(AfterServe::Keep)
     }

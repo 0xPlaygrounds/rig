@@ -100,6 +100,12 @@ pub enum SessionError {
     },
 }
 
+impl From<SessionError> for rig_core::error::RigError {
+    fn from(error: SessionError) -> Self {
+        Self::from_error(rig_core::error::ErrorKind::Other, &error)
+    }
+}
+
 /// The version a log's header names in `format`, `rig-session/<N>`.
 pub(crate) fn version_of(format: &str) -> Option<u32> {
     format.strip_prefix("rig-session/")?.parse().ok()

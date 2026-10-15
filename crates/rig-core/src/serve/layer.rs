@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     effect::{Answered, EffectId, EffectKind, HandlerDescriptor, family},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -35,13 +35,13 @@ pub enum BeforeServe {
     Patch(EffectKind),
     /// Returns this report without invoking the handler or recording a dispatch.
     /// The report's kind is preserved; [`BeforeServe::deny`] uses `ErrorKind::Denied`.
-    Deny(ErrorReport),
+    Deny(RigError),
 }
 
 impl BeforeServe {
     /// A denial by policy: `ErrorKind::Denied`, never retryable.
     pub fn deny(reason: impl Into<String>) -> Self {
-        Self::Deny(ErrorReport::new(ErrorKind::Denied, reason).with_retryable(false))
+        Self::Deny(RigError::new(ErrorKind::Denied, reason).with_retryable(false))
     }
 }
 
@@ -59,7 +59,7 @@ pub enum AfterServe {
     /// the consumer's fold returns, and an error ends the stream with that
     /// error. A replacement of another family reaches the consumer as an
     /// `Internal` error naming the layer.
-    Replace(Result<Answered, ErrorReport>),
+    Replace(Result<Answered, RigError>),
 }
 
 /// Host policy before a handler and after its first answer. A suspended
@@ -84,7 +84,7 @@ pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
         &self,
         id: EffectId,
         kind: &EffectKind,
-        outcome: &Result<Answered, ErrorReport>,
+        outcome: &Result<Answered, RigError>,
     ) -> impl Future<Output = AfterServe> + WasmCompatSend;
 }
 
@@ -105,8 +105,8 @@ impl<I: Intercept> Layer<I> {
         }
     }
 
-    fn internal(&self, message: String) -> ErrorReport {
-        ErrorReport::new(
+    fn internal(&self, message: String) -> RigError {
+        RigError::new(
             ErrorKind::Internal,
             format!("layer `{}`: {message}", self.intercept.name()),
         )
@@ -223,7 +223,7 @@ impl<I: Intercept> Serve for Layer<I> {
                         }
                         AfterServe::Replace(Ok(other)) => {
                             attribution.replaced(&intercept.name());
-                            Err(ErrorReport::new(
+                            Err(RigError::new(
                                 ErrorKind::Internal,
                                 format!(
                                     "layer `{}`: replaced a streamed completion with a {} outcome",

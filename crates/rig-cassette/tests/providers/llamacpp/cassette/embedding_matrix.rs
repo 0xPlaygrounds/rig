@@ -25,7 +25,7 @@
 //! that came back. A handle built without a width is untouched: it reports
 //! whatever the provider's own table says and has nothing to disagree with.
 
-use rig::error::ProviderError;
+use rig::ErrorDetail;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
@@ -70,13 +70,15 @@ async fn a_declared_width_llamacpp_cannot_honour_is_refused() {
                 .map(|response| response.embeddings)
                 .expect_err("llama.cpp cannot resize embeddings");
 
-            match error {
-                ProviderError::MismatchedDimensions {
-                    provider,
+            match error.detail {
+                Some(ErrorDetail::MismatchedDimensions {
                     requested,
                     returned,
-                } => {
-                    assert_eq!(provider, "llamacpp");
+                }) => {
+                    assert!(
+                        error.message.starts_with("llamacpp embedding response"),
+                        "the provider whose reply disagreed: {error}"
+                    );
                     assert_eq!(requested, 128, "the width the caller declared");
                     assert_eq!(returned, NATIVE_WIDTH, "the width the model has");
                 }

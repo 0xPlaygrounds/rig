@@ -28,7 +28,7 @@ impl DispatchScope {
         ctx: &HookContext,
         kind: EffectKind,
         call: Option<(&CallId, &ToolContext)>,
-    ) -> Result<Self, (Self, ErrorReport)> {
+    ) -> Result<Self, (Self, RigError)> {
         let id = runner.config.bus.dispatcher().mint_id();
         let (call_id, context) = call.unzip();
         let event = DispatchEvent {
@@ -62,7 +62,7 @@ impl DispatchScope {
         &self,
         runner: &AgentRunner,
         ctx: &HookContext,
-        outcome: &Result<Answered, ErrorReport>,
+        outcome: &Result<Answered, RigError>,
         call: Option<(&CallId, &ToolContext)>,
     ) -> OutcomeAction {
         let ((call_id, context), turn) = (call.unzip(), ctx.turn());
@@ -87,7 +87,7 @@ impl DispatchScope {
 /// records the bus's answer here.
 pub(crate) struct CompletionScope<S> {
     scope: DispatchScope,
-    answer: Option<Result<CompletionResponse, ErrorReport>>,
+    answer: Option<Result<CompletionResponse, RigError>>,
     state: State,
     source: PhantomData<fn() -> S>,
 }
@@ -124,7 +124,7 @@ pub(crate) fn model_step<'a, S: TurnSource>(
             Err((_, report)) => {
                 yield Err(match report.kind {
                     ErrorKind::Cancelled => run.cancel_error(report.message),
-                    _ => PromptError::Report(report),
+                    _ => PromptError::Failed(report),
                 });
                 return;
             }
@@ -156,9 +156,9 @@ impl<M> CompletionScope<M> {
     /// dispatch id, sent once.
     fn send(&mut self) -> Result<(EffectKind, crate::bus::DispatchOptions), PromptError> {
         if !matches!(self.state, State::Open) {
-            let report = ErrorReport::new(ErrorKind::Internal, "a completion was dispatched twice");
+            let report = RigError::new(ErrorKind::Internal, "a completion was dispatched twice");
             self.answer = Some(Err(report.clone()));
-            return Err(PromptError::Report(report));
+            return Err(PromptError::Failed(report));
         }
         self.state = State::Dispatched;
         Ok((self.scope.kind.clone(), self.scope.options()))
@@ -180,7 +180,7 @@ impl<M> CompletionScope<M> {
         let action = self.fire(runner, ctx, None).await;
         match &self.answer {
             Some(Ok(response)) => Ok((action, response)),
-            _ => Err(PromptError::Report(no_answer())),
+            _ => Err(PromptError::Failed(no_answer())),
         }
     }
 
@@ -227,7 +227,7 @@ impl CompletionScope<UnaryTurnSource> {
             Err(report) => Err(report),
         };
         let answer = self.answer.insert(answer).as_ref();
-        answer.map_err(|report| PromptError::Report(report.clone()))
+        answer.map_err(|report| PromptError::Failed(report.clone()))
     }
 }
 
@@ -263,7 +263,7 @@ impl CompletionScope<StreamingTurnSource> {
             }
         };
         let Ok(response) = response else {
-            return Err(PromptError::Report(no_answer()));
+            return Err(PromptError::Failed(no_answer()));
         };
         span.record_token_usage(&response.usage);
         let (usage, identity, raw) = (response.usage, response.identity(), response.raw.clone());
@@ -273,16 +273,15 @@ impl CompletionScope<StreamingTurnSource> {
     }
 }
 
-fn no_answer() -> ErrorReport {
-    ErrorReport::new(ErrorKind::Internal, "completion ended without an answer")
+fn no_answer() -> RigError {
+    RigError::new(ErrorKind::Internal, "completion ended without an answer")
 }
 
 /// The report a failed completion attempt closes with.
-fn report_of(error: &PromptError) -> ErrorReport {
+fn report_of(error: &PromptError) -> RigError {
     match error {
-        PromptError::Report(report) => report.clone(),
-        PromptError::Provider(error) => error.report(),
-        PromptError::Cancelled { reason, .. } => ErrorReport::new(ErrorKind::Cancelled, reason),
-        other => ErrorReport::new(ErrorKind::Internal, other.to_string()),
+        PromptError::Failed(report) => report.clone(),
+        PromptError::Cancelled { reason, .. } => RigError::new(ErrorKind::Cancelled, reason),
+        other => RigError::new(ErrorKind::Internal, other.to_string()),
     }
 }

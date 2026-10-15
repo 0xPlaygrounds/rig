@@ -1,13 +1,17 @@
-//! The provider error type, serializable error reports, and shared retry
-//! classifications for the effect protocol. Reports preserve classifications,
-//! available provider metadata, and textual source chains.
+//! [`RigError`], the one error a caller handles, and [`ProviderError`], the
+//! error a provider author builds. Every caller-facing surface returns a
+//! `RigError`, and every rig error converts into one, so an application
+//! propagates them all with `?`. It serializes, so the bus and effect logs
+//! carry it unchanged.
 //!
 //! ```
-//! use rig_core::error::{ErrorKind, ProviderError};
+//! use rig_core::error::{ErrorKind, ProviderError, RigError};
 //!
 //! let error = ProviderError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, "slow down");
-//! assert!(error.is_retryable());
-//! assert_eq!(error.report().kind, ErrorKind::ProviderResponse);
+//! let error = RigError::from(error);
+//! assert!(error.retryable);
+//! assert_eq!(error.kind, ErrorKind::ProviderResponse);
+//! assert_eq!(error.http_status, Some(429));
 //! ```
 
 use std::fmt;
@@ -24,9 +28,10 @@ use crate::{
     vector_store::VectorStoreError,
 };
 
+mod convert;
 pub mod retry;
 
-/// Normalized classification of an [`ErrorReport`].
+/// Normalized classification of a [`RigError`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
@@ -69,6 +74,9 @@ pub enum ErrorKind {
     /// Policy denied dispatch before handler execution. Not retryable under
     /// the same policy; distinct from program cancellation.
     Denied,
+    /// The caller's setup is invalid: a missing or malformed setting, an
+    /// unknown model or provider. Never retryable.
+    Configuration,
     /// Anything else.
     Other,
 }
@@ -92,12 +100,33 @@ impl ErrorKind {
             Self::HandlerUnavailable => "handler_unavailable",
             Self::Divergence => "divergence",
             Self::Denied => "denied",
+            Self::Configuration => "configuration",
             Self::Other => "other",
         }
     }
 }
 
-/// A serde-able error crossing a wire boundary.
+/// The one error a caller handles: what a model call, a stream, the bus and
+/// an agent fail with. It is data, so it is `Clone`, compares, and
+/// serializes for the bus and effect logs.
+///
+/// Every rig error converts into it, and [`Self::other`] takes any other
+/// error, so an application writes `Result<T, RigError>` throughout.
+///
+/// ```
+/// use rig_core::error::{ErrorDetail, ErrorKind, RigError};
+///
+/// fn advise(error: &RigError) -> &'static str {
+///     match (&error.detail, error.http_status) {
+///         (Some(ErrorDetail::InvalidAuthentication), _) => "sign in again",
+///         (_, Some(429)) => "slow down",
+///         _ if error.retryable => "try again",
+///         _ if error.kind == ErrorKind::Configuration => "fix the setup",
+///         _ => "give up",
+///     }
+/// }
+/// # let _ = advise;
+/// ```
 ///
 /// Field semantics:
 /// - `retryable` is the one policy signal; it is decided at conversion time
@@ -105,8 +134,11 @@ impl ErrorKind {
 /// - `message` is the source's `Display`; `source_chain` is the `Display` of
 ///   each `source()` link, outermost first, excluding `message` itself.
 /// - `code`, `http_status`, `refusal` are copied when the source had them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ErrorReport {
+///
+/// `{:?}` prints the message and its causes, as `main` shows a returned
+/// error; `{:#?}` prints every field.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RigError {
     /// Normalized classification.
     pub kind: ErrorKind,
     /// Whether the same operation may reasonably be retried.
@@ -132,9 +164,41 @@ pub struct ErrorReport {
     /// headers, and request ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_response: Option<crate::provider_response::ProviderResponseError>,
+    /// What the failure was, for the failures a caller acts on by type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ErrorDetail>,
 }
 
-impl ErrorReport {
+/// The typed facts of a failure a caller acts on, beyond its kind.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ErrorDetail {
+    /// The provider rejected the configured credentials with 401 or 403.
+    InvalidAuthentication,
+    /// A request for an existing context-cache handle answered 403 or 404.
+    /// The provider's reply, which can name another cause, is the error's
+    /// `provider_response`.
+    CacheExpired {
+        /// The cache handle the request named.
+        name: String,
+    },
+    /// The provider returned vectors of a width other than the one the
+    /// caller declared.
+    MismatchedDimensions {
+        /// Width the caller declared.
+        requested: usize,
+        /// Width the provider returned.
+        returned: usize,
+    },
+    /// The request sets an option the wire or model cannot honour; nothing
+    /// was sent.
+    UnsupportedOption(UnsupportedOption),
+    /// The reply stopped before the provider ended it.
+    Truncated,
+}
+
+impl RigError {
     /// Build a report of `kind` with `message` and no other metadata.
     pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
         Self {
@@ -147,7 +211,52 @@ impl ErrorReport {
             source_chain: Vec::new(),
             request_id: None,
             provider_response: None,
+            detail: None,
         }
+    }
+
+    /// `error` classified as `kind`: its `Display` is the message and its
+    /// sources are the source chain. Not retryable.
+    pub fn from_error(kind: ErrorKind, error: &(dyn std::error::Error + 'static)) -> Self {
+        Self {
+            source_chain: source_chain(error),
+            ..Self::new(kind, error.to_string())
+        }
+    }
+
+    /// This error, explained by `message`: its message leads the source
+    /// chain, and the kind, verdict and provider facts are kept.
+    ///
+    /// ```
+    /// use rig_core::error::{ErrorKind, RigError};
+    ///
+    /// let error = RigError::new(ErrorKind::Http, "connection reset").context("loading the index");
+    /// assert_eq!(error.message, "loading the index");
+    /// assert_eq!(error.source_chain, ["connection reset"]);
+    /// ```
+    pub fn context(self, message: impl Into<String>) -> Self {
+        let source_chain = std::iter::once(self.message)
+            .chain(self.source_chain)
+            .collect();
+        Self {
+            message: message.into(),
+            source_chain,
+            ..self
+        }
+    }
+
+    /// An error from outside rig, as [`ErrorKind::Other`].
+    ///
+    /// ```
+    /// use rig_core::error::{ErrorKind, RigError};
+    ///
+    /// fn port(text: &str) -> Result<u16, RigError> {
+    ///     text.parse().map_err(RigError::other)
+    /// }
+    /// assert_eq!(port("x").map_err(|error| error.kind), Err(ErrorKind::Other));
+    /// ```
+    pub fn other(error: impl std::error::Error + 'static) -> Self {
+        Self::from_error(ErrorKind::Other, &error)
     }
 
     /// Set `retryable`.
@@ -186,7 +295,7 @@ impl ErrorReport {
     }
 }
 
-impl ErrorReport {
+impl RigError {
     /// The provider response body preserved on this report, if any.
     pub fn provider_response_body(&self) -> Option<&str> {
         self.provider_response
@@ -218,13 +327,41 @@ impl ErrorReport {
     }
 }
 
-impl fmt::Display for ErrorReport {
+impl fmt::Display for RigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)
     }
 }
 
-impl std::error::Error for ErrorReport {}
+impl fmt::Debug for RigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            return f
+                .debug_struct("RigError")
+                .field("kind", &self.kind)
+                .field("retryable", &self.retryable)
+                .field("message", &self.message)
+                .field("code", &self.code)
+                .field("http_status", &self.http_status)
+                .field("refusal", &self.refusal)
+                .field("source_chain", &self.source_chain)
+                .field("request_id", &self.request_id)
+                .field("provider_response", &self.provider_response)
+                .field("detail", &self.detail)
+                .finish();
+        }
+        write!(f, "{} [{}]", self.message, self.kind.code())?;
+        if !self.source_chain.is_empty() {
+            f.write_str("\n\nCaused by:")?;
+            for (index, cause) in self.source_chain.iter().enumerate() {
+                write!(f, "\n    {index}: {cause}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for RigError {}
 
 /// The one status → retryable table.
 ///
@@ -258,11 +395,22 @@ pub fn transient_transport(error: &http_client::Error) -> bool {
 }
 
 /// Collect the `Display` of each `source()` link below `error`, outermost
-/// first.
+/// first. A [`RigError`] link adds the chain it saved, since it holds its
+/// causes as text rather than as sources.
+///
+/// A wrapper that displays a `RigError` unchanged and names it as its source
+/// would repeat its message, so the repeat is left out.
 pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
-    let mut chain = Vec::new();
+    let mut chain: Vec<String> = Vec::new();
     let mut current = error.source();
     while let Some(source) = current {
+        if let Some(report) = source.downcast_ref::<RigError>() {
+            if chain.last() != Some(&report.message) {
+                chain.push(report.message.clone());
+            }
+            chain.extend(report.source_chain.iter().cloned());
+            break;
+        }
         chain.push(source.to_string());
         current = source.source();
     }
@@ -361,7 +509,7 @@ pub enum ProviderError {
     },
     /// A failure a relay delivered as its report, such as a stream relayed
     /// over the effect bus. It reports as the relayed report, unchanged.
-    Relayed(Box<ErrorReport>),
+    Relayed(Box<RigError>),
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.
     Truncated,
@@ -587,9 +735,30 @@ impl ProviderError {
         self.map_response(|response| response.with_transient(transient))
     }
 
-    /// The wire form of this error.
-    pub fn report(&self) -> ErrorReport {
-        ErrorReport::from(self)
+    /// The caller's form of this error.
+    pub fn report(&self) -> RigError {
+        RigError::from(self)
+    }
+
+    /// The typed facts a caller reads from [`RigError::detail`].
+    fn detail(&self) -> Option<ErrorDetail> {
+        match self {
+            Self::InvalidAuthentication(_) => Some(ErrorDetail::InvalidAuthentication),
+            Self::CacheExpired { name, .. } => {
+                Some(ErrorDetail::CacheExpired { name: name.clone() })
+            }
+            Self::MismatchedDimensions {
+                requested,
+                returned,
+                ..
+            } => Some(ErrorDetail::MismatchedDimensions {
+                requested: *requested,
+                returned: *returned,
+            }),
+            Self::UnsupportedOption(option) => Some(ErrorDetail::UnsupportedOption(option.clone())),
+            Self::Truncated => Some(ErrorDetail::Truncated),
+            _ => None,
+        }
     }
 
     /// Which boundary produced this error, by its classification.
@@ -722,13 +891,13 @@ impl From<http::Error> for ProviderError {
     }
 }
 
-impl From<&ProviderError> for ErrorReport {
+impl From<&ProviderError> for RigError {
     fn from(error: &ProviderError) -> Self {
         if let ProviderError::Relayed(report) = error {
             return (**report).clone();
         }
         let response = error.provider_response();
-        ErrorReport {
+        RigError {
             kind: error.kind(),
             retryable: error.is_retryable(),
             message: error.to_string(),
@@ -740,20 +909,15 @@ impl From<&ProviderError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: response.and_then(|response| response.provider_request_id.clone()),
             provider_response: response.cloned(),
+            detail: error.detail(),
         }
     }
 }
 
-impl From<ProviderError> for ErrorReport {
-    fn from(error: ProviderError) -> Self {
-        Self::from(&error)
-    }
-}
-
 impl ToolExecutionError {
-    /// The wire form of this error.
-    pub fn report(&self) -> ErrorReport {
-        ErrorReport::from(self)
+    /// The caller's form of this error.
+    pub fn report(&self) -> RigError {
+        RigError::from(self)
     }
 }
 
@@ -769,9 +933,9 @@ impl ToolExecutionError {
     }
 }
 
-impl From<&ToolExecutionError> for ErrorReport {
+impl From<&ToolExecutionError> for RigError {
     fn from(error: &ToolExecutionError) -> Self {
-        ErrorReport {
+        RigError {
             kind: ErrorKind::Tool(error.kind()),
             retryable: error.is_retryable(),
             message: error.message().to_string(),
@@ -781,11 +945,12 @@ impl From<&ToolExecutionError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: None,
             provider_response: None,
+            detail: None,
         }
     }
 }
 
-impl From<ToolExecutionError> for ErrorReport {
+impl From<ToolExecutionError> for RigError {
     fn from(error: ToolExecutionError) -> Self {
         Self::from(&error)
     }
@@ -796,8 +961,8 @@ impl From<ToolExecutionError> for ErrorReport {
 /// An [`ErrorKind::Tool`] report keeps its tool kind; other kinds map to the
 /// closest [`ToolErrorKind`]. Retryability, code, HTTP status, and refusal are
 /// copied, the message is model-visible, and the report is the `source()`.
-impl From<ErrorReport> for ToolExecutionError {
-    fn from(report: ErrorReport) -> Self {
+impl From<RigError> for ToolExecutionError {
+    fn from(report: RigError) -> Self {
         let kind = match report.kind {
             ErrorKind::Tool(kind) => kind,
             ErrorKind::Timeout => ToolErrorKind::Timeout,
@@ -813,6 +978,7 @@ impl From<ErrorReport> for ToolExecutionError {
             | ErrorKind::Internal
             | ErrorKind::BusClosed
             | ErrorKind::Divergence
+            | ErrorKind::Configuration
             | ErrorKind::Other => ToolErrorKind::Other,
         };
         let mut error = if report.refusal {
@@ -831,14 +997,14 @@ impl From<ErrorReport> for ToolExecutionError {
     }
 }
 
-impl From<&VectorStoreError> for ErrorReport {
+impl From<&VectorStoreError> for RigError {
     fn from(error: &VectorStoreError) -> Self {
         let (kind, provider_response) = match error {
             VectorStoreError::EmbeddingError(inner) => {
                 return Self {
                     message: error.to_string(),
                     source_chain: source_chain(error),
-                    ..Self::from(inner)
+                    ..inner.clone()
                 };
             }
             VectorStoreError::JsonError(_) => (ErrorKind::Json, None),
@@ -880,7 +1046,7 @@ impl From<&VectorStoreError> for ErrorReport {
         let code = provider_response
             .as_ref()
             .and_then(|response| response.machine_code());
-        ErrorReport {
+        RigError {
             kind,
             retryable,
             message: error.to_string(),
@@ -890,11 +1056,12 @@ impl From<&VectorStoreError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: None,
             provider_response,
+            detail: None,
         }
     }
 }
 
-impl From<VectorStoreError> for ErrorReport {
+impl From<VectorStoreError> for RigError {
     fn from(error: VectorStoreError) -> Self {
         Self::from(&error)
     }
@@ -904,7 +1071,7 @@ impl From<VectorStoreError> for ErrorReport {
 // and serialize on every target, browser wasm included.
 const _: fn() = || {
     fn assert_wire<T: Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}
-    assert_wire::<ErrorReport>();
+    assert_wire::<RigError>();
     assert_wire::<ErrorKind>();
 };
 

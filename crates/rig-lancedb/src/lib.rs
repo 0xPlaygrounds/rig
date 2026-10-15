@@ -359,16 +359,19 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     ///
     /// # Example
     /// ```no_run
+    /// use rig_core::RigError;
     /// use rig_core::providers::openai::{self, OpenAI};
     /// use rig_core::vector_store::VectorStoreIndex;
     /// use rig_core::vector_store::request::VectorSearchRequest;
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     ///
-    /// # async fn example(table: lancedb::Table) -> Result<(), anyhow::Error> {
+    /// # async fn example(table: lancedb::Table) -> Result<(), RigError> {
     /// let openai_client = OpenAI::from_env()?;
     /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
     /// let vector_store_index =
-    ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
+    ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default())
+    ///         .await
+    ///         .map_err(RigError::other)?;
     ///
     /// let req = VectorSearchRequest::builder()
     ///     .query("My boss says I zindle too much, what does that mean?")

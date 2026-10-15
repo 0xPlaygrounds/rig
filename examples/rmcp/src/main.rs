@@ -5,6 +5,7 @@
 //! - **Auto-updating**: Use [`McpClientHandler`] so the agent automatically
 //!   picks up tool changes when the MCP server sends
 //!   `notifications/tools/list_changed`.
+use rig::RigError;
 use std::sync::Arc;
 
 use rig::{
@@ -195,7 +196,7 @@ impl ServerHandler for Counter {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt::init();
 
     let service = TowerToHyperService::new(StreamableHttpService::new(
@@ -203,7 +204,9 @@ async fn main() -> anyhow::Result<()> {
         LocalSessionManager::default().into(),
         Default::default(),
     ));
-    let listener = tokio::net::TcpListener::bind("localhost:8080").await?;
+    let listener = tokio::net::TcpListener::bind("localhost:8080")
+        .await
+        .map_err(RigError::other)?;
 
     tokio::spawn({
         let service = service.clone();

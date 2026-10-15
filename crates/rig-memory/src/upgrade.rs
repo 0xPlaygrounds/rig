@@ -271,6 +271,18 @@ pub enum ValueError {
     Parse(#[from] serde_json::Error),
 }
 
+impl From<Unread> for rig_core::error::RigError {
+    fn from(error: Unread) -> Self {
+        Self::from_error(rig_core::error::ErrorKind::Other, &error)
+    }
+}
+
+impl From<ValueError> for rig_core::error::RigError {
+    fn from(error: ValueError) -> Self {
+        Self::from_error(rig_core::error::ErrorKind::Other, &error)
+    }
+}
+
 /// The logs [`upgrade`] rewrote.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Upgraded {

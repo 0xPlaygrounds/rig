@@ -19,7 +19,6 @@ use crate::{
     },
     tool::ToolContext,
 };
-use rig_core::error::ProviderError;
 use rig_core::message::{ToolChoice, UserContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -717,12 +716,12 @@ async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_reques
         .expect_err("invalid ToolChoice::Specific should fail before provider request");
 
     match err {
-        PromptError::Provider(ProviderError::Request(err)) => {
-            let msg = err.to_string();
+        PromptError::Failed(error) if error.kind == rig_core::error::ErrorKind::Request => {
+            let msg = error.message;
             assert!(msg.contains("missing"), "got: {msg}");
             assert!(msg.contains("add"), "got: {msg}");
         }
-        other => panic!("expected ProviderError::Request, got {other:?}"),
+        other => panic!("expected a request error, got {other:?}"),
     }
     assert_eq!(recorded.request_count(), 0);
 }

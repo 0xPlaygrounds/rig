@@ -1,8 +1,9 @@
-use anyhow::Context;
 use fastembed::{
     EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
     TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
 };
+use rig_core::RigError;
+use rig_core::error::ErrorKind;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -25,27 +26,35 @@ struct WordDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    // Get model info
-    let test_model_info = FastembedTextEmbedding::get_model_info(&FastembedModel::AllMiniLML6V2)?;
+async fn main() -> Result<(), RigError> {
+    // Get model info. `fastembed`'s error type is not a `std::error::Error`,
+    // so its failures convert through `as_ref`.
+    let test_model_info = FastembedTextEmbedding::get_model_info(&FastembedModel::AllMiniLML6V2)
+        .map_err(|error| RigError::from_error(ErrorKind::Other, error.as_ref()))?;
 
     // Set up model directory
     let model_dir = Path::new("./models/Qdrant--all-MiniLM-L6-v2-onnx/snapshots");
     println!("Loading model from: {model_dir:?}");
 
     // Load model files
-    let onnx_file = read_file_to_bytes(&model_dir.join("model.onnx"))
-        .context("Could not read model.onnx file")?;
+    let read = |name: &str, context: &str| {
+        read_file_to_bytes(&model_dir.join(name)).map_err(|error| {
+            RigError::from_error(ErrorKind::Other, error.as_ref()).context(context)
+        })
+    };
+    let onnx_file = read("model.onnx", "Could not read model.onnx file")?;
 
     let tokenizer_files = TokenizerFiles {
-        tokenizer_file: read_file_to_bytes(&model_dir.join("tokenizer.json"))
-            .context("Could not read tokenizer.json")?,
-        config_file: read_file_to_bytes(&model_dir.join("config.json"))
-            .context("Could not read config.json")?,
-        special_tokens_map_file: read_file_to_bytes(&model_dir.join("special_tokens_map.json"))
-            .context("Could not read special_tokens_map.json")?,
-        tokenizer_config_file: read_file_to_bytes(&model_dir.join("tokenizer_config.json"))
-            .context("Could not read tokenizer_config.json")?,
+        tokenizer_file: read("tokenizer.json", "Could not read tokenizer.json")?,
+        config_file: read("config.json", "Could not read config.json")?,
+        special_tokens_map_file: read(
+            "special_tokens_map.json",
+            "Could not read special_tokens_map.json",
+        )?,
+        tokenizer_config_file: read(
+            "tokenizer_config.json",
+            "Could not read tokenizer_config.json",
+        )?,
     };
 
     // Create embedding model

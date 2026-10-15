@@ -59,7 +59,7 @@ impl Transport<Generation> for Scripted {
 /// The stream the generation wire yields for scripted `events`.
 fn stream_from_events(
     events: Vec<GenerationEvent>,
-) -> Result<rig_core::streaming::CompletionStream, ProviderError> {
+) -> Result<rig_core::streaming::CompletionStream, rig_core::RigError> {
     rig_core::Model::new(
         scripted(),
         Scripted(Arc::new(std::sync::Mutex::new(events))),
@@ -71,7 +71,7 @@ fn stream_from_events(
 async fn raw_completion(
     model: &CandleModel,
     request: CompletionRequest,
-) -> Result<CandleCompletionResponse, ProviderError> {
+) -> Result<CandleCompletionResponse, rig_core::RigError> {
     let response = generation(model).call(request).await?;
     Ok(serde_json::from_value(response.raw)?)
 }

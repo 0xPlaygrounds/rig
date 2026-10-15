@@ -14,9 +14,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use serde_json::Value;
 
 use rig_agent::agent::AgentBuilder;
+use rig_core::RigError;
 use rig_core::completion::CompletionResponse;
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
-use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, ToolResult, ToolResultContent, UserContent};
 use rig_core::operation::Completion;
 use rig_core::providers::anthropic::wire::AnthropicConfig;
@@ -52,7 +52,7 @@ impl<W: Wire<Payload = Encoded, Frame = WireFrame>> Transport<W> for Recorded {
 
 /// Decode one whole recorded reply through the wire's own decoder and fold,
 /// without I/O: the exact normalization a live call would perform.
-pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse, ProviderError>
+pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse, RigError>
 where
     W: Wire<Op = Completion, Payload = Encoded, Frame = WireFrame>,
 {

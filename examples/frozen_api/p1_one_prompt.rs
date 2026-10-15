@@ -1,7 +1,8 @@
+use rig::RigError;
 use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), RigError> {
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
     let response = model.call("In one sentence, what is Rust?").await?;
 

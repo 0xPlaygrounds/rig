@@ -1,3 +1,4 @@
+use rig_core::RigError;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -19,7 +20,7 @@ struct WordDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Load the local Fastembed model and pair it with its embedding wire
     let embedding_model = rig_fastembed::Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?
         .embedding(&FastembedModel::AllMiniLML6V2Q, None)?

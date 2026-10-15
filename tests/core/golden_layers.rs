@@ -203,7 +203,7 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
     drop(stream);
     let ending = ending.expect("the run ends in an error");
     match &ending {
-        PromptError::Report(report) => {
+        PromptError::Failed(report) => {
             assert_eq!(report.kind, rig::error::ErrorKind::Cancelled);
             assert_eq!(report.message, CANCEL_STREAM_REASON);
         }

@@ -14,7 +14,6 @@
 
 use std::{thread, time::Duration};
 
-use anyhow::Result;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool, futures::check_ready};
 use rig::agent::MultiTurnStreamItem;
 use rig::prelude::*;
@@ -26,7 +25,7 @@ const PROMPT: &str = "Entertain me!";
 /// How long the "frame" loop sleeps between ticks when nothing is ready.
 const FRAME: Duration = Duration::from_millis(16);
 
-fn main() -> Result<()> {
+fn main() -> Result<(), RigError> {
     // The client sends through the shared reqwest transport, held erased:
     // the model is `Model<OpenAiWire>`.
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))

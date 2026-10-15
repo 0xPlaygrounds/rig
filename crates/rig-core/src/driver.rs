@@ -26,7 +26,7 @@ use std::task::{Context, Poll};
 use futures::StreamExt;
 use tracing::Instrument;
 
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::observe::{AdapterContext, AdapterSlot};
 use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
@@ -120,7 +120,7 @@ pub(crate) fn check_with(
         request.options.on_unsupported = Some(OnUnsupported::Ignore);
     }
     match crate::completion::options::collect_refusals(|| run(request)) {
-        (Err(error), _) => Err(CheckError::Invalid(error)),
+        (Err(error), _) => Err(CheckError::Invalid(error.into())),
         (Ok(()), refusals) if refusals.is_empty() => Ok(()),
         (Ok(()), refusals) => Err(CheckError::Unsupported(refusals)),
     }
@@ -353,7 +353,7 @@ where
     pub fn call(
         &self,
         request: impl Into<Request<W>>,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, RigError>> + WasmCompatSend + 'static {
         self.finished(request.into(), Sending::default())
     }
 
@@ -362,7 +362,7 @@ where
         &self,
         request: impl Into<Request<W>>,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, RigError>> + WasmCompatSend + 'static {
         self.finished(request.into(), Sending::observed(observation))
     }
 
@@ -372,7 +372,7 @@ where
         &self,
         request: Request<W>,
         sending: Sending,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, RigError>> + WasmCompatSend + 'static {
         let model = self.clone();
         async move { model.open(request, Mode::Unary, sending)?.finish().await }
     }
@@ -380,8 +380,8 @@ where
     /// Open a streamed reply. Encoding errors return here; every later
     /// failure arrives in-band, as the stream's last item. Nothing is sent
     /// until the stream is first polled.
-    pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(request.into(), Mode::Streaming, Sending::default())
+    pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, RigError> {
+        Ok(self.open(request.into(), Mode::Streaming, Sending::default())?)
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
@@ -389,12 +389,12 @@ where
         &self,
         request: impl Into<Request<W>>,
         observation: AdapterContext,
-    ) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(
+    ) -> Result<Streamed<W::Op>, RigError> {
+        Ok(self.open(
             request.into(),
             Mode::Streaming,
             Sending::observed(observation),
-        )
+        )?)
     }
 
     /// [`Self::call`], with a failure paired with the request path of the
@@ -407,6 +407,15 @@ where
             .map_err(|error| (error, String::new()))?
             .finish_routed()
             .await
+    }
+
+    /// [`Self::call`], failing with the provider's own error, for a verb
+    /// that reclassifies it before the caller sees it.
+    pub(crate) async fn call_provider(
+        &self,
+        request: Request<W>,
+    ) -> Result<Response<W>, ProviderError> {
+        self.call_routed(request).await.map_err(|(error, _)| error)
     }
 
     /// `request` prepared and encoded as [`Self::call`] would, with nothing
@@ -813,7 +822,7 @@ pub(crate) fn relay_frames<W>(
 where
     W: Wire<Op = crate::operation::Completion>,
 {
-    use crate::error::ErrorReport;
+    use crate::error::RigError;
     use crate::streaming::Relayed;
 
     let provider = wire.describe().name.to_owned();
@@ -840,12 +849,12 @@ where
         .as_ref()
         .map(|response| response.origin.clone())
         .ok();
-    let relayed: Vec<Result<Relayed, ErrorReport>> = origin
+    let relayed: Vec<Result<Relayed, RigError>> = origin
         .map(|origin| Ok(Relayed::Origin(origin)))
         .into_iter()
         .chain(decoded.items.into_iter().map(|item| match item {
             Ok(item) => Ok(Relayed::Item(item)),
-            Err(error) => Err(ErrorReport::from(&error)),
+            Err(error) => Err(RigError::from(&error)),
         }))
         // An error that ended the reply is already its last item.
         .chain(

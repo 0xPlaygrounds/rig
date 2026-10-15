@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use rig_harness::clock::ClockPlugin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::error::{ErrorKind, RigError};
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_tools::fs::place;
 use schemars::JsonSchema;
@@ -365,7 +365,7 @@ fn time_out(
         let why = format!("it took longer than {} s", config.timeout_secs);
         decision.decide(
             Decider::plugin("fh-safety-judge"),
-            Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why))),
+            Outcome(Err(RigError::new(ErrorKind::Timeout, why))),
         );
     }
 }
