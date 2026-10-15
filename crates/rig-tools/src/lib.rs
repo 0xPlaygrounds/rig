@@ -1,24 +1,20 @@
-//! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`],
-//! [`List`], [`Shell`], [`Delete`] and [`Move`]. Each has a description of what it does, its usage
-//! `RULES`, the lines a system prompt carries on when to pick it, such as
-//! "use `read`, not `cat`", and annotations saying what it does to the
-//! world (read-only or destructive). They are [`Tool`](rig_core::tool::Tool)s
-//! that publish what they did beside their text: the files they read
-//! ([`FilesRead`](rig_core::tool::FilesRead)), what a search found
-//! ([`SearchHits`]), what a listing showed ([`FilesListed`]), the files they changed, with their diffs
-//! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
-//! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). Each acts on a
-//! [`Workspace`](workspace::Workspace): this machine
-//! ([`Local`](workspace::Local), the default) or another, such as one
-//! reached over SSH. The file tools name files by their resolved paths
-//! (`resolve` on [`Workspace`](workspace::Workspace)), from an optional
-//! base directory they can be confined to. Each call says what it may read
-//! and change ([`footprint`](rig_core::tool::Tool::footprint)): `read`,
-//! `search` and `list` read the path they name, `write`, `edit`, `delete` and `move`
-//! write theirs, and `shell` may change anything, so a host runs calls on
-//! different files side by side. `shell` reports its output as it comes to
-//! a [`Live`]. Their arguments are plain data with public fields, to build
-//! or read a call's.
+#![deny(missing_docs)]
+//! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`], [`List`],
+//! [`Shell`], [`Delete`] and [`Move`].
+//!
+//! - Each carries its `RULES` for the system prompt and says what it may touch
+//!   ([`footprint`](rig_core::tool::Tool::footprint)): `read`, `search` and `list` read the
+//!   path they name, the other file tools write theirs, and `shell` may change anything, so a
+//!   host runs calls on different files side by side.
+//! - Each publishes what it did beside its text: files read
+//!   ([`FilesRead`](rig_core::tool::FilesRead)), [`SearchHits`], [`FilesListed`], files changed
+//!   with their diffs ([`FilesChanged`](rig_core::tool::FilesChanged)), how a command ended
+//!   ([`ExitStatus`](rig_core::tool::ExitStatus)).
+//! - Each acts on a [`Workspace`](workspace::Workspace): this machine
+//!   ([`Local`](workspace::Local), the default) or another. The file tools resolve paths from an
+//!   optional base directory they can be confined to.
+//! - `shell` reports its output as it comes to a [`Live`]. Arguments are plain data with public
+//!   fields.
 //!
 //! Also the pieces they are made of, for tools of your own:
 //! - [`edit::apply`]: what `edit` makes of a file's text, without the file,
