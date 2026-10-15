@@ -85,7 +85,7 @@ fn a_rewrite_reaches_the_log_written_and_the_records_not_written_yet() {
     app.update();
     app.world_mut()
         .write_message(EffectRecorded(saying(2, &format!("again {SECRET}"))));
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("redact"),
         with: Arc::new(Strings(|text: &mut String| {
             let hit = text.contains(SECRET);

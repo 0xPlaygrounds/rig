@@ -450,7 +450,7 @@ fn sends_only_the_new_part_while_the_server_holds_the_rest() {
     let before = agent_id.zip(fork_at);
     assert!(before.is_some(), "a message to fork before");
     let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         ..ForkSession::default()
     });

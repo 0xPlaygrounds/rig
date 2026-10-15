@@ -252,7 +252,7 @@ fn snapshot(
                             agent,
                         })
                         .id();
-                    commands.trigger(ForkSession {
+                    commands.write_message(ForkSession {
                         from: None,
                         cut,
                         asker: Some(asker),
@@ -525,7 +525,7 @@ fn start_from(
                 agent: start.agent,
             };
             let asker = commands.spawn(asker).id();
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: Some(id),
                 cut: ForkCut::Whole,
                 asker: Some(asker),

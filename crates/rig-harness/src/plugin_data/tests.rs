@@ -61,7 +61,7 @@ fn a_session_file_follows_a_fork_and_the_other_places_are_in_the_home() {
         data.session.files().ok(),
         Some(vec!["notes/today.md".to_owned()])
     );
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     // The fork is written in `Last`, and read the frame after.
     app.update();
     app.update();

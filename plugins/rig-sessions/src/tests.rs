@@ -159,7 +159,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     assert_eq!(said, Ok(()));
     app.world_mut().resource_mut::<SessionTitle>().name = Some("Parser".to_owned());
     app.update();
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     app.update();
     let mut forks = app.world_mut().resource_mut::<Messages<SessionForked>>();
     let fork = forks.drain().next().map(|forked| forked.to);
@@ -352,7 +352,7 @@ fn a_rewritten_session_keeps_its_rewritten_title() {
     let name = || dir.name();
     assert_eq!(name(), Some(format!("key {SECRET}")));
 
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("redact"),
         with: Arc::new(Strings(|text: &mut String| {
             let hit = text.contains(SECRET);

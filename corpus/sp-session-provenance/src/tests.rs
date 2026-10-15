@@ -202,7 +202,7 @@ fn the_setup_and_its_changes_are_recorded_resumed_forked_and_never_sent() {
         return;
     };
     let cut = ForkCut::Before(AgentId("main".to_owned()), turn_2);
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         ..ForkSession::default()
     });

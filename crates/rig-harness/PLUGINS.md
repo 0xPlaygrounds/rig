@@ -1449,7 +1449,7 @@ fn redact(In(args): In<CommandArgs>, mut commands: Commands) {
         if hit { *text = text.replace(&secret, "[REDACTED]") }
         hit
     });
-    commands.trigger(RewriteSession { by: Author::plugin("redact"), with: std::sync::Arc::new(with), asker: None });
+    commands.write_message(RewriteSession { by: Author::plugin("redact"), with: std::sync::Arc::new(with), asker: None });
 }
 
 /// Says how it went, and maps what it keeps (`told`) with the same `with`.
@@ -1763,7 +1763,7 @@ fn fork(picked: On<Picked>, chosen: Query<&SessionPicked>, mut commands: Command
     let Ok(SessionPicked { agent: Some(agent), entry: Some(through), .. }) = chosen.get(picked.entity) else { return };
     let (agent, title) = (AgentId(agent.clone()), "fork".to_owned());
     let cut = ForkCut::Line { agent, line: None, through: *through, take: None, title };
-    commands.trigger(ForkSession { from: None, cut, asker: None });
+    commands.write_message(ForkSession { from: None, cut, asker: None });
 }
 ```
 

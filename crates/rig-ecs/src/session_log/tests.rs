@@ -698,7 +698,7 @@ fn a_session_rewritten_live_keeps_no_secret_in_its_logs_conversations_or_saved_v
     first.world_mut().resource_mut::<Inserted>().0 = 0;
 
     let asker = first.world_mut().spawn_empty().id();
-    first.world_mut().trigger(RewriteSession {
+    first.world_mut().write_message(RewriteSession {
         by: Author::plugin("redact"),
         with: Arc::new(rig_memory::Strings(|text: &mut String| {
             let hit = text.contains(SECRET);
@@ -781,13 +781,13 @@ fn a_rewrite_asked_while_one_is_applied_runs_in_that_frame_by_its_own_author() {
         .insert(Bookmark { at, label });
     app.update();
     app.add_observer(|_: On<Insert<Bookmark>>, mut commands: Commands| {
-        commands.trigger(RewriteSession {
+        commands.write_message(RewriteSession {
             by: Author::plugin("follow-up"),
             with: Arc::new(rig_memory::Strings(|_: &mut String| false)),
             asker: None,
         });
     });
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("relabel"),
         with: Arc::new(rig_memory::Strings(|text: &mut String| {
             let hit = text == "old";

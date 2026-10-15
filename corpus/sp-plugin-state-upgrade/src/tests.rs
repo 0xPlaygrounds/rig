@@ -159,7 +159,7 @@ fn an_upgrade_reads_old_lists_and_a_downgrade_leaves_new_ones_alone() {
     run(&mut app, agent, "work add a");
     run(&mut app, agent, "work add b");
     say(&mut app, &wakes, agent, "Let's go.");
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut: ForkCut::Whole,
         ..ForkSession::default()
     });

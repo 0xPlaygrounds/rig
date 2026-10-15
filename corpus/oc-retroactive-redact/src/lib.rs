@@ -695,7 +695,7 @@ fn answered(
         forks,
     };
     let asker = commands.spawn(pending).id();
-    commands.trigger(RewriteSession {
+    commands.write_message(RewriteSession {
         by: Author::plugin(NAME),
         with: Arc::new(Strings(move |text: &mut String| {
             let mut hit = false;

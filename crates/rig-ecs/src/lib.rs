@@ -182,8 +182,8 @@ impl Plugin for AgentPlugin {
             .add_message::<Notice>()
             .add_message::<session_log::ConversationChanged>()
             .add_message::<inbox::Recalled>()
+            .add_message::<session_log::RewriteSession>()
             .add_message::<session_log::SessionRewritten>()
-            .init_resource::<session_log::Rewrites>()
             // Notices and commits are written by systems that never meet
             // on one effect, and their order within a pass means nothing.
             .allow_ambiguous_resource::<Messages<Notice>>()
@@ -214,11 +214,10 @@ impl Plugin for AgentPlugin {
                     session_log::apply_rewrites
                         .after(Saving)
                         .before(WriteLogs)
-                        .run_if(session_log::rewrites_asked),
+                        .run_if(on_message::<session_log::RewriteSession>),
                 ),
             )
             .add_observer(session_log::retire)
-            .add_observer(session_log::ask_rewrite)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_stop_turn)

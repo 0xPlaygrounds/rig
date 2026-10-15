@@ -521,7 +521,7 @@ fn chose_elsewhere(
         }
         Some(1) => {
             let asker = commands.spawn(Forking(screen, at)).id();
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: Some(elsewhere.id.clone()),
                 cut: ForkCut::Whole,
                 asker: Some(asker),

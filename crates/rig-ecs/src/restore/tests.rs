@@ -1056,17 +1056,18 @@ fn an_older_saved_value_is_restored_and_reread_upgraded() {
     };
     assert_eq!(labelled(&mut app), Some(upgraded("seven")));
 
-    app.world_mut().trigger(crate::session_log::RewriteSession {
-        by: Author::plugin("shout"),
-        with: std::sync::Arc::new(rig_memory::Strings(|text: &mut String| {
-            let hit = text == "seven";
-            if hit {
-                *text = "SEVEN".to_owned();
-            }
-            hit
-        })),
-        asker: None,
-    });
+    app.world_mut()
+        .write_message(crate::session_log::RewriteSession {
+            by: Author::plugin("shout"),
+            with: std::sync::Arc::new(rig_memory::Strings(|text: &mut String| {
+                let hit = text == "seven";
+                if hit {
+                    *text = "SEVEN".to_owned();
+                }
+                hit
+            })),
+            asker: None,
+        });
     app.update();
     assert_eq!(labelled(&mut app), Some(upgraded("SEVEN")));
 

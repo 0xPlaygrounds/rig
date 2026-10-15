@@ -147,7 +147,7 @@ fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
     let before = turn_2.map(|turn_2| (AgentId("main".to_owned()), turn_2));
     assert!(before.is_some(), "turn 2 was asked");
     let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         ..ForkSession::default()
     });

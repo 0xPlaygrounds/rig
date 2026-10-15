@@ -111,7 +111,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
         .insert_resource(SessionStore::new(store))
         .add_plugins(SessionPlugin)
         .add_systems(Last, watch.after(ForkSessions));
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
     assert_eq!(forked.as_ref().map(|forked| &forked.from), Some(&id));
@@ -341,7 +341,7 @@ fn a_failed_fork_tells_its_asker_why() {
     drop(std::panic::take_hook());
     let asker = app.world_mut().spawn_empty().id();
     // No store: the session was never opened.
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         asker: Some(asker),
         ..ForkSession::default()
     });
@@ -422,7 +422,7 @@ fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
         move_from: take,
         title: "side".to_owned(),
     };
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut: line(third, None),
         ..ForkSession::default()
     });
@@ -477,7 +477,7 @@ fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
     };
     assert_eq!(pointers(&app), [(Some(third), pointer(&forked.to, 0))]);
 
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut: line(fourth, Some(second)),
         ..ForkSession::default()
     });
@@ -552,7 +552,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
     let lock = stopped.hold().ok().flatten();
     assert!(lock.is_some(), "held as another rig would");
     for take in [None, Some(second)] {
-        app.world_mut().trigger(ForkSession {
+        app.world_mut().write_message(ForkSession {
             from: Some(there.clone()),
             cut: line(take),
             asker: None,
@@ -574,7 +574,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
         .collect();
     assert_eq!(failed, ["another rig runs it"]);
 
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         from: Some(there.clone()),
         cut: line(Some(second)),
         asker: None,
@@ -654,7 +654,7 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     let cut = before.clone().map_or(ForkCut::Whole, |(agent, message)| {
         ForkCut::Before(agent, message)
     });
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         asker: Some(asker),
         ..ForkSession::default()
@@ -921,7 +921,7 @@ fn a_new_session_and_a_fork_start_new_and_a_second_start_resumes() {
     assert_eq!(reason(&first), Some(StartReason::New));
     // A started session is resumed, whatever else, without a launcher.
     assert_eq!(reason(&start(&session)), Some(StartReason::Resumed));
-    first.world_mut().trigger(ForkSession::default());
+    first.world_mut().write_message(ForkSession::default());
     first.update();
     let fork = first.world().resource::<Seen>().forked.first().cloned();
     assert!(fork.is_some(), "the session was forked");
@@ -1142,7 +1142,7 @@ fn a_fork_has_what_a_plugin_wrote_before_it_in_its_frame() {
             ),
         );
     app.update();
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
     let copy = forked.and_then(|forked| dir_store(&home.session(&forked.to)));
@@ -1208,7 +1208,7 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     drop(std::panic::take_hook());
     app.finish();
     app.update();
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("redact"),
         with: Arc::new(redact()),
         asker: None,

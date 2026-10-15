@@ -188,7 +188,7 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
         hit
     });
     let by_redactor = Author::plugin("redact");
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: by_redactor,
         with: Arc::new(with),
         asker: None,

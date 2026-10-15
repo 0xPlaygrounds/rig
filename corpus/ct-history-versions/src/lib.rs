@@ -43,8 +43,7 @@ impl Plugin for HistoryVersionsPlugin {
             .init_resource::<AskedRewrites>()
             .register_required_components::<Agent, ConvVersions>()
             .keeps_saved::<ConvVersions>()
-            .add_observer(asked_rewrite)
-            .add_systems(Last, (record, prune).chain().after(WriteLogs))
+            .add_systems(Last, (asked_rewrite, record, prune).chain().after(WriteLogs))
             .add_command("conv-log", "List the versions of the conversation, newest first", log)
             .add_command("conv-diff", "What version N of the conversation changed: /conv-diff N", diff)
             .add_command(
@@ -131,8 +130,10 @@ pub struct Shadow(Chat);
 #[derive(Resource, Default)]
 struct AskedRewrites(Vec<Author>);
 
-fn asked_rewrite(asked: On<RewriteSession>, mut rewrites: ResMut<AskedRewrites>) {
-    rewrites.0.push(asked.by.clone());
+fn asked_rewrite(mut asked: MessageReader<RewriteSession>, mut rewrites: ResMut<AskedRewrites>) {
+    rewrites
+        .0
+        .extend(asked.read().map(|asked| asked.by.clone()));
 }
 
 /// An agent as recording reads it.

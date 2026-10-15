@@ -579,7 +579,7 @@ fn summarized(
                 .unwrap_or_else(|| slug(topic.as_deref().unwrap_or("split")));
             state.conclusions = Some(text);
             state.forking = Some(name.clone());
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: None,
                 cut: ForkCut::Line {
                     agent: id.clone(),

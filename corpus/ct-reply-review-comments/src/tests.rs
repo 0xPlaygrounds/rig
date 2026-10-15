@@ -266,7 +266,7 @@ fn comments_go_with_the_next_message_and_follow_forks() {
     };
     assert!(cut.is_some(), "a message to fork before");
     let id = id.unwrap_or_default();
-    world.trigger(ForkSession {
+    world.write_message(ForkSession {
         from: None,
         cut: cut.map_or(ForkCut::Whole, |cut| ForkCut::Before(id.clone(), cut)),
         asker: None,

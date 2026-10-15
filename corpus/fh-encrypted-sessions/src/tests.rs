@@ -179,7 +179,7 @@ fn a_sealed_session_resumes_with_its_key_only() {
     let (mut app, wakes) = start(&home, &session, &model, key);
     ask(&mut app, &wakes, &format!("Remember {MARKER}."));
     // A fork is sealed as it is written, its parent file too.
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     app.update();
     let forks: Vec<_> = app
         .world_mut()

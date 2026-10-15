@@ -593,7 +593,7 @@ fn acted(
             let cut = hit
                 .next
                 .map_or(ForkCut::Whole, |next| ForkCut::Before(agent, next));
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: Some(id.clone()),
                 cut,
                 asker: Some(asker.0),

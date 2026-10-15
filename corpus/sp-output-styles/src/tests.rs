@@ -176,7 +176,7 @@ fn a_style_is_in_each_request_once_stays_out_of_subagents_and_follows_forks() {
         return;
     };
     let cut = ForkCut::Before(agent_id, two);
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         from: None,
         cut,
         asker: None,

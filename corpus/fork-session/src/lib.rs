@@ -117,7 +117,7 @@ fn fork(
             files: None,
         })
         .id();
-    commands.trigger(ForkSession {
+    commands.write_message(ForkSession {
         asker: Some(asker),
         ..ForkSession::default()
     });
@@ -194,7 +194,7 @@ fn branch(
                     files,
                 })
                 .id();
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: None,
                 cut: ForkCut::Before(id.clone(), message),
                 asker: Some(asker),

@@ -344,16 +344,13 @@ impl Plugin for SessionPlugin {
         }
         app.init_resource::<StoreOpener>()
             .init_resource::<SystemTimings>()
-            .init_resource::<Forks>()
+            .add_message::<ForkSession>()
             .add_message::<SessionForked>()
             .add_message::<SessionForkFailed>()
             .add_message::<SessionDeleted>()
             .add_message::<SessionDeleteFailed>()
             .add_message::<SessionRewritten>()
             .add_message::<Notice>()
-            .add_observer(|fork: On<ForkSession>, mut forks: ResMut<Forks>| {
-                forks.0.push(fork.event().clone());
-            })
             .add_observer(delete_session)
             .add_systems(PreStartup, list_keys)
             .add_systems(
@@ -534,7 +531,7 @@ fn discard_unsaved(
 /// starts empty. [`SessionForked`] names it, or [`SessionForkFailed`]
 /// says why there is none; switching to it is
 /// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`].
-#[derive(Event, Clone, Debug, Default)]
+#[derive(Message, Clone, Debug, Default)]
 pub struct ForkSession {
     /// The session copied: this one with `None`.
     pub from: Option<SessionId>,
@@ -835,12 +832,8 @@ pub struct SessionDeleteFailed {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ForkSessions;
 
-/// The forks asked for this frame.
-#[derive(Resource, Default)]
-struct Forks(Vec<ForkSession>);
-
 fn fork_sessions(
-    mut forks: ResMut<Forks>,
+    mut forks: MessageReader<ForkSession>,
     (paths, store, stores): (
         Res<SessionPaths>,
         Option<Res<SessionStore>>,
@@ -857,7 +850,7 @@ fn fork_sessions(
     let home = home
         .as_ref()
         .map_or_else(Home::from_env, |home| home.0.clone());
-    for ForkSession { from, cut, asker } in forks.0.drain(..) {
+    for ForkSession { from, cut, asker } in forks.read().cloned() {
         let here = (&paths.0, store.as_deref());
         let made = fork_one(&home, here, &stores, (from.as_ref(), &cut), &mut agents);
         match made {

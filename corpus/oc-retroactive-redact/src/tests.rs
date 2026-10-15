@@ -134,7 +134,7 @@ fn a_redacted_secret_is_gone_from_the_session_its_fork_and_the_next_request() {
     // Turn 1 leaks the key three ways; then the session is forked once.
     send(&mut app, &wakes, agent, "Show me .env", turns_ended(1));
     assert!(conversation_text(&app, agent).contains(SECRET));
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Collected<SessionForked>>().0.is_empty()
     });

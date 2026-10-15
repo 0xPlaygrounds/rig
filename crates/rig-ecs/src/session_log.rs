@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::message::MessageCursor;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_ecs::resource::IsResource;
@@ -364,7 +365,7 @@ pub(crate) struct Saving;
 /// already sent to a model is not reached. Without a session store there
 /// is no saved history, and nothing is rewritten. The map is any
 /// [`Rewrite`], such as [`Strings`](rig_memory::Strings) for a redaction.
-#[derive(Event, Clone)]
+#[derive(Message, Clone)]
 pub struct RewriteSession {
     /// Who rewrites it, kept in each rewritten log's header.
     pub by: Author,
@@ -393,20 +394,6 @@ pub struct SessionRewritten {
     pub result: Result<Rewritten, String>,
 }
 
-/// The rewrites asked for this frame.
-#[derive(Resource, Default)]
-pub(crate) struct Rewrites(Vec<RewriteSession>);
-
-/// Queues a [`RewriteSession`] for the end of the frame.
-pub(crate) fn ask_rewrite(asked: On<RewriteSession>, mut rewrites: ResMut<Rewrites>) {
-    rewrites.0.push(asked.event().clone());
-}
-
-/// Whether a rewrite was asked for this frame.
-pub(crate) fn rewrites_asked(rewrites: Res<Rewrites>) -> bool {
-    !rewrites.0.is_empty()
-}
-
 /// How many rounds of rewrites asked while rewrites are applied, such as by
 /// an observer of a value reread, run in one frame; the rest wait for the
 /// next.
@@ -414,15 +401,15 @@ const REWRITE_ROUNDS: usize = 8;
 
 /// Runs the rewrites asked for, as [`RewriteSession`] says, each with its
 /// own author, and those asked meanwhile, in the same frame.
-pub(crate) fn apply_rewrites(world: &mut World) {
+pub(crate) fn apply_rewrites(world: &mut World, mut cursor: Local<MessageCursor<RewriteSession>>) {
     let log = world
         .get_resource::<SessionLog>()
         .cloned()
         .unwrap_or_default();
     for _ in 0..REWRITE_ROUNDS {
-        let asked = world
-            .get_resource_mut::<Rewrites>()
-            .map(|mut rewrites| std::mem::take(&mut rewrites.0))
+        let asked: Vec<RewriteSession> = world
+            .get_resource::<Messages<RewriteSession>>()
+            .map(|asked| cursor.read(asked).cloned().collect())
             .unwrap_or_default();
         if asked.is_empty() {
             return;

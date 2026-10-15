@@ -440,7 +440,7 @@ fn fork(world: &mut World, target: &Target, asked: &Asked) -> Result<String, Str
         given => given.to_owned(),
     };
     let asker = world.get_resource::<Asker>().map(|asker| asker.0);
-    world.trigger(ForkSession {
+    world.write_message(ForkSession {
         from: target.session.clone(),
         cut: ForkCut::Line {
             agent: target.agent.clone(),

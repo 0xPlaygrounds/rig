@@ -329,7 +329,7 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
         json!({ "query": "VAULT_PATH", "kind": "user" }),
     );
     assert!(vault.contains("turn 3, user"), "{vault}");
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("forget"),
         with: Arc::new(Messages(forget_vault)),
         asker: None,
