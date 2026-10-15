@@ -91,6 +91,7 @@ const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
 /// results, and binds a transport liveness probe.
 #[derive(Clone)]
 pub struct McpTool {
+    model_name: Option<ToolName>,
     pub(crate) definition: rmcp::model::Tool,
     pub(crate) client: rmcp::service::ServerSink,
     /// Optional per-call deadline. Timeout triggers best-effort cancellation
@@ -107,10 +108,21 @@ impl McpTool {
         client: rmcp::service::ServerSink,
     ) -> Self {
         Self {
+            model_name: None,
             definition,
             client,
             timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
         }
+    }
+
+    /// Set the name advertised to the model and used for registry lookup.
+    /// MCP requests retain the original server-advertised name in
+    /// [`Self::definition`]. Choose an alias unique within the registry and
+    /// compatible with the model provider's tool-name restrictions.
+    #[must_use = "the setting applies to the returned value"]
+    pub fn with_model_name(mut self, model_name: ToolName) -> Self {
+        self.model_name = Some(model_name);
+        self
     }
 
     /// Set (or clear) the per-call timeout, consuming and returning the tool.
@@ -130,6 +142,8 @@ impl McpTool {
     }
 
     /// The MCP tool definition this adapter wraps.
+    ///
+    /// Retains the original server-advertised name, unaffected by model aliases.
     pub fn definition(&self) -> &rmcp::model::Tool {
         &self.definition
     }
@@ -478,12 +492,15 @@ pub fn preserve_mcp_result(
 /// response's `structuredContent`, response `Meta`, and raw [`CallToolResult`]
 /// are published to the context's result map ([`preserve_mcp_result`]). A tool
 /// that reports `is_error` becomes a failed call whose error carries the tool's
-/// output. Fails with [`EmptyToolName`] when the server gave the tool no name.
+/// output. [`McpTool::with_model_name`] changes the model declaration and lookup
+/// name while preserving the MCP wire name. Fails with [`EmptyToolName`] when
+/// the server gave the tool no name, including when a model alias is supplied.
 impl TryFrom<McpTool> for DynamicTool {
     type Error = EmptyToolName;
 
     fn try_from(tool: McpTool) -> Result<Self, EmptyToolName> {
-        let name = ToolName::new(tool.definition.name.to_string())?;
+        let wire_name = ToolName::new(tool.definition.name.to_string())?;
+        let name = tool.model_name.clone().unwrap_or(wire_name);
         let description = tool
             .definition
             .description

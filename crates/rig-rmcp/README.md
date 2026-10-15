@@ -9,3 +9,33 @@ MCP (Model Context Protocol) tool support for [Rig](https://crates.io/crates/rig
 The `rig` facade re-exports this crate as `rig::tool::rmcp` behind its `rmcp` feature.
 
 Native-only: rmcp's `ClientHandler` requires `Send + Sync` unconditionally, which rig's wasm tool registry cannot satisfy; building for `wasm32` fails with a single explanatory `compile_error!`.
+
+## Model-visible tool aliases
+
+Use `McpTool::with_model_name` before converting to a `DynamicTool` to choose the name exposed to the model and used for registry lookup. `McpTool::definition()` retains the original server definition, and MCP `tools/call` requests use its original name. Without an alias, both names are the server's name. Timeouts, cancellation, context metadata, and result handling keep their existing behavior.
+
+Choose unique aliases that satisfy your model provider's naming rules. `ToolName::new` rejects an empty alias; conversion also rejects an empty raw MCP name. Rig leaves sanitization and collision handling to the caller.
+
+For two servers that both advertise `fetch`, convert their adapters with distinct names:
+
+```rust
+use rig_core::message::{EmptyToolName, ToolName};
+use rig_core::tool::DynamicTool;
+use rig_rmcp::McpTool;
+
+fn separate_fetch_tools(
+    first: McpTool,
+    second: McpTool,
+) -> Result<[DynamicTool; 2], EmptyToolName> {
+    Ok([
+        first
+            .with_model_name(ToolName::new("first_fetch")?)
+            .try_into()?,
+        second
+            .with_model_name(ToolName::new("second_fetch")?)
+            .try_into()?,
+    ])
+}
+```
+
+Register both returned tools in the same `rig-agent` `ToolServer` with `dynamic_tool`. The model can call `first_fetch` or `second_fetch`; the selected server receives `fetch`.
