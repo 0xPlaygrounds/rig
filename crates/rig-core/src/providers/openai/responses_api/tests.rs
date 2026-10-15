@@ -1015,21 +1015,21 @@ fn caller_input_goes_ahead_of_the_messages_as_given() {
             .result(vec![ToolResultContent::text("found")]),
         )
     };
-    let mut request = completion::CompletionRequest::new("And now?")
-        .tool(lookup_tool())
-        .messages([completion::Message::User {
-            content: vec![result("call_1"), result("call_2")],
-        }])
-        .provider_option(
-            OpenAiOptions::default()
-                .responses(OpenAiResponsesOptions::default().input(held.clone())),
-        );
-    request.cache_points = vec![
-        completion::CachePoint::System,
-        completion::CachePoint::Messages(1),
-        completion::CachePoint::Messages(2),
-    ];
-    let body = prepared("gpt-5.6-luna", request);
+    let request = |points: &[completion::CachePoint]| {
+        let mut request = completion::CompletionRequest::new("And now?")
+            .tool(lookup_tool())
+            .messages([completion::Message::User {
+                content: vec![result("call_1"), result("call_2")],
+            }])
+            .provider_option(
+                OpenAiOptions::default()
+                    .responses(OpenAiResponsesOptions::default().input(held.clone())),
+            );
+        request.cache_points = points.to_vec();
+        prepared("gpt-5.6-luna", request)
+    };
+    use completion::CachePoint::{Messages, System};
+    let body = request(&[System, Messages(1), Messages(2)]);
     let input = body["input"].as_array().cloned().unwrap_or_default();
     assert_eq!(input.get(..5), Some(held.as_slice()));
     let answers: Vec<_> = input
@@ -1047,4 +1047,11 @@ fn caller_input_goes_ahead_of_the_messages_as_given() {
     );
     // Two held breakpoints leave one slot, for the furthest point.
     assert_eq!(breakpoints(&body), [0, 2, 7]);
+    // A custom tool's output carries one as a function's does.
+    let body = request(&[Messages(1)]);
+    assert_eq!(breakpoints(&body), [0, 2, 6]);
+    assert_eq!(
+        body["input"][6]["output"],
+        json!([{"type": "input_text", "text": "found", "prompt_cache_breakpoint": {"mode": "explicit"}}])
+    );
 }

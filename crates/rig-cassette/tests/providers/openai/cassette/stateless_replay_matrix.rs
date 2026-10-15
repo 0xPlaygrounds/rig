@@ -312,8 +312,7 @@ fn assert_streamed_phases_replay(
         "streamed and unary text carry equal extras"
     );
 
-    let (request, _) = recorded.get(1).expect("turn 2 recorded");
-    let request: Value = serde_json::from_str(request).expect("request is JSON");
+    let request: Value = serde_json::from_str(&recorded[1].0).expect("request is JSON");
     let (replayed, phased) = replayed_messages(&request);
     assert_eq!(
         replayed, messages,
@@ -596,7 +595,8 @@ async fn caller_built_input_goes_first_as_given() {
     )
     .await;
     let recorded = crate::cassettes::recorded_interaction_bodies("openai", CALLER_SCENARIO);
-    let request: Value = serde_json::from_str(&recorded[1].0).expect("request is JSON");
+    let (request, _) = recorded.get(1).expect("turn 2 recorded");
+    let request: Value = serde_json::from_str(request).expect("request is JSON");
     let input = request["input"].as_array().expect("the request has input");
     assert_eq!(input.get(..held.len()), Some(held.as_slice()));
     assert_eq!(input.len(), held.len() + 1, "the new prompt follows");

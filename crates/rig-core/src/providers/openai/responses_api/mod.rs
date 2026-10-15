@@ -676,11 +676,11 @@ fn mark_cache_points(
 }
 
 /// The field of `item` holding input parts that can carry a breakpoint: a
-/// user, system or developer message's content, or a function's output.
+/// user, system or developer message's content, or a tool's output.
 fn parts_field(item: &Value) -> Option<&'static str> {
     match item.str("type") {
         Some("message") if item.str("role") != Some("assistant") => Some("content"),
-        Some("function_call_output") => Some("output"),
+        Some("function_call_output" | "custom_tool_call_output") => Some("output"),
         _ => None,
     }
 }
@@ -702,17 +702,17 @@ fn breakpoint_parts(item: &Value) -> impl Iterator<Item = &Value> {
 }
 
 /// Whether `item` can carry a breakpoint: it has a part that takes one, or
-/// is a function output given as one text.
+/// is a tool output given as one text.
 fn markable(item: &Value) -> bool {
     breakpoint_parts(item).next().is_some()
-        || (item.str("type") == Some("function_call_output") && item.str("output").is_some())
+        || (parts_field(item) == Some("output") && item.str("output").is_some())
 }
 
-/// Put a breakpoint on the last part of `item` that takes one. A function
-/// output given as one text becomes that text's part, which the provider
-/// caches as the same prefix.
+/// Put a breakpoint on the last part of `item` that takes one. A tool output
+/// given as one text becomes that text's part, which the provider caches as
+/// the same prefix.
 fn mark(item: &mut Value) {
-    if item.str("type") == Some("function_call_output")
+    if parts_field(item) == Some("output")
         && let Some(text) = item.str("output").map(str::to_owned)
     {
         set(
