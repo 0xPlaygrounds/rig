@@ -25,7 +25,9 @@
 use std::fmt;
 use std::io;
 
-use rig_core::conversation::{Author, Change, ChangeRecord, Lineage};
+use rig_core::conversation::{
+    Aside, AsideId, Author, Change, ChangeRecord, Conversation, Entry, Halt, Lineage, MessageId,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -281,24 +283,83 @@ impl Head<'_> {
     }
 }
 
+/// A line read in one pass: its stamp and type, and, for a change, who
+/// made it and every field a change has, of which the type says which it
+/// uses. A change read whole without its stamp would be buffered twice:
+/// once for the fields around it, once for its type.
+#[derive(Deserialize)]
+struct Read<'a> {
+    seq: u64,
+    n: u64,
+    t: u64,
+    #[serde(rename = "type", borrow)]
+    kind: std::borrow::Cow<'a, str>,
+    #[serde(default)]
+    by: Option<Author>,
+    entries: Option<Vec<Entry>>,
+    from: Option<usize>,
+    to: Option<usize>,
+    removed: Option<Vec<MessageId>>,
+    with: Option<Vec<Entry>>,
+    #[serde(default)]
+    halt: Option<Halt>,
+    id: Option<AsideId>,
+    #[serde(default)]
+    aside: Option<Aside>,
+    state: Option<Box<Conversation>>,
+}
+
+impl Read<'_> {
+    /// The change the line holds.
+    fn change(self) -> Result<Change, String> {
+        fn given<T>(field: Option<T>, name: &str) -> Result<T, String> {
+            field.ok_or_else(|| format!("missing field `{name}`"))
+        }
+        Ok(match &*self.kind {
+            "push" => Change::Push {
+                entries: given(self.entries, "entries")?,
+            },
+            "splice" => Change::Splice {
+                from: given(self.from, "from")?,
+                to: given(self.to, "to")?,
+                removed: given(self.removed, "removed")?,
+                with: given(self.with, "with")?,
+            },
+            "halt" => Change::Halt { halt: self.halt },
+            "aside" => Change::Aside {
+                id: given(self.id, "id")?,
+                aside: self.aside,
+            },
+            "reset" => Change::Reset {
+                state: given(self.state, "state")?,
+            },
+            other => return Err(format!("unknown record type {other:?}")),
+        })
+    }
+}
+
 /// Reads one line.
 pub(crate) fn parse(line: &[u8]) -> Result<(Stamp, Body), String> {
-    let head: Head<'_> = serde_json::from_slice(line).map_err(|error| error.to_string())?;
-    let stamp = head.stamp();
-    let body = match &*head.kind {
-        "header" | "state" | "retired" => serde_json::from_slice(line).map(Body::Meta),
-        kind if CHANGES.contains(&kind) => {
-            serde_json::from_slice(line).map(|recorded: ChangeRecord| {
-                Body::Change(ChangeRecord {
-                    at: Some(stamp.t),
-                    ..recorded
-                })
+    let mut read: Read<'_> = serde_json::from_slice(line).map_err(|error| error.to_string())?;
+    let stamp = Stamp {
+        n: read.n,
+        seq: read.seq,
+        t: read.t,
+    };
+    let body = match &*read.kind {
+        "header" | "state" | "retired" => {
+            Body::Meta(serde_json::from_slice(line).map_err(|error| error.to_string())?)
+        }
+        _ => {
+            let by = read.by.take();
+            Body::Change(ChangeRecord {
+                change: read.change()?,
+                by,
+                at: Some(stamp.t),
             })
         }
-        other => return Err(format!("unknown record type {other:?}")),
     };
-    body.map(|body| (stamp, body))
-        .map_err(|error| error.to_string())
+    Ok((stamp, body))
 }
 
 /// A line as written.
