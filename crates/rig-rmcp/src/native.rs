@@ -16,7 +16,8 @@ use rmcp::service::PeerRequestOptions;
 
 use rig_core::message::{EmptyToolName, ImageMediaType, MimeType, ToolName, ToolResultContent};
 use rig_core::tool::{
-    ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
+    ContextValue, DynamicTool, McpToolOrigin, ToolContext, ToolContextError, ToolExecutionError,
+    ToolOrigin, ToolOutput,
 };
 use rig_core::wasm_compat::WasmBoxedFuture;
 
@@ -132,6 +133,11 @@ impl McpTool {
     /// The MCP tool definition this adapter wraps.
     pub fn definition(&self) -> &rmcp::model::Tool {
         &self.definition
+    }
+
+    /// The client of the server that serves this tool.
+    pub fn client(&self) -> &rmcp::service::ServerSink {
+        &self.client
     }
 }
 
@@ -472,7 +478,8 @@ pub fn preserve_mcp_result(
 }
 
 /// An MCP tool as a context-aware rig-core dynamic tool, with a liveness probe
-/// bound to the MCP transport so registries can retire it on disconnect.
+/// bound to the MCP transport so registries can retire it on disconnect. Its
+/// [`ToolOrigin::Mcp`] names the server and carries this [`McpTool`].
 ///
 /// Per call: [`McpMeta`] in the [`ToolContext`] supplies request `_meta`, and the
 /// response's `structuredContent`, response `Meta`, and raw [`CallToolResult`]
@@ -492,6 +499,7 @@ impl TryFrom<McpTool> for DynamicTool {
             .to_string();
         let parameters = tool.definition.schema_as_json_value();
         let annotations = annotations(&tool.definition);
+        let origin = mcp_origin(&tool);
         let liveness_client = tool.client.clone();
         let tool = Arc::new(tool);
         Ok(DynamicTool::new_with_context(
@@ -521,8 +529,20 @@ impl TryFrom<McpTool> for DynamicTool {
             },
         )
         .with_annotations(annotations)
+        .with_origin(ToolOrigin::Mcp(origin))
         .with_liveness(move || !liveness_client.is_transport_closed()))
     }
+}
+
+/// Where `tool` came from: its server's name, its name there, and the
+/// adapter itself.
+fn mcp_origin(tool: &McpTool) -> McpToolOrigin {
+    let origin = McpToolOrigin::new(tool.definition.name.to_string());
+    let origin = match tool.client.peer_info() {
+        Some(info) => origin.with_server(info.server_info.name.clone()),
+        None => origin,
+    };
+    origin.with_source(tool.clone())
 }
 
 /// The hints an MCP server gives about what calling `tool` does, as rig's

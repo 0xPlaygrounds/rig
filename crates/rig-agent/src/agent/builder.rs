@@ -16,7 +16,7 @@ use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::{ModelAdapter, RetrieveAdapter};
 use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
-    completion::{Document, ModelRef},
+    completion::{Document, ModelRef, ProviderToolDefinition},
     effect::{HandlerKey, Key, family},
     vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -740,6 +740,21 @@ impl AgentBuilder<NoToolConfig> {
         self.into_tool_builder().dynamic_tools(tools)
     }
 
+    /// Declare a provider-hosted tool, such as a web search the provider
+    /// runs, on every request. The provider executes it and returns its
+    /// results in the response; rig never dispatches it.
+    pub fn provider_tool(self, tool: ProviderToolDefinition) -> AgentBuilder<WithBuilderTools> {
+        self.into_tool_builder().provider_tool(tool)
+    }
+
+    /// Declare provider-hosted tools on every request, in order.
+    pub fn provider_tools(
+        self,
+        tools: Vec<ProviderToolDefinition>,
+    ) -> AgentBuilder<WithBuilderTools> {
+        self.into_tool_builder().provider_tools(tools)
+    }
+
     /// Add retrievable tools chosen per request by `index`.
     pub fn retrieved_tools<I, F>(
         self,
@@ -820,6 +835,18 @@ impl AgentBuilder<WithBuilderTools> {
     /// Add runtime-defined tools.
     pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> Self {
         self.map_server(|server| server.dynamic_tools(tools))
+    }
+
+    /// Declare a provider-hosted tool, such as a web search the provider
+    /// runs, on every request. The provider executes it and returns its
+    /// results in the response; rig never dispatches it.
+    pub fn provider_tool(self, tool: ProviderToolDefinition) -> Self {
+        self.map_server(|server| server.provider_tool(tool))
+    }
+
+    /// Declare provider-hosted tools on every request, in order.
+    pub fn provider_tools(self, tools: Vec<ProviderToolDefinition>) -> Self {
+        self.map_server(|server| server.provider_tools(tools))
     }
 
     /// Add retrievable tools chosen per request by `index`.

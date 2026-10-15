@@ -191,6 +191,34 @@ async fn client_handler_registers_initial_tools() {
         defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
         vec!["tool_a", "tool_b"]
     );
+    // Each registration says which server serves it and carries the
+    // adapter, so a host reaches the server's own definition and client.
+    let snapshot = handle.snapshot();
+    let origins: Vec<_> = snapshot
+        .iter()
+        .filter_map(|(_, tool)| match tool.origin() {
+            rig_core::tool::ToolOrigin::Mcp(origin) => Some((
+                origin.server().map(str::to_owned),
+                origin.tool().to_owned(),
+                origin
+                    .source::<McpTool>()
+                    .map(|source| source.definition().description.clone()),
+            )),
+            _ => None,
+        })
+        .collect();
+    let server = Some("test-dynamic-server".to_owned());
+    assert_eq!(
+        origins,
+        [
+            (
+                server.clone(),
+                "tool_a".to_owned(),
+                Some(Some("First".into()))
+            ),
+            (server, "tool_b".to_owned(), Some(Some("Second".into()))),
+        ]
+    );
     client.cancel().await.unwrap();
     task.abort();
 }

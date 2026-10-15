@@ -23,8 +23,8 @@ use crate::{
 };
 
 use super::{
-    IntoToolOutput, PublishedContext, ToolContext, ToolExecutionError, ToolOutput, ToolResult,
-    Touches,
+    IntoToolOutput, PublishedContext, ToolContext, ToolExecutionError, ToolOrigin, ToolOutput,
+    ToolResult, Touches,
 };
 
 /// A typed LLM tool.
@@ -289,6 +289,7 @@ pub struct DynamicTool {
     definition: ToolDefinition,
     handler: ErasedHandler,
     liveness: Option<LivenessFn>,
+    origin: ToolOrigin,
 }
 
 impl DynamicTool {
@@ -336,7 +337,21 @@ impl DynamicTool {
             definition: ToolDefinition::new(name, description, parameters),
             handler,
             liveness: None,
+            origin: ToolOrigin::Dynamic,
         }
+    }
+
+    /// The same tool, recording where its implementation lives
+    /// ([`ToolOrigin::Dynamic`] by default). An integration that wraps a
+    /// remote tool, such as an MCP client, sets it.
+    pub fn with_origin(mut self, origin: ToolOrigin) -> Self {
+        self.origin = origin;
+        self
+    }
+
+    /// Where the tool's implementation lives.
+    pub fn origin(&self) -> &ToolOrigin {
+        &self.origin
     }
 
     /// The same tool, stating what calling it does to the world.
@@ -428,6 +443,7 @@ impl std::fmt::Debug for DynamicTool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DynamicTool")
             .field("name", &self.definition.name)
+            .field("origin", &self.origin)
             .finish_non_exhaustive()
     }
 }

@@ -1,9 +1,18 @@
-//! Request-scoped tool advertisements and their pinned registrations.
+//! Request-scoped tool advertisements: the pinned registrations rig
+//! dispatches and the provider-hosted tools the provider runs.
 //!
 //! ```
-//! use rig_agent::tool::ToolCatalog;
-//! fn advertised_names(catalog: &ToolCatalog) -> Vec<&str> {
-//!     catalog.names().collect()
+//! use rig_agent::tool::{CatalogEntry, ToolCatalog, ToolOrigin};
+//! fn mcp_tools(catalog: &ToolCatalog) -> Vec<&str> {
+//!     catalog
+//!         .entries()
+//!         .filter_map(|entry| match entry {
+//!             CatalogEntry::Registered(tool) if matches!(tool.origin(), ToolOrigin::Mcp(_)) => {
+//!                 Some(tool.definition().name.as_str())
+//!             }
+//!             _ => None,
+//!         })
+//!         .collect()
 //! }
 //! ```
 
@@ -12,7 +21,7 @@ use std::collections::BTreeSet;
 use indexmap::IndexMap;
 
 use rig_core::{
-    completion::ToolDefinition,
+    completion::{ProviderToolDefinition, ToolDefinition},
     effect::{Key, family},
     tool::{ToolContext, ToolResult},
 };
@@ -38,18 +47,37 @@ pub type ToolLease = std::sync::Arc<dyn std::any::Any>;
 pub struct ToolCatalog {
     definitions: Vec<ToolDefinition>,
     tools: IndexMap<String, RegisteredTool>,
+    provider_tools: Vec<ProviderToolDefinition>,
     /// The tokens the catalog keeps alive for as long as it exists (see
     /// [`ToolLease`]).
     leases: Vec<ToolLease>,
 }
 
+/// One entry of a [`ToolCatalog`].
+#[derive(Clone, Copy, Debug)]
+pub enum CatalogEntry<'a> {
+    /// A tool rig dispatches; its [`origin`](RegisteredTool::origin) says
+    /// where it runs.
+    Registered(&'a RegisteredTool),
+    /// A tool the provider runs on its side.
+    ProviderHosted(&'a ProviderToolDefinition),
+}
+
 impl ToolCatalog {
-    /// A catalog over `tools`, advertised under their own definitions.
-    pub(crate) fn from_registered(tools: IndexMap<String, RegisteredTool>) -> Self {
-        let definitions = tools.values().map(RegisteredTool::definition).collect();
+    /// A catalog over `tools`, advertised under their own definitions, and
+    /// `provider_tools`.
+    pub(crate) fn from_registered(
+        tools: IndexMap<String, RegisteredTool>,
+        provider_tools: Vec<ProviderToolDefinition>,
+    ) -> Self {
+        let definitions = tools
+            .values()
+            .map(|tool| tool.definition().clone())
+            .collect();
         Self {
             definitions,
             tools,
+            provider_tools,
             leases: Vec::new(),
         }
     }
@@ -60,9 +88,23 @@ impl ToolCatalog {
         self
     }
 
-    /// The advertised definitions.
+    /// The advertised definitions of the registered tools.
     pub fn definitions(&self) -> &[ToolDefinition] {
         &self.definitions
+    }
+
+    /// The provider-hosted tools every request declares.
+    pub fn provider_tools(&self) -> &[ProviderToolDefinition] {
+        &self.provider_tools
+    }
+
+    /// Every entry: the registered tools in advertisement order, then the
+    /// provider-hosted tools.
+    pub fn entries(&self) -> impl Iterator<Item = CatalogEntry<'_>> {
+        self.tools
+            .values()
+            .map(CatalogEntry::Registered)
+            .chain(self.provider_tools.iter().map(CatalogEntry::ProviderHosted))
     }
 
     /// The advertised names.
@@ -70,12 +112,12 @@ impl ToolCatalog {
         self.tools.keys().map(String::as_str)
     }
 
-    /// Number of tools.
+    /// Number of registered tools.
     pub fn len(&self) -> usize {
         self.tools.len()
     }
 
-    /// Whether the catalog is empty.
+    /// Whether the catalog has no registered tools.
     pub fn is_empty(&self) -> bool {
         self.tools.is_empty()
     }

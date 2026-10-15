@@ -1,9 +1,13 @@
-//! Demonstrates registering runtime-defined tools on an agent.
+//! Demonstrates registering runtime-defined tools and a provider-hosted web
+//! search on one agent, then reading what kind of tool each catalog entry is.
 //! Requires `OPENAI_API_KEY`.
-//! Run it to see the model use arithmetic tools instead of answering from scratch.
+//! Run it to see the model search the web, then use the arithmetic tools
+//! instead of answering from scratch.
 
 use anyhow::Result;
-use rig::message::{EmptyToolName, ToolName};
+use rig::agent::tool::CatalogEntry;
+use rig::completion::ProviderToolDefinition;
+use rig::message::{AssistantContent, EmptyToolName, Message, ToolName};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{DynamicTool, ToolOutput};
@@ -59,18 +63,45 @@ fn runtime_tools() -> Result<Vec<DynamicTool>, EmptyToolName> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))
+    let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_5_4_MINI))
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
-             You must use the provided tools before answering.",
+             Search the web for facts you do not know, and use the arithmetic tools for \
+             every calculation.",
         )
         .dynamic_tools(runtime_tools()?)
-        .max_tokens(1024)
-        .default_max_turns(2)
+        .provider_tool(ProviderToolDefinition::new("web_search"))
+        .max_tokens(2048)
+        .default_max_turns(4)
         .build();
 
-    let response = agent.prompt("Calculate 2 - 5.").await?.output();
-    println!("{response}");
+    for entry in agent.tool_server_handle().snapshot().entries() {
+        match entry {
+            CatalogEntry::Registered(tool) => {
+                println!("{}: {:?}", tool.definition().name, tool.origin());
+            }
+            CatalogEntry::ProviderHosted(tool) => println!("{}: run by the provider", tool.kind),
+        }
+    }
+
+    let response = agent
+        .prompt("In which year was Rust 1.0 released? Subtract that year from 2030.")
+        .await?;
+    for message in &response.messages {
+        let Message::Assistant(turn) = message else {
+            continue;
+        };
+        for block in &turn.content {
+            match block {
+                AssistantContent::ToolCall(call) => println!("rig ran {}", call.function.name),
+                AssistantContent::Opaque(item) => {
+                    println!("the provider ran {}", item.kind().unwrap_or("an item"));
+                }
+                _ => {}
+            }
+        }
+    }
+    println!("{}", response.output());
 
     Ok(())
 }

@@ -32,3 +32,31 @@ fn recording_over_a_host_bus_is_refused_at_build() {
     .record_to(rig_cassette::effect_log::EffectLogRecorder::new())
     .build();
 }
+
+/// Provider-hosted tools declared on the builder reach the request beside
+/// the function tools rig runs, after the agent's own parameters.
+#[tokio::test]
+async fn provider_tools_reach_the_request_beside_function_tools() {
+    let model = MockCompletionModel::text("ok");
+    let agent = AgentBuilder::new(model.clone())
+        .additional_params(serde_json::json!({"top_p": 0.5}))
+        .provider_tool(ProviderToolDefinition::new("web_search"))
+        .tool(MockAddTool)
+        .build();
+    agent.prompt("search").await.expect("the run answers");
+
+    let requests = model.requests();
+    let request = requests.first().expect("one request");
+    assert_eq!(
+        request
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        ["add"]
+    );
+    assert_eq!(
+        request.additional_params,
+        Some(serde_json::json!({"top_p": 0.5, "tools": [{"type": "web_search"}]}))
+    );
+}

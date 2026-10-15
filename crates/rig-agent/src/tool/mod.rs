@@ -1,7 +1,8 @@
 //! Tool authoring, ordered registrations, and structured execution results.
 //!
 //! [`Tool`] supplies typed calls, [`ToolContext`] carries inbound and host-only
-//! result metadata, and [`ToolSet`] or [`server::ToolServer`] manages registrations.
+//! result metadata, and [`ToolSet`] or [`server::ToolServer`] manages registrations,
+//! each recording its [`ToolOrigin`], alongside provider-hosted tools.
 //! Arbitrary source errors receive safe model feedback by default; explicit
 //! [`ToolExecutionError`] messages are model-visible.
 //!
@@ -16,13 +17,13 @@ pub mod catalog;
 pub mod registry;
 pub mod server;
 
-pub use catalog::{ToolCatalog, ToolLease};
+pub use catalog::{CatalogEntry, ToolCatalog, ToolLease};
 pub use registry::{RegisteredTool, ToolDispatch, ToolSet, execute_tool};
 pub use rig_core::tool::{
     DynamicTool, ErasedTool, IntoToolOutput, Tool, ToolEmbedding, ToolErrorKind,
     ToolExecutionError, ToolOutput, ToolResult, tool_definition, tool_name,
 };
-pub use rig_core::tool::{ToolContext, ToolContextError};
+pub use rig_core::tool::{McpToolOrigin, ToolContext, ToolContextError, ToolOrigin};
 
 #[cfg(test)]
 mod toolset_clone_tests;

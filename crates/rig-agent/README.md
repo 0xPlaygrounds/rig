@@ -219,6 +219,12 @@ exposes safe kind-level feedback to the model by default. Explicit
 `with_model_output` only for deliberately model-visible feedback. Inbound
 context and host-only result metadata belong in `ToolContext`, not model output.
 
+Every registration records its `ToolOrigin`: a native `Tool`, a `DynamicTool`,
+an MCP server's tool, or a bus handler. Provider-hosted tools, such as a web
+search the provider runs, are declared with `AgentBuilder::provider_tool` and
+sent on every request; a request's `ToolCatalog` lists both kinds through
+`entries()`.
+
 Tool registries publish changes to every attached bus. Generated tool keys use
 `<owner>/tool:<name>#<generation>` so a request catalog can keep the implementation
 it advertised even after replacement. Retired generations remain registered

@@ -1,4 +1,6 @@
 //! Ordered tool registrations, request catalogs, and inline dispatch by name.
+//! Each registration records its [`ToolOrigin`]; provider-hosted tools ride
+//! along as [`ProviderToolDefinition`]s the provider runs itself.
 //!
 //! ```
 //! use rig_agent::tool::ToolSet;
@@ -12,7 +14,7 @@ use indexmap::IndexMap;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::serve::{ErasedHandler, Serve};
 use rig_core::{
-    completion::{Document, ToolDefinition},
+    completion::{Document, ProviderToolDefinition, ToolDefinition},
     effect::{
         Answered, EffectKind, FamilyDescriptor, Key, ToolEmbeddingDescriptor, family, tool_key,
     },
@@ -20,19 +22,20 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::ToolName,
     tool::{
-        DynamicTool, LivenessFn, Tool, ToolContext, ToolEmbedding, ToolExecutionError, ToolResult,
-        tool_definition,
+        DynamicTool, LivenessFn, Tool, ToolContext, ToolEmbedding, ToolExecutionError, ToolOrigin,
+        ToolResult, tool_definition,
     },
 };
 
 use super::catalog::ToolCatalog;
 
-/// One registration: the tool's serde description, the key it is (or will
-/// be) served under, and the erased handler a bus takes. Cloning shares the
-/// handler.
+/// One registration: the tool's serde description, where its implementation
+/// lives, the key it is (or will be) served under, and the erased handler a
+/// bus takes. Cloning shares the handler.
 #[derive(Clone)]
 pub struct RegisteredTool {
     definition: ToolDefinition,
+    origin: ToolOrigin,
     embedding: Option<ToolEmbeddingDescriptor>,
     key: Key<family::Tool>,
     handler: ErasedHandler,
@@ -43,6 +46,7 @@ impl std::fmt::Debug for RegisteredTool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RegisteredTool")
             .field("name", &self.definition.name)
+            .field("origin", &self.origin)
             .field("key", &self.key)
             .field("retrievable", &self.embedding.is_some())
             .finish_non_exhaustive()
@@ -58,6 +62,7 @@ impl RegisteredTool {
         let definition = tool_definition(&tool);
         Self::from_parts(
             definition,
+            native_origin::<T>(),
             None,
             ErasedHandler::new(ToolAdapter::new(tool)),
             None,
@@ -78,6 +83,7 @@ impl RegisteredTool {
         let adapter = ToolAdapter::retrievable(tool)?;
         Ok(Self::from_parts(
             definition,
+            native_origin::<T>(),
             Some(embedding),
             ErasedHandler::new(adapter),
             None,
@@ -86,8 +92,9 @@ impl RegisteredTool {
 
     /// Register a runtime-defined tool.
     pub fn from_dynamic(tool: DynamicTool) -> Self {
+        let origin = tool.origin().clone();
         let (definition, handler, liveness) = tool.into_parts();
-        Self::from_parts(definition, None, handler, liveness)
+        Self::from_parts(definition, origin, None, handler, liveness)
     }
 
     /// Register a handler under its descriptor's key.
@@ -126,6 +133,7 @@ impl RegisteredTool {
                 parameters,
                 annotations: Default::default(),
             },
+            origin: ToolOrigin::Handler,
             embedding,
             key: Key::new_unchecked(descriptor.key),
             handler: ErasedHandler::new(handler),
@@ -141,6 +149,7 @@ impl RegisteredTool {
 
     fn from_parts(
         definition: ToolDefinition,
+        origin: ToolOrigin,
         embedding: Option<ToolEmbeddingDescriptor>,
         handler: ErasedHandler,
         liveness: Option<LivenessFn>,
@@ -148,6 +157,7 @@ impl RegisteredTool {
         let key = Key::new_unchecked(tool_key(&definition.name));
         Self {
             definition,
+            origin,
             embedding,
             key,
             handler,
@@ -178,9 +188,15 @@ impl RegisteredTool {
         &self.handler
     }
 
-    /// The definition advertised to the model.
-    pub(crate) fn definition(&self) -> ToolDefinition {
-        self.definition.clone()
+    /// The definition advertised to the model, with the host-only
+    /// annotations stating what a call does.
+    pub fn definition(&self) -> &ToolDefinition {
+        &self.definition
+    }
+
+    /// Where the tool's implementation lives.
+    pub fn origin(&self) -> &ToolOrigin {
+        &self.origin
     }
 
     /// The family-keyed descriptor of this registration.
@@ -232,6 +248,12 @@ impl RegisteredTool {
             ))),
             Err(report) => ToolResult::failed(report.into()),
         }
+    }
+}
+
+fn native_origin<T>() -> ToolOrigin {
+    ToolOrigin::Native {
+        type_name: std::any::type_name::<T>(),
     }
 }
 
@@ -295,11 +317,13 @@ pub async fn execute_tool(
     }
 }
 
-/// Insertion-ordered named tool registrations and their advertisement policy.
-/// Direct execution is inline; hosts may install the registrations on a bus.
+/// Insertion-ordered named tool registrations and their advertisement policy,
+/// plus the provider-hosted tools every request declares. Direct execution is
+/// inline; hosts may install the registrations on a bus.
 #[derive(Clone, Default)]
 pub struct ToolSet {
     pub(crate) tools: IndexMap<String, ToolRegistration>,
+    provider_tools: Vec<ProviderToolDefinition>,
 }
 
 impl ToolSet {
@@ -377,19 +401,39 @@ impl ToolSet {
         self.tools.shift_remove(name);
     }
 
-    /// Merge `set`'s registrations, keeping their exposure.
+    /// Declare a provider-hosted tool on every request. The provider runs
+    /// it, so it has no registration and is never dispatched here.
+    pub fn add_provider_tool(&mut self, tool: ProviderToolDefinition) {
+        self.provider_tools.push(tool);
+    }
+
+    /// Stop declaring every provider-hosted tool of type `kind`.
+    pub fn remove_provider_tool(&mut self, kind: &str) {
+        self.provider_tools.retain(|tool| tool.kind != kind);
+    }
+
+    /// The provider-hosted tools, in declaration order.
+    pub fn provider_tools(&self) -> &[ProviderToolDefinition] {
+        &self.provider_tools
+    }
+
+    /// Merge `set`'s registrations, keeping their exposure, and its
+    /// provider-hosted tools.
     pub fn add_tools(&mut self, set: ToolSet) {
         for (name, registration) in set.tools {
             self.insert_registration(name, registration);
         }
+        self.provider_tools.extend(set.provider_tools);
     }
 
     /// Merge `set`'s registrations as retrieval-only (not always exposed).
+    /// Its provider-hosted tools are declared on every request.
     pub fn add_retrievable_tools(&mut self, set: ToolSet) {
         for (name, mut registration) in set.tools {
             registration.always_exposed = false;
             self.insert_registration(name, registration);
         }
+        self.provider_tools.extend(set.provider_tools);
     }
 
     /// The registration named `name`.
@@ -414,7 +458,7 @@ impl ToolSet {
         self.tools.len()
     }
 
-    /// Whether the set is empty.
+    /// Whether the set has no registrations.
     pub fn is_empty(&self) -> bool {
         self.tools.is_empty()
     }
@@ -436,7 +480,8 @@ impl ToolSet {
             })
     }
 
-    /// The always-exposed registrations as a catalog.
+    /// The always-exposed registrations and the provider-hosted tools as a
+    /// catalog.
     pub fn catalog(&self) -> ToolCatalog {
         ToolCatalog::from_registered(
             self.tools
@@ -444,14 +489,15 @@ impl ToolSet {
                 .filter(|(_, registration)| registration.always_exposed)
                 .map(|(name, registration)| (name.clone(), registration.tool.clone()))
                 .collect(),
+            self.provider_tools.clone(),
         )
     }
 
-    /// Every definition, in insertion order.
+    /// Every registration's definition, in insertion order.
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .values()
-            .map(|registration| registration.tool.definition())
+            .map(|registration| registration.tool.definition().clone())
             .collect()
     }
 

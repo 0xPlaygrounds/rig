@@ -16,6 +16,7 @@ mod facts;
 pub mod feedback;
 mod footprint;
 pub mod managed;
+mod origin;
 mod output;
 pub mod portable;
 mod result;
@@ -33,6 +34,7 @@ pub use facts::{
 };
 pub use footprint::{Scope, Touches};
 pub use managed::{ManagedToolSink, ManagedToolToken};
+pub use origin::{McpToolOrigin, ToolOrigin};
 pub use output::{IntoToolOutput, ToolOutput};
 pub use portable::{PortableTool, PortableToolEmbedding};
 pub use result::{ToolErrorKind, ToolExecutionError, ToolResult};
