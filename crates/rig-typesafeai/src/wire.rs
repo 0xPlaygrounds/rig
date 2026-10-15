@@ -143,6 +143,7 @@ impl Wire for JevConfig {
     type Op = Evaluation;
     type Payload = Encoded;
     type Frame = rig_core::wire::WireFrame;
+    type Event = (Response, serde_json::Value);
     // One JSON document in, the reply's end out, the document kept as `raw`.
     type Decoder<'id> = Json;
     type Reassembler = rig_core::wire::document::Unreassembled;

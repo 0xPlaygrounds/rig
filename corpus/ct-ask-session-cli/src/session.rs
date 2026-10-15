@@ -130,7 +130,10 @@ impl Material {
         );
         let active = conversation.line_title().to_owned();
         let mut history = conversation.line(None).unwrap_or_default();
-        let messages: Vec<Message> = history.iter().map(|entry| entry.message.clone()).collect();
+        let messages: Vec<Message> = history
+            .iter()
+            .map(|entry| (*entry.message).clone())
+            .collect();
         let running = pending_calls(&messages);
         if !running.is_empty() {
             history.push(Entry::from(close_pending_with(&running, STILL_RUNNING)));

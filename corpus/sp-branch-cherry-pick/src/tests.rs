@@ -121,7 +121,7 @@ fn path(app: &App, agent: Entity) -> Vec<String> {
     let messages = conversation(app, agent)
         .map(|c| c.messages().to_vec())
         .unwrap_or_default();
-    messages.iter().map(said).collect()
+    messages.iter().map(|message| said(message)).collect()
 }
 
 fn said(message: &Said) -> String {
@@ -293,7 +293,7 @@ fn a_turn_from_another_branch_is_copied_to_the_end_and_taken_back() {
         .last()
         .map(|request| request.chat_history.clone())
         .unwrap_or_default();
-    let sent: Vec<String> = request.iter().map(said).collect();
+    let sent: Vec<String> = request.iter().map(|message| said(message)).collect();
     assert!(
         sent.iter().any(|text| text.contains("NOT applied")),
         "{sent:?}"
@@ -301,7 +301,7 @@ fn a_turn_from_another_branch_is_copied_to_the_end_and_taken_back() {
     assert!(sent.iter().any(|text| text == "LOCK-EXPLAINED"), "{sent:?}");
     let call_ids: Vec<String> = request
         .iter()
-        .flat_map(|message| match message {
+        .flat_map(|message| match &**message {
             Said::Assistant(reply) => reply.content.clone(),
             _ => Vec::new(),
         })
@@ -314,7 +314,7 @@ fn a_turn_from_another_branch_is_copied_to_the_end_and_taken_back() {
     unique.sort();
     unique.dedup();
     assert_eq!((call_ids.len(), unique.len()), (2, 2), "{call_ids:?}");
-    let results = request.iter().flat_map(|message| match message {
+    let results = request.iter().flat_map(|message| match &**message {
         Said::User { content } => content.clone(),
         Said::Assistant(_) | Said::System { .. } => Vec::new(),
     });

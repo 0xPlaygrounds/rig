@@ -22,6 +22,8 @@ mod mapping;
 mod merge;
 
 pub use mapping::{Mapping, OptionFields, OptionMap};
+#[cfg(feature = "image")]
+pub(crate) use merge::deep_merge;
 pub use merge::{BaseInput, FinalBody, RawAt, Rewrite, check, param, request_params};
 pub(crate) use merge::{CatalogRefusal, catalog_refusals, collect_refusals};
 

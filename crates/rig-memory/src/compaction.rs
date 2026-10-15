@@ -12,7 +12,7 @@
 //! assert_eq!(SummaryState::default().message(), None);
 //! ```
 
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Write as _};
 use std::sync::Arc;
@@ -112,7 +112,7 @@ impl SummaryState {
 
     /// Adds the arguments `rules` name of the tool calls in `messages` to
     /// the tracked sets, creating the rules' sets in rule order first.
-    pub fn track(&mut self, messages: &[Message], rules: &[TrackArgument]) {
+    pub fn track(&mut self, messages: &[impl Borrow<Message>], rules: &[TrackArgument]) {
         for rule in rules {
             if !self.tracked.iter().any(|set| set.name == rule.set) {
                 self.tracked.push(TrackedSet {
@@ -121,7 +121,7 @@ impl SummaryState {
                 });
             }
         }
-        let calls = messages.iter().flat_map(|message| match message {
+        let calls = messages.iter().flat_map(|message| match message.borrow() {
             Message::Assistant(reply) => reply.content.as_slice(),
             _ => &[],
         });
@@ -155,7 +155,7 @@ impl SummaryState {
 /// summarized, all but the newest reply or message. `None` when nothing
 /// new would be summarized.
 fn cut_at(
-    messages: &[Message],
+    messages: &[Arc<Message>],
     from: usize,
     keep_tokens: usize,
     force: bool,
@@ -213,14 +213,14 @@ pub enum CompactReason {
 ///
 /// // Summarize everything before the newest user message.
 /// let mut rules = CutRules::default();
-/// rules.add("before-last-user", |messages: &[Message], _, _, _| {
-///     messages.iter().rposition(|message| matches!(message, Message::User { .. }))
+/// rules.add("before-last-user", |messages: &[Arc<Message>], _, _, _| {
+///     messages.iter().rposition(|message| matches!(&**message, Message::User { .. }))
 /// });
 /// let policy = CompactionPolicy {
 ///     cut: Cut::Named("before-last-user".into()),
 ///     ..CompactionPolicy::default()
 /// };
-/// let messages = [Message::user("a"), Message::assistant("b"), Message::user("c")];
+/// let messages = [Message::user("a"), Message::assistant("b"), Message::user("c")].map(Arc::new);
 /// assert_eq!(policy.cut(&messages, 0, &CompactReason::Threshold, None, &rules), Some(2));
 /// ```
 ///
@@ -267,7 +267,9 @@ impl From<Cut> for String {
 /// when nothing new would be summarized; an answer that summarizes nothing
 /// new or lies past the end counts as `None`.
 pub type CutRule = Arc<
-    dyn Fn(&[Message], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize> + Send + Sync,
+    dyn Fn(&[Arc<Message>], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize>
+        + Send
+        + Sync,
 >;
 
 /// The cut rules a policy may name ([`Cut::Named`]), by name.
@@ -279,7 +281,7 @@ impl CutRules {
     pub fn add(
         &mut self,
         name: impl Into<String>,
-        rule: impl Fn(&[Message], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize>
+        rule: impl Fn(&[Arc<Message>], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize>
         + Send
         + Sync
         + 'static,
@@ -346,12 +348,40 @@ impl Default for CompactionPolicy {
 
 /// The estimated tokens of `messages`, by the default
 /// [`HeuristicTokenCounter`], as a policy estimates them.
-pub fn estimate_tokens(messages: &[Message]) -> u64 {
+pub fn estimate_tokens(messages: &[impl Borrow<Message>]) -> u64 {
     let counter = HeuristicTokenCounter::default();
     messages
         .iter()
-        .map(|message| counter.count(message))
+        .map(|message| counter.count(message.borrow()))
         .sum::<usize>() as u64
+}
+
+/// [`estimate_tokens`] of a history that grows between estimates, counting
+/// only the messages after those it counted last that it starts with (the
+/// same `Arc`s, or equal ones).
+#[derive(Debug, Clone, Default)]
+pub struct TokenTally {
+    counted: Vec<Arc<Message>>,
+    /// The estimate of each prefix of `counted`, through that message.
+    sums: Vec<u64>,
+}
+
+impl TokenTally {
+    /// [`estimate_tokens`] of `messages`.
+    pub fn estimate(&mut self, messages: &[Arc<Message>]) -> u64 {
+        let same = (messages.iter().zip(&self.counted))
+            .take_while(|(message, counted)| Arc::ptr_eq(message, counted) || message == counted)
+            .count();
+        self.counted.truncate(same);
+        self.sums.truncate(same);
+        let counter = HeuristicTokenCounter::default();
+        for message in messages.get(same..).unwrap_or_default() {
+            let sum = self.sums.last().copied().unwrap_or_default();
+            self.sums.push(sum + counter.count(message) as u64);
+            self.counted.push(Arc::clone(message));
+        }
+        self.sums.last().copied().unwrap_or_default()
+    }
 }
 
 impl CompactionPolicy {
@@ -398,7 +428,7 @@ impl CompactionPolicy {
     /// short conversation when the user asked or the model overflowed.
     pub fn cut(
         &self,
-        messages: &[Message],
+        messages: &[Arc<Message>],
         from: usize,
         reason: &CompactReason,
         spec: Option<&ModelSpec>,
@@ -433,7 +463,7 @@ impl CompactionPolicy {
     pub fn plan(
         &self,
         state: &SummaryState,
-        messages: &[Message],
+        messages: &[Arc<Message>],
         from: usize,
         upto: usize,
         spec: &ModelSpec,
@@ -600,7 +630,7 @@ impl Compacted {
         let records = conversation.asides();
         let ours =
             records.filter(move |(_, aside)| aside.kind == COMPACTED && aside.author == author);
-        ours.filter_map(|(id, aside)| Some((id, serde_json::from_value(aside.value.clone()).ok()?)))
+        ours.filter_map(|(id, aside)| Some((id, Self::deserialize(&aside.value).ok()?)))
     }
 }
 
@@ -841,7 +871,7 @@ impl Summarizer {
     /// should keep above all; it may be empty.
     pub fn request(
         &self,
-        older: &[Message],
+        older: &[Arc<Message>],
         previous: &str,
         focus: &str,
         spec: &ModelSpec,
@@ -902,11 +932,11 @@ impl Summarizer {
 
     /// `messages` as text, one labelled block per part, with long tool
     /// outputs and arguments cut.
-    fn serialize(&self, messages: &[Message]) -> String {
+    fn serialize(&self, messages: &[Arc<Message>]) -> String {
         let snippet = |text: &str| snippet(text, self.limits.snippet_chars);
         let mut parts: Vec<String> = Vec::new();
         for message in messages {
-            match message {
+            match &**message {
                 Message::System { content } => parts.push(format!("[System]: {content}")),
                 Message::User { content } => {
                     for item in content {
@@ -947,13 +977,11 @@ impl Summarizer {
                                 parts.push(format!("[Assistant thinking]: {}", reasoning.text));
                             }
                             AssistantContent::ToolCall(call) => {
-                                let arguments = rig_core::serde_json::Value::Object(
-                                    call.function.arguments.clone(),
-                                );
+                                let arguments = serde_json::to_string(&call.function.arguments);
                                 parts.push(format!(
                                     "[Assistant tool call]: {}({})",
                                     call.function.name.as_str(),
-                                    snippet(&arguments.to_string())
+                                    snippet(&arguments.unwrap_or_default())
                                 ));
                             }
                             _ => {}
@@ -1024,11 +1052,11 @@ impl ClearToolOutputs {
     }
 
     /// Clears older tool outputs of `messages` in place.
-    pub fn clear(&self, messages: &mut [Message]) -> Cleared {
+    pub fn clear(&self, messages: &mut [Arc<Message>]) -> Cleared {
         let (targets, cleared) = self.targets(messages);
         for (at, items) in targets {
             if let Some(message) = messages.get_mut(at) {
-                clear_items(message, &items);
+                clear_items(Arc::make_mut(message), &items);
             }
         }
         cleared
@@ -1050,7 +1078,7 @@ impl ClearToolOutputs {
 
     /// The tool results of `messages` to clear, as the indices of their
     /// content items by message, and what clearing them takes out.
-    fn targets(&self, messages: &[Message]) -> (BTreeMap<usize, Vec<usize>>, Cleared) {
+    fn targets(&self, messages: &[impl Borrow<Message>]) -> (BTreeMap<usize, Vec<usize>>, Cleared) {
         let counter = HeuristicTokenCounter::default();
         let mut cleared = Cleared::default();
         let mut targets: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
@@ -1059,7 +1087,7 @@ impl ClearToolOutputs {
             return (targets, cleared);
         };
         for (at, message) in earlier.iter().enumerate().rev() {
-            let Message::User { content } = message else {
+            let Message::User { content } = message.borrow() else {
                 continue;
             };
             for (item_at, item) in content.iter().enumerate().rev() {

@@ -76,6 +76,7 @@ fn parts(request: Option<&CompletionRequest>) -> (String, String) {
     let (system, rest): (Vec<&Message>, Vec<&Message>) = request
         .chat_history
         .iter()
+        .map(|message| &**message)
         .partition(|message| matches!(message, Message::System { .. }));
     let text = |messages: Vec<&Message>| serde_json::to_string(&messages).unwrap_or_default();
     (text(system), text(rest))

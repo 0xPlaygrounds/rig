@@ -107,7 +107,7 @@ impl HistoryFixture for MockHistory {
         let messages: Vec<Value> = request
             .chat_history
             .iter()
-            .map(|message| match message {
+            .map(|message| match &**message {
                 Message::Assistant(turn) => Value::Array(
                     turn.content
                         .iter()

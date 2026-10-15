@@ -46,7 +46,7 @@ fn import_with(app: &mut App, tool: &str, path: &Path) -> Vec<SessionImported> {
 }
 
 /// The conversation of the main agent of `session`, as its logs left it.
-fn conversation_of(home: &Home, session: &SessionId) -> Vec<Message> {
+fn conversation_of(home: &Home, session: &SessionId) -> Vec<std::sync::Arc<Message>> {
     let store = StoreOpener::default().open(&home.session(session));
     let saved = store
         .and_then(|store| Session::read(&*store))
@@ -61,12 +61,12 @@ fn conversation_of(home: &Home, session: &SessionId) -> Vec<Message> {
 
 /// The tool call `id`'s place in `messages`, and whether the next message
 /// holds its result.
-fn paired(messages: &[Message], id: &str) -> Option<(usize, bool)> {
+fn paired(messages: &[std::sync::Arc<Message>], id: &str) -> Option<(usize, bool)> {
     let at = messages.iter().position(|message| {
-        matches!(message, Message::Assistant(turn)
+        matches!(&**message, Message::Assistant(turn)
             if turn.tool_calls().any(|call| call.id.wire() == id))
     })?;
-    let answered = matches!(messages.get(at + 1), Some(Message::User { content })
+    let answered = matches!(messages.get(at + 1).map(|message| &**message), Some(Message::User { content })
         if content.iter().any(|item| matches!(item, UserContent::ToolResult(result) if result.call.wire() == id)));
     Some((at, answered))
 }
@@ -128,7 +128,7 @@ fn imports_resumes_and_reimports() {
     // The Claude Code one: `Bash` became `shell`, with its result and a
     // note of the unknown entry.
     let messages = conversation_of(&home, &first.session);
-    let shell = messages.iter().find_map(|message| match message {
+    let shell = messages.iter().find_map(|message| match &**message {
         Message::Assistant(turn) => turn
             .tool_calls()
             .find(|call| call.function.name == "shell")
@@ -159,7 +159,7 @@ fn imports_resumes_and_reimports() {
     // 2026-10-01T10:00:00Z
     assert_eq!(first_made, Some(1_790_848_800_000));
     assert!(answered, "the call is followed by its result");
-    let result_text = messages.iter().flat_map(|message| match message {
+    let result_text = messages.iter().flat_map(|message| match &**message {
         Message::User { content } => content.clone(),
         Message::Assistant(_) | Message::System { .. } => Vec::new(),
     });
@@ -228,11 +228,14 @@ fn imports_resumes_and_reimports() {
         answered,
         "the call and its result are paired in the request: {sent:?}"
     );
-    let user_at = sent.iter().position(|message| matches!(message, Message::User { content }
+    let user_at = sent.iter().position(|message| matches!(&**message, Message::User { content }
         if content.iter().any(|item| matches!(item, UserContent::Text(text) if text.text == "List the files"))));
     assert!(user_at.is_some_and(|at| at < call_at), "in order: {sent:?}");
     assert!(
-        matches!(sent.last(), Some(Message::User { .. })),
+        matches!(
+            sent.last().map(|message| &**message),
+            Some(Message::User { .. })
+        ),
         "ends with the new message"
     );
 
@@ -257,7 +260,7 @@ fn imports_resumes_and_reimports() {
     );
     assert_eq!(resumable(&home, &current).len(), 2);
     let messages = conversation_of(&home, &first.session);
-    let last = messages.last().and_then(|message| match message {
+    let last = messages.last().and_then(|message| match &**message {
         Message::User { content } => content.iter().find_map(|item| match item {
             UserContent::Text(text) => Some(text.text.clone()),
             _ => None,

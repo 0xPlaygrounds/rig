@@ -23,7 +23,7 @@ pub(crate) fn rest_document(response: &GenerateContentResponse) -> Result<Value,
 impl Reassemble<GenerateContentResponse> for Document {
     fn absorb(&mut self, frame: &GenerateContentResponse) {
         if let Ok(Value::Object(chunk)) = rest_document(frame) {
-            self.chunk(chunk);
+            self.chunk(&chunk);
         }
     }
 

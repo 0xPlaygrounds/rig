@@ -265,7 +265,7 @@ fn the_nested_completion_is_a_model_record_made_by_the_tool() {
                 .chat_history
                 .iter()
                 .rev()
-                .find_map(rig_core::message::Message::rag_text)
+                .find_map(|message| message.rag_text())
                 .expect("a prompt"),
             other => panic!("a completion, not {other:?}"),
         };

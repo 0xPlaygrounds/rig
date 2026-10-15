@@ -74,7 +74,7 @@ fn a_fact_remembered_in_one_session_is_recalled_in_the_next_but_not_saved() {
         let mut conversation = request
             .chat_history
             .iter()
-            .filter(|message| !matches!(message, message::Message::System { .. }));
+            .filter(|message| !matches!(&***message, message::Message::System { .. }));
         serde_json::to_string(conversation.nth(turns)?).ok()
     });
     assert!(

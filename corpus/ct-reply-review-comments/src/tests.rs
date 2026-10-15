@@ -106,7 +106,7 @@ fn last_user_message(model: &MockCompletionModel) -> Vec<String> {
         .unwrap_or_default()
         .into_iter()
         .rev()
-        .find_map(|message| match message {
+        .find_map(|message| match std::sync::Arc::unwrap_or_clone(message) {
             Message::User { content } => Some(content),
             _ => None,
         });

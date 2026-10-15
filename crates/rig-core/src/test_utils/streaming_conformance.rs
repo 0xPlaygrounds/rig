@@ -276,17 +276,8 @@ pub fn check_ungated_outcome(
     xfail: &[&str],
     result: Result<ScenarioReport, ConformanceError>,
 ) -> Result<(), String> {
-    match (xfail_reason(xfail, scenario), result) {
-        (Some(reason), Err(error)) => {
-            eprintln!("xfail {scenario}: {reason} ({error})");
-            Ok(())
-        }
-        (Some(reason), Ok(_)) => Err(format!(
-            "{scenario} passed but is listed as xfail ({reason}); remove the xfail entry"
-        )),
-        (None, Err(error)) => Err(format!("{scenario} failed: {error}")),
-        (None, Ok(_)) => Ok(()),
-    }
+    // A run always declares its capability.
+    check_gated_outcome(scenario, true, xfail, result.map(ScenarioOutcome::Ran))
 }
 
 /// One scripted wire input frame.

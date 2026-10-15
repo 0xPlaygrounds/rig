@@ -28,7 +28,7 @@ pub use handler::{
 };
 pub use layer::{AfterServe, BeforeServe, Intercept, Layer};
 pub use record_buffer::RecordBuffer;
-pub use recorder::{DispatchContext, OpenRecord, Recorder, catch_panics};
+pub use recorder::{DispatchContext, Recorder, catch_panics};
 pub use writer::StreamWriter;
 
 /// Driver queue capacities and per-handler ordering policy, retained as data

@@ -1406,7 +1406,7 @@ use rig_harness::rig_memory::{CompactionOverrides, Cut};
 fn build(app: &mut App) {
     // Summarizes up to the last user message, which it keeps.
     app.add_compaction_cut("before-last-user", |messages, _, _, _| {
-        messages.iter().rposition(|message| matches!(message, Message::User { .. }))
+        messages.iter().rposition(|message| matches!(&**message, Message::User { .. }))
     })
     .add_observer(tight);
 }

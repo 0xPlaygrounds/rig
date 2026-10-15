@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
 use std::ops::ControlFlow;
+use std::sync::Arc;
 
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, Author, Branch, Change, Conversation, Lineage};
@@ -14,10 +15,10 @@ use serde_json::Value;
 
 use crate::blobs::{named_blobs, store_change};
 use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_change, write_meta};
-use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
-use crate::upgrade::each_record;
+use crate::session::{Fold, Folded, fold_lines, read_header};
+use crate::upgrade::{each_record, upgrade_logs};
 use crate::writer::set_aside_tail;
-use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned, upgrade};
+use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned};
 use rig_core::now_ms;
 
 /// Where a value being rewritten is kept.
@@ -117,7 +118,7 @@ pub trait Rewrite: Send + Sync {
 /// let rewritten = rewrite(&store, Author::plugin("redact"), &redact)?;
 /// assert_eq!(rewritten.logs.len(), 1);
 /// let main = Session::read(&store)?.agents.remove(0);
-/// assert_eq!(main.conversation.messages(), [Message::user("my key is [REDACTED]")]);
+/// assert_eq!(main.conversation.messages(), [Message::user("my key is [REDACTED]").into()]);
 /// # Ok::<(), rig_memory::SessionError>(())
 /// ```
 pub struct Strings<F: Fn(&mut String) -> bool + Send + Sync>(pub F);
@@ -599,7 +600,7 @@ pub(crate) fn map_change(
     Ok(match change {
         Change::Push { entries } | Change::Splice { with: entries, .. } => {
             entries.iter_mut().fold(false, |changed, entry| {
-                with.message(at, &mut entry.message) | changed
+                with.message(at, Arc::make_mut(&mut entry.message)) | changed
             })
         }
         Change::Aside {
@@ -621,7 +622,7 @@ pub(crate) fn map_aside(with: &dyn Rewrite, at: &Place<'_>, aside: &mut Aside) -
     };
     let mut changed = false;
     for entry in &mut branch.entries {
-        changed |= with.message(at, &mut entry.message);
+        changed |= with.message(at, Arc::make_mut(&mut entry.message));
     }
     for (_, inner) in &mut branch.asides {
         changed |= map_aside(with, at, inner);
@@ -728,12 +729,8 @@ pub fn rewrite(
     by: Author,
     with: &dyn Rewrite,
 ) -> Result<Rewritten, SessionError> {
-    upgrade(store)?;
     let mut logs: Vec<(String, LogLines, Folded)> = Vec::new();
-    for name in store.logs()? {
-        let Some(lines) = log_lines(store, &name)? else {
-            continue;
-        };
+    for (name, lines) in upgrade_logs(store)?.1 {
         if let Some(folded) = fold_lines(&name, &lines, Fold::default(), &|_| {
             Err(io::ErrorKind::NotFound.into())
         })? {
