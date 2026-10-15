@@ -867,7 +867,8 @@ const DESCRIBED_HEADER: &str = "rig-describe 1";
 /// their options and the secrets they ask for. The launcher keeps one per
 /// build ([`Home::described`]) and reads the command line against it.
 ///
-/// The text form is a header line, then one line each, its fields separated by tabs (shown here as `⇥`):
+/// The text form is a header line, then one line each, its fields separated by
+/// tabs (shown here as `⇥`):
 ///
 /// ```text
 /// rig-describe 1

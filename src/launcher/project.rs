@@ -364,6 +364,7 @@ pub fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     Ok(())
 }
 
+/// `path` as a TOML basic string.
 pub fn quoted_path(path: &Path) -> String {
     quoted(&path.to_string_lossy())
 }

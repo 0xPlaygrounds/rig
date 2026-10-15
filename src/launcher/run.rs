@@ -1,17 +1,15 @@
-//! `rig`: build the agent before every start, then run it.
-//! [`RELOAD_EXIT_CODE`] restarts it on the staged build. A new build runs as this launcher's own trial
-//! and becomes the good build once it signals ready, in the launcher's
-//! [`RunDir`]; one that exits before that is rolled back to the last good
-//! build. Several launchers can share one `RIG_HOME`: building and staging
-//! take the root's lock, a `/reload` build and its trial are per session,
-//! and the ready file is per launcher.
+//! Running the agent. [`RELOAD_EXIT_CODE`] restarts it on the staged build;
+//! a new build is this launcher's trial until it signals ready in the
+//! launcher's [`RunDir`]. Several launchers can share one `RIG_HOME`:
+//! building and staging take the root's lock, a `/reload` build and its
+//! trial are per session, and the ready file is per launcher.
 //!
-//! `rig` starts a new session, and `rig --resume <id or name>` an earlier
-//! one, in the directory it ran in. The agent's `/new` and `/resume` leave a
-//! [`SessionDir::switch`] file and exit with the reload code; the launcher
-//! then runs that session instead, in its own directory. A session left
-//! without a message, by a clean quit or a switch, leaves no directory.
-//! Each start tells the agent why it started ([`StartReason`]).
+//! `rig` starts a new session, and `rig --resume <id or name>` an earlier one,
+//! in the directory it ran in. The agent's `/new` and `/resume` leave a
+//! [`SessionDir::switch`] file and exit with the reload code; the launcher then
+//! runs that session instead, in its own directory. A session left without a
+//! message, by a clean quit or a switch, leaves no directory. Each start tells
+//! the agent why it started ([`StartReason`]).
 //!
 //! The command line is read once the agent is built, against what its
 //! plugins add ([`AgentDescription::invocation`]), and the agent gets it in its
