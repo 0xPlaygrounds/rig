@@ -87,10 +87,10 @@ fn aspect_ratio(width: u32, height: u32) -> Option<String> {
     match (width, height) {
         (0, _) | (_, 0) => None,
         (w, h) if w == h => Some("1:1".to_string()),
-        (w, h) if w.saturating_mul(3) == h.saturating_mul(4) => Some("3:4".to_string()),
-        (w, h) if w.saturating_mul(4) == h.saturating_mul(3) => Some("4:3".to_string()),
-        (w, h) if w.saturating_mul(9) == h.saturating_mul(16) => Some("9:16".to_string()),
-        (w, h) if w.saturating_mul(16) == h.saturating_mul(9) => Some("16:9".to_string()),
+        (w, h) if w.saturating_mul(3) == h.saturating_mul(4) => Some("4:3".to_string()),
+        (w, h) if w.saturating_mul(4) == h.saturating_mul(3) => Some("3:4".to_string()),
+        (w, h) if w.saturating_mul(9) == h.saturating_mul(16) => Some("16:9".to_string()),
+        (w, h) if w.saturating_mul(16) == h.saturating_mul(9) => Some("9:16".to_string()),
         _ => None,
     }
 }
