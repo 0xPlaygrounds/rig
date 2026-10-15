@@ -59,6 +59,36 @@ fn the_records_of_one_turn_of_an_agent_read_back_from_the_store() {
     );
 }
 
+/// A tool registered while the app runs is described in the log's header,
+/// as the tools registered before it starts are.
+#[test]
+fn a_tool_registered_while_running_is_described_in_the_header() {
+    use rig_core::completion::ToolDefinition;
+    use rig_core::message::ToolName;
+
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = app_on(&store);
+    app.add_plugins((AgentPlugin, EffectLogPlugin));
+    app.finish();
+    app.update();
+    let Ok(name) = ToolName::new("late") else {
+        panic!("`late` is a tool name");
+    };
+    let definition = ToolDefinition::new(name, "registered late", rig_core::serde_json::json!({}));
+    app.world_mut().spawn(ToolDef(definition));
+    app.world_mut()
+        .write_message(EffectRecorded(record(1, "a", "note", 0)));
+    app.update();
+
+    let header = jsonl::read_session(&store).map(|log| log.header);
+    let keys: Vec<String> = header
+        .iter()
+        .flat_map(|header| &header.handlers)
+        .map(|handler| handler.key.to_string())
+        .collect();
+    assert!(keys.contains(&"tool:late".to_owned()), "{keys:?}");
+}
+
 /// A record of effect `id` whose payload says `text`.
 fn saying(id: u64, text: &str) -> EffectRecord {
     let mut record = record(id, "a", "note", 0);

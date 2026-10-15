@@ -56,8 +56,10 @@ impl Plugin for EffectLogPlugin {
         app.insert_resource(Effects::continue_after(last))
             .insert_resource(EffectLog { store })
             .insert_resource(EffectLogFile { header, writer })
-            .add_systems(Startup, describe_tools)
-            .add_systems(Last, write_effects.in_set(WriteLogs))
+            .add_systems(
+                Last,
+                (describe_tools, write_effects).chain().in_set(WriteLogs),
+            )
             .add_observer(describe_model);
         #[cfg(feature = "tui")]
         if app.runs_front(rig_tui::FRONT) {
@@ -160,8 +162,9 @@ struct EffectLogFile {
     writer: jsonl::Writer,
 }
 
-/// Describes every registered tool in the log's header, by name.
-fn describe_tools(mut log: ResMut<EffectLogFile>, tools: Query<&ToolDef>) {
+/// Describes each tool registered or changed since the last frame in the
+/// log's header, by name, before its calls are written.
+fn describe_tools(mut log: ResMut<EffectLogFile>, tools: Query<&ToolDef, Changed<ToolDef>>) {
     let mut tools: Vec<_> = tools.iter().map(|tool| &tool.0).collect();
     tools.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
     log.header.describe(tools.into_iter().map(|tool| {
