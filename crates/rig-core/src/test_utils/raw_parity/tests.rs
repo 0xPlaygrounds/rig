@@ -654,6 +654,13 @@ const PAIRS: &[Pair] = &[
     },
     Pair {
         provider: "mistral",
+        unary: "reasoning_roundtrip/nonstreaming.yaml",
+        streamed: "reasoning_roundtrip/streaming.yaml",
+        // Each answer reasons, answers and counts in its own words.
+        minted: &["/choices/0/message/content", "/usage"],
+    },
+    Pair {
+        provider: "mistral",
         unary: "prompt_caching/blocking_probe.yaml",
         streamed: "prompt_caching/streaming_probe.yaml",
         minted: &[],
