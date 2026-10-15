@@ -77,7 +77,7 @@ impl Invoked {
     /// Whether someone sits at the terminal: no `--print` and stdin is a
     /// terminal. The terminal view runs then, `--print` otherwise.
     pub fn interactive(&self) -> bool {
-        self.args.print.is_none() && self.terminal
+        !self.args.is_headless() && self.terminal
     }
 }
 
