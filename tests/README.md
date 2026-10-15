@@ -408,8 +408,8 @@ cargo test -p rig-cassette --all-features --test gemini \
 Record mode scrubs and safety-checks cassette contents before writing fixtures,
 and the committed cassette safety tests enforce the same scrubbed form during
 normal test runs. Scrubbing removes credentials (API keys, bearer tokens,
-cookies, OAuth tokens, SigV4 material), AWS account numbers in ARNs and
-home-directory paths, drops response headers outside a small allowlist, and
+cookies, OAuth tokens, SigV4 material), AWS account numbers in ARNs, account
+team ids a provider quotes (`team_REDACTED_<n>`) and home-directory paths, drops response headers outside a small allowlist, and
 normalizes volatile timestamps. Everything else the provider sent is recorded
 verbatim:
 thinking signatures, encrypted and redacted reasoning, tool-call and response

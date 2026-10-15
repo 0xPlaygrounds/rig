@@ -2493,8 +2493,8 @@ fn sanitize_path_segment(segment: &str) -> String {
         .collect()
 }
 
-/// Return YAML in recorded form: credentials, AWS account numbers and
-/// home-directory paths scrubbed, everything the provider sent kept verbatim.
+/// Return YAML in recorded form: credentials, AWS account numbers, account
+/// team ids and home-directory paths scrubbed, everything the provider sent kept verbatim.
 /// Placeholders an older fixture already holds are left in place, so the
 /// function is the identity on every committed cassette.
 /// Panics if the cassette cannot be parsed.
@@ -2991,8 +2991,8 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 const OAUTH_TOKEN_KEYS: &[&str] = &["access_token", "id_token", "refresh_token"];
 
 /// Removes credentials (sensitive headers and query parameters, and every
-/// secret [`rig_core::redact`] finds), AWS account numbers and home-directory
-/// paths from a recording and normalizes its volatile fields. Everything else the provider
+/// secret [`rig_core::redact`] finds), AWS account numbers, account team ids
+/// and home-directory paths from a recording and normalizes its volatile fields. Everything else the provider
 /// sent is kept verbatim, so a fixture can seed a live call and a replay
 /// decodes the provider's own bytes.
 struct CassetteScrubber {
@@ -3183,6 +3183,11 @@ impl CassetteScrubber {
                         *text = self.placeholder(text, "id_");
                         return;
                     }
+
+                    if matches!(key, "team" | "team_id" | "teamid") && is_uuid(text) {
+                        *text = self.placeholder(text, "team_");
+                        return;
+                    }
                 }
 
                 *text = self.scrub_text(text);
@@ -3207,7 +3212,21 @@ impl CassetteScrubber {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
+        let scrubbed = self.scrub_team_ids(&scrubbed);
         scrub_local_filesystem_paths(&scrubbed)
+    }
+
+    /// Replace each UUID [`next_team_id`] finds with a `team_` placeholder.
+    fn scrub_team_ids(&mut self, text: &str) -> String {
+        let mut output = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some((before, team, after)) = next_team_id(rest) {
+            output.push_str(before);
+            output.push_str(&self.placeholder(team, "team_"));
+            rest = after;
+        }
+        output.push_str(rest);
+        output
     }
 
     /// Replace 12-digit account-ID segments in ARNs, preserving partition,
@@ -3359,6 +3378,70 @@ fn find_query_param(input: &str, needle: &str) -> Option<usize> {
     }
 
     None
+}
+
+/// The first UUID in `text` a provider names as the account's team, split
+/// out as `(before, uuid, after)`: the word `team` or `teams` (not inside a
+/// longer word), then any run of separators (ASCII whitespace and
+/// `` _ / : = - ( [ " ' \ ` ``) and the word `id` in any case, then a
+/// hyphenated UUID. This covers `your team <uuid>`, `team ID <uuid>`,
+/// `team_id: <uuid>`, `/teams/<uuid>` and `team (<uuid>)`.
+fn next_team_id(text: &str) -> Option<(&str, &str, &str)> {
+    const UUID_LEN: usize = 36;
+    let bytes = text.as_bytes();
+    let mut from = 0;
+    while let Some(found) = find_ascii_case_insensitive(text.get(from..)?, "team") {
+        let start = from + found;
+        from = start + "team".len();
+        let word_start = start
+            .checked_sub(1)
+            .and_then(|before| bytes.get(before))
+            .is_none_or(|byte| !byte.is_ascii_alphanumeric());
+        if !word_start {
+            continue;
+        }
+        let mut cursor = from;
+        if bytes
+            .get(cursor)
+            .is_some_and(|byte| byte.eq_ignore_ascii_case(&b's'))
+        {
+            cursor += 1;
+        }
+        loop {
+            if bytes
+                .get(cursor)
+                .is_some_and(|byte| byte.is_ascii_whitespace() || b"_/:=-([`\"'\\".contains(byte))
+            {
+                cursor += 1;
+            } else if bytes
+                .get(cursor..cursor + 2)
+                .is_some_and(|word| word.eq_ignore_ascii_case(b"id"))
+            {
+                cursor += 2;
+            } else {
+                break;
+            }
+        }
+        let end = cursor + UUID_LEN;
+        let bounded = bytes
+            .get(end)
+            .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-');
+        if let Some(team) = text.get(cursor..end)
+            && bounded
+            && is_uuid(team)
+        {
+            return Some((text.get(..cursor)?, team, text.get(end..)?));
+        }
+    }
+    None
+}
+
+/// Whether `text` is a hyphenated UUID (8-4-4-4-12 hex digits).
+fn is_uuid(text: &str) -> bool {
+    text.split('-').map(str::len).eq([8, 4, 4, 4, 12])
+        && text
+            .bytes()
+            .all(|byte| byte == b'-' || byte.is_ascii_hexdigit())
 }
 
 fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
