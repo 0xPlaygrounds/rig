@@ -418,3 +418,38 @@ fn a_root_an_enclosing_repository_ignores_is_scanned() {
     std::fs::remove_dir_all(repo).ok();
     std::fs::remove_dir_all(keep).ok();
 }
+
+/// Calls checkpointed at once share the root's private index, and each
+/// still gets its snapshot: none fails on the index's lock.
+#[test]
+fn git_snapshots_taken_at_once_all_succeed() {
+    let repo = scratch("checkpoint-concurrent");
+    let keep = scratch("checkpoint-concurrent-keep");
+    assert!(git_in(&repo, &["init", "-q"]));
+    for file in 0..50 {
+        std::fs::write(repo.join(format!("{file}.txt")), format!("{file}\n")).ok();
+    }
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        also: Vec::new(),
+    };
+    let failed: Vec<String> = std::thread::scope(|scope| {
+        let calls: Vec<_> = (0..8)
+            .map(|_| {
+                scope.spawn(|| {
+                    (0..5)
+                        .filter_map(|_| snapshot(&Local, &repo, &taking, None).err())
+                        .map(|error| error.to_string())
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        calls
+            .into_iter()
+            .flat_map(|call| call.join().unwrap_or_default())
+            .collect()
+    });
+    assert_eq!(failed, Vec::<String>::new());
+    std::fs::remove_dir_all(repo).ok();
+    std::fs::remove_dir_all(keep).ok();
+}

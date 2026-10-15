@@ -471,6 +471,10 @@ impl Git {
     /// Adds the root's files, and every file under each of `also` that is
     /// there, to the private index and writes its tree.
     fn write_tree(&self, also: &[PathBuf]) -> io::Result<String> {
+        // Calls checkpointed at once share the private index, whose lock
+        // `git add` takes and fails on when another holds it.
+        static INDEX: Mutex<()> = Mutex::new(());
+        let _index = INDEX.lock().unwrap_or_else(PoisonError::into_inner);
         std::fs::create_dir_all(self.keep.join("objects"))?;
         let below = match self.below.as_os_str().is_empty() {
             true => OsStr::new("."),
