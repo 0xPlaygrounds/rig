@@ -18,7 +18,7 @@ use rig_core::message::{EmptyToolName, ImageMediaType, MimeType, ToolName, ToolR
 use rig_core::tool::{
     ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
 };
-use rig_core::wasm_compat::WasmBoxedFuture;
+use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
 /// Re-export of [`rmcp::model::Meta`]: wrap one in [`McpMeta`] and place it
 /// in the per-call [`ToolContext`] to have MCP tools forward it as the
@@ -84,6 +84,21 @@ pub const DEFAULT_MCP_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
 /// has already exceeded its caller-visible deadline.
 const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
 
+/// Derives host-only request metadata from a tool's final arguments and context.
+/// Called synchronously for each [`DynamicTool`] execution after argument validation.
+/// `Some` replaces the context's [`McpMeta`]; `None` uses that existing fallback.
+/// Implementations may be called concurrently and must keep per-call metadata isolated.
+pub trait McpMetaProvider: WasmCompatSend + WasmCompatSync {
+    /// Return request `_meta` for the wire tool name and the exact argument map
+    /// to be sent. `None` arguments represent a JSON `null` or absent arguments.
+    fn meta_for(
+        &self,
+        tool: &str,
+        arguments: Option<&rmcp::model::JsonObject>,
+        context: &ToolContext,
+    ) -> Option<Meta>;
+}
+
 /// One MCP server tool, callable through an rmcp [`ServerSink`](rmcp::service::ServerSink).
 ///
 /// Construct with [`Self::from_mcp_server`] or [`tools_from_server`]. Conversion
@@ -96,6 +111,7 @@ pub struct McpTool {
     /// Optional per-call deadline. Timeout triggers best-effort cancellation
     /// for requests with an acquired handle; `None` leaves calls unbounded.
     pub(crate) timeout: Option<Duration>,
+    meta_provider: Option<Arc<dyn McpMetaProvider>>,
 }
 
 impl McpTool {
@@ -110,6 +126,7 @@ impl McpTool {
             definition,
             client,
             timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
+            meta_provider: None,
         }
     }
 
@@ -127,6 +144,16 @@ impl McpTool {
     /// The per-call timeout, if any.
     pub fn timeout(&self) -> Option<Duration> {
         self.timeout
+    }
+
+    /// Derive request metadata per call when converted into a [`DynamicTool`].
+    /// A provider result replaces [`McpMeta`] from the context; `None` retains
+    /// that fallback. Cloned adapters share the provider. Direct
+    /// [`Self::execute_mcp`] calls continue to use their explicit `meta` argument.
+    #[must_use = "the setting applies to the returned value"]
+    pub fn with_meta_provider<P: McpMetaProvider + 'static>(mut self, provider: P) -> Self {
+        self.meta_provider = Some(Arc::new(provider));
+        self
     }
 
     /// The MCP tool definition this adapter wraps.
@@ -168,10 +195,15 @@ pub(crate) fn parse_mcp_arguments(
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let value: serde_json::Value = serde_json::from_str(trimmed)?;
+    mcp_argument_object(serde_json::from_str(trimmed)?)
+}
+
+fn mcp_argument_object(
+    value: serde_json::Value,
+) -> Result<Option<rmcp::model::JsonObject>, McpArgumentError> {
     match value {
         serde_json::Value::Null => Ok(None),
-        serde_json::Value::Object(_) => Ok(Some(serde_json::from_value(value)?)),
+        serde_json::Value::Object(arguments) => Ok(Some(arguments)),
         value => Err(McpArgumentError::NonObject(json_value_kind(&value))),
     }
 }
@@ -266,52 +298,57 @@ impl McpTool {
     ///
     /// Attaches `meta` as request `_meta`. Rejects invalid or non-object JSON
     /// arguments before dispatch; empty input and `null` mean no arguments.
-    /// Returns timeout or provider errors for failed requests.
+    /// Returns timeout or provider errors for failed requests. Configured
+    /// [`McpMetaProvider`]s apply only through the [`DynamicTool`] adapter.
     pub fn execute_mcp(
         &self,
         args: String,
         meta: Option<rmcp::model::Meta>,
     ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
-        let name = self.definition.name.clone();
-
         Box::pin(async move {
-            // Validate the JSON arguments before contacting the server: malformed
-            // JSON must surface as an InvalidArgs failure, not a silent no-arg call.
-            let arguments = parse_mcp_arguments(&args).map_err(|error| {
-                ToolExecutionError::invalid_args(format!(
-                    "MCP tool '{name}' received invalid arguments: {error}"
-                ))
-                .with_source(error)
-            })?;
-            let mut request = arguments
-                .map(|arguments| {
-                    rmcp::model::CallToolRequestParams::new(name.clone()).with_arguments(arguments)
-                })
-                .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(name));
-            request.meta = meta;
+            let arguments =
+                parse_mcp_arguments(&args).map_err(|error| self.argument_error(error))?;
+            self.execute_mcp_with_arguments(arguments, meta).await
+        })
+    }
 
-            match call_mcp_tool(&self.client, request, self.timeout).await {
-                Ok(result) => Ok(result),
-                Err(
-                    error @ rmcp::ServiceError::Timeout {
-                        timeout: elapsed_timeout,
-                    },
-                ) => {
-                    let timeout = self.timeout.unwrap_or(elapsed_timeout);
-                    Err(ToolExecutionError::timeout(format!(
-                        "MCP tool '{}' timed out after {timeout:?}",
-                        self.definition.name
-                    ))
-                    .with_source(error))
-                }
-                // A transport/service error before the tool produced a result.
-                Err(error) => Err(ToolExecutionError::provider(format!(
-                    "MCP tool '{}' request failed: {error}",
+    fn argument_error(&self, error: McpArgumentError) -> ToolExecutionError {
+        ToolExecutionError::invalid_args(format!(
+            "MCP tool '{}' received invalid arguments: {error}",
+            self.definition.name
+        ))
+        .with_source(error)
+    }
+
+    async fn execute_mcp_with_arguments(
+        &self,
+        arguments: Option<rmcp::model::JsonObject>,
+        meta: Option<Meta>,
+    ) -> Result<CallToolResult, ToolExecutionError> {
+        let mut request = rmcp::model::CallToolRequestParams::new(self.definition.name.clone());
+        request.arguments = arguments;
+        request.meta = meta;
+
+        match call_mcp_tool(&self.client, request, self.timeout).await {
+            Ok(result) => Ok(result),
+            Err(
+                error @ rmcp::ServiceError::Timeout {
+                    timeout: elapsed_timeout,
+                },
+            ) => {
+                let timeout = self.timeout.unwrap_or(elapsed_timeout);
+                Err(ToolExecutionError::timeout(format!(
+                    "MCP tool '{}' timed out after {timeout:?}",
                     self.definition.name
                 ))
-                .with_source(error)),
+                .with_source(error))
             }
-        })
+            Err(error) => Err(ToolExecutionError::provider(format!(
+                "MCP tool '{}' request failed: {error}",
+                self.definition.name
+            ))
+            .with_source(error)),
+        }
     }
 }
 
@@ -474,7 +511,8 @@ pub fn preserve_mcp_result(
 /// An MCP tool as a context-aware rig-core dynamic tool, with a liveness probe
 /// bound to the MCP transport so registries can retire it on disconnect.
 ///
-/// Per call: [`McpMeta`] in the [`ToolContext`] supplies request `_meta`, and the
+/// Per call: [`McpMetaProvider`] supplies request `_meta`, falling back to
+/// [`McpMeta`] in the [`ToolContext`], and the
 /// response's `structuredContent`, response `Meta`, and raw [`CallToolResult`]
 /// are published to the context's result map ([`preserve_mcp_result`]). A tool
 /// that reports `is_error` becomes a failed call whose error carries the tool's
@@ -500,10 +538,17 @@ impl TryFrom<McpTool> for DynamicTool {
             parameters,
             move |context: &mut ToolContext, args: serde_json::Value| {
                 let tool = Arc::clone(&tool);
-                let meta = context.get::<McpMeta>();
                 Box::pin(async move {
-                    let meta = meta?.map(|meta| meta.0);
-                    let result = tool.execute_mcp(args.to_string(), meta).await?;
+                    let arguments =
+                        mcp_argument_object(args).map_err(|error| tool.argument_error(error))?;
+                    let derived = tool.meta_provider.as_ref().and_then(|provider| {
+                        provider.meta_for(&tool.definition.name, arguments.as_ref(), context)
+                    });
+                    let meta = match derived {
+                        Some(meta) => Some(meta),
+                        None => context.get::<McpMeta>()?.map(|meta| meta.0),
+                    };
+                    let result = tool.execute_mcp_with_arguments(arguments, meta).await?;
                     let is_error = result.is_error == Some(true);
                     let output = mcp_result_output(&result);
                     preserve_mcp_result(context, result)?;

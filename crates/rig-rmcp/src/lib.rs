@@ -4,8 +4,12 @@
 //! registrations when the server reports tool-list changes.
 //!
 //! [`McpMeta`] supplies request metadata outside model-visible arguments.
-//! Responses publish raw results, structured content, and response metadata
-//! to the context result map; model output uses ordered presentation content.
+//! [`McpMetaProvider`] can derive it from each call's tool name, final parsed
+//! arguments, and immutable context when attached through
+//! [`McpTool::with_meta_provider`]. Its result overrides context metadata when
+//! present. Responses publish raw results, structured content, and response
+//! metadata to the context result map; model output uses ordered presentation
+//! content.
 //!
 //! ```
 //! use rig_core::tool::ToolContext;
