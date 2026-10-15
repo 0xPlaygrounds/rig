@@ -347,7 +347,7 @@ fn on_start(
     let log = paths
         .path()
         .join("jobs")
-        .join(&called.caller.0)
+        .join(&called.agent_id.0)
         .join(format!("{id}.log"));
     let StartArgs { command, name } = &called.args;
     let name = name.clone().unwrap_or_else(|| default_name(command));
@@ -545,7 +545,7 @@ fn on_exit(
     let mode = if settings.notify_idle {
         DeliveryMode::Steer
     } else {
-        DeliveryMode::Note
+        DeliveryMode::Inform
     };
     let author = Author::plugin("background-jobs");
     commands.trigger(Deliver::new(agent, text, mode).with_author(author));

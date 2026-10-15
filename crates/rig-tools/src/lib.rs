@@ -1,24 +1,20 @@
-//! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`],
-//! [`List`], [`Shell`], [`Delete`] and [`Move`]. Each has a description of what it does, its usage
-//! `RULES`, the lines a system prompt carries on when to pick it, such as
-//! "use `read`, not `cat`", and annotations saying what it does to the
-//! world (read-only or destructive). They are [`Tool`](rig_core::tool::Tool)s
-//! that publish what they did beside their text: the files they read
-//! ([`FilesRead`](rig_core::tool::FilesRead)), what a search found
-//! ([`SearchHits`]), what a listing showed ([`FilesListed`]), the files they changed, with their diffs
-//! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
-//! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). Each acts on a
-//! [`Workspace`](workspace::Workspace): this machine
-//! ([`Local`](workspace::Local), the default) or another, such as one
-//! reached over SSH. The file tools name files by their resolved paths
-//! (`resolve` on [`Workspace`](workspace::Workspace)), from an optional
-//! base directory they can be confined to. Each call says what it may read
-//! and change ([`footprint`](rig_core::tool::Tool::footprint)): `read`,
-//! `search` and `list` read the path they name, `write`, `edit`, `delete` and `move`
-//! write theirs, and `shell` may change anything, so a host runs calls on
-//! different files side by side. `shell` reports its output as it comes to
-//! a [`Live`]. Their arguments are plain data with public fields, to build
-//! or read a call's.
+#![deny(missing_docs)]
+//! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`], [`List`],
+//! [`Shell`], [`Delete`] and [`Move`].
+//!
+//! - Each carries its `RULES` for the system prompt and says what it may touch
+//!   ([`footprint`](rig_core::tool::Tool::footprint)): `read`, `search` and `list` read the
+//!   path they name, the other file tools write theirs, and `shell` may change anything, so a
+//!   host runs calls on different files side by side.
+//! - Each publishes what it did beside its text: files read
+//!   ([`FilesRead`](rig_core::tool::FilesRead)), [`SearchHits`], [`FilesListed`], files changed
+//!   with their diffs ([`FilesChanged`](rig_core::tool::FilesChanged)), how a command ended
+//!   ([`ExitStatus`](rig_core::tool::ExitStatus)).
+//! - Each acts on a [`Workspace`](workspace::Workspace): this machine
+//!   ([`Local`](workspace::Local), the default) or another. The file tools resolve paths from an
+//!   optional base directory they can be confined to.
+//! - `shell` reports its output as it comes to a [`Live`]. Arguments are plain data with public
+//!   fields.
 //!
 //! Also the pieces they are made of, for tools of your own:
 //! - [`edit::apply`]: what `edit` makes of a file's text, without the file,
@@ -34,7 +30,7 @@
 //!   `CLAUDE.md`) from the working directory up;
 //! - [`fs`]: an atomic file write and capped text reads on this machine;
 //! - [`numbered`]: text as numbered lines, the way `read` shows a file;
-//! - [`Spill`]: where output a tool cut is kept whole, and [`Cut`]: how
+//! - [`Spill`]: where output a tool cut is kept whole, and [`OutputLimit`]: how
 //!   much of a long output is kept;
 //! - [`process`]: child processes in a process group of their own, the
 //!   [`Launcher`](process::Launcher) that says how tools start them, and
@@ -91,22 +87,22 @@ pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 /// `lines` of them and `bytes` bytes, starting at a line.
 ///
 /// ```
-/// use rig_tools::Cut;
+/// use rig_tools::OutputLimit;
 ///
-/// let cut = Cut { lines: 2, bytes: 1024 };
+/// let cut = OutputLimit { lines: 2, bytes: 1024 };
 /// assert_eq!(cut.tail("one\ntwo\nthree\n"), ("two\nthree\n", 1));
-/// let narrow = Cut { lines: 10, bytes: 7 };
+/// let narrow = OutputLimit { lines: 10, bytes: 7 };
 /// assert_eq!(narrow.tail("one\ntwo\nthree\n"), ("three\n", 2));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cut {
+pub struct OutputLimit {
     /// Most lines kept.
     pub lines: usize,
     /// Most bytes kept.
     pub bytes: usize,
 }
 
-impl Default for Cut {
+impl Default for OutputLimit {
     /// [`MAX_LINES`] lines or [`MAX_BYTES`] bytes.
     fn default() -> Self {
         Self {
@@ -116,7 +112,7 @@ impl Default for Cut {
     }
 }
 
-impl Cut {
+impl OutputLimit {
     /// The end of `text` this keeps, starting at a line, and how many lines
     /// before it were left out. When even the last line is longer than
     /// [`bytes`](Self::bytes), nothing is kept.

@@ -172,14 +172,14 @@ fn note_turn(
     let Ok((conversation, mut alternatives, connection)) = agents.get_mut(agent) else {
         return;
     };
-    let asked = conversation.request(turn.first_message).is_some();
+    let asked = conversation.request(turn.start).is_some();
     if !matches!(outcome, TurnOutcome::Answered(_)) || !asked {
         return;
     }
-    if retry.is_none() && alternatives.turn != Some(turn.first_message) {
+    if retry.is_none() && alternatives.turn != Some(turn.start) {
         alternatives.kept.clear();
     }
-    alternatives.turn = Some(turn.first_message);
+    alternatives.turn = Some(turn.start);
     alternatives.model = retry
         .map(|RetryOn(connection)| connection)
         .or(connection)

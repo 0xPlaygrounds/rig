@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 use bevy_log::warn;
 use corpus_protected_paths::ProtectedPathsSystems;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
 use serde::Deserialize;
@@ -362,7 +362,7 @@ fn rewrite(
 
 /// Puts "(ran as: `<rewritten>`)" first in each rewritten call's result.
 fn say_what_ran(
-    mut calls: Query<(Entity, &RanAs, &mut Outcome, Has<Started>), (Unreviewed, ToolCalls)>,
+    mut calls: Query<(Entity, &RanAs, &mut Outcome, Has<Started>), (ReadyToSettle, ToolCalls)>,
     mut commands: Commands,
 ) {
     for (call, RanAs(ran_as), mut outcome, started) in &mut calls {

@@ -123,7 +123,7 @@ fn added_leftovers_get_one_nudge_and_kept_ones_are_not_raised_again() {
         .insert_resource(Scratch(Some(keep.clone())))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             EditTool,
             ShellTool,
             CheckpointPlugin,

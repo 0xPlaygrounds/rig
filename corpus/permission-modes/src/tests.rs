@@ -21,7 +21,7 @@ use super::*;
 fn session(mode: PermissionMode, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Models(Connector::new(Catalog::default())))
-        .add_plugins((AgentPlugin, JournalPlugin, SubagentsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SubagentsPlugin))
         .add_plugins((ReadTool, WriteTool, EditTool, ShellTool))
         .add_plugins(PermissionModesPlugin)
         .init_resource::<ToolOutputs>()

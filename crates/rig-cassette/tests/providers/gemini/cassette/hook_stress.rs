@@ -298,7 +298,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
                 .records
                 .iter()
                 .filter_map(|record| match &record.outcome {
-                    Ok(rig::effect::Outcome::Completion(response)) => Some(response),
+                    Ok(rig::effect::Answered::Completion(response)) => Some(response),
                     _ => None,
                 })
                 .flat_map(|response| response.choice.iter())

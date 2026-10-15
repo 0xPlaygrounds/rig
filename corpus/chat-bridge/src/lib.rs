@@ -229,8 +229,8 @@ fn receive(
     settings: Res<ChatSettings>,
     threads: Query<(Entity, &ChatThread)>,
     asks: OpenAsks,
-    primaries: PrimaryQuery,
-    models: Query<(Option<&ModelChoice>, &Effort, Option<&Connection>)>,
+    primaries: MainAgentQuery,
+    models: Query<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
     mut commands: Commands,
 ) {
     let Some(transport) = &mut bridge.transport else {
@@ -258,7 +258,7 @@ fn receive(
         let agent = match bound {
             Some(agent) => agent,
             None if message.mentions_bot => {
-                let parent = primary(&primaries).and_then(|agent| models.get(agent).ok());
+                let parent = main_agent(&primaries).and_then(|agent| models.get(agent).ok());
                 let agent = spawn_agent(&mut commands, thread.clone(), parent);
                 spawned.push((agent, thread));
                 agent
@@ -301,7 +301,7 @@ fn choice(ask: &Ask, reply: &str) -> Option<usize> {
 fn spawn_agent(
     commands: &mut Commands,
     thread: ChatThread,
-    parent: Option<(Option<&ModelChoice>, &Effort, Option<&Connection>)>,
+    parent: Option<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
 ) -> Entity {
     let name = Name::new(format!("chat {}", thread.thread));
     let mut agent = commands.spawn((name, thread));

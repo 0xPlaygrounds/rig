@@ -1,5 +1,5 @@
-//! View state, kept apart from the agent core: the agent shown (the
-//! harness's [`Shown`]), the input's completion, the pickers and questions
+//! View state, kept apart from the agent core: the shown agent (the
+//! harness's [`ShownAgent`]), the input's completion, the pickers and questions
 //! waiting to be shown, each transcript pane as plugins read and steer it
 //! ([`TranscriptView`]): what is expanded and selected, the text lit and
 //! where it is scrolled, and the recent notices ([`Notices`]), which a
@@ -22,13 +22,12 @@ use super::editor::{Editor, MainEditor};
 use super::jsonl::{self, Kept};
 use super::keys::KeyPress;
 use super::pane::{PaneState, TranscriptPane, TranscriptSource};
-use super::panel::Focused;
-use super::pick::PickerState;
+use super::pick::PickerInput;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::{ExitReason, PluginData};
-use rig_harness::primary::Shown;
 use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
 
 /// Notices kept for display, and for the build a reload starts.
@@ -46,7 +45,7 @@ const DRAFT_FILE: &str = "tui/draft.txt";
 /// a subagent picked with `/agents`.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
-pub struct Focus {
+pub struct ShowAgent {
     /// The agent.
     pub entity: Entity,
 }
@@ -79,10 +78,10 @@ pub enum TranscriptItem {
     /// A tool call, by its call id.
     Call(CallId),
     /// An aside a look draws, such as a plugin's
-    /// [`Note`](rig_harness::note::Note) or a kept branch, by its id
+    /// [`Note`](rig_harness::rig_core::conversation::Note) or a kept branch, by its id
     /// ([`add_aside_renderer`](crate::AppToolRenderersExt::add_aside_renderer)).
     Aside(AsideId),
-    /// A notice, by its index in the [`Notices`].
+    /// A notice, by its number in the [`Notices`].
     Notice(usize),
     /// A content block of a message, an image, audio, a video or a
     /// document, by the message's id and the block's place in it
@@ -145,9 +144,13 @@ pub struct TranscriptView {
 /// The notices the view shows, oldest first, those an earlier build of
 /// the session showed included: each drawn in the transcript of the agent
 /// it is about ([`ShownNotice::slot`]), and one about every agent where it
-/// was written. [`TranscriptItem::Notice`] names one by its index here.
+/// was written. [`TranscriptItem::Notice`] names one by its number: its
+/// index here plus the older ones dropped.
 #[derive(Resource, Default)]
-pub struct Notices(Vec<ShownNotice>);
+pub struct Notices {
+    shown: Vec<ShownNotice>,
+    dropped: usize,
+}
 
 /// Whose text a [`TextMark`] is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -233,7 +236,7 @@ pub struct LineSpan {
 /// Scrolls the transcript pane `pane` so that `row` of `item` is shown;
 /// `item: None` follows the newest output again. An item not drawn leaves
 /// the pane where it is. Its [`TranscriptView::top`] reads where it is.
-/// To show another agent in the main pane, trigger [`Focus`] first.
+/// To show another agent in the main pane, trigger [`ShowAgent`] first.
 #[derive(Event, Clone, Debug)]
 pub struct ScrollTo {
     /// The pane ([`TranscriptPane`]).
@@ -310,7 +313,7 @@ pub struct DrawnRow {
     pub text: String,
     /// How it continues the row before it, when the view wrapped one
     /// line into both; [`DrawnTranscript::lines`] rejoins them.
-    pub continues: Option<Continuation>,
+    pub continues: Option<RowWrap>,
     /// How many matches of each highlight the view lit starting in it,
     /// by its index in [`TranscriptView::highlights`] (where two overlap,
     /// the one placed first lit it); a match a wrap splits counts in the
@@ -323,7 +326,7 @@ pub struct DrawnRow {
 pub struct DrawnLine {
     /// Its rows in the transcript.
     pub rows: Range<usize>,
-    /// Its text: its rows rejoined, as each one's [`Continuation`] says.
+    /// Its text: its rows rejoined, as each one's [`RowWrap`] says.
     pub text: String,
     /// Where each of its rows starts in `text`, by byte; the blanks a wrap
     /// dropped end the row before.
@@ -342,7 +345,7 @@ impl DrawnLine {
 /// wrapped one line into both: the line is the row before, then `gap`,
 /// then this row's text past its `indent`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Continuation {
+pub struct RowWrap {
     /// The blanks the wrap dropped at the break.
     pub gap: String,
     /// How many spaces the row starts with that the line does not have,
@@ -729,23 +732,30 @@ impl TranscriptView {
 impl Notices {
     /// The notices, oldest first.
     pub fn all(&self) -> &[ShownNotice] {
-        &self.0
+        &self.shown
+    }
+
+    /// The notices, oldest first, each with its number.
+    pub(crate) fn numbered(&self) -> impl Iterator<Item = (usize, &ShownNotice)> {
+        let numbers = self.dropped..;
+        numbers.zip(&self.shown)
     }
 
     /// Maps the notices shown through `with`, the map the session was
     /// rewritten through; one the map leaves unreadable is dropped.
     pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
         let at = Place::File { name: NOTICES_FILE };
-        self.0
+        self.shown
             .retain_mut(|notice| rewrite_value(with, &at, NOTICES_FILE, notice).is_ok());
     }
 
     /// Keeps `notice` for display, dropping the oldest past
     /// [`KEPT_NOTICES`].
     fn keep(&mut self, notice: ShownNotice) {
-        self.0.push(notice);
-        let excess = self.0.len().saturating_sub(KEPT_NOTICES);
-        self.0.drain(..excess);
+        self.shown.push(notice);
+        let excess = self.shown.len().saturating_sub(KEPT_NOTICES);
+        self.shown.drain(..excess);
+        self.dropped += excess;
     }
 }
 
@@ -756,7 +766,7 @@ pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut notices: ResMut<No
     let Some(data) = data else {
         return;
     };
-    notices.0 = jsonl::tail(&Kept(data.session.clone(), NOTICES_FILE), KEPT_NOTICES);
+    notices.shown = jsonl::tail(&Kept(data.session.clone(), NOTICES_FILE), KEPT_NOTICES);
     data.session.remove_file(NOTICES_FILE).ok();
 }
 
@@ -769,10 +779,10 @@ pub(crate) fn keep_notices(
     let (Some(reason), Some(data)) = (reason, data) else {
         return;
     };
-    if *reason != ExitReason::Reload || notices.0.is_empty() {
+    if *reason != ExitReason::Reload || notices.shown.is_empty() {
         return;
     }
-    if let Err(failure) = jsonl::write(&Kept(data.session.clone(), NOTICES_FILE), &notices.0) {
+    if let Err(failure) = jsonl::write(&Kept(data.session.clone(), NOTICES_FILE), &notices.shown) {
         warn!("could not keep the notices for the next build: {failure}");
     }
 }
@@ -783,7 +793,7 @@ pub(crate) fn keep_notices(
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
     data: Option<Res<PluginData>>,
-    (input, showing): (Query<&Editor, With<MainEditor>>, Query<&PickerState>),
+    (input, showing): (Query<&Editor, With<MainEditor>>, Query<&PickerInput>),
 ) {
     let (Some(reason), Some(data)) = (reason, data) else {
         return;
@@ -815,33 +825,12 @@ pub(crate) fn load_draft(
     }
 }
 
-/// Keeps [`Focused`] on the agent shown, and on no other.
-pub(crate) fn mark_focused(
-    shown: Res<Shown>,
-    marked: Query<Entity, With<Focused>>,
-    mut commands: Commands,
-) {
-    if !shown.is_changed() {
-        return;
-    }
-    for agent in &marked {
-        if Some(agent) != shown.0 {
-            commands.entity(agent).try_remove::<Focused>();
-        }
-    }
-    if let Some(agent) = shown.0
-        && !marked.contains(agent)
-    {
-        commands.entity(agent).try_insert(Focused);
-    }
-}
-
-/// Shows the agent a [`Focus`] names: the panes of the agent shown follow
+/// Shows the agent a [`ShowAgent`] names: the panes of the shown agent follow
 /// its newest output.
 pub(crate) fn on_focus(
-    focus: On<Focus>,
+    focus: On<ShowAgent>,
     agents: Query<(), With<Agent>>,
-    mut shown: ResMut<Shown>,
+    mut shown: ResMut<ShownAgent>,
     mut view: ResMut<TuiView>,
     mut panes: Query<(&TranscriptPane, &mut PaneState)>,
 ) {
@@ -878,7 +867,7 @@ pub(crate) fn on_scroll_to(scroll: On<ScrollTo>, mut panes: Query<&mut PaneState
 pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
     agents: Query<(&AgentId, &Conversation)>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut kept: ResMut<Notices>,
 ) {
     if notices.is_empty() {
@@ -907,7 +896,7 @@ pub(crate) fn collect_notices(
 pub(crate) fn recall_messages(
     mut recalled: MessageReader<Recalled>,
     agents: Query<(&AgentId, &Conversation)>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     (mut view, mut notices): (ResMut<TuiView>, ResMut<Notices>),
     mut input: Query<&mut Editor, With<MainEditor>>,
 ) {

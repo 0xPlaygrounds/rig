@@ -397,7 +397,7 @@ fn on_turn_start(
     let Ok((mut conversation, pending)) = agents.get_mut(agent) else {
         return;
     };
-    let start = turn.first_message;
+    let start = turn.start;
     if conversation.request(start).is_none() {
         return;
     }
@@ -432,7 +432,7 @@ fn ask_for_boundary(
     let Ok(conversation) = agents.get(agent) else {
         return;
     };
-    let start = turn.first_message;
+    let start = turn.start;
     let Some(request) = conversation.request(start) else {
         return;
     };
@@ -655,8 +655,8 @@ fn chapter_command(
             let title = clean_title(&args.args);
             let running = active.and_then(|active| turns.get(active.turn()).ok());
             match running {
-                Some(turn) if conversation.request(turn.first_message).is_some() => {
-                    let start = turn.first_message;
+                Some(turn) if conversation.request(turn.start).is_some() => {
+                    let start = turn.start;
                     let chapter = Chapter {
                         title,
                         manual: true,
@@ -679,7 +679,7 @@ fn chapter_command(
 /// note.
 #[cfg(feature = "tui")]
 fn show(agent: Entity, conversation: &Conversation, line: &ChapterLine, commands: &mut Commands) {
-    use rig_tui::{Focus, ItemRow, MainPane, ScrollTo, TranscriptItem};
+    use rig_tui::{ItemRow, MainPane, ScrollTo, ShowAgent, TranscriptItem};
     let note = conversation.asides().find(|(_, aside)| {
         aside.after == Some(line.start) && aside.author == author() && Note::of(aside).is_some()
     });
@@ -687,7 +687,7 @@ fn show(agent: Entity, conversation: &Conversation, line: &ChapterLine, commands
         Some((id, _)) => TranscriptItem::Aside(id),
         None => TranscriptItem::Message(line.start),
     };
-    commands.trigger(Focus { entity: agent });
+    commands.trigger(ShowAgent { entity: agent });
     commands.queue(move |world: &mut World| {
         let mut main = world.query_filtered::<Entity, With<MainPane>>();
         if let Ok(pane) = main.single(world) {

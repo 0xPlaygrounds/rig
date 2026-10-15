@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
+use rig_cassette::effect_log::EffectFilter;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_core::tool::ToolOutput;
@@ -9,7 +10,7 @@ use rig_harness_test_support::{
     Collected, Ended, app_in, app_on, calls, collect, commit_message, connect, first_agent,
     log_ended, reply, run_until, scratch_home, scripted_models,
 };
-use rig_telemetry::{EffectFilter, EffectLog, EffectLogPlugin};
+use rig_telemetry::{EffectLog, EffectLogPlugin};
 
 use super::*;
 
@@ -85,7 +86,7 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
         ("test/agent", &model),
         (summarizer_name, &summarizer),
     ]))
-    .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin))
+    .add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin))
     .add_plugins(StructuredCompactionPlugin)
     .insert_resource(StructuredCompaction {
         model: Some(summarizer_name.to_owned()),
@@ -186,7 +187,7 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
         reply("done"),
     ]);
     app.insert_resource(scripted_models([("test/summarizer", &summarizer)]))
-        .add_plugins((AgentPlugin, JournalPlugin, StructuredCompactionPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, StructuredCompactionPlugin))
         .insert_resource(StructuredCompaction {
             model: Some("test/summarizer".to_owned()),
             keep_user_messages: 3,

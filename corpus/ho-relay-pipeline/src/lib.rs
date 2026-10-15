@@ -374,7 +374,7 @@ fn pipe(
                 // A stage's agent at work stops its turn, and so retires.
                 (Some(agent), _) if working.contains(agent) => {
                     let reason = Some("the pipeline stopped".to_owned());
-                    commands.trigger(Interrupt {
+                    commands.trigger(StopTurn {
                         entity: agent,
                         reason,
                     });

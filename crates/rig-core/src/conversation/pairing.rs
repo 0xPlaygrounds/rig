@@ -249,7 +249,7 @@ fn merge_turns(shaped: &mut Shaped) -> bool {
     shaped.messages.len() < before
 }
 
-/// The one rule for when a tool call is answered, after pi's pairing pass.
+/// The one rule for when a tool call is answered.
 /// `None` is a turn the caller emptied; it ends waiting calls like a turn.
 ///
 /// - A result answers the first call of the turn before it still waiting

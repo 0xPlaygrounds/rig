@@ -60,7 +60,7 @@ fn a_saved_session_lists_and_any_line_of_it_reads_without_writing() {
 
     let (id, active) = read_line(&store, None, None).unwrap();
     assert_eq!(id, "b-main");
-    assert_eq!(active.branch_title(), "blue");
+    assert_eq!(active.line_title(), "blue");
     assert_eq!(active.messages().last(), Some(&Message::assistant("Blue.")));
     let (_, red_line) = read_line(&store, None, Some(kept)).unwrap();
     assert_eq!(

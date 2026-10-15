@@ -24,7 +24,7 @@ struct HoldDrafts(bool);
 struct SlowModel;
 
 fn hold_drafts(
-    drafts: Query<Entity, (With<Drafting>, Undecided)>,
+    drafts: Query<Entity, (With<Drafting>, ReadyToStart)>,
     holding: Res<HoldDrafts>,
     mut seen: Local<HashSet<Entity>>,
     mut commands: Commands,
@@ -115,7 +115,7 @@ fn source_turns_get_fragments_in_the_background() {
         .insert_resource(ProjectRoot(project.clone()))
         .insert_resource(HoldDrafts(true))
         .insert_resource(TuiTestScreen::new(100, 40))
-        .add_plugins((AgentPlugin, JournalPlugin, CommandPlugin, WriteTool))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, WriteTool))
         .add_plugins(ChangelogFragmentsPlugin)
         .add_systems(AgentPass, hold_drafts.in_set(Stage::Gate))
         .init_resource::<Ended>()
@@ -127,7 +127,7 @@ fn source_turns_get_fragments_in_the_background() {
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     // The terminal view shows the main agent, as its front would.
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     let model = "test/main".to_owned();
     app.world_mut().trigger(SetModel {
         entity: agent,

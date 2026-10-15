@@ -1,11 +1,11 @@
-//! Windows: which newest messages of a conversation a request sends. A
-//! [`Window`] says where the messages it keeps start; [`view`] moves that
+//! Recent messages: which newest messages of a conversation a request
+//! sends. A [`Recent`] rule says where the messages it keeps start; [`view`] moves that
 //! start past results whose calls it cut off, so every result it keeps
 //! still follows its call.
 //!
 //! ```
 //! use rig_core::completion::Message;
-//! use rig_memory::window::{LastMessages, view};
+//! use rig_memory::recent::{LastMessages, view};
 //!
 //! let messages = [Message::user("1"), Message::assistant("2"), Message::user("3")];
 //! assert_eq!(view(&messages, &LastMessages(2)), &messages[1..]);
@@ -18,7 +18,7 @@ use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{HeuristicTokenCounter, TokenCounter};
 
 /// Where the newest messages a request sends start.
-pub trait Window: WasmCompatSend + WasmCompatSync {
+pub trait Recent: WasmCompatSend + WasmCompatSync {
     /// The index of the first message of `messages` to keep, at most
     /// `messages.len()`.
     fn start(&self, messages: &[Message]) -> usize;
@@ -28,7 +28,7 @@ pub trait Window: WasmCompatSend + WasmCompatSync {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LastMessages(pub usize);
 
-impl Window for LastMessages {
+impl Recent for LastMessages {
     fn start(&self, messages: &[Message]) -> usize {
         messages.len().saturating_sub(self.0)
     }
@@ -56,7 +56,7 @@ impl TokenBudget {
     }
 }
 
-impl<C: TokenCounter> Window for TokenBudget<C> {
+impl<C: TokenCounter> Recent for TokenBudget<C> {
     fn start(&self, messages: &[Message]) -> usize {
         let mut budget = self.max_tokens;
         let mut start = messages.len();
@@ -72,10 +72,10 @@ impl<C: TokenCounter> Window for TokenBudget<C> {
     }
 }
 
-/// The messages of `messages` that `window` keeps, from its start moved
+/// The messages of `messages` that `recent` keeps, from its start moved
 /// forward by [`safe_start`] so no result loses its call.
-pub fn view<'m>(messages: &'m [Message], window: &dyn Window) -> &'m [Message] {
-    let start = safe_start(messages, window.start(messages));
+pub fn view<'m>(messages: &'m [Message], recent: &dyn Recent) -> &'m [Message] {
+    let start = safe_start(messages, recent.start(messages));
     messages.get(start..).unwrap_or_default()
 }
 

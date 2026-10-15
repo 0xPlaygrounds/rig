@@ -357,7 +357,7 @@ impl From<Result<Result<UserContent, String>, ToolExecutionError>> for Pasting {
 fn paste_image(
     _: On<KeyPressed>,
     (scratch, processes): (Option<Res<Scratch>>, Option<Res<Processes>>),
-    (shown, wake): (Res<Shown>, Res<Wake>),
+    (shown, wake): (Res<ShownAgent>, Res<Wake>),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -387,7 +387,7 @@ fn paste_image(
 fn paste_read(
     read: On<Insert<Pasting>>,
     pasting: Query<&Pasting>,
-    (mut input, mut pasted, shown): (Option<MainInput>, ResMut<Pasted>, Res<Shown>),
+    (mut input, mut pasted, shown): (Option<MainInput>, ResMut<Pasted>, Res<ShownAgent>),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -578,7 +578,7 @@ impl Adding<'_, '_> {
                         model: model.clone(),
                     },
                     ModelRequest::new(CompletionRequest::new(ask)).on(vision),
-                    Effect::child_of(Some(effect.id())).with_purpose("vision"),
+                    Effect::with_parent_id(Some(effect.id())).with_purpose("vision"),
                     ForAgent(agent),
                     HoldOf(message),
                 ));
@@ -615,7 +615,7 @@ fn time_out(describe: Entity, secs: u64, commands: &mut Commands) {
 /// image and the model, or the note that the model cannot see the image
 /// when the description failed, and lets the message go.
 fn take_descriptions(
-    described: Query<(Entity, &Describing, &Outcome), (Unreviewed, ModelCalls, With<HoldOf>)>,
+    described: Query<(Entity, &Describing, &Outcome), (ReadyToSettle, ModelCalls, With<HoldOf>)>,
     mut messages: Query<(&mut Incoming, &ForAgent), IncomingMessages>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,

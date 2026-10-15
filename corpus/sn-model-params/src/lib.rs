@@ -615,7 +615,7 @@ impl Fit<'_, '_> {
             self.table.lock().insert(effect.id(), headers);
             self.commands.entity(call).insert(Headed);
         }
-        let Ok((_, _, dropped)) = self.starts.sent(&model, adapters, agent) else {
+        let Ok(dropped) = self.starts.dropped(&model, adapters, agent) else {
             return;
         };
         for option in dropped {

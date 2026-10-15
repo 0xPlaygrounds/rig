@@ -234,7 +234,7 @@ fn elide(
         let Some(history) = &mut call.history else {
             continue;
         };
-        let first = conversation.start_of(turn.first_message);
+        let first = conversation.start_of(turn.start);
         let eligible = answered(conversation.messages().get(..first).unwrap_or_default());
         let stubs = stubs(
             history.messages(),

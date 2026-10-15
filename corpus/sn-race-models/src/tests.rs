@@ -16,7 +16,7 @@ use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, calls, log_ended, reply, run_until};
-use rig_telemetry::{SessionSpending, UsagePlugin};
+use rig_telemetry::{SessionUsage, UsagePlugin};
 
 use super::*;
 
@@ -139,7 +139,7 @@ fn race(models: Models, over: &[&str]) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(models)
         .insert_resource(races)
-        .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin, RaceModelsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin, RaceModelsPlugin))
         .add_open_tool("probe", "Probe.", ToolOptions::default(), probed)
         .init_resource::<Probes>()
         .init_resource::<Ended>()
@@ -246,7 +246,7 @@ fn the_faster_member_answers_and_the_slower_are_cancelled_but_paid_for() {
     let origin = origin.unwrap_or_default();
     assert!(origin.contains("model-y"), "the reply names B: {origin}");
     // The cancelled requests are counted at A's price.
-    let session = &app.world().resource::<SessionSpending>().0;
+    let session = &app.world().resource::<SessionUsage>().0;
     let spent_a = session.models.get(A).cloned().unwrap_or_default();
     assert_eq!(spent_a.calls, 2, "{session:?}");
     assert!(spent_a.tokens.input_tokens.unwrap_or_default() > 0);
@@ -358,7 +358,7 @@ fn a_winner_that_fails_mid_stream_is_replaced_by_the_other_member_alone() {
         "{notices:?}"
     );
     // B's cut-off reply and A's cancelled request are paid for too.
-    let session = &app.world().resource::<SessionSpending>().0;
+    let session = &app.world().resource::<SessionUsage>().0;
     let calls_to = |model: &str| session.models.get(model).map(|spent| spent.calls);
     assert_eq!(
         (calls_to(A), calls_to(B)),

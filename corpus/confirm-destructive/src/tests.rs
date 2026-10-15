@@ -26,7 +26,7 @@ fn start(
     }
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ShellTool,
         ConfirmDestructivePlugin,
     ))

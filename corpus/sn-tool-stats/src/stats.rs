@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use rig_harness::rig_core::effect::{Disposition, EffectKind, EffectRecord, Outcome};
+use rig_harness::rig_core::effect::{Answered, Disposition, EffectKind, EffectRecord};
 use rig_harness::rig_core::error::ErrorKind;
 use serde::{Deserialize, Serialize};
 
@@ -76,7 +76,7 @@ impl Totals {
             _ if cancelled => totals.cancelled = 1,
             Err(report) if report.refusal => totals.refused = 1,
             Err(report) => totals.error(&report.message),
-            Ok(Outcome::ToolResult { result }) => {
+            Ok(Answered::ToolResult { result }) => {
                 totals.sized = 1;
                 totals.result_bytes = result.output().render().len() as u64;
                 if result.is_refused() {

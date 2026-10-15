@@ -43,7 +43,7 @@ fn start(
         .insert_resource(ProjectRoot(dir.to_path_buf()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             EditTool,
             WriteTool,
             SubagentsPlugin,

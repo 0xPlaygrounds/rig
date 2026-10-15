@@ -28,8 +28,9 @@ pub trait SignIn: Send + Sync + 'static {
         spec: &ModelSpec,
         transport: &Transport,
     ) -> Option<Result<ErasedHandler, ConnectError>>;
-    /// The plan a sign-in to which serves `spec`, such as `ChatGPT`, for
-    /// pickers; signed in or not.
+    /// The name of the subscription plan through which this sign-in would
+    /// serve `spec`, such as `"ChatGPT"`, whether or not the user is signed
+    /// in; for model pickers.
     fn plan(&self, spec: &ModelSpec) -> Option<&'static str>;
 }
 
@@ -285,8 +286,8 @@ impl Connector {
     /// it, and that model as an effect handler: from the provider
     /// registered for its vendor, else its provider's client built from the
     /// environment, on the shared HTTP client of the `reqwest` feature, or,
-    /// without a key in either, the handler of a sign-in that serves it. The HTTP client is wrapped by [`Self::wrap_http`]'s
-    /// wrappers.
+    /// without a key in either, the handler of a sign-in that serves it. The
+    /// HTTP client is wrapped by [`Self::wrap_http`]'s wrappers.
     ///
     /// # Errors
     ///
@@ -325,7 +326,8 @@ impl Connector {
         }
     }
 
-    /// The plan a sign-in to which serves `spec`, if any.
+    /// The plan of the first sign-in that would serve `spec`
+    /// ([`SignIn::plan`]).
     pub fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
         self.sign_ins.iter().find_map(|sign_in| sign_in.plan(spec))
     }
@@ -363,22 +365,38 @@ impl Connector {
     /// picker can mark "no key needed". The check builds the handler
     /// exactly as a request would, once per provider.
     pub fn reachable(&self) -> Vec<&ModelSpec> {
-        let mut usable: HashMap<ProviderId, bool> = HashMap::new();
-        let mut models: Vec<&ModelSpec> = self
+        let statuses = self.statuses().into_iter();
+        let usable = statuses.filter(|(_, status)| *status == ModelStatus::Usable);
+        usable.map(|(spec, _)| spec).collect()
+    }
+
+    /// Every catalog model with its [`ModelStatus`]: first the
+    /// [`reachable`](Self::reachable) ones in that order, then the others in
+    /// catalog order. Each provider is checked once.
+    pub fn statuses(&self) -> Vec<(&ModelSpec, ModelStatus)> {
+        let mut checked: HashMap<ProviderId, ModelStatus> = HashMap::new();
+        let mut statuses: Vec<(&ModelSpec, ModelStatus)> = self
             .catalog
             .iter()
-            .filter(|spec| spec.tools)
-            .filter(|spec| {
-                *usable
-                    .entry(spec.provider)
-                    .or_insert_with(|| self.handler(spec).is_ok())
+            .map(|spec| {
+                let status = match spec.tools {
+                    false => ModelStatus::NoTools,
+                    true => checked
+                        .entry(spec.provider)
+                        .or_insert_with(|| self.status(spec))
+                        .clone(),
+                };
+                (spec, status)
             })
             .collect();
         // Stable: catalog order within each group.
-        models.sort_by_key(|spec| {
-            !self.is_provided(spec.provider) && !spec.provider.requires_credential()
+        statuses.sort_by_key(|(spec, status)| match status {
+            ModelStatus::Usable => {
+                u8::from(!self.is_provided(spec.provider) && !spec.provider.requires_credential())
+            }
+            _ => 2,
         });
-        models
+        statuses
     }
 }
 

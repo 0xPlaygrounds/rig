@@ -102,7 +102,7 @@ impl ReplaySource {
 
     /// The source the options name, kept in the directory they name, read
     /// through `stores`.
-    fn from_invocation(invoked: &Invoked, stores: &SessionStores) -> io::Result<Self> {
+    fn from_invocation(invoked: &Invoked, stores: &StoreOpener) -> io::Result<Self> {
         let dir = invoked.flag_value(REPLAY).unwrap_or_default();
         let flags = ReplayFlags {
             continue_live: invoked.flag(CONTINUE_LIVE),
@@ -428,7 +428,7 @@ impl Replay {
 
 /// The agent a `subagent` effect's answer names.
 fn spawned_agent(record: &EffectRecord) -> Option<Arc<str>> {
-    let Ok(effect::Outcome::Custom { payload }) = &record.outcome else {
+    let Ok(effect::Answered::Custom { payload }) = &record.outcome else {
         return None;
     };
     (record.kind.name() == SUBAGENT).then_some(())?;
@@ -439,7 +439,7 @@ fn spawned_agent(record: &EffectRecord) -> Option<Arc<str>> {
 fn said(record: &EffectRecord) -> Option<Step> {
     let message = MessageRecord::read(&record.kind)?;
     let delivered = matches!(&record.outcome,
-        Ok(effect::Outcome::Custom { payload }) if payload == "delivered");
+        Ok(effect::Answered::Custom { payload }) if payload == "delivered");
     (delivered && message.author.kind == AuthorKind::User).then(|| Step {
         act: Act::Say(message),
         at_ms: recorded_at(record),
@@ -661,7 +661,7 @@ impl Plugin for SessionReplayPlugin {
     fn finish(&self, app: &mut App) {
         let source = if app.runs_front(REPLAY) {
             let invoked = app.world().get_resource::<Invoked>().cloned();
-            let stores = app.world().get_resource::<SessionStores>().cloned();
+            let stores = app.world().get_resource::<StoreOpener>().cloned();
             let stores = stores.unwrap_or_default();
             let source = ReplaySource::from_invocation(&invoked.unwrap_or_default(), &stores);
             app.add_observer(report_and_exit);
@@ -754,7 +754,7 @@ fn report_and_exit(
 /// user message, once the session is restored.
 fn start(
     mut replay: ResMut<Replay>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     time: Res<Time<Real>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -762,7 +762,7 @@ fn start(
     if replay.status != ReplayStatus::Waiting {
         return;
     }
-    let Some(agent) = primary(&agents) else {
+    let Some(agent) = main_agent(&agents) else {
         return;
     };
     replay.primary = Some(agent);
@@ -999,7 +999,7 @@ type Answerable<'a> = (
 /// calls included; so is everything after the replay ended, as no record
 /// has it. With `continue_live` they are left to start live.
 fn answer_from_record(
-    mut effects: Query<Answerable, (Undecided, Without<Incoming>, Without<ExitRequest>)>,
+    mut effects: Query<Answerable, (ReadyToStart, Without<Incoming>, Without<ExitRequest>)>,
     (replayable, again): (Query<&Replayable>, Query<&RunsAgain>),
     replay: Res<Replay>,
     mut commands: Commands,
@@ -1040,7 +1040,7 @@ fn answer_from_record(
                     answers.time(effect.id(), &record);
                 }
                 decision.decide(Decider::plugin("session-replay"), Outcome(record.outcome));
-                if let Some(published) = record.tool_output {
+                if let Some(published) = record.published {
                     commands.entity(entity).insert(Published(published));
                 }
             }
@@ -1059,7 +1059,7 @@ fn answer_from_record(
 /// With `--speed`, holds each answer from the record as long as the
 /// recorded effect ran.
 fn keep_recorded_timing(
-    answered: Query<(Entity, &Effect), Unreviewed>,
+    answered: Query<(Entity, &Effect), ReadyToSettle>,
     replay: Res<Replay>,
     mut commands: Commands,
 ) {

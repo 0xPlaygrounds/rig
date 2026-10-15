@@ -218,7 +218,7 @@ fn annotate_reads(
             &CallOf,
             Option<&Fetched>,
         ),
-        (Unreviewed, ToolCalls, Without<Annotated>),
+        (ReadyToSettle, ToolCalls, Without<Annotated>),
     >,
     mut turns: Query<&mut StaleShown>,
     mut annotations: ResMut<Annotations>,

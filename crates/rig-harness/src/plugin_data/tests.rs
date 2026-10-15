@@ -6,14 +6,12 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, SessionId};
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
-use rig_ecs::journal::{JournalPlugin, SessionStore};
+use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
 use rig_harness_test_support::scratch_home;
 use rig_memory::DirStore;
 
 use super::{PluginData, project_dir};
-use crate::host::session::{
-    ForkSession, SessionForked, SessionPaths, SessionPlugin, SessionStores,
-};
+use crate::host::session::{ForkSession, SessionForked, SessionPaths, SessionPlugin, StoreOpener};
 use crate::services::{ProjectRoot, RigHome};
 
 /// The session forked last.
@@ -46,7 +44,7 @@ fn a_session_file_follows_a_fork_and_the_other_places_are_in_the_home() {
         .insert_resource(SessionPaths(session.clone()))
         .insert_resource(SessionStore::new(store))
         .insert_resource(ProjectRoot(home.root().to_owned()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .init_resource::<Forked>()
         .add_plugins(SessionPlugin)
         .add_systems(Last, keep_forked);
@@ -63,14 +61,14 @@ fn a_session_file_follows_a_fork_and_the_other_places_are_in_the_home() {
         data.session.files().ok(),
         Some(vec!["notes/today.md".to_owned()])
     );
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     // The fork is written in `Last`, and read the frame after.
     app.update();
     app.update();
     let to = app.world().resource::<Forked>().0.clone();
     let read = |dir: &std::path::Path| fs::read_to_string(dir.join("notes/today.md")).ok();
     let in_fork = to.and_then(|to| {
-        let copy = PluginData::of(&SessionStores::default(), &home.session(&to)).ok()?;
+        let copy = PluginData::of(&StoreOpener::default(), &home.session(&to)).ok()?;
         copy.read_file("notes/today.md").ok()
     });
     let project = read(&project_dir(&home, home.root(), None));

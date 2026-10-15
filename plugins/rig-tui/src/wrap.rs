@@ -7,7 +7,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use crate::Continuation;
+use crate::RowWrap;
 
 /// Markers after which a wrapped line's continuation rows are indented, so
 /// a list item or a tool result keeps its left edge.
@@ -17,7 +17,7 @@ const HANGING_MARKERS: [&str; 8] = ["•", "-", "*", "›", "⎿", "●", "│",
 /// wide, each with how it continues the row before it (`None` for the
 /// first). A word wider than a row is broken. Continuation rows are
 /// indented like the text after the line's leading spaces and list marker.
-pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<Continuation>)> {
+pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap>)> {
     let width = width.max(1);
     let cells: Vec<(&str, Style)> = line
         .styled_graphemes(Style::default())
@@ -32,7 +32,7 @@ pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<Continu
     let mut row: Vec<(&str, Style)> = Vec::new();
     let mut row_width = 0;
     // How the row being filled continues the one before it.
-    let mut joint: Option<Continuation> = None;
+    let mut joint: Option<RowWrap> = None;
     for word in words(&cells) {
         let word_width: usize = word.iter().map(|(symbol, _)| symbol.width()).sum();
         let blank = word.iter().all(|(symbol, _)| symbol.trim().is_empty());
@@ -56,7 +56,7 @@ pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<Continu
             if blank {
                 gap.extend(word.iter().map(|(symbol, _)| *symbol));
             }
-            joint = Some(Continuation {
+            joint = Some(RowWrap {
                 gap: gap.concat(),
                 indent,
             });
@@ -71,7 +71,7 @@ pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<Continu
                 row.clear();
                 row.extend(std::iter::repeat_n((" ", Style::default()), indent));
                 row_width = indent;
-                joint = Some(Continuation {
+                joint = Some(RowWrap {
                     gap: String::new(),
                     indent,
                 });

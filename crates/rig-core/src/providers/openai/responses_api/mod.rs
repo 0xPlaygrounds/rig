@@ -115,7 +115,7 @@ fn result_output(content: &[ToolResultContent]) -> Result<Value, EncodeError> {
 }
 
 /// The custom tools of a request: a call to one is a `custom_tool_call`,
-/// answered by a `custom_tool_call_output`, as pi decides by name. A result
+/// answered by a `custom_tool_call_output`, decided by name. A result
 /// answering a call the request sends takes that call's kind.
 struct Custom {
     /// The custom tools the request declares.
@@ -126,9 +126,9 @@ struct Custom {
 
 /// The input items of `history` for `target`, which addresses `model`. A
 /// turn the target model produced keeps its provider items (the adapter
-/// cleared the rest), sent as pi sends them: a current item verbatim with
-/// its call id spelled, an edited block rebuilt under its item's identity,
-/// and any other block rebuilt as pi rebuilds another model's turn: text as
+/// cleared the rest): a current item verbatim with its call id spelled, an
+/// edited block rebuilt under its item's identity, and any other block
+/// rebuilt as another model's turn is: text as
 /// a completed output message under a synthetic id, and a call with no
 /// item id. Reasoning only its item can carry goes only with its identity.
 /// A `stateless` request resolves no stored item, so reasoning without its
@@ -542,7 +542,8 @@ pub struct ResponsesToolDefinition {
     /// Tool name
     #[serde(default)]
     pub name: String,
-    /// Parameters - this should be a JSON schema. Strict function tools must use OpenAI's supported strict schema subset.
+    /// The parameters' JSON schema. A strict function tool keeps to OpenAI's
+    /// strict schema subset.
     #[serde(default)]
     pub parameters: serde_json::Value,
     /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]

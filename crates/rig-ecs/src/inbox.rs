@@ -8,7 +8,7 @@
 //!
 //! At Start the kernel accepts what is left, in the order it was sent: an
 //! idle agent takes a message into its conversation and starts a turn with
-//! it, unless it is a [`DeliveryMode::Note`]; a busy agent keeps it until
+//! it, unless it is a [`DeliveryMode::Inform`]; a busy agent keeps it until
 //! the turn's next call ([`DeliveryMode::Steer`]) or its end
 //! ([`DeliveryMode::Queue`]). A user's `/` line ([`Incoming::command`]) is
 //! text to the kernel: an app that has slash commands, such as
@@ -43,12 +43,13 @@ use web_time::SystemTime;
 use super::agent::{
     ActiveTurn, Agent, CallOf, Conversation, EffectParent, Notice, TurnOf, TurnOutcome,
 };
-use super::calls::Wake;
 use super::model::Connection;
+#[cfg(doc)]
+use super::stage::Stage;
 use super::stage::{
-    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided,
-    failed_in, moved,
+    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, ReadyToStart, Settled, Started, moved,
 };
+use super::tasks::Wake;
 use super::turn::{Exiting, TurnCall, spawn_turn_call, take_outcome};
 
 /// When a message goes to the agent's model, and whether it asks for an
@@ -67,7 +68,8 @@ pub enum DeliveryMode {
     /// goes with the agent's next model call, whenever one is made, and
     /// never makes one. An idle agent keeps it in its conversation for
     /// the next turn.
-    Note,
+    #[serde(rename = "note")]
+    Inform,
 }
 
 /// Content read by a message's sender, such as an image file the user
@@ -258,12 +260,12 @@ pub struct Recalled {
     pub why: Option<String>,
 }
 
-/// On a message ([`Incoming`]) the kernel delivered into a turn: the turn
-/// whose model call it went with, the turn it started or the running turn
-/// it steered or carried on. Inserted when the message goes into the
-/// conversation, with its answer; read-only, so a turn's end does not wait
-/// for its messages. A note to an idle agent, and what a turn that ended
-/// some other way puts in the conversation, go with no turn and have none.
+/// On a message ([`Incoming`]) the kernel delivered into a turn: the turn whose
+/// model call it went with, the turn it started or the running turn it steered
+/// or carried on. Inserted when the message goes into the conversation, with
+/// its answer. It is no hold: a turn's end does not wait for it. An
+/// `Inform` message to an idle agent, and what a turn that ended some other way
+/// puts in the conversation, go with no turn and have none.
 #[derive(Component, Reflect, Clone, Copy, Debug)]
 #[reflect(Component, Clone, Debug)]
 pub struct DeliveredIn(pub Entity);
@@ -356,26 +358,17 @@ fn sent(mut world: DeferredWorld, context: HookContext) {
     }
 }
 
-/// How the kernel answered a message it took: `delivered`, `recalled` or
-/// `empty`.
-fn handled(how: &'static str) -> Outcome {
-    Outcome::custom(how)
-}
-
-/// Accepts each message about to start, in the order they were sent,
-/// unless a Gate system failed this pass, in [`Stage::Start`]: gives an
-/// idle agent the message at once and starts a turn with it, with every message accepted with it, unless it
-/// is a note, which is kept for the next turn; and keeps it, [`Started`],
-/// for a busy agent.
+/// Accepts each message about to start, in the order they were sent, unless a
+/// Gate system failed this pass, in [`Stage::Start`]: gives an idle agent the
+/// message at once and starts a turn with it, with every message accepted with
+/// it, unless it is an `Inform` message, which is kept for the next turn; and
+/// keeps it, [`Started`], for a busy agent.
 pub(crate) fn accept(
-    ready: Query<(Entity, &Effect, &Incoming, Option<&ForAgent>), Undecided>,
+    ready: Query<(Entity, &Effect, &Incoming, Option<&ForAgent>), ReadyToStart>,
     mut agents: Query<(&mut Conversation, Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if failed_in(Stage::Gate).is_some() {
-        return;
-    }
     let mut ready: Vec<_> = ready.iter().collect();
     ready.sort_unstable_by_key(|(_, effect, ..)| effect.id());
     let at = SystemTime::now();
@@ -391,7 +384,9 @@ pub(crate) fn accept(
             continue;
         };
         if message.is_empty() {
-            commands.entity(entity).try_insert_if_new(handled("empty"));
+            commands
+                .entity(entity)
+                .try_insert_if_new(Outcome::custom("empty"));
             continue;
         }
         let joins = starting.get(&agent).copied();
@@ -401,9 +396,9 @@ pub(crate) fn accept(
             continue;
         }
         let spec = connection.map(|connection| &*connection.spec);
-        // A note to an idle agent waits for the next turn.
+        // An `Inform` message to an idle agent waits for the next turn.
         let turn = match joins {
-            None if message.mode == DeliveryMode::Note => None,
+            None if message.mode == DeliveryMode::Inform => None,
             None => Some(commands.spawn(TurnOf(agent)).id()),
             joins => joins,
         };
@@ -430,7 +425,7 @@ pub(crate) fn accept(
                     TurnCall,
                     CallOf(turn),
                     ForAgent(agent),
-                    Effect::child_of(Some(effect.id())),
+                    Effect::with_parent_id(Some(effect.id())),
                 ));
             }
             (Some(_), Some(_)) => {}
@@ -452,7 +447,7 @@ pub(crate) fn carry_on_accepted(
 ) {
     let mut carried = HashSet::new();
     for (message, &ForAgent(agent)) in &accepted {
-        if message.mode == DeliveryMode::Note || !carried.insert(agent) {
+        if message.mode == DeliveryMode::Inform || !carried.insert(agent) {
             continue;
         }
         let Ok((mut conversation, connection, active)) = agents.get_mut(agent) else {
@@ -517,12 +512,14 @@ impl Inboxes<'_, '_> {
         self.on_the_way
             .iter_many(work)
             .flatten()
-            .any(|(message, decision)| message.mode != DeliveryMode::Note && !decision.is_decided())
+            .any(|(message, decision)| {
+                message.mode != DeliveryMode::Inform && !decision.is_decided()
+            })
     }
 }
 
-/// What of `waiting` carries a turn on that would end: the notes with the
-/// steering messages, else with everything queued, in the order they came;
+/// What of `waiting` carries a turn on that would end: the Inform messages
+/// with the steering messages, else with everything queued, in the order they came;
 /// none when neither waits.
 pub(crate) fn carry_on(waiting: Vec<(Entity, &Incoming)>) -> Option<Vec<(Entity, &Incoming)>> {
     let steering = waiting
@@ -535,7 +532,7 @@ pub(crate) fn carry_on(waiting: Vec<(Entity, &Incoming)>) -> Option<Vec<(Entity,
     let next: Vec<_> = waiting
         .into_iter()
         .filter(|(_, message)| {
-            matches!(message.mode, DeliveryMode::Note) || message.mode == carries
+            matches!(message.mode, DeliveryMode::Inform) || message.mode == carries
         })
         .collect();
     next.iter()
@@ -595,7 +592,7 @@ pub(crate) fn settle_unsent(
         } else if message.author.kind == AuthorKind::User {
             commands
                 .entity(entity)
-                .try_insert_if_new(handled("recalled"));
+                .try_insert_if_new(Outcome::custom("recalled"));
             typed.entry(agent).or_default().push(message.text().trim());
         } else {
             let spec = connection.map(|connection| &*connection.spec);
@@ -621,9 +618,8 @@ pub(crate) fn settle_unsent(
     }
 }
 
-/// What a message's record says of it, its kind's payload: its text
-/// parts, joined, author and mode, without its attachments. The record's kind is the
-/// custom kind `message`.
+/// The payload of a message's effect record (custom kind `message`): its
+/// joined text, author and mode, without its attachments.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageRecord {
     /// The text.
@@ -675,9 +671,9 @@ pub(crate) fn deliver<'a>(
     (into, commands): (Option<Entity>, &mut Commands),
 ) {
     for (entity, message) in messages {
-        pending(agent, spec, [message], conversation, notices);
+        push_messages(agent, spec, [message], conversation, notices);
         let mut delivered = commands.entity(entity);
-        delivered.try_insert_if_new(handled("delivered"));
+        delivered.try_insert_if_new(Outcome::custom("delivered"));
         if let Some(turn) = into {
             delivered.try_insert(DeliveredIn(turn));
         }
@@ -698,7 +694,7 @@ fn texts(parts: &[MessagePart]) -> impl Iterator<Item = &str> {
 /// first text headed by its author's line when it is not the user's own.
 /// The author is kept, and logged, unless it is the plain user, so a
 /// user's message with a title keeps it.
-pub(crate) fn pending<'a>(
+pub(crate) fn push_messages<'a>(
     agent: Entity,
     spec: Option<&ModelSpec>,
     messages: impl IntoIterator<Item = &'a Incoming>,

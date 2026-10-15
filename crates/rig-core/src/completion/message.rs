@@ -238,8 +238,8 @@ impl AssistantContent {
 
     /// Whether the block has nothing to send, so replay drops it: blank text
     /// or reasoning, and redacted reasoning, without a provider item that is
-    /// still current (with one, its identity pairs it with what follows, and
-    /// pi replays it whatever its text), and an opaque item that does not
+    /// still current (with one, its identity pairs it with what follows, so
+    /// it replays whatever its text), and an opaque item that does not
     /// replay.
     pub fn is_blank(&self) -> bool {
         match self {
@@ -911,6 +911,7 @@ impl ImageMediaType {
 }
 
 impl DocumentMediaType {
+    /// Whether it is source code (JavaScript or Python).
     pub fn is_code(&self) -> bool {
         matches!(self, Self::Javascript | Self::Python)
     }
@@ -1450,14 +1451,20 @@ impl From<Vec<UserContent>> for Message {
     }
 }
 
+/// Which tools a model may call: any (`Auto`), none, at least one, or only the named ones.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolChoice {
+    /// The model decides.
     #[default]
     Auto,
+    /// No tool.
     None,
+    /// At least one tool.
     Required,
+    /// Only these tools.
     Specific {
+        /// The tools' names.
         function_names: Vec<ToolName>,
     },
 }

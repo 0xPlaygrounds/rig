@@ -115,7 +115,7 @@ pub struct RecallIndex(Arc<Mutex<Index>>);
 #[derive(Clone)]
 struct Place {
     home: Home,
-    stores: SessionStores,
+    stores: StoreOpener,
     current: Option<PathBuf>,
     project: PathBuf,
 }
@@ -123,7 +123,7 @@ struct Place {
 impl Place {
     fn of(
         home: &RigHome,
-        stores: Option<&SessionStores>,
+        stores: Option<&StoreOpener>,
         paths: Option<&SessionPaths>,
         project: &ProjectRoot,
     ) -> Self {
@@ -619,7 +619,7 @@ impl From<Result<(), ToolExecutionError>> for Warmed {
 
 fn warm_up(
     index: Res<RecallIndex>,
-    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
+    (home, stores): (Res<RigHome>, Option<Res<StoreOpener>>),
     paths: Option<Res<SessionPaths>>,
     project: Res<ProjectRoot>,
     wake: Res<Wake>,
@@ -683,7 +683,7 @@ fn answer(result: Result<Result<String, String>, ToolExecutionError>) -> ToolRes
 fn recall(
     called: On<ToolCalled<RecallArgs>>,
     index: Res<RecallIndex>,
-    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
+    (home, stores): (Res<RigHome>, Option<Res<StoreOpener>>),
     paths: Option<Res<SessionPaths>>,
     project: Res<ProjectRoot>,
     wake: Res<Wake>,
@@ -714,7 +714,7 @@ fn recall(
 fn open(
     called: On<ToolCalled<OpenArgs>>,
     index: Res<RecallIndex>,
-    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
+    (home, stores): (Res<RigHome>, Option<Res<StoreOpener>>),
     paths: Option<Res<SessionPaths>>,
     project: Res<ProjectRoot>,
     wake: Res<Wake>,
@@ -771,7 +771,7 @@ struct PendingRecall(String);
 fn recall_command(
     In(args): In<CommandArgs>,
     index: Res<RecallIndex>,
-    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
+    (home, stores): (Res<RigHome>, Option<Res<StoreOpener>>),
     paths: Option<Res<SessionPaths>>,
     project: Res<ProjectRoot>,
     wake: Res<Wake>,

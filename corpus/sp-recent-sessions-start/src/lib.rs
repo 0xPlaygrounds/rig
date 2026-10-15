@@ -27,15 +27,15 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
-use rig_harness::rig_ecs::journal::{Committed, SessionRestored};
+use rig_harness::rig_ecs::session_log::{ConversationChanged, SessionRestored};
 use rig_harness::rig_memory::{META, SessionMeta, read_line};
 use rig_harness::rig_tools::ago;
 use rig_sessions::SwitchSession;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::{
-    InputSystems, KeyFocus, KeyInput, PaneKeys, Placement, TerminalEvents, TranscriptPane,
-    TranscriptSource, TuiInputState, TuiKeys, TuiPanel,
+    InputContext, InputSystems, KeyFocus, KeyInput, PaneKeys, PendingInput, Placement,
+    TranscriptPane, TranscriptSource, TuiKeys, TuiPanel,
 };
 use serde::{Deserialize, Serialize};
 
@@ -56,7 +56,7 @@ impl Plugin for RecentSessionsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<StartScreenSettings>("recent_sessions")
             .init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
+            .init_resource::<StoreOpener>()
             .init_resource::<ProjectRoot>()
             .init_resource::<KeyFocus>()
             .saved_as::<SessionShape>(SHAPE)
@@ -65,7 +65,7 @@ impl Plugin for RecentSessionsPlugin {
             .add_systems(
                 Update,
                 (
-                    track_shape.run_if(on_message::<Committed>),
+                    track_shape.run_if(on_message::<ConversationChanged>),
                     read_only_closed.run_if(resource_changed::<KeyFocus>),
                 ),
             )
@@ -120,7 +120,7 @@ pub struct RecentSession {
 impl RecentSession {
     /// The saved session in `dir`, from its listing alone; `None` when it
     /// is not a saved session.
-    pub fn read(dir: &SessionDir, stores: &SessionStores) -> Option<Self> {
+    pub fn read(dir: &SessionDir, stores: &StoreOpener) -> Option<Self> {
         let entry = SessionEntry::read(dir, stores)?;
         let unreadable = match stores.open(dir) {
             Err(failure) => Some(failure.to_string()),
@@ -132,7 +132,7 @@ impl RecentSession {
                 Err(failure) => Some(failure.to_string()),
             },
         };
-        let shape = entry.listing.meta.data.get(SHAPE);
+        let shape = entry.listing.meta.listed.get(SHAPE);
         let shape = shape.and_then(|saved| serde_json::from_value(saved.value.clone()).ok());
         Some(Self {
             entry,
@@ -295,7 +295,7 @@ fn start(
     (start, invoked): (Option<Res<AppStart>>, Option<Res<Invoked>>),
     answerers: Answerers,
     conversations: Query<&Conversation, With<Agent>>,
-    (home, stores, paths): (Res<RigHome>, Res<SessionStores>, Option<Res<SessionPaths>>),
+    (home, stores, paths): (Res<RigHome>, Res<StoreOpener>, Option<Res<SessionPaths>>),
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -354,8 +354,8 @@ fn listed(
 /// toggles every project, `n` closes it; other characters do nothing, so
 /// one filter applies. Enter on an unreadable session says why and stays.
 fn screen_keys(
-    mut events: ResMut<TerminalEvents>,
-    state: Res<TuiInputState>,
+    mut events: ResMut<PendingInput>,
+    state: Res<InputContext>,
     mut screens: Query<(Entity, &mut StartScreen, &mut Picker)>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -490,7 +490,7 @@ struct ReadOnly {
 fn chose_elsewhere(
     picked: On<Picked>,
     asked: Query<&Elsewhere>,
-    (home, stores, wake): (Res<RigHome>, Res<SessionStores>, Res<Wake>),
+    (home, stores, wake): (Res<RigHome>, Res<StoreOpener>, Res<Wake>),
     mut commands: Commands,
 ) {
     let Ok(elsewhere) = asked.get(picked.entity) else {
@@ -521,7 +521,7 @@ fn chose_elsewhere(
         }
         Some(1) => {
             let asker = commands.spawn(Forking(screen, at)).id();
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: Some(elsewhere.id.clone()),
                 cut: ForkCut::Whole,
                 asker: Some(asker),
@@ -619,8 +619,8 @@ fn track_shape(
     mut commands: Commands,
 ) {
     let main = agents.iter().min_by(|a, b| {
-        rig_harness::primary::primary_order(a.2, a.0)
-            .cmp(&rig_harness::primary::primary_order(b.2, b.0))
+        rig_harness::rig_memory::main_order(a.2, &a.0.0)
+            .cmp(&rig_harness::rig_memory::main_order(b.2, &b.0.0))
     });
     let Some((_, conversation, _)) = main else {
         return;

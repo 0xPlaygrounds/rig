@@ -11,7 +11,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_memory::{Place, rewrite_value};
 
 /// How many warnings and errors [`Diagnostics`] keeps.
-pub const KEPT: usize = 100;
+pub const MAX_DIAGNOSTICS: usize = 100;
 
 /// Keeps the warnings and errors the log passes on in [`Diagnostics`].
 #[derive(Default)]
@@ -21,7 +21,7 @@ impl Plugin for DiagnosticsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Diagnostics>()
             .add_message::<SessionRewritten>()
-            .add_systems(Last, collect.run_if(resource_exists::<LogEvents>))
+            .add_systems(Last, collect.run_if(resource_exists::<LoggedQueue>))
             .add_systems(
                 Update,
                 follow_rewrites.run_if(on_message::<SessionRewritten>),
@@ -35,7 +35,7 @@ impl Plugin for DiagnosticsPlugin {
 pub struct Diagnostics(pub VecDeque<Logged>);
 
 fn collect(
-    events: Res<LogEvents>,
+    events: Res<LoggedQueue>,
     plugins: Query<&Name, With<PluginSource>>,
     mut diagnostics: ResMut<Diagnostics>,
 ) {
@@ -49,7 +49,7 @@ fn collect(
             .next()
             .filter(|_| owners.next().is_none())
             .map(Name::to_string);
-        if diagnostics.0.len() == KEPT {
+        if diagnostics.0.len() == MAX_DIAGNOSTICS {
             diagnostics.0.pop_front();
         }
         diagnostics.0.push_back(logged);

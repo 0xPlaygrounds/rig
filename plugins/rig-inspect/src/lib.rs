@@ -1,8 +1,7 @@
 //! `inspect`, an optional plugin of the rig-harness agent: the agent reads
 //! its own world through the Bevy Remote Protocol, answered in process by
 //! Bevy's `RemotePlugin`, with no transport and no port. Bevy answers each
-//! request; rig writes no query handler. [`InspectPlugin`] is listed in
-//! `plugins.toml` as `crate = "rig-inspect"`.
+//! request; rig writes no query handler.
 //!
 //! Only read-only methods are sent: a method is read-only when its system's
 //! entity has [`ReadOnlyMethod`]. This plugin marks Bevy's nine read-only
@@ -10,7 +9,17 @@
 //! [`RemoteMethods::insert`] (in `finish`, or listed after this plugin)
 //! marks it the same way:
 //!
-//! ```ignore
+//! ```no_run
+//! use bevy_remote::{BrpResult, RemoteMethodSystemId, RemoteMethods};
+//! use rig_harness::prelude::*;
+//! use rig_inspect::ReadOnlyMethod;
+//! use serde_json::Value;
+//!
+//! fn count_calls(In(_): In<Option<Value>>) -> BrpResult {
+//!     Ok(Value::Null)
+//! }
+//!
+//! let mut app = App::new();
 //! let id = app.world_mut().register_system(count_calls);
 //! app.world_mut().entity_mut(id.entity()).insert(ReadOnlyMethod);
 //! app.world_mut().resource_mut::<RemoteMethods>()
@@ -32,7 +41,7 @@ use bevy_remote::schemas::SchemaTypesMetadata;
 use bevy_remote::{BrpMessage, BrpResult, BrpSender, RemoteMethodSystemId, RemoteMethods};
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::calls::Running;
+use rig_harness::rig_ecs::tasks::Running;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value};

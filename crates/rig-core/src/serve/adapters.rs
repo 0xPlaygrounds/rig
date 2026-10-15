@@ -23,9 +23,9 @@ use crate::{
     completion::ModelRef,
     driver::{DynModel, Sending},
     effect::{
-        EffectFamily, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs,
-        FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome, RetrieveQuery,
-        RetrievedDocuments, ToolEmbeddingDescriptor,
+        Answered, EffectFamily, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs,
+        FamilyDescriptor, HandlerDescriptor, HandlerKey, RetrieveQuery, RetrievedDocuments,
+        ToolEmbeddingDescriptor,
     },
     error::{ErrorKind, ErrorReport},
     operation::{Completion, Embedding, Rerank},
@@ -161,7 +161,7 @@ impl Serve for ModelAdapter<Completion> {
                 stream: false,
             } => {
                 let result = model.finished(request, sending).await;
-                Reply::Outcome(result.map(Outcome::Completion).map_err(ErrorReport::from))
+                Reply::Outcome(result.map(Answered::Completion).map_err(ErrorReport::from))
             }
             EffectKind::Completion {
                 request,
@@ -213,7 +213,7 @@ impl Serve for ModelAdapter<Embedding> {
                 model
                     .finished(texts, sending)
                     .await
-                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
+                    .map(|response| Answered::Embeddings(EmbedOutputs::Texts(response)))
                     .map_err(ErrorReport::from),
             ),
             EffectKind::Embed {
@@ -260,7 +260,7 @@ impl Serve for ModelAdapter<Rerank> {
                 model
                     .finished(request, sending)
                     .await
-                    .map(Outcome::Reranked)
+                    .map(Answered::Reranked)
                     .map_err(ErrorReport::from),
             ),
             other @ (EffectKind::Completion { .. }
@@ -374,7 +374,7 @@ where
                 let mut context = dispatch_context(&dispatch);
                 let result = ErasedTool::execute(&self.tool, args, &mut context).await;
                 publish(&dispatch, context);
-                Reply::Outcome(Ok(Outcome::ToolResult { result }))
+                Reply::Outcome(Ok(Answered::ToolResult { result }))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
@@ -461,7 +461,7 @@ where
                     crate::tool::contextual::execute_callback(&self.callback, args, &mut context)
                         .await;
                 publish(&dispatch, context);
-                Reply::Outcome(Ok(Outcome::ToolResult { result }))
+                Reply::Outcome(Ok(Answered::ToolResult { result }))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
@@ -533,7 +533,7 @@ where
                                 .top_n::<serde_json::Value>(req)
                                 .await
                                 .map(|results| {
-                                    Outcome::Documents(RetrievedDocuments::Scored(
+                                    Answered::Documents(RetrievedDocuments::Scored(
                                         results
                                             .into_iter()
                                             .map(|result| {
@@ -557,7 +557,7 @@ where
                                 .top_n_ids(req)
                                 .await
                                 .map(|results| {
-                                    Outcome::Documents(RetrievedDocuments::Ids(
+                                    Answered::Documents(RetrievedDocuments::Ids(
                                         results
                                             .into_iter()
                                             .map(|result| (result.score, result.id))

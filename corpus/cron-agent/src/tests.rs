@@ -27,7 +27,7 @@ fn session(
     let (mut app, wakes) = app_on(store);
     collect::<Notice>(&mut app);
     app.insert_resource(Models(Connector::new(Catalog::default())))
-        .add_plugins((AgentPlugin, JournalPlugin, CronPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CronPlugin))
         .init_resource::<Seen>()
         .add_observer(
             |sent: On<Add<Incoming>>,
@@ -92,7 +92,7 @@ fn a_job_runs_in_its_own_agent_on_its_tick_and_survives_a_restart() {
     let noted = |world: &World| {
         let seen = world.resource::<Seen>();
         seen.delivered.iter().any(|(to, mode, text)| {
-            *to == agent && *mode == DeliveryMode::Note && text == "CI green"
+            *to == agent && *mode == DeliveryMode::Inform && text == "CI green"
         })
     };
     run_until(&mut app, &wakes, noted);

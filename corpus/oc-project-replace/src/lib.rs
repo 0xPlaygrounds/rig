@@ -19,9 +19,9 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use regex::{NoExpand, Regex};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolAnnotations;
-use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_core::serve::{Decision as Dispatch, Intercept, Verdict};
+use rig_harness::rig_core::serve::{AfterServe, BeforeServe as Dispatch, Intercept};
 use rig_harness::rig_core::tool::{
     ContentHash, ContextValue, FileRead, FilesChanged, FilesRead, ToolContext, content_hash,
 };
@@ -73,12 +73,10 @@ impl Plugin for ProjectReplacePlugin {
             footprint: None,
         };
         app.init_resource::<ProjectWorkspace>()
-            .add_tool_per_call(ReplaceInFiles::default(), options, false, |at| {
-                ReplaceInFiles {
-                    workspace: at.workspace,
-                    base: Some(at.base),
-                    confine: at.confine,
-                }
+            .add_tool_per_call(ReplaceInFiles::default(), options, |at| ReplaceInFiles {
+                workspace: at.workspace,
+                base: Some(at.base),
+                confine: at.confine,
             })
             .configure_sets(
                 AgentPass,
@@ -569,8 +567,8 @@ impl Intercept for Previewed {
         _: EffectId,
         _: &EffectKind,
         _: &Result<Answered, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
+    ) -> AfterServe {
+        AfterServe::Keep
     }
 }
 

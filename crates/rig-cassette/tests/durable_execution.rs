@@ -25,7 +25,7 @@ use rig_agent::{
     tool::{Tool, ToolContext, ToolExecutionError},
 };
 use rig_cassette::effect_log::{
-    Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
+    EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck, ResumePoint,
 };
 use rig_core::{
     completion::CompletionRequest,
@@ -513,8 +513,8 @@ async fn a_hooks_decision_is_program_not_record() {
 }
 
 /// The property through a checkpoint (L9): the interruption's state and
-/// position become a `Checkpoint` beside the reference log's tail; a fresh
-/// image loads both, `EffectLog::from_checkpoint` names the continuation,
+/// position become a `ResumePoint` beside the reference log's tail; a fresh
+/// image loads both, `EffectLog::from_resume_point` names the continuation,
 /// the replayers serve it under `check`, and the resumed run performs
 /// exactly the tail. The full log in the tail's place is refused by its
 /// first id before any dispatch.
@@ -525,7 +525,7 @@ async fn resumes_from_a_checkpoint(
 ) {
     let (reference_output, reference_log) = reference_run(scenario).await;
     let (suspended, partial_log) = drive_until_tool(scenario, tools_before_stop).await;
-    let (checkpoint, tail) = reference_log.checkpoint(
+    let (checkpoint, tail) = reference_log.resume_point(
         partial_log.len(),
         serde_json::to_value(&suspended).expect("the run state serializes"),
     );
@@ -537,10 +537,10 @@ async fn resumes_from_a_checkpoint(
 
     // A fresh image: the checkpoint and the tail restored, the continuation
     // named, the state deserialized from the checkpoint.
-    let checkpoint: Checkpoint<serde_json::Value> =
+    let checkpoint: ResumePoint<serde_json::Value> =
         serde_json::from_str(&persisted.0).expect("a checkpoint restores");
     let tail: EffectLog = serde_json::from_str(&persisted.1).expect("the tail restores");
-    let refused = EffectLog::from_checkpoint(&checkpoint, reference_log.clone())
+    let refused = EffectLog::from_resume_point(&checkpoint, reference_log.clone())
         .expect_err("the full log is not the tail");
     assert!(
         refused
@@ -549,7 +549,7 @@ async fn resumes_from_a_checkpoint(
         "{}",
         refused.message
     );
-    let continuation = EffectLog::from_checkpoint(&checkpoint, tail).expect("the tail follows");
+    let continuation = EffectLog::from_resume_point(&checkpoint, tail).expect("the tail follows");
     let restored: AgentRun =
         serde_json::from_value(checkpoint.state.clone()).expect("the run state restores");
     let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::serve::ServingPolicy {

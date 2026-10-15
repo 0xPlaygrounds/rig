@@ -29,7 +29,7 @@ impl Serve for Streamer {
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
-            EffectKind::Custom { payload, .. } => Reply::Outcome(Ok(Outcome::Custom { payload })),
+            EffectKind::Custom { payload, .. } => Reply::Outcome(Ok(Answered::Custom { payload })),
             EffectKind::Completion { stream: false, .. } => {
                 Reply::Outcome(written().into_outcome().await)
             }
@@ -139,7 +139,7 @@ async fn a_rewrite_reaches_the_events_the_answer_and_the_record() {
     );
     let record = buffer.take(id).expect("recorded");
     assert!(
-        matches!(&record.outcome, Ok(Outcome::Completion(response)) if response.text() == "HELLO")
+        matches!(&record.outcome, Ok(Answered::Completion(response)) if response.text() == "HELLO")
     );
     let events = serde_json::to_string(&record.events).expect("serializes");
     assert!(
@@ -150,7 +150,7 @@ async fn a_rewrite_reaches_the_events_the_answer_and_the_record() {
     let fact = |context: Option<crate::tool::ToolResultContext>| {
         context.and_then(|context| context.get::<Shouted>().ok().flatten())
     };
-    assert_eq!(fact(record.tool_output), Some(Shouted(2)));
+    assert_eq!(fact(record.published), Some(Shouted(2)));
     let back = published.take().map(|context| context.result_context());
     assert_eq!(fact(back), Some(Shouted(2)));
 }
@@ -161,7 +161,7 @@ async fn a_unary_completion_is_rewritten_and_other_outcomes_pass() {
     let handler = ErasedHandler::new(Streamer).map_stream("shout", shout);
     let unary = crate::serve::serve_inline(&handler, completion(false)).await;
     assert!(
-        matches!(&unary, Ok(Outcome::Completion(response)) if response.text() == "HELLO"),
+        matches!(&unary, Ok(Answered::Completion(response)) if response.text() == "HELLO"),
         "{unary:?}"
     );
     let custom = EffectKind::Custom {
@@ -170,7 +170,7 @@ async fn a_unary_completion_is_rewritten_and_other_outcomes_pass() {
     };
     let outcome = crate::serve::serve_inline(&handler, custom).await;
     assert!(
-        matches!(&outcome, Ok(Outcome::Custom { payload }) if payload == "as is"),
+        matches!(&outcome, Ok(Answered::Custom { payload }) if payload == "as is"),
         "{outcome:?}"
     );
 }

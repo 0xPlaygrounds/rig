@@ -54,7 +54,7 @@ fn broken_arguments_run_repaired_and_are_kept_repaired() {
     let home = scratch_home("corpus-ho-tool-arg-repair");
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, ToolArgRepairPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ToolArgRepairPlugin))
         .add_open_tool("pick", "Pick a file.", ToolOptions::default(), picked)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)

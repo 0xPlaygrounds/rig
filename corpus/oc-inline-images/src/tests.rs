@@ -56,8 +56,8 @@ fn front(
             ..TerminalGraphics::default()
         })
         .insert_resource(TuiTestScreen::new(80, 24))
-        .insert_resource(TuiScreen(Rect::new(0, 0, 80, 24)))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(TerminalSize(Rect::new(0, 0, 80, 24)))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_open_tool(
             "screenshot",
             "Take a screenshot.",
@@ -71,7 +71,7 @@ fn front(
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    app.world_mut().insert_resource(Shown(Some(agent)));
+    app.world_mut().insert_resource(ShownAgent(Some(agent)));
     app.update();
     (app, wakes, agent)
 }

@@ -377,7 +377,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 ///    the stream appears in the aggregated choice exactly once, and vice
 ///    versa (counts match; aggregation neither drops nor duplicates).
 /// 4. **Sequence.** The events read back through
-///    [`Transcript::parse_prefix`](crate::streaming::Transcript::parse_prefix):
+///    [`StreamRecord::parse_prefix`](crate::streaming::StreamRecord::parse_prefix):
 ///    each part starts once, in position, grows only while open, and ends
 ///    once.
 /// 5. **Reasoning provenance.** The response contains a reasoning part only
@@ -455,7 +455,7 @@ pub fn assert_valid_event_stream(
             .collect::<Vec<_>>(),
     )
     .unwrap_or_default();
-    let read_back = crate::streaming::Transcript::parse_prefix(serialized);
+    let read_back = crate::streaming::StreamRecord::parse_prefix(serialized);
     assert!(
         read_back.is_ok(),
         "law 4 (sequence): the stream's events do not read back: {read_back:?}"

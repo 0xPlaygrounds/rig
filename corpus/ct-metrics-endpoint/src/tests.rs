@@ -183,7 +183,7 @@ fn probe(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decisi
 
 /// An ask rule: a risky probe needs the user's approval.
 fn ask_rule(
-    calls: Query<(Entity, &ToolRequest), (Undecided, ToolCalls, Without<Approved>)>,
+    calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls, Without<Approved>)>,
     mut commands: Commands,
 ) {
     for (call, request) in &calls {
@@ -243,7 +243,7 @@ fn scripted_run() -> Result<Run, String> {
         .init_resource::<Diagnostics>()
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             AskPlugin,
             ApprovalPlugin,
             MetricsEndpointPlugin,
@@ -292,7 +292,7 @@ fn scripted_run() -> Result<Run, String> {
         .resource_mut::<Diagnostics>()
         .0
         .push_back(Logged {
-            error: true,
+            level: NoticeLevel::Error,
             target: "rig_demo".to_owned(),
             message: "a system failed".to_owned(),
             agent: None,
@@ -379,7 +379,7 @@ fn a_scrape_reports_the_scripted_run() {
 fn a_public_address_needs_the_opt_in() {
     let (mut app, _wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Settings::from_toml("[metrics]\naddr = \"0.0.0.0:0\""))
-        .add_plugins((AgentPlugin, JournalPlugin, MetricsEndpointPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, MetricsEndpointPlugin));
     collect::<Notice>(&mut app);
     app.finish();
     app.update();

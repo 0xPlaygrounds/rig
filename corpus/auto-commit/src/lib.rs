@@ -325,12 +325,7 @@ fn commit_turn(
         return;
     }
     let subject = subject.map_or_else(
-        || {
-            clip(&format!(
-                "rig: {}",
-                request(conversation, turn.first_message)
-            ))
-        },
+        || clip(&format!("rig: {}", request(conversation, turn.start))),
         |subject| subject.0.clone(),
     );
     let session = session
@@ -410,7 +405,7 @@ fn undo(
                 "The user undid your changes of an earlier turn ({what}): those files are \
                  back as they were before it. Read them again before you change them."
             );
-            let note = Deliver::new(agent, text, DeliveryMode::Note);
+            let note = Deliver::new(agent, text, DeliveryMode::Inform);
             commands.trigger(note.with_author(Author::plugin(NAME)));
         }
         Err(why) => {

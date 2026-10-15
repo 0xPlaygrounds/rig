@@ -1,26 +1,23 @@
-//! The session's journal in the app. Each agent's log, in the session's
-//! [`SessionStore`], gets every change made to the agent's
-//! [`Conversation`] and every change of a [`ReflectSaved`] component, such
-//! as the agent's model, reasoning setting, system prompt, tool access and
-//! last usage. The format, its writer and its readers are rig-memory's.
+//! The session log in the app. Each agent's log, in the session's
+//! [`SessionStore`], gets every change of the agent's [`Conversation`] and
+//! of its [`ReflectSaved`] components, such as its model, reasoning
+//! setting, system prompt, tool access and last usage. The format, its
+//! writer and its readers are rig-memory's.
 //!
-//! A conversation is changed by calling its methods; each change waits in
-//! the conversation's outbox until the kernel saves it: between the stages
-//! of every pass, at the end of the frame, before a tool that may change
-//! something starts, and when a turn is interrupted. Saving queues the
-//! changes for the log, announces each as a [`Committed`], and writes the
-//! queue at the end of the frame, a subagent's log before its parent's.
-//!
-//! Records are appended while the session runs. Nothing is rewritten
-//! except through rig-memory: a [`RewriteSession`] maps every saved record
-//! in place, keeping each record's place and stamp, and the agents'
-//! conversations and saved values become the rewritten ones;
-//! [`restore`](super::restore) folds the logs back at startup.
+//! Each change waits in the conversation's outbox until the kernel saves
+//! it: between the stages of every pass, at the end of the frame, before a
+//! tool that may change something starts, and when a turn is stopped.
+//! Saving announces each as a [`ConversationChanged`] and queues it, and
+//! the queue is written at the end of the frame, a subagent's log before
+//! its parent's. Records are only appended, except through a
+//! [`RewriteSession`]; [`restore`](super::restore) reads the logs back at
+//! startup.
 
 use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::message::MessageCursor;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_ecs::resource::IsResource;
@@ -30,46 +27,39 @@ use bevy_ecs::world::DeferredWorld;
 use bevy_log::{error, warn};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
-use rig_core::conversation::{Author, Recorded};
+use rig_core::conversation::{Author, ChangeRecord};
 use rig_memory::{
-    LoadError, Place, Repair, Rewrite, Rewritten, SESSION, Session, Store, Versioned, Writer,
+    Place, Repair, Rewrite, Rewritten, SESSION, Session, SessionError, Store, Versioned, Writer,
 };
-use web_time::{SystemTime, UNIX_EPOCH};
 
-use super::WriteJournal;
+use super::WriteLogs;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use super::follows::{self, Mirroring, ReflectFollows};
-use super::restore::{RetiredSaved, SavedKeys, SavedUpgrades, SetAside};
+use super::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades, Shelved};
 use super::restore::{SavedReader, resource_entity, saved_type};
 
 /// Saves an agent component or a resource with the session: derive
-/// `Reflect` and add `Saved` to its `#[reflect(..)]`, as
-/// `#[reflect(Component, Saved)]` or `#[reflect(Resource, Saved)]`. Each
-/// change of it is logged at the end of the frame under its type path, or
-/// the stable key its plugin gives it ([`SavedKeys`]), with its type's
-/// version ([`SavedUpgrades`]; an agent's in its log, a resource in the
-/// session's [`SESSION`] log, written once an agent's log is) and restored
-/// by reflection, read at its type's version through the steps its plugin
-/// registered, inserted on the
-/// agent it was saved with before [`SessionRestored`] exists, so an
-/// `On<Insert<T>>` observer re-arms what it says; a value that serializes
-/// to `null` is saved as absent, and so is an agent component removed. A
-/// resource is restored in place of the one its plugin inserted while the
-/// app was built.
+/// `Reflect` and add `Saved`, as `#[reflect(Component, Saved)]` or
+/// `#[reflect(Resource, Saved)]`.
 ///
-/// A type reflected opaquely with serde, as
-/// `#[reflect(opaque, Component, Saved, Clone, Serialize, Deserialize)]`,
-/// is saved and restored through its serde form: the way to save a
-/// component holding rig-core data that is not `Reflect`, such as a
-/// [`MessageId`](rig_core::conversation::MessageId).
-///
-/// Registration is a runtime fact: a generic type is saved only once
-/// registered (`app.register_type::<T>()`), and a logged type no build
-/// registers any more is reported on restore and kept in the log. A value
-/// no step reads, or that no longer fits its type, is reported, listed in
-/// [`SetAside`] and not inserted; the next change of it first moves the old
-/// value to a side key (rig-memory's `SET_ASIDE`), so nothing is lost. A
-/// value a newer rig saved is reported and never written over in this run.
+/// - Each change is logged at the end of the frame under its type path, or
+///   the key its plugin gives it ([`SavedKeys`]), with its type's version
+///   ([`SavedUpgrades`]): an agent's in its log, a resource in the
+///   [`SESSION`] log. A value that serializes to `null`, or a removed
+///   component, is saved as absent.
+/// - On restore it is read at its version through its plugin's steps and
+///   inserted before [`SessionRestored`] exists, on the agent it was saved
+///   with, so an `On<Insert<T>>` observer re-arms what it says. A resource
+///   replaces the one its plugin inserted while the app was built.
+/// - A type reflected opaquely with serde
+///   (`#[reflect(opaque, Component, Saved, Clone, Serialize, Deserialize)]`)
+///   is saved through serde: the way to save rig-core data such as a
+///   [`MessageId`](rig_core::conversation::MessageId).
+/// - A generic type is saved only once registered. A logged type no build
+///   registers is reported and kept in the log. A value no step reads, or
+///   that no longer fits, is reported, listed in [`Shelved`] and not
+///   inserted; its next change moves the old value to a side key first. A
+///   value a newer rig saved is never written over in this run.
 #[derive(Clone)]
 pub struct ReflectSaved {
     watch: fn(&mut App),
@@ -117,7 +107,7 @@ fn log_changed<T: Component + Reflect + TypePath>(
         match serde_json::to_value(value) {
             Ok(value) => log
                 .0
-                .state(log_name, name, Some(Versioned { v, value }), starts),
+                .save_value(log_name, name, Some(Versioned { v, value }), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
@@ -125,16 +115,10 @@ fn log_changed<T: Component + Reflect + TypePath>(
         if let Ok(id) = agents.get(entity)
             && !changed.contains(entity)
         {
-            log.0.state(&id.0, name, None, !spawned.contains(entity));
+            log.0
+                .save_value(&id.0, name, None, !spawned.contains(entity));
         }
     }
-}
-
-/// Milliseconds since the Unix epoch at `at`; 0 before it.
-pub(crate) fn millis(at: SystemTime) -> u64 {
-    at.duration_since(UNIX_EPOCH)
-        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or_default()
 }
 
 /// Where the session is kept, such as a rig-memory `MemoryStore` or
@@ -180,8 +164,9 @@ pub struct SessionRestored {
 #[derive(Resource)]
 pub(crate) struct Opened(pub(crate) Session);
 
-/// Opens `store` for this app: reads the session it holds, refusing an old
-/// or broken one before anything is written, sets each torn last line
+/// Opens `store` for this app: reads the session it holds, refusing one it
+/// cannot read whole (from before `rig-session/2`, from a newer rig, or
+/// broken) before anything is written, sets each torn last line
 /// aside, and keeps what it read for the restore at startup. On success
 /// `store` is the app's [`SessionStore`] and its log writes there once the
 /// session is restored; on failure the app keeps nothing of it. An app that
@@ -190,10 +175,10 @@ pub(crate) struct Opened(pub(crate) Session);
 ///
 /// # Errors
 ///
-/// The [`LoadError`] reading the session gave: a session saved by an older
-/// rig, a log in another format, a record that cannot be read, or the
-/// store failing.
-pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), LoadError> {
+/// The [`SessionError`] reading the session gave: a session from before
+/// `rig-session/2`, a log in another format, a record that cannot be read,
+/// or the store failing.
+pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), SessionError> {
     let (writer, session) = Writer::open(store.clone())?;
     world.insert_resource(SessionStore(store));
     world.insert_resource(SessionLog(writer));
@@ -205,11 +190,11 @@ pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), Load
 /// restore makes none; a change made while nothing is logged (no store, or
 /// before the restore) is announced all the same.
 #[derive(Message, Clone, Debug)]
-pub struct Committed {
+pub struct ConversationChanged {
     /// The agent.
     pub agent: Entity,
     /// The change: what changed, who made it and when.
-    pub change: Recorded,
+    pub change: ChangeRecord,
 }
 
 /// Retires the agent `entity` for good: its log says so, so a restore
@@ -222,15 +207,15 @@ pub struct Retire {
 }
 
 /// Saves the outbox of `conversation`, that of `agent` whose id is `id`,
-/// to `log`; one [`Committed`] per change saved.
+/// to `log`; one [`ConversationChanged`] per change saved.
 pub(crate) fn save_conversation(
     log: &SessionLog,
     agent: Entity,
     id: &AgentId,
     conversation: &mut Conversation,
-) -> Vec<Committed> {
+) -> Vec<ConversationChanged> {
     let saved = log.0.save(&id.0, conversation);
-    let committed = |change| Committed { agent, change };
+    let committed = |change| ConversationChanged { agent, change };
     saved.into_iter().map(committed).collect()
 }
 
@@ -241,7 +226,7 @@ pub(crate) struct Drain<'w, 's> {
     agents:
         Query<'w, 's, (Entity, &'static AgentId, &'static mut Conversation), Changed<Conversation>>,
     log: Res<'w, SessionLog>,
-    committed: MessageWriter<'w, Committed>,
+    committed: MessageWriter<'w, ConversationChanged>,
 }
 
 impl Drain<'_, '_> {
@@ -293,13 +278,6 @@ pub(crate) fn save_now(world: &mut World) -> Option<Entity> {
     world.get_resource_mut::<SavedOne>()?.0.take()
 }
 
-/// Saves the conversations changed outside the agent loop, such as by
-/// commands and observers, in `Last` before the frame's records are
-/// written.
-pub(crate) fn save_in_last(world: &mut World) {
-    save_now(world);
-}
-
 /// Saves what a conversation about to be replaced or removed did not save
 /// yet, so neither a value inserted over it nor its agent despawned loses
 /// a change.
@@ -328,7 +306,7 @@ pub(crate) fn retire(
     retire: On<Retire>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     log: Res<SessionLog>,
-    mut committed: MessageWriter<Committed>,
+    mut committed: MessageWriter<ConversationChanged>,
     mut commands: Commands,
 ) {
     let agent = retire.entity;
@@ -343,7 +321,7 @@ pub(crate) fn retire(
 
 /// The systems in `Last` that queue what the frame changed for the log:
 /// after the turns stopped on exit, before [`apply_rewrites`] and
-/// [`WriteJournal`].
+/// [`WriteLogs`].
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Saving;
 
@@ -363,7 +341,7 @@ pub(crate) struct Saving;
 /// already sent to a model is not reached. Without a session store there
 /// is no saved history, and nothing is rewritten. The map is any
 /// [`Rewrite`], such as [`Strings`](rig_memory::Strings) for a redaction.
-#[derive(Event, Clone)]
+#[derive(Message, Clone)]
 pub struct RewriteSession {
     /// Who rewrites it, kept in each rewritten log's header.
     pub by: Author,
@@ -375,7 +353,7 @@ pub struct RewriteSession {
 }
 
 /// A [`RewriteSession`] done, or why not, in the frame it ran, before
-/// [`WriteJournal`]. The owners of what the kernel does not keep re-read
+/// [`WriteLogs`]. The owners of what the kernel does not keep re-read
 /// or map theirs on it, with the same `with` (rig-memory's
 /// `rewrite_value`, `rewrite_file`): the effect log's writer, the scratch
 /// files, and every plugin's copies, in memory or in files of its own.
@@ -392,20 +370,6 @@ pub struct SessionRewritten {
     pub result: Result<Rewritten, String>,
 }
 
-/// The rewrites asked for this frame.
-#[derive(Resource, Default)]
-pub(crate) struct Rewrites(Vec<RewriteSession>);
-
-/// Queues a [`RewriteSession`] for the end of the frame.
-pub(crate) fn ask_rewrite(asked: On<RewriteSession>, mut rewrites: ResMut<Rewrites>) {
-    rewrites.0.push(asked.event().clone());
-}
-
-/// Whether a rewrite was asked for this frame.
-pub(crate) fn rewrites_asked(rewrites: Res<Rewrites>) -> bool {
-    !rewrites.0.is_empty()
-}
-
 /// How many rounds of rewrites asked while rewrites are applied, such as by
 /// an observer of a value reread, run in one frame; the rest wait for the
 /// next.
@@ -413,15 +377,15 @@ const REWRITE_ROUNDS: usize = 8;
 
 /// Runs the rewrites asked for, as [`RewriteSession`] says, each with its
 /// own author, and those asked meanwhile, in the same frame.
-pub(crate) fn apply_rewrites(world: &mut World) {
+pub(crate) fn apply_rewrites(world: &mut World, mut cursor: Local<MessageCursor<RewriteSession>>) {
     let log = world
         .get_resource::<SessionLog>()
         .cloned()
         .unwrap_or_default();
     for _ in 0..REWRITE_ROUNDS {
-        let asked = world
-            .get_resource_mut::<Rewrites>()
-            .map(|mut rewrites| std::mem::take(&mut rewrites.0))
+        let asked: Vec<RewriteSession> = world
+            .get_resource::<Messages<RewriteSession>>()
+            .map(|asked| cursor.read(asked).cloned().collect())
             .unwrap_or_default();
         if asked.is_empty() {
             return;
@@ -490,9 +454,9 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
         }
         let id = agent.map(|_| AgentId(log.log.clone()));
         for key in &log.changed_keys {
-            let inserted = match log.state.get(key) {
+            let inserted = match log.saved.get(key) {
                 Some(value) => reader
-                    .read(&registry, &log.log, id.as_ref(), &log.state, key, value)
+                    .read(&registry, &log.log, id.as_ref(), &log.saved, key, value)
                     .and_then(|read| {
                         let Some((component, value)) = read else {
                             return Ok(());
@@ -526,20 +490,20 @@ fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<S
 
 /// Restores the session at startup, settles what a crash or restart left
 /// half done, and logs everything after.
-pub struct JournalPlugin;
+pub struct SessionLogPlugin;
 
-impl Plugin for JournalPlugin {
+impl Plugin for SessionLogPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
-            .add_systems(Last, write_logs.in_set(WriteJournal))
+            .add_systems(Last, write_logs.in_set(WriteLogs))
             .configure_sets(SaveConversations, Mirroring.before(save_conversations))
             .add_systems(SaveConversations, follows::sync.after(save_conversations))
             .add_observer(open_child_log)
             .init_resource::<SavedUpgrades>()
-            .init_resource::<RetiredSaved>()
+            .init_resource::<IgnoredSavedKeys>()
             .init_resource::<SavedKeys>()
-            .init_resource::<SetAside>();
+            .init_resource::<Shelved>();
     }
 
     /// Watches every type registered as [`ReflectSaved`] or

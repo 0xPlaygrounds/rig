@@ -1,10 +1,10 @@
 use std::sync::mpsc::Receiver;
 
 use rig_core::catalog::{Catalog, Connector};
+use rig_core::effect::Answered;
 use rig_core::effect::EffectKind;
-use rig_core::effect::Outcome as Answered;
 use rig_core::error::ErrorReport;
-use rig_core::serve::{Decision as Pass, Intercept, Verdict};
+use rig_core::serve::{AfterServe, BeforeServe as Pass, Intercept};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::effects::Handler;
@@ -44,8 +44,8 @@ impl Intercept for SlowStart {
         _: EffectId,
         _: &EffectKind,
         _: &Result<Answered, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
+    ) -> AfterServe {
+        AfterServe::Keep
     }
 }
 
@@ -93,7 +93,7 @@ fn agent_app(
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(SessionPaths(dir.0.clone()))
         .insert_resource(Models(Connector::new(Catalog::default())))
-        .add_plugins((AgentPlugin, JournalPlugin, TurnTimelinePlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, TurnTimelinePlugin));
     let Some(mut connection) = connect(model) else {
         return (app, wakes, Entity::PLACEHOLDER);
     };
@@ -203,7 +203,7 @@ struct Approved;
 fn ask(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &Decision),
-        (Undecided, ToolCalls, Without<Approved>),
+        (ReadyToStart, ToolCalls, Without<Approved>),
     >,
     mut commands: Commands,
 ) {

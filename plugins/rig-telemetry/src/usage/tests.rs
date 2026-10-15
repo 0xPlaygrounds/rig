@@ -11,7 +11,7 @@ use super::*;
 /// An app on `store` that counts spending, after its first frame.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
-    app.add_plugins((AgentPlugin, JournalPlugin, UsagePlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
@@ -47,7 +47,7 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
         ForAgent(agent),
     );
     app.world_mut().spawn(summary);
-    let spent = |world: &World| world.get::<Spending>(agent).cloned().unwrap_or_default();
+    let spent = |world: &World| world.get::<AgentUsage>(agent).cloned().unwrap_or_default();
     run_until(&mut app, &wakes, |world| spent(world).total.calls == 2);
 
     let spending = spent(app.world());
@@ -57,7 +57,7 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
     assert_eq!(calls(&spending.models, &reference), Some(2));
     assert_eq!(calls(&spending.purposes, "turn"), Some(1));
     assert_eq!(calls(&spending.purposes, "summary"), Some(1));
-    assert_eq!(app.world().resource::<SessionSpending>().0, spending);
+    assert_eq!(app.world().resource::<SessionUsage>().0, spending);
 
     // `/usage` splits the session per purpose and adds other plugins' rows.
     let world = app.world_mut();
@@ -73,11 +73,11 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
     // restart.
     app.world_mut().despawn(agent);
     app.update();
-    let session = app.world().resource::<SessionSpending>().0.clone();
+    let session = app.world().resource::<SessionUsage>().0.clone();
     assert_eq!(session.total.calls, 2);
     drop(app);
     let (restarted, _wakes) = start(&store);
-    assert_eq!(restarted.world().resource::<SessionSpending>().0, session);
+    assert_eq!(restarted.world().resource::<SessionUsage>().0, session);
 }
 
 /// Sends each turn call to its connection instead of the agent's model, as
@@ -116,7 +116,7 @@ fn the_context_is_against_the_window_of_the_model_a_call_went_to() {
         world.resource::<Ended>().0.len() == 1
     });
     let world = app.world_mut();
-    let spent = world.get::<Spending>(agent).cloned().unwrap_or_default();
+    let spent = world.get::<AgentUsage>(agent).cloned().unwrap_or_default();
     assert_eq!(spent.models.keys().collect::<Vec<_>>(), [&reference]);
     notices(world);
     world.trigger(RunCommand::new(agent, "usage".to_owned()));
@@ -166,17 +166,48 @@ fn a_superseded_call_counts_its_call_usage_under_the_model_it_went_to() {
         SupersededBy(winner),
     ));
     let input = |spent: &UsageTotals| spent.tokens.input_tokens;
-    let spent = |world: &World| world.get::<Spending>(agent).cloned().unwrap_or_default();
+    let spent = |world: &World| world.get::<AgentUsage>(agent).cloned().unwrap_or_default();
     run_until(&mut app, &wakes, |world| spent(world).total.calls == 1);
 
     let spending = spent(app.world());
     assert_eq!(input(&spending.total), Some(100));
     assert_eq!(spending.models.get(&reference).and_then(input), Some(100));
-    let session = &app.world().resource::<SessionSpending>().0;
+    let session = &app.world().resource::<SessionUsage>().0;
     assert_eq!(session.models.get(&reference).and_then(input), Some(100));
     let turn = app
         .world()
-        .get::<TurnSpending>(turn)
-        .map(|TurnSpending(spent)| input(spent));
+        .get::<TurnUsage>(turn)
+        .map(|TurnUsage(spent)| input(spent));
     assert_eq!(turn, Some(Some(100)));
+}
+
+/// Usage saved before the types were renamed, under `Spending` and
+/// `SessionSpending`, is restored as the agent's and the session's.
+#[test]
+fn usage_saved_under_the_old_keys_is_restored() {
+    use rig_harness::rig_memory::{SESSION, Versioned, Writer};
+    let mut spent = AgentUsage::default();
+    spent.record(Some("a/model"), Some("turn"), &Usage::new().input_tokens(3));
+    let saved = || {
+        rig_core::serde_json::to_value(&spent)
+            .map(Versioned::from)
+            .ok()
+    };
+    let store = MemoryStore::default();
+    if let Ok((writer, _)) = Writer::open(Arc::new(store.clone())) {
+        writer.start();
+        let mut conversation = rig_core::conversation::Conversation::new();
+        conversation.push(Message::user("hello"));
+        writer.save("main", &mut conversation);
+        writer.save_value("main", "rig_telemetry::usage::Spending", saved(), true);
+        let session = "rig_telemetry::usage::SessionSpending";
+        writer.save_value(SESSION, session, saved(), true);
+        writer.flush();
+    }
+
+    let (mut app, _wakes) = start(&store);
+    let mut agents = app.world_mut().query_filtered::<&AgentUsage, With<Agent>>();
+    let restored: Vec<AgentUsage> = agents.iter(app.world()).cloned().collect();
+    assert_eq!(restored, [spent.clone()]);
+    assert_eq!(app.world().resource::<SessionUsage>().0, spent);
 }

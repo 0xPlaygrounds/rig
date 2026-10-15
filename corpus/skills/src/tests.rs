@@ -56,7 +56,7 @@ fn a_skill_is_listed_loaded_once_per_turn_and_watched() {
     app.set_error_handler(rig_harness::error::warn)
         .insert_resource(ProjectRoot(root.clone()))
         .insert_resource(RigHome(home))
-        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin, SkillsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin, SkillsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     let agent = connect(&model).map(|connection| app.world_mut().spawn((Agent, connection)).id());

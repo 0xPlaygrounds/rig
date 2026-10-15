@@ -89,7 +89,7 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
     );
     app.insert_resource(Settings::from_toml(&settings))
         .insert_resource(ProjectRoot(base.join("local")))
-        .add_plugins((AgentPlugin, JournalPlugin, ProjectContextPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ProjectContextPlugin))
         .add_plugins((WriteTool, ShellTool, RemoteWorkspacePlugin))
         .insert_resource(RemoteTarget {
             target: format!("dev@fake:{}", remote_dir.display()),
@@ -114,7 +114,7 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
     run_until(&mut app, &wakes, |_| pid_file.exists());
     let pid = std::fs::read_to_string(&pid_file).unwrap_or_default();
     assert!(!pid.trim().is_empty(), "the remote sleep started");
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });

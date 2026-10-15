@@ -303,7 +303,10 @@ fn architect_requests(
 /// Refuses an architect's call of a tool that is neither read-only nor
 /// `implement`, and `implement` from an agent not in architect mode.
 fn architect_calls(
-    mut calls: Query<(&ToolRequest, &Footprint, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<
+        (&ToolRequest, &Footprint, &ForAgent, &mut Decision),
+        (ReadyToStart, ToolCalls),
+    >,
     architects: Query<(), With<ArchitectMode>>,
 ) {
     for (request, footprint, &ForAgent(agent), mut decision) in &mut calls {
@@ -444,7 +447,7 @@ fn brief_editor(
         editor,
         ForAgent(briefing.architect),
         ChildOf(call),
-        Effect::child_of(Some(briefing.effect)),
+        Effect::with_parent_id(Some(briefing.effect)),
     ));
 }
 
@@ -572,7 +575,7 @@ fn stop_editor(
     }
     for (editor, _) in editors.iter().filter(|(_, of)| of.0 == settled.entity) {
         let reason = Some("the `implement` call it worked for ended".to_owned());
-        commands.trigger(Interrupt {
+        commands.trigger(StopTurn {
             entity: editor,
             reason,
         });

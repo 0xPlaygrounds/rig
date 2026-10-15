@@ -376,7 +376,7 @@ enum Kind {
 #[derive(SystemParam)]
 struct Rpc<'w, 's> {
     agents: Query<'w, 's, (Entity, &'static AgentId)>,
-    shown: Res<'w, Shown>,
+    shown: Res<'w, ShownAgent>,
     asks: Query<'w, 's, &'static Ask, (Without<Outcome>, Without<Settled>)>,
     pickers: Query<'w, 's, &'static Picker>,
     commands: Commands<'w, 's>,
@@ -427,7 +427,7 @@ fn run(rpc: &mut Rpc, command: Command) -> Result<(), String> {
         }
         Kind::Interrupt => {
             let agent = rpc.agent(command.agent)?;
-            rpc.commands.trigger(Interrupt::new(agent));
+            rpc.commands.trigger(StopTurn::new(agent));
         }
         Kind::SetModel { model } => {
             let entity = rpc.agent(command.agent)?;

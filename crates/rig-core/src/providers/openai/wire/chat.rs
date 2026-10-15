@@ -236,8 +236,7 @@ impl Chat {
     }
 
     /// The field every assistant message carries its reasoning under,
-    /// empty when the turn has none (pi's
-    /// `requiresReasoningContentOnAssistantMessages`): the dialect's own,
+    /// empty when the turn has none: the dialect's own,
     /// `reasoning_content` for DeepSeek at any base URL, and the field a
     /// catalog entry names for the model on this dialect, on Moonshot's own
     /// API under its last path segment (Kimi K3 behind any gateway), or on
@@ -437,12 +436,12 @@ impl Chat {
         Ok(messages)
     }
 
-    /// One assistant turn as pi's `openai-completions` rebuilds it: text
-    /// joined into a `content` string, or a part array when a block is a
-    /// content part (Mistral's thinking); reasoning under the field it
-    /// arrived in, or the dialect's; an item's other fields beside it; and
-    /// each call with its canonical name and arguments. A message with
-    /// neither content nor calls is `None`, as pi skips it.
+    /// One assistant turn rebuilt for the wire: text joined into a `content`
+    /// string, or a part array when a block is a content part (Mistral's
+    /// thinking); reasoning under the field it arrived in, or the dialect's;
+    /// an item's other fields beside it; and each call with its canonical
+    /// name and arguments. A message with neither content nor calls is
+    /// `None`.
     fn assistant(
         &self,
         turn: &AssistantMessage,
@@ -621,7 +620,7 @@ pub(crate) fn rewrite_body(
 /// `call` as the item the wire sends, from what replay hands the encoder:
 /// the current item, an edited one's kind, or nothing. A call is `custom`
 /// when its item or kept kind says so, or when it is rebuilt and the request
-/// declares a custom tool by its name (pi); its arguments' `input` is then
+/// declares a custom tool by its name; its arguments' `input` is then
 /// its input. Any other is a function call with its arguments as JSON text.
 fn call_item(call: &ToolCall, replay: Replay<'_>, ids: &WireIds, custom: &[String]) -> Value {
     let mut item = match replay {
@@ -916,11 +915,10 @@ impl crate::completion::ReplayTarget for Chat {
         }
     }
 
-    /// pi's rule for this wire. A `call|item` id joins its sanitized halves
-    /// with `_`, ending a result over 40 characters in a hash of the whole
-    /// id; OpenAI's own ids are cut to 40; any other id is kept. Mistral
-    /// takes any such id (checked live on eight models), where pi derives
-    /// nine alphanumerics.
+    /// A `call|item` id joins its sanitized halves with `_`, ending a result
+    /// over 40 characters in a hash of the whole id; OpenAI's own ids are
+    /// cut to 40; any other id is kept. Mistral takes any such id (checked
+    /// live on eight models).
     fn normalize_tool_call_id(
         &self,
         id: &str,
@@ -954,9 +952,8 @@ impl crate::completion::ReplayTarget for Chat {
     }
 
     /// What an edited block keeps of its item: a custom call's kind and
-    /// Mistral's thinking part (`type`), or the field reasoning arrived in,
-    /// as pi keeps `thinkingSignature`. Signed data such as
-    /// `reasoning_details` never survives an edit.
+    /// Mistral's thinking part (`type`), or the field reasoning arrived in.
+    /// Signed data such as `reasoning_details` never survives an edit.
     fn identity(&self, item: &Value) -> Map<String, Value> {
         if let Some(kind @ ("custom" | "thinking")) = item.str("type") {
             return Map::from_iter([("type".to_owned(), Value::from(kind))]);
@@ -981,7 +978,7 @@ impl crate::completion::ReplayTarget for Chat {
         self.tool_result_array_content
     }
 
-    /// A Chat message needs content or calls, as pi's rebuild does: text
+    /// A Chat message needs content or calls: text
     /// only when it is not empty or its item carries audio, reasoning only
     /// as a content part (Mistral's thinking), an opaque item only as a
     /// typed part, and never an image.
@@ -1130,7 +1127,7 @@ impl CallKind {
 }
 
 /// The kind of run a decoder is writing: answer text, or Mistral's
-/// thinking parts, which pi's `mistral-conversations` keeps apart.
+/// thinking parts, kept apart.
 #[derive(Clone, Copy, PartialEq)]
 enum Writing {
     Text,
@@ -1160,7 +1157,7 @@ impl OpenCall {
 /// The chat-completions decoder: one state machine for a whole reply and a
 /// stream of chunks, reading every frame leniently as JSON. A whole reply
 /// is the one chunk carrying its message. All of a message's reasoning is
-/// one block, as pi's `openai-completions` keeps it, open until the message
+/// one block, open until the message
 /// ends; the turn holds it first however late it arrived, while its events
 /// keep their arrival order. A run of text is a block, as is a run of
 /// Mistral thinking parts, and each tool call, image and unknown content
@@ -1214,7 +1211,7 @@ impl ChatDecoder {
     }
 
     /// Absorb the metadata every frame carries, and take its primary choice.
-    /// Usage is the frame's, or its choice's where Moonshot reports it (pi).
+    /// Usage is the frame's, or its choice's where Moonshot reports it.
     fn absorb(&mut self, frame: &Value) -> Option<Value> {
         if let Some(id) = frame.str("id") {
             self.response_id = Some(id.to_owned());
@@ -1714,8 +1711,8 @@ impl ChatDecoder {
     }
 
     /// The `[DONE]` sentinel. A dialect whose streams omit the finish reason
-    /// ends a turn that streamed a chunk as pi does without
-    /// `supportsFinishReason`: a tool call when it holds one, else a stop.
+    /// ends a turn that streamed a chunk as a tool call when it holds one,
+    /// else a stop.
     fn done(&mut self, out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
         if !self.ended && self.chunked && self.quirks.done_without_finish_reason {
             self.finish = Some(if self.calls.is_empty() {
@@ -1729,7 +1726,7 @@ impl ChatDecoder {
     }
 }
 
-/// Append streamed reasoning details to the block's, by pi's merge: a
+/// Append streamed reasoning details to the block's: a
 /// text or summary fragment continues the last entry of its type and
 /// index, appending its text and filling the fields that entry lacks, and an
 /// encrypted entry stays whole.

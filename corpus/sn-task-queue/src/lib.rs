@@ -24,7 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_telemetry::TurnSpending;
+use rig_telemetry::TurnUsage;
 use serde::Deserialize;
 
 #[cfg(feature = "tui")]
@@ -51,7 +51,7 @@ impl Plugin for TaskQueuePlugin {
             .add_setting::<QueueSettings>("queue")
             .init_resource::<TaskQueue>()
             .init_resource::<QueueNote>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .add_command("queue", HELP, queue)
             .add_systems(Startup, (interrupt_running, warn_shared_tree))
             .add_systems(
@@ -292,7 +292,7 @@ fn queue(
                 TaskState::Pending => {}
                 TaskState::Running => {
                     if let Some(agent) = agent_of(number) {
-                        commands.trigger(Interrupt::new(agent));
+                        commands.trigger(StopTurn::new(agent));
                     }
                     task.ended = Some(now());
                 }
@@ -349,20 +349,20 @@ fn find(queue: &mut TaskQueue, number: u32) -> Result<&mut Task, String> {
     task.ok_or_else(|| format!("No task {number}; /queue lists them."))
 }
 
-/// Shows `agent` in the front the user uses: the terminal view's `Focus`
-/// when there is one, and the harness's [`Shown`] for any other.
+/// Shows `agent` in the front the user uses: the terminal view's `ShowAgent`
+/// when there is one, and the harness's [`ShownAgent`] for any other.
 fn show(commands: &mut Commands, agent: Entity) {
     #[cfg(feature = "tui")]
-    commands.trigger(rig_tui::Focus { entity: agent });
+    commands.trigger(rig_tui::ShowAgent { entity: agent });
     commands.queue(move |world: &mut World| {
-        if let Some(mut shown) = world.get_resource_mut::<Shown>() {
-            shown.set_if_neq(Shown(Some(agent)));
+        if let Some(mut shown) = world.get_resource_mut::<ShownAgent>() {
+            shown.set_if_neq(ShownAgent(Some(agent)));
         }
     });
 }
 
 /// What the running turns spent so far, by their agents.
-pub type RunningTurns<'w, 's> = Query<'w, 's, (&'static TurnOf, &'static TurnSpending)>;
+pub type RunningTurns<'w, 's> = Query<'w, 's, (&'static TurnOf, &'static TurnUsage)>;
 
 /// What the running turn of `agent`, if any, spent so far, in USD.
 pub fn live_cost(agent: Option<Entity>, turns: &RunningTurns) -> Option<f64> {
@@ -415,7 +415,7 @@ fn start_next(
     settings: Res<QueueSettings>,
     agents: Query<(Entity, &QueuedTask)>,
     ids: Query<(Entity, &AgentId), With<Agent>>,
-    primary_agents: PrimaryQuery,
+    primary_agents: MainAgentQuery,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -445,7 +445,7 @@ fn start_next(
             continue;
         }
         let owner = AgentId(task.owner.clone()).find_in(ids.iter());
-        let Some(owner) = owner.or_else(|| primary(&primary_agents)) else {
+        let Some(owner) = owner.or_else(|| main_agent(&primary_agents)) else {
             task.state = TaskState::Failed;
             task.outcome = "No agent to start it from.".to_owned();
             continue;
@@ -507,7 +507,7 @@ fn adopt(
 /// and the user hears so.
 fn finish(
     settled: On<Add<Settled>>,
-    turns: Query<(&TurnOutcome, &ForAgent, Option<&TurnSpending>), With<Turn>>,
+    turns: Query<(&TurnOutcome, &ForAgent, Option<&TurnUsage>), With<Turn>>,
     agents: Query<&QueuedTask>,
     mut queue: ResMut<TaskQueue>,
     mut note: ResMut<QueueNote>,

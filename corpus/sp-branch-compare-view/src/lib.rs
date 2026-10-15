@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Conversation as Line, shared_prefix};
-use rig_harness::rig_core::effect::{EffectId, EffectKind, EffectRecord, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind, EffectRecord};
 use rig_harness::rig_core::message::{CallId, Message as ChatMessage};
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_telemetry::EffectLog;
@@ -359,7 +359,7 @@ fn open(world: &mut World, args: &CommandArgs) -> Result<(), Notice> {
 fn candidates(conversation: &Line) -> Vec<Candidate> {
     let active = Candidate {
         line: None,
-        title: conversation.branch_title().to_owned(),
+        title: conversation.line_title().to_owned(),
         leaf: conversation
             .messages()
             .len()

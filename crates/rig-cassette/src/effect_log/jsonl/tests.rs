@@ -1,8 +1,19 @@
 use std::sync::Arc;
 
-use rig_core::effect::{EffectKind, HandlerKey, Outcome};
+use rig_core::effect::{Answered, EffectKind, HandlerKey};
 
 use super::*;
+
+/// `Writer::append` of a whole log.
+trait AppendLog {
+    fn append_log(&mut self, log: &EffectLog) -> io::Result<()>;
+}
+
+impl AppendLog for Writer {
+    fn append_log(&mut self, log: &EffectLog) -> io::Result<()> {
+        self.append(&log.header, &log.records)
+    }
+}
 
 fn record(id: u64, key: &str) -> EffectRecord {
     EffectRecord {
@@ -14,7 +25,7 @@ fn record(id: u64, key: &str) -> EffectRecord {
         disposition: Default::default(),
         decided_by: None,
         stream_origin: None,
-        tool_output: None,
+        published: None,
         parent: None,
         scope: Some(Arc::from("agent")),
         id: EffectId::from_raw(id),
@@ -23,7 +34,7 @@ fn record(id: u64, key: &str) -> EffectRecord {
             kind: Arc::from("test"),
             payload: serde_json::json!({ "ask": id }),
         },
-        outcome: Ok(Outcome::Custom {
+        outcome: Ok(Answered::Custom {
             payload: serde_json::json!({ "n": id }),
         }),
         events: None,
@@ -38,15 +49,15 @@ fn appended_logs_read_back_as_one_with_merged_headers() {
     let first = EffectLog::from_records(vec![record(1, "model")]);
     // A header without records: nothing to write.
     writer
-        .append(&EffectLog {
+        .append_log(&EffectLog {
             records: Vec::new(),
             ..first.clone()
         })
         .expect("header only");
     assert!(!path.exists(), "a header alone is not written");
-    writer.append(&first).expect("first append");
+    writer.append_log(&first).expect("first append");
     let second = EffectLog::from_records(vec![record(2, "model"), record(3, "tool")]);
-    writer.append(&second).expect("second append");
+    writer.append_log(&second).expect("second append");
 
     let text = std::fs::read_to_string(&path).expect("log text");
     assert_eq!(
@@ -86,7 +97,7 @@ fn appended_logs_read_back_as_one_with_merged_headers() {
     let mut writer = Writer::new(&path);
     assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(3)));
     writer
-        .append(&EffectLog {
+        .append_log(&EffectLog {
             header: second.header.clone(),
             records: vec![record(4, "tool")],
         })
@@ -137,7 +148,7 @@ fn completion_of(
         disposition: Default::default(),
         decided_by: None,
         stream_origin: None,
-        tool_output: None,
+        published: None,
         parent: None,
         scope: Some(Arc::from(scope)),
         id: EffectId::from_raw(id),
@@ -146,7 +157,7 @@ fn completion_of(
             request: CompletionRequest::from(history),
             stream: true,
         },
-        outcome: Ok(Outcome::Completion(CompletionResponse::new(
+        outcome: Ok(Answered::Completion(CompletionResponse::new(
             vec![AssistantContent::text("ok")],
             Usage::default(),
             rig_core::message::Origin::new("test.api", "model", ""),
@@ -174,7 +185,7 @@ fn shell_call() -> (EffectRecord, rig_core::completion::Message) {
         name: "shell".into(),
         args: "{}".into(),
     };
-    shell.outcome = Ok(Outcome::ToolResult {
+    shell.outcome = Ok(Answered::ToolResult {
         result: ToolResult::success(ToolOutput::text(LISTING)),
     });
     let result = rig_core::completion::Message::tool_result(
@@ -214,10 +225,10 @@ fn completion_requests_are_written_as_continuations_and_read_back_whole() {
     let mut writer = Writer::new(&path);
     let (first, second) = written.split_at(3);
     writer
-        .append(&EffectLog::from_records(first.to_vec()))
+        .append_log(&EffectLog::from_records(first.to_vec()))
         .expect("first append");
     writer
-        .append(&EffectLog::from_records(second.to_vec()))
+        .append_log(&EffectLog::from_records(second.to_vec()))
         .expect("second append");
 
     let text = std::fs::read_to_string(&path).expect("log text");
@@ -257,7 +268,7 @@ fn completion_requests_are_written_as_continuations_and_read_back_whole() {
     let mut writer = Writer::new(&path);
     assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(7)));
     writer
-        .append(&EffectLog::from_records(vec![completion(
+        .append_log(&EffectLog::from_records(vec![completion(
             8,
             "parent",
             &["summary", "e"],
@@ -316,7 +327,7 @@ fn replies_and_tool_results_are_stored_once_and_a_compacted_request_keeps_its_ta
     ];
     let mut writer = Writer::new(&path);
     writer
-        .append(&EffectLog::from_records(written.clone()))
+        .append_log(&EffectLog::from_records(written.clone()))
         .expect("append");
 
     let text = std::fs::read_to_string(&path).expect("log text");
@@ -364,13 +375,13 @@ fn a_tool_result_whose_write_failed_is_written_whole_when_repeated() {
     // A directory in the file's place: the tool call never reaches the file.
     std::fs::create_dir(&path).expect("directory in the way");
     writer
-        .append(&EffectLog::from_records(vec![shell]))
+        .append_log(&EffectLog::from_records(vec![shell]))
         .expect_err("the write fails");
     std::fs::remove_dir(&path).expect("directory removed");
 
     let task = Message::user("first task, with enough words to be worth referring to");
     writer
-        .append(&EffectLog::from_records(vec![
+        .append_log(&EffectLog::from_records(vec![
             completion_of(1, "parent", vec![task.clone()]),
             completion_of(2, "parent", vec![task, reply(), result]),
         ]))
@@ -385,7 +396,7 @@ fn a_continuation_of_an_unknown_request_is_an_error() {
     let path = dir.path().join("effects.jsonl");
     let mut writer = Writer::new(&path);
     writer
-        .append(&EffectLog::from_records(vec![
+        .append_log(&EffectLog::from_records(vec![
             completion(1, "parent", &["a"]),
             completion(2, "parent", &["a", "b"]),
         ]))
@@ -407,7 +418,7 @@ fn a_log_that_cannot_be_read_back_is_continued_after_every_id_it_states() {
     let path = dir.path().join("effects.jsonl");
     // Resolved out of order: the highest id is not on the last line.
     Writer::new(&path)
-        .append(&EffectLog::from_records(vec![
+        .append_log(&EffectLog::from_records(vec![
             completion(9, "parent", &["a"]),
             record(4, "tool"),
         ]))
@@ -422,7 +433,7 @@ fn a_log_that_cannot_be_read_back_is_continued_after_every_id_it_states() {
     let mut writer = Writer::new(&path);
     assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(12)));
     writer
-        .append(&EffectLog::from_records(vec![completion(
+        .append_log(&EffectLog::from_records(vec![completion(
             16,
             "parent",
             &["a", "b"],
@@ -442,7 +453,7 @@ fn a_writer_that_forgets_continues_the_rewritten_file_without_its_old_text() {
     let mut writer = Writer::on(Arc::new(store.clone()), SESSION_EFFECT_LOG);
     let secret = completion(1, "agent", &["my token is hunter2"]);
     writer
-        .append(&EffectLog::from_records(vec![secret]))
+        .append_log(&EffectLog::from_records(vec![secret]))
         .expect("first append");
 
     // The file is rewritten behind the writer, as a redaction does.
@@ -455,7 +466,7 @@ fn a_writer_that_forgets_continues_the_rewritten_file_without_its_old_text() {
     writer.forget();
     let next = completion(2, "agent", &["my token is [REDACTED]", "b"]);
     writer
-        .append(&EffectLog::from_records(vec![next.clone()]))
+        .append_log(&EffectLog::from_records(vec![next.clone()]))
         .expect("second append");
 
     let file = store.read_file(SESSION_EFFECT_LOG).expect("the file");

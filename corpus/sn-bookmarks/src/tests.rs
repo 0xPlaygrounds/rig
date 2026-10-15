@@ -25,7 +25,7 @@ fn start(home: &Home, id: &SessionId, new: Option<&str>) -> Option<(App, Receive
     app.world_mut().spawn((TranscriptView::default(), MainPane));
     app.init_resource::<Ended>()
         .add_observer(log_ended)
-        .add_plugins((AgentPlugin, JournalPlugin, BookmarksPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, BookmarksPlugin));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut())?;
@@ -239,7 +239,7 @@ fn bookmarks_list_open_survive_resume_fork_and_condensing_and_never_reach_the_mo
     let agent_id = app.world().get::<AgentId>(agent).cloned();
     let before = agent_id.map(|agent_id| (agent_id, *question_2));
     let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         ..ForkSession::default()
     });

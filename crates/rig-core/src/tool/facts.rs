@@ -534,11 +534,9 @@ pub enum ChangeKind {
     Deleted,
 }
 
-/// A tool call's output was cut to fit: the text the model reads keeps
-/// one end of it, and says so in a line of its own on the side it cut,
-/// before what it keeps when it kept the end and after it when it kept the
-/// start. A front draws that line whole, and leaves it out of what it
-/// counts as output, by this fact rather than by the line's wording.
+/// A tool's output was cut to fit: the model's text keeps one end and says
+/// so in a line of its own. A front reads this fact, not that line's
+/// wording, to draw and count the cut.
 ///
 /// ```
 /// use rig_core::tool::{KeptEnd, OutputCut};

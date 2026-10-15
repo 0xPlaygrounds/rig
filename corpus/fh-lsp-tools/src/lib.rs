@@ -343,7 +343,7 @@ struct ShutdownHold;
 /// Holds the first exit while the running servers shut down, at most a
 /// few seconds.
 fn hold_exit(
-    exits: Query<Entity, (With<ExitRequest>, Undecided, PluginEffects)>,
+    exits: Query<Entity, (With<ExitRequest>, ReadyToStart, PluginEffects)>,
     servers: Res<LspServers>,
     wake: Res<Wake>,
     mut held: Local<bool>,

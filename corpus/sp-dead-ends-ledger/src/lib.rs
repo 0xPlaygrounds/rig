@@ -22,7 +22,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Section;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, ToolOutput};
 use rig_harness::rig_tools::split_status;
 use schemars::JsonSchema;
@@ -387,7 +387,12 @@ fn review_shell(
             Option<&Published>,
             &mut Outcome,
         ),
-        (Unreviewed, ToolCalls, Without<Checked>, Without<Restored>),
+        (
+            ReadyToSettle,
+            ToolCalls,
+            Without<Checked>,
+            Without<Restored>,
+        ),
     >,
     mut ledgers: Query<Option<&mut DeadEnds>, With<Agent>>,
     agents: Query<(&AgentId, Option<&WorkDir>)>,
@@ -547,7 +552,7 @@ fn on_dead_end(
             id: 0,
             approach: approach.to_owned(),
             why: called.args.why.trim().to_owned(),
-            agent: called.caller.0.clone(),
+            agent: called.agent_id.0.clone(),
             turn: turn_of(turn, None),
             source: Source::Agent,
             at_ms: now_ms(),

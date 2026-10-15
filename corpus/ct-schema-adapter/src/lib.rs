@@ -19,9 +19,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::completion::{Message, ToolDefinition};
-use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
-use rig_harness::rig_core::serve::{self, Intercept, Verdict};
+use rig_harness::rig_core::serve::{self, AfterServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
@@ -189,9 +189,9 @@ impl Intercept for AdaptRequest {
         NAME.to_owned()
     }
 
-    async fn before(&self, _id: EffectId, kind: &EffectKind) -> serve::Decision {
+    async fn before(&self, _id: EffectId, kind: &EffectKind) -> serve::BeforeServe {
         let EffectKind::Completion { request, stream } = kind else {
-            return serve::Decision::Proceed;
+            return serve::BeforeServe::Proceed;
         };
         let mut request = request.clone();
         if self.rule.has(Profile::FewTools) {
@@ -219,7 +219,7 @@ impl Intercept for AdaptRequest {
             *tool = adapted;
         }
         *self.declared.lock().unwrap_or_else(PoisonError::into_inner) = changed;
-        serve::Decision::Patch(EffectKind::Completion {
+        serve::BeforeServe::Patch(EffectKind::Completion {
             request,
             stream: *stream,
         })
@@ -230,8 +230,8 @@ impl Intercept for AdaptRequest {
         _id: EffectId,
         _kind: &EffectKind,
         _outcome: &Result<Answered, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
+    ) -> AfterServe {
+        AfterServe::Keep
     }
 }
 

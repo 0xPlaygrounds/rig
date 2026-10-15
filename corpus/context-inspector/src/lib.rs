@@ -107,7 +107,7 @@ pub struct Prepared {
     pub authors: Vec<Option<Author>>,
     /// The edits Prepare systems made to the messages, each with its
     /// author.
-    pub edits: Vec<Recorded>,
+    pub edits: Vec<ChangeRecord>,
 }
 
 /// An agent's last turn request, as it was sent.
@@ -263,7 +263,7 @@ fn keep_sent(
 /// `/context --last [full] [agent]` runs as `/why [full] [agent]`, taken
 /// over before the harness would run it as `/context`.
 fn alias(
-    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (ReadyToStart, IncomingMessages)>,
     mut commands: Commands,
 ) {
     for (typed, &ForAgent(agent), mut decision) in &mut typed {
@@ -625,7 +625,7 @@ fn tool_changes(built: &[ToolDefinition], sent: &[ToolDefinition]) -> Vec<String
 /// What one attributed edit of a request's messages did, naming who made
 /// it: messages added, rewritten (spliced in again under their own ids) or
 /// left out. Asides and halts never reach the model.
-fn message_changes(edit: &Recorded) -> Vec<String> {
+fn message_changes(edit: &ChangeRecord) -> Vec<String> {
     let by = edit
         .by
         .as_ref()

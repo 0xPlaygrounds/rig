@@ -1,67 +1,41 @@
 //! What a tool call would leave on disk, learned before it runs: put
-//! [`Preview`] on the call in [`Stage::Gate`], and the harness holds it,
-//! runs its tool on an [`Overlay`] of the workspace, which keeps every
-//! write from the disk, and puts the changes on it as [`Previewed`]. The
-//! call is then [`Undecided`] again in a later pass, for the gate to decide
-//! with the changes in hand.
-//!
-//! ```
-//! use rig_harness::prelude::*;
-//!
-//! /// Asks before a call that would change more than 200 lines.
-//! fn guard(
-//!     calls: Query<(Entity, Option<&Previewed>), (ToolCalls, Undecided)>,
-//!     mut commands: Commands,
-//! ) {
-//!     for (call, previewed) in &calls {
-//!         match previewed {
-//!             None => {
-//!                 commands.entity(call).insert(Preview);
-//!             }
-//!             Some(Previewed(Ok(changes))) => {
-//!                 let lines: usize = changes.iter().map(|it| it.added + it.removed).sum();
-//!                 if lines > 200 { /* hold it and ask, with the changes */ }
-//!             }
-//!             // Not previewable (not registered per call, or `shell`), or
-//!             // it would fail.
-//!             Some(Previewed(Err(_))) => {}
-//!         }
-//!     }
-//! }
-//!
-//! App::new().add_systems(AgentPass, guard.in_set(Stage::Gate));
-//! ```
+//! [`Preview`] on the call in [`Stage::Gate`], and the harness holds it, runs
+//! its tool on an [`Overlay`] of the workspace that keeps every write from
+//! the disk, and puts the changes on it as [`Previewed`]; the call is then
+//! ready to start again for the gate to decide with the changes in hand.
 //!
 //! Only a tool registered per call
 //! ([`add_tool_per_call`](crate::per_call::AppPerCallExt::add_tool_per_call))
 //! can be previewed; another gets `Previewed(Err(..))`. The tool runs for
-//! real but on the overlay: it can read every file, its writes, removals
-//! and renames stay in the overlay, and it cannot start a process (so a
-//! `shell` call's preview is the overlay's refusal). Anything the tool does
-//! other than through its [`Place`]'s workspace, such as a request over
-//! the network, it does in the preview too.
+//! real on the overlay: it reads every file, its writes stay in the overlay,
+//! and it cannot start a process (so `shell` cannot be previewed). What it
+//! does other than through its [`CallPlace`]'s workspace, such as a network
+//! request, it does in the preview too. The plugin guide's
+//! [gating section](crate::plugin_guide#gating-and-reviewing-tool-calls) has
+//! an example.
 
 use std::sync::Arc;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
-use rig_core::effect::{EffectKind, Outcome};
+use rig_core::effect::{Answered, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::serve_inline;
 use rig_core::tool::{FileChange, ToolErrorKind};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    AgentPass, ForAgent, GateSystems, HoldOf, Running, Stage, Started, ToolCalls, ToolRequest, Wake,
+    AgentPass, ForAgent, GateSystems, HoldOf, Running, Stage, Started, ToolCalls, ToolDef,
+    ToolRequest, Wake,
 };
 use rig_tools::overlay::Overlay;
 
-use crate::per_call::{PerCall, Place, base};
+use crate::per_call::{CallPlace, PerCall, base, per_call};
 use crate::services::{ProjectRoot, WorkDir};
 use crate::workspace::ProjectWorkspace;
 
 #[cfg(doc)]
-use rig_ecs::prelude::Undecided;
+use rig_ecs::prelude::ReadyToStart;
 
 /// Put on a tool call in [`Stage::Gate`] (or [`GateSystems::After`]) to
 /// learn what it would leave on disk: the harness holds the call, runs its
@@ -124,7 +98,7 @@ fn preview(
         (ToolCalls, Added<Preview>, Without<Started>),
     >,
     dirs: Query<&WorkDir>,
-    tools: Option<Res<PerCall>>,
+    tools: Query<(&ToolDef, &PerCall)>,
     (workspace, root): (Res<ProjectWorkspace>, Res<ProjectRoot>),
     wake: Res<Wake>,
     mut commands: Commands,
@@ -132,7 +106,7 @@ fn preview(
     for (call, request, agent) in &calls {
         let overlay = Arc::new(Overlay::new(workspace.0.clone()));
         let (base, confine) = base(agent.map(|agent| agent.0), &dirs, &root);
-        let place = Place {
+        let place = CallPlace {
             workspace: overlay.clone(),
             base,
             confine,
@@ -140,7 +114,7 @@ fn preview(
             spill: None,
         };
         let name = request.call.function.name.as_str();
-        let Some(Handler(handler)) = tools.as_ref().and_then(|tools| tools.build(name, place))
+        let Some(Handler(handler)) = per_call(&tools, name).map(|per_call| per_call.build(place))
         else {
             let report = ErrorReport::new(
                 ErrorKind::Tool(ToolErrorKind::Other),
@@ -151,7 +125,7 @@ fn preview(
         };
         let kind = EffectKind::from(&request.call);
         let work = async move {
-            if let Outcome::ToolResult { result } = serve_inline(&handler, kind).await? {
+            if let Answered::ToolResult { result } = serve_inline(&handler, kind).await? {
                 result.into_result().map_err(ErrorReport::from)?;
             }
             Ok(overlay.changes())

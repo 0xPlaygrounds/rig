@@ -50,14 +50,14 @@ fn note_scroll(scroll: On<ScrollTo>, mut scrolls: ResMut<Scrolls>) {
 #[derive(Resource, Default)]
 struct Interrupts(usize);
 
-fn note_interrupt(_: On<Interrupt>, mut interrupts: ResMut<Interrupts>) {
+fn note_interrupt(_: On<StopTurn>, mut interrupts: ResMut<Interrupts>) {
     interrupts.0 += 1;
 }
 
 /// Ctrl+F, then `keys`, in one frame: the bar takes the keys after it.
 fn search(app: &mut App, keys: impl IntoIterator<Item = KeyCode>) {
     let ctrl_f = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
-    let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+    let mut events = app.world_mut().resource_mut::<PendingInput>();
     events.0.push(KeyInput::Event(Event::Key(ctrl_f)));
     press(app, keys);
 }
@@ -89,7 +89,7 @@ fn edit_view(app: &mut App, edit: impl FnOnce(&mut TranscriptView)) {
 fn press(app: &mut App, keys: impl IntoIterator<Item = KeyCode>) {
     for code in keys {
         let key = KeyEvent::new(code, KeyModifiers::NONE);
-        let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+        let mut events = app.world_mut().resource_mut::<PendingInput>();
         events.0.push(KeyInput::Event(Event::Key(key)));
     }
     app.update();
@@ -135,7 +135,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     app.insert_resource(scripted_models([("test/model", &model)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             PickPlugin,
             TranscriptSearchPlugin,
         ))
@@ -164,7 +164,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         });
     }
     assert_eq!(app.world().resource::<Ended>().0.len(), 3);
-    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
 
     // Turn 2's `shell` output is drawn cut, without the error.
     let call = TranscriptItem::Call(CallId::from_wire("c1"));
@@ -304,5 +304,5 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert!(view.highlights.is_empty() && view.expanded.is_empty());
     let last = app.world().resource::<Scrolls>().0.last().cloned();
     assert_eq!(last, Some((None, ItemRow::Top(0))));
-    assert_eq!(app.world().resource::<Shown>().0, Some(agent));
+    assert_eq!(app.world().resource::<ShownAgent>().0, Some(agent));
 }

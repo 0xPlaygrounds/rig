@@ -66,7 +66,7 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
     app.set_error_handler(bevy_ecs::error::warn)
         .insert_resource(Settings::from_toml("[code_search]\ncontext_chunks = 3"))
         .insert_resource(ProjectRoot(project.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, EditTool, CodeSearchPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, EditTool, CodeSearchPlugin))
         .init_resource::<ToolOutputs>()
         .init_resource::<Ended>()
         .add_observer(log_tool_outputs)

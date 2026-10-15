@@ -8,7 +8,7 @@ use rig_core::conversation::{AsideId, Author, Conversation};
 
 use crate::format::SESSION;
 use crate::session::{Fold, Folded, fold, log_lines, read_header};
-use crate::{Files, ForkedFrom, LoadError, SessionMeta, Store, main_order};
+use crate::{Files, ForkedFrom, SessionError, SessionMeta, Store, main_order};
 
 /// What a listing shows of a saved session, from its store's files alone
 /// (no log is folded).
@@ -33,8 +33,8 @@ impl Listing {
 /// One agent's line of the session in `store`: `agent` (the main agent when
 /// `None`, found from the logs' headers alone), its `line` (active when
 /// `None`), folded from that agent's log only, older formats through the
-/// chain, writing nothing. The agent's id and the line as a conversation,
-/// with ids and made-times kept.
+/// chain, writing nothing. Returns the agent's id and the line as a
+/// conversation, with ids and made-times kept.
 ///
 /// # Errors
 ///
@@ -43,7 +43,7 @@ pub fn read_line(
     store: &dyn Store,
     agent: Option<&str>,
     line: Option<AsideId>,
-) -> Result<(String, Conversation), LoadError> {
+) -> Result<(String, Conversation), SessionError> {
     let how = Fold {
         until: None,
         images: true,
@@ -69,7 +69,7 @@ pub fn read_line(
 /// the first by [`main_order`] that is not retired, as
 /// [`Session::main_agent`](crate::Session::main_agent) finds it; only its
 /// candidates are folded.
-fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, LoadError> {
+fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, SessionError> {
     let mut candidates = Vec::new();
     for name in store.logs()? {
         if name == SESSION {
@@ -92,6 +92,19 @@ fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, LoadError> {
         }
     }
     Ok(None)
+}
+
+/// The first session `id` was forked or split from, through every parent
+/// in `parents` (each session's parent, by id); `id` itself when it has
+/// none.
+pub fn family_root<'a>(parents: &'a [(String, String)], id: &'a str) -> &'a str {
+    let parent = |id: &str| -> Option<&'a str> {
+        let found = parents.iter().find(|(child, _)| child == id);
+        found.map(|(_, parent)| parent.as_str())
+    };
+    // A loop cannot happen, but a bound costs nothing.
+    let up = std::iter::successors(Some(id), |id| parent(id));
+    up.take(parents.len() + 1).last().unwrap_or(id)
 }
 
 #[cfg(test)]

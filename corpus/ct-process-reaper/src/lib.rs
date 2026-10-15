@@ -422,7 +422,7 @@ fn after_turn(
         ids.join(", ")
     );
     commands
-        .trigger(Deliver::new(agent, note, DeliveryMode::Note).with_author(Author::plugin(NAME)));
+        .trigger(Deliver::new(agent, note, DeliveryMode::Inform).with_author(Author::plugin(NAME)));
 }
 
 /// `1 process`, `2 processes`.
@@ -735,7 +735,7 @@ fn reap_leftovers(
 /// Holds the first exit, unless it is a `/reload`, until every tracked
 /// process is stopped.
 fn hold_exit(
-    exits: Query<(Entity, &ExitRequest), (Undecided, PluginEffects)>,
+    exits: Query<(Entity, &ExitRequest), (ReadyToStart, PluginEffects)>,
     mut reaper: ResMut<Reaper>,
     (data, workspace): (Option<Res<PluginData>>, Option<Res<ProjectWorkspace>>),
     (settings, wake): (Res<ReaperSettings>, Res<Wake>),

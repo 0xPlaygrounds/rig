@@ -47,7 +47,7 @@ fn import_with(app: &mut App, tool: &str, path: &Path) -> Vec<SessionImported> {
 
 /// The conversation of the main agent of `session`, as its logs left it.
 fn conversation_of(home: &Home, session: &SessionId) -> Vec<Message> {
-    let store = SessionStores::default().open(&home.session(session));
+    let store = StoreOpener::default().open(&home.session(session));
     let saved = store
         .and_then(|store| Session::read(&*store))
         .unwrap_or_default();
@@ -92,7 +92,12 @@ fn imports_resumes_and_reimports() {
             },
             terminal: false,
         })
-        .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin, ImportSessionsPlugin));
+        .add_plugins((
+            ExitPlugin,
+            AgentPlugin,
+            SessionLogPlugin,
+            ImportSessionsPlugin,
+        ));
     collect::<SessionImported>(&mut command);
     command.finish();
     command.update();
@@ -103,7 +108,7 @@ fn imports_resumes_and_reimports() {
     // `/import codex <file>` in a session.
     let current = SessionId::generate();
     let (mut app, _wakes) = app_in(&home, &current);
-    app.add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ImportSessionsPlugin));
     collect::<SessionImported>(&mut app);
     app.finish();
     app.update();
@@ -137,7 +142,7 @@ fn imports_resumes_and_reimports() {
     let (_, answered) = paired(&messages, "toolu_1").unwrap_or_default();
     // The sidechain is a subagent of it, and each message is logged at the
     // source's time.
-    let store = SessionStores::default().open(&home.session(&first.session));
+    let store = StoreOpener::default().open(&home.session(&first.session));
     let agents = store
         .and_then(|store| Session::read(&*store))
         .unwrap_or_default()
@@ -186,7 +191,7 @@ fn imports_resumes_and_reimports() {
         let (mut resumed, wakes) = app_in(&home, &first.session);
         resumed
             .insert_resource(scripted_models([("test/model", &model)]))
-            .add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin))
+            .add_plugins((AgentPlugin, SessionLogPlugin, ImportSessionsPlugin))
             // A `shell` here, so the request declares tools and keeps the
             // imported calls as calls.
             .add_open_tool(
@@ -267,6 +272,6 @@ fn resumable(home: &Home, current: &SessionId) -> Vec<SessionEntry> {
     home.saved_sessions()
         .into_iter()
         .filter(|(id, _)| id != current)
-        .filter_map(|(_, dir)| SessionEntry::read(&dir, &SessionStores::default()))
+        .filter_map(|(_, dir)| SessionEntry::read(&dir, &StoreOpener::default()))
         .collect()
 }

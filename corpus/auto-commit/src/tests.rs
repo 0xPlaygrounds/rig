@@ -61,7 +61,7 @@ fn a_turn_that_writes_a_file_is_committed_with_the_model_subject_and_undone() {
             ("corpus-scripted/cheap", &cheap),
         ]))
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, AutoCommitPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WriteTool, AutoCommitPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

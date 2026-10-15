@@ -9,8 +9,8 @@ use rig_harness_test_support::{
     Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, log_ended,
     log_tool_outputs, reply, run_until, scripted_models, tui_view,
 };
-use rig_telemetry::{TurnSpending, UsagePlugin};
-use rig_tui::{Focus, MainPane, TuiTestScreen};
+use rig_telemetry::{TurnUsage, UsagePlugin};
+use rig_tui::{MainPane, ShowAgent, TuiTestScreen};
 use serde_json::json;
 
 use super::*;
@@ -39,7 +39,7 @@ fn run_turn(model: &MockCompletionModel, root: PathBuf, ask: &str) -> (App, Enti
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/model", model)]))
         .insert_resource(ProjectRoot(root))
-        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, UsagePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WriteTool, UsagePlugin))
         .add_plugins(AutoContinuePlugin)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
@@ -133,7 +133,7 @@ fn a_cut_reply_is_continued_and_joined_at_the_seam() {
         ["The three steps are: 1. parse 2. validate 3. emit."]
     );
     // The turn's usage is both requests'.
-    let mut spent = app.world_mut().query::<&TurnSpending>();
+    let mut spent = app.world_mut().query::<&TurnUsage>();
     let spent: Vec<_> = spent.iter(app.world()).map(|it| it.0).collect();
     let tokens = spent
         .first()
@@ -141,7 +141,7 @@ fn a_cut_reply_is_continued_and_joined_at_the_seam() {
     assert_eq!(tokens, Some((2, Some(230), Some(30))), "{spent:?}");
     // The seam is marked where the continuation began, its repeat said once.
     assert_eq!(marks(app.world()), [Some(30)]);
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
     app.update();
     let screen = app.world().resource::<TuiTestScreen>().rows().join("\n");
     assert!(

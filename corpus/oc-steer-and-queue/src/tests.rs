@@ -26,7 +26,7 @@ fn shell(called: On<ToolCalled<serde_json::Value>>, mut shells: ResMut<Shells>) 
 fn start(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, PickPlugin, SteerQueuePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, SteerQueuePlugin))
         .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
         .init_resource::<Shells>()
         .init_resource::<Ended>()
@@ -41,7 +41,7 @@ fn start(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>
         entity: agent,
         model,
     });
-    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     app.update();
     (app, wakes, agent)
 }

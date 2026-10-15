@@ -17,7 +17,12 @@ use super::*;
 fn session(home: &Home, dir: &Path, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_in(home, &SessionId::generate());
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, FileAnnotationsPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            ReadTool,
+            FileAnnotationsPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended)
         .init_resource::<ToolOutputs>()

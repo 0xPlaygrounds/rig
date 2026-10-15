@@ -258,7 +258,7 @@ fn on_user_message(
 /// Holds a turn's first call that may change files while the working tree
 /// is snapshot, when auto-review is on.
 fn snapshot_before_changes(
-    calls: Query<(Entity, &Footprint, &Decision, &CallOf, &ForAgent), (Undecided, ToolCalls)>,
+    calls: Query<(Entity, &Footprint, &Decision, &CallOf, &ForAgent), (ReadyToStart, ToolCalls)>,
     turns: Query<(), (With<TurnOf>, Without<Baseline>)>,
     agents: Query<(), (With<Reviews>, Without<SpawnedBy>)>,
     (auto, root, processes, wake): (Res<AutoReview>, Res<ProjectRoot>, Res<Processes>, Res<Wake>),
@@ -533,7 +533,7 @@ fn stop_reviewer(
     if let Ok(&ReviewedBy(reviewer)) = reviews.get(removed.entity)
         && busy.contains(reviewer)
     {
-        commands.trigger(Interrupt {
+        commands.trigger(StopTurn {
             entity: reviewer,
             reason: Some("the review was cancelled".to_owned()),
         });

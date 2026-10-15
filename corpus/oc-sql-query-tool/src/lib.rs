@@ -60,7 +60,6 @@ impl Plugin for SqlQueryToolPlugin {
         app.add_tool_per_call(
             DbSchema(At::default()),
             options(&["Use `db_schema` before `db_query` to see a database's tables and columns."]),
-            false,
             |place| DbSchema(At::from(place)),
         )
         .add_tool_per_call(
@@ -68,7 +67,6 @@ impl Plugin for SqlQueryToolPlugin {
             options(&[
                 "Use `db_query` to read the development databases directly; it runs one read-only statement per call.",
             ]),
-            false,
             |place| DbQuery(At::from(place)),
         );
     }
@@ -114,8 +112,8 @@ impl Default for At {
     }
 }
 
-impl From<Place> for At {
-    fn from(place: Place) -> Self {
+impl From<CallPlace> for At {
+    fn from(place: CallPlace) -> Self {
         Self {
             workspace: place.workspace,
             base: place.base,

@@ -23,7 +23,7 @@ fn start(
         .insert_resource(Models(Connector::new(Catalog::default())))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             CompactionPlugin,
             SubagentsPlugin,
             PinnedNotesPlugin,

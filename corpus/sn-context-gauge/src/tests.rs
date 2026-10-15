@@ -82,7 +82,7 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
     app.insert_resource(models)
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             TuiPlugin,
             UsagePlugin,
             SubagentsPlugin,

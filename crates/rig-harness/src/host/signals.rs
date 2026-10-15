@@ -19,7 +19,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::Wake;
 
 use super::exit::{Exit, ExitReason, SIGNAL_EXIT_CODE};
 

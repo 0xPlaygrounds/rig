@@ -32,8 +32,8 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as History;
 use rig_harness::rig_core::conversation::pairing::{self, PairingError};
 use rig_harness::rig_core::message::{Message, Text, ToolResult as ResultPart, ToolResultContent};
-use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_memory::{LoadError, Record};
+use rig_harness::rig_ecs::session_log::SessionStore;
+use rig_harness::rig_memory::{LogRecord, SessionError};
 use rig_tui::{RunInTerminal, TerminalExit};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -754,10 +754,10 @@ fn undone(
     log: &str,
     conversation: &History,
 ) -> Result<(Vec<Entry>, usize), String> {
-    let unreadable = |why: LoadError| format!("could not read the session log: {why}");
+    let unreadable = |why: SessionError| format!("could not read the session log: {why}");
     let mut edits = Vec::new();
     for (stamp, record) in history(store, log).map_err(unreadable)? {
-        let Record::Change(Recorded { by: Some(by), .. }) = record else {
+        let LogRecord::Change(ChangeRecord { by: Some(by), .. }) = record else {
             continue;
         };
         if by == Author::plugin(PLUGIN) {

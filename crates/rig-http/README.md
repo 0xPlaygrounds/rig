@@ -3,12 +3,8 @@
 The transport contracts every [Rig](https://github.com/0xPlaygrounds/rig)
 provider sends through:
 
-- `http_client`: `HttpClientExt`, the trait an HTTP transport implements,
-  `DynHttpClient` (an erased client with middleware: each `HttpMiddleware`
-  hook gets the request's `Exchange`, its method, URI and extensions, and
-  `after_response` runs on every reply, a non-success one a transport
-  reports as an error included), request framing, multipart forms and the
-  transport error type;
+- `http_client`: `HttpClientExt`, the trait a transport implements; `DynHttpClient`, an erased
+  client with middleware (`HttpMiddleware`); request framing, multipart forms and the error type;
 - `ws_client` (feature `websocket`): the websocket connection contract the
   Responses WebSocket session is written against;
 - `wasm_compat`: the `Send`/`Sync` bounds and boxed futures that relax on

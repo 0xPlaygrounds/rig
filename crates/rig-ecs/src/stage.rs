@@ -7,31 +7,20 @@
 //! released goes as far as it can in that frame.
 //!
 //! A plugin steps in with an ordinary system in a stage that queries stage
-//! data. It orders its Prepare and Review systems by what they do, in a
-//! phase of the stage ([`PrepareSystems`], [`ReviewSystems`]), and against
-//! one other plugin with `.before` and `.after` that plugin's sets; an
-//! answer from a record of an earlier run goes before every gate, and an
-//! answer that stands in for running the effect after them
-//! ([`GateSystems`]). Every
-//! effect is [`Admitted`] first, so every Prepare and Gate system sees it,
-//! in their order, before it starts, wherever it was spawned. A gate
-//! answers in the effect's [`Decision`], where the first decision wins; a
-//! reviewer edits the [`Outcome`] in place, and the record keeps both and
-//! who decided. Bevy
-//! sees both writes, so two unordered systems writing them are reported in
-//! debug builds. Any entity [`HoldOf`] an effect
-//! keeps it where it is, and holds add up. A system that fails in Prepare,
-//! Gate or Review closes its stage for that pass, whatever the app's error
-//! handler: what Prepare admitted is answered with an error, Start starts
-//! nothing, Commit settles nothing. From the second pass of a frame on,
-//! `Time`, `Time<Real>` and `Time<Virtual>` advance by zero, so timers count
-//! each frame once.
+//! data, ordered by its phase ([`PrepareSystems`], [`ReviewSystems`],
+//! [`GateSystems`]) and against other plugins' public sets. Every effect is
+//! [`Admitted`] first, so every Prepare and Gate system sees it before it
+//! starts. A gate decides in the effect's [`Decision`] (the first decision
+//! wins), a reviewer edits the [`Outcome`] in place, and any entity
+//! [`HoldOf`] an effect keeps it where it is. A failing Prepare, Gate or
+//! Review system closes its stage for that pass. From a frame's second pass
+//! on, Bevy's clocks advance by zero, so timers count each frame once.
 //!
 //! ```
 //! use rig_ecs::prelude::*;
 //!
 //! // Refuse every effect of the kind `deploy` when it is about to start.
-//! fn no_deploys(mut effects: Query<(&EffectRequest, &mut Decision), (Undecided, PluginEffects)>) {
+//! fn no_deploys(mut effects: Query<(&EffectRequest, &mut Decision), (ReadyToStart, PluginEffects)>) {
 //!     for (request, mut decision) in &mut effects {
 //!         if request.kind.name() == "deploy" {
 //!             decision.decide(Decider::plugin("no-deploys"), Outcome::refused("no deploys today"));
@@ -71,21 +60,21 @@ use rig_core::effect::{
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{DispatchContext, Recorder, Reply, cancelled};
 use rig_core::tool::{ToolExecutionError, ToolResult, ToolResultContext};
-use rig_memory::now_ms;
+use rig_core::{millis, now_ms};
 use web_time::SystemTime;
 
 use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
-use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
-use super::journal::{Drain, SessionLog, millis, save_now};
 use super::restore::{Interrupted, answer_interrupted, mark_started};
+use super::session_log::{Drain, SessionLog, save_now};
+use super::tasks::{Running, Wake, arrive};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
     refuse_calls,
 };
 use super::turn::{
-    Adapters, Fitted, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
+    Adapters, DroppedOptions, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
     build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
     judge_failures, keeps_settled, model_pool, stop_calls, stream_partials, stream_reply,
     wait_in_order,
@@ -112,7 +101,7 @@ pub enum Stage {
     /// [`RetryVerdict`](super::turn::RetryVerdict).
     Arrive,
     /// Plugins read, edit in place or hold an [`Outcome`]
-    /// ([`Unreviewed`]), and a turn's proposed [`TurnOutcome`], in the
+    /// ([`ReadyToSettle`]), and a turn's proposed [`TurnOutcome`], in the
     /// [`ReviewSystems`] phases.
     Review,
     /// The kernel settles what is answered and unheld, writes its
@@ -120,14 +109,14 @@ pub enum Stage {
     /// turns nothing holds.
     Commit,
     /// The kernel admits what was spawned since the last pass, builds the
-    /// requests of [`TurnCall`]s and [`BuildFrom`](super::turn::BuildFrom)s,
+    /// requests of [`TurnCall`]s and [`SideCall`](super::turn::SideCall)s,
     /// and marks the calls that wait for an earlier one [`Waiting`].
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`), in
     /// the [`PrepareSystems`] phases.
     Prepare,
     /// Plugins hold ([`HoldOf`]) or decide ([`Decision`]) what is about to
-    /// start ([`Undecided`]), once the kernel answered the tool calls it
+    /// start ([`ReadyToStart`]), once the kernel answered the tool calls it
     /// refuses ([`ToolRequest`]).
     Gate,
     /// The kernel applies the decisions made since the last pass as
@@ -201,10 +190,10 @@ pub enum GateSystems {
     /// must not answer what a gate refused, and a coordinator of a group
     /// that starts together or not at all. A decision made in Gate is
     /// applied at Start, so here a decided effect still matches
-    /// [`Undecided`]: read its [`Decision`]. A tool call the kernel refuses
+    /// [`ReadyToStart`]: read its [`Decision`]. A tool call the kernel refuses
     /// is answered before every gate: read its [`Outcome`]. No gate sees an
     /// effect held from its spawn, so a coordinator spawns its members
-    /// unheld and queries them without [`Undecided`]. While any member is
+    /// unheld and queries them without [`ReadyToStart`]. While any member is
     /// held by another or [`Waiting`], it holds the free ones with holds of
     /// its own; once none is, it refuses them all if one was refused or
     /// answered with an error, else releases its holds.
@@ -238,21 +227,21 @@ pub struct Effect {
     /// How its first answer came.
     answered: Option<Disposition>,
     /// The first answer, which a reviewer may edit.
-    raw: Option<Result<effect::Outcome, ErrorReport>>,
+    raw: Option<Result<effect::Answered, ErrorReport>>,
     /// Who decided the answer, when the kernel applied a decision.
     decided_by: Option<Decider>,
 }
 
 impl Default for Effect {
     fn default() -> Self {
-        Self::child_of(None)
+        Self::with_parent_id(None)
     }
 }
 
 impl Effect {
     /// An effect asked for by `parent`, such as a successor keeping the
     /// parent of the effect it supersedes.
-    pub fn child_of(parent: Option<EffectId>) -> Self {
+    pub fn with_parent_id(parent: Option<EffectId>) -> Self {
         Self {
             id: EffectId::from_raw(0),
             parent,
@@ -323,13 +312,13 @@ pub struct Started {
 }
 
 /// The effect's answer, applied by the kernel from its [`Decision`]. A
-/// reviewer edits it in place (`Query<&mut Outcome, Unreviewed>`), and the
+/// reviewer edits it in place (`Query<&mut Outcome, ReadyToSettle>`), and the
 /// record keeps the first answer as its outcome and the edited one as the
 /// reviewed one. Applied to a running effect, it cancels the handler. A
 /// tool call's answer is its result: `Outcome::from(ToolResult)`.
 #[derive(Component, Clone, Debug)]
 #[component(on_insert = answered)]
-pub struct Outcome(pub Result<effect::Outcome, ErrorReport>);
+pub struct Outcome(pub Result<effect::Answered, ErrorReport>);
 
 impl Outcome {
     /// A refusal for `why`, decided before the effect ran. A tool call's
@@ -341,7 +330,7 @@ impl Outcome {
     /// The response a model call answered with, if it did.
     pub fn completion(&self) -> Option<&CompletionResponse> {
         match &self.0 {
-            Ok(effect::Outcome::Completion(response)) => Some(response),
+            Ok(effect::Answered::Completion(response)) => Some(response),
             _ => None,
         }
     }
@@ -350,7 +339,7 @@ impl Outcome {
     /// result, or the failure as an error result.
     pub fn tool_result(&self) -> ToolResult {
         match &self.0 {
-            Ok(effect::Outcome::ToolResult { result }) => result.clone(),
+            Ok(effect::Answered::ToolResult { result }) => result.clone(),
             Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
                 "the tool answered with a {} outcome",
                 other.family()
@@ -362,7 +351,7 @@ impl Outcome {
     /// An answer of a kind of its own, rig-core's custom outcome with
     /// `payload`, such as a plugin's taking over a message.
     pub fn custom(payload: impl Into<serde_json::Value>) -> Self {
-        Self(Ok(effect::Outcome::Custom {
+        Self(Ok(effect::Answered::Custom {
             payload: payload.into(),
         }))
     }
@@ -370,12 +359,12 @@ impl Outcome {
 
 impl From<ToolResult> for Outcome {
     fn from(result: ToolResult) -> Self {
-        Self(Ok(effect::Outcome::ToolResult { result }))
+        Self(Ok(effect::Answered::ToolResult { result }))
     }
 }
 
-impl From<Result<effect::Outcome, ErrorReport>> for Outcome {
-    fn from(outcome: Result<effect::Outcome, ErrorReport>) -> Self {
+impl From<Result<effect::Answered, ErrorReport>> for Outcome {
+    fn from(outcome: Result<effect::Answered, ErrorReport>) -> Self {
         Self(outcome)
     }
 }
@@ -388,7 +377,7 @@ impl From<Result<effect::Outcome, ErrorReport>> for Outcome {
 /// Start, unless the effect was answered meanwhile, and its record names
 /// who decided (`EffectRecord::decided_by`); it stays decided afterwards.
 /// An effect no one decided, such as a call every gate let run, records
-/// no decider. Until then the effect is still [`Undecided`] for the gates
+/// no decider. Until then the effect is still [`ReadyToStart`] for the gates
 /// after the one that decided: a gate that holds or asks checks
 /// [`is_decided`](Self::is_decided) first.
 #[derive(Component, Debug, Default)]
@@ -425,7 +414,7 @@ impl Decision {
 /// a running command's output so far. Whoever runs the effect keeps it
 /// current; the kernel answers with it, in place of "interrupted" or
 /// "stopped", whenever it stops the effect: an
-/// [`Interrupt`](super::agent::Interrupt), its turn failing or stopping,
+/// [`StopTurn`](super::agent::StopTurn), its turn failing or stopping,
 /// its cancellation, and the app's exit, which logs it for the restart.
 #[derive(Component, Clone, Debug)]
 pub struct IfStopped(pub Outcome);
@@ -460,12 +449,9 @@ pub struct Holds(Vec<Entity>);
 /// another model, or each losing member of a race: it never starts, its
 /// task is cancelled if it runs, and its outcome is never applied. It
 /// settles at the next Commit, recorded as superseded. Any number of
-/// effects may name one successor:
-///
-/// ```ignore
-/// commands.spawn(retry).add_related::<SupersededBy>(&[call]);   // a retry
-/// commands.entity(loser).insert(SupersededBy(winner));          // a race, once per loser
-/// ```
+/// effects may name one successor: a retry is
+/// `commands.spawn(retry).add_related::<SupersededBy>(&[call])`, and each
+/// loser of a race gets `insert(SupersededBy(winner))`.
 #[derive(Component, Reflect, Debug)]
 #[component(on_add = moved::<SupersededBy>)]
 #[reflect(Component)]
@@ -492,6 +478,58 @@ pub struct Supersedes(Vec<Entity>);
 #[reflect(Component, Default)]
 pub struct Settled;
 
+/// When an effect carrying `M` is superseded, moves `M`, and the hold the
+/// effect keeps ([`HoldOf`]), to the successor, so the plugin that owns the
+/// effect by `M` takes the successor's outcome. The successor's hold is
+/// inserted before the old one is removed, so the held effect is never
+/// unheld in between: `app.add_observer(follow_successor::<Summarizing>)`.
+pub fn follow_successor<M: Component>(
+    superseded: On<Add<SupersededBy>>,
+    owned: Query<(&SupersededBy, Option<&HoldOf>), With<M>>,
+    mut commands: Commands,
+) {
+    let old = superseded.entity;
+    let Ok((by, hold)) = owned.get(old) else {
+        return;
+    };
+    let new = by.successor();
+    let held = hold.map(|&HoldOf(held)| held);
+    commands.queue(move |world: &mut World| {
+        let Ok(mut to) = world.get_entity_mut(new) else {
+            return;
+        };
+        if let Some(held) = held {
+            to.insert(HoldOf(held));
+        }
+        let Ok(mut from) = world.get_entity_mut(old) else {
+            return;
+        };
+        let marker = from.take::<M>();
+        if held.is_some() {
+            from.remove::<HoldOf>();
+        }
+        if let (Some(marker), Ok(mut to)) = (marker, world.get_entity_mut(new)) {
+            to.insert(marker);
+        }
+    });
+}
+
+/// When an effect settles, despawns its `ChildOf` children carrying `M`
+/// that are still open, such as a request a gate holds when a stop ends
+/// the call that made it: each is recorded as cancelled, which ends
+/// whatever held it. `app.add_observer(despawn_open_children::<TaskCall>)`.
+pub fn despawn_open_children<M: Component>(
+    settled: On<Add<Settled>>,
+    children: Query<&Children>,
+    open: Query<(), (With<M>, Without<Settled>)>,
+    mut commands: Commands,
+) {
+    let children = children.get(settled.entity).into_iter().flatten();
+    for &child in children.filter(|&&child| open.contains(child)) {
+        commands.entity(child).despawn();
+    }
+}
+
 /// The record of every effect that settled or was cancelled, in settle
 /// order, and of the dispatches nested in their handlers. Only effects of a
 /// kind the kernel knows, such as an [`EffectRequest`], have a record.
@@ -510,7 +548,7 @@ pub struct Waiting;
 /// Effects about to start: admitted, not waiting, not started, unanswered,
 /// unheld, not superseded and not a restored call the kernel answers
 /// ([`Interrupted`]). A gate's filter.
-pub type Undecided = (
+pub type ReadyToStart = (
     With<Admitted>,
     Without<Waiting>,
     Without<Started>,
@@ -524,7 +562,7 @@ pub type Undecided = (
 /// Answered effects nothing holds, not settled yet. A reviewer's filter;
 /// it matches on every pass until Commit settles the effect, so a reviewer
 /// edits once, keeping a marker on what it edited.
-pub type Unreviewed = (With<Outcome>, Without<Holds>, Without<Settled>);
+pub type ReadyToSettle = (With<Outcome>, Without<Holds>, Without<Settled>);
 
 /// Tool calls ([`ToolRequest`]), so Bevy can see they are no other kind of
 /// effect: two queries of different kinds never conflict. Two queries in
@@ -667,10 +705,10 @@ pub(crate) fn build(app: &mut App) {
                     .in_set(Stage::Arrive),
                 (
                     stop_calls,
-                    back_off,
+                    back_off.run_if(passed(Stage::Review)),
                     settle,
                     commit_replies,
-                    end_turns,
+                    end_turns.run_if(passed(Stage::Review)),
                     commit_turn_calls,
                 )
                     .chain()
@@ -693,7 +731,7 @@ pub(crate) fn build(app: &mut App) {
                     .chain()
                     .in_set(GateSystems::Fallback),
                 apply_decisions.in_set(Enter(Stage::Start)),
-                (accept, carry_on_accepted, start)
+                (accept.run_if(passed(Stage::Gate)), carry_on_accepted, start)
                     .chain()
                     .in_set(Stage::Start),
             ),
@@ -708,7 +746,7 @@ pub(crate) fn build(app: &mut App) {
         app.add_systems(AgentPass, entering(stage).in_set(Enter(stage)));
     }
     // The conversations changed are saved between the stages, so a
-    // `Committed` reader in a later stage of the pass sees the change, and
+    // `ConversationChanged` reader in a later stage of the pass sees the change, and
     // at the end of the pass; each save keeps followed components with
     // their lines (`SaveConversations`).
     let mut after: Option<InternedSystemSet> = None;
@@ -878,6 +916,12 @@ pub(crate) fn failed_in(stage: Stage) -> Option<Failure> {
     FAILED.with_borrow(|failed| failed.iter().find(|failed| failed.stage == stage).cloned())
 }
 
+/// Whether no system failed in `stage` this pass: a run condition, read
+/// right before its system because the pass runs single-threaded.
+fn passed(stage: Stage) -> impl Fn() -> bool + Clone {
+    move || failed_in(stage).is_none()
+}
+
 /// The notice that a system failed and what that closed, once per system
 /// and stage.
 fn closed(passes: &mut Passes, failure: Failure, what: &str) -> Option<Notice> {
@@ -1021,7 +1065,7 @@ type Saving<'w, 's> = ParamSet<
 /// as [`ModelStarts`] and [`ToolStarts`] say, and any other effect stays
 /// open.
 fn start(
-    mut ready: Query<StartItem, Undecided>,
+    mut ready: Query<StartItem, ReadyToStart>,
     agents: Query<&AgentId>,
     turns: Query<&TurnOutcome>,
     (tools, models): (ToolStarts, ModelStarts),
@@ -1116,7 +1160,7 @@ fn start(
                 running,
                 feed,
                 SentTo(connection),
-                Fitted(dropped),
+                DroppedOptions(dropped),
             ));
             continue;
         }
@@ -1356,7 +1400,7 @@ fn assemble(
         None => {
             let (key, kind) = kind_of(world, entity)?;
             EffectRecord {
-                tool_output: world
+                published: world
                     .get::<Published>(entity)
                     .map(|published| published.0.clone()),
                 id,

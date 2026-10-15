@@ -106,7 +106,12 @@ fn clients_watch_and_type_and_one_that_never_reads_is_dropped() {
     let id = SessionId::generate();
     let (mut app, wakes) = app_in(&home, &id);
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, PickPlugin, SocketAttachPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            PickPlugin,
+            SocketAttachPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);

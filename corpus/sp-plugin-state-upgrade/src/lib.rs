@@ -10,13 +10,13 @@
 //! an old value through the step without writing it back, so the first
 //! change is what writes the new shape. A value no step reads (a newer one,
 //! or one of no known shape) is set aside by the kernel and never written
-//! over; the plugin reads that from `SetAside` and shows the agent's list
+//! over; the plugin reads that from `Shelved` and shows the agent's list
 //! read-only (newer) or empty with one warning (unreadable).
 
 use rig_harness::prelude::*;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
-use rig_tui::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiSystems};
+use rig_tui::{PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiSystems};
 
 pub mod v1;
 pub mod v2;
@@ -65,7 +65,7 @@ fn build_common<T: Shows>(app: &mut App) {
 /// notice: [`Newer`] when its version is newer than this build reads,
 /// else [`Unreadable`] with a warning.
 fn mark_set_aside(
-    set_aside: Res<SetAside>,
+    set_aside: Res<Shelved>,
     (keys, upgrades): (Res<SavedKeys>, Res<SavedUpgrades>),
     agents: Query<(Entity, &AgentId, Has<Newer>, Has<Unreadable>)>,
     mut seen: Local<usize>,
@@ -114,18 +114,10 @@ fn redraw<T: Shows>(
 /// Draws the shown agent's checklist (the focused one, else the main one).
 fn draw<T: Shows>(
     mut panels: Query<&mut PanelCanvas, With<WorklistPanel>>,
-    agents: Query<
-        (
-            Option<&T>,
-            Has<Newer>,
-            Has<Unreadable>,
-            Has<Focused>,
-            Has<SpawnedBy>,
-        ),
-        With<Agent>,
-    >,
+    agents: Query<(Option<&T>, Has<Newer>, Has<Unreadable>, Has<SpawnedBy>), With<Agent>>,
+    focused: Option<Res<ShownAgent>>,
 ) {
-    let shown = agents.iter().find(|(.., focused, _)| *focused);
+    let shown = focused.and_then(|shown| agents.get(shown.0?).ok());
     let shown = shown.or_else(|| agents.iter().find(|(.., spawned)| !spawned));
     let Some((list, newer, unreadable, ..)) = shown else {
         return;

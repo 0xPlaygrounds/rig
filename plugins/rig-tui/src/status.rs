@@ -6,7 +6,7 @@
 //! own styles ([`StatusItem::styled`]). A plugin that also builds without
 //! the terminal view does it behind a default `tui` cargo feature. The
 //! plugin guide has an example and the default plugins' names and places.
-//! A [`StatusLine`] draws one in a panel, for the agent shown or another,
+//! A [`StatusLine`] draws one in a panel, for the shown agent or another,
 //! and [`line()`] fits any items to a width.
 //!
 //! ```no_run
@@ -36,7 +36,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 use rig_ecs::agent::{ActiveTurn, Agent, TurnOf};
-use rig_harness::primary::Shown;
+use rig_harness::main_agent::ShownAgent;
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthChar;
 
@@ -125,10 +125,10 @@ impl StatusItem {
     }
 }
 
-/// Status line items, one of each name. On an agent and on its running
-/// turn, which every agent and turn has, they are shown while the agent
-/// is, by place (side and order), items at one place by name; a view
-/// redraws when they change.
+/// Status line items of an agent or of its running turn, one per name
+/// (every agent and turn has this component). The line shows those of the
+/// shown agent, its turn and the [`AppStatus`], ordered by side, then
+/// `order`, then name. A change redraws it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
 pub struct StatusItems(Vec<StatusItem>);
@@ -167,10 +167,10 @@ pub struct AppStatus(pub StatusItems);
 #[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Side {
-    /// After the items before it, from the left edge.
+    /// Left-aligned, after the items of lower `order`.
     #[default]
     Left,
-    /// The meter, at the right edge.
+    /// Right-aligned, after the left side.
     Right,
 }
 
@@ -182,7 +182,7 @@ pub enum Tone {
     Plain,
     /// Bold, such as the model.
     Bold,
-    /// Dimmed, such as the meter.
+    /// Dimmed, such as the right side's items.
     Dim,
     /// Green, such as `idle`.
     Green,
@@ -218,11 +218,11 @@ pub(crate) fn add(app: &mut App) {
         );
 }
 
-/// A status line: `agent`'s items (the agent shown's, with `None`),
+/// A status line: `agent`'s items (the shown agent's, with `None`),
 /// those of its running turn and the app's, by place, fit to its panel's
 /// width; with no agent, `no agent` where its model would be. It draws in
-/// one row of its [`TuiPanel`]. The default screen's shows the agent
-/// shown, under the transcript.
+/// one row of its [`TuiPanel`]. The default screen's is for the shown
+/// agent, under the transcript.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[require(TuiPanel = TuiPanel::new(Placement::Bottom(Constraint::Length(1))))]
 pub struct StatusLine {
@@ -234,7 +234,7 @@ pub struct StatusLine {
 pub(crate) fn draw_status_lines(
     mut lines: Query<(&StatusLine, &mut PanelCanvas)>,
     (items, active): (Query<&StatusItems>, Query<&ActiveTurn>),
-    (shown, app): (Res<Shown>, Option<Res<AppStatus>>),
+    (shown, app): (Res<ShownAgent>, Option<Res<AppStatus>>),
 ) {
     for (line, mut canvas) in &mut lines {
         let area = canvas.area();
@@ -253,13 +253,13 @@ pub(crate) fn draw_status_lines(
             .into_iter()
             .flatten()
             .flat_map(StatusItems::iter);
-        let (line, usage) = self::line(items.chain(no_agent), area.width);
-        let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
-        let [status, meter] =
-            Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)]).areas(area);
+        let (left, right) = self::line(items.chain(no_agent), area.width);
+        let right_width = u16::try_from(right.width()).unwrap_or(u16::MAX);
+        let [left_area, right_area] =
+            Layout::horizontal([Constraint::Min(0), Constraint::Length(right_width)]).areas(area);
         let buffer = canvas.buffer_mut();
-        line.render(status, buffer);
-        usage.render(meter, buffer);
+        left.render(left_area, buffer);
+        right.render(right_area, buffer);
     }
 }
 
@@ -320,10 +320,9 @@ impl Piece {
     }
 }
 
-/// The gap between the pieces on the left, and between the left and the
-/// meter.
+/// The gap between the pieces on the left, and between the two sides.
 const LEFT_GAP: &str = "  ";
-/// The gap between the meter's pieces.
+/// The gap between the pieces on the right.
 const RIGHT_GAP: &str = " ";
 
 /// The width of `pieces` joined by `gap`.
@@ -332,7 +331,7 @@ fn joined_width(pieces: &[Piece], gap: &str) -> usize {
     pieces.iter().map(Piece::width).sum::<usize>() + gaps
 }
 
-/// Cuts, then drops, the pieces of `left` and of the meter on the `right`
+/// Cuts, then drops, the pieces on the `left` and on the `right`
 /// with the lowest `keep` until both fit `width` with a gap between them:
 /// one that may shrink is cut to its `min` before it goes. What keeps
 /// `u8::MAX` stays, cut where it may; past that the line is cut at the
@@ -383,7 +382,7 @@ fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
 }
 
 /// A status line of `items` fit to `width` columns: the items on the left,
-/// and the meter, those on the right; each by place (`order`, then name),
+/// and those on the right; each by place (`order`, then name),
 /// cut or dropped by `keep` when they do not fit. A plugin drawing a status
 /// line of its own, such as in a panel, draws these two.
 pub fn line<'a>(

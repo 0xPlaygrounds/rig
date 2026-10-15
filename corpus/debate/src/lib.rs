@@ -13,7 +13,7 @@
 use rig_basics::{AgentColumn, ColumnOf};
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_telemetry::Spending;
+use rig_telemetry::AgentUsage;
 use serde::Deserialize;
 
 /// The rounds when neither the settings nor `--rounds` say.
@@ -356,7 +356,7 @@ fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
     commands.entity(host).remove::<Debate>();
     for &(_, agent) in &debate.seated {
         let reason = Some("the debate stopped".to_owned());
-        commands.trigger(Interrupt {
+        commands.trigger(StopTurn {
             entity: agent,
             reason,
         });
@@ -364,7 +364,7 @@ fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
 }
 
 /// Interrupting the agent stops its debate.
-fn stop_on_interrupt(interrupt: On<Interrupt>, debates: Query<&Debate>, mut commands: Commands) {
+fn stop_on_interrupt(interrupt: On<StopTurn>, debates: Query<&Debate>, mut commands: Commands) {
     if let Ok(debate) = debates.get(interrupt.entity) {
         stop(&mut commands, interrupt.entity, debate);
     }
@@ -394,7 +394,7 @@ fn add_spent_column(inserted: On<Insert<Debater>>, mut commands: Commands) {
 /// Keeps each debater's spend column current.
 fn show_spent(
     mut columns: Query<(&mut AgentColumn, &ColumnOf), With<SpentColumn>>,
-    spent: Query<Ref<Spending>>,
+    spent: Query<Ref<AgentUsage>>,
 ) {
     for (mut column, &ColumnOf(agent)) in &mut columns {
         if let Ok(spending) = spent.get(agent)
@@ -452,7 +452,7 @@ fn step(
             return;
         }
         let text = format!("Debate verdict on \"{}\":\n\n{answer}", debate.question);
-        let note = Deliver::new(host, text, DeliveryMode::Note);
+        let note = Deliver::new(host, text, DeliveryMode::Inform);
         commands.trigger(note.with_author(from(&debate, role)));
         notices.write(Notice::info(
             host,

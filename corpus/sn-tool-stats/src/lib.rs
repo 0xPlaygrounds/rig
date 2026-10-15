@@ -18,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::channel::oneshot;
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::StopTurns;
+use rig_harness::rig_ecs::StopTurnsOnExit;
 use serde::{Deserialize, Serialize};
 
 use stats::DAY_MS;
@@ -44,7 +44,7 @@ impl Plugin for ToolStatsPlugin {
                 toolstats,
             )
             .add_systems(Startup, start_worker)
-            .add_systems(Last, count.after(StopTurns))
+            .add_systems(Last, count.after(StopTurnsOnExit))
             .add_observer(show)
             .add_observer(confirmed);
     }

@@ -18,7 +18,7 @@ use rig_tools::workspace::{Local, Workspace};
 /// **The main-thread rule.** Tools call it inside
 /// [`blocking`](rig_tools::blocking). A system calls it inline only when
 /// `host()` is `None`; for another workspace it reads as
-/// [`Running::spawn`](rig_ecs::calls::Running::spawn) work, under a hold
+/// [`Running::spawn`](rig_ecs::tasks::Running::spawn) work, under a hold
 /// ([`HoldOf`](rig_ecs::stage::HoldOf)) on what waits for it, so a remote
 /// workspace never blocks a frame and a local one keeps its timing.
 ///

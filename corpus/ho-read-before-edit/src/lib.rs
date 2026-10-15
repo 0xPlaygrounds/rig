@@ -48,7 +48,10 @@ impl Plugin for ReadBeforeEditPlugin {
 /// Refuses each `edit`, and each `write` over an existing file, whose
 /// file the agent has not read, or has not read as it is now.
 fn refuse_unread(
-    mut calls: Query<(&ToolRequest, &Footprint, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<
+        (&ToolRequest, &Footprint, &ForAgent, &mut Decision),
+        (ReadyToStart, ToolCalls),
+    >,
     agents: Query<&ReadFiles>,
 ) {
     for (request, footprint, &ForAgent(agent), mut decision) in &mut calls {
@@ -131,8 +134,8 @@ fn remember(
 
 /// Forgets what an agent read once its conversation is compacted into a
 /// summary: its model no longer holds the files' content.
-fn forget(mut committed: MessageReader<Committed>, mut agents: Query<&mut ReadFiles>) {
-    for Committed { agent, change } in committed.read() {
+fn forget(mut committed: MessageReader<ConversationChanged>, mut agents: Query<&mut ReadFiles>) {
+    for ConversationChanged { agent, change } in committed.read() {
         if summary_in(&change.change).is_some()
             && let Ok(mut read) = agents.get_mut(*agent)
         {

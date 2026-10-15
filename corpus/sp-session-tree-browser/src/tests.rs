@@ -12,7 +12,9 @@ use rig_harness_test_support::{
 };
 use rig_sessions::SessionsPlugin;
 use rig_tui::ratatui::text::Line as Drawn;
-use rig_tui::{AppToolRenderersExt, Focus, MainEditor, MainPane, TranscriptView, TuiTestScreen};
+use rig_tui::{
+    AppToolRenderersExt, MainEditor, MainPane, ShowAgent, TranscriptView, TuiTestScreen,
+};
 
 use super::*;
 
@@ -49,7 +51,7 @@ fn start(
     app.insert_resource(ProjectRoot(project.to_owned()))
         .insert_resource(scripted_models([("test/model", model)]))
         .insert_resource(TuiTestScreen::new(180, 30))
-        .add_plugins((AgentPlugin, JournalPlugin, CommandPlugin, SessionsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, SessionsPlugin))
         .add_open_tool("note", "Take a note.", ToolOptions::default(), note)
         .add_open_tool("wait", "Wait.", ToolOptions::default(), wait)
         .init_resource::<Ended>()
@@ -73,7 +75,7 @@ fn start(
         entity: agent,
         model,
     });
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
     app.update();
     (app, wakes, agent)
 }
@@ -331,7 +333,7 @@ fn browses_sessions_and_branches_and_resumes_at_a_turn() {
     let mut editors = world.query_filtered::<&rig_tui::Editor, With<MainEditor>>();
     let draft = editors.iter(world).next().map(|editor| editor.text());
     assert_eq!(draft, Some("half typed"));
-    assert_eq!(app.world().resource::<Shown>().0, Some(agent));
+    assert_eq!(app.world().resource::<ShownAgent>().0, Some(agent));
     assert_eq!(top(&mut app), before);
 
     // `o` on S1 shows it whole, read-only; S1's files stay as they were.

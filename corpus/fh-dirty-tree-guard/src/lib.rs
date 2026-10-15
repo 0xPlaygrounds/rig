@@ -195,7 +195,7 @@ fn git(launcher: &Launcher, args: &[&str]) -> Result<String, String> {
 /// starting the one check if none runs.
 #[allow(clippy::too_many_arguments)]
 fn hold_changes(
-    calls: Query<(Entity, &ToolRequest, &ForAgent, &Decision), (Undecided, ToolCalls)>,
+    calls: Query<(Entity, &ToolRequest, &ForAgent, &Decision), (ReadyToStart, ToolCalls)>,
     guard: Res<DirtyGuard>,
     checks: Query<(), With<Check>>,
     dirs: Query<&WorkDir>,

@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 use rig_core::message::{Message, ToolFunction, ToolName, ToolResultContent};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Home, SessionId};
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, calls, collect, connect, first_agent, log_ended, reply, run_until,
     scratch_home, scripted_models,
@@ -48,7 +48,7 @@ fn start(home: &Home, id: &SessionId, cheap: &MockCompletionModel) -> (App, Rece
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(Settings::from_toml("[split]\nmodel = \"test/cheap\"\n"))
         .insert_resource(scripted_models([("test/cheap", cheap)]))
-        .add_plugins((AgentPlugin, JournalPlugin, SplitSessionPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SplitSessionPlugin))
         .add_open_tool(
             "cache_stats",
             "Build cache statistics.",
@@ -154,7 +154,7 @@ fn notices(app: &App) -> Vec<String> {
 /// The split-off session's main conversation and saved values.
 fn copy_of(home: &Home, name: &str, agent: &str) -> Option<(SessionId, SavedAgent)> {
     let id = home.find(name).ok()?;
-    let store = SessionStores::default().open(&home.session(&id)).ok()?;
+    let store = StoreOpener::default().open(&home.session(&id)).ok()?;
     let session = Session::read(&*store).ok()?;
     Some((id.clone(), session.agent(agent)?.clone()))
 }
@@ -244,7 +244,7 @@ fn split_moves_turns_three_and_four_undo_puts_them_back_and_the_copy_resumes() {
     );
     assert_eq!(copied.get(1..), before.messages().get(4..12));
     assert!(copy.conversation.validate().is_ok());
-    let detail = SessionEntry::read(&home.session(&copy_id), &SessionStores::default())
+    let detail = SessionEntry::read(&home.session(&copy_id), &StoreOpener::default())
         .map(|entry| entry.detail());
     assert!(
         detail
@@ -390,7 +390,7 @@ fn a_boundary_inside_a_tool_exchange_moves_to_a_whole_turn() {
                 let record = TurnRecord {
                     index: at as u64 / 2,
                     start: id,
-                    end: Some(TurnEnd::Answered { by: None }),
+                    end: Some(TurnEnd::Answered { answer: None }),
                 };
                 let value = serde_json::to_value(record).unwrap_or_default();
                 conversation.add_aside(

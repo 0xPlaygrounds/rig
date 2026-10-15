@@ -305,7 +305,7 @@ fn take_over(
             Option<&ForAgent>,
             Has<TurnCall>,
         ),
-        (Undecided, ModelCalls, Without<Batched>),
+        (ReadyToStart, ModelCalls, Without<Batched>),
     >,
     starts: ModelStarts,
     agents: Query<&BatchWait>,
@@ -325,7 +325,7 @@ fn take_over(
         if decision.is_decided() {
             continue;
         }
-        let Ok((connection, request, _)) = starts.sent(model, adapters, agent) else {
+        let Ok((connection, request)) = starts.sent(model, adapters, agent) else {
             continue;
         };
         if connection.spec.provider.vendor() != VENDOR {
@@ -683,7 +683,7 @@ fn polled(
             Some(ItemResult::Succeeded { message }) => {
                 let body = WireFrame::Bytes(message.to_string().into_bytes());
                 match decode_reply(&batched.wire, &batched.request, Mode::Unary, [body]) {
-                    Ok(reply) => Outcome(Ok(effect::Outcome::Completion(reply))),
+                    Ok(reply) => Outcome(Ok(effect::Answered::Completion(reply))),
                     Err(error) => failed(error.to_string()),
                 }
             }

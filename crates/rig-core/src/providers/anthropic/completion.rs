@@ -59,8 +59,11 @@ pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
 /// `claude-haiku-4-5` completion model
 pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 
+/// An `anthropic-version` header value.
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
+/// An `anthropic-version` header value.
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
+/// The `anthropic-version` header value rig sends.
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 
 /// Cache-breakpoint lifetime: five minutes by default, or one hour.
@@ -124,8 +127,8 @@ pub(super) const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-0
 pub(super) const FINE_GRAINED_TOOL_STREAMING_BETA: &str = "fine-grained-tool-streaming-2025-05-14";
 
 /// Whether a request to `model` on `wire`, with `thinking` as the caller
-/// sets it, asks Anthropic to drop thinking bound to another context (pi's
-/// `drop_block`): Anthropic's own API, for a model whose thinking binds, in
+/// sets it, asks Anthropic to drop thinking bound to another context:
+/// Anthropic's own API, for a model whose thinking binds, in
 /// adaptive thinking (the default when the caller names none), the only
 /// mode that takes the binding. Its turns then replay verbatim whatever the
 /// context. In another mode (`disabled`, `between_tools`) a turn made under
@@ -362,7 +365,7 @@ fn message_json(
 }
 
 /// One user block on the wire. `None` for blank text, which Anthropic
-/// rejects (pi's rule).
+/// rejects.
 fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeError> {
     let image = |image: &message::Image| {
         let source = image_source(image).ok_or_else(unsendable)?;
@@ -418,8 +421,8 @@ fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
 }
 
 /// One assistant block on the wire: the provider's item while it is
-/// current, else the block rebuilt from its canonical fields as pi rebuilds
-/// it, with the identity keys of an edited item. `None` for a block with
+/// current, else the block rebuilt from its canonical fields, with the
+/// identity keys of an edited item. `None` for a block with
 /// nothing Anthropic takes.
 pub(super) fn assistant_part(
     block: &AssistantContent,

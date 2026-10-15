@@ -1,24 +1,26 @@
-//! The rebuild's child process, its output and the restart.
+//! The rebuild's child process, whose stderr a std thread forwards line by
+//! line, and the restart.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use rig_harness::harness_protocol;
 use rig_harness::harness_protocol::{first_errors, secret_variables};
 use rig_harness::prelude::*;
 use rig_tools::process::{detach, kill_group};
 
 use crate::ReloadStatus;
 
-/// Lines of a failed build in the note to the model, from its first error.
-const NOTE_LINES: usize = 40;
+/// Lines of a failed build in the message to the model, from its first error.
+const MESSAGE_LINES: usize = 40;
 
 pub(crate) fn add(app: &mut App) {
     app.add_systems(
         Update,
         (start_queued_reload, drain_reload, finish_reload)
             .chain()
-            .after(PollCalls),
+            .after(PollTasks),
     );
 }
 
@@ -123,7 +125,7 @@ fn start_queued_reload(
         return;
     }
     *status = ReloadStatus::Idle;
-    let Some(launcher) = launcher::executable() else {
+    let Some(launcher) = harness_protocol::launcher() else {
         return;
     };
     let notice = match ReloadBuild::start(&launcher, agent, wake.clone()) {
@@ -203,14 +205,14 @@ fn drain_reload(
             Home::from_env().build_log().display()
         ),
     ));
-    launcher::note_build_failure(
+    launcher::inform_build_failure(
         &mut commands,
         build.agent,
-        launcher::build_failure_note(
+        launcher::build_failure_message(
             "/reload",
             &format!(
                 "`rig build` exited with {exit}. Its output from the first error:\n{}",
-                build.errors(NOTE_LINES)
+                build.errors(MESSAGE_LINES)
             ),
         ),
     );

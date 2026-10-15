@@ -10,8 +10,8 @@ use rig_core::conversation::{self, MessageId, short_id};
 use rig_core::effect::EffectId;
 use serde::{Deserialize, Serialize};
 
-use super::journal::{ReflectSaved, save_discarded};
-use super::model::Effort;
+use super::model::ReasoningSetting;
+use super::session_log::{ReflectSaved, save_discarded};
 use super::stage::moved;
 use super::turn::{NO_MODEL, Recovery, start_turn};
 
@@ -20,7 +20,14 @@ use super::turn::{NO_MODEL, Recovery, start_turn};
 /// [`ModelChoice`](super::model::ModelChoice) until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
-#[require(AgentId, Conversation, Effort, LastUsage, SystemPrompt, ToolAccess)]
+#[require(
+    AgentId,
+    Conversation,
+    ReasoningSetting,
+    LastUsage,
+    SystemPrompt,
+    ToolAccess
+)]
 pub struct Agent;
 
 /// The agent's stable id, used in its log's name, effect scopes and logs.
@@ -63,7 +70,7 @@ impl AgentId {
 }
 
 /// The agent that spawned this one, such as the agent whose tool call
-/// started it. Despawning that agent despawns this one. The core gives it
+/// started it. Despawning that agent despawns this one. The kernel gives it
 /// no other meaning: a restore links the agents again by their logs'
 /// headers, and views list agents by it.
 #[derive(Component, Reflect, Debug)]
@@ -86,22 +93,16 @@ pub struct Spawned(Vec<Entity>);
 #[serde(transparent)]
 pub struct EffectParent(pub EffectId);
 
-/// The agent's conversation, as a component: rig-core's
+/// The agent's conversation: rig-core's
 /// [`Conversation`](conversation::Conversation), which it derefs to, so a
-/// plugin reads and changes it with that type's methods: every message
-/// sent to and received from the model, each with its [`MessageId`] and,
-/// when it is not the user's own or the model's, its
-/// [`Author`](conversation::Author); the asides that never reach a model;
-/// and why its last user message is unanswered. Requests send it as it
-/// is. The prelude names this component `Conversation`; rig-core's type
-/// is `rig_core::conversation::Conversation`.
+/// plugin reads and changes it with that type's methods. Requests send it as
+/// it is.
 ///
-/// Each change is kept in the conversation's outbox until the kernel saves
-/// it to the agent's log and announces it as a
-/// [`Committed`](super::journal::Committed) (see [`journal`](super::journal)).
-/// A value inserted in place of the agent's own is saved as one reset, the
-/// changes the old one had not saved first. It is reflected opaquely and
-/// saved through serde.
+/// Each change waits in the conversation's outbox until the kernel saves it
+/// and announces it as a
+/// [`ConversationChanged`](super::session_log::ConversationChanged). A value
+/// inserted in place of the agent's own is saved as one reset, after the
+/// changes the old one had not saved. Saved through serde.
 ///
 /// ```
 /// use rig_ecs::prelude::*;
@@ -207,20 +208,13 @@ impl ToolAccess {
     }
 }
 
-/// A running turn of the agent it names: from a user message to the reply
-/// that ends it. At most one per agent. A turn ends with a [`TurnOutcome`]
-/// on it: the kernel proposes one in Commit when the model answered or
-/// the turn failed, Review may replace it, hold it ([`HoldOf`]) or carry
-/// the turn on, and a plugin may insert `Failed` or `Stopped` at any
-/// time. Once nothing holds the outcome and every call of the turn
-/// settled, Commit ends the turn: it removes this, so the agent is idle,
-/// and marks the turn [`Settled`](super::stage::Settled) for the readers
-/// of how it ended. The kernel makes a turn [`ForAgent`] its agent when it
-/// is spawned, so it is the agent's work, and goes when the agent goes,
-/// even after it ended. The turn counts its retries in a [`Recovery`].
-/// Its `Name` is `turn` unless it is spawned with another.
+/// A running turn of the agent it names, from a user message to the reply
+/// that ends it; at most one per agent. It ends as its [`TurnOutcome`] says:
+/// Commit then removes this, so the agent is idle, and marks the turn
+/// [`Settled`](super::stage::Settled). The turn stays [`ForAgent`] its agent,
+/// and goes with it. Its retries are counted in a [`Recovery`]; its `Name` is
+/// `turn` unless spawned with another.
 ///
-/// [`HoldOf`]: super::stage::HoldOf
 /// [`ForAgent`]: super::stage::ForAgent
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
@@ -247,7 +241,7 @@ pub struct Turn {
     /// [`conversation::Conversation::request`].
     /// Not reflected: rig-core's types are not `Reflect`.
     #[reflect(ignore)]
-    pub first_message: MessageId,
+    pub start: MessageId,
     /// The model call whose reply's tool calls run now, their effects'
     /// parent, until their results are committed. Other calls of the turn
     /// keep it open but are never committed as tool results.
@@ -312,14 +306,14 @@ pub struct Retry {
 /// or held.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
-pub struct Interrupt {
+pub struct StopTurn {
     /// The agent.
     pub entity: Entity,
     /// Why, when it is not the user who stops it.
     pub reason: Option<String>,
 }
 
-impl Interrupt {
+impl StopTurn {
     /// The user stopping `agent`'s turn.
     pub fn new(agent: Entity) -> Self {
         Self {
@@ -330,7 +324,7 @@ impl Interrupt {
 }
 
 /// How a [`Notice`] is shown and logged.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NoticeLevel {
     /// Information.
     #[default]
@@ -389,20 +383,22 @@ impl Notice {
     }
 }
 
-/// How a turn ends, on the turn. The kernel proposes `Answered` or `Failed`
-/// in Commit; in the next pass Review may edit it in place
-/// (`Query<&mut TurnOutcome, With<TurnOf>>`), hold it
-/// ([`HoldOf`](super::stage::HoldOf) the turn), or carry the turn on by
-/// sending it a `Queue` or `Steer` message, which takes an `Answered`
-/// proposal away, or by spawning its next
-/// [`TurnCall`](super::turn::TurnCall), which takes any away once
-/// admitted; the holds on a proposal taken away are despawned with it. A
-/// plugin may insert `Failed` or `Stopped` at any time, with a plain
-/// `insert`, so a stop is never lost to a pending proposal: the
-/// turn's calls that have not started then never start, the others are
-/// answered as stopped, and the turn ends once they settled. A turn that
-/// ended is [`Settled`](super::stage::Settled) with it, until the next
-/// frame: `On<Add<Settled>>` or `Added<Settled>` readers of
+/// How a turn ends, on the turn.
+///
+/// - **Proposed:** the kernel proposes `Answered` or `Failed` in Commit.
+/// - **Reviewed:** in the next pass Review may edit it in place
+///   (`Query<&mut TurnOutcome, With<TurnOf>>`) or hold it
+///   ([`HoldOf`](super::stage::HoldOf) the turn). A `Queue` or `Steer`
+///   message the agent accepts takes an `Answered` proposal away, and its
+///   next [`TurnCall`](super::turn::TurnCall), once admitted, takes any;
+///   the holds on a proposal taken away are despawned with it.
+/// - **Stopped:** a plugin may insert `Failed` or `Stopped` at any time with
+///   a plain `insert`, so no pending proposal loses it. The turn's calls not
+///   started never start, the others are answered as stopped, and the turn
+///   ends once they settled.
+///
+/// A turn that ended is [`Settled`](super::stage::Settled) with it until the
+/// next frame: `On<Add<Settled>>` or `Added<Settled>` readers of
 /// `(&TurnOutcome, &ForAgent)` see each turn's last outcome once.
 #[derive(Component, Clone, Debug)]
 #[component(on_insert = moved::<TurnOutcome>, on_remove = moved::<TurnOutcome>)]

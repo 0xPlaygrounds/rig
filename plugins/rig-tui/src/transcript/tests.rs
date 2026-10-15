@@ -20,9 +20,9 @@ use rig_ecs::stage::{
 };
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, StreamDelta};
-use rig_harness::note::Note;
 use rig_harness::prelude::ToolProgress;
 use rig_harness::prelude::{App, Last, Update};
+use rig_harness::rig_core::conversation::Note;
 use serde_json::json;
 
 use super::{
@@ -819,9 +819,9 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
             event,
         });
         app.update();
-        let calls = app.world().resource::<StreamingCalls>().of(effect).to_vec();
-        let calls = calls.into_iter().map(|(_, call)| call).collect();
-        drawn_rows(app, agent, 100, calls)
+        let calls = app.world().get::<StreamingCalls>(effect);
+        let calls = calls.into_iter().flat_map(StreamingCalls::calls).cloned();
+        drawn_rows(app, agent, 100, calls.collect())
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
@@ -842,20 +842,18 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
     let done = ToolCall::from_wire("call-7", ToolFunction::new(name, json!({ "path": "a.md" })));
     let content = AssistantContent::ToolCall(done.clone());
     stream(&mut app, StreamEvent::End { part, content });
-    let calls = app.world().resource::<StreamingCalls>().of(effect).to_vec();
+    let calls = app.world().get::<StreamingCalls>(effect);
     assert_eq!(
-        calls.first().map(|(_, call)| call.id.clone()),
+        calls
+            .and_then(|calls| calls.calls().next())
+            .map(|call| call.id.clone()),
         Some(done.id)
     );
     // Once the reply is in the conversation, its streaming calls go.
     app.world_mut().entity_mut(effect).remove::<Partial>();
     app.update();
-    assert!(
-        app.world()
-            .resource::<StreamingCalls>()
-            .of(effect)
-            .is_empty()
-    );
+    let calls = app.world().get::<StreamingCalls>(effect);
+    assert!(calls.is_none_or(|calls| calls.calls().next().is_none()));
 }
 
 /// An app with what a [`TranscriptLayout`] reads and no kernel, so the
@@ -863,7 +861,6 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
 fn layout_app() -> (App, Entity) {
     let mut app = App::new();
     app.init_resource::<CallFacts>()
-        .init_resource::<StreamingCalls>()
         .init_resource::<crate::Notices>()
         .init_resource::<rig_ecs::effects::Effects>()
         .add_message::<EffectRecorded>()
@@ -920,14 +917,16 @@ fn reply(text: &str, calls: Vec<ToolCall>) -> Outcome {
     choice.extend(calls.into_iter().map(AssistantContent::ToolCall));
     let origin = rig_core::message::Origin::new("test.api", "test", "model-a");
     let reply = CompletionResponse::new(choice, Usage::default(), origin, json!({}));
-    Outcome::from(Ok(effect::Outcome::Completion(reply)))
+    Outcome::from(Ok(effect::Answered::Completion(reply)))
 }
 
 /// Spawns `effect`, answered, under `parent`, and runs a frame, so the
 /// kernel settles it before the next is made, as a reply settles before
 /// its calls start; its id.
 fn settle(app: &mut App, parent: Option<EffectId>, effect: impl Bundle) -> Option<EffectId> {
-    let spawned = app.world_mut().spawn((effect, Effect::child_of(parent)));
+    let spawned = app
+        .world_mut()
+        .spawn((effect, Effect::with_parent_id(parent)));
     let id = spawned.get::<Effect>().map(Effect::id);
     app.update();
     id

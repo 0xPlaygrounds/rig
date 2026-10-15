@@ -95,7 +95,7 @@ struct ScopeSection;
 /// Refuses each tool call about to run that writes a path outside the
 /// fence, as the agent's tools resolve the fenced directories.
 fn fence(
-    mut calls: Query<(&Footprint, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(&Footprint, &ForAgent, &mut Decision), (ReadyToStart, ToolCalls)>,
     fence: Res<ScopeFence>,
     dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,

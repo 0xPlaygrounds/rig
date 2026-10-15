@@ -1,22 +1,4 @@
-//! The input editor: multiline text with a cursor and emacs-style editing
-//! keys. An [`Editor`] is a component, so a panel can hold one; the default
-//! screen's is the [`MainEditor`], which [`MainInput`] reads, and a plugin
-//! reads and edits its draft as the keys do (a template, a dictated
-//! message, the text an editor wrote): `is_changed` on it says the draft
-//! was edited. Up and Down move between lines and, from the first or last
-//! line, through the [`PromptHistory`](crate::PromptHistory), saving the
-//! draft as pi's editor does
-//! (`references/pi/packages/tui/src/components/editor.ts:344-347,457-470`).
-//!
-//! ```no_run
-//! use rig_harness::prelude::*;
-//! use rig_tui::MainInput;
-//!
-//! /// Puts a template in the input.
-//! fn template(mut input: MainInput) {
-//!     input.set("Review the diff for:\n- ");
-//! }
-//! ```
+//! The input editor.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
@@ -25,10 +7,10 @@ use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use rig_ecs::agent::ActiveTurn;
-use rig_harness::primary::Shown;
+use rig_harness::main_agent::ShownAgent;
 use unicode_width::UnicodeWidthChar;
 
-use super::input::TuiInputState;
+use super::input::InputContext;
 use super::keys::KeyFocus;
 use super::panel::PanelCanvas;
 use super::pick::Choices;
@@ -40,12 +22,27 @@ const PROMPT: &str = "› ";
 /// keep the cursor in sight.
 const MOST_LINES: usize = 10;
 
-/// A text being typed, with its cursor, and where it is in the prompt
-/// history while Up and Down browse it. The keys type into the
-/// [`MainEditor`], or into the editor of the panel with the
-/// [`KeyFocus`](crate::KeyFocus); Enter sends the main one's text to the
-/// agent shown. In a panel placed at the top, the bottom or below the
-/// input, it is as tall as its text, up to ten lines.
+/// A text being typed: multiline, with a cursor and emacs-style editing
+/// keys. The keys type into the [`MainEditor`], or into the editor of the
+/// panel with the [`KeyFocus`](crate::KeyFocus); Enter sends the main
+/// one's text to the shown agent. A plugin reads and edits a draft as the
+/// keys do (a template, a dictated message, the text an editor wrote), the
+/// main one through [`MainInput`]; `is_changed` on it says the draft was
+/// edited. Up and Down move between lines and, from the first or last
+/// line, through the [`PromptHistory`](crate::PromptHistory), keeping the
+/// draft, which Down past the newest prompt brings back. In a panel placed
+/// at the top, the bottom or below the input, it is as tall as its text, up
+/// to ten lines.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::MainInput;
+///
+/// /// Puts a template in the input.
+/// fn template(mut input: MainInput) {
+///     input.set("Review the diff for:\n- ");
+/// }
+/// ```
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[reflect(Component, Default)]
 #[require(Caret)]
@@ -60,8 +57,8 @@ pub struct Editor {
 }
 
 /// Marks the editor the keys type into while no panel has the
-/// [`KeyFocus`](crate::KeyFocus), whose text Enter sends to the agent
-/// shown, and which a recalled message or a reload's draft comes back to:
+/// [`KeyFocus`](crate::KeyFocus), whose text Enter sends to the shown
+/// agent, and which a recalled message or a reload's draft comes back to:
 /// the default screen's. An app that builds its own screen marks its own.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct MainEditor;
@@ -469,8 +466,8 @@ fn hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
 /// keys.
 pub(crate) fn draw_editors(
     mut editors: Query<(Entity, &Editor, &mut PanelCanvas, &mut Caret)>,
-    (state, choices, focus): (Res<TuiInputState>, Choices, Res<KeyFocus>),
-    (shown, active): (Res<Shown>, Query<(), With<ActiveTurn>>),
+    (state, choices, focus): (Res<InputContext>, Choices, Res<KeyFocus>),
+    (shown, active): (Res<ShownAgent>, Query<(), With<ActiveTurn>>),
 ) {
     let answering = state.answering().and_then(|ask| choices.shown(ask));
     let busy = shown.0.is_some_and(|agent| active.contains(agent));

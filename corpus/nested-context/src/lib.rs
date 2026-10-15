@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use rig_basics::ContextEntry;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_harness::rig_memory::summary_in;
@@ -73,7 +73,7 @@ struct NestedEntry;
 fn add_rules(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &mut Outcome),
-        (Unreviewed, ToolCalls, Without<Checked>),
+        (ReadyToSettle, ToolCalls, Without<Checked>),
     >,
     mut agents: Query<&mut NestedLoaded>,
     root: Res<ProjectRoot>,
@@ -167,8 +167,11 @@ fn file_name(key: &str) -> &str {
 
 /// A conversation compacted into a summary drops the results it
 /// summarized: the agent is given each file again on its next access.
-fn forget_compacted(mut committed: MessageReader<Committed>, mut agents: Query<&mut NestedLoaded>) {
-    for Committed { agent, change } in committed.read() {
+fn forget_compacted(
+    mut committed: MessageReader<ConversationChanged>,
+    mut agents: Query<&mut NestedLoaded>,
+) {
+    for ConversationChanged { agent, change } in committed.read() {
         if summary_in(&change.change).is_some()
             && let Ok(mut loaded) = agents.get_mut(*agent)
             && !loaded.0.is_empty()

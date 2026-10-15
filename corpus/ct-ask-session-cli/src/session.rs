@@ -62,7 +62,7 @@ pub struct Material {
 pub fn find(
     named: &str,
     home: &Home,
-    stores: &SessionStores,
+    stores: &StoreOpener,
     current: &Path,
 ) -> Result<SessionDir, String> {
     if named == "last" {
@@ -96,7 +96,7 @@ impl Material {
     pub fn read(
         named: &str,
         dir: &SessionDir,
-        stores: &SessionStores,
+        stores: &StoreOpener,
         all_branches: bool,
     ) -> Result<Self, String> {
         let unreadable = |why: String| format!("`{named}` cannot be read: {why}");
@@ -128,7 +128,7 @@ impl Material {
                 .filter_map(|(_, aside)| TurnRecord::of(aside))
                 .map(|record| (record.start, record.index)),
         );
-        let active = conversation.branch_title().to_owned();
+        let active = conversation.line_title().to_owned();
         let mut history = conversation.line(None).unwrap_or_default();
         let messages: Vec<Message> = history.iter().map(|entry| entry.message.clone()).collect();
         let running = pending_calls(&messages);

@@ -1,9 +1,6 @@
-//! Rewriting a session's saved history in place: [`rewrite`] maps every
-//! value a session keeps (the messages, asides and saved values of each
-//! record, and every file of its store) through a [`Rewrite`], keeping
-//! each record where it is with its stamp. [`Strings`] maps every string,
-//! as a redaction or a path remap does; [`Messages`] maps only messages;
-//! [`Keep`] maps nothing.
+//! Rewriting a session's saved history in place ([`rewrite`]) through a
+//! [`Rewrite`]: [`Strings`] maps every string, [`Messages`] only messages,
+//! [`NoRewrite`] nothing.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
@@ -16,11 +13,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::blobs::{named_blobs, store_change};
-use crate::format::{Body, Header, LogLines, Meta, Rewrote, parse, write_change, write_meta};
+use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_change, write_meta};
 use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
 use crate::upgrade::each_record;
 use crate::writer::set_aside_tail;
-use crate::{Files, LoadError, MemoryStore, Stamp, Store, Versioned, now_ms, upgrade};
+use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned, upgrade};
+use rig_core::now_ms;
 
 /// Where a value being rewritten is kept.
 #[derive(Clone, Copy, Debug)]
@@ -42,24 +40,20 @@ pub enum Place<'a> {
         /// The log.
         log: &'a str,
     },
-    /// In the file `name` (a JSON file, a line of a JSON-lines file, a
-    /// text file): of the store, or one a host or a plugin keeps from the
-    /// session outside it (scratch, its own data); or in a copy a host or
-    /// a plugin holds in memory of what such a file holds.
+    /// In the file `name`: one of the store's, one a host keeps outside it,
+    /// or a copy of either held in memory.
     File {
         /// The file.
         name: &'a str,
     },
 }
 
-/// A change of values wherever a session keeps them. Each hook changes its
-/// argument in place and says whether it did; the defaults leave it, but
-/// for [`file`](Self::file), which reads a JSON file through
-/// [`value`](Self::value), each line of a JSON-lines file through `value`
-/// (a line that is not JSON through [`text`](Self::text)), other UTF-8
-/// through `text`, and leaves anything else. A hook cannot change what
-/// kind a record is, drop one or add one, so a rewritten log keeps its
-/// shape. Shared between owners, so it takes `&self`.
+/// A change applied to every value a session keeps. Each hook edits its
+/// argument in place and returns whether it changed anything. Every hook
+/// defaults to no change, except [`file`](Self::file), which sends JSON
+/// files to [`value`](Self::value), JSON-lines files line by line, and
+/// other UTF-8 to [`text`](Self::text). A hook cannot add, drop or re-kind
+/// a record. Shared between owners, so it takes `&self`.
 pub trait Rewrite: Send + Sync {
     /// A message of a push, a splice, a reset or a branch aside
     /// ([`Branch`]). Images are as stored: `blob:<sha256>.<ext>` in a push,
@@ -124,7 +118,7 @@ pub trait Rewrite: Send + Sync {
 /// assert_eq!(rewritten.logs.len(), 1);
 /// let main = Session::read(&store)?.agents.remove(0);
 /// assert_eq!(main.conversation.messages(), [Message::user("my key is [REDACTED]")]);
-/// # Ok::<(), rig_memory::LoadError>(())
+/// # Ok::<(), rig_memory::SessionError>(())
 /// ```
 pub struct Strings<F: Fn(&mut String) -> bool + Send + Sync>(pub F);
 
@@ -160,9 +154,9 @@ impl<F: Fn(&mut Message) -> bool + Send + Sync> Rewrite for Messages<F> {
 }
 
 /// Nothing: a plain [`fork`](crate::fork).
-pub struct Keep;
+pub struct NoRewrite;
 
-impl Rewrite for Keep {
+impl Rewrite for NoRewrite {
     fn file(&self, _: &str, _: &mut Vec<u8>) -> bool {
         false
     }
@@ -470,9 +464,9 @@ pub struct RewrittenLog {
     /// Its conversation as rewritten, with images, continuing the new log.
     pub conversation: Conversation,
     /// Its saved values as rewritten, each at the version it was saved at.
-    pub state: BTreeMap<String, Versioned>,
+    pub saved: BTreeMap<String, Versioned>,
     /// The saved keys whose newest value changed; one whose value was
-    /// removed is not in `state`.
+    /// removed is not in `saved`.
     pub changed_keys: Vec<String>,
 }
 
@@ -500,8 +494,8 @@ pub(crate) fn map_log(
     until: Option<u64>,
     with: &dyn Rewrite,
     blobs: &dyn Store,
-) -> Result<Option<Mapped>, LoadError> {
-    let refuse = |line, why| LoadError::Record {
+) -> Result<Option<Mapped>, SessionError> {
+    let refuse = |line, why| SessionError::Record {
         log: name.to_owned(),
         line,
         why,
@@ -620,7 +614,7 @@ pub(crate) fn map_change(
 /// [`Rewrite::message`], the asides inside it the same way, and the rest
 /// of it (its kind, author and title) through [`Rewrite::aside`]; any
 /// other aside through `aside` whole. Each string goes through one hook
-/// once. Whether it changed.
+/// once. Returns whether it changed.
 pub(crate) fn map_aside(with: &dyn Rewrite, at: &Place<'_>, aside: &mut Aside) -> bool {
     let Some(mut branch) = Branch::of(aside) else {
         return with.aside(at, aside);
@@ -712,12 +706,15 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// not, and each always reads. A crash midway leaves some logs and files
 /// rewritten; running the same map again finishes it. A conversation
 /// read before the rewrite no longer continues a changed log: [`save`] of
-/// it gives [`LoadError::Changed`], and the caller reads it again.
+/// it gives [`SessionError::Changed`], and the caller reads it again.
 ///
 /// Not for a session a running [`Writer`](crate::Writer) logs to: that is
 /// [`Writer::rewrite`](crate::Writer::rewrite). Another process must not
 /// rewrite a running session; rig-memory cannot tell, so a program
-/// rewriting a rig session first checks that no rig runs it.
+/// rewriting a rig session first checks that no rig runs it. Values a host
+/// keeps in memory, and files it keeps outside the store, are the host's
+/// to read again from the returned [`Rewritten`] or to map with the same
+/// `with` ([`rewrite_value`], [`rewrite_file`]).
 ///
 /// # Errors
 ///
@@ -726,7 +723,11 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// (nothing written), or a write fails.
 ///
 /// [`save`]: crate::save
-pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewritten, LoadError> {
+pub fn rewrite(
+    store: &dyn Store,
+    by: Author,
+    with: &dyn Rewrite,
+) -> Result<Rewritten, SessionError> {
     upgrade(store)?;
     let mut logs: Vec<(String, LogLines, Folded)> = Vec::new();
     for name in store.logs()? {
@@ -754,7 +755,7 @@ pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewr
         }
         let (stamp, mut header) = mapped.header;
         header.lineage = Lineage::fresh();
-        header.rewrites.push(Rewrote { t, by: by.clone() });
+        header.rewrites.push(LogRewrite { t, by: by.clone() });
         let mut bytes = Vec::with_capacity(mapped.body.len() + 256);
         write_meta(&mut bytes, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
         bytes.extend_from_slice(&mapped.body);
@@ -763,7 +764,7 @@ pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewr
             images: true,
         };
         let new = LogLines::parse(bytes);
-        let folded = fold_lines(name, &new, how, &blob)?.ok_or_else(|| LoadError::Record {
+        let folded = fold_lines(name, &new, how, &blob)?.ok_or_else(|| SessionError::Record {
             log: name.clone(),
             line: 1,
             why: "the rewritten log is empty".to_owned(),
@@ -778,7 +779,7 @@ pub fn rewrite(store: &dyn Store, by: Author, with: &dyn Rewrite) -> Result<Rewr
             log: name.clone(),
             records: mapped.records,
             conversation: folded.conversation,
-            state: folded.state,
+            saved: folded.state,
             changed_keys,
         });
         replaced.push(new.prefix(u64::MAX).to_vec());

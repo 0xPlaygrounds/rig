@@ -22,21 +22,17 @@ tui = ["dep:rig-tui"]
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 # The slash commands, the session picker and the operations on any saved
-# session.
+# session; its `rig_core` and `rig_memory` re-exports are the conversation and
+# session format the splits work on.
 rig-harness = { path = "../../crates/rig-harness" }
-# Splits into a new session, their pointers and a session's lines.
-rig-memory = { path = "../../crates/rig-memory", default-features = false }
-# The summarizer a merge back as one summary entry writes with.
-rig-compaction = { path = "../rig-compaction", default-features = false }
 rig-tui = { path = "../rig-tui", optional = true }
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+bevy_reflect = { workspace = true }
+# A line value the tests split with: the compaction policy.
+rig-compaction = { path = "../rig-compaction", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
 # The app on a session store and the scripted model the tests run on.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-core = { workspace = true, features = ["test-utils"] }

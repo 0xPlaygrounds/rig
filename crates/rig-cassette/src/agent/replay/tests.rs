@@ -26,10 +26,10 @@ use rig_core::serve::{
 
 use rig_core::{
     completion::{CompletionRequest, Message},
-    effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
+    effect::{Answered, EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    streaming::{Item, Relayed, StreamEvent, Transcript},
+    streaming::{Item, Relayed, StreamEvent, StreamRecord},
     test_utils::{MockCompletionModel, MockStreamEvent},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
@@ -125,7 +125,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
             }
         }
         async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-            rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(
+            rig_core::serve::Reply::Outcome(Ok(Answered::Completion(
                 rig_core::completion::CompletionResponse::new(
                     vec![AssistantContent::text("ok")],
                     rig_core::completion::Usage::default(),
@@ -200,7 +200,7 @@ async fn raw_tool_dispatch_records_and_replays_published_output() {
                 .scope::<PublishedContext>()
                 .expect("raw dispatch has a slot")
                 .publish(context);
-            rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
+            rig_core::serve::Reply::Outcome(Ok(Answered::ToolResult {
                 result: ToolResult::success(ToolOutput::text("ok")),
             }))
         }
@@ -312,7 +312,7 @@ impl Serve for Echo {
             }
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
-                EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
+                EffectKind::Custom { payload, .. } => Ok(Answered::Custom { payload }),
                 other => Err(ErrorReport::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
@@ -352,7 +352,7 @@ impl Serve for Ordered {
         };
         tokio::time::sleep(Duration::from_millis(delay)).await;
         self.served.lock().expect("order lock").push(index);
-        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(Answered::Custom {
             payload: json!(index),
         }))
     }
@@ -431,7 +431,7 @@ impl Serve for WrongFamilyAnswer {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(Answered::Custom {
             payload: json!("not a completion"),
         }))
     }
@@ -486,7 +486,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     assert_eq!(log[1].key.as_str(), "model");
     assert!(matches!(
         &log[1].outcome,
-        Ok(Outcome::Completion(response)) if response.choice == vec![AssistantContent::text("streamed")]
+        Ok(Answered::Completion(response)) if response.choice == vec![AssistantContent::text("streamed")]
     ));
 
     // Serialize, deserialize, replay: the same dispatches get the same answers
@@ -515,7 +515,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     ))
     .await
     .expect("replayed");
-    let Outcome::ToolResult { result, .. } = replayed else {
+    let Answered::ToolResult { result, .. } = replayed else {
         panic!("expected a tool result");
     };
     assert_eq!(result.output().as_json(), Some(&json!(2)));
@@ -562,8 +562,8 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
     let slow = dispatcher.dispatch(&key, custom(json!({"index": 1, "delay_ms": 60})));
     let fast = dispatcher.dispatch(&key, custom(json!({"index": 2, "delay_ms": 0})));
     let (slow, fast) = within(futures::future::join(slow, fast)).await;
-    assert!(matches!(slow, Ok(Outcome::Custom { payload: ref v }) if *v == json!(1)));
-    assert!(matches!(fast, Ok(Outcome::Custom { payload: ref v }) if *v == json!(2)));
+    assert!(matches!(slow, Ok(Answered::Custom { payload: ref v }) if *v == json!(1)));
+    assert!(matches!(fast, Ok(Answered::Custom { payload: ref v }) if *v == json!(2)));
     let log = recorder.take();
     let indexes: Vec<u64> = log
         .iter()
@@ -592,11 +592,11 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
             .await
             .expect("replayed");
     assert!(
-        matches!(first, Outcome::Custom { payload: ref v } if *v == json!(1)),
+        matches!(first, Answered::Custom { payload: ref v } if *v == json!(1)),
         "{first:?}"
     );
     assert!(
-        matches!(second, Outcome::Custom { payload: ref v } if *v == json!(2)),
+        matches!(second, Answered::Custom { payload: ref v } if *v == json!(2)),
         "{second:?}"
     );
 }
@@ -777,7 +777,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
     // The default: the fold, no events.
     let (_, folded) = record(EffectLogRecorder::new()).await;
     assert!(folded[0].events.is_none());
-    assert!(matches!(folded[0].outcome, Ok(Outcome::Completion(_))));
+    assert!(matches!(folded[0].outcome, Ok(Answered::Completion(_))));
 
     // Keeping events: the record holds them verbatim.
     let (seen, kept) = record(EffectLogRecorder::keeping_stream_events()).await;
@@ -792,7 +792,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
         "the stream's origin is kept"
     );
     assert!(
-        matches!(kept[0].outcome, Ok(Outcome::Completion(_))),
+        matches!(kept[0].outcome, Ok(Answered::Completion(_))),
         "and still the fold"
     );
 
@@ -952,7 +952,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
             disposition: Default::default(),
             decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
@@ -961,7 +961,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
                 name: "echo".into(),
                 args: "{}".into(),
             },
-            outcome: Ok(Outcome::ToolResult {
+            outcome: Ok(Answered::ToolResult {
                 result: ToolResult::success(ToolOutput::text("ok")),
             }),
             events: None,
@@ -985,7 +985,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
     .await
     .expect("the context is not the effect: the record answers");
     match outcome {
-        Outcome::ToolResult { result } => assert_eq!(result.output().as_text(), Some("ok")),
+        Answered::ToolResult { result } => assert_eq!(result.output().as_text(), Some("ok")),
         other => panic!("a tool result: {other:?}"),
     }
 }
@@ -1024,7 +1024,7 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     let mut log = recorder.take();
     let events = log.records[0].events.as_mut().expect("events kept");
     let first = events.items()[0].clone();
-    *events = Transcript::from_items(vec![first.clone()]).expect("a prefix");
+    *events = StreamRecord::from_items(vec![first.clone()]).expect("a prefix");
     log.records[0].outcome = Err(ErrorReport::new(ErrorKind::Cancelled, "dropped mid-stream"));
 
     let (dispatcher, _registrar, mut driver) = Bus::channel();
@@ -1124,7 +1124,9 @@ async fn a_record_names_the_dispatch_it_was_made_from() {
     let outer = dispatcher.dispatch(&HandlerKey::from("nesting"), custom(json!("outer")));
     let outer_id = outer.id();
     let outcome = within(outer).await.expect("served");
-    assert!(matches!(&outcome, Outcome::Custom { payload } if *payload == json!({"who": "child"})));
+    assert!(
+        matches!(&outcome, Answered::Custom { payload } if *payload == json!({"who": "child"}))
+    );
     // A consumer's own dispatch, for the contrast.
     within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"who": "own"}))))
         .await

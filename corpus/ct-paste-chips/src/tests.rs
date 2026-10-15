@@ -16,7 +16,7 @@ use super::*;
 /// Puts `items` in the view's keys, then runs a frame.
 fn push(app: &mut App, items: impl IntoIterator<Item = KeyInput>) {
     app.world_mut()
-        .resource_mut::<TerminalEvents>()
+        .resource_mut::<PendingInput>()
         .0
         .extend(items);
     app.update();
@@ -102,7 +102,7 @@ fn app(model: &MockCompletionModel, vision: &MockCompletionModel) -> (App, Recei
         models.0.catalog_mut().insert(spec);
     }
     app.insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, PasteChipsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, PasteChipsPlugin))
         .insert_resource(ClipboardImages::new(Arc::new(fake_clipboard)))
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -115,7 +115,7 @@ fn app(model: &MockCompletionModel, vision: &MockCompletionModel) -> (App, Recei
         entity: agent,
         model: "test/model".to_owned(),
     });
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     app.update();
     (app, wakes, agent)
 }

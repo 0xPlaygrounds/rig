@@ -41,7 +41,7 @@ use std::path::{Path, PathBuf};
 use ignore::Match;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::{CallId, Message, ToolResultContent, UserContent};
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, ToolOutput};
 use rig_harness::rig_tools::FilesListed;
@@ -387,7 +387,7 @@ fn refresh(
 fn deliver(
     mut calls: Query<
         (Entity, &ForAgent, &ToolRequest, &Published, &mut Outcome),
-        (Unreviewed, ToolCalls, Without<Checked>),
+        (ReadyToSettle, ToolCalls, Without<Checked>),
     >,
     mut agents: Query<(&mut DeliveredRules, &Conversation, Option<&WorkDir>)>,
     rules: Res<Rules>,

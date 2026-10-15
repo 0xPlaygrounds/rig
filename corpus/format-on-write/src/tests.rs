@@ -29,7 +29,7 @@ fn a_write_is_formatted_and_linted_before_the_next_read() {
     app.insert_resource(Settings::from_toml(SETTINGS))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ReadTool,
             WriteTool,
             FormatOnWritePlugin,

@@ -101,7 +101,7 @@ fn gone(path: &Path) -> bool {
 /// Waits for, then holds, the lock on generating, building and staging the
 /// agent, which every launcher on the root shares. It is released when the
 /// returned file is dropped.
-pub fn lock(home: &Home) -> Result<File> {
+pub fn hold_build_lock(home: &Home) -> Result<File> {
     fs::create_dir_all(home.bin())?;
     let file = lock_file(&home.build_lock(), true)?;
     match file.try_lock() {

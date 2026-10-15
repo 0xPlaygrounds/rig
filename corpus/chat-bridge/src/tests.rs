@@ -78,7 +78,7 @@ fn bridge_app(
     app.insert_resource(Settings::from_toml(settings))
         .insert_resource(Models(Connector::new(Catalog::default())))
         .insert_resource(ChatBridge::new(fake.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, ChatBridgePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ChatBridgePlugin))
         .add_open_tool(
             "read",
             "Read a file.",

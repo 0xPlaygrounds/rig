@@ -1,31 +1,4 @@
-//! The prompt history: the prompts Up and Down browse, kept across
-//! sessions in the user's
-//! [`PluginData`](rig_harness::prelude::PluginData) as `tui/history.jsonl`. It is the [`PromptHistory`] resource, which a plugin
-//! fills, filters or stops saving, such as to keep secrets out of it; a
-//! [`Sent`] adds a prompt to it.
-//!
-//! A prompt is kept as typed, a slash command's included. When the session
-//! is rewritten ([`SessionRewritten`](rig_ecs::journal::SessionRewritten)), the history, in memory and in its
-//! file, goes through the same map: a redaction reaches every prompt that
-//! held what it removed, those of other sessions too, and so the
-//! `/redact <text>` line that asked for it. A command whose arguments must
-//! never be kept, even before a rewrite runs, takes them out of `entries`
-//! between [`HistorySystems::Record`] and [`HistorySystems::Save`], as
-//! below.
-//!
-//! ```no_run
-//! use rig_harness::prelude::*;
-//! use rig_tui::{HistorySystems, PromptHistory};
-//!
-//! /// Prompts that look like they hold a key are never kept.
-//! fn scrub(mut history: ResMut<PromptHistory>) {
-//!     history.entries.retain(|prompt| !prompt.contains("sk-"));
-//! }
-//!
-//! fn build(app: &mut App) {
-//!     app.add_systems(Update, scrub.after(HistorySystems::Record).before(HistorySystems::Save));
-//! }
-//! ```
+//! The prompt history.
 
 use std::sync::Arc;
 
@@ -36,19 +9,34 @@ use rig_harness::rig_memory::{Place, Rewrite, rewrite_file, rewrite_value};
 
 use super::jsonl::{self, Kept};
 
-/// Prompts kept in the history.
-const KEPT: usize = 500;
-
 /// The file of the history in its [`PromptHistory::file`].
 const HISTORY_FILE: &str = "tui/history.jsonl";
 
-/// The prompts Up and Down browse, oldest first, and the files new ones
-/// are added to; `file: None` saves nothing. The terminal view loads it
-/// from the user's [`PluginData`] in `PreStartup`, appends each prompt
-/// sent in [`HistorySystems::Record`], and in [`HistorySystems::Save`] adds
-/// to the file those recorded since the last save that are still in
-/// `entries`, then keeps the newest 500. A plugin edits `entries` between
-/// the two to filter what is kept, or replaces them.
+/// The prompts Up and Down browse, oldest first, kept across sessions in
+/// the user's [`PluginData`] as `tui/history.jsonl` (`file: None` saves
+/// nothing). Prompts are kept as typed, slash commands included.
+///
+/// The view loads it in `PreStartup`, appends each prompt [`Sent`] in
+/// [`HistorySystems::Record`], and in [`HistorySystems::Save`] adds to the
+/// file those recorded since that are still in `entries`, keeping the
+/// newest [`Self::KEPT`]. A plugin filters `entries` between the two, such
+/// as to keep secrets out. A session rewrite
+/// ([`SessionRewritten`](rig_ecs::session_log::SessionRewritten)) maps the
+/// history and its file, the prompts of other sessions too.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::{HistorySystems, PromptHistory};
+///
+/// /// Prompts that look like they hold a key are never kept.
+/// fn scrub(mut history: ResMut<PromptHistory>) {
+///     history.entries.retain(|prompt| !prompt.contains("sk-"));
+/// }
+///
+/// fn build(app: &mut App) {
+///     app.add_systems(Update, scrub.after(HistorySystems::Record).before(HistorySystems::Save));
+/// }
+/// ```
 #[derive(Resource, Default)]
 pub struct PromptHistory {
     /// The prompts, oldest first.
@@ -61,10 +49,13 @@ pub struct PromptHistory {
 }
 
 impl PromptHistory {
+    /// How many prompts are kept.
+    pub const KEPT: usize = 500;
+
     /// The newest prompts kept in `files`, which new ones are saved to.
     pub fn load(files: Arc<dyn Files>) -> Self {
         Self {
-            entries: jsonl::tail(&Kept(files.clone(), HISTORY_FILE), KEPT),
+            entries: jsonl::tail(&Kept(files.clone(), HISTORY_FILE), Self::KEPT),
             file: Some(files),
             unsaved: Vec::new(),
         }
@@ -129,7 +120,7 @@ pub(crate) fn record(mut sent: MessageReader<Sent>, mut history: ResMut<PromptHi
 /// Adds the prompts recorded since the last save that are still kept to
 /// the file, then keeps the newest.
 pub(crate) fn save(mut history: ResMut<PromptHistory>) {
-    if history.unsaved.is_empty() && history.entries.len() <= KEPT {
+    if history.unsaved.is_empty() && history.entries.len() <= PromptHistory::KEPT {
         return;
     }
     let unsaved = std::mem::take(&mut history.unsaved);
@@ -139,7 +130,7 @@ pub(crate) fn save(mut history: ResMut<PromptHistory>) {
     {
         warn!("could not save the prompt history: {failure}");
     }
-    let excess = history.entries.len().saturating_sub(KEPT);
+    let excess = history.entries.len().saturating_sub(PromptHistory::KEPT);
     history.entries.drain(..excess);
 }
 

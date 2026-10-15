@@ -28,11 +28,9 @@
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message as ChatMessage;
-use rig_harness::rig_core::conversation::{
-    BranchError, Conversation as Line, MergeAt, Spliced, shared_prefix,
-};
+use rig_harness::rig_core::conversation::{self, BranchError, MergeAt, Spliced, shared_prefix};
 use rig_harness::rig_core::message::UserContent;
-use rig_harness::rig_memory::{self, LineId, SPLIT, SplitPointer, lines};
+use rig_harness::rig_memory::{self, LineId, SplitPointer, lines};
 
 #[cfg(test)]
 mod tests;
@@ -45,8 +43,6 @@ impl Plugin for SplitsPlugin {
     fn build(&self, app: &mut App) {
         let asker = app.world_mut().spawn(Name::new("rig-splits")).id();
         app.insert_resource(Asker(asker))
-            .init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
             .add_command(
                 "split",
                 "Split the conversation at an entry into a branch, or with `new` a new session; \
@@ -251,7 +247,7 @@ fn home(world: &World) -> Home {
 fn read_session(world: &World, id: &SessionId) -> Result<Session, String> {
     let dir = home(world).session(id);
     let stores = world
-        .get_resource::<SessionStores>()
+        .get_resource::<StoreOpener>()
         .cloned()
         .unwrap_or_default();
     let store = stores.open(&dir).map_err(|failure| failure.to_string())?;
@@ -259,35 +255,36 @@ fn read_session(world: &World, id: &SessionId) -> Result<Session, String> {
 }
 
 /// The line of `conversation` that `name` names.
-fn find_line(conversation: &Line, name: &str) -> Result<rig_memory::Line, String> {
+fn find_line(
+    conversation: &conversation::Conversation,
+    name: &str,
+) -> Result<rig_memory::Line, String> {
     let listed = lines(conversation);
-    let by_aside = name.parse::<AsideId>().ok();
-    let found = listed.iter().find(|line| match &line.id {
-        LineId::Branch(id) => Some(*id) == by_aside,
-        LineId::Session { session, .. } => session == name,
-        LineId::Active => false,
-    });
-    let found = found.or_else(|| listed.iter().find(|line| line.title == name));
-    found
-        .cloned()
-        .ok_or_else(|| format!("there is no line `{name}`"))
+    let found = rig_memory::Line::find(&listed, name).cloned();
+    found.ok_or_else(|| format!("there is no line `{name}`"))
 }
 
 /// The kept branch `name` names in `conversation`; `None` for the active
 /// line, or no name.
-fn branch(conversation: &Line, name: Option<&str>) -> Result<Option<AsideId>, String> {
+fn branch(
+    conversation: &conversation::Conversation,
+    name: Option<&str>,
+) -> Result<Option<AsideId>, String> {
     let line = name.map(|name| find_line(conversation, name)).transpose()?;
     match line.map(|line| line.id) {
         None | Some(LineId::Active) => Ok(None),
         Some(LineId::Branch(id)) => Ok(Some(id)),
-        Some(LineId::Session { session, .. }) => Err(format!(
+        Some(LineId::Split { session, .. }) => Err(format!(
             "that line is kept in session {session}: /split switch to it first"
         )),
     }
 }
 
 /// The newest entry of line `line` of `conversation`.
-fn newest(conversation: &Line, line: Option<AsideId>) -> Result<MessageId, String> {
+fn newest(
+    conversation: &conversation::Conversation,
+    line: Option<AsideId>,
+) -> Result<MessageId, String> {
     let entries = conversation.line(line).unwrap_or_default();
     let last = entries.last().and_then(|entry| entry.id);
     last.ok_or_else(|| "the line has no entry to split at".to_owned())
@@ -297,7 +294,9 @@ fn newest(conversation: &Line, line: Option<AsideId>) -> Result<MessageId, Strin
 fn run(world: &mut World, agent: Entity, asked: Asked) -> Result<String, String> {
     let target = target(world, agent, &asked.place)?;
     match asked.action {
-        Action::Split { new } | Action::Move { new, .. } if new => fork(world, &target, &asked),
+        Action::Split { new } | Action::Move { new, .. } if new => {
+            split_into_new_session(world, &target, &asked)
+        }
         Action::Split { .. } | Action::Move { .. } => {
             let go = matches!(asked.action, Action::Split { .. });
             edit(world, (&target, go), |conversation| {
@@ -311,7 +310,10 @@ fn run(world: &mut World, agent: Entity, asked: Asked) -> Result<String, String>
 }
 
 /// Splits or moves into a branch of `conversation`, as `asked` says.
-fn in_session(conversation: &mut Line, asked: &Asked) -> Result<String, String> {
+fn in_session(
+    conversation: &mut conversation::Conversation,
+    asked: &Asked,
+) -> Result<String, String> {
     let failed = |failure: BranchError| failure.to_string();
     if let Some(line) = branch(conversation, asked.place.line.as_deref())? {
         conversation.switch_branch(line, by()).map_err(failed)?;
@@ -343,7 +345,7 @@ fn in_session(conversation: &mut Line, asked: &Asked) -> Result<String, String> 
                 "" => format!("split {}", lines(conversation).len()),
                 title => title.to_owned(),
             };
-            let left = conversation.branch_title().to_owned();
+            let left = conversation.line_title().to_owned();
             conversation
                 .branch_off(point, title.clone(), by())
                 .map_err(failed)?;
@@ -360,7 +362,7 @@ fn in_session(conversation: &mut Line, asked: &Asked) -> Result<String, String> 
 fn edit(
     world: &mut World,
     (target, go): (&Target, bool),
-    change: impl FnOnce(&mut Line) -> Result<String, String>,
+    change: impl FnOnce(&mut conversation::Conversation) -> Result<String, String>,
 ) -> Result<String, String> {
     match (&target.session, target.entity) {
         (None, Some(entity)) => {
@@ -378,7 +380,7 @@ fn edit(
                 .cloned()
                 .ok_or("this app keeps no session")?;
             let stores = world
-                .get_resource::<SessionStores>()
+                .get_resource::<StoreOpener>()
                 .cloned()
                 .unwrap_or_default();
             let dir = home(world).session(session);
@@ -402,20 +404,14 @@ fn edit(
 
 /// Splits or moves into a new session: a [`ForkSession`] of the line,
 /// which [`go_to_split`] follows.
-fn fork(world: &mut World, target: &Target, asked: &Asked) -> Result<String, String> {
-    let conversation = match (&target.session, target.entity) {
-        (Some(session), _) => read_session(world, session)?
-            .agent(&target.agent.0)
-            .map(|agent| agent.conversation.clone())
-            .ok_or("the session has no such agent")?,
-        (None, Some(entity)) => world
-            .get::<Conversation>(entity)
-            .map(|conversation| conversation.view())
-            .ok_or("the agent has no conversation")?,
-        (None, None) => return Err("there is no such agent".to_owned()),
-    };
+fn split_into_new_session(
+    world: &mut World,
+    target: &Target,
+    asked: &Asked,
+) -> Result<String, String> {
+    let conversation = conversation_of(world, target)?;
     let line = branch(&conversation, asked.place.line.as_deref())?;
-    let (through, take, title) = match asked.action {
+    let (through, move_from, title) = match asked.action {
         Action::Move { first, last, .. } => (last, Some(first), format!("{first}–{last}")),
         _ => {
             let at = match asked.place.at {
@@ -430,18 +426,18 @@ fn fork(world: &mut World, target: &Target, asked: &Asked) -> Result<String, Str
         given => given.to_owned(),
     };
     let asker = world.get_resource::<Asker>().map(|asker| asker.0);
-    world.trigger(ForkSession {
+    world.write_message(ForkSession {
         from: target.session.clone(),
         cut: ForkCut::Line {
             agent: target.agent.clone(),
             line,
             through,
-            take,
+            move_from,
             title: title.clone(),
         },
         asker,
     });
-    Ok(match take {
+    Ok(match move_from {
         Some(first) => format!("Moving {first}–{through} into a new session “{title}”…"),
         None => format!("Splitting after {through} into a new session “{title}”…"),
     })
@@ -455,13 +451,16 @@ fn go_to_split(
     mut commands: Commands,
 ) {
     for forked in forked.read().filter(|forked| forked.asker == Some(asker.0)) {
-        let ForkCut::Line { take, title, .. } = &forked.cut else {
+        let ForkCut::Line {
+            move_from, title, ..
+        } = &forked.cut
+        else {
             continue;
         };
-        if let Some(note) = &forked.note {
+        if let Some(note) = &forked.unfinished {
             notices.write(Notice::warn(None, format!("Split “{title}”: {note}.")));
         }
-        if take.is_some() {
+        if move_from.is_some() {
             notices.write(Notice::info(
                 None,
                 format!("Moved into session {} as “{title}”.", forked.to),
@@ -488,7 +487,7 @@ fn switch(world: &mut World, target: &Target, name: Option<&str>) -> Result<Stri
                 Ok(format!("Running session {session}."))
             }
         },
-        LineId::Session { session, .. } => {
+        LineId::Split { session, .. } => {
             let id: SessionId = session
                 .parse()
                 .map_err(|_| format!("`{session}` is no session id"))?;
@@ -499,13 +498,16 @@ fn switch(world: &mut World, target: &Target, name: Option<&str>) -> Result<Stri
             conversation
                 .switch_branch(id, by())
                 .map_err(|failure| failure.to_string())?;
-            Ok(format!("Now on “{}”.", conversation.branch_title()))
+            Ok(format!("Now on “{}”.", conversation.line_title()))
         }),
     }
 }
 
 /// The conversation of `target`, as it is now.
-fn conversation_of(world: &mut World, target: &Target) -> Result<Line, String> {
+fn conversation_of(
+    world: &mut World,
+    target: &Target,
+) -> Result<conversation::Conversation, String> {
     match (&target.session, target.entity) {
         (Some(session), _) => read_session(world, session)?
             .agent(&target.agent.0)
@@ -532,14 +534,10 @@ fn merge(world: &mut World, target: &Target, name: &str) -> Result<String, Strin
             let spliced = conversation.merge_branch(id, by()).map_err(failed)?;
             Ok(merged(&spliced))
         }),
-        LineId::Session { session, agent } => {
-            let pointer = conversation.asides().find_map(|(id, aside)| {
-                let pointer: SplitPointer = (aside.kind == SPLIT)
-                    .then(|| serde_json::from_value(aside.value.clone()).ok())
-                    .flatten()?;
-                (pointer.session == session && pointer.agent == agent && !pointer.merged)
-                    .then_some((id, pointer, aside.clone()))
-            });
+        LineId::Split { session, agent } => {
+            let pointer = SplitPointer::find(&conversation, &session, &agent);
+            let pointer = pointer
+                .and_then(|(id, pointer)| Some((id, pointer, conversation.aside(id)?.clone())));
             let (id, mut pointer, aside) = pointer.ok_or_else(|| {
                 format!(
                     "the split in session {session} is merged already, or not in the active line"
@@ -568,7 +566,11 @@ fn merged(spliced: &Spliced) -> String {
 
 /// The active line of `agent` in session `session`, where a split of a
 /// line is kept.
-fn split_line(world: &World, session: &str, agent: &str) -> Result<Line, String> {
+fn split_line(
+    world: &World,
+    session: &str,
+    agent: &str,
+) -> Result<conversation::Conversation, String> {
     let split: SessionId = session
         .parse()
         .map_err(|_| format!("`{session}` is no session id"))?;
@@ -624,13 +626,13 @@ fn compare(world: &mut World, target: &Target, name: &str) -> Result<String, Str
                 .line_conversation(Some(*id), length)
                 .ok_or_else(|| format!("there is no line `{name}`"))?
         }
-        LineId::Session { session, agent } => split_line(world, session, agent)?,
+        LineId::Split { session, agent } => split_line(world, session, agent)?,
     };
     let ours = conversation.line(None).unwrap_or_default();
     let shared = shared_prefix(&ours, &other.line(None).unwrap_or_default());
     let sides = [
         (
-            conversation.branch_title().to_owned(),
+            conversation.line_title().to_owned(),
             own(&conversation, shared),
         ),
         (found.title, own(&other, shared)),
@@ -641,7 +643,7 @@ fn compare(world: &mut World, target: &Target, name: &str) -> Result<String, Str
 
 /// `line` from the last of its `shared` first entries on, moved back past
 /// tool results so none is shown without its call.
-fn own(line: &Line, shared: usize) -> Line {
+fn own(line: &conversation::Conversation, shared: usize) -> conversation::Conversation {
     let results = |at: usize| match line.messages().get(at) {
         Some(ChatMessage::User { content }) => content
             .iter()
@@ -660,7 +662,7 @@ fn own(line: &Line, shared: usize) -> Line {
 /// Shows two lines side by side, each in a transcript pane of one box
 /// over the screen: Tab goes from one to the other, Esc closes them.
 #[cfg(feature = "tui")]
-fn show(world: &mut World, sides: [(String, Line); 2]) -> Result<(), String> {
+fn show(world: &mut World, sides: [(String, conversation::Conversation); 2]) -> Result<(), String> {
     use rig_tui::crossterm::event::KeyCode;
     use rig_tui::ratatui::layout::Constraint;
     use rig_tui::{
@@ -713,6 +715,6 @@ fn show(world: &mut World, sides: [(String, Line); 2]) -> Result<(), String> {
 
 /// Without the terminal view there is nowhere to show two lines.
 #[cfg(not(feature = "tui"))]
-fn show(_: &mut World, _: [(String, Line); 2]) -> Result<(), String> {
+fn show(_: &mut World, _: [(String, conversation::Conversation); 2]) -> Result<(), String> {
     Err("Comparing lines needs the terminal view.".to_owned())
 }

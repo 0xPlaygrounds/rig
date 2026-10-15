@@ -40,7 +40,6 @@ pub(super) fn add(app: &mut App) {
             AgentPass,
             stop_restored.in_set(SubagentSystems::StopRestored),
         )
-        .add_message::<SessionRewritten>()
         .add_systems(
             Update,
             follow_rewrites.run_if(on_message::<SessionRewritten>),
@@ -82,7 +81,8 @@ pub(super) struct AgentData {
     pub(super) peers: Has<Peers>,
     pub(super) busy: Has<ActiveTurn>,
     pub(super) lifecycle: Option<&'static Lifecycle>,
-    pub(super) family: (Option<&'static Spawned>, Option<&'static SpawnedBy>),
+    pub(super) children: Option<&'static Spawned>,
+    pub(super) parent: Option<&'static SpawnedBy>,
     effect_parent: Option<&'static EffectParent>,
 }
 
@@ -207,7 +207,7 @@ impl Agents<'_, '_> {
             let mode = if !self.wait_calls(asker, agent).is_empty() {
                 DeliveryMode::Steer
             } else if open.any(|r| r.batch.is_some_and(|batch| batched.contains(&batch))) {
-                DeliveryMode::Note
+                DeliveryMode::Inform
             } else {
                 DeliveryMode::Queue
             };
@@ -217,7 +217,7 @@ impl Agents<'_, '_> {
             self.commands.spawn((
                 Incoming::new(text, mode).with_author(author),
                 ForAgent(asker),
-                Effect::child_of(parent.map(|parent| parent.0)),
+                Effect::with_parent_id(parent.map(|parent| parent.0)),
                 Report,
             ));
             self.wake.wake();

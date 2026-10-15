@@ -43,7 +43,7 @@ fn saved_session(
     .ok();
     let model = MockCompletionModel::from_stream_turns(turns);
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin))
         .add_open_tool(
             "build",
             "Build the project.",
@@ -115,7 +115,7 @@ fn found(app: &App, picker: Option<Entity>) -> Vec<SessionId> {
 
 /// The messages of the main agent of the saved session `id`.
 fn messages(home: &Home, id: &SessionId) -> Vec<Message> {
-    let store = SessionStores::default().open(&home.session(id));
+    let store = StoreOpener::default().open(&home.session(id));
     let session = store.ok().and_then(|store| Session::read(&*store).ok());
     let main = session.as_ref().and_then(Session::main_agent);
     main.map(|agent| agent.conversation.messages().to_vec())
@@ -163,7 +163,7 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
     let dir = home.session(&broken);
     fs::create_dir_all(dir.path()).ok();
     fs::write(dir.directory(), project.to_string_lossy().as_bytes()).ok();
-    let store = SessionStores::default().open(&dir);
+    let store = StoreOpener::default().open(&dir);
     assert!(store.is_ok_and(|store| {
         store
             .append_log("a1", b"{ not a record\n{ nor this\n")
@@ -175,7 +175,7 @@ fn finds_sessions_by_text_skips_a_broken_one_and_forks_at_a_hit() {
     app.insert_resource(ProjectRoot(project.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             CommandPlugin,
             PickPlugin,
             SessionFinderPlugin,

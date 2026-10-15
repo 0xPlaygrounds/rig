@@ -4,12 +4,12 @@
 //!
 //! ```
 //! use rig_cassette::effect_log::{EffectLog, RecordedAnswers};
-//! use rig_core::effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Outcome};
+//! use rig_core::effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Answered};
 //!
 //! let call = |args: &str| EffectKind::ToolCall { name: "read".into(), args: args.into() };
 //! let record = |id, args: &str, text: &str| {
 //!     let mut record = EffectRecord::new(EffectId::from_raw(id), HandlerKey::from("tool:read"),
-//!         call(args), Ok(Outcome::Custom { payload: text.into() }));
+//!         call(args), Ok(Answered::Custom { payload: text.into() }));
 //!     record.scope = Some("agent-1".into());
 //!     record
 //! };
@@ -17,7 +17,7 @@
 //! let mut answers = RecordedAnswers::new(&log);
 //! // Out of order: each call takes the first remaining record it matches.
 //! let b = answers.answer(Some("agent-1"), &call("{\"path\":\"b\"}"))?;
-//! assert!(matches!(b.outcome, Ok(Outcome::Custom { payload }) if payload == "B"));
+//! assert!(matches!(b.outcome, Ok(Answered::Custom { payload }) if payload == "B"));
 //! assert!(answers.answer(Some("agent-1"), &call("{\"path\":\"c\"}")).is_err());
 //! assert_eq!(answers.remaining(), 1);
 //! # Ok::<(), rig_core::error::ErrorReport>(())

@@ -73,7 +73,7 @@ use rig_agent::{
     tool::{RegisteredTool, server::ToolServer},
 };
 use rig_cassette::effect_log::{
-    Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
+    EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck, ResumePoint,
 };
 use rig_core::{
     completion::{CompletionRequest, Document},
@@ -650,7 +650,7 @@ impl AgentHook for ReplaceAnswer {
         }
         let mut replacement = response.clone();
         replacement.choice = vec![AssistantContent::text(REPLACED_ANSWER)];
-        OutcomeAction::replace(Ok(rig_core::effect::Outcome::Completion(replacement)))
+        OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(replacement)))
     }
 }
 
@@ -1115,15 +1115,15 @@ fn is_add(kind: &rig_core::effect::EffectKind) -> bool {
     matches!(kind, rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add")
 }
 
-fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::Decision {
+fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::BeforeServe {
     match kind {
         rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add" => {
-            rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::ToolCall {
+            rig_core::serve::BeforeServe::Patch(rig_core::effect::EffectKind::ToolCall {
                 name: name.clone(),
                 args: args.to_owned(),
             })
         }
-        _ => rig_core::serve::Decision::Proceed,
+        _ => rig_core::serve::BeforeServe::Proceed,
     }
 }
 
@@ -1138,20 +1138,20 @@ impl rig_core::serve::Intercept for DenyAddLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         if is_add(kind) {
-            rig_core::serve::Decision::deny(DENY_REASON)
+            rig_core::serve::BeforeServe::deny(DENY_REASON)
         } else {
-            rig_core::serve::Decision::Proceed
+            rig_core::serve::BeforeServe::Proceed
         }
     }
     async fn after(
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Keep
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1166,16 +1166,16 @@ impl rig_core::serve::Intercept for PatchAddArgsLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_ARGS)
     }
     async fn after(
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Keep
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1190,16 +1190,16 @@ impl rig_core::serve::Intercept for PatchAgainLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_AGAIN_ARGS)
     }
     async fn after(
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Keep
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1214,24 +1214,24 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
-        rig_core::serve::Decision::Proceed
+    ) -> rig_core::serve::BeforeServe {
+        rig_core::serve::BeforeServe::Proceed
     }
     async fn after(
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
+        outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
         match outcome {
-            Ok(rig_core::effect::Outcome::ToolResult { result }) if is_add(kind) => {
-                rig_core::serve::Verdict::Replace(Ok(rig_core::effect::Outcome::ToolResult {
+            Ok(rig_core::effect::Answered::ToolResult { result }) if is_add(kind) => {
+                rig_core::serve::AfterServe::Replace(Ok(rig_core::effect::Answered::ToolResult {
                     result: result
                         .clone()
                         .with_output(ToolOutput::text(REPLACED_RESULT)),
                 }))
             }
-            _ => rig_core::serve::Verdict::Keep,
+            _ => rig_core::serve::AfterServe::Keep,
         }
     }
 }
@@ -1240,7 +1240,7 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
 pub struct ApprovalLayer {
     pub asks: tokio::sync::mpsc::UnboundedSender<(
         rig_core::effect::EffectId,
-        futures::channel::oneshot::Sender<rig_core::serve::Decision>,
+        futures::channel::oneshot::Sender<rig_core::serve::BeforeServe>,
     )>,
 }
 
@@ -1252,13 +1252,13 @@ impl rig_core::serve::Intercept for ApprovalLayer {
         &self,
         id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         let (decide, decided) = futures::channel::oneshot::channel();
         self.asks.send((id, decide)).expect("the world listens");
         match decided.await {
             Ok(decision) => decision,
             Err(futures::channel::oneshot::Canceled) => {
-                rig_core::serve::Decision::Deny(rig_core::error::ErrorReport::new(
+                rig_core::serve::BeforeServe::Deny(rig_core::error::ErrorReport::new(
                     ErrorKind::Internal,
                     "layer `ApprovalLayer`: the world closed the answer channel without deciding",
                 ))
@@ -1269,9 +1269,9 @@ impl rig_core::serve::Intercept for ApprovalLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Keep
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1286,23 +1286,23 @@ impl rig_core::serve::Intercept for WrongFamilyLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         if is_add(kind) {
-            rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::Custom {
+            rig_core::serve::BeforeServe::Patch(rig_core::effect::EffectKind::Custom {
                 kind: std::sync::Arc::from("corpus:wrong"),
                 payload: serde_json::Value::Null,
             })
         } else {
-            rig_core::serve::Decision::Proceed
+            rig_core::serve::BeforeServe::Proceed
         }
     }
     async fn after(
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Keep
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1317,16 +1317,16 @@ impl rig_core::serve::Intercept for CancelStreamLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
-        rig_core::serve::Decision::Proceed
+    ) -> rig_core::serve::BeforeServe {
+        rig_core::serve::BeforeServe::Proceed
     }
     async fn after(
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Replace(Err(rig_core::error::ErrorReport::new(
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Replace(Err(rig_core::error::ErrorReport::new(
             ErrorKind::Cancelled,
             CANCEL_STREAM_REASON,
         )))
@@ -1344,16 +1344,16 @@ impl rig_core::serve::Intercept for DenyAllLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
-        rig_core::serve::Decision::deny(HOST_DENY_REASON)
+    ) -> rig_core::serve::BeforeServe {
+        rig_core::serve::BeforeServe::deny(HOST_DENY_REASON)
     }
     async fn after(
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Keep
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1361,7 +1361,7 @@ impl rig_core::serve::Intercept for DenyAllLayer {
 /// signals `reached` when it holds an answer forever.
 pub type Asks = tokio::sync::mpsc::UnboundedSender<(
     rig_core::effect::EffectId,
-    futures::channel::oneshot::Sender<rig_core::serve::Decision>,
+    futures::channel::oneshot::Sender<rig_core::serve::BeforeServe>,
 )>;
 
 pub fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>) -> Asks {
@@ -1371,10 +1371,10 @@ pub fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>)
         while let Some((_, decide)) = asked.recv().await {
             match answer {
                 Answer::Approve => {
-                    let _ = decide.send(rig_core::serve::Decision::Proceed);
+                    let _ = decide.send(rig_core::serve::BeforeServe::Proceed);
                 }
                 Answer::Deny => {
-                    let _ = decide.send(rig_core::serve::Decision::deny(WORLD_DENY_REASON));
+                    let _ = decide.send(rig_core::serve::BeforeServe::deny(WORLD_DENY_REASON));
                 }
                 Answer::Never => {
                     reached.notify_one();
@@ -1508,8 +1508,8 @@ pub struct Lookup {
     pub model_key: HandlerKey,
 }
 
-fn tool_text(text: String) -> rig_core::effect::Outcome {
-    rig_core::effect::Outcome::ToolResult {
+fn tool_text(text: String) -> rig_core::effect::Answered {
+    rig_core::effect::Answered::ToolResult {
         result: rig_core::tool::ToolResult::success(ToolOutput::text(text)),
     }
 }
@@ -1699,7 +1699,7 @@ impl rig_core::serve::Serve for Relay {
             })
             .await
             .expect("acknowledged");
-        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
             payload: serde_json::to_value(NoteAck {
                 accepted: ack.accepted,
                 at: ack.at,
@@ -2091,7 +2091,7 @@ pub fn as_data(record: &EffectRecord) -> serde_json::Value {
         "key": record.key,
         "kind": kind,
         "outcome": record.outcome,
-        "tool_output": record.tool_output,
+        "tool_output": record.published,
         "events": record.events,
     })
 }
@@ -2177,7 +2177,7 @@ pub fn golden_answer(log: &EffectLog) -> String {
     log.iter()
         .rev()
         .find_map(|record| match &record.outcome {
-            Ok(rig_core::effect::Outcome::Completion(response)) => {
+            Ok(rig_core::effect::Answered::Completion(response)) => {
                 let output_call = response.choice.iter().find_map(|content| match content {
                     AssistantContent::ToolCall(call)
                         if call.function.name.starts_with("final_result") =>
@@ -3104,7 +3104,7 @@ pub enum Resume {
     AfterFirstToolTurn,
     /// After `tool_turns` tool turns' results, through a `Checkpoint`: the
     /// head's serialized run and position become the checkpoint (JSON
-    /// round trip), the continuation is `EffectLog::from_checkpoint` over
+    /// round trip), the continuation is `EffectLog::from_resume_point` over
     /// `against`, and the resumed engine replays it under `check`
     /// (Matrix R).
     Checkpoint {
@@ -3442,7 +3442,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         .await
                         .expect("the replayer answered the tool query")
                     {
-                        rig_core::effect::Outcome::Documents(
+                        rig_core::effect::Answered::Documents(
                             rig_core::effect::RetrievedDocuments::Ids(ids),
                         ) => dynamic_tool_ids.extend(ids.into_iter().map(|(_, id)| id)),
                         other => panic!("retrieved ids, not {other:?}"),
@@ -3821,24 +3821,24 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             record.id.as_u64() > head_end_id(&replay.log, tool_turns)
                         })
                         .unwrap_or(replay.log.len());
-                    let (checkpoint, tail) = replay.log.checkpoint(
+                    let (checkpoint, tail) = replay.log.resume_point(
                         at,
                         serde_json::from_str::<serde_json::Value>(&state)
                             .expect("the run state is JSON"),
                     );
-                    let checkpoint: Checkpoint<serde_json::Value> = serde_json::from_str(
+                    let checkpoint: ResumePoint<serde_json::Value> = serde_json::from_str(
                         &serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
                     )
                     .expect("a checkpoint restores");
                     assert_eq!(checkpoint.at, at);
                     match against {
-                        Against::Tail => EffectLog::from_checkpoint(&checkpoint, tail)
+                        Against::Tail => EffectLog::from_resume_point(&checkpoint, tail)
                             .expect("the tail follows its checkpoint"),
                         Against::FullLog => {
                             // The full log in the tail's place is refused
                             // by its first id, before any dispatch.
                             let refused =
-                                EffectLog::from_checkpoint(&checkpoint, replay.log.clone())
+                                EffectLog::from_resume_point(&checkpoint, replay.log.clone())
                                     .expect_err("a full log is not the tail");
                             assert!(
                                 refused.message.starts_with(&format!(

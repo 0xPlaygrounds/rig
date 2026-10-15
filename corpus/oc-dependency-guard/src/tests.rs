@@ -86,7 +86,7 @@ fn new_dependencies_wait_for_the_user_unless_the_policy_decides() {
         .insert_resource(answers)
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             AnswerAsks,
             ShellTool,
             EditTool,

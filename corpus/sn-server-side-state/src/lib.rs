@@ -28,7 +28,7 @@
 use futures::StreamExt;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, CompletionResponse};
-use rig_harness::rig_core::effect::{EffectKind, HandlerDescriptor, Outcome as Answer, family};
+use rig_harness::rig_core::effect::{Answered as Answer, EffectKind, HandlerDescriptor, family};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::message::{Fingerprint, Message};
 use rig_harness::rig_core::providers::registry::ProviderId;
@@ -36,7 +36,7 @@ use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_harness::rig_core::streaming::Relayed;
 use rig_harness::rig_core::tool::{ContextValue, PublishedContext};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -197,7 +197,7 @@ struct ChainHint {
 /// turn's model call its agent's chain, applied to the model it finally
 /// goes to if that model keeps state.
 fn chain_calls(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     mut calls: Query<(&ForAgent, &mut Adapters), (Added<Admitted>, With<TurnCall>, ModelCalls)>,
     mut chains: Query<&mut ServerChain, With<Conversation>>,
     vendors: Res<StatefulVendors>,

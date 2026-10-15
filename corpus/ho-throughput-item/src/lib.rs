@@ -8,7 +8,7 @@
 //! Tokens are estimated as a quarter of the characters streamed (text,
 //! reasoning and tool arguments, from `StreamDelta`), and corrected to the
 //! provider's output tokens when its usage arrives. Times are the kernel's
-//! own stamps on the call: `Started` and `Streamed`.
+//! own stamps on the call: `Started` and `StreamTiming`.
 
 use std::collections::BTreeMap;
 use std::time::SystemTime;
@@ -176,7 +176,7 @@ fn settled(
     calls: Query<(
         &Tally,
         &Started,
-        Option<&Streamed>,
+        Option<&StreamTiming>,
         &SentTo,
         &Outcome,
         Option<&ForAgent>,
@@ -224,7 +224,12 @@ fn settled(
 
 /// The numbers of a call that started at `started`, streamed its first
 /// item at `first` and `tokens` tokens until `ended`.
-fn finished(started: &Started, first: &Streamed, ended: Option<SystemTime>, tokens: u64) -> Done {
+fn finished(
+    started: &Started,
+    first: &StreamTiming,
+    ended: Option<SystemTime>,
+    tokens: u64,
+) -> Done {
     let first_token = first.first.duration_since(started.at).unwrap_or_default();
     let streaming = ended.and_then(|ended| ended.duration_since(first.first).ok());
     Done {
@@ -252,7 +257,7 @@ fn label(done: Done) -> String {
 /// dimmed once it ended.
 fn show(
     mut agents: Query<(&mut LiveSpeed, &mut StatusItems)>,
-    calls: Query<(&Tally, &Started, Option<&Streamed>)>,
+    calls: Query<(&Tally, &Started, Option<&StreamTiming>)>,
     time: Res<Time<Real>>,
 ) {
     let now = time.elapsed();

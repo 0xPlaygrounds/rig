@@ -249,7 +249,7 @@ struct GuardAsk {
 /// Previews each call about to run that writes named paths, unless every
 /// one is allowed for the session.
 fn preview_writes(
-    calls: Query<(Entity, &Footprint, &Decision), (Undecided, ToolCalls, Without<Preview>)>,
+    calls: Query<(Entity, &Footprint, &Decision), (ReadyToStart, ToolCalls, Without<Preview>)>,
     allowed: Res<AllowedFiles>,
     mut commands: Commands,
 ) {
@@ -272,7 +272,7 @@ fn preview_writes(
 fn judge_previewed(
     calls: Query<
         (Entity, &Previewed, &ForAgent, &Decision),
-        (Undecided, ToolCalls, Without<Checked>),
+        (ReadyToStart, ToolCalls, Without<Checked>),
     >,
     allowed: Res<AllowedFiles>,
     config: Res<LargeChangeConfig>,

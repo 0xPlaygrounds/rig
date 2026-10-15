@@ -5,7 +5,7 @@
 
 use rig_core::effect::EffectKind;
 
-use rig_core::effect::Outcome;
+use rig_core::effect::Answered;
 
 use rig_cassette::effect_log::EffectLog;
 
@@ -223,7 +223,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
         .records
         .iter()
         .filter_map(|record| match (&record.kind, &record.outcome) {
-            (EffectKind::ToolCall { name, args }, Ok(Outcome::ToolResult { result })) => Some((
+            (EffectKind::ToolCall { name, args }, Ok(Answered::ToolResult { result })) => Some((
                 name.as_str(),
                 serde_json::from_str::<serde_json::Value>(args).expect("tool JSON"),
                 result,

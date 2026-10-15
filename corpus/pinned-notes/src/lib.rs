@@ -357,7 +357,7 @@ fn tell_summaries(
 fn inherit(
     spawned: Query<
         (&SpawnSubagent, &SpawnedAgent, &ForAgent),
-        (Unreviewed, Added<Outcome>, PluginEffects),
+        (ReadyToSettle, Added<Outcome>, PluginEffects),
     >,
     pins: Query<&Pins>,
     mut commands: Commands,

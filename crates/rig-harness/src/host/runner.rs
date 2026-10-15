@@ -14,7 +14,7 @@ use bevy_app::PluginsState;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::Wake;
 
 use crate::clock::{Due, KeepAwake, WakeAt};
 
@@ -32,6 +32,19 @@ const IDLE: Duration = Duration::from_secs(1);
 /// counted, all in the frame after the gap.
 const MAX_FRAME_GAP: Duration = Duration::from_secs(60);
 
+/// Finishes and cleans up the app's plugins, as Bevy's runners do before
+/// their first frame (`bevy_app/src/schedule_runner.rs`), which Bevy does
+/// not expose.
+pub(crate) fn finish_plugins(app: &mut App) {
+    if app.plugins_state() != PluginsState::Cleaned {
+        while app.plugins_state() == PluginsState::Adding {
+            bevy_tasks::tick_global_task_pools_on_main_thread();
+        }
+        app.finish();
+        app.cleanup();
+    }
+}
+
 /// Sets the loop and its [`Wake`], and lets Bevy's clock count frames up
 /// to a minute apart in full.
 pub struct RunnerPlugin;
@@ -44,15 +57,7 @@ impl Plugin for RunnerPlugin {
             sender.try_send(()).ok();
         }));
         app.set_runner(move |mut app: App| {
-            // As `ScheduleRunnerPlugin` does
-            // (`bevy_app/src/schedule_runner.rs`).
-            if app.plugins_state() != PluginsState::Cleaned {
-                while app.plugins_state() == PluginsState::Adding {
-                    bevy_tasks::tick_global_task_pools_on_main_thread();
-                }
-                app.finish();
-                app.cleanup();
-            }
+            finish_plugins(&mut app);
             // A terminal app's systems are small: Bevy's multi-threaded
             // executor would wake the task pool for them every frame, which
             // costs more than they do (an idle frame three times as much).

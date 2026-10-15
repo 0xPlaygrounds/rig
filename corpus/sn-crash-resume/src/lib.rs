@@ -30,9 +30,9 @@
 
 use std::collections::HashMap;
 
-use rig_harness::note::Note;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Entry;
+use rig_harness::rig_core::conversation::Note;
 use rig_harness::rig_core::message::Message as Chat;
 use rig_tui::MainInput;
 use serde::{Deserialize, Serialize};
@@ -230,7 +230,16 @@ fn recover(
     mut commands: Commands,
 ) {
     let mut found: HashMap<Entity, Recovering> = HashMap::new();
-    for (turn, &TurnOf(agent), &Turn { first_message, .. }, of) in &turns {
+    for (
+        turn,
+        &TurnOf(agent),
+        &Turn {
+            start: first_message,
+            ..
+        },
+        of,
+    ) in &turns
+    {
         let Ok((id, conversation, ..)) = agents.get(agent) else {
             continue;
         };
@@ -391,7 +400,7 @@ fn ask(
 fn hold_messages(
     messages: Query<
         (Entity, &Incoming, &ForAgent, &Decision),
-        (Undecided, IncomingMessages, Without<Seen>),
+        (ReadyToStart, IncomingMessages, Without<Seen>),
     >,
     mut agents: Query<&mut Recovering>,
     mut commands: Commands,

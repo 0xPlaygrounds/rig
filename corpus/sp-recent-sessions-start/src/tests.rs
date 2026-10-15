@@ -39,7 +39,7 @@ fn saved_session(home: &Home, project: &Path, ask: &str) -> SessionId {
         .insert_resource(ProjectRoot(project.to_owned()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SessionsPlugin,
             RecentSessionsPlugin,
         ))
@@ -82,7 +82,7 @@ fn at_terminal(
     app.insert_resource(scripted_models([(MODEL, model)]))
         .insert_resource(ProjectRoot(project.to_owned()))
         .insert_resource(TuiTestScreen::new(120, 40))
-        .add_plugins((AgentPlugin, JournalPlugin, CommandPlugin, PickPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, PickPlugin))
         .add_plugins((SessionsPlugin, RecentSessionsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
@@ -167,7 +167,7 @@ fn lists_filters_and_resumes_recent_sessions_without_writing() {
     let dir = home.session(&broken);
     fs::create_dir_all(dir.path()).ok();
     fs::write(dir.directory(), project.to_string_lossy().as_bytes()).ok();
-    let store = SessionStores::default().open(&dir);
+    let store = StoreOpener::default().open(&dir);
     assert!(store.is_ok_and(|store| {
         store.append_log("a1", b"{ not a record\n").is_ok()
             && store.write_file(META, b"{ not a listing").is_ok()
@@ -305,7 +305,7 @@ fn lists_filters_and_resumes_recent_sessions_without_writing() {
         .insert_resource(ProjectRoot(project.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SessionsPlugin,
             RecentSessionsPlugin,
         ))

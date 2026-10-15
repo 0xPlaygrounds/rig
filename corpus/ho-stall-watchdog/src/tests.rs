@@ -71,7 +71,7 @@ fn a_stalled_stream_is_sent_again_and_a_long_tool_is_reported() {
     let settings = "[stall_watchdog]\nmodel_timeout = 0.2\n\
                     [stall_watchdog.tools.sleepy]\nsoft_limit = 0.2\n";
     app.insert_resource(Settings::from_toml(settings))
-        .add_plugins((AgentPlugin, JournalPlugin, StallWatchdogPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, StallWatchdogPlugin))
         .add_open_tool("sleepy", "Sleep a second.", ToolOptions::default(), sleepy)
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
@@ -149,7 +149,7 @@ fn a_stalled_stream_is_sent_again_and_a_long_tool_is_reported() {
     // The session's next app restores it without a word about its logs.
     drop(app);
     let (mut app, _) = app_in(&home, &session);
-    app.add_plugins((AgentPlugin, JournalPlugin, StallWatchdogPlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, StallWatchdogPlugin));
     collect::<Notice>(&mut app);
     app.finish();
     app.update();

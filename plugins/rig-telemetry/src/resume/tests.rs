@@ -16,7 +16,7 @@ fn what_the_session_spent_is_in_its_resume_line() {
     let home = scratch_home("rig-telemetry-resume");
     let id = SessionId::generate();
     let (mut app, _wakes) = app_in(&home, &id);
-    app.add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin, UsagePlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin, UsagePlugin));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -25,11 +25,11 @@ fn what_the_session_spent_is_in_its_resume_line() {
     let mut usage = Usage::default();
     usage.input_tokens = Some(1_200);
     usage.output_tokens = Some(300);
-    let mut spent = app.world_mut().resource_mut::<SessionSpending>();
+    let mut spent = app.world_mut().resource_mut::<SessionUsage>();
     spent.0.record(None, None, &usage);
     app.update();
 
-    let listed = SessionEntry::read(&home.session(&id), &SessionStores::default());
+    let listed = SessionEntry::read(&home.session(&id), &StoreOpener::default());
     let labels = listed.as_ref().map(|entry| &entry.listing.meta.labels);
     let spent = labels.and_then(|labels| labels.get(SPENT));
     assert_eq!(spent.map(String::as_str), Some("1.5k tokens"), "{labels:?}");

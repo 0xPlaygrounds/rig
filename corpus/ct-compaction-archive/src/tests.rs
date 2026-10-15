@@ -59,7 +59,7 @@ fn keep_two_turns(
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
         .init_resource::<ToolOutputs>()
@@ -305,7 +305,7 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
     let forked = MemoryStore::default();
     assert!(fork_point.is_some(), "turn 8 is in the conversation");
     let point = fork_point.map(|id| (log.as_str(), id));
-    let copied = fork(&store, &forked, point, &Keep);
+    let copied = fork(&store, &forked, point, &NoRewrite);
     assert!(copied.is_ok(), "{copied:?}");
     drop(app);
 
@@ -329,7 +329,7 @@ fn compacted_messages_are_found_across_compactions_forks_restarts_and_removals()
         json!({ "query": "VAULT_PATH", "kind": "user" }),
     );
     assert!(vault.contains("turn 3, user"), "{vault}");
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("forget"),
         with: Arc::new(Messages(forget_vault)),
         asker: None,

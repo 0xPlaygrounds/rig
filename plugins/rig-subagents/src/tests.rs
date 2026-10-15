@@ -54,7 +54,7 @@ impl Session {
     ) -> Self {
         let (mut app, wakes) = app_on(store);
         app.insert_resource(Models(Connector::new(Catalog::default())))
-            .add_plugins((AgentPlugin, JournalPlugin))
+            .add_plugins((AgentPlugin, SessionLogPlugin))
             .add_open_tool("look", "Look.", read_only(), look)
             .init_resource::<Delivered>()
             .add_observer(
@@ -179,7 +179,7 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     // with the proposer's, which carried the parent on.
     let reports = session.to(session.parent);
     let expected = [
-        ("Critique", DeliveryMode::Note, "Lumen is good."),
+        ("Critique", DeliveryMode::Inform, "Lumen is good."),
         ("Propose", DeliveryMode::Queue, "We agreed on Lumen."),
     ];
     assert_eq!(reports, expected);
@@ -215,7 +215,7 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     for peer in [a, b] {
         let note = session.to(peer).last().copied();
         let told =
-            |(_, mode, text): (_, _, &str)| mode == DeliveryMode::Note && text.contains(&judge);
+            |(_, mode, text): (_, _, &str)| mode == DeliveryMode::Inform && text.contains(&judge);
         assert!(note.is_some_and(told), "{note:?}");
     }
     let brief = session.to(c).first().map(|(.., text)| text.to_string());
@@ -225,7 +225,7 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
 }
 
 /// Holds every model call of a turn, as an approval nobody gave.
-fn hold_turn_calls(calls: Query<Entity, (Undecided, With<TurnCall>)>, mut commands: Commands) {
+fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut commands: Commands) {
     for call in &calls {
         commands.spawn(HoldOf(call));
     }
@@ -367,7 +367,7 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
             |EffectRecorded(record)| match (&record.kind, &record.outcome) {
                 (
                     rig_core::effect::EffectKind::Custom { kind, payload },
-                    Ok(rig_core::effect::Outcome::Custom { payload: answer }),
+                    Ok(rig_core::effect::Answered::Custom { payload: answer }),
                 ) if &**kind == SUBAGENT => Some((payload.clone(), answer.clone(), record.parent)),
                 _ => None,
             },
@@ -405,7 +405,7 @@ fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
     // At most two subagents of an agent work at once: a Gate system holds
     // the others' requests, and a Review system releases one as a slot
     // frees.
-    let queue = move |requests: Query<(Entity, &ForAgent), (With<SpawnSubagent>, Undecided)>,
+    let queue = move |requests: Query<(Entity, &ForAgent), (With<SpawnSubagent>, ReadyToStart)>,
                       children: Query<(&SpawnedBy, &Lifecycle)>,
                       mut commands: Commands| {
         let mut admitted = 0;
@@ -554,16 +554,17 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
     session.call(session.parent, TASK, "t1", args);
     let child = session.children(session.parent).last().copied();
     let child = child.unwrap_or(Entity::PLACEHOLDER);
-    let budget = move |calls: Query<(Entity, &CallOf, &ForAgent), (With<TurnCall>, Undecided)>,
-                       mut seen: Local<HashSet<Entity>>,
-                       mut commands: Commands| {
-        for (call, &CallOf(turn), &ForAgent(agent)) in &calls {
-            if agent == child && seen.insert(call) && seen.len() > 1 {
-                let stopped = TurnOutcome::Stopped(Some("over budget".to_owned()));
-                commands.entity(turn).insert(stopped);
+    let budget =
+        move |calls: Query<(Entity, &CallOf, &ForAgent), (With<TurnCall>, ReadyToStart)>,
+              mut seen: Local<HashSet<Entity>>,
+              mut commands: Commands| {
+            for (call, &CallOf(turn), &ForAgent(agent)) in &calls {
+                if agent == child && seen.insert(call) && seen.len() > 1 {
+                    let stopped = TurnOutcome::Stopped(Some("over budget".to_owned()));
+                    commands.entity(turn).insert(stopped);
+                }
             }
-        }
-    };
+        };
     let mark = |mut reports: Query<&mut Incoming, (With<Report>, Added<Admitted>)>| {
         for mut report in &mut reports {
             report.text_mut().insert_str(0, "[report] ");

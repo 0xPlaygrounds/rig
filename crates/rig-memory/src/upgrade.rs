@@ -7,12 +7,7 @@
 //! store is rewritten in the current one the first time anything writes to
 //! it, never on a read. A saved value carries its own version, which a
 //! plugin moves on with steps of its own ([`Upgrades::add`]); a value no
-//! step reads is set aside under [`SET_ASIDE`], never dropped.
-//!
-//! Every bump of the format first freezes a session the old writer wrote as
-//! `fixtures/rig-session-<N>/` (the ignored test `write_the_fixture_of_this_format`
-//! writes it), then adds the step from `N` here; a test reads every fixture
-//! with the current reader. Fixtures are never edited.
+//! step reads is shelved under [`SHELVED`], never dropped.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -24,7 +19,8 @@ use serde_json::{Map, Value};
 use crate::format::{Header, LogLines, Meta, write_meta};
 use crate::session::{Fold, fold_lines, log_lines, read_header};
 use crate::writer::set_aside_tail;
-use crate::{FORMAT, LoadError, Repair, Rewrote, Store, VERSION, now_ms};
+use crate::{FORMAT, LogRewrite, Repair, SessionError, Store, VERSION};
+use rig_core::now_ms;
 
 /// One step of the saved format: reads a log of format `from` as format
 /// `from + 1`. Pure; a step keeps every record's stamp.
@@ -41,9 +37,11 @@ pub(crate) struct Step {
 
 /// The chain, a step from each format since [`OLDEST`](crate::OLDEST) to
 /// the next.
-///
-/// v2 → v3: a `state` record without `v` is version 1 in both; nothing
-/// else changed.
+// Every bump of the format first freezes a session the old writer wrote as
+// `fixtures/rig-session-<N>/` (the ignored test
+// `write_the_fixture_of_this_format` writes it), then adds the step from `N`
+// here; a test reads every fixture with the current reader. Fixtures are
+// never edited.
 pub(crate) const STEPS: &[Step] = &[Step {
     from: 2,
     header: None,
@@ -120,7 +118,7 @@ fn record_now(
 /// The prefix of the key a saved value no step reads is moved to before its
 /// key is written again: `rig.set_aside/<key>/v<N>`. Readers skip such keys
 /// silently; they are kept in the file.
-pub const SET_ASIDE: &str = "rig.set_aside/";
+pub const SHELVED: &str = "rig.set_aside/";
 
 /// A saved value and the version its type had when it was saved (1 for one
 /// saved before versions). Its serde form is `{"v": n, "value": …}`, without
@@ -314,7 +312,7 @@ fn no_images(_: &str) -> io::Result<Vec<u8>> {
 /// # Errors
 ///
 /// As [`Session::read`](crate::Session::read), or when a write fails.
-pub fn upgrade(store: &dyn Store) -> Result<Upgraded, LoadError> {
+pub fn upgrade(store: &dyn Store) -> Result<Upgraded, SessionError> {
     let mut names = store.logs()?;
     names.sort();
     if all_current(store, &names)? {
@@ -352,13 +350,13 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, LoadError> {
             continue;
         }
         let mut header = header;
-        header.rewrites.push(Rewrote {
+        header.rewrites.push(LogRewrite {
             t,
             by: Author::rig(),
         });
         let mut bytes = Vec::with_capacity(lines.prefix(u64::MAX).len() + 64);
         write_meta(&mut bytes, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
-        let refuse = |line, why| LoadError::Record {
+        let refuse = |line, why| SessionError::Record {
             log: name.clone(),
             line,
             why,
@@ -385,7 +383,7 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, LoadError> {
         };
         if !same {
             let why = format!("in {FORMAT} it would not read back the same");
-            return Err(LoadError::Record {
+            return Err(SessionError::Record {
                 log: name,
                 line: 1,
                 why,
@@ -419,7 +417,7 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, LoadError> {
 }
 
 /// Whether every log of `names` is in this format, by its header alone.
-fn all_current(store: &dyn Store, names: &[String]) -> Result<bool, LoadError> {
+fn all_current(store: &dyn Store, names: &[String]) -> Result<bool, SessionError> {
     for name in names {
         let bytes = match store.read_log(name) {
             Err(failure) if failure.kind() == io::ErrorKind::NotFound => continue,

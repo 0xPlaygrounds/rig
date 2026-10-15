@@ -55,7 +55,7 @@ fn a_nested_agents_md_comes_with_the_first_read_under_it_only() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.set_error_handler(bevy_ecs::error::warn)
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, NestedContextPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, NestedContextPlugin));
     app.finish();
     app.update();
     let world = app.world_mut();

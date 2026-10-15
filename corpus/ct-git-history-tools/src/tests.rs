@@ -112,7 +112,7 @@ fn history_tools_read_compactly_and_change_nothing() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/model", &model)]))
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, GitHistoryToolsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, GitHistoryToolsPlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Ended>()

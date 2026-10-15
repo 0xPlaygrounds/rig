@@ -175,7 +175,7 @@ fn a_plugins_binding_and_action_do_built_in_actions() {
     assert_eq!(selected(&app), Some(0));
     // A filter sees it in the next frame, as the frame's keys start.
     app.update();
-    let state = app.world().resource::<crate::TuiInputState>();
+    let state = app.world().resource::<crate::InputContext>();
     let listed = state.completion().map(|open| (open.kind, open.items.len()));
     assert_eq!(listed, Some((crate::CompletionKind::Arg(0), 2)));
     press(&mut app, "ctrl+o");

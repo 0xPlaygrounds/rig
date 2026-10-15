@@ -31,7 +31,11 @@
 //! App::new().add_systems(Startup, spawn).add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
 //! ```
 
+use std::cmp::Reverse;
+
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::SpawnDetails;
 use bevy_reflect::prelude::*;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -43,7 +47,7 @@ use ratatui::widgets::Widget;
 pub enum TuiSystems {
     /// Before the frame is laid out: a plugin updates what it shows and
     /// its [`TuiPanel`]s here, such as a placement that depends on the
-    /// [`TuiScreen`].
+    /// [`TerminalSize`].
     Prepare,
     /// The view decides whether to draw a frame and lays it out: first
     /// every panel by its placement (the input, the status line, the
@@ -62,8 +66,9 @@ pub enum TuiSystems {
     /// Plugins draw their panels into their [`PanelCanvas`]. Runs only for
     /// a frame that is drawn.
     Draw,
-    /// The view draws the frame: the transcript, the status line, the
-    /// input, the panels, and its own overlays over everything.
+    /// The view composites the panels' canvases (the transcript, status
+    /// line and input are panels too) and draws its overlays over them:
+    /// the picker or question, the completion list and the caret.
     Render,
 }
 
@@ -79,17 +84,11 @@ pub struct RequestRedraw;
 /// cells go out before that frame's
 /// [`TerminalWrite`](crate::TerminalWrite)s.
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Repaint(pub Rect);
+pub struct RedrawArea(pub Rect);
 
 /// The size of the terminal, from its start and each resize.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TuiScreen(pub Rect);
-
-/// Marks the agent the terminal view shows and sends what is typed to.
-#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[component(storage = "SparseSet")]
-#[reflect(Component, Clone, Debug, Default)]
-pub struct Focused;
+pub struct TerminalSize(pub Rect);
 
 /// A panel in the terminal view: the default screen's transcript, input
 /// and status line are panels too, spawned first. Panels are laid out one
@@ -125,7 +124,7 @@ pub enum Placement {
     /// Columns right of the transcript.
     Right(Constraint),
     /// Rows at the bottom of the screen, under the input box, such as a row
-    /// of suggestions; several stack in entity order.
+    /// of suggestions; several stack in the order spawned.
     BelowInput(Constraint),
     /// A box centred over the whole screen, drawn over everything but the
     /// view's own overlays (the picker and the completion list).
@@ -196,14 +195,22 @@ impl PanelCanvas {
     }
 }
 
-/// Where `entity` comes in the order panels are laid out and drawn: the
-/// order they were spawned, the default screen's first.
-pub(super) fn spawned(entity: Entity) -> (u32, Entity) {
-    (entity.index_u32(), entity)
+/// The spawn ticks of the panels, for [`spawn_order`].
+pub(super) type PanelSpawns<'w, 's> = Query<'w, 's, SpawnDetails, With<TuiPanel>>;
+
+/// Where `panel` comes in the order panels are laid out and drawn: the
+/// order they were spawned, the default screen's first. Bevy hands a
+/// despawned entity's index out again, so the spawn tick orders them, and
+/// the index only those spawned at one tick (`Entity`'s own order is not
+/// the index's).
+pub(super) fn spawn_order(now: Tick, spawns: &PanelSpawns, panel: Entity) -> (Reverse<u32>, u32) {
+    let spawned = spawns.get(panel).map(SpawnDetails::spawn_tick);
+    let age = spawned.map_or(0, |spawned| now.get().wrapping_sub(spawned.get()));
+    (Reverse(age), panel.index_u32())
 }
 
 /// The smallest transcript a panel may leave.
-pub(super) const MIN_MAIN: (u16, u16) = (20, 3);
+pub(super) const MIN_TRANSCRIPT: (u16, u16) = (20, 3);
 
 /// The rows a panel below the input asks for on a screen `height` rows
 /// high.
@@ -233,14 +240,15 @@ pub(super) fn below_rows(asked: impl IntoIterator<Item = u16>, mut room: u16) ->
 /// placement's size, and its canvas.
 pub(super) type ToLayOut<'a> = (Entity, &'a TuiPanel, Option<u16>, Mut<'a, PanelCanvas>);
 
-/// Lays the panels out on `screen`, in the order given: those below the
-/// input first, stacked at the bottom while what they leave keeps the
-/// rows the others fit their content in and the least a transcript
-/// takes; then each other one takes its side of what is left (one that
-/// fits its content as many rows as that takes), a box goes over the
-/// screen, those that take the rest share what is left, and those within
-/// another take their column of it, or of a box of `boxes` (the picker
-/// shown).
+/// Lays the panels out on `screen`, in the order given, in these steps:
+/// 1. those below the input, stacked at the bottom while what they leave
+///    keeps the rows the others fit their content in and [`MIN_TRANSCRIPT`];
+/// 2. each side panel takes its side of what is left (one that fits its
+///    content as many rows as that takes);
+/// 3. an `Over` box goes over the screen;
+/// 4. those that take the `Rest` share what is left;
+/// 5. those `Within` another take their column of it, or of a box of
+///    `boxes` (the picker shown).
 pub(super) fn lay_out<'a>(
     panels: impl Iterator<Item = ToLayOut<'a>>,
     screen: Rect,
@@ -258,7 +266,7 @@ pub(super) fn lay_out<'a>(
             Placement::BelowInput(size) => Some(fits.unwrap_or(rows_of(size, screen.height))),
             _ => None,
         });
-    let room = (screen.height.saturating_sub(fitted)).saturating_sub(MIN_MAIN.1);
+    let room = (screen.height.saturating_sub(fitted)).saturating_sub(MIN_TRANSCRIPT.1);
     let below_rows = below_rows(asked, room);
     let total: u16 = below_rows.iter().sum();
     let [mut main, mut below] =
@@ -324,7 +332,7 @@ pub(super) fn lay_out<'a>(
 /// `panel` when `rest` is still big enough for the transcript, which it
 /// then becomes; otherwise nothing.
 fn take(main: &mut Rect, panel: Rect, rest: Rect) -> Rect {
-    if rest.width < MIN_MAIN.0 || rest.height < MIN_MAIN.1 {
+    if rest.width < MIN_TRANSCRIPT.0 || rest.height < MIN_TRANSCRIPT.1 {
         return Rect::default();
     }
     *main = rest;

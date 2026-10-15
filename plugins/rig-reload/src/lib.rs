@@ -1,7 +1,7 @@
 //! `/reload`: rebuild the agent through the `rig` launcher and restart on
-//! the new build, in the same session. The build runs as a child process
-//! whose stderr a std thread forwards line by line; its latest line is the
-//! progress. Quitting during the build kills it with cargo and rustc.
+//! the new build, in the same session. The build runs as a child process,
+//! and its latest line of output is the progress. Quitting during the build
+//! kills it with cargo and rustc.
 //!
 //! `/reload` typed while a turn runs is queued: the build starts once no
 //! turn runs, and `/reload cancel` drops it. The model queues one with the
@@ -10,16 +10,17 @@
 //! fails leaves this build running, and the launcher rolls back a new
 //! build that fails to start. Views show where it is from the
 //! [`ReloadStatus`] resource; with the `tui` feature, the terminal view's
-//! status line does. An [`Interrupt`] of an idle agent (Esc in the
+//! status line does. A [`StopTurn`] of an idle agent (Esc in the
 //! terminal view) cancels a running build.
 //!
 //! A failed build's first errors go into the conversation of the agent that
-//! asked, as a note for its model ([`launcher::build_failure_note`]);
+//! asked, as a message for its model ([`launcher::build_failure_message`]);
 //! `rig build` keeps the whole output in `RIG_HOME/build.log`.
 //!
 //! [`ReloadPlugin`] also spawns the system prompt's section on what the
 //! agent is: its plugins, commands and tools, and how it extends itself.
 
+use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
 
 mod rebuild;
@@ -82,7 +83,7 @@ impl ReloadStatus {
     /// Refused without the launcher, or with a reload queued or running.
     pub fn ask(&mut self, agent: Entity) -> Result<(), &'static str> {
         match self {
-            ReloadStatus::Idle | ReloadStatus::Failed if launcher::executable().is_some() => {
+            ReloadStatus::Idle | ReloadStatus::Failed if harness_protocol::launcher().is_some() => {
                 *self = ReloadStatus::Queued { agent };
                 Ok(())
             }
@@ -130,7 +131,7 @@ fn reload(
 /// Cancels a running build when an idle agent is interrupted, as Esc does
 /// in the terminal view; Esc on a running turn stops the turn only.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     busy: Query<Has<ActiveTurn>>,
     status: Res<ReloadStatus>,
     mut commands: Commands,

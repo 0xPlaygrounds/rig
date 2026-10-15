@@ -6,7 +6,7 @@ use rig_harness::harness_protocol::SessionId;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{app_in, first_agent, scratch_home};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use rig_tui::{Editor, KeyBinding, KeyFocus, KeyInput, KeyPressed, MainEditor, TerminalEvents};
+use rig_tui::{Editor, KeyBinding, KeyFocus, KeyInput, KeyPressed, MainEditor, PendingInput};
 
 use super::*;
 use crate::tui::Palette;
@@ -45,10 +45,15 @@ impl PortableTool for ZzRuntime {
 /// after the first frame, with its agent shown.
 fn start(home: &Home) -> (App, Entity) {
     let (mut app, _wakes) = app_in(home, &SessionId::generate());
-    app.add_plugins((AgentPlugin, JournalPlugin, PickPlugin, CommandPalettePlugin))
-        .init_resource::<Striped>()
-        .add_command("zebra-stripes", "Paint the stripes", stripe)
-        .add_command("gone", "Gone soon", |_: In<CommandArgs>| {});
+    app.add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        PickPlugin,
+        CommandPalettePlugin,
+    ))
+    .init_resource::<Striped>()
+    .add_command("zebra-stripes", "Paint the stripes", stripe)
+    .add_command("gone", "Gone soon", |_: In<CommandArgs>| {});
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -77,7 +82,7 @@ fn open_palette(app: &mut App, agent: Entity) {
 
 /// The terminal reports `keys` in one batch; the palette's rows after it.
 fn type_keys(app: &mut App, keys: &[KeyCode]) -> Vec<String> {
-    let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+    let mut events = app.world_mut().resource_mut::<PendingInput>();
     for &code in keys {
         let key = KeyEvent::new(code, KeyModifiers::NONE);
         events.0.push(KeyInput::Event(Event::Key(key)));

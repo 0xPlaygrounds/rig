@@ -14,7 +14,7 @@
 //! nothing came after it, after a restart too.
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::conversation::{self, Kept};
+use rig_harness::rig_core::conversation::{self, KeptBranch};
 use rig_harness::rig_core::message::{CallId, LocalCallId, Message as Said};
 use rig_harness::rig_memory::{COMPACTED, summary_author};
 
@@ -206,7 +206,7 @@ pub fn candidates(conversation: &conversation::Conversation) -> Vec<Candidate> {
 }
 
 /// The entries of `kept` that are its own and not on the active line.
-fn own_entries(kept: &Kept, active: &[MessageId]) -> Vec<conversation::Entry> {
+fn own_entries(kept: &KeptBranch, active: &[MessageId]) -> Vec<conversation::Entry> {
     let entries = kept.branch.entries.iter();
     let own = entries.filter(|entry| entry.id.is_none_or(|id| !active.contains(&id)));
     own.cloned().collect()

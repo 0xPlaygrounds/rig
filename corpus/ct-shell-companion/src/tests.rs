@@ -148,7 +148,7 @@ fn shells_ask_the_running_session_one_at_a_time() {
         "[shell-companion]\nredact = [\"hunter2-xyz\"]\n",
     ))
     .insert_resource(ProjectRoot(project.clone()))
-    .add_plugins((AgentPlugin, JournalPlugin, ShellCompanionPlugin))
+    .add_plugins((AgentPlugin, SessionLogPlugin, ShellCompanionPlugin))
     .init_resource::<WaitCall>()
     .add_open_tool(
         "wait",
@@ -313,7 +313,12 @@ fn without_a_session_a_one_shot_session_answers() {
         terminal: false,
     })
     .insert_resource(ProjectRoot(home.root().to_path_buf()))
-    .add_plugins((AgentPlugin, JournalPlugin, ExitPlugin, ShellCompanionPlugin))
+    .add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        ExitPlugin,
+        ShellCompanionPlugin,
+    ))
     .init_resource::<Replied>()
     .add_observer(record);
     app.finish();

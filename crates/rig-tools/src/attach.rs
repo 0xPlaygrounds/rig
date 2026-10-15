@@ -5,6 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
+use rig_core::completion::Message;
+use rig_core::conversation::Conversation;
 use rig_core::message::{ImageMediaType, UserContent};
 
 use crate::workspace::{Stat, Workspace};
@@ -181,6 +183,38 @@ fn read_file(workspace: &dyn Workspace, path: &Path, label: &str) -> Result<User
     Ok(UserContent::text(format!(
         "{FILE_OPEN}{label}\">\n{lines}{FILE_CLOSE}"
     )))
+}
+
+/// What the user typed in message `at` of `conversation`: the text items
+/// of a message of the user's own
+/// ([`EntryRef::is_users_own`](rig_core::conversation::EntryRef::is_users_own)), never of
+/// one an agent or a plugin delivered, such as a note, nor a file
+/// attached, each trimmed, joined by a blank line; `None` when it has
+/// none.
+pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
+    let entry = conversation.entries().nth(at)?;
+    let Message::User { content } = entry.message else {
+        return None;
+    };
+    if !entry.is_users_own() {
+        return None;
+    }
+    let typed: Vec<&str> = content
+        .iter()
+        .filter_map(|content| match content {
+            UserContent::Text(text) if attached_file(&text.text).is_none() => {
+                Some(text.text.trim())
+            }
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+        .collect();
+    (!typed.is_empty()).then(|| typed.join("\n\n"))
+}
+
+/// What the user typed first in `conversation` ([`typed`]).
+pub fn first_typed(conversation: &Conversation) -> Option<String> {
+    (0..conversation.messages().len()).find_map(|at| typed(conversation, at))
 }
 
 #[cfg(test)]

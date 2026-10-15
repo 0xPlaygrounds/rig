@@ -211,3 +211,34 @@ impl Store for MemoryStore {
         Ok(())
     }
 }
+
+/// Where plugins' files are in a session's store.
+pub const PLUGINS: &str = "plugins/";
+
+/// The files of a session's store under [`PLUGINS`], by their names there:
+/// what a plugin keeps for the session.
+pub struct PluginFiles(pub Arc<dyn Files>);
+
+impl Files for PluginFiles {
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.0.write_file(&format!("{PLUGINS}{name}"), bytes)
+    }
+
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.0.append_file(&format!("{PLUGINS}{name}"), bytes)
+    }
+
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.0.read_file(&format!("{PLUGINS}{name}"))
+    }
+
+    fn remove_file(&self, name: &str) -> io::Result<()> {
+        self.0.remove_file(&format!("{PLUGINS}{name}"))
+    }
+
+    fn files(&self) -> io::Result<Vec<String>> {
+        let files = self.0.files()?.into_iter();
+        let within = files.filter_map(|name| Some(name.strip_prefix(PLUGINS)?.to_owned()));
+        Ok(within.collect())
+    }
+}

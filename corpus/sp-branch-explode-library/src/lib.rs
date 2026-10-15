@@ -124,7 +124,7 @@ pub struct Leaf {
 /// continues, each as a conversation of its own.
 pub fn leaves(conversation: &Conversation) -> Vec<Leaf> {
     let kept = conversation.branches();
-    let ids = std::iter::once((None, conversation.branch_title().to_owned())).chain(
+    let ids = std::iter::once((None, conversation.line_title().to_owned())).chain(
         kept.iter()
             .filter(|kept| !kept.branch.moved)
             .map(|kept| (Some(kept.id), kept.branch.title.clone())),
@@ -347,11 +347,11 @@ fn fill(
             parent: None,
             started_ms: main.started_ms,
             conversation: leaf.conversation.clone(),
-            state: main.state.clone(),
+            saved: main.saved.clone(),
             retired: false,
             rewrites: Vec::new(),
         }],
-        state: source.session.state.clone(),
+        saved: source.session.saved.clone(),
         repairs: Vec::new(),
     };
     copy.save(&store)?;

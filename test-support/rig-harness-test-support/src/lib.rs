@@ -22,8 +22,8 @@ use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::effects::Handler;
-use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+use rig_ecs::session_log::SessionStore;
 use rig_harness::ask::{Answer, Answerer, Ask, AskSystems};
 use rig_harness::clock::WakeAt;
 use rig_harness::harness_protocol::{Home, SessionId};
@@ -67,7 +67,7 @@ pub fn scratch_home(name: &str) -> Home {
 /// An app with a task pool on the session `id` of `home`, kept in its
 /// directory by the harness's session service, and its loop's wakes. The
 /// service opens the session's store as the app finishes building
-/// (`app.finish()`), from the app's `SessionStores`, as it does in the
+/// (`app.finish()`), from the app's `StoreOpener`, as it does in the
 /// agent. It sends panics to the session's log; a test shows them, so its
 /// failed assertions print.
 pub fn app_in(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
@@ -270,7 +270,7 @@ pub fn start_call(
 ) -> Option<Entity> {
     let name = ToolName::new(tool).ok()?;
     let call = ToolCall::from_wire(id, ToolFunction::new(name, args));
-    let parent = Effect::child_of(Some(EffectId::from_raw(1)));
+    let parent = Effect::with_parent_id(Some(EffectId::from_raw(1)));
     Some(
         world
             .spawn((ToolRequest { call }, parent, ForAgent(agent)))
@@ -349,11 +349,11 @@ pub fn tui_view(app: &mut App) -> &mut App {
 /// the terminal view ([`tui_view`]), then runs that frame.
 pub fn press(app: &mut App, keys: &str) {
     use rig_tui::crossterm::event::{Event, KeyEvent};
-    use rig_tui::{KeyInput, Keys, TerminalEvents};
+    use rig_tui::{KeyInput, Keys, PendingInput};
 
     let parsed: Result<Keys, String> = keys.parse();
     assert!(parsed.is_ok(), "{keys}: {parsed:?}");
-    let mut events = app.world_mut().resource_mut::<TerminalEvents>();
+    let mut events = app.world_mut().resource_mut::<PendingInput>();
     for press in parsed.iter().flat_map(Keys::presses) {
         let key = KeyEvent::new(press.code, press.modifiers);
         events.0.push(KeyInput::Event(Event::Key(key)));

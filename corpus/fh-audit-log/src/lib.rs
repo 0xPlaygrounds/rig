@@ -302,7 +302,7 @@ fn how(outcome: &Outcome) -> (Ran, Option<String>) {
 fn guard(
     mut calls: Query<
         (Entity, &ToolRequest, Option<&Footprint>, &mut Decision),
-        (Undecided, ToolCalls),
+        (ReadyToStart, ToolCalls),
     >,
     context: Context,
     mut commands: Commands,
@@ -346,7 +346,7 @@ fn record(
                 Option<&Approval>,
             ),
         ),
-        (Unreviewed, ToolCalls, Without<Audited>),
+        (ReadyToSettle, ToolCalls, Without<Audited>),
     >,
     mut context: Context,
     mut commands: Commands,

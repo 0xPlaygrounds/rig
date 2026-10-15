@@ -88,7 +88,7 @@ fn start(
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let limits: Limits = toml::from_str(limits).unwrap_or_default();
     app.insert_resource(limits)
-        .add_plugins((AgentPlugin, JournalPlugin, ToolRateLimitPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ToolRateLimitPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
         .init_resource::<ToolOutputs>()

@@ -3,7 +3,7 @@
 
 # Each [[plugin]] names a type implementing Bevy's Plugin + Default and the
 # crate it is in. An entry without a source is one of rig's own plugin
-# crates, built from the rig checkout the agent is (RIG_SOURCE). The core
+# crates, built from the rig checkout the agent is (RIG_SOURCE). The harness
 # (the session and the launcher protocol) is always there; every entry
 # below can go.
 

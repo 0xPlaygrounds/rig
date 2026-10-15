@@ -13,7 +13,7 @@ use rig_harness_test_support::{
     scripted_models, tui_view,
 };
 use rig_tui::ratatui::buffer::Cell;
-use rig_tui::{Focus, TuiFrame, TuiTestScreen};
+use rig_tui::{ShowAgent, TuiFrame, TuiTestScreen};
 
 use super::*;
 
@@ -47,7 +47,7 @@ fn start(user: &MemoryStore, dir: &Path, no_color: bool) -> (App, Receiver<()>, 
         .insert_resource(scripted_models([("test/model", &model)]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             CommandPlugin,
             PickPlugin,
             WatchPlugin,
@@ -65,7 +65,7 @@ fn start(user: &MemoryStore, dir: &Path, no_color: bool) -> (App, Receiver<()>, 
     app.finish();
     app.cleanup();
     app.update();
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
     // The watch reports the files there as it is armed.
     run_until(&mut app, &wakes, |world| {
         !world.resource::<ThemeFiles>().palettes.is_empty()

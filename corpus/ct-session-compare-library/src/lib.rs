@@ -127,7 +127,7 @@ fn line_of(conversation: &Conversation, branch: Option<&str>) -> Result<Conversa
     let id = match &line.id {
         LineId::Active => None,
         LineId::Branch(id) => Some(*id),
-        LineId::Session { session, .. } => {
+        LineId::Split { session, .. } => {
             return Err(format!("{:?} was split into session {session}", line.title));
         }
     };

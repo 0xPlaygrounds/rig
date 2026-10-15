@@ -5,8 +5,8 @@ use rig_core::conversation::{Aside, Author, Change, Conversation, Entry, Halt};
 use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::json;
 
-use super::{Record, SavedAgent, Session, as_of, history, load, save};
-use crate::{Files, Keep, LoadError, MemoryStore, Repair, Store, Writer, fork};
+use super::{LogRecord, SavedAgent, Session, as_of, history, load, save};
+use crate::{Files, MemoryStore, NoRewrite, Repair, SessionError, Store, Writer, fork};
 
 /// A conversation with an image, an authored entry, a splice that keeps an
 /// id, a stopped request, and a saved and an unsaved aside.
@@ -68,18 +68,18 @@ fn a_saved_conversation_folds_back_to_itself() {
     let mut live = edited();
     let saved = writer.save("main", &mut live);
     assert!(saved.iter().all(|change| change.at.is_some()));
-    writer.state("main", "mode", Some(json!("plan").into()), false);
-    writer.state(crate::SESSION, "theme", Some(json!("dark").into()), false);
+    writer.save_value("main", "mode", Some(json!("plan").into()), false);
+    writer.save_value(crate::SESSION, "theme", Some(json!("dark").into()), false);
     writer.flush();
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("the agent");
     assert_eq!(main.conversation, live);
     assert_eq!(
-        main.state,
+        main.saved,
         [("mode".to_owned(), json!("plan").into())].into()
     );
     assert_eq!(
-        session.state,
+        session.saved,
         [("theme".to_owned(), json!("dark").into())].into()
     );
     assert!(main.rewrites.is_empty());
@@ -95,7 +95,7 @@ fn saving_refuses_a_log_that_moved_on() {
     let before = store.read_log("agent").expect("a log");
     second.push(Message::user("two"));
     let refused = save(&store, "agent", &mut second);
-    assert!(matches!(refused, Err(LoadError::Changed { log }) if log == "agent"));
+    assert!(matches!(refused, Err(SessionError::Changed { log }) if log == "agent"));
     assert_eq!(store.read_log("agent").expect("a log"), before);
 }
 
@@ -134,7 +134,7 @@ fn only_the_conversation_a_log_holds_continues_it() {
     b.push(Message::assistant("moved"));
     let refused = save(&store, "a", &mut b);
     assert!(
-        matches!(&refused, Err(LoadError::Changed { log }) if log == "a"),
+        matches!(&refused, Err(SessionError::Changed { log }) if log == "a"),
         "{refused:?}"
     );
     assert_eq!(store.read_log("a").expect("a log"), before);
@@ -147,12 +147,12 @@ fn only_the_conversation_a_log_holds_continues_it() {
     assert_eq!(load(&store, "c").expect("loaded"), copy);
     assert!(matches!(
         save(&store, "a", &mut copy),
-        Err(LoadError::Changed { .. })
+        Err(SessionError::Changed { .. })
     ));
 
     // A fork's log is its own.
     let forked = MemoryStore::default();
-    fork(&store, &forked, None, &Keep).expect("forked");
+    fork(&store, &forked, None, &NoRewrite).expect("forked");
     let mut theirs = load(&forked, "a").expect("loaded");
     theirs.push(Message::assistant("theirs"));
     save(&forked, "a", &mut theirs).expect("saved");
@@ -162,7 +162,7 @@ fn only_the_conversation_a_log_holds_continues_it() {
     ours.push(Message::user("more"));
     let refused = save(&forked, "a", &mut ours);
     assert!(
-        matches!(refused, Err(LoadError::Changed { .. })),
+        matches!(refused, Err(SessionError::Changed { .. })),
         "{refused:?}"
     );
 }
@@ -354,7 +354,7 @@ fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
     save(&store, "other", &mut other).expect("saved");
     let refused = Session::read(&store);
     assert!(
-        matches!(&refused, Err(LoadError::Record { log, line: 3, .. }) if log == "main"),
+        matches!(&refused, Err(SessionError::Record { log, line: 3, .. }) if log == "main"),
         "{refused:?}"
     );
     // Read leniently, the log that reads is kept and the other named.
@@ -376,7 +376,7 @@ fn a_session_it_cannot_read_whole_is_refused_unless_read_leniently() {
     .expect("written");
     let refused = load(&old, "old");
     assert!(
-        matches!(refused, Err(LoadError::Format { found: None, .. })),
+        matches!(refused, Err(SessionError::Format { found: None, .. })),
         "{refused:?}"
     );
 }
@@ -410,7 +410,7 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
 
     let records = history(&store, "main").expect("history");
     let made = records.iter().find_map(|(stamp, record)| match record {
-        Record::Change(recorded) => match &recorded.change {
+        LogRecord::Change(recorded) => match &recorded.change {
             Change::Push { entries } if entries.iter().any(|entry| entry.id == Some(three)) => {
                 Some(stamp.n)
             }
@@ -426,7 +426,7 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
     );
 
     let forked = MemoryStore::default();
-    fork(&store, &forked, Some(("main", three)), &Keep).expect("forked");
+    fork(&store, &forked, Some(("main", three)), &NoRewrite).expect("forked");
     let read = Session::read(&forked).expect("read");
     let ids: Vec<&str> = read.agents.iter().map(|agent| agent.id.as_str()).collect();
     assert_eq!(ids, ["main"], "the subagent came later");
@@ -437,6 +437,6 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
     assert_eq!(forked.files().expect("files"), ["plugins/notes.json"]);
 
     let whole = MemoryStore::default();
-    fork(&store, &whole, None, &Keep).expect("forked");
+    fork(&store, &whole, None, &NoRewrite).expect("forked");
     assert_eq!(Session::read(&whole).expect("read").agents.len(), 2);
 }

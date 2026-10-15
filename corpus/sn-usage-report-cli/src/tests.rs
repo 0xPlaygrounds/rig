@@ -6,7 +6,7 @@ use rig_core::completion::{Cost, Usage};
 use rig_core::providers::registry::ProviderId;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Invocation, SessionDir, SessionId};
-use rig_harness::rig_ecs::{StopTurns, WriteJournal};
+use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness_test_support::{
     Ended, app_in, first_agent, log_ended, run_until, scratch_home, scripted_models,
 };
@@ -84,9 +84,14 @@ fn session(
     let (mut app, wakes) = app_in(home, &id);
     app.insert_resource(scripted_models([model]))
         .insert_resource(Shift(noon - now))
-        .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin, SubagentsPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            EffectLogPlugin,
+            SubagentsPlugin,
+        ))
         .add_open_tool("noop", "Do nothing.", ToolOptions::default(), noop)
-        .add_systems(Last, shift.after(StopTurns).before(WriteJournal))
+        .add_systems(Last, shift.after(StopTurnsOnExit).before(WriteLogs))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
@@ -282,7 +287,7 @@ fn reports_saved_sessions_by_model_project_and_day() {
 
     // A damaged session is skipped, said on stderr only.
     let log = rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
-    let store = SessionStores::default().open(&s3_dir);
+    let store = StoreOpener::default().open(&s3_dir);
     let mut damaged = store
         .as_ref()
         .ok()

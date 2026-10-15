@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, MemoryStore, app_in, app_on, calls, collect,
     commit_message, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
@@ -37,7 +37,7 @@ fn start(
 ) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin))
         .add_plugins((RetroactiveRedactPlugin, AnswerAsks))
         .insert_resource(Answers::new(answers))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
@@ -134,7 +134,7 @@ fn a_redacted_secret_is_gone_from_the_session_its_fork_and_the_next_request() {
     // Turn 1 leaks the key three ways; then the session is forked once.
     send(&mut app, &wakes, agent, "Show me .env", turns_ended(1));
     assert!(conversation_text(&app, agent).contains(SECRET));
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Collected<SessionForked>>().0.is_empty()
     });
@@ -248,7 +248,7 @@ fn redact_alone_proposes_the_env_files_key() {
     let (mut app, wakes) = app_on(&store);
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         RetroactiveRedactPlugin,
         AnswerAsks,
     ))

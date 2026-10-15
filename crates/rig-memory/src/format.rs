@@ -12,11 +12,6 @@
 //! ([`rewrite`](crate::rewrite)) and when; each rewrite gives the log a
 //! fresh lineage.
 //!
-//! A log is written in one format, the one its header names: every record
-//! of it is of that format. Logs of an older format, from [`OLDEST`] on,
-//! read through a chain of steps ([`upgrade`](crate::upgrade)), and are
-//! rewritten in this one before anything is appended to them.
-//!
 //! A record keeps when each entry was made: a new entry was made when its
 //! record says (`t`), an entry put back as it was says so itself (`made`),
 //! and a reset's state carries each entry's.
@@ -30,10 +25,9 @@
 use std::fmt;
 use std::io;
 
-use rig_core::conversation::{Author, Change, Lineage, Recorded};
+use rig_core::conversation::{Author, Change, ChangeRecord, Lineage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use web_time::{SystemTime, UNIX_EPOCH};
 
 /// The saved format a log's header names.
 pub const FORMAT: &str = "rig-session/3";
@@ -65,18 +59,19 @@ pub struct Stamp {
 /// Why a session cannot be read or saved. Reading is strict: a session
 /// with any record it cannot read is refused whole, and nothing is written.
 #[derive(Debug, thiserror::Error)]
-pub enum LoadError {
+pub enum SessionError {
     /// The store failed.
     #[error(transparent)]
     Io(#[from] io::Error),
-    /// The directory holds a session saved by an older rig, which this one
-    /// does not read; it is left as it is.
+    /// The directory holds the single-file layout older than [`OLDEST`] (a
+    /// top-level `*.jsonl`), which this rig does not read; it is left as it
+    /// is.
     #[error(
         "this session was saved by an older version of rig, whose format this one does not read"
     )]
     OldLayout,
-    /// A log's header names another format, or none: one an older or a
-    /// newer rig saved, which this one does not read; it is left as it is.
+    /// A log's header names a format outside [`OLDEST`]..=[`VERSION`], or
+    /// none; it is left as it is.
     #[error("{}", refusal(.log, .found.as_deref()))]
     Format {
         /// The log.
@@ -125,13 +120,13 @@ fn refusal(log: &str, found: Option<&str>) -> String {
     )
 }
 
-impl From<LoadError> for io::Error {
+impl From<SessionError> for io::Error {
     /// The store's own error back; any other as
     /// [`io::ErrorKind::InvalidData`], so `?` works in code that returns
     /// [`io::Result`].
-    fn from(error: LoadError) -> Self {
+    fn from(error: SessionError) -> Self {
         match error {
-            LoadError::Io(error) => error,
+            SessionError::Io(error) => error,
             error => io::Error::new(io::ErrorKind::InvalidData, error),
         }
     }
@@ -183,14 +178,6 @@ impl fmt::Display for Repair {
     }
 }
 
-/// Milliseconds since the Unix epoch, also on the web.
-pub fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or_default()
-}
-
 /// The first record of a log.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Header {
@@ -207,13 +194,13 @@ pub(crate) struct Header {
     pub lineage: Lineage,
     /// Who rewrote the log in place, and when, oldest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub rewrites: Vec<Rewrote>,
+    pub rewrites: Vec<LogRewrite>,
 }
 
 /// A rewrite of a log in place ([`rewrite`](crate::rewrite)): when, and by
 /// whom, such as the plugin that redacted it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Rewrote {
+pub struct LogRewrite {
     /// When, in milliseconds since the Unix epoch.
     pub t: u64,
     /// Who.
@@ -261,7 +248,7 @@ fn is_one(v: &u32) -> bool {
 pub(crate) enum Body {
     Meta(Meta),
     /// Its `at` is the stamp's `t`.
-    Change(Recorded),
+    Change(ChangeRecord),
 }
 
 /// The fields every line starts with.
@@ -301,8 +288,8 @@ pub(crate) fn parse(line: &[u8]) -> Result<(Stamp, Body), String> {
     let body = match &*head.kind {
         "header" | "state" | "retired" => serde_json::from_slice(line).map(Body::Meta),
         kind if CHANGES.contains(&kind) => {
-            serde_json::from_slice(line).map(|recorded: Recorded| {
-                Body::Change(Recorded {
+            serde_json::from_slice(line).map(|recorded: ChangeRecord| {
+                Body::Change(ChangeRecord {
                     at: Some(stamp.t),
                     ..recorded
                 })

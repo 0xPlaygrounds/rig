@@ -46,7 +46,7 @@ pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
 }
 
 /// An agent with the terminal view's input and choices, but no terminal:
-/// its keys are the [`TerminalEvents`] [`press`] pushes. Also returns the
+/// its keys are the [`PendingInput`] [`press`] pushes. Also returns the
 /// agent.
 pub(crate) fn view_app() -> (App, Entity) {
     let mut app = App::new();
@@ -85,12 +85,9 @@ pub(crate) fn key_events(app: &mut App, keys: &str, kind: KeyEventKind) {
     app.update();
 }
 
-/// Puts `item` among the frame's [`TerminalEvents`].
+/// Puts `item` among the frame's [`PendingInput`].
 pub(crate) fn push(app: &mut App, item: KeyInput) {
-    app.world_mut()
-        .resource_mut::<TerminalEvents>()
-        .0
-        .push(item);
+    app.world_mut().resource_mut::<PendingInput>().0.push(item);
 }
 
 /// Presses `keys`, as [`key_events`] writes them.
@@ -252,7 +249,7 @@ fn a_plugins_test_lays_out_a_transcript_without_a_terminal() {
     let world = app.world_mut();
     let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
     let Ok(agent) = agent else { return };
-    let note = Deliver::new(agent, "a note", DeliveryMode::Note);
+    let note = Deliver::new(agent, "a note", DeliveryMode::Inform);
     app.world_mut().trigger(note);
     app.update();
     let lay_out = move |layout: TranscriptLayout| {

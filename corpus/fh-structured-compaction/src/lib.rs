@@ -22,8 +22,8 @@
 use std::borrow::Cow;
 
 use rig_compaction::{
-    AppCompactionExt, Compaction, CompactionCuts, CompactionDefault, CompactionPlugin, Summarizing,
-    plan, policy_of, summarized_prefix,
+    AppCompactionExt, CompactionCuts, CompactionDefault, CompactionKnobs, CompactionPlugin,
+    Summarizing, plan, policy_of, summarized_prefix,
 };
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
@@ -236,7 +236,7 @@ fn structure(
         ),
         (Added<Admitted>, ModelCalls),
     >,
-    agents: Query<(&Conversation, Option<&Compaction>, Option<&Connection>)>,
+    agents: Query<(&Conversation, Option<&CompactionKnobs>, Option<&Connection>)>,
     (config, default, cuts, fallback, models): (
         Res<StructuredCompaction>,
         Res<CompactionDefault>,
@@ -281,7 +281,7 @@ fn structure(
                 }
                 let count = config.keep_user_messages.saturating_sub(1);
                 let cut = summarizing
-                    .upto
+                    .keep_from
                     .and_then(|kept| conversation.index_of(kept));
                 let verbatim = cut.map(|cut| last_typed(conversation, cut, count));
                 let verbatim = verbatim.unwrap_or_default();
@@ -316,7 +316,7 @@ fn structure(
 fn check(
     mut calls: Query<
         (Entity, &Outcome, &ForAgent, &mut Structured),
-        (Unreviewed, ModelCalls, Without<SupersededBy>),
+        (ReadyToSettle, ModelCalls, Without<SupersededBy>),
     >,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,

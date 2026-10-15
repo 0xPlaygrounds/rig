@@ -5,7 +5,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
 use rig_models::ModelsPlugin;
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, UsagePlugin};
 use rig_tui::{CompletionSource, Editor, MainEditor};
 
 use super::*;
@@ -67,7 +67,7 @@ fn start(store: &MemoryStore, config: &str) -> (App, Receiver<()>, Option<Entity
         .insert_resource(CustomProviders::parse(config))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ModelsPlugin,
             UsagePlugin,
             CustomProviderPlugin,
@@ -181,7 +181,7 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     assert!(head.contains("x-corp-team: rig"), "{head}");
     assert!(head.contains("authorization: bearer corp-token"), "{head}");
     // 1000 tokens in at $1 and 500 out at $2 per million.
-    let spent = app.world().get::<Spending>(agent);
+    let spent = app.world().get::<AgentUsage>(agent);
     let cost = spent
         .and_then(|spent| spent.models.get("corp/big"))
         .map(|spent| ((spent.cost - 0.002).abs() < 1e-9, spent.unpriced));

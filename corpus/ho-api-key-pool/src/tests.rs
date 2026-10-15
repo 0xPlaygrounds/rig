@@ -120,7 +120,7 @@ fn a_rate_limited_and_a_refused_key_fail_over_to_the_spare() {
     }
 
     let (mut app, wakes) = app_in(&home, &id);
-    app.add_plugins((AgentPlugin, JournalPlugin, KeyPoolPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, KeyPoolPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);

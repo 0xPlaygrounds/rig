@@ -35,7 +35,7 @@ fn typing_in_the_input_box_reaches_the_agent_and_its_answer_the_transcript() {
     let (mut app, wakes) = app_on(&store);
     app.set_error_handler(bevy_ecs::error::warn).add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         AskPlugin,
         PickPlugin,
         WindowGuiPlugin,
@@ -44,7 +44,7 @@ fn typing_in_the_input_box_reaches_the_agent_and_its_answer_the_transcript() {
     app.update();
     let model = MockCompletionModel::from_stream_turns([reply("hello")]);
     let world = app.world_mut();
-    let agent = world.resource::<Shown>().0;
+    let agent = world.resource::<ShownAgent>().0;
     if let (Some(agent), Some(connection)) = (agent, connect(&model)) {
         world.entity_mut(agent).insert(connection);
     }
@@ -86,14 +86,14 @@ fn a_question_is_a_dialog_its_buttons_answer() {
     let (mut app, _wakes) = app_on(&store);
     app.set_error_handler(bevy_ecs::error::warn).add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         AskPlugin,
         PickPlugin,
         WindowGuiPlugin,
     ));
     app.finish();
     app.update();
-    let agent = app.world().resource::<Shown>().0;
+    let agent = app.world().resource::<ShownAgent>().0;
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     let ask = Ask::yes_no("Run `shell`?").body("cargo test");
     let ask = app.world_mut().spawn((ask, ForAgent(agent))).id();

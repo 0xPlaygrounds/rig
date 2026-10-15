@@ -62,7 +62,7 @@ fn rpc_commands_stream_the_turn_and_answer_requests_as_json_lines() {
     .insert_resource(rpc)
     .add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         PickPlugin,
         ReadTool,
         JsonStreamPlugin,

@@ -64,7 +64,7 @@ fn start(
         .insert_resource(work.clone())
         .init_resource::<Reads>()
         .init_resource::<Hanging>()
-        .add_plugins((AgentPlugin, JournalPlugin, PickPlugin, CherryPickPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, CherryPickPlugin))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
         .add_open_tool("hang", "Wait.", ToolOptions::default(), hang)
         .init_resource::<Ended>()
@@ -79,7 +79,7 @@ fn start(
     app.cleanup();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     let model = "test/model".to_owned();
     app.world_mut().trigger(SetModel {
         entity: agent,

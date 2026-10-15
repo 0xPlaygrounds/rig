@@ -322,7 +322,10 @@ fn profile_spawn(
 
 /// Refuses a subagent asked for with a profile nobody defined.
 fn refuse_unknown(
-    mut requests: Query<(&SpawnSubagent, &mut Decision), (Undecided, PluginEffects, Without<Ask>)>,
+    mut requests: Query<
+        (&SpawnSubagent, &mut Decision),
+        (ReadyToStart, PluginEffects, Without<Ask>),
+    >,
     profiles: Res<Profiles>,
 ) {
     for (request, mut decision) in &mut requests {
@@ -335,7 +338,7 @@ fn refuse_unknown(
 /// Gives a subagent spawned with a profile the profile's prompt, saved with
 /// it as its [`AppliedProfile`].
 fn prompt_spawned(
-    spawned: Query<(&SpawnSubagent, &SpawnedAgent), Unreviewed>,
+    spawned: Query<(&SpawnSubagent, &SpawnedAgent), ReadyToSettle>,
     agents: Query<Settings, Without<AppliedProfile>>,
     profiles: Res<Profiles>,
     mut commands: Commands,
@@ -368,7 +371,7 @@ pub struct Before {
     /// Its catalog model.
     pub model: Option<String>,
     /// Its reasoning setting.
-    pub effort: Effort,
+    pub effort: ReasoningSetting,
 }
 
 /// On an agent: the profile applied to it, with its prompt as applied and
@@ -437,7 +440,11 @@ fn hide_prompt(
 }
 
 /// What a profile changes of an agent.
-type Settings<'a> = (&'a ToolAccess, Option<&'a ModelChoice>, &'a Effort);
+type Settings<'a> = (
+    &'a ToolAccess,
+    Option<&'a ModelChoice>,
+    &'a ReasoningSetting,
+);
 
 /// Gives `agent` the model `choice` and the reasoning setting `effort`
 /// together, connected here, so the setting is checked against the new
@@ -446,7 +453,7 @@ fn switch_model(
     agent: &mut EntityCommands,
     models: &Models,
     (now, choice): (Option<&ModelChoice>, Option<ModelChoice>),
-    effort: Effort,
+    effort: ReasoningSetting,
 ) -> Result<(), String> {
     match choice.filter(|choice| now != Some(choice)) {
         Some(choice) => {

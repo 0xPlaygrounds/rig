@@ -116,7 +116,7 @@ impl Session {
             .insert_resource(scripted_models(models.iter().copied()))
             .insert_resource(Project(project))
             .init_resource::<ToolOutputs>()
-            .add_plugins((AgentPlugin, JournalPlugin, ClockPlugin, AnswerAsks))
+            .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin, AnswerAsks))
             .add_plugins((SubagentsPlugin, AskParentPlugin))
             .add_open_tool("write", "Write a file.", ToolOptions::default(), write)
             .add_open_tool("hold", "Hold on.", ToolOptions::default(), hold)
@@ -337,10 +337,7 @@ fn stopping_the_parent_cancels_the_question_and_stops_the_subagent() {
     );
     session.ask("Update the config.", |world| open(world) == 1);
     let parent_agent = session.parent;
-    session
-        .app
-        .world_mut()
-        .trigger(Interrupt::new(parent_agent));
+    session.app.world_mut().trigger(StopTurn::new(parent_agent));
     session.run(|world| world.resource::<ToolOutputs>().0.contains_key("a1"));
     for _ in 0..4 {
         session.app.update();

@@ -28,7 +28,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         .insert_resource(ProjectRoot(fixtures))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SubagentsPlugin,
             AgentProfilesPlugin,
         ))

@@ -7,7 +7,7 @@ use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Home, SessionId};
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, Ended, calls, collect, first_agent, log_ended, reply, run_until, scratch_home,
     scripted_models,
@@ -43,7 +43,7 @@ fn start(
     let (mut app, wakes) = rig_harness_test_support::app_in(home, id);
     app.insert_resource(scripted_models([model]))
         .insert_resource(ProjectRoot(root.to_owned()))
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, DefaultsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, DefaultsPlugin))
         .add_plugins(ContextSnapshotsPlugin)
         .init_resource::<Switches>()
         .add_observer(switched)

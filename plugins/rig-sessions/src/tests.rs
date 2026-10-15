@@ -5,12 +5,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
-use rig_ecs::journal::JournalPlugin;
 use rig_ecs::prelude::{Author, RewriteSession, SavedAgent, Session, Store, Strings};
+use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::{
     AppKeepsExt, ForkSession, ForkedFrom, ReflectSaved, SessionEntry, SessionForked, SessionSource,
-    SessionStores,
+    StoreOpener,
 };
 use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
 
@@ -27,7 +27,7 @@ fn running(home: &Home, id: &str) -> Option<App> {
     let id: SessionId = id.parse().ok()?;
     let dir = home.session(&id);
     fs::create_dir_all(dir.path()).ok()?;
-    let store = SessionStores::default().open(&dir).ok()?;
+    let store = StoreOpener::default().open(&dir).ok()?;
     store.append_log("a1", b"").ok()?;
     let mut app = App::new();
     app.insert_resource(RigHome(home.clone()))
@@ -39,7 +39,7 @@ fn running(home: &Home, id: &str) -> Option<App> {
 
 /// The saved sessions under `home` as a session listing reads them, each
 /// store opened by `stores`.
-fn list(home: &Home, stores: &SessionStores) -> Vec<SessionEntry> {
+fn list(home: &Home, stores: &StoreOpener) -> Vec<SessionEntry> {
     let saved = home.saved_sessions();
     let read = saved.iter().map(|(_, dir)| SessionEntry::read(dir, stores));
     read.flatten().collect()
@@ -47,7 +47,7 @@ fn list(home: &Home, stores: &SessionStores) -> Vec<SessionEntry> {
 
 /// The `/resume` lines of the sessions under `home`.
 fn lines(home: &Home) -> Vec<String> {
-    let listed = list(home, &SessionStores::default());
+    let listed = list(home, &StoreOpener::default());
     listed.iter().map(SessionEntry::label).collect()
 }
 
@@ -87,7 +87,7 @@ fn naming_another_session_changes_only_its_title() {
     let other: SessionId = "1-1".parse().unwrap_or_else(|_| SessionId::generate());
     let dir = home.session(&other);
     fs::create_dir_all(dir.path()).ok();
-    let store = SessionStores::default().open(&dir);
+    let store = StoreOpener::default().open(&dir);
     assert!(store.is_ok(), "the default store opens");
     let Ok(store) = store else { return };
     store.append_log("a1", b"").ok();
@@ -110,7 +110,7 @@ fn naming_another_session_changes_only_its_title() {
     assert_eq!(SessionMeta::read(&*store), Some(before));
     assert_eq!(app.world().resource::<SessionTitle>().name, None);
     let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
-    let stores = SessionStores::default();
+    let stores = StoreOpener::default();
     let listed = list(&home, &stores);
     let others = listed.iter().filter(|entry| entry.id != running);
     let labels: Vec<String> = others.map(SessionEntry::label).collect();
@@ -130,9 +130,9 @@ impl InMemory {
     }
 
     /// The app's stores, as a plugin puts them in.
-    fn stores(&self) -> SessionStores {
+    fn stores(&self) -> StoreOpener {
         let kept = self.clone();
-        SessionStores::new(move |dir| Ok(Arc::new(kept.of(dir.path())) as Arc<dyn Store>))
+        StoreOpener::new(move |dir| Ok(Arc::new(kept.of(dir.path())) as Arc<dyn Store>))
     }
 }
 
@@ -147,8 +147,11 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     let dir = home.session(&id);
     let memory = InMemory::default();
     let (mut app, _wakes) = app_in(&home, &id);
-    app.insert_resource(memory.stores())
-        .add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin));
+    app.insert_resource(memory.stores()).add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        SessionsPlugin,
+    ));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -156,7 +159,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     assert_eq!(said, Ok(()));
     app.world_mut().resource_mut::<SessionTitle>().name = Some("Parser".to_owned());
     app.update();
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     app.update();
     let mut forks = app.world_mut().resource_mut::<Messages<SessionForked>>();
     let fork = forks.drain().next().map(|forked| forked.to);
@@ -204,7 +207,7 @@ fn a_session_written_through_the_stores_is_listed() {
     let made = home.new_session();
     assert!(made.is_ok(), "{made:?}");
     let Ok((id, dir)) = made else { return };
-    let stores = SessionStores::default();
+    let stores = StoreOpener::default();
     let mut agent = SavedAgent {
         id: "imported".to_owned(),
         ..SavedAgent::default()
@@ -286,14 +289,20 @@ fn a_listed_value_and_the_model_are_kept_in_the_listing() {
     app.update();
     let store = app.world().resource::<SessionStore>().0.clone();
     let meta = SessionMeta::read(&*store).unwrap_or_default();
-    let goal = meta.data.get("goals.goal").map(|saved| saved.value.clone());
+    let goal = meta
+        .listed
+        .get("goals.goal")
+        .map(|saved| saved.value.clone());
     assert_eq!(goal, Some(serde_json::json!("ship the parser")));
     assert_eq!(meta.model, "openai/gpt-5");
 
     app.world_mut().resource_mut::<Goal>().0 = "ship the lexer".to_owned();
     app.update();
     let meta = SessionMeta::read(&*store).unwrap_or_default();
-    let goal = meta.data.get("goals.goal").map(|saved| saved.value.clone());
+    let goal = meta
+        .listed
+        .get("goals.goal")
+        .map(|saved| saved.value.clone());
     assert_eq!(goal, Some(serde_json::json!("ship the lexer")));
     fs::remove_dir_all(home.root()).ok();
 }
@@ -332,7 +341,7 @@ fn a_rewritten_session_keeps_its_rewritten_title() {
     let id = SessionId::generate();
     let dir = home.session(&id);
     let (mut app, _wakes) = app_in(&home, &id);
-    app.add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -343,7 +352,7 @@ fn a_rewritten_session_keeps_its_rewritten_title() {
     let name = || dir.name();
     assert_eq!(name(), Some(format!("key {SECRET}")));
 
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("redact"),
         with: Arc::new(Strings(|text: &mut String| {
             let hit = text.contains(SECRET);

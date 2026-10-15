@@ -10,7 +10,7 @@
 //! sent, or is sent at once with `--now` (and in a run without the view),
 //! by the old agent, titled with the goal.
 //! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which
-//! names it, and a handoff moves the agent shown ([`Shown`], in any front)
+//! names it, and a handoff moves the agent shown ([`ShownAgent`], in any front)
 //! from the old agent to the new one, when it happens and again when the
 //! session is restored.
 
@@ -67,7 +67,7 @@ pub struct HandoffPlugin;
 impl Plugin for HandoffPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<HandoffSettings>("handoff")
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .add_command(
                 "handoff",
                 "Start a fresh agent from a brief for the next goal; --now sends it unedited",
@@ -189,7 +189,7 @@ fn handoff(
 type Inherited<'a> = (
     &'a AgentId,
     Option<&'a ModelChoice>,
-    &'a Effort,
+    &'a ReasoningSetting,
     &'a SystemPrompt,
     &'a ToolAccess,
     Option<&'a Connection>,
@@ -275,13 +275,13 @@ fn name_successor(
 /// started, or, when a session is restored, the end of its handoff chain.
 fn show_successor(
     new: Query<(Entity, &HandedOffFrom), Added<HandedOffFrom>>,
-    agents: PrimaryQuery,
-    mut shown: ResMut<Shown>,
+    agents: MainAgentQuery,
+    mut shown: ResMut<ShownAgent>,
 ) {
     if new.is_empty() {
         return;
     }
-    let mut at = shown.0.or_else(|| primary(&agents));
+    let mut at = shown.0.or_else(|| main_agent(&agents));
     // At most one step per new agent.
     for _ in 0..new.iter().count() {
         let id = at
@@ -293,7 +293,7 @@ fn show_successor(
         };
         at = Some(successor);
     }
-    shown.set_if_neq(Shown(at));
+    shown.set_if_neq(ShownAgent(at));
 }
 
 #[cfg(test)]

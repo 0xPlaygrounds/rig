@@ -56,7 +56,7 @@ fn app(store: &MemoryStore, root: &Path, models: Models) -> (App, Receiver<()>, 
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(root.to_owned()))
         .insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, AttachPlugin, MentionsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, AttachPlugin, MentionsPlugin))
         .insert_resource(Mentions {
             vision_model: Some("test/vision".to_owned()),
             ..Mentions::default()

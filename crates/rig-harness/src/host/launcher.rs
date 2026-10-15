@@ -14,10 +14,9 @@
 //!
 //! A failed build, the launcher's before this start or `/reload`'s, goes
 //! into the primary agent's conversation from [`BUILD_ORIGIN`]
-//! ([`note_build_failure`]): the model reads why, and where the whole
+//! ([`inform_build_failure`]): the model reads why, and where the whole
 //! output and the files the build is made from are.
 
-use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{ErrorKind, IsTerminal};
@@ -38,11 +37,11 @@ use crate::secrets::Secrets;
 use crate::settings::Settings;
 use rig_core::conversation::Author;
 use rig_ecs::agent::Notice;
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::Wake;
 
-use crate::primary::{PrimaryQuery, primary};
+use crate::main_agent::{MainAgentQuery, main_agent};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
-use rig_ecs::journal::SessionRestored;
+use rig_ecs::session_log::SessionRestored;
 
 /// The plugin name in the [`Author`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";
@@ -78,7 +77,7 @@ impl Invoked {
     /// Whether someone sits at the terminal: no `--print` and stdin is a
     /// terminal. The terminal view runs then, `--print` otherwise.
     pub fn interactive(&self) -> bool {
-        self.args.print.is_none() && self.terminal
+        !self.args.is_headless() && self.terminal
     }
 }
 
@@ -238,49 +237,41 @@ fn exit_refused(mut commands: Commands) {
 #[derive(Resource)]
 struct StartBuildFailure(String);
 
-/// The note on a failed build of `what`, for the model: `summary` (the
+/// The message on a failed build of `what`, for the model: `summary` (the
 /// reason and the first errors), where the whole output is, and the files
 /// the agent is built from.
-pub fn build_failure_note(what: &str, summary: &str) -> String {
+pub fn build_failure_message(what: &str, summary: &str) -> String {
     let home = Home::from_env();
     let project = home.project();
-    let mut note = format!(
+    let mut message = format!(
         "Building the agent ({what}) failed; the previous build keeps running.\n\n{}\n\n\
          Whole build output: {}\n\
          Plugin list: {}\n\
          Generated project: {} and {}",
         summary.trim(),
         home.build_log().display(),
-        home.config().display(),
+        home.plugins_toml().display(),
         project.join("Cargo.toml").display(),
         project.join("src/main.rs").display(),
     );
-    if let Some(source) = std::env::var_os("RIG_SOURCE").filter(|source| !source.is_empty()) {
+    if let Some(source) = std::env::var_os(env::SOURCE).filter(|source| !source.is_empty()) {
         let _ = write!(
-            note,
+            message,
             "\nrig-harness source (RIG_SOURCE): {}",
             std::path::Path::new(&source).display()
         );
     }
-    note
+    message
 }
 
-/// Puts `note`, on a failed build, in `agent`'s conversation from the
-/// plugin [`BUILD_ORIGIN`], as a [`DeliveryMode::Note`]: an idle agent gets it at
+/// Puts `text`, on a failed build, in `agent`'s conversation from the
+/// plugin [`BUILD_ORIGIN`], as a [`DeliveryMode::Inform`]: an idle agent gets it at
 /// once without a turn starting (logged as halted, so a restore does not
 /// answer it and the user's next message joins it); a busy agent's model
 /// reads it with the turn's next call.
-pub fn note_build_failure(commands: &mut Commands, agent: Entity, note: String) {
-    let note = Deliver::new(agent, note, DeliveryMode::Note);
-    commands.trigger(note.with_author(Author::plugin(BUILD_ORIGIN)));
-}
-
-/// The launcher that started this agent, if one did: it sets both
-/// [`env::LAUNCHER`] and [`env::SESSION`]. A nested agent, run by this
-/// agent's shell, inherits only the launcher's path, which the model uses.
-pub fn executable() -> Option<OsString> {
-    std::env::var_os(env::SESSION).filter(|session| !session.is_empty())?;
-    std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
+pub fn inform_build_failure(commands: &mut Commands, agent: Entity, text: String) {
+    let inform = Deliver::new(agent, text, DeliveryMode::Inform);
+    commands.trigger(inform.with_author(Author::plugin(BUILD_ORIGIN)));
 }
 
 /// Shows the launcher's notice, such as a rollback, and what is wrong with
@@ -309,16 +300,16 @@ fn launcher_notice(
 /// once the session is restored.
 fn deliver_build_failure(
     failure: Res<StartBuildFailure>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut commands: Commands,
 ) {
-    let Some(agent) = primary(&agents) else {
+    let Some(agent) = main_agent(&agents) else {
         return;
     };
-    note_build_failure(
+    inform_build_failure(
         &mut commands,
         agent,
-        build_failure_note("before this start", &failure.0),
+        build_failure_message("before this start", &failure.0),
     );
     commands.remove_resource::<StartBuildFailure>();
 }

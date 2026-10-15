@@ -16,7 +16,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::http_client::{self, HttpClientExt, Method, Request};
 use rig_harness::rig_core::{ErrorKind, ErrorReport};
 use rig_tui::CopyToClipboard;

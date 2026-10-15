@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use rig_coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::tool::ToolOutput;
 use serde::Deserialize;
@@ -169,7 +169,7 @@ fn summarize(
             &ForAgent,
             Option<&CallOf>,
         ),
-        (Unreviewed, ToolCalls, Without<Summarized>),
+        (ReadyToSettle, ToolCalls, Without<Summarized>),
     >,
     config: Res<SummarizeOutputs>,
     root: Res<ProjectRoot>,
@@ -239,7 +239,7 @@ fn summarize(
                 about,
             },
             ModelRequest::new(summary).on(connection),
-            Effect::child_of(Some(effect.id())).with_purpose("summarizer"),
+            Effect::with_parent_id(Some(effect.id())).with_purpose("summarizer"),
             ForAgent(agent),
             HoldOf(call),
         ));
@@ -262,7 +262,7 @@ fn summarize(
 /// Puts each finished summary in its tool call's result, or the output's
 /// head and tail when the summarizer failed, and lets the call go.
 fn take_summaries(
-    summaries: Query<(Entity, &Summarizing, &Outcome), (Unreviewed, ModelCalls, With<HoldOf>)>,
+    summaries: Query<(Entity, &Summarizing, &Outcome), (ReadyToSettle, ModelCalls, With<HoldOf>)>,
     mut calls: Query<&mut Outcome, ToolCalls>,
     mut commands: Commands,
 ) {

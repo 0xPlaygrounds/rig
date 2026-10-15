@@ -6,7 +6,7 @@
 use super::*;
 use crate::catalog::Pricing;
 use crate::completion::CompletionRequest;
-use crate::effect::{EffectKind, Outcome};
+use crate::effect::{Answered, EffectKind};
 use crate::serve::serve_inline;
 use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
 
@@ -38,7 +38,7 @@ async fn answer(handler: &ErasedHandler) -> Option<String> {
     )
     .await;
     match outcome {
-        Ok(Outcome::Completion(response)) => Some(response.text()),
+        Ok(Answered::Completion(response)) => Some(response.text()),
         _ => None,
     }
 }

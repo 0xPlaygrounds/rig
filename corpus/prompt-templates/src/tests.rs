@@ -79,7 +79,7 @@ fn a_template_is_a_command_that_sends_its_expansion() {
         .insert_resource(RigHome(Home::at(root.join("home"))))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             WatchPlugin,
             BasicCommandsPlugin,
             PromptTemplatesPlugin,

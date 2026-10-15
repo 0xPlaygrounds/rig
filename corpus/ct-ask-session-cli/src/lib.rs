@@ -4,7 +4,7 @@
 //! The command is a front of its own ([`Front::on_command`]), sessionless,
 //! so a run leaves nothing behind, and its own session is kept in memory
 //! ([`Front::session_store`]). It finds the session by name, id, `last`
-//! or path, reads it through [`SessionStores`] without writing anything
+//! or path, reads it through [`StoreOpener`] without writing anything
 //! ([`Material`]), and makes the run's one agent the answerer: its
 //! conversation starts with the session's active line (so compaction,
 //! when the app has it, condenses one too large for the model), its system
@@ -17,7 +17,7 @@
 //! stderr. `--json` prints `{answer, cited_turns, model, tokens, cost}`:
 //! the turns of the messages the tools showed the agent, the model, and
 //! what the run's model calls used, from rig-telemetry's
-//! [`SessionSpending`] (null without it). `--model` picks the model, else
+//! [`SessionUsage`] (null without it). `--model` picks the model, else
 //! the `[ask_session]` table's `model`, else the cheapest reachable priced
 //! model. Exit codes: 0 answered, 2 session not found or unreadable, 3 the
 //! model failed, 1 a bad command line.
@@ -35,7 +35,7 @@ use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_memory::{MemoryStore, Store};
-use rig_telemetry::SessionSpending;
+use rig_telemetry::SessionUsage;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -111,7 +111,7 @@ impl Plugin for AskSessionPlugin {
             .get_resource::<RigHome>()
             .map_or_else(Home::from_env, |home| home.0.clone());
         let stores = world
-            .get_resource::<SessionStores>()
+            .get_resource::<StoreOpener>()
             .cloned()
             .unwrap_or_default();
         let current = world
@@ -425,7 +425,7 @@ fn answered(
         Option<Res<Asker>>,
         Res<Options>,
         Res<Cited>,
-        Option<Res<SessionSpending>>,
+        Option<Res<SessionUsage>>,
     ),
     mut commands: Commands,
 ) {

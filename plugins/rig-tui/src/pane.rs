@@ -32,12 +32,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Widget};
 use rig_core::conversation::Conversation;
 use rig_ecs::agent::Conversation as AgentConversation;
-use rig_harness::primary::Shown;
+use rig_harness::main_agent::ShownAgent;
 
 use super::keys::{InputAction, KeyBinding, KeyPress, KeyScope};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 use super::render::{
-    RemovedLooks, ShownAgent, Sources, TranscriptLayout, decorate, lay_out_transcript, selectable,
+    ShownConversation, Sources, TranscriptLayout, decorate, lay_out_transcript, selectable,
 };
 use super::transcript::{Below, Scroll, Transcript};
 use super::view::{DrawnTranscript, TranscriptItem, TranscriptView};
@@ -79,7 +79,7 @@ impl TranscriptPane {
 /// What a [`TranscriptPane`] draws.
 #[derive(Clone, Debug)]
 pub enum TranscriptSource {
-    /// The agent shown ([`Shown`]), whichever it is; with none, the
+    /// The shown agent ([`ShownAgent`]), whichever it is; with none, the
     /// notices about every agent.
     Shown,
     /// This agent, live: the reply streaming in, its running calls, its
@@ -202,7 +202,7 @@ fn bind_pane_keys(mut world: DeferredWorld, context: HookContext) {
 /// [`TuiSystems::Fit`](crate::TuiSystems::Fit) when a panel changed there.
 pub(crate) fn lay_out_panes(
     from: TranscriptLayout,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     changed: Query<(), Changed<AgentConversation>>,
     mut panes: Query<(
         Entity,
@@ -212,9 +212,8 @@ pub(crate) fn lay_out_panes(
         &PanelCanvas,
         Option<&mut DrawnTranscript>,
     )>,
-    mut removed_looks: RemovedLooks,
 ) {
-    let looks_changed = removed_looks.any() || from.looks.changed();
+    let looks_changed = from.looks.changed();
     for (entity, pane, view, mut state, canvas, drawn) in &mut panes {
         let area = inner(&pane, canvas.area());
         if area.is_empty() {
@@ -231,7 +230,7 @@ pub(crate) fn lay_out_panes(
         };
         let value = match &pane.source {
             TranscriptSource::Value(conversation) => {
-                let mut value = ShownAgent::value(conversation, entity);
+                let mut value = ShownConversation::value(conversation, entity);
                 value.changed = pane.is_changed();
                 Some(value)
             }
@@ -253,7 +252,7 @@ pub(crate) fn lay_out_pane(
         &mut PaneState,
         Option<Mut<DrawnTranscript>>,
     ),
-    shown: Option<&ShownAgent<'_>>,
+    shown: Option<&ShownConversation<'_>>,
     area: Rect,
 ) {
     let renderers = from.looks.by_kind(Some(entity));

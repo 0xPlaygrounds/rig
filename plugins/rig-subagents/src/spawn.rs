@@ -3,6 +3,7 @@
 //! hold it in Gate, and this plugin spawns the agent when it starts.
 
 use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::query::QueryData;
 use bevy_ecs::world::DeferredWorld;
 use rig_core::effect::{EffectId, EffectKind};
 use serde::{Deserialize, Serialize};
@@ -18,22 +19,19 @@ use rig_harness::prelude::*;
 /// The kind of a [`SpawnSubagent`] effect in the record.
 pub const SUBAGENT: &str = "subagent";
 
-/// A request for an agent spawned by the agent it is [`ForAgent`], its
-/// parent. It is an open effect of the kind [`SUBAGENT`], recorded with the
-/// request as it started and the new agent's id: Prepare systems edit it
-/// (`Query<&mut SpawnSubagent, Added<Admitted>>`), Gate systems refuse it
-/// (`Decision::decide(by, Outcome::refused(..))`) or hold it (`HoldOf`), and
-/// when it starts,
-/// [`SubagentsPlugin`](super::SubagentsPlugin) spawns the agent, answers it
-/// with the agent's id and puts the agent on it as [`SpawnedAgent`].
-/// A `task` call makes one, a child of the call (`ChildOf`), and answers
-/// with how it went once it settled; a plugin spawns one itself for agents
-/// of its own, such as the sides of a debate.
+/// A request to spawn an agent for its parent (the [`ForAgent`]): an open
+/// effect of kind [`SUBAGENT`], recorded with the new agent's id. Prepare
+/// systems edit it (`Query<&mut SpawnSubagent, Added<Admitted>>`), Gate
+/// systems refuse or hold it, and at Start
+/// [`SubagentsPlugin`](super::SubagentsPlugin) spawns the agent, answers
+/// with its id and inserts [`SpawnedAgent`]. A `task` call makes one as its
+/// child (`ChildOf`); a plugin spawns one for agents of its own, such as
+/// the sides of a debate.
 ///
-/// Each setting left out is the parent's: its model and, with it, its
-/// connection and reasoning setting, its system prompt, and every tool it
-/// may use but those that start subagents, when the new agent is as deep as
-/// [`SubagentPolicy::max_depth`] allows.
+/// Each setting left `None` is the parent's: the model (with its
+/// connection and reasoning setting), the system prompt, and the tools,
+/// minus those that start subagents once [`SubagentPolicy::max_depth`] is
+/// reached.
 #[derive(Component, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_add = record_request)]
 #[require(Name = Name::new(SUBAGENT))]
@@ -47,7 +45,8 @@ pub struct SpawnSubagent {
     pub role: Role,
     /// A catalog model as `vendor/model`.
     pub model: Option<String>,
-    /// A reasoning setting, such as `low`.
+    /// An effort, such as `low`, which becomes the agent's reasoning
+    /// setting.
     pub effort: Option<String>,
     /// The tools it may use, from its parent's.
     pub tools: Option<Vec<String>>,
@@ -192,7 +191,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(follow_successor::<SpawnSubagent>)
         .add_observer(follow_successor::<TaskCall>)
         .add_observer(answer_task)
-        .add_observer(end_with_call)
+        .add_observer(despawn_open_children::<TaskCall>)
         .add_observer(retire_once)
         .add_systems(AgentPass, refuse_too_deep.in_set(SubagentSystems::Gate));
 }
@@ -224,7 +223,12 @@ fn open_effect(request: &SpawnSubagent) -> EffectRequest {
 fn refuse_too_deep(
     mut requests: Query<
         (&ForAgent, &mut Decision),
-        (Undecided, PluginEffects, With<SpawnSubagent>, Without<Ask>),
+        (
+            ReadyToStart,
+            PluginEffects,
+            With<SpawnSubagent>,
+            Without<Ask>,
+        ),
     >,
     lineage: Query<&SpawnedBy>,
     policy: Res<SubagentPolicy>,
@@ -243,31 +247,37 @@ fn refuse_too_deep(
 }
 
 /// The parent of a request, as its settings are inherited.
-type Parent<'a> = (
-    &'a AgentId,
-    &'a ToolAccess,
-    Option<&'a ModelChoice>,
-    &'a Effort,
-    &'a SystemPrompt,
-    Option<&'a Connection>,
-);
+#[derive(QueryData)]
+struct Parent {
+    id: &'static AgentId,
+    access: &'static ToolAccess,
+    model: Option<&'static ModelChoice>,
+    reasoning: &'static ReasoningSetting,
+    prompt: &'static SystemPrompt,
+    connection: Option<&'static Connection>,
+}
 
 /// The new agent's model, reasoning setting and tools for `request`,
 /// checked against its parent's model and reasoning setting, the new
 /// agent's depth and the parent's tools by name.
-fn settle(
+fn inherit_settings(
     request: &SpawnSubagent,
-    (parent, depth): ((Option<&ModelChoice>, Effort), usize),
+    parent_model: Option<&ModelChoice>,
+    parent_reasoning: ReasoningSetting,
+    depth: usize,
     tools: &[&str],
     (models, policy): (&Models, &SubagentPolicy),
-) -> Result<(ModelChoice, Effort, Vec<String>), String> {
+) -> Result<(ModelChoice, ReasoningSetting, Vec<String>), String> {
     let briefless = request.role == Role::Task && request.brief.trim().is_empty();
     if request.title.trim().is_empty() || briefless {
-        return Err("`description` and `prompt` must not be empty".to_owned());
+        return Err(
+            "the title and brief (`task`'s `description` and `prompt`) must not be empty"
+                .to_owned(),
+        );
     }
     let (model, effort) = ModelChoice::inherit(
         &models.0,
-        parent,
+        (parent_model, parent_reasoning),
         request.model.as_deref(),
         request.effort.as_deref(),
     )?;
@@ -334,7 +344,7 @@ fn spawn_requested(
         return;
     };
     commands.entity(entity).insert(open_effect(request));
-    let Ok((caller, access, model, &effort, prompt, connection)) = parents.get(parent) else {
+    let Ok(from) = parents.get(parent) else {
         decision.decide(
             Decider::plugin("rig-subagents"),
             Outcome::refused("its parent is not an agent"),
@@ -343,10 +353,17 @@ fn spawn_requested(
     };
     let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
     let names = tools.iter().map(|def| def.0.name.as_str());
-    let mine: Vec<&str> = names.filter(|name| access.allows(name)).collect();
-    let settings = ((model, effort), depth);
-    let (choice, effort, allowed) = match settle(request, settings, &mine, (&models, &policy)) {
-        Ok(settled) => settled,
+    let mine: Vec<&str> = names.filter(|name| from.access.allows(name)).collect();
+    let inherited = inherit_settings(
+        request,
+        from.model,
+        *from.reasoning,
+        depth,
+        &mine,
+        (&models, &policy),
+    );
+    let (choice, effort, allowed) = match inherited {
+        Ok(inherited) => inherited,
         Err(why) => {
             decision.decide(Decider::plugin("rig-subagents"), Outcome::refused(why));
             return;
@@ -361,13 +378,13 @@ fn spawn_requested(
     let title = request.title.trim().to_owned();
     let mut child = commands.spawn_empty();
     // Before the model choice, so connecting it keeps this connection.
-    if let Some(connection) = connection.filter(|_| model == Some(&choice)) {
+    if let Some(connection) = from.connection.filter(|_| from.model == Some(&choice)) {
         child.insert(connection.clone());
     }
     let prompt = request
         .system_prompt
         .clone()
-        .map_or(prompt.clone(), SystemPrompt);
+        .map_or(from.prompt.clone(), SystemPrompt);
     child.insert((
         Agent,
         id.clone(),
@@ -383,8 +400,8 @@ fn spawn_requested(
         None => RequestId(format!("{SUBAGENT}-{}", effect.id())),
     };
     let author = match request.role {
-        Role::Task => Author::agent(caller.clone(), Some(asked.clone())),
-        Role::Helper => Author::agent(caller.clone(), None),
+        Role::Task => Author::agent(from.id.clone(), Some(asked.clone())),
+        Role::Helper => Author::agent(from.id.clone(), None),
     };
     let brief = request.brief.trim();
     if !brief.is_empty() {
@@ -398,7 +415,7 @@ fn spawn_requested(
                 AgentTitle(title),
                 OpenRequests(vec![Request {
                     id: asked,
-                    asker: caller.clone(),
+                    asker: from.id.clone(),
                     batch: task.and_then(|task| task.batch),
                 }]),
                 Lifecycle::Working,
@@ -460,21 +477,6 @@ fn answer_task(
     };
     if let Ok(mut call) = calls.get_mut(of.parent()) {
         call.decide(Decider::plugin("rig-subagents"), output);
-    }
-}
-
-/// Ends the request of a `task` call that settles first, as when an
-/// interrupt ends the call while a gate holds the request: it is despawned,
-/// which records it as cancelled and ends whatever held it.
-fn end_with_call(
-    settled: On<Add<Settled>>,
-    children: Query<&Children>,
-    open: Query<(), (With<TaskCall>, Without<Settled>)>,
-    mut commands: Commands,
-) {
-    let requests = children.get(settled.entity).into_iter().flatten();
-    for &request in requests.filter(|&&request| open.contains(request)) {
-        commands.entity(request).despawn();
     }
 }
 

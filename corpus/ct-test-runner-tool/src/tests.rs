@@ -139,7 +139,7 @@ fn start(
     app.insert_resource(Settings::from_toml(&config))
         .insert_resource(ProjectRoot(dir.to_owned()))
         .insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, TestRunnerPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, TestRunnerPlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Ended>()
@@ -257,7 +257,7 @@ fn pytest_output_garbage_and_a_cancelled_run() {
         })
     };
     turn(&mut app, &wakes, agent, failed_line);
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     let pid = fs::read_to_string(dir.join("pid")).unwrap_or_default();
     let running = PathBuf::from(format!("/proc/{}", pid.trim()));
     assert!(

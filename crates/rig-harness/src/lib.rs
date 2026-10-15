@@ -1,29 +1,15 @@
-//! rig-harness: the core of a terminal coding agent, a Bevy app on
-//! [`rig_ecs`]'s agent runtime and rig-core.
+//! rig-harness: the harness of the rig coding agent, a Bevy app on the
+//! [`rig_ecs`] kernel. It holds what the binary needs to run and be
+//! relaunched (the session, the `rig` launcher protocol, how the agent was
+//! started: [`Invoked`](host::launcher::Invoked)) and the services every
+//! plugin shares. Everything else, the terminal view, `--print`, `/reload`
+//! and the built-in tools included, is a plugin crate in the repository's
+//! `plugins/` folder, built only on this crate's public API.
 //!
-//! An agent is an entity whose components hold its conversation, model,
-//! reasoning setting, system prompt and tool access; an agent a plugin
-//! spawns for another is one more, [`SpawnedBy`](rig_ecs::agent::SpawnedBy)
-//! that agent. Tools and slash commands are registered by Bevy plugins, and
-//! a plugin re-arms its saved obligations after a restart from its saved
-//! components, and gates the work a restart carries on
-//! ([`Restored`](rig_ecs::restore::Restored)) like any. This crate is only what the
-//! terminal app needs around the runtime to run and be relaunched: the
-//! session directory and the `rig` launcher protocol, with how the agent
-//! was started ([`Invoked`](host::launcher::Invoked)). Every other part of
-//! the agent, `/reload`, the terminal view, `--print`, sign-in and the
-//! built-in tools and commands included, is a plugin crate in the
-//! repository's `plugins/` folder, built only on this crate's public API.
-//!
-//! [`RigHarnessPlugins`] is what the binary needs to run and be
-//! relaunched: the session, the agent core and the session logs, and the
-//! launcher protocol. It adds none of Bevy's own plugins, so it sits next
-//! to `DefaultPlugins` in a windowed app. [`HeadlessPlugins`] is what a
-//! terminal app needs from Bevy instead: Bevy's `MinimalPlugins` (task
-//! pools, frame count, clock) with the log, a clean exit on signals, and a
-//! loop that sleeps until there is work. Everything else is a plugin listed
-//! in `plugins.toml` and added by the `rig` launcher's generated `main.rs`
-//! with [`load`]. The error handler is the application's to set:
+//! [`HeadlessPlugins`] is what a terminal app takes from Bevy, and
+//! [`RigHarnessPlugins`] is the harness. The launcher's generated `main.rs`
+//! adds the plugins `plugins.toml` lists with [`load`]. The error handler is
+//! the application's to set:
 //!
 //! ```no_run
 //! use rig_harness::load;
@@ -45,14 +31,8 @@
 //! }
 //! ```
 //!
-//! [`plugin_guide`] states the rules every plugin follows (a hook is a
-//! system in a stage; holds add up and the first answer wins; a failing
-//! stage system closes its stage) and shows each kind of extension with an
-//! example: tools and gating their calls, questions for the user, slash
-//! commands, model requests, turn endings, a plugin's own effects,
-//! settings and options, saved state, time, fronts, terminal panels, and a
-//! window beside the terminal ([`windowed`]). The `rig` launcher makes a
-//! plugin crate with `rig plugin new <name>`.
+//! [`plugin_guide`] is the guide to writing a plugin; `rig plugin new <name>`
+//! makes one.
 
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
@@ -66,12 +46,11 @@ pub mod describe;
 pub mod headless;
 pub mod host;
 mod load;
-pub mod note;
+pub mod main_agent;
 pub mod per_call;
 pub mod pick;
 pub mod plugin_data;
 pub mod preview;
-pub mod primary;
 pub mod progress;
 pub mod secrets;
 pub mod services;
@@ -111,7 +90,7 @@ pub use rig::harness_protocol;
 /// The rig-core this app is built on, for the conversation's messages
 /// (`rig_harness::rig_core::message::Message`) and rig-core's tools.
 pub use rig_core;
-/// The agent runtime this app is built on.
+/// The kernel this app is built on.
 pub use rig_ecs;
 /// The store this app keeps its sessions in, for reading, saving and
 /// forking a session without restoring it (`rig_harness::rig_memory::DirStore`,
@@ -123,12 +102,9 @@ pub use rig_memory;
 /// (`rig_harness::rig_tools::fs::place`).
 pub use rig_tools;
 
-/// What a plugin needs, so a typical one imports only this: rig-ecs's
-/// prelude (Bevy's app and ECS preludes, the agent components and
-/// requests, and the tool registry), slash commands, what agents say, the
-/// app's session, its log's warnings and launcher, and the plugin groups.
-/// A plugin crate's own types come from that crate, such as the terminal
-/// view's panels and status line from `rig-tui`.
+/// What a plugin needs, so a typical one imports only this: the kernel's
+/// prelude and the harness's services. A plugin crate's own types come from
+/// that crate, such as the terminal view's panels from `rig-tui`.
 pub mod prelude {
     pub use rig_ecs::prelude::*;
 
@@ -152,16 +128,15 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, LogEvents, Logged, Scratch,
+        AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, Logged, LoggedQueue, Scratch,
         SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
-        SessionStores, edit_stopped, first_typed, rewrite_stopped, typed,
+        StoreOpener, edit_stopped, rewrite_stopped,
     };
-    pub use crate::note::Note;
-    pub use crate::per_call::{AppPerCallExt, Place};
+    pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
+    pub use crate::per_call::{AppPerCallExt, CallPlace};
     pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
     pub use crate::plugin_data::PluginData;
     pub use crate::preview::{Preview, PreviewPlugin, PreviewSystems, Previewed};
-    pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
@@ -169,7 +144,7 @@ pub mod prelude {
         SessionEntry, SessionFilter, SessionItem, SessionPicked, SessionPicker, SessionSource,
     };
     pub use crate::settings::{AppSettingsExt, Settings};
-    pub use crate::successor::{follow_successor, resend};
+    pub use crate::successor::resend;
     pub use crate::timings::{PluginTimings, SystemTimings};
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::workspace::ProjectWorkspace;
@@ -177,24 +152,17 @@ pub mod prelude {
         AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,
         Provides, RigHarnessPlugins, SavedAs,
     };
+    pub use rig_core::conversation::Note;
     pub use rig_memory::{ForkedFrom, Listing, SplitPointer};
+    pub use rig_tools::attach::{first_typed, typed};
     pub use rig_tools::{Spill, blocking};
 }
 
-/// What the binary needs to run and be relaunched, and the services every
-/// plugin shares: the process's home, project, child processes and tokio
-/// runtime ([`services`]), the session and its log, the agent core and the
-/// session logs, the launcher protocol with the plugins' options and
-/// fronts ([`host`]), slash commands ([`commands`]), why the app exits,
-/// wall-clock wakes ([`clock`]),
-/// file watches ([`watch`]), questions for the user ([`ask`]) and their
-/// approval of what plugins want approved ([`approval`]), pickers
-/// with the agent the user looks at ([`pick`]) and the native session
-/// views over them ([`sessions`]), previews of what a tool
-/// call would leave on disk ([`preview`]) and what every call that may
-/// write anywhere changed ([`checkpoint`]).
-/// Everything else is a plugin `plugins.toml` lists, which can leave it
-/// out.
+/// The harness: the session and its log, the kernel
+/// ([`rig_ecs::AgentPlugin`], [`rig_ecs::session_log::SessionLogPlugin`]),
+/// the launcher protocol, and the services every plugin shares (the modules
+/// of this crate). Everything else is a plugin `plugins.toml` lists, which
+/// can leave it out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {
@@ -203,7 +171,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(services::ServicesPlugin)
             .add(host::session::SessionPlugin)
             .add(rig_ecs::AgentPlugin)
-            .add(rig_ecs::journal::JournalPlugin)
+            .add(rig_ecs::session_log::SessionLogPlugin)
             .add(commands::CommandPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::exit::ExitPlugin)
@@ -225,8 +193,8 @@ impl PluginGroup for RigHarnessPlugins {
 /// with its warnings and errors passed on as data, a clean exit on SIGINT,
 /// SIGTERM and SIGHUP, and in place of Bevy's `ScheduleRunnerPlugin` a
 /// loop that runs the schedules on the main thread and sleeps until
-/// [`Wake`](rig_ecs::calls::Wake)d or until the clock's next deadline.
-/// Added before [`RigHarnessPlugins`], so the agent core runs on its clock;
+/// [`Wake`](rig_ecs::tasks::Wake)d or until the clock's next deadline.
+/// Added before [`RigHarnessPlugins`], so the kernel runs on its clock;
 /// a windowing plugin added later through [`windowed`] sets its own runner
 /// in place of this loop (see [`plugin_guide`]).
 pub struct HeadlessPlugins;

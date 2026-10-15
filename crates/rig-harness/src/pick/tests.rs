@@ -37,7 +37,7 @@ fn app() -> (App, Entity) {
     });
     app.update();
     app.update();
-    let agent = app.world().resource::<Shown>().0;
+    let agent = app.world().resource::<ShownAgent>().0;
     (app, agent.unwrap_or(Entity::PLACEHOLDER))
 }
 

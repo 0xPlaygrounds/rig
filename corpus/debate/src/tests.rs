@@ -23,7 +23,7 @@ fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
                     judge = \"debate-judge/m\"\n";
     app.insert_resource(models)
         .insert_resource(Settings::from_toml(settings))
-        .add_plugins((AgentPlugin, JournalPlugin, DebatePlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, DebatePlugin));
     let host = app
         .world_mut()
         .spawn((Agent, ModelChoice("debate-main/m".to_owned())))

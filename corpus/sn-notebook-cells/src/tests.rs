@@ -160,7 +160,7 @@ fn a_notebook_is_read_as_cells_and_edited_one_cell_at_a_time() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ReadTool,
         EditTool,
         NotebookCellsPlugin,

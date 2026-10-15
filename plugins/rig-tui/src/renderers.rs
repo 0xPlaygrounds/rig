@@ -1,45 +1,4 @@
-//! How tool calls and entries look in the transcript. A plugin that adds a
-//! tool can add its look with [`AppToolRenderersExt::add_tool_renderer`]:
-//! like a tool or a command, a renderer is a component on an entity of its
-//! own, named `renderer:<tool>`, and the first one of a tool stays; Bevy's
-//! `Disabled` on it frees the tool for another. A call whose tool has none
-//! is drawn by [`ToolCallView::default_lines`]. A call is drawn while the
-//! model still streams its arguments too ([`CallState::Streaming`]), from
-//! what has come of them.
-//!
-//! The same goes for a plugin's look with
-//! [`AppToolRenderersExt::add_entry_renderer`] (`entry:<plugin>`): it draws
-//! the [`Note`](rig_harness::note::Note)s that plugin wrote, and the
-//! entries of the conversation it wrote, such as a compaction's summary. One without draws as
-//! [`EntryView::default_lines`]. And for a kind of content block in a
-//! message, an image, audio, a video or a document, with
-//! [`AppToolRenderersExt::add_content_renderer`] (`content:<kind>`): one
-//! without draws as [`ContentView::default_lines`]. A plugin that adds
-//! rows under every call, whatever draws it, adds a decorator
-//! ([`AppToolRenderersExt::add_call_decorator`], `decorator:<name>`):
-//! decorators add up, each drawing after the call's look. A change to a
-//! renderer or a decorator draws the transcript again.
-//!
-//! A renderer also sees the calls its call started, such as a subagent's
-//! model and tool calls, through the spawn and the brief between them
-//! ([`ToolCallView::children`]), and draws them nested where it likes:
-//!
-//! ```no_run
-//! use rig_harness::prelude::*;
-//! use rig_tui::AppToolRenderersExt;
-//! use rig_tui::ratatui::text::Line;
-//!
-//! fn build(app: &mut App) {
-//!     app.add_tool_renderer("consult", |view| {
-//!         let mut lines = view.default_lines();
-//!         for child in view.children {
-//!             let indent = "  ".repeat(child.depth + 2);
-//!             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
-//!         }
-//!         lines
-//!     });
-//! }
-//! ```
+//! Looks: how the transcript draws calls, notes, content, asides and text.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -56,7 +15,7 @@ use rig_core::conversation::Branch;
 use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
 use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
-use rig_harness::note::Note;
+use rig_harness::rig_core::conversation::Note;
 use rig_harness::rig_memory::SplitPointer;
 use rig_tools::shorten;
 
@@ -294,7 +253,7 @@ impl<'a> ToolCallView<'a> {
 }
 
 /// A note or a delivered text, as an entry renderer sees it: a plugin's
-/// [`Note`](rig_harness::note::Note), or a text of an entry of the
+/// [`Note`](rig_harness::rig_core::conversation::Note), or a text of an entry of the
 /// conversation another author wrote, such as a compaction summary.
 pub struct EntryView<'a> {
     /// The plugin whose look draws it: the name of the plugin that wrote
@@ -688,7 +647,7 @@ pub fn branch_lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
 /// (`rig.split`): `⇢`, its title and its session, with what was moved
 /// there and whether it was merged back.
 pub fn split_lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
-    let Ok(split) = serde_json::from_value::<SplitPointer>(view.aside.value.clone()) else {
+    let Some(split) = SplitPointer::of(view.aside) else {
         return Vec::new();
     };
     let mut text = format!("⇢ {} · session {}", split.title, split.session);
@@ -773,35 +732,58 @@ pub struct DecoratedMessage<'a> {
     pub author: Option<&'a Author>,
 }
 
-/// Registers the looks of the transcript on an [`App`]: tool, entry,
-/// content, aside and message renderers, and decorators under calls and
-/// messages. Each spawns a global look, which every transcript pane draws
-/// with; a look spawned as a child of a pane
-/// ([`TranscriptPane`](crate::TranscriptPane)) applies in that pane only,
-/// before the global one.
+/// Registers transcript looks: how tool calls, notes, content blocks,
+/// asides and message text are drawn, and lines under every call or
+/// message.
+///
+/// Each look is a component on an entity of its own, named by what it
+/// draws: `renderer:<tool>`, `entry:<plugin>`, `content:<kind>`,
+/// `aside:<kind>`, `message:<role>`, `decorator:<name>`,
+/// `message-decorator:<name>`. The first look of a name stays (a later one
+/// is refused with a warning); `Disabled` on it, in `Plugin::finish`, frees
+/// it. A look spawned as a child of a [`TranscriptPane`](crate::TranscriptPane)
+/// applies in that pane only, before the global one. A change to a look
+/// draws the transcript again. Without a look, a call draws as
+/// [`ToolCallView::default_lines`], also while its arguments stream
+/// ([`CallState::Streaming`]). A renderer sees the calls its call started,
+/// through any effect in between, as [`ToolCallView::children`]:
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::AppToolRenderersExt;
+/// use rig_tui::ratatui::text::Line;
+///
+/// fn build(app: &mut App) {
+///     app.add_tool_renderer("consult", |view| {
+///         let mut lines = view.default_lines();
+///         for child in view.children {
+///             let indent = "  ".repeat(child.depth + 2);
+///             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
+///         }
+///         lines
+///     });
+/// }
+/// ```
 pub trait AppToolRenderersExt {
-    /// Draw the calls of `tool` with `render`, unless the tool has a
-    /// renderer already: that one stays, with a warning. To restyle
-    /// another plugin's tool, insert `Disabled` on its renderer first (in
-    /// `Plugin::finish`, once every plugin's `build` ran).
+    /// Draw the calls of `tool` with `render`.
     fn add_tool_renderer(
         &mut self,
         tool: &str,
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 
-    /// Draw the notes and delivered texts of the plugin `plugin` with
-    /// `render`, unless the plugin has a renderer already: that one stays,
-    /// with a warning, and `Disabled` on it frees the plugin, as for tools.
+    /// Draw the notes and the entries the plugin `plugin` wrote, such as a
+    /// compaction's summary, with `render`; without one they draw as
+    /// [`EntryView::default_lines`].
     fn add_entry_renderer(
         &mut self,
         plugin: &str,
         render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self;
 
-    /// Draw the content blocks of `kind` with `render`, unless the kind
-    /// has a renderer already: that one stays, with a warning, and
-    /// `Disabled` on it frees the kind, as for tools.
+    /// Draw the content blocks of `kind` (an image, audio, a video or a
+    /// document) with `render`; without one they draw as
+    /// [`ContentView::default_lines`].
     fn add_content_renderer(
         &mut self,
         kind: ContentKind,
@@ -810,10 +792,9 @@ pub trait AppToolRenderersExt {
 
     /// Draw the asides of `kind` with `render` after the entry they
     /// follow, as the transcript item
-    /// [`TranscriptItem::Aside`](crate::TranscriptItem::Aside), unless the
-    /// kind has a renderer already, as for tools. An aside of a kind with
-    /// no renderer is not drawn; a note (`note`) is drawn by its plugin's
-    /// entry renderer.
+    /// [`TranscriptItem::Aside`](crate::TranscriptItem::Aside). An aside of a
+    /// kind with no renderer is not drawn; a note (`note`) is drawn by its
+    /// plugin's entry renderer.
     fn add_aside_renderer(
         &mut self,
         kind: &str,
@@ -821,8 +802,7 @@ pub trait AppToolRenderersExt {
     ) -> &mut Self;
 
     /// Draw the text of `role` with `render` in place of
-    /// [`MessageView::default_lines`], unless the role has a renderer
-    /// already, as for tools.
+    /// [`MessageView::default_lines`].
     fn add_message_renderer(
         &mut self,
         role: Role,
@@ -831,11 +811,9 @@ pub trait AppToolRenderersExt {
 
     /// Draw `render`'s lines under every tool call, after the call's own
     /// look, whichever draws it. Decorators add up, in the order of their
-    /// entities; `Disabled` on one (`decorator:<name>`) leaves it out. Its
-    /// rows under a call are the transcript item
-    /// [`TranscriptItem::Decoration`](crate::TranscriptItem::Decoration),
-    /// by the call's id and `name`, which is a key: a second decorator with
-    /// a name taken is not added, with a warning.
+    /// entities. Its rows under a call are the transcript item
+    /// [`TranscriptItem::Decoration`](crate::TranscriptItem::Decoration), by
+    /// the call's id and `name`.
     fn add_call_decorator(
         &mut self,
         name: &str,

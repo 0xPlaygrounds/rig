@@ -141,7 +141,7 @@ fn now() -> u64 {
 #[derive(SystemParam)]
 struct Runs<'w, 's> {
     agents: Query<'w, 's, (Entity, &'static AgentId), With<Agent>>,
-    primary: PrimaryQuery<'w, 's>,
+    primary: MainAgentQuery<'w, 's>,
     running: Query<'w, 's, &'static CronRun>,
     requested: Query<'w, 's, &'static CronRequest>,
     notices: MessageWriter<'w, Notice>,
@@ -153,7 +153,7 @@ impl Runs<'_, '_> {
     fn owner(&self, owner: &str) -> Option<Entity> {
         AgentId(owner.to_owned())
             .find_in(self.agents.iter())
-            .or_else(|| primary(&self.primary))
+            .or_else(|| main_agent(&self.primary))
     }
 
     fn running(&self, job: u32) -> bool {
@@ -365,7 +365,7 @@ fn on_schedule(
     let owner = runs
         .get(called.agent)
         .and_then(|&SpawnedBy(owner)| ids.get(owner));
-    let owner = owner.cloned().unwrap_or_else(|_| called.caller.clone());
+    let owner = owner.cloned().unwrap_or_else(|_| called.agent_id.clone());
     let fields = (args.schedule.as_str(), args.prompt.as_str(), args.catch_up);
     let result = match add(&mut jobs, fields, &owner) {
         Ok(job) => ToolResult::success(
@@ -424,7 +424,7 @@ fn adopt(
             &ForAgent,
             Option<&SpawnedAgent>,
         ),
-        (Unreviewed, PluginEffects),
+        (ReadyToSettle, PluginEffects),
     >,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -468,7 +468,7 @@ fn report(
                 .unwrap_or_else(|| "(no answer)".to_owned());
             notices.write(Notice::info(owner, format!("{job}: {answer}")));
             let author = Author::agent(from.clone(), None).titled(job);
-            let note = Deliver::new(owner, answer, DeliveryMode::Note);
+            let note = Deliver::new(owner, answer, DeliveryMode::Inform);
             commands.trigger(note.with_author(author));
         }
         TurnOutcome::Failed(why) => {

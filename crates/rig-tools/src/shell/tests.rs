@@ -1,7 +1,7 @@
 use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, Tool, ToolContext};
 
 use super::{Shell, ShellArgs, split_status};
-use crate::Cut;
+use crate::OutputLimit;
 use crate::process::Launcher;
 
 fn shell(command: &str, spill: Option<crate::Spill>) -> String {
@@ -265,7 +265,7 @@ fn a_cut_output_publishes_the_cut() {
     let dir = std::env::temp_dir().join(format!("rig-tools-cut-{}", std::process::id()));
     let shell = Shell {
         spill: Some(crate::Spill(dir.clone())),
-        cut: Some(Cut {
+        cut: Some(OutputLimit {
             lines: 2,
             bytes: 1024,
         }),

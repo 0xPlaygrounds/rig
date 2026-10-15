@@ -72,7 +72,7 @@ fn start(
         .insert_resource(TuiTestScreen::new(120, 60))
         .init_resource::<Ended>()
         .add_observer(log_ended)
-        .add_plugins((AgentPlugin, JournalPlugin, ModelsPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, ModelsPlugin));
     load::<AlphaPlugin>(&mut app, "alpha", &format!("version {alpha}"));
     if provenance {
         load::<SessionProvenancePlugin>(&mut app, "sp-session-provenance", "path corpus");
@@ -87,7 +87,7 @@ fn start(
     app.cleanup();
     app.update();
     let agent = first_agent(app.world_mut())?;
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     app.update();
     Some((app, wakes, agent))
 }
@@ -202,7 +202,7 @@ fn the_setup_and_its_changes_are_recorded_resumed_forked_and_never_sent() {
         return;
     };
     let cut = ForkCut::Before(AgentId("main".to_owned()), turn_2);
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         ..ForkSession::default()
     });

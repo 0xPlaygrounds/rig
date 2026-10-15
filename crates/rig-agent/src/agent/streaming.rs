@@ -34,7 +34,7 @@ pub type StreamingResult = WasmBoxedStream<'static, Result<MultiTurnStreamItem, 
 /// One item of a streamed run: a provider stream event, a committed tool
 /// call, a lifecycle marker, or the run's final response. An item reads back
 /// from its serialized form on its own, without checking its order against
-/// the items around it; [`Transcript::parse`](rig_core::streaming::Transcript::parse)
+/// the items around it; [`StreamRecord::parse`](rig_core::streaming::StreamRecord::parse)
 /// checks a run's provider stream items.
 #[non_exhaustive]
 pub enum MultiTurnStreamItem {

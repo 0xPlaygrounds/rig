@@ -26,7 +26,7 @@ use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::UserContent;
 use rig_harness::rig_core::tool::{FilesRead, content_hash};
 use rig_harness::rig_memory::{
-    self, DirStore, HeuristicTokenCounter, Keep, MODEL, SessionMeta, TokenCounter, Versioned,
+    self, DirStore, HeuristicTokenCounter, MODEL, NoRewrite, SessionMeta, TokenCounter, Versioned,
     check_name,
 };
 use serde::{Deserialize, Serialize};
@@ -170,7 +170,7 @@ pub struct StartFromSnapshot {
 /// The snapshots of `home` for the project in `root`, by session, from their listings.
 pub fn snapshots(
     home: &Home,
-    stores: &SessionStores,
+    stores: &StoreOpener,
     root: &ProjectRoot,
 ) -> Vec<(SessionId, Snapshot)> {
     home.saved_sessions()
@@ -183,12 +183,12 @@ pub fn snapshots(
 
 /// The snapshot `entry` is, from its listing.
 fn snapshot_of(entry: &SessionEntry) -> Option<Snapshot> {
-    let saved = entry.listing.meta.data.get(KEY)?;
+    let saved = entry.listing.meta.listed.get(KEY)?;
     serde_json::from_value(saved.value.clone()).ok()
 }
 
 /// The snapshot `name` (or of that session id) of `home`.
-fn find(home: &Home, stores: &SessionStores, root: &ProjectRoot, name: &str) -> Option<SessionId> {
+fn find(home: &Home, stores: &StoreOpener, root: &ProjectRoot, name: &str) -> Option<SessionId> {
     let all = snapshots(home, stores, root);
     let found = all
         .into_iter()
@@ -228,7 +228,7 @@ fn remember_reads(
 /// `/snapshot save|list|delete`.
 fn snapshot(
     In(args): In<CommandArgs>,
-    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<SessionStores>),
+    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<StoreOpener>),
     agents: Query<(&AgentId, &Conversation, Has<ActiveTurn>)>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -252,7 +252,7 @@ fn snapshot(
                             agent,
                         })
                         .id();
-                    commands.trigger(ForkSession {
+                    commands.write_message(ForkSession {
                         from: None,
                         cut,
                         asker: Some(asker),
@@ -405,7 +405,7 @@ fn pick(picked: On<Picked>, chosen: Query<(&SessionPicked, &Picker)>, mut comman
 fn write_shared(
     started: On<Add<Started>>,
     mut effects: Query<(&EffectRequest, &mut Decision, &ForAgent), With<Sharing>>,
-    (root, home, stores): (Res<ProjectRoot>, Res<RigHome>, Res<SessionStores>),
+    (root, home, stores): (Res<ProjectRoot>, Res<RigHome>, Res<StoreOpener>),
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok((request, mut decision, &ForAgent(agent))) = effects.get_mut(started.entity) else {
@@ -427,7 +427,7 @@ fn write_shared(
             let path = root.0.join(SHARED).join(&share.name);
             std::fs::remove_dir_all(&path).ok();
             let to = DirStore::open(path).map_err(|e| e.to_string())?;
-            rig_memory::fork(&*from, &to, None, &Keep).map_err(|e| e.to_string())?;
+            rig_memory::fork(&*from, &to, None, &NoRewrite).map_err(|e| e.to_string())?;
             Ok(share.name)
         });
     let outcome = match written {
@@ -452,7 +452,7 @@ fn write_shared(
 /// Takes over the user's `/new --from <name>` lines before the slash commands run;
 /// a plain `/new` stays rig-sessions'.
 fn new_from(
-    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (ReadyToStart, IncomingMessages)>,
     mut commands: Commands,
 ) {
     for (incoming, &ForAgent(agent), mut decision) in &mut typed {
@@ -499,7 +499,7 @@ fn start_from_flag(
 /// Forks the snapshot into a new session; [`forked`] switches to it.
 fn start_from(
     start: On<StartFromSnapshot>,
-    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<SessionStores>),
+    (home, root, stores): (Res<RigHome>, Res<ProjectRoot>, Res<StoreOpener>),
     turns: Query<(), With<TurnOf>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -525,7 +525,7 @@ fn start_from(
                 agent: start.agent,
             };
             let asker = commands.spawn(asker).id();
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: Some(id),
                 cut: ForkCut::Whole,
                 asker: Some(asker),
@@ -545,14 +545,14 @@ fn start_from(
 /// `ForkSession` forks: a fork from a store that is no session of `home`.
 fn bring_in(
     home: &Home,
-    stores: &SessionStores,
+    stores: &StoreOpener,
     root: &ProjectRoot,
     name: &str,
 ) -> Result<SessionId, String> {
     let from = DirStore::open(root.0.join(SHARED).join(name)).map_err(|e| e.to_string())?;
     let (id, dir) = home.new_session().map_err(|e| e.to_string())?;
     let copied = stores.open(&dir).map_err(|e| e.to_string()).and_then(|to| {
-        rig_memory::fork(&from, &*to, None, &Keep).map_err(|e| e.to_string())?;
+        rig_memory::fork(&from, &*to, None, &NoRewrite).map_err(|e| e.to_string())?;
         std::fs::write(dir.directory(), root.0.to_string_lossy().as_bytes())
             .map_err(|e| e.to_string())
     });
@@ -571,7 +571,7 @@ fn forked(
     mut forked: MessageReader<SessionForked>,
     mut failed: MessageReader<SessionForkFailed>,
     askers: Query<(Option<&Saving>, Option<&Starting>)>,
-    (home, paths, stores): (Res<RigHome>, Res<SessionPaths>, Res<SessionStores>),
+    (home, paths, stores): (Res<RigHome>, Res<SessionPaths>, Res<StoreOpener>),
     models: Res<Models>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -633,7 +633,7 @@ fn forked(
 
 /// Makes the session in `dir` the snapshot `name`, saved and listed.
 fn mark(
-    stores: &SessionStores,
+    stores: &StoreOpener,
     paths: &SessionPaths,
     dir: &SessionDir,
     name: &str,
@@ -653,11 +653,11 @@ fn mark(
                     .sum()
             }),
             model: main.and_then(|main| main.model()),
-            saved_ms: rig_memory::now_ms(),
+            saved_ms: rig_harness::rig_core::now_ms(),
         };
         let value = serde_json::to_value(&it).map_err(|e| e.to_string())?;
         session
-            .state
+            .saved
             .insert(KEY.to_owned(), Versioned { v: 1, value });
         made = Some(it);
         Ok(())
@@ -671,14 +671,14 @@ fn mark(
 /// Readies the session in `dir`, a copy of the snapshot `name`: no snapshot itself,
 /// told so on its first start, and without the snapshot's model when it is unusable.
 fn ready(
-    stores: &SessionStores,
+    stores: &StoreOpener,
     paths: &SessionPaths,
     dir: &SessionDir,
     name: &str,
     models: &Models,
 ) -> Result<(), String> {
     edit_stopped(stores, paths, dir, |session| {
-        session.state.remove(KEY);
+        session.saved.remove(KEY);
         let main = session
             .main_agent()
             .map(|main| (main.id.clone(), main.model()));
@@ -687,7 +687,7 @@ fn ready(
             && models.connect(&model).is_err()
             && let Some(agent) = session.agents.iter_mut().find(|agent| agent.id == id)
         {
-            agent.state.remove(MODEL);
+            agent.saved.remove(MODEL);
             notice = Some(format!(
                 "The snapshot's model {model} is unavailable; this session starts on the default model."
             ));
@@ -695,7 +695,7 @@ fn ready(
         let started = StartedFrom(Some((name.to_owned(), notice)));
         let value = serde_json::to_value(started).map_err(|e| e.to_string())?;
         session
-            .state
+            .saved
             .insert(STARTED.to_owned(), Versioned { v: 1, value });
         Ok(())
     })?;
@@ -704,16 +704,12 @@ fn ready(
 
 /// Sets the listed [`Snapshot`] of the stopped session in `dir`: `edit_stopped`
 /// leaves its listing as it was.
-fn relist(
-    stores: &SessionStores,
-    dir: &SessionDir,
-    value: Option<Versioned>,
-) -> Result<(), String> {
+fn relist(stores: &StoreOpener, dir: &SessionDir, value: Option<Versioned>) -> Result<(), String> {
     let store = stores.open(dir).map_err(|e| e.to_string())?;
     let mut meta = SessionMeta::read(&*store).unwrap_or_default();
     match value {
-        Some(value) => meta.data.insert(KEY.to_owned(), value),
-        None => meta.data.remove(KEY),
+        Some(value) => meta.listed.insert(KEY.to_owned(), value),
+        None => meta.listed.remove(KEY),
     };
     meta.write(&*store).map_err(|e| e.to_string())
 }

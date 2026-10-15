@@ -777,7 +777,7 @@ fn first_line(text: &str) -> String {
 /// An interrupt of a run's agent stops the run: its running items' agents
 /// are retired and their boxes stay as they were.
 fn on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     mut runs: Query<(Entity, &mut PlanRun)>,
     open: Query<(Entity, &ItemRequest), Without<Settled>>,
     (wake, mut commands): (Res<Wake>, Commands),

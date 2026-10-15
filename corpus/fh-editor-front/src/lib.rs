@@ -54,13 +54,13 @@ impl Plugin for EditorFrontPlugin {
             .init_resource::<Buffers>()
             .init_resource::<Inbox>()
             .init_resource::<ProjectRoot>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .configure_sets(AgentPass, EditorSystems.in_set(GateSystems::After))
             .add_systems(
                 AgentPass,
                 (from_buffers, review_edits).chain().in_set(EditorSystems),
             )
-            .add_systems(Update, receive.after(PollCalls).before(AgentLoop))
+            .add_systems(Update, receive.after(PollTasks).before(AgentLoop))
             .add_systems(PostUpdate, (forward, close_questions))
             .add_observer(take_line)
             .add_observer(attach)
@@ -388,7 +388,7 @@ fn connect_client(world: &mut World) -> (Entity, EditorLink) {
     let wake = world.get_resource::<Wake>().cloned().unwrap_or_default();
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     let lines = lines.map(Some).chain(futures::stream::once(async { None }));
-    let agent = world.get_resource::<Shown>().and_then(|shown| shown.0);
+    let agent = world.get_resource::<ShownAgent>().and_then(|shown| shown.0);
     let client = world.spawn((
         EditorClient { out, agent },
         Answerer::default(),
@@ -543,11 +543,11 @@ fn receive(
     mut clients: Query<(&mut EditorClient, Has<Stdio>)>,
     mut buffers: ResMut<Buffers>,
     agents: Query<(Entity, &AgentId)>,
-    primaries: PrimaryQuery,
+    primaries: MainAgentQuery,
     mut reviews: Query<(&EditReview, &mut Decision), (PluginEffects, Without<Outcome>)>,
     mut calls: Query<&mut Decision, ToolCalls>,
     waits: Query<(Entity, &DiagnosticsWait)>,
-    (root, mut shown): (Res<ProjectRoot>, ResMut<Shown>),
+    (root, mut shown): (Res<ProjectRoot>, ResMut<ShownAgent>),
     mut commands: Commands,
 ) {
     for (from, line) in std::mem::take(&mut inbox.0) {
@@ -564,7 +564,7 @@ fn receive(
         };
         let reply = client.out.clone();
         let reply = |message: &ToEditor| send(&reply, message);
-        let agent = client.agent.or_else(|| primary(&primaries));
+        let agent = client.agent.or_else(|| main_agent(&primaries));
         let message = match serde_json::from_str::<FromEditor>(&line) {
             Ok(message) => message,
             Err(error) => {
@@ -622,7 +622,7 @@ fn receive(
             }
             FromEditor::Interrupt => {
                 if let Some(agent) = agent {
-                    commands.trigger(Interrupt::new(agent));
+                    commands.trigger(StopTurn::new(agent));
                 }
             }
             FromEditor::Pick { id, choice, text } => {
@@ -842,7 +842,10 @@ fn one_path<'a>(touches: &'a Touches, dir: Option<&WorkDir>) -> Option<&'a Path>
 /// Answers each `read` of an open file that no gate decided from its
 /// buffer, unsaved changes included, as `read` shows a file.
 fn from_buffers(
-    mut calls: Query<(&ToolRequest, &ForAgent, &Footprint, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<
+        (&ToolRequest, &ForAgent, &Footprint, &mut Decision),
+        (ReadyToStart, ToolCalls),
+    >,
     dirs: Query<&WorkDir>,
     buffers: Res<Buffers>,
 ) {
@@ -866,12 +869,12 @@ fn from_buffers(
 /// Holds each `edit` and `write` of an open file with a review the
 /// editors answer, unless a gate decided it already or no editor is
 /// connected. A call a gate holds, such as one waiting for the user's
-/// approval, is not [`Undecided`], so it is reviewed only once the gate
+/// approval, is not [`ReadyToStart`], so it is reviewed only once the gate
 /// lets it go.
 fn review_edits(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &Footprint, &mut Decision),
-        (Undecided, ToolCalls),
+        (ReadyToStart, ToolCalls),
     >,
     dirs: Query<&WorkDir>,
     buffers: Res<Buffers>,
@@ -1039,7 +1042,7 @@ fn close_questions(
 /// each notice.
 fn forward(
     mut deltas: MessageReader<StreamDelta>,
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     mut notices: MessageReader<Notice>,
     ids: Query<&AgentId>,
     clients: Query<&EditorClient>,

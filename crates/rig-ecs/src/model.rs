@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::agent::{ActiveTurn, Agent, Notice};
 use super::effects::Handler;
-use super::journal::ReflectSaved;
+use super::session_log::ReflectSaved;
 
 /// The models agents can use and how each is reached: rig's built-in
 /// catalog by default. A plugin adds a sign-in with
@@ -56,10 +56,10 @@ impl ModelChoice {
     /// when given, else the parent's with the parent's model.
     pub fn inherit(
         models: &Connector,
-        parent: (Option<&ModelChoice>, Effort),
+        parent: (Option<&ModelChoice>, ReasoningSetting),
         model: Option<&str>,
         effort: Option<&str>,
-    ) -> Result<(Option<ModelChoice>, Effort), String> {
+    ) -> Result<(Option<ModelChoice>, ReasoningSetting), String> {
         fn asked(text: Option<&str>) -> Option<&str> {
             text.map(str::trim).filter(|text| !text.is_empty())
         }
@@ -78,14 +78,14 @@ impl ModelChoice {
             (Some(name), Some(model)) => {
                 let spec = resolve(&model.0).map_err(|why| why.to_string())?;
                 let named = spec.reasoning.named(name);
-                Effort(
+                ReasoningSetting(
                     named
                         .map_err(|why| format!("{}: {why}", spec.display_name))?
                         .reasoning,
                 )
             }
             _ if model.is_some() && model.as_ref() == parent.0 => parent.1,
-            _ => Effort::default(),
+            _ => ReasoningSetting::default(),
         };
         Ok((model, effort))
     }
@@ -111,10 +111,10 @@ pub struct Connection {
 )]
 #[component(immutable)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct Effort(pub Option<Reasoning>);
+pub struct ReasoningSetting(pub Option<Reasoning>);
 
 /// `default`, `off`, the level's word, or `1024 tokens`.
-impl fmt::Display for Effort {
+impl fmt::Display for ReasoningSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
             None => f.write_str("default"),
@@ -139,11 +139,11 @@ pub struct SetModel {
 /// Choose the agent's reasoning setting; `None` is the provider default.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
-pub struct SetEffort {
+pub struct SetReasoning {
     /// The agent.
     pub entity: Entity,
     /// The setting.
-    pub effort: Effort,
+    pub effort: ReasoningSetting,
 }
 
 /// Chooses the agent's model: a known catalog model replaces the agent's
@@ -229,8 +229,8 @@ pub(crate) fn reconnect(
 /// Resets a reasoning setting the agent's model does not take, whichever
 /// of the two was inserted last.
 pub(crate) fn check_effort(
-    inserted: On<Insert<(Connection, Effort)>>,
-    agents: Query<(&Connection, &Effort)>,
+    inserted: On<Insert<(Connection, ReasoningSetting)>>,
+    agents: Query<(&Connection, &ReasoningSetting)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -239,7 +239,7 @@ pub(crate) fn check_effort(
         return;
     };
     if let Err(refusal) = spec.validate(&spec.default_options(effort.0)) {
-        commands.entity(agent).insert(Effort(None));
+        commands.entity(agent).insert(ReasoningSetting(None));
         notices.write(Notice::info(
             agent,
             format!("Reasoning reset to default: {refusal}."),
@@ -248,8 +248,8 @@ pub(crate) fn check_effort(
 }
 
 /// Sets the agent's reasoning setting after checking it against the model.
-pub(crate) fn on_set_effort(
-    set: On<SetEffort>,
+pub(crate) fn on_set_reasoning(
+    set: On<SetReasoning>,
     agents: Query<(Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,

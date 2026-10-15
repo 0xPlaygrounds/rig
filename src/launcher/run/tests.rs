@@ -50,7 +50,7 @@ fn one_shot(home: &Home) -> (Option<ExitCode>, String, String) {
         print: Some("hi".to_owned()),
         ..Invocation::default()
     };
-    let code = home::hold_run(home)
+    let code = locks::hold_run(home)
         .and_then(|run| {
             let (claimed, _) = claim(home, Start::New, None)?;
             launch(home, run.dir(), &print, true, claimed, None, None)
@@ -98,7 +98,7 @@ printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > 
     fs::remove_dir_all(home.root()).ok();
     assert!(first.command("stats").is_some(), "{first:?}");
     assert_eq!((first.clone(), described.as_str()), (again, "described\n"));
-    assert_eq!(old, Described::default());
+    assert_eq!(old, AgentDescription::default());
     let unknown = first.invocation(&["statz"]).err().unwrap_or_default();
     assert!(
         unknown.ends_with("commands: build, plugin, help, stats"),
@@ -120,7 +120,7 @@ exit 2";
         print: Some("hi".to_owned()),
         ..Invocation::default()
     };
-    let left = home::hold_run(&home).and_then(|run| {
+    let left = locks::hold_run(&home).and_then(|run| {
         let (claimed, _) = claim(&home, Start::New, None)?;
         let session = home.session(&claimed.id);
         let code = launch(&home, run.dir(), &print, true, claimed, None, None)?;
@@ -142,7 +142,7 @@ fn a_refused_run_of_a_saved_session_names_the_log_of_the_run() {
     let root = std::env::temp_dir().join(format!("rig-refused-{}", std::process::id()));
     fs::remove_dir_all(&root).ok();
     let home = Home::at(&root);
-    let named = home::hold_run(&home).and_then(|run| {
+    let named = locks::hold_run(&home).and_then(|run| {
         let (id, session) = home.new_session()?;
         session.mark_saved()?;
         fs::write(session.log(), "earlier runs\n")?;
@@ -162,7 +162,7 @@ fn a_refused_run_of_a_saved_session_names_the_log_of_the_run() {
 #[test]
 fn a_refused_switch_goes_back_to_the_session_it_left() {
     let home = builds("switch-back", "", "");
-    let back = home::hold_run(&home).and_then(|run| {
+    let back = locks::hold_run(&home).and_then(|run| {
         let saved = || -> Result<SessionId> {
             let (id, session) = home.new_session()?;
             session.mark_saved()?;
@@ -214,7 +214,7 @@ exit 75"
 #[test]
 fn each_start_says_why_it_started() {
     let home = builds("reasons", "", "");
-    let starts = home::hold_run(&home).and_then(|run| {
+    let starts = locks::hold_run(&home).and_then(|run| {
         let agent = format!(
             "#!/bin/sh
 echo \"$RIG_START\" >> \"$RIG_HOME/starts\"

@@ -1,11 +1,11 @@
 use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
-use rig_harness::rig_core::streaming::Transcript;
+use rig_harness::rig_core::streaming::StreamRecord;
 
 use super::*;
 
@@ -18,7 +18,7 @@ struct Seen {
 
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
-    app.add_plugins((AgentPlugin, JournalPlugin, ThinkTagSplitterPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ThinkTagSplitterPlugin))
         .init_resource::<Seen>()
         .init_resource::<Ended>()
         .add_observer(log_ended)
@@ -146,7 +146,7 @@ fn think_tags_stream_as_reasoning_and_stay_out_of_the_answer() {
             _ => None,
         })
         .collect();
-    let transcript = serde_json::to_value(items).map(Transcript::parse);
+    let transcript = serde_json::to_value(items).map(StreamRecord::parse);
     assert!(matches!(transcript, Ok(Ok(_))), "{transcript:?}");
     assert_eq!(ends, split_choice(&[whole], false));
 }

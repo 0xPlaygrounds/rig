@@ -361,7 +361,7 @@ fn front_matter(text: &str) -> (Option<String>, Option<String>, String) {
 fn start_items(
     mut inbox: ResMut<Inbox>,
     workspace: Res<ProjectWorkspace>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     titles: Query<(Entity, &AgentTitle), With<Agent>>,
     busy: Query<&ActiveTurn>,
     restored: Query<(), (With<Restored>, Without<InboxTurn>)>,
@@ -372,7 +372,7 @@ fn start_items(
     let Some(dir) = inbox.dir.clone() else {
         return;
     };
-    let main = primary(&agents);
+    let main = main_agent(&agents);
     let mut taken: HashSet<Entity> = sending.iter().map(|&ForAgent(agent)| agent).collect();
     let mut asked: HashSet<String> = creating.iter().map(|it| it.0.clone()).collect();
     let mut started = Vec::new();

@@ -7,7 +7,7 @@ use rig_harness_test_support::{
     Collected, MemoryStore, app_on, calls, collect, reply, run_until, scripted_models, tui_view,
 };
 use rig_subagents::SubagentsPlugin;
-use rig_tui::{Focus, TuiTestScreen};
+use rig_tui::{ShowAgent, TuiTestScreen};
 use serde_json::json;
 
 use super::*;
@@ -65,7 +65,7 @@ fn start(
         .insert_resource(ProjectRoot(dir.to_path_buf()))
         .insert_resource(Settings::from_toml(settings))
         .insert_resource(TuiTestScreen::new(140, 30))
-        .add_plugins((AgentPlugin, JournalPlugin, EditTool, SubagentsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, EditTool, SubagentsPlugin))
         .add_plugins(ChurnMonitorPlugin);
     collect::<Notice>(&mut app);
     tui_view(&mut app);
@@ -78,7 +78,7 @@ fn start(
         model: MAIN_MODEL.to_owned(),
     });
     // The terminal view shows the main agent, as a front does.
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
     (app, wakes, agent)
 }
 

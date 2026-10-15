@@ -22,8 +22,8 @@ use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_ecs::effects::{Effects, Handler};
-use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+use rig_ecs::session_log::SessionStore;
 use rig_memory::MemoryStore;
 use serde::Deserialize;
 
@@ -80,7 +80,7 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
             sender.send(()).ok();
         }))
         .insert_resource(SessionStore::new(store.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .init_resource::<Settles>()
         .add_systems(
@@ -239,11 +239,14 @@ fn a_turn_ends_answered_after_one_tool_round() {
     // model, as a restore does, the budget is reset.
     let world = app.world_mut();
     let choice = world.get::<Connection>(agent).map(|c| c.spec.reference());
-    let budget = Effort(Some(Reasoning::Budget { tokens: 1000 }));
+    let budget = ReasoningSetting(Some(Reasoning::Budget { tokens: 1000 }));
     let choice = ModelChoice(choice.unwrap_or_default());
     world.entity_mut(agent).insert(budget).insert(choice);
     world.flush();
-    assert_eq!(world.get::<Effort>(agent), Some(&Effort(None)));
+    assert_eq!(
+        world.get::<ReasoningSetting>(agent),
+        Some(&ReasoningSetting(None))
+    );
 }
 
 #[test]
@@ -361,7 +364,7 @@ fn an_interrupt_during_a_backoff_cancels_the_retry() {
     let Some((mut app, _wakes, agent, model)) = started else {
         return;
     };
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     advance(&mut app, Duration::from_secs(5));
     assert!(
         matches!(
@@ -531,7 +534,7 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     };
     // Taken over: nothing is sent.
     let take_over =
-        |mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>| {
+        |mut typed: Query<(&Incoming, &mut Decision), (ReadyToStart, IncomingMessages)>| {
             for (typed, mut decision) in &mut typed {
                 if typed.author.kind == AuthorKind::User && typed.text().starts_with('!') {
                     decision.decide(Decider::plugin("test"), Outcome::custom("shell"));
@@ -544,7 +547,7 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     );
     let agent = app.world_mut().spawn(Agent).id();
     app.update();
-    let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Note);
+    let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Inform);
     // The kernel has no slash commands: a `/` line is text to it.
     for typed in [note("hi"), note("!ls"), note("/echo typed")] {
         app.world_mut().trigger(typed);
@@ -584,7 +587,7 @@ fn a_prepare_edit_of_a_request_is_attributed_and_never_saved() {
             }
         }
     };
-    let read = |calls: Query<&ModelRequest, (Undecided, ModelCalls)>,
+    let read = |calls: Query<&ModelRequest, (ReadyToStart, ModelCalls)>,
                 mut seen: ResMut<Attributed>| {
         for call in &calls {
             let changes = call.history.iter().flat_map(|history| history.unsaved());

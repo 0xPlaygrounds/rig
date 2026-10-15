@@ -16,10 +16,10 @@ use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Message, ToolDefinition};
-use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::message::{ToolFunction, ToolName, ToolResultContent};
-use rig_harness::rig_core::serve::{Decision, Intercept, Verdict};
+use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
@@ -107,9 +107,9 @@ impl Intercept for WriteAsText {
         NAME.to_owned()
     }
 
-    async fn before(&self, _id: EffectId, kind: &EffectKind) -> Decision {
+    async fn before(&self, _id: EffectId, kind: &EffectKind) -> BeforeServe {
         let EffectKind::Completion { request, stream } = kind else {
-            return Decision::Proceed;
+            return BeforeServe::Proceed;
         };
         let mut request = request.clone();
         let tools = std::mem::take(&mut request.tools);
@@ -123,7 +123,7 @@ impl Intercept for WriteAsText {
             content.push_str("\n\n");
             content.push_str(&guide(&tools));
         }
-        Decision::Patch(EffectKind::Completion {
+        BeforeServe::Patch(EffectKind::Completion {
             request,
             stream: *stream,
         })
@@ -134,8 +134,8 @@ impl Intercept for WriteAsText {
         _id: EffectId,
         _kind: &EffectKind,
         _outcome: &Result<Answered, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
+    ) -> AfterServe {
+        AfterServe::Keep
     }
 }
 

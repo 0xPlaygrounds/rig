@@ -18,7 +18,7 @@ fn start(home: &Home, id: &SessionId) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_in(home, id);
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         EffectLogPlugin,
         ReadTool,
         EffectQueryPlugin,

@@ -148,7 +148,7 @@ fn written<'a>(
 fn lease(
     calls: Query<
         (Entity, &Effect, &ToolRequest, &Footprint, &Decision),
-        (Undecided, ToolCalls, Without<LeaseCall>),
+        (ReadyToStart, ToolCalls, Without<LeaseCall>),
     >,
     settings: Res<FileLease>,
     who: Who,
@@ -263,7 +263,7 @@ fn settled(
         for &(owner, _) in owners.iter().filter(|(owner, _)| *owner != agent) {
             let file = who.shown(owner, path);
             let note = format!("agent {name} changed {file}{counts} while you were working on it");
-            let note = Deliver::new(owner, note, DeliveryMode::Note);
+            let note = Deliver::new(owner, note, DeliveryMode::Inform);
             commands.trigger(note.with_author(Author::plugin("file-lease")));
         }
         if !owners.iter().any(|&(owner, _)| owner == agent) {

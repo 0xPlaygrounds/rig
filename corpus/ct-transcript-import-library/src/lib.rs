@@ -97,7 +97,7 @@ pub enum ImportError {
         /// The session's directory.
         path: PathBuf,
         /// What failed.
-        failure: rig_memory::LoadError,
+        failure: rig_memory::SessionError,
     },
 }
 
@@ -467,7 +467,7 @@ pub fn write(imported: &Imported, target: &Target) -> Result<(), ImportError> {
     };
     if let Some(model) = target.model {
         agent
-            .state
+            .saved
             .insert(MODEL.to_owned(), serde_json::Value::from(model).into());
     }
     let mut session = Session {
@@ -475,7 +475,7 @@ pub fn write(imported: &Imported, target: &Target) -> Result<(), ImportError> {
         ..Session::default()
     };
     session.save(&store).map_err(store_failed)?;
-    let now = rig_memory::now_ms();
+    let now = rig_core::now_ms();
     let title = imported
         .first_user_line
         .as_deref()

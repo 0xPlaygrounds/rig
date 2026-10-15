@@ -4,7 +4,7 @@ use std::sync::mpsc::Receiver;
 use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::sessions::SessionPickerPlugin;
 use rig_harness_test_support::{app_in, connect, first_agent, reply, run_until, scratch_home};
 use rig_tui::{Editor, MainEditor};
@@ -40,7 +40,7 @@ fn start_with(home: &Home, id: &SessionId, more: impl FnOnce(&mut App)) -> (App,
     app.world_mut().spawn((Editor::default(), MainEditor));
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         ForkSessionPlugin,
         SessionPickerPlugin,
     ))
@@ -132,7 +132,7 @@ fn branch_before_two(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &
 
 /// The session `session` of `home` was forked from, as its store says.
 fn parent_of(home: &Home, session: &SessionId) -> Option<ForkedFrom> {
-    let store = SessionStores::default().open(&home.session(session)).ok()?;
+    let store = StoreOpener::default().open(&home.session(session)).ok()?;
     ForkedFrom::read(&*store)
 }
 

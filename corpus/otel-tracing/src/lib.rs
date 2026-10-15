@@ -36,7 +36,7 @@ use opentelemetry_sdk::trace::{SdkTracer, SdkTracerProvider, SpanData, SpanExpor
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionResponse;
 use rig_harness::rig_core::effect::EffectId;
-use rig_harness::rig_ecs::StopTurns;
+use rig_harness::rig_ecs::StopTurnsOnExit;
 use serde::Deserialize;
 
 /// The collector's base URL, as OpenTelemetry names it.
@@ -224,7 +224,9 @@ impl Plugin for OtelTracingPlugin {
             .add_observer(end_tool_call)
             .add_systems(
                 Last,
-                flush_on_exit.after(StopTurns).run_if(on_message::<AppExit>),
+                flush_on_exit
+                    .after(StopTurnsOnExit)
+                    .run_if(on_message::<AppExit>),
             )
             .add_command(
                 "telemetry",
@@ -343,11 +345,10 @@ fn end_turn(
         return;
     };
     let span = context.span();
-    let asked = conversations.get(agent).ok().and_then(|conversation| {
-        conversation
-            .request(turn.first_message)
-            .map(|entry| entry.message)
-    });
+    let asked = conversations
+        .get(agent)
+        .ok()
+        .and_then(|conversation| conversation.request(turn.start).map(|entry| entry.message));
     if let Some(message::Message::User { content }) = asked {
         let len: usize = content
             .iter()
@@ -379,7 +380,7 @@ type Calls<'w, 's> = Query<
     Or<(
         With<ModelRequest>,
         With<TurnCall>,
-        With<BuildFrom>,
+        With<SideCall>,
         With<ToolRequest>,
     )>,
 >;
@@ -470,7 +471,7 @@ fn end_model_call(
         &ModelRequest,
         &Outcome,
         &ForAgent,
-        Option<(&Started, &Streamed)>,
+        Option<(&Started, &StreamTiming)>,
         Option<&RetryVerdict>,
         Has<SupersededBy>,
     )>,

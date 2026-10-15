@@ -1,12 +1,10 @@
 //! The transcript's wrapped rows, kept per message. A frame re-renders and
 //! re-wraps only the messages that changed (a message's look also depends
-//! on its neighbours: a tool call is drawn with the result the next message
-//! carries, and on the notices written inside it, and on what is expanded),
+//! on the next message's results, its notices and what is expanded),
 //! re-wraps without re-rendering when the width changed, and copies out
 //! only the rows on screen. Each message keeps where its items are (the
 //! message, its calls), so the view can scroll to one, select it and say
-//! which is at the top. Before, every frame and every streamed delta
-//! re-wrapped the whole history.
+//! which is at the top.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -31,7 +29,7 @@ use super::renderers::{
     result_text,
 };
 use super::view::{
-    Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, ShownNotice, TextMark,
+    DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, RowWrap, ShownNotice, TextMark,
     TranscriptItem,
 };
 use super::wrap::wrap;
@@ -277,7 +275,7 @@ impl Settled {
         let child = match &record.kind {
             EffectKind::Completion { .. } => {
                 let reply = match outcome {
-                    Ok(effect::Outcome::Completion(reply)) => Some(reply),
+                    Ok(effect::Answered::Completion(reply)) => Some(reply),
                     _ => None,
                 };
                 let calls = reply.into_iter().flat_map(|reply| &reply.choice);
@@ -310,7 +308,7 @@ impl Settled {
                     let took =
                         took.map(|(end, start)| Duration::from_millis(end.saturating_sub(start)));
                     self.facts
-                        .insert(call.id.clone(), (record.tool_output.clone(), took));
+                        .insert(call.id.clone(), (record.published.clone(), took));
                 }
                 let (failed, line) = answer(Some(outcome), true);
                 Some(ChildCall {
@@ -465,7 +463,7 @@ impl CallTree {
 /// (`tool`), else a model's reply, or why it failed; neither before it
 /// has one.
 pub(crate) fn answer(
-    outcome: Option<&Result<effect::Outcome, ErrorReport>>,
+    outcome: Option<&Result<effect::Answered, ErrorReport>>,
     tool: bool,
 ) -> (bool, Option<String>) {
     let (failed, line) = match (outcome, tool) {
@@ -476,7 +474,7 @@ pub(crate) fn answer(
             (failed, Some(result.output().render()))
         }
         (Some(Err(report)), false) => (true, Some(report.message.clone())),
-        (Some(Ok(effect::Outcome::Completion(reply))), false) => (false, Some(reply.text())),
+        (Some(Ok(effect::Answered::Completion(reply))), false) => (false, Some(reply.text())),
         (Some(Ok(_)), false) => (false, None),
     };
     (
@@ -578,35 +576,29 @@ pub(crate) fn note_agent_name(
     }
 }
 
-/// The tool calls a model call is streaming, by the model call, in the
-/// order they opened: each as far as its arguments came, or finished.
-#[derive(Resource, Default)]
-pub(crate) struct StreamingCalls(HashMap<Entity, Vec<(rig_core::streaming::Part, ToolCall)>>);
-
-/// The JSON of a streaming call's arguments so far, by model call and part.
-#[derive(Default)]
-pub(crate) struct Fragments(HashMap<(Entity, rig_core::streaming::Part), String>);
+/// The tool calls a model call streams while its reply does ([`Partial`]
+/// requires it), in the order they opened: each as far as its arguments
+/// came, with their JSON so far, or finished.
+#[derive(Component, Default)]
+pub(crate) struct StreamingCalls(Vec<(rig_core::streaming::Part, ToolCall, String)>);
 
 impl StreamingCalls {
-    /// The calls `effect` streams.
-    pub(crate) fn of(&self, effect: Entity) -> &[(rig_core::streaming::Part, ToolCall)] {
-        self.0.get(&effect).map_or(&[], Vec::as_slice)
+    /// The calls, in the order they opened.
+    pub(crate) fn calls(&self) -> impl Iterator<Item = &ToolCall> {
+        self.0.iter().map(|(_, call, _)| call)
     }
 }
 
 /// Follows the tool calls models stream: a call opens with its tool's
-/// name, its arguments grow, and it ends with the finished call. A model
-/// call's go once it is in the conversation, its [`Partial`] gone.
+/// name, its arguments grow, and it ends with the finished call.
 pub(crate) fn follow_streams(
     mut deltas: MessageReader<StreamDelta>,
-    live: Query<(), With<Partial>>,
-    mut streaming: ResMut<StreamingCalls>,
-    mut fragments: Local<Fragments>,
+    mut streams: Query<&mut StreamingCalls, With<Partial>>,
 ) {
-    let calls = streaming.bypass_change_detection();
-    let mut changed = false;
     for delta in deltas.read() {
-        let effect = delta.effect;
+        let Ok(mut calls) = streams.get_mut(delta.effect) else {
+            continue;
+        };
         match &delta.event {
             StreamEvent::Start {
                 part,
@@ -615,13 +607,11 @@ pub(crate) fn follow_streams(
             } => {
                 let id = CallId::from_wire(format!("streaming-{}", part.index()));
                 let call = ToolCall::new(id, ToolFunction::new(name.clone(), Default::default()));
-                calls.0.entry(effect).or_default().push((*part, call));
+                calls.0.push((*part, call, String::new()));
             }
             StreamEvent::Arguments { part, json } => {
-                let text = fragments.0.entry((effect, *part)).or_default();
-                text.push_str(json);
-                let found = calls.0.get_mut(&effect).into_iter().flatten();
-                if let Some((_, call)) = found.into_iter().find(|(at, _)| at == part) {
+                if let Some((_, call, text)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
+                    text.push_str(json);
                     call.function.arguments = parse_partial_arguments(text);
                 }
             }
@@ -629,20 +619,20 @@ pub(crate) fn follow_streams(
                 part,
                 content: AssistantContent::ToolCall(done),
             } => {
-                let found = calls.0.get_mut(&effect).into_iter().flatten();
-                if let Some((_, call)) = found.into_iter().find(|(at, _)| at == part) {
+                if let Some((_, call, _)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
                     *call = done.clone();
                 }
             }
-            _ => continue,
+            _ => {}
         }
-        changed = true;
     }
-    let before = calls.0.len();
-    calls.0.retain(|effect, _| live.contains(*effect));
-    fragments.0.retain(|(effect, _), _| live.contains(*effect));
-    if changed || calls.0.len() != before {
-        streaming.set_changed();
+}
+
+/// Forgets a model call's streaming calls once its reply is in the
+/// conversation, its [`Partial`] gone.
+pub(crate) fn forget_streams(gone: On<Remove<Partial>>, mut streams: Query<&mut StreamingCalls>) {
+    if let Ok(mut calls) = streams.get_mut(gone.entity) {
+        calls.0.clear();
     }
 }
 
@@ -682,7 +672,7 @@ pub(crate) enum Inside<'a> {
     Aside(&'a ShownAside<'a>),
 }
 
-/// An aside a look draws in the conversation of the agent shown: a
+/// An aside a look draws in the conversation of the shown agent: a
 /// plugin's note, or one of a kind with an aside renderer.
 pub(crate) struct ShownAside<'a> {
     /// Its id.
@@ -785,15 +775,11 @@ impl Look<'_> {
         }
     }
 
-    /// Hashes what message `index` (with `id`) looks like besides its
+    /// A hash of what message `index` (with `id`) looks like besides its
     /// messages: its notices, whether it is expanded, and its calls' states,
     /// output so far, expansion and running times.
-    fn hash_message(
-        &self,
-        (index, id): (usize, Option<MessageId>),
-        message: &Message,
-        hasher: &mut DefaultHasher,
-    ) {
+    fn hash_message(&self, (index, id): (usize, Option<MessageId>), message: &Message) -> u64 {
+        let hasher = &mut DefaultHasher::new();
         self.hash_inside(index, hasher);
         (self.whole, self.note_cut).hash(hasher);
         id.map(|id| self.is_expanded(&TranscriptItem::Message(id)))
@@ -814,6 +800,7 @@ impl Look<'_> {
                 }
             }
         }
+        hasher.finish()
     }
 
     /// A hash of all of it but the renderers, whose changes
@@ -872,7 +859,10 @@ fn level_code(level: NoticeLevel) -> u8 {
 /// One message's look: its lines and where its items are in them, those
 /// lines wrapped to the width, and the items drawn cut, when noted.
 struct Cached {
-    fingerprint: u64,
+    /// The message as it was laid out.
+    message: Message,
+    /// [`Look::hash_message`] of it then.
+    look: u64,
     lines: Vec<Line<'static>>,
     line_marks: Marks,
     wrapped: Wrapped,
@@ -884,7 +874,7 @@ struct Cached {
 #[derive(Default)]
 pub(crate) struct Wrapped {
     rows: Vec<Line<'static>>,
-    continues: Vec<Option<Continuation>>,
+    continues: Vec<Option<RowWrap>>,
     marks: Marks,
 }
 
@@ -966,16 +956,25 @@ impl Transcript {
         if !changed && looks_alike && self.messages.len() == messages.len() {
             return;
         }
+        // A message's look depends on it and its neighbours, so each is
+        // compared once with the one laid out last time, before any is
+        // replaced; a message past either end matches only another.
+        let same: Vec<bool> = (0..=messages.len())
+            .map(|at| match (self.messages.get(at), messages.get(at)) {
+                (Some(cached), Some(message)) => cached.message == *message,
+                (cached, message) => cached.is_none() && message.is_none(),
+            })
+            .collect();
         self.messages.truncate(messages.len());
         for (index, message) in messages.iter().enumerate() {
             let previous = index.checked_sub(1).and_then(|before| messages.get(before));
             let next = messages.get(index + 1);
-            let id = conversation.id(index);
-            let fingerprint = fingerprint([previous, Some(message), next], look, (index, id));
+            let look_hash = look.hash_message((index, conversation.id(index)), message);
             if self
                 .messages
                 .get(index)
-                .is_some_and(|cached| cached.fingerprint == fingerprint)
+                .is_some_and(|cached| cached.look == look_hash)
+                && (index.saturating_sub(1)..=index + 1).all(|at| same.get(at) == Some(&true))
             {
                 continue;
             }
@@ -983,7 +982,8 @@ impl Transcript {
                 message_lines(message, (conversation, index), previous, next, look);
             let wrapped = wrap_marked(&lines, &line_marks, usable);
             let cached = Cached {
-                fingerprint,
+                message: message.clone(),
+                look: look_hash,
                 lines,
                 line_marks,
                 wrapped,
@@ -1202,7 +1202,7 @@ impl Transcript {
     fn joined<'a>(
         &'a self,
         parts: &'a [Part],
-    ) -> impl Iterator<Item = (&'a Line<'static>, Option<&'a Continuation>)> + 'a {
+    ) -> impl Iterator<Item = (&'a Line<'static>, Option<&'a RowWrap>)> + 'a {
         let wrapped = parts.iter().filter_map(|part| self.wrapped(part));
         let rows = wrapped.flat_map(|wrapped| wrapped.rows.iter().zip(&wrapped.continues));
         rows.map(|(row, continues)| (row, continues.as_ref()))
@@ -1399,29 +1399,6 @@ impl Scroll {
     }
 }
 
-/// A hash of what message `index`'s look depends on: it and its
-/// neighbours, and `look`'s part for it.
-fn fingerprint(
-    messages: [Option<&Message>; 3],
-    look: &Look<'_>,
-    at: (usize, Option<MessageId>),
-) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    if let [_, Some(message), _] = messages {
-        look.hash_message(at, message, &mut hasher);
-    }
-    for message in messages {
-        match message {
-            Some(message) => {
-                hasher.write_u8(1);
-                hasher.write(&serde_json::to_vec(message).unwrap_or_default());
-            }
-            None => hasher.write_u8(0),
-        }
-    }
-    hasher.finish()
-}
-
 /// The tool results a message carries.
 fn tool_results(message: Option<&Message>) -> impl Iterator<Item = &ToolResult> {
     let content = match message {
@@ -1467,7 +1444,7 @@ fn message_lines(
     let stopped = conversation
         .entries()
         .nth(at)
-        .is_some_and(|entry| entry.is_stopped_note());
+        .is_some_and(|entry| entry.is_stop_marker());
     let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
     let inside = look.inside(at);
     let inside_before = |item: usize,

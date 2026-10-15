@@ -10,10 +10,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
-use rig_core::conversation::MessageId;
+use rig_core::completion::Message;
+use rig_core::conversation::{EntryRef, MessageId};
+use rig_core::message::{AssistantContent, UserContent};
 use serde::{Deserialize, Serialize};
 
-use crate::{Files, Session, Versioned, main_order, now_ms};
+use crate::{Files, Session, Versioned, main_order};
+use rig_core::now_ms;
 
 /// The file of a session's store that holds its [`SessionMeta`].
 pub const META: &str = "meta.json";
@@ -46,14 +49,12 @@ pub struct SessionMeta {
     /// Plugins' listed values by key, each copied here whenever it changes,
     /// so a listing shows and filters by them without opening a log; kept
     /// small.
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub data: BTreeMap<String, Versioned>,
+    #[serde(rename = "data", skip_serializing_if = "BTreeMap::is_empty")]
+    pub listed: BTreeMap<String, Versioned>,
 }
 
 impl SessionMeta {
-    /// The listing kept in `files`, if it has one that reads. Generic, so
-    /// it is passed as it is where a store is any `Files`, such as
-    /// `store.as_deref().and_then(SessionMeta::read)`.
+    /// The listing kept in `files`, if it has one that reads.
     pub fn read(files: &(impl Files + ?Sized)) -> Option<Self> {
         serde_json::from_slice(&files.read_file(META).ok()?).ok()
     }
@@ -67,12 +68,12 @@ impl SessionMeta {
         files.write_file(META, &serde_json::to_vec_pretty(self)?)
     }
 
-    /// Brings it up to `session`, as a running rig keeps it, for a writer
-    /// of a session no rig runs: the main agent's model and how many
-    /// messages its line holds, and each listed value (of a key in `listed`, or one it lists
-    /// already) as the session's own, else the first agent's in
-    /// [`main_order`] that has one, a value no longer there unlisted;
-    /// `updated` is now. Its title and labels are left.
+    /// Updates this listing from `session`, for a program that writes a
+    /// session no rig is running: the main agent's model and message count,
+    /// `updated` set to now, and each listed value (keys in `listed`, plus
+    /// those already listed), taken from the session's own values, else from
+    /// the first agent by [`main_order`] that has one. A value that is gone
+    /// is unlisted. The title and labels stay.
     pub fn relist(&mut self, session: &Session, listed: &BTreeSet<String>) {
         let mut agents: Vec<_> = session.agents.iter().filter(|a| !a.retired).collect();
         agents.sort_by(|a, b| {
@@ -81,13 +82,13 @@ impl SessionMeta {
         let main = agents.first();
         self.messages = main.map_or(0, |main| main.conversation.messages().len());
         self.model = main.and_then(|main| main.model()).unwrap_or_default();
-        let keys: BTreeSet<String> = listed.iter().chain(self.data.keys()).cloned().collect();
-        self.data = keys
+        let keys: BTreeSet<String> = listed.iter().chain(self.listed.keys()).cloned().collect();
+        self.listed = keys
             .into_iter()
             .filter_map(|key| {
-                let mut holders = agents.iter().map(|agent| &agent.state);
+                let mut holders = agents.iter().map(|agent| &agent.saved);
                 let value = session
-                    .state
+                    .saved
                     .get(&key)
                     .or_else(|| holders.find_map(|state| state.get(&key)))?;
                 Some((key, value.clone()))
@@ -125,7 +126,6 @@ pub struct ForkedFrom {
 
 impl ForkedFrom {
     /// The session the session in `files` was forked from, if it was.
-    /// Generic, as [`SessionMeta::read`] is.
     pub fn read(files: &(impl Files + ?Sized)) -> Option<Self> {
         serde_json::from_slice(&files.read_file(PARENT).ok()?).ok()
     }
@@ -159,6 +159,43 @@ pub fn title_of(text: &str) -> String {
             kept.chain(['…']).collect()
         }
     }
+}
+
+/// One line of `entry`: who wrote it, then the start of its text, or the
+/// tools it called.
+pub fn excerpt(entry: &EntryRef<'_>) -> String {
+    let (who, text) = match entry.message {
+        Message::System { content } => ("system", content.clone()),
+        Message::User { content } => {
+            let text: Vec<&str> = content
+                .iter()
+                .filter_map(|part| match part {
+                    UserContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            match text.is_empty() {
+                true => ("tool results", String::new()),
+                false => ("user", text.join(" ")),
+            }
+        }
+        Message::Assistant(turn) => {
+            let text = turn.text();
+            let calls: Vec<&str> = turn
+                .content
+                .iter()
+                .filter_map(|part| match part {
+                    AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            match (text.trim().is_empty(), calls.is_empty()) {
+                (true, false) => ("calls", calls.join(", ")),
+                _ => ("assistant", text),
+            }
+        }
+    };
+    format!("{who}: {}", title_of(&text)).trim_end().to_owned()
 }
 
 #[cfg(test)]

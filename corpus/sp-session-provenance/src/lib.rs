@@ -13,8 +13,8 @@ use std::path::Path;
 
 use rig_harness::harness_protocol::VERSION;
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::WriteJournal;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::WriteLogs;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use serde::{Deserialize, Serialize};
 
 /// The key the record is kept under.
@@ -39,7 +39,7 @@ impl Plugin for SessionProvenancePlugin {
             Last,
             (record_setup, track_models)
                 .chain()
-                .before(WriteJournal)
+                .before(WriteLogs)
                 .run_if(resource_exists::<SessionRestored>),
         );
     }
@@ -282,7 +282,7 @@ type SetupInputs<'w, 's> = (
 fn read_setup((plugins, models, root, workspace, processes): &SetupInputs) -> Setup {
     let mut by_crate: BTreeMap<String, PluginVersion> = BTreeMap::new();
     for (name, source) in plugins {
-        let entry = by_crate.entry(source.krate.clone()).or_default();
+        let entry = by_crate.entry(source.package.clone()).or_default();
         entry.version = version_of(&source.source);
         let short = name.as_str().rsplit("::").next().unwrap_or(name.as_str());
         entry.plugins.push(short.to_owned());
@@ -362,7 +362,7 @@ fn git_state(
 fn record_setup(
     ready: Option<Res<Ready>>,
     inputs: SetupInputs,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     records: Query<&Provenance>,
     (start, store): (Option<Res<AppStart>>, Option<Res<SessionStore>>),
     mut commands: Commands,
@@ -370,7 +370,7 @@ fn record_setup(
     if ready.is_some() {
         return;
     }
-    let Some(main) = primary(&agents) else {
+    let Some(main) = main_agent(&agents) else {
         return;
     };
     let now = read_setup(&inputs);
@@ -434,13 +434,13 @@ fn record_setup(
 fn track_models(
     ready: Option<Res<Ready>>,
     changed: Query<(&AgentId, &Connection), (With<Agent>, Without<SpawnedBy>, Changed<Connection>)>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut records: Query<&mut Provenance>,
 ) {
     if ready.is_none() || changed.is_empty() {
         return;
     }
-    let Some(mut record) = primary(&agents).and_then(|main| records.get_mut(main).ok()) else {
+    let Some(mut record) = main_agent(&agents).and_then(|main| records.get_mut(main).ok()) else {
         return;
     };
     for (id, connection) in &changed {
@@ -473,7 +473,7 @@ fn head_at_turn_start(
         Option<Res<ProjectWorkspace>>,
         Option<Res<Processes>>,
     ),
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut records: Query<&mut Provenance>,
 ) {
     let of_user = turns
@@ -482,7 +482,7 @@ fn head_at_turn_start(
     if ready.is_none() || !of_user {
         return;
     }
-    let Some(mut record) = primary(&agents).and_then(|main| records.get_mut(main).ok()) else {
+    let Some(mut record) = main_agent(&agents).and_then(|main| records.get_mut(main).ok()) else {
         return;
     };
     let dir = root
@@ -507,11 +507,11 @@ fn head_at_turn_start(
 /// `/session-info`: the start record and the changes since, oldest first.
 fn session_info(
     In(args): In<CommandArgs>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     records: Query<&Provenance>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let record = primary(&agents).and_then(|main| records.get(main).ok());
+    let record = main_agent(&agents).and_then(|main| records.get(main).ok());
     notices.write(Notice::info(args.agent, describe(record)));
 }
 

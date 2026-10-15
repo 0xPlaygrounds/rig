@@ -9,7 +9,7 @@ use rig_harness_test_support::{
     Ended, answer_open, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home,
     scripted_models,
 };
-use rig_telemetry::{SessionSpending, UsagePlugin};
+use rig_telemetry::{SessionUsage, UsagePlugin};
 
 use super::*;
 
@@ -40,7 +40,7 @@ struct Slow(bool);
 struct SlowHold;
 
 fn hold_classifier(
-    calls: Query<Entity, (With<Classifying>, Undecided, ModelCalls)>,
+    calls: Query<Entity, (With<Classifying>, ReadyToStart, ModelCalls)>,
     slow: Res<Slow>,
     mut held: Local<HashSet<Entity>>,
     mut commands: Commands,
@@ -141,7 +141,7 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
         .insert_resource(ProjectRoot(project.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ProjectContextPlugin,
             UsagePlugin,
         ))
@@ -262,7 +262,7 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
     assert_eq!(waiting(app.world_mut()).len(), 1);
 
     // The classifier's cost is the session's.
-    let spent = app.world().resource::<SessionSpending>();
+    let spent = app.world().resource::<SessionUsage>();
     assert!(
         spent.0.purposes.contains_key(NAME),
         "{:?}",

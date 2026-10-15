@@ -7,7 +7,7 @@ use crate::Highlight;
 /// The screen after drawing `shown` as `choosing` says, 120 columns by
 /// 20 rows, a line per row.
 fn drawn_choice(
-    choosing: &mut super::super::pick::PickerState,
+    choosing: &mut super::super::pick::PickerInput,
     shown: &super::super::pick::Listing<'_>,
 ) -> String {
     use ratatui::Terminal;
@@ -29,7 +29,7 @@ fn drawn_choice(
 
 #[test]
 fn a_question_shows_its_body_choices_and_typed_answer() {
-    use super::super::pick::{Item, Listing, PickerState, Row};
+    use super::super::pick::{Item, Listing, PickerInput, Row};
 
     let mut shown = Listing {
         title: "Allow `rm -rf build`?",
@@ -50,7 +50,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         edit: None,
         keys: &[],
     };
-    let mut choosing = PickerState {
+    let mut choosing = PickerInput {
         filter: "allow".to_owned(),
         selected: 0,
         ticked: Vec::new(),
@@ -129,6 +129,34 @@ fn a_panel_below_the_input_takes_the_rows_under_the_input_box() {
     assert_eq!(area(Ok(tall)).filter(|area| !area.is_empty()), None);
     assert_eq!(input, Some(Rect::new(0, 20, 80, 3)), "{frame:?}");
     assert_eq!(status, Some(Rect::new(0, 19, 80, 1)));
+}
+
+#[test]
+fn panels_are_laid_out_in_the_order_spawned_whatever_their_entity_index() {
+    use bevy_ecs::prelude::*;
+    use ratatui::layout::Constraint;
+
+    use crate::tests::view_app;
+    use crate::{Placement, TuiFrame, TuiPanel, TuiTestScreen};
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let world = app.world_mut();
+    let gone: Vec<Entity> = (0..200).map(|_| world.spawn_empty().id()).collect();
+    let left = || TuiPanel::new(Placement::Left(Constraint::Length(10)));
+    let older = world.spawn(left()).id();
+    app.update();
+    // Bevy hands out the indices of despawned entities again, in batches.
+    let world = app.world_mut();
+    gone.into_iter().for_each(|entity| {
+        world.despawn(entity);
+    });
+    let newer = world.spawn(left()).id();
+    assert!(newer.index() < older.index());
+    app.update();
+    let frame = app.world().resource::<TuiFrame>();
+    let x = |panel| frame.area(panel).map(|area| area.x);
+    assert_eq!((x(older), x(newer)), (Some(0), Some(10)), "{frame:?}");
 }
 
 #[test]
@@ -226,7 +254,7 @@ fn a_test_screen_shows_the_frame_and_where_each_part_and_item_went() {
 #[test]
 fn a_repaint_writes_its_cells_again_on_the_next_frame() {
     use crate::tests::view_app;
-    use crate::{Repaint, TuiTestScreen};
+    use crate::{RedrawArea, TuiTestScreen};
     use ratatui::layout::Rect;
 
     let (mut app, _) = view_app();
@@ -240,9 +268,9 @@ fn a_repaint_writes_its_cells_again_on_the_next_frame() {
             .is_empty()
     );
     app.world_mut()
-        .write_message(Repaint(Rect::new(10, 3, 30, 2)));
+        .write_message(RedrawArea(Rect::new(10, 3, 30, 2)));
     app.world_mut()
-        .write_message(Repaint(Rect::new(50, 19, 30, 4)));
+        .write_message(RedrawArea(Rect::new(50, 19, 30, 4)));
     app.update();
     assert_eq!(
         app.world().resource::<TuiTestScreen>().repainted(),

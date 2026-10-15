@@ -10,7 +10,7 @@ use rig_core::error::ErrorKind;
 use rig_core::message::{Origin as Made, Reasoning, ToolName};
 use rig_core::providers::registry::ConnectError;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, first_agent, log_ended, run_until, scratch_home,
 };
@@ -201,7 +201,7 @@ fn start(home: &Home, id: &SessionId, server: &Server, style: &str) -> (App, Rec
         .insert_resource(StatefulVendors(vendor.into_iter().collect()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SubagentsPlugin,
             ServerSideStatePlugin,
         ))
@@ -290,7 +290,7 @@ fn forked(home: &Home) -> Option<SessionId> {
         .flatten()
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<SessionId>().ok())
         .find(|session| {
-            SessionStores::default()
+            StoreOpener::default()
                 .open(&home.session(session))
                 .is_ok_and(|store| ForkedFrom::read(&*store).is_some())
         })
@@ -450,7 +450,7 @@ fn sends_only_the_new_part_while_the_server_holds_the_rest() {
     let before = agent_id.zip(fork_at);
     assert!(before.is_some(), "a message to fork before");
     let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         ..ForkSession::default()
     });

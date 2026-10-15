@@ -1,4 +1,7 @@
-use super::{CommandInfo, Described, FlagInfo, Home, Invocation, SecretInfo, secret_variable};
+use super::{
+    AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, Home, Invocation,
+    secret_variable,
+};
 
 #[test]
 fn plugin_options_pass_through_and_read_back() {
@@ -56,17 +59,17 @@ fn malformed_options_are_refused_and_a_command_takes_the_words_after_it() {
 
 /// A build with the commands `stats` and `import`, the options `--remote
 /// HOST:PATH` and `--yes`, and the secret `crypt`.
-fn described() -> Described {
-    Described {
+fn described() -> AgentDescription {
+    AgentDescription {
         commands: vec![
-            CommandInfo {
+            DescribedCommand {
                 name: "stats".to_owned(),
                 usage: String::new(),
                 terminal: false,
                 sessionless: true,
                 help: "Count the saved sessions".to_owned(),
             },
-            CommandInfo {
+            DescribedCommand {
                 name: "import".to_owned(),
                 usage: "<tool> [path]".to_owned(),
                 terminal: true,
@@ -75,18 +78,18 @@ fn described() -> Described {
             },
         ],
         flags: vec![
-            FlagInfo {
+            DescribedFlag {
                 name: "remote".to_owned(),
                 value: Some("HOST:PATH".to_owned()),
                 help: "Work over SSH".to_owned(),
             },
-            FlagInfo {
+            DescribedFlag {
                 name: "yes".to_owned(),
                 value: None,
                 help: "Publish without asking".to_owned(),
             },
         ],
-        secrets: vec![SecretInfo {
+        secrets: vec![DescribedSecret {
             name: "crypt".to_owned(),
             help: "Passphrase".to_owned(),
         }],
@@ -96,15 +99,21 @@ fn described() -> Described {
 #[test]
 fn a_report_reads_back_and_one_without_its_header_is_empty() {
     let mut report = described();
-    let read = Described::parse(&report.write());
+    let read = AgentDescription::parse(&report.write());
     // A tab or line break in a field becomes a space.
     if let Some(import) = report.commands.last_mut() {
         import.help = "Import a session".to_owned();
     }
     assert_eq!(read, report);
     let headless = report.write().replacen("rig-describe 1", "", 1);
-    assert_eq!(Described::parse(&headless), Described::default());
-    assert_eq!(Described::parse("Usage: rig-agent"), Described::default());
+    assert_eq!(
+        AgentDescription::parse(&headless),
+        AgentDescription::default()
+    );
+    assert_eq!(
+        AgentDescription::parse("Usage: rig-agent"),
+        AgentDescription::default()
+    );
     assert_eq!(secret_variable("my-crypt"), "RIG_SECRET_MY_CRYPT");
 }
 
@@ -217,7 +226,7 @@ fn help_lists_the_secrets_a_build_asks_for_by_their_variable() {
         secret.is_some_and(|line| line.contains("Passphrase")),
         "{usage}"
     );
-    assert!(!Described::default().usage().contains("secrets"));
+    assert!(!AgentDescription::default().usage().contains("secrets"));
 }
 
 /// A name too long for the column keeps a line of its own, and its help
@@ -325,7 +334,7 @@ fn resume_goes_wherever_an_option_goes() {
     // Only a build that says `--remote` takes a value reads `-r` after it.
     let spaced = ["--remote", "h:/p", "-r", "x"];
     assert_eq!(report.resume(&spaced).as_deref(), Some("x"));
-    assert_eq!(Described::default().resume(&spaced), None);
+    assert_eq!(AgentDescription::default().resume(&spaced), None);
     for args in [&["stats", "-r", "x"][..], &["-p", "--", "-r", "x"]] {
         assert_eq!(report.resume(args), None, "{args:?}");
     }

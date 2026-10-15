@@ -38,7 +38,7 @@ fn models(a: MockCompletionModel, b: MockCompletionModel) -> Models {
 fn start(store: &MemoryStore, models: Models) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, RetryWithModelPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, RetryWithModelPlugin));
     app.finish();
     app.update();
     let world = app.world_mut();

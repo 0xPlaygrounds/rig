@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
+use rig_core::completion::Message;
+use rig_core::conversation::{Author, Conversation, Entry};
 use rig_core::message::UserContent;
 
-use super::{attached_file, attachments};
+use super::{attached_file, attachments, first_typed, typed};
 use crate::workspace::Local;
 
 /// The crate's own directory, where its manifest is.
@@ -67,4 +69,20 @@ fn an_extensionless_file_that_is_there_is_attached() {
     assert_eq!(labels, ["Makefile"]);
     assert!(attached.missing.is_empty(), "{:?}", attached.missing);
     std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
+    let attached = "<file path=\"a.txt\">\nfile text\n</file>";
+    let mut conversation = Conversation::new();
+    conversation.push(Entry::new(Message::user("build failed")).by(Author::plugin("build")));
+    conversation.push(Message::assistant("ok"));
+    conversation.push(Message::user(attached));
+    conversation.push(Message::user("  fix it  "));
+    conversation.push(Message::user("and test"));
+    assert_eq!(typed(&conversation, 0), None);
+    assert_eq!(typed(&conversation, 1), None);
+    assert_eq!(typed(&conversation, 2), None);
+    assert_eq!(typed(&conversation, 4).as_deref(), Some("and test"));
+    assert_eq!(first_typed(&conversation).as_deref(), Some("fix it"));
 }

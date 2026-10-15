@@ -13,14 +13,14 @@
 //! model's window. Messages added after the summary stay after them.
 
 use rig_compaction::{
-    AppCompactionExt, Compaction, CompactionCuts, CompactionDefault, Summarizing, Uncompact, plan,
-    policy_of, summary_author, summary_in,
+    AppCompactionExt, CompactionCuts, CompactionDefault, CompactionKnobs, Summarizing, Uncompact,
+    plan, policy_of, summary_author, summary_in,
 };
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{
-    CompactReason, Compacted, Cut, Record, SummaryState, estimate_tokens, undo_summary,
+    CompactReason, Compacted, Cut, LogRecord, SummaryState, estimate_tokens, undo_summary,
 };
 use serde::Deserialize;
 
@@ -130,7 +130,7 @@ fn keep_newest_turns(
         (Entity, &mut ModelRequest, &mut Summarizing, &ForAgent),
         (Added<Admitted>, ModelCalls),
     >,
-    agents: Query<(&Conversation, Option<&Compaction>, Option<&Connection>)>,
+    agents: Query<(&Conversation, Option<&CompactionKnobs>, Option<&Connection>)>,
     (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -159,7 +159,7 @@ fn keep_newest_turns(
         }
         let messages = conversation.messages();
         let end = summarizing
-            .upto
+            .keep_from
             .and_then(|upto| conversation.index_of(upto))
             .unwrap_or(messages.len());
         let older = messages.get(..end).unwrap_or_default();
@@ -171,7 +171,10 @@ fn keep_newest_turns(
 /// Holds each summary of a compaction the user asked for, once the model
 /// wrote it, for review by someone who can answer.
 fn review(
-    calls: Query<(Entity, &Summarizing, &Replaces, &ForAgent), (Unreviewed, Without<UnderReview>)>,
+    calls: Query<
+        (Entity, &Summarizing, &Replaces, &ForAgent),
+        (ReadyToSettle, Without<UnderReview>),
+    >,
     answerers: Answerers,
     mut commands: Commands,
 ) {
@@ -393,7 +396,7 @@ fn list(store: Option<&dyn Store>, log: &str, compactions: &[Compacted]) -> Vec<
         .unwrap_or_default();
     let made = |summary| {
         records.iter().find_map(|(stamp, record)| match record {
-            Record::Change(recorded) if summary_in(&recorded.change) == Some(summary) => {
+            LogRecord::Change(recorded) if summary_in(&recorded.change) == Some(summary) => {
                 Some(clock(stamp.t))
             }
             _ => None,

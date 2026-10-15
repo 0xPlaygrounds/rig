@@ -61,7 +61,7 @@ fn exports_the_saved_session_with_the_subagent_under_its_task_call() {
     let child_connection = connect(&child_model);
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         EffectLogPlugin,
         ReadTool,
         SubagentsPlugin,

@@ -2,12 +2,12 @@ use std::sync::mpsc::Receiver;
 
 use bevy_reflect::Reflect;
 use bevy_reflect::prelude::ReflectDefault;
-use rig_compaction::Compaction;
+use rig_compaction::CompactionKnobs;
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::RunCommand;
 use rig_harness::pick::PickPlugin;
-use rig_harness::rig_memory::{CompactionOverrides, DirStore, load, save};
+use rig_harness::rig_memory::{CompactionOverrides, DirStore, SPLIT, load, save};
 use rig_harness::sessions::SessionPickerPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, commit_message, connect, first_agent, log_ended, reply,
@@ -28,7 +28,7 @@ fn mode(app: &App, agent: Entity) -> Option<String> {
 
 /// How many recent messages `agent`'s own compaction knobs keep.
 fn keeps(app: &App, agent: Entity) -> Option<usize> {
-    let own = app.world().get::<Compaction>(agent);
+    let own = app.world().get::<CompactionKnobs>(agent);
     own.and_then(|own| own.0.keep_recent)
 }
 
@@ -56,7 +56,7 @@ fn start(
     model: &MockCompletionModel,
 ) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
-    app.add_plugins((AgentPlugin, JournalPlugin, SplitsPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, SplitsPlugin))
         .add_plugins((PickPlugin, SessionPickerPlugin))
         .init_resource::<Switched>()
         .init_resource::<Ended>()
@@ -147,7 +147,7 @@ fn splits_split_again_move_switch_and_merge_back() {
     assert_eq!(ids(&app, agent), first.get(..2).unwrap_or_default());
     let title = |app: &App| {
         let conversation = app.world().get::<Conversation>(agent);
-        conversation.map(|conversation| conversation.branch_title().to_owned())
+        conversation.map(|conversation| conversation.line_title().to_owned())
     };
     assert_eq!(title(&app).as_deref(), Some("blue"));
     assert_eq!(mode(&app, agent), None, "set after the split point");
@@ -156,7 +156,7 @@ fn splits_split_again_move_switch_and_merge_back() {
         keep_recent: Some(3),
         ..CompactionOverrides::default()
     };
-    set(&mut app, agent, Compaction(own));
+    set(&mut app, agent, CompactionKnobs(own));
     for message in [Message::user("Blue?"), Message::assistant("Blue.")] {
         assert_eq!(commit_message(app.world_mut(), agent, message), Ok(()));
     }
@@ -230,7 +230,7 @@ fn splits_split_again_move_switch_and_merge_back() {
         keep_recent: Some(5),
         ..CompactionOverrides::default()
     };
-    set(&mut app, agent, Compaction(own));
+    set(&mut app, agent, CompactionKnobs(own));
     split(&mut app, agent, "switch blue");
     assert_eq!(title(&app).as_deref(), Some("blue"));
     assert_eq!(mode(&app, agent).as_deref(), Some("blue"));
@@ -421,7 +421,7 @@ fn splits_lists_the_lines_and_compare_shows_each_from_where_they_part() {
     let title = app
         .world()
         .get::<Conversation>(agent)
-        .map(|conversation| conversation.branch_title().to_owned());
+        .map(|conversation| conversation.line_title().to_owned());
     assert_eq!(title.as_deref(), Some("main"));
     std::fs::remove_dir_all(home.root()).ok();
 }

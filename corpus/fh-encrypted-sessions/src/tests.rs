@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness_test_support::{
     Collected, Ended, app_in, calls, collect, first_agent, log_ended, reply, run_until,
     scratch_home, scripted_models,
@@ -67,7 +67,7 @@ fn start(
     app.insert_resource(secrets)
         .insert_resource(scripted_models([("test/model", model)]))
         .register_type::<Notes>()
-        .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin, EffectLogPlugin))
+        .add_plugins((ExitPlugin, AgentPlugin, SessionLogPlugin, EffectLogPlugin))
         .add_plugins(EncryptedSessionsPlugin)
         .add_open_tool("echo", "Echoes.", ToolOptions::default(), echo)
         .init_resource::<Ended>()
@@ -139,7 +139,7 @@ fn notices(app: &App) -> String {
 
 /// Why the run's stores do not open `session`, if they do not.
 fn refusal(app: &App, home: &Home, session: &SessionId) -> String {
-    let stores = app.world().resource::<SessionStores>();
+    let stores = app.world().resource::<StoreOpener>();
     match stores.open(&home.session(session)) {
         Err(why) => why.to_string(),
         Ok(_) => String::new(),
@@ -179,7 +179,7 @@ fn a_sealed_session_resumes_with_its_key_only() {
     let (mut app, wakes) = start(&home, &session, &model, key);
     ask(&mut app, &wakes, &format!("Remember {MARKER}."));
     // A fork is sealed as it is written, its parent file too.
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     app.update();
     let forks: Vec<_> = app
         .world_mut()
@@ -231,7 +231,7 @@ fn a_sealed_session_resumes_with_its_key_only() {
     fs::write(&log, &bytes).ok();
     let (app, _) = start(&home, &session, &model, key);
     assert!(refused(&app));
-    let stores = app.world().resource::<SessionStores>();
+    let stores = app.world().resource::<StoreOpener>();
     let read = stores.open(&dir).and_then(|store| Session::read(&*store));
     let why = read.err().map(|failure| failure.to_string());
     assert!(

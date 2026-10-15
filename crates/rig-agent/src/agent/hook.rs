@@ -39,7 +39,7 @@ use rig_core::{
 
 use rig_core::{
     completion::ModelRef,
-    effect::{EffectFamily, EffectId, EffectKind, Outcome},
+    effect::{Answered, EffectFamily, EffectId, EffectKind},
     error::{ErrorKind, ErrorReport},
 };
 
@@ -765,7 +765,7 @@ pub struct OutcomeEvent<'a> {
     /// The effect that was dispatched (after patches).
     pub kind: &'a EffectKind,
     /// The answer, after any earlier hook's replacement.
-    pub outcome: &'a Result<Outcome, ErrorReport>,
+    pub outcome: &'a Result<Answered, ErrorReport>,
     /// The turn the effect belongs to.
     pub turn: usize,
     /// The call the effect answered, for a tool call the model emitted.
@@ -780,7 +780,7 @@ pub enum OutcomeAction {
     /// Keep the answer.
     Proceed,
     /// Use this answer instead.
-    Replace(Result<Outcome, ErrorReport>),
+    Replace(Result<Answered, ErrorReport>),
 }
 
 impl OutcomeAction {
@@ -790,7 +790,7 @@ impl OutcomeAction {
     }
 
     /// Use this answer instead.
-    pub fn replace(outcome: Result<Outcome, ErrorReport>) -> Self {
+    pub fn replace(outcome: Result<Answered, ErrorReport>) -> Self {
         Self::Replace(outcome)
     }
 
@@ -808,7 +808,7 @@ impl OutcomeAction {
     /// did not resolve to a tool result.
     pub fn rewrite_tool_output(event: &OutcomeEvent<'_>, output: ToolOutput) -> Self {
         match event.outcome {
-            Ok(Outcome::ToolResult { result }) => Self::Replace(Ok(Outcome::ToolResult {
+            Ok(Answered::ToolResult { result }) => Self::Replace(Ok(Answered::ToolResult {
                 result: result.clone().with_output(output),
             })),
             _ => Self::Proceed,
@@ -825,7 +825,7 @@ impl<'a> OutcomeEvent<'a> {
     /// The tool result this outcome carries, for a tool-call effect.
     pub fn tool_result(&self) -> Option<&'a ToolResult> {
         match self.outcome {
-            Ok(Outcome::ToolResult { result, .. }) => Some(result),
+            Ok(Answered::ToolResult { result, .. }) => Some(result),
             _ => None,
         }
     }
@@ -838,7 +838,7 @@ impl<'a> OutcomeEvent<'a> {
     /// The completion this outcome carries, for a completion effect.
     pub fn completion(&self) -> Option<&'a rig_core::completion::CompletionResponse> {
         match self.outcome {
-            Ok(Outcome::Completion(response)) => Some(response),
+            Ok(Answered::Completion(response)) => Some(response),
             _ => None,
         }
     }
@@ -1535,7 +1535,7 @@ impl AgentHook for HookStack {
 
     async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         let kind = StepEventKind::for_family(event.kind.family());
-        let mut replaced: Option<Result<Outcome, ErrorReport>> = None;
+        let mut replaced: Option<Result<Answered, ErrorReport>> = None;
         for hook in &self.hooks {
             if !hook.observes(kind) {
                 continue;

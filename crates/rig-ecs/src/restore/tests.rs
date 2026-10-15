@@ -14,20 +14,20 @@ use serde_json::Value;
 
 use crate::AgentPlugin;
 use crate::agent::{
-    Agent, AgentId, Conversation, Interrupt, LastUsage, Notice, SystemPrompt, ToolAccess, Turn,
+    Agent, AgentId, Conversation, LastUsage, Notice, StopTurn, SystemPrompt, ToolAccess, Turn,
     TurnOf, TurnOutcome,
 };
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode, Incoming, Recalled, Unsent};
-use crate::journal::tests::{edit, push_message};
-use crate::journal::{
-    Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
-};
-use crate::model::{Connection, Effort, ModelChoice};
+use crate::model::{Connection, ModelChoice, ReasoningSetting};
 use crate::restore::{INTERRUPTED, Interrupted, Restored};
+use crate::session_log::tests::{edit, push_message};
+use crate::session_log::{
+    ConversationChanged, ReflectSaved, SessionLog, SessionLogPlugin, SessionRestored, SessionStore,
+};
 use crate::stage::{
-    AgentPass, Decision, ForAgent, HoldOf, Outcome, PrepareSystems, Settled, Stage, Started,
-    Undecided, Unreviewed,
+    AgentPass, Decision, ForAgent, HoldOf, Outcome, PrepareSystems, ReadyToSettle, ReadyToStart,
+    Settled, Stage, Started,
 };
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
@@ -46,7 +46,7 @@ use rig_core::tool::{PortableTool, Scope, ToolExecutionError, Touches};
 fn app(store: &MemoryStore) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(store.clone()));
     app.finish();
     app.update();
@@ -112,7 +112,7 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     let counts = |reads| ToolCounts(HashMap::from([("read".to_owned(), reads)]));
     first.world_mut().entity_mut(agent).insert((
         ModelChoice("ollama/deepseek-v4-flash".to_owned()),
-        Effort(Some(Reasoning::Off)),
+        ReasoningSetting(Some(Reasoning::Off)),
         SystemPrompt("You review code.".to_owned()),
         ToolAccess::Only(vec!["read".to_owned()]),
         LastUsage(Some(usage)),
@@ -189,7 +189,7 @@ fn a_restored_model_that_cannot_be_used_is_reported_once() {
     let Some(agent) = agent else { return };
     let saved = (
         ModelChoice("nobody/none".to_owned()),
-        Effort(Some(Reasoning::Off)),
+        ReasoningSetting(Some(Reasoning::Off)),
     );
     first.world_mut().entity_mut(agent).insert(saved);
     say(&mut first, agent, Message::user("question"));
@@ -214,7 +214,8 @@ fn every_change_the_log_records_is_committed() {
     // No model answers it, and a reviewer takes that as final, so the
     // message is taken out, between the turn's record opening and ending;
     // a note is left halted.
-    let finally = |calls: Query<Entity, (Unreviewed, With<TurnCall>)>, mut commands: Commands| {
+    let finally = |calls: Query<Entity, (ReadyToSettle, With<TurnCall>)>,
+                   mut commands: Commands| {
         for call in &calls {
             commands.entity(call).insert(RetryVerdict(Verdict::Final));
         }
@@ -226,10 +227,10 @@ fn every_change_the_log_records_is_committed() {
     let hello = Deliver::new(agent, "hello", DeliveryMode::Steer);
     app.world_mut().trigger(hello);
     app.update();
-    let note = Deliver::new(agent, "a note", DeliveryMode::Note);
+    let note = Deliver::new(agent, "a note", DeliveryMode::Inform);
     app.world_mut().trigger(note);
     app.update();
-    let committed = app.world().resource::<Messages<Committed>>();
+    let committed = app.world().resource::<Messages<ConversationChanged>>();
     let mut cursor = committed.get_cursor();
     let changes = cursor
         .read(committed)
@@ -260,7 +261,7 @@ fn stay_idle(turns: Query<Entity, (With<Restored>, With<TurnOf>)>, mut commands:
 fn session(store: &MemoryStore, act: impl FnOnce(&mut World, Entity)) -> Vec<Message> {
     let mut app = App::new();
     app.insert_resource(SessionStore::new(store.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_systems(AgentPass, stay_idle.in_set(Stage::Gate));
     app.finish();
     app.update();
@@ -292,7 +293,7 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
             world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
             // A pass accepts the message and starts the turn.
             world.run_schedule(AgentPass);
-            world.trigger(Interrupt::new(agent));
+            world.trigger(StopTurn::new(agent));
             world.flush();
             if at == 1 {
                 edit(world, agent, keep);
@@ -365,7 +366,7 @@ impl Store for Full {
 #[test]
 fn a_failed_log_write_leaves_the_session_restored() {
     let mut app = App::new();
-    app.add_plugins((AgentPlugin, JournalPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(Full));
     app.finish();
     app.update();
@@ -438,7 +439,7 @@ impl PortableTool for Touch {
 #[derive(Resource, Default)]
 struct Gated(Vec<(String, bool)>);
 
-fn note_gated(calls: Query<(&ToolRequest, Has<Restored>), Undecided>, mut gated: ResMut<Gated>) {
+fn note_gated(calls: Query<(&ToolRequest, Has<Restored>), ReadyToStart>, mut gated: ResMut<Gated>) {
     for (request, restored) in &calls {
         let name = request.call.function.name.as_str().to_owned();
         gated.0.push((name, restored));
@@ -446,7 +447,7 @@ fn note_gated(calls: Query<(&ToolRequest, Has<Restored>), Undecided>, mut gated:
 }
 
 /// Holds every `touch` call, as an approval nobody gave.
-fn hold_touches(calls: Query<(Entity, &ToolRequest), Undecided>, mut commands: Commands) {
+fn hold_touches(calls: Query<(Entity, &ToolRequest), ReadyToStart>, mut commands: Commands) {
     for (call, request) in &calls {
         if request.call.function.name.as_str() == "touch" {
             commands.spawn(HoldOf(call));
@@ -474,7 +475,7 @@ fn tools_app(
         Connection { spec, handler }
     });
     let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(store.clone()))
         .init_resource::<Gated>()
         .init_resource::<Ended>()
@@ -784,7 +785,7 @@ fn a_turn_a_crash_cut_short_carries_on_where_it_began() {
                     mut began: ResMut<Began>| {
             began
                 .0
-                .extend(turns.iter().map(|turn| (turn.index, turn.first_message)));
+                .extend(turns.iter().map(|turn| (turn.index, turn.start)));
         };
         app.init_resource::<Began>()
             .add_systems(AgentPass, note.in_set(Stage::Gate));
@@ -919,7 +920,7 @@ fn pending_at_exit(stopped: bool) -> MemoryStore {
         world.get::<Started>(message).is_some()
     }));
     if stopped {
-        app.world_mut().trigger(Interrupt::new(agent));
+        app.world_mut().trigger(StopTurn::new(agent));
         app.update();
     }
     app.world_mut().write_message(AppExit::Success);
@@ -1007,7 +1008,7 @@ fn session_holding(key: &str, saved: rig_memory::Versioned) -> MemoryStore {
     let mut conversation = rig_core::conversation::Conversation::new();
     conversation.push(Message::user("hello"));
     writer.save("main", &mut conversation);
-    writer.state("main", key, Some(saved), true);
+    writer.save_value("main", key, Some(saved), true);
     writer.flush();
     store
 }
@@ -1017,7 +1018,7 @@ fn session_holding(key: &str, saved: rig_memory::Versioned) -> MemoryStore {
 fn labelled_app(store: &MemoryStore, steps: &'static [rig_memory::Upgrade]) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(store.clone()));
     let mut upgrades = app
         .world_mut()
@@ -1037,7 +1038,7 @@ fn main_state(store: &MemoryStore) -> std::collections::BTreeMap<String, rig_mem
     let session = rig_memory::Session::read(store).unwrap_or_default();
     session
         .agent("main")
-        .map(|main| main.state.clone())
+        .map(|main| main.saved.clone())
         .unwrap_or_default()
 }
 
@@ -1055,17 +1056,18 @@ fn an_older_saved_value_is_restored_and_reread_upgraded() {
     };
     assert_eq!(labelled(&mut app), Some(upgraded("seven")));
 
-    app.world_mut().trigger(crate::journal::RewriteSession {
-        by: Author::plugin("shout"),
-        with: std::sync::Arc::new(rig_memory::Strings(|text: &mut String| {
-            let hit = text == "seven";
-            if hit {
-                *text = "SEVEN".to_owned();
-            }
-            hit
-        })),
-        asker: None,
-    });
+    app.world_mut()
+        .write_message(crate::session_log::RewriteSession {
+            by: Author::plugin("shout"),
+            with: std::sync::Arc::new(rig_memory::Strings(|text: &mut String| {
+                let hit = text == "seven";
+                if hit {
+                    *text = "SEVEN".to_owned();
+                }
+                hit
+            })),
+            asker: None,
+        });
     app.update();
     assert_eq!(labelled(&mut app), Some(upgraded("SEVEN")));
 
@@ -1087,7 +1089,7 @@ fn an_unreadable_value_is_set_aside_and_a_newer_one_held() {
     let store = session_holding(path, serde_json::json!("seven").into());
     let mut app = labelled_app(&store, &[refuse]);
     assert_eq!(labelled(&mut app), None);
-    let set_aside = app.world().resource::<crate::restore::SetAside>();
+    let set_aside = app.world().resource::<crate::restore::Shelved>();
     let keys: Vec<&str> = set_aside.0.iter().map(|value| value.key.as_str()).collect();
     assert_eq!(keys, [path]);
     let changed = Labelled {
@@ -1099,7 +1101,7 @@ fn an_unreadable_value_is_set_aside_and_a_newer_one_held() {
     }
     app.update();
     let state = main_state(&store);
-    let side = format!("{}{path}/v1", rig_memory::SET_ASIDE);
+    let side = format!("{}{path}/v1", rig_memory::SHELVED);
     assert_eq!(state.get(&side), Some(&serde_json::json!("seven").into()));
     let now = state.get(path).map(|saved| (saved.v, saved.value.clone()));
     assert_eq!(
@@ -1150,7 +1152,7 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
     let mut first = App::new();
     first
         .set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(store.clone()));
     keyed(&mut first, Goal::type_path());
     first.finish();
@@ -1170,11 +1172,24 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
     let mut second = App::new();
     second
         .set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .insert_resource(SessionStore::new(store.clone()));
     keyed(&mut second, RenamedGoal::type_path());
     second.finish();
     second.update();
     let goal = second.world().get_resource::<RenamedGoal>().cloned();
     assert_eq!(goal, Some(RenamedGoal("ship it".to_owned())));
+}
+
+/// A reasoning setting saved before it was renamed, under the key
+/// `rig_ecs::model::Effort`, is restored as the agent's `ReasoningSetting`.
+#[test]
+fn a_reasoning_setting_saved_under_its_old_key_is_restored() {
+    let setting = ReasoningSetting(Some(Reasoning::Off));
+    let value = serde_json::to_value(setting).unwrap_or_default();
+    let store = session_holding("rig_ecs::model::Effort", value.into());
+    let mut restarted = app(&store);
+    let agent = first_agent(&mut restarted);
+    let restored = agent.and_then(|agent| restarted.world().get::<ReasoningSetting>(agent));
+    assert_eq!(restored, Some(&setting));
 }

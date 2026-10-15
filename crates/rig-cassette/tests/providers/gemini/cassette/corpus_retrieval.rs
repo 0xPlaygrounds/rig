@@ -12,7 +12,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::effect::{EffectFamily, EffectKind, Outcome, RetrieveQuery, RetrievedDocuments};
+use rig::effect::{Answered, EffectFamily, EffectKind, RetrieveQuery, RetrievedDocuments};
 use rig::providers::gemini;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -31,10 +31,10 @@ fn retrieved_ids(log: &rig::cassette::effect_log::EffectLog) -> Vec<Vec<String>>
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Outcome::Documents(RetrievedDocuments::Scored(docs))) => {
+            Ok(Answered::Documents(RetrievedDocuments::Scored(docs))) => {
                 Some(docs.iter().map(|(_, id, _)| id.clone()).collect())
             }
-            Ok(Outcome::Documents(RetrievedDocuments::Ids(ids))) => {
+            Ok(Answered::Documents(RetrievedDocuments::Ids(ids))) => {
                 Some(ids.iter().map(|(_, id)| id.clone()).collect())
             }
             _ => None,
@@ -47,7 +47,7 @@ fn retrieved_texts(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Outcome::Documents(RetrievedDocuments::Scored(docs))) => Some(
+            Ok(Answered::Documents(RetrievedDocuments::Scored(docs))) => Some(
                 docs.iter()
                     .map(|(_, _, value)| value.to_string())
                     .collect::<Vec<_>>()

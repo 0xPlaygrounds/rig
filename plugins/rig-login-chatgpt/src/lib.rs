@@ -1,13 +1,14 @@
-//! `/login` and `/logout`: signing in to the ChatGPT plan from the agent,
-//! a plugin of its own that the core knows only as a [`SignIn`] in its
-//! [`Models`]. `/login` runs the sign-in on the IO pool: in the browser, which it opens on
-//! the sign-in page and whose URL it shows as a notice, or with a device
-//! code shown as a notice when no browser can be assumed (no graphical
-//! session, or an SSH login), when the browser's callback ports are taken,
-//! or when asked with `--device`. `/logout` forgets the credential. The
-//! credential is kept in `RIG_HOME/auth/chatgpt.json`, and every model
-//! call of the plan reads it, refreshed when it has expired, before its
-//! request.
+//! `/login` and `/logout` for the ChatGPT plan, which the kernel knows only
+//! as a [`SignIn`] in its [`Models`].
+//!
+//! - `/login` signs in on the IO pool: in the browser, which it opens and
+//!   whose URL it shows as a notice, or with a device code when no browser
+//!   can be assumed (no graphical session, or SSH), when the callback ports
+//!   are taken, or with `--device`.
+//! - `/logout` forgets the credential.
+//! - The credential is kept in `RIG_HOME/auth/chatgpt.json`. Every model
+//!   call of the plan reads it before its request, refreshed when it has
+//!   expired.
 
 use std::path::PathBuf;
 use std::{fs, io};
@@ -27,9 +28,9 @@ use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
 use rig_harness::harness_protocol::Home;
 
-use rig_ecs::agent::{ActiveTurn, Agent, Interrupt, Notice};
-use rig_ecs::calls::{Done, PollCalls, Running, Wake};
+use rig_ecs::agent::{ActiveTurn, Agent, Notice, StopTurn};
 use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
+use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
@@ -69,7 +70,7 @@ impl Plugin for ChatgptLoginPlugin {
             on_login,
         )
         .add_command("logout", "Forget a sign-in: /logout chatgpt", on_logout)
-        .add_systems(Update, show_login_prompts.in_set(PollCalls))
+        .add_systems(Update, show_login_prompts.in_set(PollTasks))
         .add_observer(on_signed_in)
         .add_observer(cancel_on_interrupt);
     }
@@ -105,7 +106,7 @@ impl SignIn for ChatGptSignIn {
 
 /// A sign-in waiting for the user, on an entity of its own whose
 /// [`Running`] task is the flow until it ends as a
-/// [`Done<SignedInResult>`]; `--print` waits for it as for any `Running`
+/// [`Done<SignInEnded>`]; `--print` waits for it as for any `Running`
 /// task. Despawning it cancels the flow.
 #[derive(Component)]
 pub struct PendingLogin {
@@ -116,7 +117,7 @@ pub struct PendingLogin {
 }
 
 /// How a sign-in ended: `Err` says why it failed.
-pub struct SignedInResult(Result<(), String>);
+pub struct SignInEnded(Result<(), String>);
 
 /// Whether `text` names [`PROVIDER`], or is empty; otherwise a notice
 /// says what it takes.
@@ -185,7 +186,7 @@ fn on_login(
 
 /// Runs the sign-in by `method`, sending what the user must do through
 /// `prompts`. The credential file is written readable by the owner alone.
-async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake) -> SignedInResult {
+async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake) -> SignInEnded {
     let say = move |text: String| {
         prompts.send(text).ok();
         wake.wake();
@@ -215,7 +216,7 @@ async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake)
             });
         })
         .await;
-    SignedInResult(signed_in.map(drop).map_err(|error| error.to_string()))
+    SignInEnded(signed_in.map(drop).map_err(|error| error.to_string()))
 }
 
 /// The line after a sign-in prompt.
@@ -233,14 +234,14 @@ fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<N
 /// Reports how a sign-in ended, and connects the agents whose chosen model
 /// it serves and could not connect before.
 fn on_signed_in(
-    done: On<Add<Done<SignedInResult>>>,
-    logins: Query<(&PendingLogin, &Done<SignedInResult>)>,
+    done: On<Add<Done<SignInEnded>>>,
+    logins: Query<(&PendingLogin, &Done<SignInEnded>)>,
     unconnected: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
     models: Res<Models>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((login, Done(SignedInResult(result)))) = logins.get(done.entity) else {
+    let Ok((login, Done(SignInEnded(result)))) = logins.get(done.entity) else {
         return;
     };
     match result {
@@ -279,7 +280,7 @@ fn on_signed_in(
 
 /// Esc cancels the agent's waiting sign-ins.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     pending: Query<(Entity, &PendingLogin)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,

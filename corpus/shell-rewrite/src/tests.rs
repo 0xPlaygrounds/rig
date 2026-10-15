@@ -64,7 +64,7 @@ fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_ca
         .add_observer(log_tool_outputs)
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             rig_coding_tools::ShellTool,
             ConfirmDestructivePlugin,
             ShellRewritePlugin,

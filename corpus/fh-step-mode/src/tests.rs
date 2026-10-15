@@ -34,7 +34,7 @@ fn start(
     app.insert_resource(StepEditor(None))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ShellTool,
             WriteTool,
             ReadTool,

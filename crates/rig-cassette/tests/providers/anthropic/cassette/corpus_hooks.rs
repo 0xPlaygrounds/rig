@@ -13,7 +13,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::effect::{EffectFamily, EffectKind, Outcome};
+use rig::effect::{Answered, EffectFamily, EffectKind};
 use rig::message::{AssistantContent, Message, UserContent};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
@@ -80,7 +80,7 @@ pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) ->
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Outcome::ToolResult { result, .. }) => Some(result.output().render()),
+            Ok(Answered::ToolResult { result, .. }) => Some(result.output().render()),
             _ => None,
         })
         .collect()
@@ -335,7 +335,7 @@ async fn replace_answer_effect_log_is_the_golden_fixture() {
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         let recorded = match &log.records[0].outcome {
-            Ok(Outcome::Completion(response)) => response,
+            Ok(Answered::Completion(response)) => response,
             other => panic!("a completion, not {other:?}"),
         };
         assert!(

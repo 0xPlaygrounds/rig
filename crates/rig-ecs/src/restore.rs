@@ -5,20 +5,12 @@
 //! before anything is written when it cannot be read, a torn last line set
 //! aside; a retired agent and the agents it spawned are not restored.
 //!
-//! The work an agent carries on is spawned as ordinary stage entities
-//! marked [`Restored`]: every call left without a result, as one reply,
-//! and gated like any, as nothing held or approved before the restart is
-//! kept. A call that may change something is marked on its agent's
-//! conversation (an aside of kind `rig.call`) before it starts, and any
-//! call that settles while its reply still runs is marked with its result;
-//! the marks go when the reply's results are in. A restored call with a
-//! mark is [`Interrupted`]: no gate that holds or asks sees it, a plugin
-//! answers it in Gate, holds it to answer later, or lets it run again by
-//! removing `Interrupted` in Prepare, and the kernel answers it after
-//! every gate, once nothing holds it, otherwise. The
-//! restore commits no answer; it only removes the marks of calls that have
-//! a result. A plugin re-arms its own obligations from observers of the
-//! saved components the restore inserts (`On<Insert<MyWait>>`, before
+//! The work an agent carries on is spawned as ordinary stage entities marked
+//! [`Restored`], gated like any: nothing held or approved before the restart
+//! is kept. A tool call that had started or settled when the session stopped
+//! carries [`Interrupted`], which says how the kernel answers it. The restore
+//! commits no answer. A plugin re-arms its own obligations from observers of
+//! the saved components the restore inserts (`On<Insert<MyWait>>`, before
 //! [`SessionRestored`] exists):
 //!
 //! ```
@@ -57,7 +49,7 @@ use rig_core::conversation::{Aside, AsideId, Author};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, UserContent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
-use rig_memory::{SESSION, SET_ASIDE, Session, Unread, Upgrades, Versioned, Writer};
+use rig_memory::{SESSION, SHELVED, Session, Unread, Upgrades, Versioned, Writer};
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -67,7 +59,7 @@ use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn
 use super::effects::Effects;
 use super::follows::{ReflectFollows, give_line_values};
 use super::inbox::{Unsent, kept};
-use super::journal::{
+use super::session_log::{
     Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
 };
 use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled, Started};
@@ -190,7 +182,7 @@ pub(crate) fn commit_results(
 /// again as ordinary work every gate sees. A plugin that must ask someone
 /// first holds it ([`HoldOf`](super::stage::HoldOf)) and answers it later;
 /// the kernel answers it once no hold is left and no plugin decided it.
-/// Not [`Undecided`](super::stage::Undecided): no gate that holds or asks
+/// Not [`ReadyToStart`](super::stage::ReadyToStart): no gate that holds or asks
 /// for ordinary work sees it.
 ///
 /// ```
@@ -292,7 +284,7 @@ pub(crate) fn restore_session(world: &mut World) {
     };
     let Session {
         agents,
-        state,
+        saved: state,
         repairs,
     } = session;
     let mut notices: Vec<Notice> = repairs
@@ -303,7 +295,7 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
     let mut reader = SavedReader::new(world);
-    let followed = super::follows::followed(world);
+    let followed = super::follows::followed_types(world);
     for (key, value) in &state {
         let restored = reader.read(&registry, SESSION, None, &state, key, value);
         let restored = restored.and_then(|read| {
@@ -325,8 +317,8 @@ pub(crate) fn restore_session(world: &mut World) {
         let conversation = Conversation(agent.conversation);
         let id = AgentId(agent.id);
         let mut read = Vec::new();
-        for (key, value) in &agent.state {
-            match reader.read(&registry, &id.0, Some(&id), &agent.state, key, value) {
+        for (key, value) in &agent.saved {
+            match reader.read(&registry, &id.0, Some(&id), &agent.saved, key, value) {
                 Ok(value) => read.extend(value),
                 Err(failure) => {
                     let skipped = format!("Skipped saved component `{key}`: {failure}.");
@@ -382,7 +374,7 @@ pub struct SavedUpgrades(pub Upgrades);
 /// The stable keys saved types are logged and restored under instead of
 /// their type paths, such as `goals.goal` (rig-harness
 /// `AppKeepsExt::saved_as`), and which of them are listed: copied into the
-/// session's listing (rig-memory's `SessionMeta::data`) as they change.
+/// session's listing (rig-memory's `SessionMeta::listed`) as they change.
 #[derive(Resource, Default, Debug, Clone, PartialEq, Eq)]
 pub struct SavedKeys {
     /// Each key by type path.
@@ -446,17 +438,17 @@ impl SavedKeys {
 /// Saved keys no build reads any more, such as a deleted type's path: their
 /// values are kept in the file, and never reported.
 #[derive(Resource, Default)]
-pub struct RetiredSaved(pub BTreeSet<String>);
+pub struct IgnoredSavedKeys(pub BTreeSet<String>);
 
 /// The saved values this run set aside rather than read, with why: a value
 /// no step reads (moved to a side key on its key's next write) or one a
 /// newer rig saved (its key held, never written over).
 #[derive(Resource, Default, Debug)]
-pub struct SetAside(pub Vec<SetAsideValue>);
+pub struct Shelved(pub Vec<ShelvedValue>);
 
-/// A saved value set aside, as [`SetAside`] lists it.
+/// A saved value set aside, as [`Shelved`] lists it.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SetAsideValue {
+pub struct ShelvedValue {
     /// The agent it was saved with; `None` for a saved resource.
     pub agent: Option<AgentId>,
     /// Its key, a type path.
@@ -471,7 +463,7 @@ pub struct SetAsideValue {
 /// and the line values of `Follows` types: each value is read under its key
 /// (a stable key, or a type path), upgraded through [`SavedUpgrades`] and
 /// reflected as its type. A value no step reads, or that no longer fits its
-/// type, is set aside ([`SetAside`]; the writer moves it to a side key on
+/// type, is set aside ([`Shelved`]; the writer moves it to a side key on
 /// its key's next write), and one a newer rig saved is held (never written
 /// over); a retired key, a side key, and a value under a type path whose
 /// type is saved under a key that has a value too, are skipped silently.
@@ -480,7 +472,7 @@ pub(crate) struct SavedReader {
     retired: BTreeSet<String>,
     keys: SavedKeys,
     log: Option<Writer>,
-    set_aside: Vec<SetAsideValue>,
+    set_aside: Vec<ShelvedValue>,
 }
 
 impl SavedReader {
@@ -492,7 +484,7 @@ impl SavedReader {
                 .map(|upgrades| upgrades.0.clone())
                 .unwrap_or_default(),
             retired: world
-                .get_resource::<RetiredSaved>()
+                .get_resource::<IgnoredSavedKeys>()
                 .map(|retired| retired.0.clone())
                 .unwrap_or_default(),
             keys: world
@@ -520,7 +512,7 @@ impl SavedReader {
         key: &str,
         saved: &Versioned,
     ) -> Result<Option<(&'r ReflectComponent, Box<dyn Reflect>)>, String> {
-        if key.starts_with(SET_ASIDE) || self.retired.contains(key) {
+        if key.starts_with(SHELVED) || self.retired.contains(key) {
             return Ok(None);
         }
         let path = self.keys.path(key).unwrap_or(key);
@@ -545,10 +537,10 @@ impl SavedReader {
                     if newer {
                         writer.hold(log, key);
                     } else {
-                        writer.set_aside(log, key, saved.clone());
+                        writer.shelve(log, key, saved.clone());
                     }
                 }
-                self.set_aside.push(SetAsideValue {
+                self.set_aside.push(ShelvedValue {
                     agent: agent.cloned(),
                     key: key.to_owned(),
                     saved: saved.clone(),
@@ -566,7 +558,7 @@ impl SavedReader {
 
     /// The followed value `saved` of the type of path `path`, upgraded,
     /// reflected and as JSON; a value that does not read is listed in
-    /// [`SetAside`], and left as it is in the conversation.
+    /// [`Shelved`], and left as it is in the conversation.
     ///
     /// # Errors
     ///
@@ -588,7 +580,7 @@ impl SavedReader {
                 Ok((read.map_err(|failure| (false, failure))?, value))
             });
         if let Err((_, why)) = &read {
-            self.set_aside.push(SetAsideValue {
+            self.set_aside.push(ShelvedValue {
                 agent: agent.cloned(),
                 key: self.keys.key(path).unwrap_or(path).to_owned(),
                 saved: saved.clone(),
@@ -603,10 +595,10 @@ impl SavedReader {
         self.keys.path(key).unwrap_or(key)
     }
 
-    /// Adds what it set aside to [`SetAside`].
+    /// Adds what it set aside to [`Shelved`].
     pub(crate) fn finish(self, world: &mut World) {
         if !self.set_aside.is_empty() {
-            let mut set_aside = world.get_resource_or_init::<SetAside>();
+            let mut set_aside = world.get_resource_or_init::<Shelved>();
             set_aside.0.extend(self.set_aside);
         }
     }
@@ -672,7 +664,7 @@ pub(crate) fn reconcile(world: &mut World) {
     };
     agents.sort_by_key(|&(depth, _)| depth);
     for (_, agent) in agents {
-        if let Err(error) = world.run_system_cached_with(settle, agent) {
+        if let Err(error) = world.run_system_cached_with(carry_on_restored, agent) {
             warn!("could not reconcile a restored agent: {error}");
         }
     }
@@ -682,7 +674,7 @@ pub(crate) fn reconcile(world: &mut World) {
 /// marks of calls that have a result, and puts back the messages its inbox
 /// kept. The calls are a reply of a fresh effect id, as the model call
 /// that asked for them is gone.
-fn settle(
+fn carry_on_restored(
     In(agent): In<Entity>,
     mut agents: Query<&mut Conversation>,
     effects: Res<Effects>,
@@ -715,7 +707,7 @@ fn settle(
             });
             let mut restored = commands.spawn((
                 ToolRequest { call },
-                Effect::child_of(Some(reply)),
+                Effect::with_parent_id(Some(reply)),
                 CallOf(turn),
                 ForAgent(agent),
                 Restored,

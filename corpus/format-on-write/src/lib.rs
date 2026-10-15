@@ -14,9 +14,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
-use rig_harness::rig_core::serve::{Decision, Intercept, Verdict};
+use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::fs::{resolve, write_atomic};
@@ -138,8 +138,8 @@ impl Intercept for Formatting {
         "format-on-write".to_owned()
     }
 
-    async fn before(&self, _: EffectId, _: &EffectKind) -> Decision {
-        Decision::Proceed
+    async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
+        BeforeServe::Proceed
     }
 
     async fn after(
@@ -147,25 +147,25 @@ impl Intercept for Formatting {
         _: EffectId,
         kind: &EffectKind,
         outcome: &Result<Answered, ErrorReport>,
-    ) -> Verdict {
+    ) -> AfterServe {
         let (EffectKind::ToolCall { args, .. }, Ok(Answered::ToolResult { result })) =
             (kind, outcome)
         else {
-            return Verdict::Keep;
+            return AfterServe::Keep;
         };
         let Ok(Target { path }) = serde_json::from_str(args) else {
-            return Verdict::Keep;
+            return AfterServe::Keep;
         };
         if !result.is_success() {
-            return Verdict::Keep;
+            return AfterServe::Keep;
         }
         let notes = self.check(&resolve(self.base.as_deref(), &path)).await;
         if notes.is_empty() {
-            return Verdict::Keep;
+            return AfterServe::Keep;
         }
         let text = result.output().render() + &notes;
         let result = result.clone().with_output(ToolOutput::text(text));
-        Verdict::Replace(Ok(Answered::ToolResult { result }))
+        AfterServe::Replace(Ok(Answered::ToolResult { result }))
     }
 }
 

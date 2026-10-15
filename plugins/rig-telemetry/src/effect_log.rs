@@ -1,20 +1,16 @@
-//! The effect log: every effect the agents' work settles, model calls,
-//! tool calls, delivered messages and plugins' own effects, recorded with
-//! rig-core's effect types into the session's [`SESSION_EFFECT_LOG`], a
-//! file of its store ([`Files`]): each effect's [`EffectRecorded`] record, in id order, as it settles. Its
-//! header describes the tools and the models the agents connect to, and
-//! names each key the records use. Ids continue after the highest one the
-//! log already holds, so a resumed session keeps adding to the same log.
-//! A plugin reads it back with the [`EffectLog`] resource, narrowed by an
-//! [`EffectFilter`]. With the default `tui` feature, in a run of the
-//! terminal view, a restored session's log is read back once, off the main
-//! thread, and sent to the view as `rig_tui::PastEffects`, so a resumed
-//! session's tool calls show the calls they started and what they
-//! published. When the session is rewritten ([`SessionRewritten`]), the
-//! file was rewritten with the rest of the store: the writer forgets what
-//! it knew of the old lines, and the records not written yet go through
-//! the same map.
+//! The effect log: every settled effect (model calls, tool calls,
+//! delivered messages, plugins' own) as an [`EffectRecorded`] record in the
+//! session's [`SESSION_EFFECT_LOG`] ([`Files`]), in id order. Its header
+//! describes the tools and models and names each key the records use.
+//!
+//! A resumed session appends after the highest id. After a rewrite
+//! ([`SessionRewritten`]), the records not yet written go through the
+//! same map. Plugins read it with [`EffectLog`] and an [`EffectFilter`].
+//! With the `tui` feature, a restored session's log is read once, off the
+//! main thread, and sent to the view as `rig_tui::PastEffects`, so its
+//! tool calls show what they started.
 
+use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 
@@ -22,14 +18,14 @@ use bevy_log::error;
 #[cfg(feature = "tui")]
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
-use rig_cassette::effect_log::{self, LogHeader, jsonl};
+use rig_cassette::effect_log::{EffectFilter, LogHeader, jsonl};
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
-use rig_ecs::WriteJournal;
+use rig_ecs::WriteLogs;
 use rig_ecs::effects::Effects;
-#[cfg(feature = "tui")]
-use rig_ecs::journal::SessionRestored;
-use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+#[cfg(feature = "tui")]
+use rig_ecs::session_log::SessionRestored;
+use rig_ecs::session_log::SessionStore;
 use rig_ecs::tools::ToolDef;
 #[cfg(feature = "tui")]
 use rig_harness::prelude::AppCliExt;
@@ -56,8 +52,10 @@ impl Plugin for EffectLogPlugin {
         app.insert_resource(Effects::continue_after(last))
             .insert_resource(EffectLog { store })
             .insert_resource(EffectLogFile { header, writer })
-            .add_systems(Startup, describe_tools)
-            .add_systems(Last, write_effects.in_set(WriteJournal))
+            .add_systems(
+                Last,
+                (describe_tools, write_effects).chain().in_set(WriteLogs),
+            )
             .add_observer(describe_model);
         #[cfg(feature = "tui")]
         if app.runs_front(rig_tui::FRONT) {
@@ -134,8 +132,7 @@ impl EffectLog {
     /// first. It reads the whole file and rebuilds every model call's
     /// request: off the main thread, such as in a task, for a long session.
     pub fn read(&self) -> io::Result<Vec<EffectRecord>> {
-        let bytes = self.bytes()?;
-        Ok(jsonl::read_from(bytes.as_slice())?.records)
+        Ok(jsonl::read_session(&*self.store)?.records)
     }
 
     /// Every record written so far, as [`read`](Self::read) gives them but
@@ -143,16 +140,7 @@ impl EffectLog {
     /// ([`jsonl::read_outcomes_from`]): what each effect was and how it
     /// ended, read in time linear in the log's size.
     pub fn read_outcomes(&self) -> io::Result<Vec<EffectRecord>> {
-        jsonl::read_outcomes_from(self.bytes()?.as_slice())
-    }
-
-    /// The log's bytes; none before the first record.
-    fn bytes(&self) -> io::Result<Vec<u8>> {
-        match self.store.read_file(SESSION_EFFECT_LOG) {
-            Ok(bytes) => Ok(bytes),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
-            Err(error) => Err(error),
-        }
+        jsonl::read_session_outcomes(&*self.store)
     }
 
     /// The records `filter` matches, in the order written.
@@ -163,59 +151,6 @@ impl EffectLog {
     }
 }
 
-/// Which records of the [`EffectLog`] to read: each part set narrows it.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct EffectFilter {
-    /// The agent whose work it was, by its id (the record's scope).
-    pub agent: Option<String>,
-    /// The effect's kind by name: `completion`, `tool_call`, or a plugin's
-    /// own, such as `subagent`.
-    pub kind: Option<String>,
-    /// The turn of its agent it was made in (the record's turn; the first
-    /// is 0). Turns are numbered per agent, so pair it with
-    /// [`agent`](Self::agent).
-    pub turn: Option<u64>,
-}
-
-impl EffectFilter {
-    /// The work of the agent with the id `agent`.
-    #[must_use]
-    pub fn agent(self, agent: impl Into<String>) -> Self {
-        Self {
-            agent: Some(agent.into()),
-            ..self
-        }
-    }
-
-    /// Effects of the kind named `kind`.
-    #[must_use]
-    pub fn kind(self, kind: impl Into<String>) -> Self {
-        Self {
-            kind: Some(kind.into()),
-            ..self
-        }
-    }
-
-    /// Effects made in turn `turn` of their agent.
-    #[must_use]
-    pub fn turn(self, turn: u64) -> Self {
-        Self {
-            turn: Some(turn),
-            ..self
-        }
-    }
-
-    /// Whether it keeps `record`.
-    pub fn matches(&self, record: &EffectRecord) -> bool {
-        let agent = record.scope.as_deref();
-        self.agent
-            .as_deref()
-            .is_none_or(|wanted| agent == Some(wanted))
-            && (self.kind.as_deref()).is_none_or(|kind| record.kind.name() == kind)
-            && self.turn.is_none_or(|turn| record.turn == Some(turn))
-    }
-}
-
 /// The log's header as it grows, and the file it is written to.
 #[derive(Resource)]
 struct EffectLogFile {
@@ -223,25 +158,12 @@ struct EffectLogFile {
     writer: jsonl::Writer,
 }
 
-impl EffectLogFile {
-    /// Describes each of `handlers` in the header: one already described
-    /// in place, a new one after the others.
-    fn describe(&mut self, handlers: impl IntoIterator<Item = HandlerDescriptor>) {
-        let known = &mut self.header.handlers;
-        for handler in handlers {
-            match known.iter_mut().find(|known| known.key == handler.key) {
-                Some(known) => *known = handler,
-                None => known.push(handler),
-            }
-        }
-    }
-}
-
-/// Describes every registered tool in the log's header, by name.
-fn describe_tools(mut log: ResMut<EffectLogFile>, tools: Query<&ToolDef>) {
+/// Describes each tool registered or changed since the last frame in the
+/// log's header, by name, before its calls are written.
+fn describe_tools(mut log: ResMut<EffectLogFile>, tools: Query<&ToolDef, Changed<ToolDef>>) {
     let mut tools: Vec<_> = tools.iter().map(|tool| &tool.0).collect();
     tools.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
-    log.describe(tools.into_iter().map(|tool| {
+    log.header.describe(tools.into_iter().map(|tool| {
         HandlerDescriptor::tool(
             tool.name.as_str(),
             &tool.description,
@@ -257,7 +179,7 @@ fn describe_model(
     mut log: ResMut<EffectLogFile>,
 ) {
     if let Ok(connection) = agents.get(connected.entity) {
-        log.describe([connection.handler.0.descriptor()]);
+        log.header.describe([connection.handler.0.descriptor()]);
     }
 }
 
@@ -272,7 +194,10 @@ fn write_effects(
     mut failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let mut records: Vec<_> = recorded.read().map(|recorded| recorded.0.clone()).collect();
+    let mut records: Vec<_> = recorded
+        .read()
+        .map(|recorded| Cow::Borrowed(&recorded.0))
+        .collect();
     let EffectLogFile { header, writer } = &mut *log;
     for rewritten in rewrites.read() {
         // The file pass rewrote the file: nothing of its old lines is kept.
@@ -282,7 +207,7 @@ fn write_effects(
         let before = records.len();
         records = records
             .into_iter()
-            .filter_map(|record| mapped(record, with))
+            .filter_map(|record| mapped(record.into_owned(), with).map(Cow::Owned))
             .collect();
         if records.len() < before {
             error!("effect records the rewrite left unreadable were not logged");
@@ -299,11 +224,7 @@ fn write_effects(
             .insert_if_absent(record.key.clone(), family);
     }
     // The writer states only what the header adds to the file's.
-    let taken = effect_log::EffectLog {
-        header: header.clone(),
-        records,
-    };
-    if let Err(failure) = writer.append(&taken)
+    if let Err(failure) = writer.append(header, records.iter().map(|record| &**record))
         && !*failed
     {
         *failed = true;

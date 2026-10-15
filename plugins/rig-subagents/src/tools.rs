@@ -69,7 +69,7 @@ pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave y
 /// What a subagent started with `peers` is told, after [`SUBAGENT_ROLE`].
 pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside you; your task names the \
     ones started before or with you. Peers may also start later, in a later reply of that \
-    agent: a note names each one when it starts. `message` sends one of them a request by its \
+    agent: a message names each one when it starts. `message` sends one of them a request by its \
     id, or answers one it sent you; your last message answers the requests still open. To wait \
     for a peer's message, call `wait`, which returns once that peer messages you: never end \
     your turn to wait, since your last message is your answer. Ask only for what you need.";
@@ -82,7 +82,12 @@ pub(super) fn add(app: &mut App) {
     app.add_open_tool(TASK, TASK_DESCRIPTION, independent(RULES), on_task)
         .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(&[]), on_message)
         .add_open_tool(WAIT, WAIT_DESCRIPTION, independent(&[]), on_wait)
-        .add_systems(Update, send_briefs.before(AgentLoop));
+        .add_systems(
+            Update,
+            send_briefs
+                .run_if(any_with_component::<Brief>)
+                .before(AgentLoop),
+        );
 }
 
 /// The arguments of a `task` call. Any argument besides these is one
@@ -173,7 +178,7 @@ fn on_task(
 /// Sends each subagent started since it last ran its task, naming its
 /// peers when it has [`Peers`], before the agent loop, which starts the
 /// subagent's turn in the same frame. Peers briefed in an earlier frame,
-/// such as those of an earlier reply, learn of it by a note.
+/// such as those of an earlier reply, learn of it by an Inform message.
 fn send_briefs(
     briefs: Query<(Entity, &Brief, &SpawnedBy)>,
     families: Query<&Spawned>,
@@ -201,8 +206,8 @@ fn send_briefs(
             }
             for (sibling, _) in siblings.iter().filter(|(_, (.., briefing))| !briefing) {
                 let text = format!("A new peer works beside you: {}.", named(me));
-                let note = Deliver::new(*sibling, text, DeliveryMode::Note);
-                commands.trigger(note.with_author(Author::plugin("subagents")));
+                let inform = Deliver::new(*sibling, text, DeliveryMode::Inform);
+                commands.trigger(inform.with_author(Author::plugin("subagents")));
             }
         }
         commands.entity(child).remove::<Brief>();
@@ -243,7 +248,7 @@ impl Agents<'_, '_> {
         let unread: Vec<&Incoming> = self
             .inboxes
             .iter()
-            .filter(|(sent, to, _)| to.0 == caller && sent.mode != DeliveryMode::Note)
+            .filter(|(sent, to, _)| to.0 == caller && sent.mode != DeliveryMode::Inform)
             .map(|(sent, ..)| sent)
             .collect();
         let read = |request: &&Request| {
@@ -254,12 +259,12 @@ impl Agents<'_, '_> {
         let askers = owed
             .flat_map(|open| open.0.iter().filter(read))
             .filter_map(|request| Some((self.find(&request.asker)?, Some(request.id.clone()))));
-        let (spawned, parent) = me.family;
+        let (spawned, parent) = (me.children, me.parent);
         // Its subagents, not the helpers plugins spawned for it.
         let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
         let children = children.filter(|&child| self.agents.get(child).is_ok_and(|a| a.subtask));
         let peer = |agent: &AgentDataItem| {
-            agent.peers && agent.family.1.map(|of| of.0) == parent.map(|of| of.0)
+            agent.peers && agent.parent.map(|of| of.0) == parent.map(|of| of.0)
         };
         let siblings = self
             .agents
@@ -294,7 +299,7 @@ impl Agents<'_, '_> {
             (false, _) => named.join(", "),
             (true, false) => "none".to_owned(),
             (true, true) => "none yet. Peers may start later, in a later reply of the agent \
-                             that started you: a note names each one when it starts, and `wait` \
+                             that started you: a message names each one when it starts, and `wait` \
                              returns once a peer messages you"
                 .to_owned(),
         };
@@ -328,7 +333,7 @@ impl Agents<'_, '_> {
             let request = RequestId(called.tool_call.id.to_string());
             let asked = Request {
                 id: request.clone(),
-                asker: called.caller.clone(),
+                asker: called.agent_id.clone(),
                 batch: None,
             };
             let busy = self.agents.get(target.entity).is_ok_and(|agent| agent.busy);
@@ -338,7 +343,7 @@ impl Agents<'_, '_> {
             if !busy {
                 entity.insert(EffectParent(called.effect));
             }
-            let author = Author::agent(called.caller.clone(), Some(request));
+            let author = Author::agent(called.agent_id.clone(), Some(request));
             let mode = match waiting {
                 true => DeliveryMode::Steer,
                 false => DeliveryMode::Queue,
@@ -355,22 +360,38 @@ impl Agents<'_, '_> {
     }
 
     /// Whether a message from `from` came to `agent` that its model has
-    /// not read yet: `Some(true)` once `agent` accepted one, which then
-    /// goes with its next model call even if it was to wait for the end
-    /// of its turn; `Some(false)` while one is on its way.
-    fn came(&mut self, agent: Entity, from: &AgentId) -> Option<bool> {
-        let mut came = None;
+    /// not read yet. An accepted one goes with its next model call even if
+    /// it was to wait for the end of its turn.
+    fn came(&mut self, agent: Entity, from: &AgentId) -> Arrival {
+        let mut came = Arrival::Nothing;
         for (mut sent, to, accepted) in &mut self.inboxes {
             if to.0 != agent || sent.author.from.as_deref() != Some(from.0.as_str()) {
                 continue;
             }
-            came = Some(came == Some(true) || accepted);
+            let this = if accepted {
+                Arrival::Accepted
+            } else {
+                Arrival::OnItsWay
+            };
+            came = came.max(this);
             if accepted && sent.mode == DeliveryMode::Queue {
                 sent.mode = DeliveryMode::Steer;
             }
         }
         came
     }
+}
+
+/// How far a message from one agent to another got, as [`Agents::came`]
+/// says.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Arrival {
+    /// None came.
+    Nothing,
+    /// One is on its way.
+    OnItsWay,
+    /// One was accepted.
+    Accepted,
 }
 
 /// Sends a `message` call's text to an agent the caller can reach, as
@@ -408,15 +429,15 @@ fn on_wait(called: On<ToolCalled<WaitArgs>>, mut agents: Agents) {
         agent.busy || waits
     });
     let output = match agents.came(caller, &target.id) {
-        Some(true) => answered(format!("`{short}` sent you a message; it follows.")),
-        None if !working => refused(format!(
+        Arrival::Accepted => answered(format!("`{short}` sent you a message; it follows.")),
+        Arrival::Nothing if !working => refused(format!(
             "`{short}` is idle, so nothing will come from it; `message` it."
         )),
-        None if agents.reaches(target.entity, caller) => refused(format!(
+        Arrival::Nothing if agents.reaches(target.entity, caller) => refused(format!(
             "`{short}` is waiting for you, so waiting for it would never end."
         )),
         // A message on its way ends the wait once the caller accepts it.
-        Some(false) | None => {
+        Arrival::OnItsWay | Arrival::Nothing => {
             agents.commands.entity(call).insert(Awaits(target.entity));
             return;
         }

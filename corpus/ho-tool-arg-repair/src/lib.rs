@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 
 use bevy_log::debug;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::error::ErrorKind;
 use rig_harness::rig_core::message::ToolFunction;
 use rig_harness::rig_core::tool::ToolErrorKind;
@@ -97,7 +97,10 @@ impl Plugin for ToolArgRepairPlugin {
 /// keep the model's text. A repaired reply needs no repair, so the next
 /// pass leaves it alone.
 fn repair_replies(
-    mut replies: Query<(&mut Outcome, Option<&SentTo>), (Unreviewed, ModelCalls, With<TurnCall>)>,
+    mut replies: Query<
+        (&mut Outcome, Option<&SentTo>),
+        (ReadyToSettle, ModelCalls, With<TurnCall>),
+    >,
     tools: Query<&ToolDef>,
     settings: Res<ArgRepairSettings>,
     mut repairs: ResMut<Repairs>,
@@ -156,7 +159,7 @@ struct Hinted;
 fn hint(
     mut calls: Query<
         (Entity, &ToolRequest, &mut Outcome),
-        (Unreviewed, ToolCalls, Without<Hinted>),
+        (ReadyToSettle, ToolCalls, Without<Hinted>),
     >,
     tools: Query<&ToolDef>,
     mut commands: Commands,

@@ -1,4 +1,4 @@
-//! Effect log headers, checkpoint envelopes, and stable JSON hashing.
+//! Effect log headers, resume points, and stable JSON hashing.
 //!
 //! ```
 //! let hash = rig_cassette::effect_log::stable_hash(&"run")?;
@@ -13,9 +13,9 @@ use rig_core::json_utils::to_canonical_string;
 use rig_core::serve::ServingPolicy;
 use serde::{Deserialize, Serialize};
 
-/// The checkpoint envelope format this crate writes and reads. This versions
-/// [`Checkpoint`], not [`LogHeader`]; logs have no global format number.
-pub const CHECKPOINT_FORMAT: u32 = 6;
+/// The resume-point format this crate writes and reads. This versions
+/// [`ResumePoint`], not [`LogHeader`]; logs have no global format number.
+pub const RESUME_POINT_FORMAT: u32 = 6;
 
 /// Recorded run identity, handler declarations, and optional delivery metadata
 /// used to validate replay compatibility. Deserialization rejects unknown fields;
@@ -104,6 +104,23 @@ impl Default for LogHeader {
     }
 }
 
+impl LogHeader {
+    /// Describes each of `handlers`: one already described in place, a new
+    /// one after the others.
+    pub fn describe(&mut self, handlers: impl IntoIterator<Item = HandlerDescriptor>) {
+        for handler in handlers {
+            match self
+                .handlers
+                .iter_mut()
+                .find(|known| known.key == handler.key)
+            {
+                Some(known) => *known = handler,
+                None => self.handlers.push(handler),
+            }
+        }
+    }
+}
+
 /// A recorded run with metadata and exchanges in dispatch order.
 /// Dereferences to the record slice and supports owned or borrowed iteration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -150,12 +167,12 @@ impl EffectLog {
         }
     }
 
-    /// Return a checkpoint containing `state`, position `at`, and the next
+    /// Return a resume point holding `state`, position `at`, and the next
     /// record ID, together with the remaining log. Positions at or beyond the
     /// end produce an empty tail.
-    pub fn checkpoint<S>(&self, at: usize, state: S) -> (Checkpoint<S>, Self) {
-        let checkpoint = Checkpoint {
-            format: CHECKPOINT_FORMAT,
+    pub fn resume_point<S>(&self, at: usize, state: S) -> (ResumePoint<S>, Self) {
+        let checkpoint = ResumePoint {
+            format: RESUME_POINT_FORMAT,
             at,
             next: self.records.get(at).map(|record| record.id),
             state,
@@ -163,15 +180,19 @@ impl EffectLog {
         (checkpoint, self.tail(at))
     }
 
-    /// Validate and return `tail`, or an error if the checkpoint format or next
-    /// record ID does not match. An ending checkpoint requires an empty tail.
-    pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, ErrorReport> {
-        if checkpoint.format != CHECKPOINT_FORMAT {
+    /// Validate and return `tail`, or an error if the resume point's format
+    /// or next record ID does not match. A resume point at the end requires
+    /// an empty tail.
+    pub fn from_resume_point<S>(
+        checkpoint: &ResumePoint<S>,
+        tail: Self,
+    ) -> Result<Self, ErrorReport> {
+        if checkpoint.format != RESUME_POINT_FORMAT {
             return Err(ErrorReport::new(
                 ErrorKind::Internal,
                 format!(
                     "resume refused: the checkpoint is format {}, this rig reads format {}",
-                    checkpoint.format, CHECKPOINT_FORMAT
+                    checkpoint.format, RESUME_POINT_FORMAT
                 ),
             ));
         }
@@ -208,8 +229,8 @@ fn unreachable_refusal() -> String {
 /// A suspended log position, expected next record ID, and driver-owned state.
 /// Resume validation requires a tail whose first ID matches `next`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Checkpoint<S> {
-    /// The checkpoint envelope format ([`CHECKPOINT_FORMAT`]).
+pub struct ResumePoint<S> {
+    /// The checkpoint envelope format ([`RESUME_POINT_FORMAT`]).
     pub format: u32,
     /// The position in the log: `at` records were performed before it.
     pub at: usize,

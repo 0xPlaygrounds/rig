@@ -293,7 +293,7 @@ fn checked(
         };
         let mut member = commands.spawn((
             request,
-            Effect::child_of(Some(checking.effect)),
+            Effect::with_parent_id(Some(checking.effect)),
             ForAgent(agent),
             PatchPart { call, index },
         ));

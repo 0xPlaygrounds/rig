@@ -31,9 +31,8 @@ use ratatui::{Frame, Terminal};
 
 use super::input::TerminalInput;
 use super::keys::KeyBinding;
-use super::panel::TuiScreen;
-use super::view::TuiView;
-use rig_ecs::calls::Wake;
+use super::panel::{RequestRedraw, TerminalSize};
+use rig_ecs::tasks::Wake;
 use rig_harness::harness_protocol::secret_variables;
 use rig_harness::prelude::{Exit, ExitReason, Scratch};
 
@@ -78,7 +77,9 @@ pub struct TerminalFocus(pub Option<bool>);
 pub struct TerminalWrite(pub Vec<u8>);
 
 /// Puts the text on the system clipboard through the terminal (OSC 52),
-/// which works over SSH too, where the terminal allows it.
+/// which works over SSH too, where the terminal allows it, and on this
+/// machine's clipboard through [`rig_tools::clipboard`], for a terminal
+/// that ignores OSC 52.
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct CopyToClipboard(pub String);
 
@@ -278,7 +279,7 @@ impl TuiTestScreen {
         &self.written
     }
 
-    /// The areas written again after a frame ([`Repaint`](crate::Repaint)),
+    /// The areas written again after a frame ([`RedrawArea`](crate::RedrawArea)),
     /// clipped to the screen, in order.
     pub fn repainted(&self) -> &[Rect] {
         &self.repainted
@@ -309,7 +310,7 @@ impl Drop for Tui {
 pub(crate) fn open_terminal(
     scratch: Option<Res<Scratch>>,
     wake: Res<Wake>,
-    mut screen: ResMut<TuiScreen>,
+    mut screen: ResMut<TerminalSize>,
     mut commands: Commands,
 ) {
     // Stray output goes to the text log, or nowhere without a place for it.
@@ -408,9 +409,9 @@ pub(crate) fn run_in_terminal(world: &mut World) {
     });
     // The terminal may have been resized meanwhile, unseen.
     if let Some(size) = size
-        && let Some(mut screen) = world.get_resource_mut::<TuiScreen>()
+        && let Some(mut screen) = world.get_resource_mut::<TerminalSize>()
     {
-        screen.set_if_neq(TuiScreen(Rect::new(0, 0, size.width, size.height)));
+        screen.set_if_neq(TerminalSize(Rect::new(0, 0, size.width, size.height)));
     }
     let wake = world.get_resource::<Wake>().cloned();
     if reading && let Some(wake) = &wake {
@@ -419,9 +420,7 @@ pub(crate) fn run_in_terminal(world: &mut World) {
             Err(failure) => error!("could not read the terminal again: {failure}"),
         }
     }
-    if let Some(mut view) = world.get_resource_mut::<TuiView>() {
-        view.set_changed();
-    }
+    world.write_message(RequestRedraw);
     // The plugin reads the exit in the next frame.
     if let Some(wake) = wake {
         wake.wake();

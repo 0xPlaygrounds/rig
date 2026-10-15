@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::pick::PickPlugin;
-use rig_harness::rig_memory::Record;
+use rig_harness::rig_memory::LogRecord;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, MemoryStore, app_on, commit_message, connect, first_agent,
     log_ended, reply, run_until,
@@ -22,7 +22,7 @@ fn start(
     let (mut app, wakes) = app_on(store);
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         PickPlugin,
         ReviewableCompactionPlugin,
         AnswerAsks,
@@ -147,7 +147,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     assert!(all.contains("Q12:") && !all.contains("Q01:"), "{all}");
     let records = history(&store, &id.unwrap_or_default()).unwrap_or_default();
     let kept_first = records.iter().any(|(_, record)| match record {
-        Record::Change(Recorded {
+        LogRecord::Change(ChangeRecord {
             change: Change::Push { entries },
             ..
         }) => entries

@@ -184,6 +184,7 @@ pub mod tool {
     }
 }
 
+/// rig-agent's helpers for tests of code built on it.
 #[cfg(all(feature = "agent", any(test, feature = "test-utils")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils {

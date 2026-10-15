@@ -33,7 +33,7 @@ use rig_harness::rig_core::message::{
 };
 use rig_harness::rig_core::providers::anthropic::extension::AnthropicExt;
 use rig_harness::rig_core::providers::registry::Format;
-use rig_harness::rig_core::serve::{self, Intercept, Verdict};
+use rig_harness::rig_core::serve::{self, AfterServe, Intercept};
 use rig_harness::rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::rig_ecs::effects::Handler;
 use rig_telemetry::UsageRow;
@@ -173,19 +173,19 @@ impl Intercept for ProviderSide {
         &self,
         _: EffectId,
         kind: &EffectKind,
-    ) -> impl Future<Output = serve::Decision> + WasmCompatSend {
+    ) -> impl Future<Output = serve::BeforeServe> + WasmCompatSend {
         let EffectKind::Completion { request, stream } = kind else {
-            return ready(serve::Decision::Proceed);
+            return ready(serve::BeforeServe::Proceed);
         };
         let mut request = request.clone();
         let rewritten = as_text_for(&mut request.chat_history, self.vendor);
         let tooled = add_tools(&mut request, &self.tools);
         ready(match rewritten || tooled {
-            true => serve::Decision::Patch(EffectKind::Completion {
+            true => serve::BeforeServe::Patch(EffectKind::Completion {
                 request,
                 stream: *stream,
             }),
-            false => serve::Decision::Proceed,
+            false => serve::BeforeServe::Proceed,
         })
     }
 
@@ -193,9 +193,9 @@ impl Intercept for ProviderSide {
         &self,
         _: EffectId,
         _: &EffectKind,
-        _: &Result<rig_harness::rig_core::effect::Outcome, ErrorReport>,
-    ) -> impl Future<Output = Verdict> + WasmCompatSend {
-        ready(Verdict::Keep)
+        _: &Result<rig_harness::rig_core::effect::Answered, ErrorReport>,
+    ) -> impl Future<Output = AfterServe> + WasmCompatSend {
+        ready(AfterServe::Keep)
     }
 }
 

@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::{
-    effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
+    effect::{Answered, EffectId, EffectKind, HandlerDescriptor, HandlerKey},
     error::ErrorReport,
     streaming::{Item, StreamEvent},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -83,7 +83,7 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// caller's published context.
     fn tool_output(&self, id: EffectId, output: crate::tool::ToolResultContext);
     /// The outcome of `id`.
-    fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>);
+    fn resolve(&self, id: EffectId, outcome: Result<Answered, ErrorReport>);
 }
 
 /// The [`Observe`](super::Observe) a recording driver installs on each
@@ -101,7 +101,7 @@ impl super::Observe for RecordingObserver {
         self.recorder.adapter_context(self.id)
     }
 
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
         if let Some(output) = self
             .published
             .as_ref()
@@ -181,7 +181,7 @@ impl OpenRecord {
     }
 
     /// Records `outcome` as the effect's outcome; only the first counts.
-    pub fn settle(&mut self, outcome: Result<Outcome, ErrorReport>) {
+    pub fn settle(&mut self, outcome: Result<Answered, ErrorReport>) {
         if let Some(recorder) = self.recorder.take() {
             recorder.resolve(self.id, outcome);
         }

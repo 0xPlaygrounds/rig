@@ -13,22 +13,13 @@
 //! against what the build declared, which the build describes when asked
 //! ([`describe`](crate::describe)).
 //!
-//! A front shows the agents to someone and takes what they type: the
-//! terminal view, `--print`, a window, a web server. Each offers itself in
-//! `build` with `app.add_front(..)`, saying which runs it can take: an
-//! interactive terminal, a run without one, or a run whose command line
-//! has its flag, or a top-level command of its own, `rig <name> …`, whose
-//! arguments it reads with [`Invoked::command`]. One front takes each run:
-//! the one whose command or flag was given, else the first offered (in
-//! `plugins.toml` order) for the kind of run, among those with neither.
-//! Each front asks `app.runs_front(name)` in its `finish`, once every
-//! plugin offered what it has, and sets itself up only then. An
-//! interactive run that no front takes says so and exits. A front whose
-//! runs leave nothing to resume, such as one replaying a recording, is
-//! [`Front::sessionless`]: a run it takes removes its session's directory
-//! when it ends, and a run of a resumed session is refused. A front whose
-//! runs keep their session elsewhere, such as with a chat thread, opens it
-//! with [`Front::session_store`].
+//! A front shows the agents to someone and takes what they type, such as the
+//! terminal view or `--print`. One front takes each run: the one whose
+//! command or flag was given, else the first offered (in `plugins.toml`
+//! order) for the kind of run. Each sets itself up in `finish` only if
+//! `app.runs_front(name)`. The plugin guide's
+//! [fronts section](crate::plugin_guide#fronts-options-and-commands) covers
+//! sessionless fronts and fronts with a store of their own.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -68,10 +59,10 @@ use std::sync::Arc;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{RESERVED_COMMANDS, SessionDir, StartReason};
-use rig_memory::{LoadError, Store};
+use rig_memory::{SessionError, Store};
 
 use super::launcher::Invoked;
-use super::session::{AppStart, SessionStores};
+use super::session::{AppStart, StoreOpener};
 use crate::describe::Describing;
 use crate::secrets::Secret;
 
@@ -148,8 +139,8 @@ pub struct Front {
     /// refused.
     pub sessionless: bool,
     /// Where a run it takes keeps its session, in place of
-    /// [`SessionStores`] ([`Self::session_store`]).
-    pub session_store: Option<SessionStores>,
+    /// [`StoreOpener`] ([`Self::session_store`]).
+    pub session_store: Option<StoreOpener>,
 }
 
 impl Front {
@@ -186,15 +177,15 @@ impl Front {
 
     /// A run it takes keeps its session in the store `open` opens for the
     /// session's directory, such as one of a chat thread's, instead of the
-    /// one [`SessionStores`] opens. Only the running session's store comes
+    /// one [`StoreOpener`] opens. Only the running session's store comes
     /// from it: forks, imports and listings still open theirs with
-    /// [`SessionStores`]. The front is chosen, and the store opened, once
+    /// [`StoreOpener`]. The front is chosen, and the store opened, once
     /// every plugin is built.
     pub fn session_store(
         mut self,
-        open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync + 'static,
+        open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, SessionError> + Send + Sync + 'static,
     ) -> Self {
-        self.session_store = Some(SessionStores::new(open));
+        self.session_store = Some(StoreOpener::new(open));
         self
     }
 

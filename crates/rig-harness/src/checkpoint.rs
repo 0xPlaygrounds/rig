@@ -24,29 +24,19 @@
 //! }
 //! ```
 //!
-//! The state before a turn's first checkpointed call is kept
-//! ([`TurnCheckpoint::first`]), to tell what the whole turn changed or read
-//! a file as it was ([`Snapshot::content`]), and so is the state before
-//! each checkpointed call ([`CallCheckpoint::before`], on the call). Each
-//! call's snapshots start from the newest one taken of its directory in
-//! the run, in any turn, so a scan hashes again only what changed. In a
-//! git work tree on this machine a snapshot is a tree written with a
-//! private index and object directory in the session's [`Scratch`], so the
-//! user's repository is never written to; elsewhere it is a scan of the
-//! workspace's files, whose content is kept in the scratch for the run.
-//! `[checkpoints] enabled = false` in `settings.toml` turns it off
-//! ([`Checkpoints`]).
+//! The state before a turn's first checkpointed call
+//! ([`TurnCheckpoint::first`]) and before each call
+//! ([`CallCheckpoint::before`]) are kept; [`Snapshot::content`] reads a file
+//! from either. In a git work tree on this machine a snapshot is a tree
+//! written with a private index in the session's [`Scratch`], never in the
+//! user's repository; elsewhere it is a scan. `[checkpoints] enabled = false`
+//! turns it off ([`Checkpoints`]).
 //!
-//! What it reports is what changed while the call ran, not who changed it:
-//! a write by another process in that time, such as the user's editor, is
-//! in it, as telling processes apart would need the operating system to
-//! trace them. A call whose footprint names its paths reports exactly what
-//! its tool wrote. A change made between two calls is in neither. Files git
-//! or the workspace's listing leave out (ignored, hidden, `target`) are not
-//! seen unless named in [`CheckpointAlso`]. A call of an open tool, which
-//! has no [`CallHandler`], is not wrapped, nor is a call whose footprint a
-//! plugin narrowed to named paths: a plugin that does so and wants the
-//! call's changes wraps its handler in a `Checkpointed` itself.
+//! It reports what changed while the call ran, not who changed it: another
+//! process's write in that time is in it. Files git or the listing leave out
+//! are unseen unless named in [`CheckpointAlso`]. An open tool's call, and a
+//! call whose footprint a plugin narrowed, are not wrapped; such a plugin
+//! wraps the handler in a `Checkpointed` itself.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -58,7 +48,8 @@ use rig_core::serve::ErasedHandler;
 use rig_core::tool::{Scope, Touches};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    AgentPass, CallHandler, CallOf, Footprint, ForAgent, GateSystems, ToolCalls, Undecided,
+    AgentPass, CallHandler, CallOf, Footprint, ForAgent, GateSystems, ReadyToStart, ToolCalls,
+    TurnOf,
 };
 use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
@@ -175,6 +166,9 @@ impl Plugin for CheckpointPlugin {
             .get_resource_or_init::<CheckpointAlso>()
             .0
             .extend(also);
+        if let Err(failure) = app.try_register_required_components::<TurnOf, TurnCheckpoint>() {
+            bevy_log::warn!("turns will not share a checkpoint: {failure}");
+        }
         app.add_systems(
             AgentPass,
             checkpoint
@@ -214,7 +208,7 @@ fn checkpoint(
             Option<&ForAgent>,
             Option<&CallOf>,
         ),
-        (ToolCalls, Undecided, Without<CallCheckpoint>),
+        (ToolCalls, ReadyToStart, Without<CallCheckpoint>),
     >,
     turns: Query<&TurnCheckpoint>,
     dirs: Query<&WorkDir>,
@@ -227,25 +221,14 @@ fn checkpoint(
     ),
     mut commands: Commands,
 ) {
-    let mut made: HashMap<Entity, TurnCheckpoint> = HashMap::new();
     for (call, footprint, mut handler, agent, turn) in &mut calls {
         if footprint.0 != Touches::Writes(Scope::Anything) {
             continue;
         }
-        let shared = match turn {
-            Some(&CallOf(turn)) => match turns.get(turn) {
-                Ok(shared) => shared.clone(),
-                Err(_) => made
-                    .entry(turn)
-                    .or_insert_with(|| {
-                        let shared = TurnCheckpoint::default();
-                        commands.entity(turn).try_insert(shared.clone());
-                        shared
-                    })
-                    .clone(),
-            },
-            None => TurnCheckpoint::default(),
-        };
+        let shared = turn
+            .and_then(|&CallOf(turn)| turns.get(turn).ok())
+            .cloned()
+            .unwrap_or_default();
         let (root, _) = base(agent.map(|agent| agent.0), &dirs, &root);
         let checkpoint = CallCheckpoint::default();
         let wrapped = Checkpointed {

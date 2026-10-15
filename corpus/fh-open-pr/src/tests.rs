@@ -111,7 +111,7 @@ fn session(dir: &Path, answers: Vec<Answer>, until: &str) -> (String, Vec<String
         .insert_resource(ProjectRoot(work))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ShellTool,
             AnswerAsks,
             OpenPrPlugin,

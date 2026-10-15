@@ -9,10 +9,10 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
 use rig_core::conversation::MessageId;
-use rig_core::conversation::{self, Author, Entry};
+use rig_core::conversation::{self, Author};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
-use rig_ecs::journal::{JournalPlugin, RewriteSession, SessionStore};
-use rig_ecs::{AgentPlugin, WriteJournal};
+use rig_ecs::session_log::{RewriteSession, SessionLogPlugin, SessionStore};
+use rig_ecs::{AgentPlugin, WriteLogs};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::{
     DirStore, Files, MemoryStore, SPLIT, Session, SessionMeta, SplitPointer, Store, Strings,
@@ -22,7 +22,7 @@ use rig_memory::{
 use super::{
     AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, ForkedFrom, Scratch,
     SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
-    SessionPlugin, SessionStores, first_typed, log_layer, rewrite_stopped, typed,
+    SessionPlugin, StoreOpener, log_layer, rewrite_stopped,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitReason;
@@ -111,7 +111,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
         .insert_resource(SessionStore::new(store))
         .add_plugins(SessionPlugin)
         .add_systems(Last, watch.after(ForkSessions));
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
     assert_eq!(forked.as_ref().map(|forked| &forked.from), Some(&id));
@@ -164,7 +164,7 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
     let home = scratch_home("rig-session-delete");
     let elsewhere = home.root().join("elsewhere");
     let kept = elsewhere.clone();
-    let stores = SessionStores::new(move |dir| {
+    let stores = StoreOpener::new(move |dir| {
         let id = dir.id().map(|id| id.to_string()).unwrap_or_default();
         Ok(Arc::new(DirStore::open(kept.join(id))?))
     });
@@ -186,7 +186,7 @@ fn a_delete_reaches_a_store_kept_elsewhere_and_the_next_start_finishes_a_cut_sho
     let (Some((gone, gone_dir)), Some((cut, cut_dir)), Some((here, here_dir))) = sessions else {
         return;
     };
-    let start = |stores: &SessionStores| {
+    let start = |stores: &StoreOpener| {
         let mut app = App::new();
         app.add_message::<Notice>()
             .init_resource::<Seen>()
@@ -297,7 +297,7 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
         let layer = log_layer(&mut app);
         let file = app.world().resource::<super::TextLog>().file.clone();
         std::io::Write::write_all(&mut super::LogWriter(file), b"this run\n").ok();
-        app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
             .add_plugins(SessionPlugin);
         drop(std::panic::take_hook());
         app.finish();
@@ -341,7 +341,7 @@ fn a_failed_fork_tells_its_asker_why() {
     drop(std::panic::take_hook());
     let asker = app.world_mut().spawn_empty().id();
     // No store: the session was never opened.
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         asker: Some(asker),
         ..ForkSession::default()
     });
@@ -369,7 +369,7 @@ fn running_with(home: &Home, id: &SessionId, said: &[Message]) -> Option<(App, E
     app.init_resource::<Seen>()
         .insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .add_plugins(SessionPlugin)
         .add_systems(Last, watch.after(ForkSessions));
     drop(std::panic::take_hook());
@@ -419,10 +419,10 @@ fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
         agent: agent_id.clone(),
         line: None,
         through,
-        take,
+        move_from: take,
         title: "side".to_owned(),
     };
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut: line(third, None),
         ..ForkSession::default()
     });
@@ -477,7 +477,7 @@ fn a_split_of_this_session_copies_its_line_and_leaves_a_pointer() {
     };
     assert_eq!(pointers(&app), [(Some(third), pointer(&forked.to, 0))]);
 
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut: line(fourth, Some(second)),
         ..ForkSession::default()
     });
@@ -545,14 +545,14 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
         agent: agent_id.clone(),
         line: None,
         through: third,
-        take,
+        move_from: take,
         title: "side".to_owned(),
     };
     let stopped = home.session(&there);
     let lock = stopped.hold().ok().flatten();
     assert!(lock.is_some(), "held as another rig would");
     for take in [None, Some(second)] {
-        app.world_mut().trigger(ForkSession {
+        app.world_mut().write_message(ForkSession {
             from: Some(there.clone()),
             cut: line(take),
             asker: None,
@@ -564,7 +564,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
     let notes: Vec<_> = seen
         .forked
         .iter()
-        .map(|forked| forked.note.is_some())
+        .map(|forked| forked.unfinished.is_some())
         .collect();
     assert_eq!(notes, [true], "copied without a pointer");
     let failed: Vec<_> = seen
@@ -574,7 +574,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
         .collect();
     assert_eq!(failed, ["another rig runs it"]);
 
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         from: Some(there.clone()),
         cut: line(Some(second)),
         asker: None,
@@ -584,7 +584,7 @@ fn a_split_of_a_stopped_session_leaves_its_pointer_unless_another_rig_runs_it() 
     let to = seen
         .forked
         .get(1)
-        .map(|forked| (forked.to.clone(), forked.note.clone()));
+        .map(|forked| (forked.to.clone(), forked.unfinished.clone()));
     assert!(matches!(to, Some((_, None))), "{to:?} {:?}", seen.notices);
     let read = dir_store(&stopped).and_then(|store| Session::read(&store).ok());
     let conversation = read
@@ -624,7 +624,7 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     app.init_resource::<Seen>()
         .insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .add_plugins(SessionPlugin)
         .add_systems(Last, watch.after(ForkSessions));
     if let Some(store) = dir_store(&session) {
@@ -654,7 +654,7 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     let cut = before.clone().map_or(ForkCut::Whole, |(agent, message)| {
         ForkCut::Before(agent, message)
     });
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         asker: Some(asker),
         ..ForkSession::default()
@@ -800,7 +800,7 @@ fn a_sessionless_front_refuses_a_resumed_session_and_keeps_it() {
 
 /// A front with a store of its own keeps the session of a run it takes
 /// there, such as `rig -r X reply` with a chat thread's store; any other
-/// run keeps its session as [`SessionStores`] does.
+/// run keeps its session as [`StoreOpener`] does.
 #[test]
 fn a_fronts_own_store_keeps_only_the_sessions_of_its_runs() {
     let home = scratch_home("rig-front-store");
@@ -921,7 +921,7 @@ fn a_new_session_and_a_fork_start_new_and_a_second_start_resumes() {
     assert_eq!(reason(&first), Some(StartReason::New));
     // A started session is resumed, whatever else, without a launcher.
     assert_eq!(reason(&start(&session)), Some(StartReason::Resumed));
-    first.world_mut().trigger(ForkSession::default());
+    first.world_mut().write_message(ForkSession::default());
     first.update();
     let fork = first.world().resource::<Seen>().forked.first().cloned();
     assert!(fork.is_some(), "the session was forked");
@@ -948,7 +948,7 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
         app.init_resource::<Seen>()
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
-            .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+            .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
             .add_plugins(SessionPlugin)
             .add_systems(Last, watch.after(ForkSessions));
         if let Some(store) = dir_store(&session) {
@@ -994,7 +994,7 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
     let mut app = App::new();
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
         .add_plugins(SessionPlugin);
     drop(std::panic::take_hook());
     app.finish();
@@ -1009,7 +1009,7 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
     app.update();
     drop(app);
     assert!(session.is_saved());
-    let store = SessionStores::default().open(&session).ok();
+    let store = StoreOpener::default().open(&session).ok();
     let read = store.as_ref().and_then(|store| store.logs().ok());
     assert!(read.is_some_and(|logs| !logs.is_empty()));
     // The plain markers beside the store are none of its files.
@@ -1084,22 +1084,6 @@ fn a_text_log_from_earlier_runs_stays_where_it_was() {
     std::fs::remove_dir_all(home.root()).ok();
 }
 
-#[test]
-fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
-    let attached = "<file path=\"a.txt\">\nfile text\n</file>";
-    let mut conversation = conversation::Conversation::new();
-    conversation.push(Entry::new(Message::user("build failed")).by(Author::plugin("build")));
-    conversation.push(Message::assistant("ok"));
-    conversation.push(Message::user(attached));
-    conversation.push(Message::user("  fix it  "));
-    conversation.push(Message::user("and test"));
-    assert_eq!(typed(&conversation, 0), None);
-    assert_eq!(typed(&conversation, 1), None);
-    assert_eq!(typed(&conversation, 2), None);
-    assert_eq!(typed(&conversation, 4).as_deref(), Some("and test"));
-    assert_eq!(first_typed(&conversation).as_deref(), Some("fix it"));
-}
-
 /// The frame a plugin's system last wrote the session's store in.
 #[derive(Resource, Default)]
 struct Frame(u32);
@@ -1137,12 +1121,12 @@ fn a_fork_has_what_a_plugin_wrote_before_it_in_its_frame() {
         .add_systems(
             Last,
             (
-                note_frame.after(WriteJournal).before(ForkSessions),
+                note_frame.after(WriteLogs).before(ForkSessions),
                 watch.after(ForkSessions),
             ),
         );
     app.update();
-    app.world_mut().trigger(ForkSession::default());
+    app.world_mut().write_message(ForkSession::default());
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
     let copy = forked.and_then(|forked| dir_store(&home.session(&forked.to)));
@@ -1202,13 +1186,13 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     app.add_plugins((
         TaskPoolPlugin::default(),
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         SessionPlugin,
     ));
     drop(std::panic::take_hook());
     app.finish();
     app.update();
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("redact"),
         with: Arc::new(redact()),
         asker: None,
@@ -1220,7 +1204,7 @@ fn a_rewrite_reaches_the_scratch_files_of_this_session_and_of_a_stopped_one() {
     let log = fs::read_to_string(session.log()).unwrap_or_default();
     assert!(log.ends_with("the key is [REDACTED]\nafter\n"), "{log}");
 
-    let stores = SessionStores::default();
+    let stores = StoreOpener::default();
     let by = || Author::plugin("redact");
     let this = rewrite_stopped(&stores, &session, &session, by(), &redact());
     assert!(this.is_err(), "the running session is RewriteSession's");
@@ -1269,7 +1253,7 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let (session, stopped) = (home.session(&here), home.session(&there));
     let store = fs::create_dir_all(stopped.path())
         .ok()
-        .and_then(|()| SessionStores::default().open(&stopped).ok());
+        .and_then(|()| StoreOpener::default().open(&stopped).ok());
     let Some(store) = store else {
         return;
     };
@@ -1292,12 +1276,12 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     drop(std::panic::take_hook());
     app.finish();
     app.update();
-    let stores = app.world().resource::<SessionStores>().clone();
+    let stores = app.world().resource::<StoreOpener>().clone();
     let value = |value: serde_json::Value| Versioned { v: 1, value };
     let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
-        read.state
+        read.saved
             .insert("goals.goal".to_owned(), value("ship".into()));
-        read.state.insert("goals.count".to_owned(), value(3.into()));
+        read.saved.insert("goals.count".to_owned(), value(3.into()));
         let agent = read.agent_mut("agent-1").ok_or("no agent")?;
         agent.conversation.push(Message::assistant("hello"));
         Ok(())
@@ -1306,7 +1290,7 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let listed = |goal: &str| BTreeMap::from([("goals.goal".to_owned(), value(goal.into()))]);
     let meta = SessionMeta::read(&*store).unwrap_or_default();
     assert_eq!(
-        (meta.title.as_str(), meta.messages, &meta.data),
+        (meta.title.as_str(), meta.messages, &meta.listed),
         ("hi", 2, &listed("ship"))
     );
     assert!(meta.updated > 1, "updated");
@@ -1316,7 +1300,7 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let rewritten = rewrite_stopped(&stores, &session, &stopped, by, &Secret);
     assert!(rewritten.is_ok());
     let meta = SessionMeta::read(&*store).unwrap_or_default();
-    assert_eq!((meta.messages, &meta.data), (2, &listed("[secret]")));
+    assert_eq!((meta.messages, &meta.listed), (2, &listed("[secret]")));
     assert!(meta.updated > 1, "updated");
     drop(app);
     fs::remove_dir_all(home.root()).ok();

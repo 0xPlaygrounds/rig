@@ -118,7 +118,7 @@ fn top(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
 fn snapshot(
     calls: Query<
         (Entity, &ToolRequest, &ForAgent, &Footprint),
-        (Undecided, ToolCalls, Without<Noted>),
+        (ReadyToStart, ToolCalls, Without<Noted>),
     >,
     parents: Query<&SpawnedBy>,
     mut reviews: Query<&mut HunkReview>,

@@ -29,7 +29,7 @@ fn app(
 ) -> (App, std::sync::mpsc::Receiver<()>, Entity) {
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(scripted_models([("test/model", model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, AutoSessionNamePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, AutoSessionNamePlugin))
         .init_resource::<NamingSettled>()
         .add_observer(note_named);
     app.finish();
@@ -84,7 +84,7 @@ struct UserTyping;
 
 /// Holds the naming call once, before it starts.
 fn hold_naming(
-    calls: Query<Entity, (With<NamingCall>, Undecided)>,
+    calls: Query<Entity, (With<NamingCall>, ReadyToStart)>,
     mut held: Local<bool>,
     mut commands: Commands,
 ) {

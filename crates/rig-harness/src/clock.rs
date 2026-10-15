@@ -32,7 +32,7 @@ use bevy_reflect::prelude::*;
 pub struct WakeAt(pub SystemTime);
 
 impl WakeAt {
-    /// `after` from now.
+    /// A wake `after` from now.
     pub fn after(after: Duration) -> Self {
         Self(SystemTime::now() + after)
     }

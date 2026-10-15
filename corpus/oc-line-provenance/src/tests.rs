@@ -34,7 +34,7 @@ fn session(home: &Home, dir: &Path, model: &MockCompletionModel) -> (App, Receiv
         .insert_resource(TuiTestScreen::new(100, 30))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             EditTool,
             WriteTool,
             ShellTool,

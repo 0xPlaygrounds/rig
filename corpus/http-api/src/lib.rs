@@ -267,7 +267,7 @@ fn answer(
         },
         Call::Interrupt(agent) => match find(agent) {
             Some((entity, .., true, _)) => {
-                commands.trigger(Interrupt::new(entity));
+                commands.trigger(StopTurn::new(entity));
                 Reply::new(202, json!({ "accepted": true }))
             }
             Some(_) => Reply::error(409, "no turn runs"),

@@ -76,7 +76,7 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
         ))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             CompactionPlugin,
             ModelFallbackPlugin,
         ))

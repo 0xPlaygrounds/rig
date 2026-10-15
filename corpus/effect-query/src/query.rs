@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use rig_core::effect::{Disposition, EffectKind, EffectRecord, Outcome};
+use rig_core::effect::{Answered, Disposition, EffectKind, EffectRecord};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::tool::ToolErrorKind;
 use schemars::JsonSchema;
@@ -49,17 +49,17 @@ impl Status {
     }
 
     /// How `outcome` ended.
-    fn of(outcome: &Result<Outcome, ErrorReport>) -> Self {
+    fn of(outcome: &Result<Answered, ErrorReport>) -> Self {
         match outcome {
-            Ok(Outcome::ToolResult { result }) if result.is_refused() => Self::Denied,
-            Ok(Outcome::ToolResult { result }) => match result.error().map(|e| e.kind()) {
+            Ok(Answered::ToolResult { result }) if result.is_refused() => Self::Denied,
+            Ok(Answered::ToolResult { result }) => match result.error().map(|e| e.kind()) {
                 None => Self::Ok,
                 Some(ToolErrorKind::Cancelled) => Self::Interrupted,
                 Some(ToolErrorKind::PermissionDenied) => Self::Denied,
                 Some(_) => Self::Error,
             },
-            Ok(Outcome::Completion(response)) if response.aborted.is_some() => Self::Interrupted,
-            Ok(Outcome::Completion(response)) if response.error.is_some() => Self::Error,
+            Ok(Answered::Completion(response)) if response.aborted.is_some() => Self::Interrupted,
+            Ok(Answered::Completion(response)) if response.error.is_some() => Self::Error,
             Ok(_) => Self::Ok,
             Err(report) => match report.kind {
                 ErrorKind::Cancelled | ErrorKind::Tool(ToolErrorKind::Cancelled) => {
@@ -272,7 +272,7 @@ pub fn table(records: &[EffectRecord], names: &HashMap<String, String>, filter: 
     );
     for row in shown {
         let (model, cost) = match &row.record.outcome {
-            Ok(Outcome::Completion(response)) => (
+            Ok(Answered::Completion(response)) => (
                 row.name.as_str(),
                 response
                     .usage
@@ -311,7 +311,7 @@ pub fn detail(records: &[EffectRecord], id: u64) -> Option<String> {
         kind => pretty(kind),
     };
     let result = match &record.outcome {
-        Ok(Outcome::ToolResult { result }) => match result.error().or(result.refusal()) {
+        Ok(Answered::ToolResult { result }) => match result.error().or(result.refusal()) {
             Some(error) => format!(
                 "{}: {}",
                 Status::of(&record.outcome).as_str(),

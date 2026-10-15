@@ -65,7 +65,7 @@ fn start(
         ]))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             SubagentsPlugin,
             ClarifyFirstPlugin,
         ))

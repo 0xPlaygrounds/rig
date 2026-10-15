@@ -1,39 +1,5 @@
-//! Terminal input, read on a thread of its own that wakes the loop for
-//! each event, as in Bevy's `examples/async_tasks/external_source_external_thread.rs`.
-//! Each event joins the frame's [`TerminalEvents`], which the view takes
-//! one item at a time, in order, running the [`TuiKeys`] schedule for
-//! each: plugins read and change the item in [`InputSystems::Filter`],
-//! with the input and the [`TuiInputState`] as the keys before it left
-//! them, and the view does it in [`InputSystems::Dispatch`]: the shown
-//! picker or question takes the key, else a
-//! [`KeyBinding`](crate::KeyBinding) (the view's own editing keys are
-//! bindings too), else a character is typed into the input. What a key
-//! sets off, such as a panel a binding opens, takes the next key.
-//!
-//! ```no_run
-//! use rig_harness::prelude::*;
-//! use rig_tui::crossterm::event::{Event, KeyCode};
-//! use rig_tui::{Editor, InputSystems, KeyInput, MainEditor, TerminalEvents, TuiInputState, TuiKeys};
-//!
-//! /// `/` on an empty input opens a search instead of a slash command.
-//! fn slash_searches(
-//!     mut events: ResMut<TerminalEvents>,
-//!     input: Single<&Editor, With<MainEditor>>,
-//!     state: Res<TuiInputState>,
-//! ) {
-//!     let slash = |item: &KeyInput| {
-//!         matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'))
-//!     };
-//!     if input.is_empty() && state.picking().is_none() && events.0.first().is_some_and(slash) {
-//!         events.0.remove(0);
-//!         // open the search
-//!     }
-//! }
-//!
-//! fn build(app: &mut App) {
-//!     app.add_systems(TuiKeys, slash_searches.in_set(InputSystems::Filter));
-//! }
-//! ```
+//! Terminal input, read on a thread that wakes the loop, as in Bevy's
+//! `examples/async_tasks/external_source_external_thread.rs`.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -49,22 +15,22 @@ use crossbeam_channel::Receiver;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::layout::Rect;
 
-use super::clipboard::{self, Clipboard};
+use super::clipboard;
 use super::complete::{self, Completion, CompletionKind, CompletionSource};
 use super::editor::{Editor, MainEditor};
 use super::history::{PromptHistory, Sent};
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
 use super::pane::{MainPane, PaneState};
-use super::panel::{TuiPanel, TuiScreen};
-use super::pick::{self, Choices, PickerState, Showing};
+use super::panel::{TerminalSize, TuiPanel};
+use super::pick::{self, Choices, PickerInput, Showing};
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
-use rig_ecs::agent::{ActiveTurn, Interrupt, Notice};
-use rig_ecs::calls::Wake;
+use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
+use rig_ecs::tasks::Wake;
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{Chosen, Pick};
 use rig_harness::prelude::{Processes, Scratch};
-use rig_harness::primary::Shown;
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -73,25 +39,49 @@ const PAGE: usize = 10;
 /// the view is gone.
 const POLL: Duration = Duration::from_millis(100);
 
-/// The items of [`TerminalEvents`] a frame does at most: the rest, such as
+/// The items of [`PendingInput`] a frame does at most: the rest, such as
 /// those of a macro that never ends, wait for the next frame, so the view
 /// keeps drawing.
 const KEYS_PER_FRAME: usize = 1024;
 
-/// What the terminal reported, and the actions plugins put in, in the
-/// order the view does them. The view takes them one at a time: in
-/// [`TuiKeys`], it holds the one item being done, which filters in
-/// [`InputSystems::Filter`] read, change, drop or replace with several,
-/// such as to take a key before any binding sees it or only while the
-/// input is empty; [`InputSystems::Dispatch`] does what is left and
-/// empties it. What a run leaves in it, such as an action an observer of
-/// the key pushed, is done next, before the frame's other keys. A plugin
-/// may also push to it at any other time, such as the keys of a macro:
-/// they are done in the next frame.
+/// The frame's input, in order: what the terminal reported and the
+/// actions plugins pushed. The view does one item at a time, running
+/// [`TuiKeys`] for each: [`InputSystems::Filter`] systems may change, drop
+/// or replace it (with the main [`Editor`](crate::Editor) and
+/// [`InputContext`] as the keys before it left them), and
+/// [`InputSystems::Dispatch`] does it. The picker or question shown takes
+/// it first, then a [`KeyBinding`](crate::KeyBinding), then the input.
+/// Items left by a run are done next; a push outside [`TuiKeys`] waits for
+/// the next frame.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::crossterm::event::{Event, KeyCode};
+/// use rig_tui::{Editor, InputSystems, KeyInput, MainEditor, PendingInput, InputContext, TuiKeys};
+///
+/// /// `/` on an empty input opens a search instead of a slash command.
+/// fn slash_searches(
+///     mut events: ResMut<PendingInput>,
+///     input: Single<&Editor, With<MainEditor>>,
+///     state: Res<InputContext>,
+/// ) {
+///     let slash = |item: &KeyInput| {
+///         matches!(item, KeyInput::Event(Event::Key(key)) if key.code == KeyCode::Char('/'))
+///     };
+///     if input.is_empty() && state.picking().is_none() && events.0.first().is_some_and(slash) {
+///         events.0.remove(0);
+///         // open the search
+///     }
+/// }
+///
+/// fn build(app: &mut App) {
+///     app.add_systems(TuiKeys, slash_searches.in_set(InputSystems::Filter));
+/// }
+/// ```
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
-pub struct TerminalEvents(pub Vec<KeyInput>);
+pub struct PendingInput(pub Vec<KeyInput>);
 
-/// An item of the [`TerminalEvents`].
+/// An item of the [`PendingInput`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum KeyInput {
     /// What the terminal reported: a key, a paste, a resize, a change of
@@ -102,22 +92,22 @@ pub enum KeyInput {
 }
 
 /// The schedule the view runs once for each item of the frame's
-/// [`TerminalEvents`], in order, in `PreUpdate`, with that one item in
+/// [`PendingInput`], in order, in `PreUpdate`, with that one item in
 /// them: filters see one key (and what earlier filters made of it) with
-/// the input and the [`TuiInputState`] as the keys before it left them.
+/// the input and the [`InputContext`] as the keys before it left them.
 /// Its sets, in this order, are [`InputSystems`]; the commands of a run
 /// are applied before the next, so a panel a key opens takes the next.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TuiKeys;
 
-/// Where the terminal view handles each item of the [`TerminalEvents`],
+/// Where the terminal view handles each item of the [`PendingInput`],
 /// in [`TuiKeys`], in this order.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InputSystems {
-    /// Plugins read and change the item in the [`TerminalEvents`], with
-    /// the [`TuiInputState`] and the input as the keys before it left them.
+    /// Plugins read and change the item in the [`PendingInput`], with
+    /// the [`InputContext`] and the input as the keys before it left them.
     Filter,
-    /// The view does what is left in the [`TerminalEvents`].
+    /// The view does what is left in the [`PendingInput`].
     Dispatch,
 }
 
@@ -126,7 +116,7 @@ pub enum InputSystems {
 /// for a filter that acts only in some states, such as not while a
 /// completion is open. The view writes it; it is read-only to plugins.
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
-pub struct TuiInputState {
+pub struct InputContext {
     scope: KeyScope,
     editor: Option<Entity>,
     completion: Option<Completion>,
@@ -136,7 +126,7 @@ pub struct TuiInputState {
     selection: Option<usize>,
 }
 
-impl TuiInputState {
+impl InputContext {
     /// Where the keys go that no picker, question or global binding takes:
     /// the input, the transcript while the person reads it
     /// ([`KeyScope::Transcript`], whose keys the input's back), or the panel
@@ -248,47 +238,47 @@ impl Drop for TerminalInput {
 }
 
 /// Passes on what the input thread read.
-pub(crate) fn receive_events(input: Res<TerminalInput>, mut events: ResMut<TerminalEvents>) {
+pub(crate) fn receive_events(input: Res<TerminalInput>, mut events: ResMut<PendingInput>) {
     let mut read = input.events.try_iter().peekable();
     if read.peek().is_some() {
         events.0.extend(read.map(KeyInput::Event));
     }
 }
 
-/// Drops the [`TerminalEvents`] in a run without the view, which nothing
+/// Drops the [`PendingInput`] in a run without the view, which nothing
 /// does.
-pub(crate) fn clear_events(mut events: ResMut<TerminalEvents>) {
+pub(crate) fn clear_events(mut events: ResMut<PendingInput>) {
     if !events.0.is_empty() {
         events.0.clear();
     }
 }
 
-/// Runs [`TuiKeys`] for each item of the frame's [`TerminalEvents`], in
+/// Runs [`TuiKeys`] for each item of the frame's [`PendingInput`], in
 /// order, with that item alone in them; what a run leaves goes next. A run
 /// that changed the input's text ends the reading of the transcript: the
 /// selection goes. Past [`KEYS_PER_FRAME`] the rest waits for the next
 /// frame, which it wakes.
 pub(crate) fn run_keys(world: &mut World) {
     if world
-        .get_resource::<TerminalEvents>()
+        .get_resource::<PendingInput>()
         .is_none_or(|events| events.0.is_empty())
     {
         return;
     }
-    let mut events = world.resource_mut::<TerminalEvents>();
+    let mut events = world.resource_mut::<PendingInput>();
     let mut queue: VecDeque<KeyInput> = std::mem::take(&mut events.0).into();
     let mut done = 0;
     while let Some(item) = queue.pop_front() {
         if done == KEYS_PER_FRAME {
             queue.push_front(item);
-            world.resource_mut::<TerminalEvents>().0 = queue.into();
+            world.resource_mut::<PendingInput>().0 = queue.into();
             if let Some(wake) = world.get_resource::<Wake>() {
                 wake.wake();
             }
             return;
         }
         done += 1;
-        world.resource_mut::<TerminalEvents>().0.push(item);
+        world.resource_mut::<PendingInput>().0.push(item);
         let text = main_text(world);
         world.run_schedule(TuiKeys);
         let typed = main_text(world) != text;
@@ -300,7 +290,7 @@ pub(crate) fn run_keys(world: &mut World) {
                 }
             }
         }
-        let left = std::mem::take(&mut world.resource_mut::<TerminalEvents>().0);
+        let left = std::mem::take(&mut world.resource_mut::<PendingInput>().0);
         for item in left.into_iter().rev() {
             queue.push_front(item);
         }
@@ -314,11 +304,11 @@ fn main_text(world: &mut World) -> Option<String> {
     text.map(str::to_owned)
 }
 
-/// Notes the [`TuiInputState`] for the next key's filters, and after the
+/// Notes the [`InputContext`] for the next key's filters, and after the
 /// frame's keys.
-pub(crate) fn note_state(
+pub(crate) fn note_input_context(
     (view, main): (Res<TuiView>, Query<&TranscriptView, With<MainPane>>),
-    showing: Query<(Entity, &PickerState)>,
+    showing: Query<(Entity, &PickerInput)>,
     focus: Res<KeyFocus>,
     panels: Query<(), With<TuiPanel>>,
     choices: Choices,
@@ -326,7 +316,7 @@ pub(crate) fn note_state(
         Query<(Entity, &Editor, Has<MainEditor>)>,
         Query<&CompletionSource>,
     ),
-    mut state: ResMut<TuiInputState>,
+    mut state: ResMut<InputContext>,
 ) {
     let main_editor = editors.iter().find(|(.., main)| *main);
     let typed = main_editor.and_then(|(_, input, _)| complete::typed(input, &sources));
@@ -348,24 +338,15 @@ pub(crate) fn note_state(
             _ => None,
         }
     });
-    let same = state.scope == scope
-        && state.editor == editor
-        && state.answering == answering
-        && state.picking == picking
-        && state.selection == selection
-        && state.completion == view.completion
-        && state.typed == typed;
-    if !same {
-        *state = TuiInputState {
-            scope,
-            editor,
-            completion: view.completion.clone(),
-            typed,
-            answering,
-            picking,
-            selection,
-        };
-    }
+    state.set_if_neq(InputContext {
+        scope,
+        editor,
+        completion: view.completion.clone(),
+        typed,
+        answering,
+        picking,
+        selection,
+    });
 }
 
 /// Whether the person reads the main transcript: an item of it is
@@ -405,10 +386,9 @@ impl Keymap<'_, '_> {
 
 /// What a built-in key needs besides the view and the input.
 pub(crate) struct Context<'a, 'w, 's> {
-    /// The agent shown.
+    /// The shown agent.
     agent: Option<Entity>,
     busy: bool,
-    clipboard: &'a Clipboard,
     scratch: Option<&'a Scratch>,
     processes: Option<&'a Processes>,
     wake: &'a Wake,
@@ -463,22 +443,21 @@ fn keyed_pane(panes: &Panes, focus: Option<Entity>) -> Option<Entity> {
     focused.or_else(main)
 }
 
-/// Does the [`TerminalEvents`] left of the key being done, in order.
+/// Does the [`PendingInput`] left of the key being done, in order.
 pub(crate) fn read_input(
-    mut events: ResMut<TerminalEvents>,
-    (mut view, mut panes, shown): (ResMut<TuiView>, Panes, Res<Shown>),
+    mut events: ResMut<PendingInput>,
+    (mut view, mut panes, shown): (ResMut<TuiView>, Panes, Res<ShownAgent>),
     (mut editors, mut showing): (Editors, Showing),
     mut keymap: Keymap,
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
-    (clipboard, scratch, processes, wake, history): (
-        Res<Clipboard>,
+    (scratch, processes, wake, history): (
         Option<Res<Scratch>>,
         Option<Res<Processes>>,
         Res<Wake>,
         Res<PromptHistory>,
     ),
-    (mut screen, mut focus): (ResMut<TuiScreen>, ResMut<TerminalFocus>),
+    (mut screen, mut focus): (ResMut<TerminalSize>, ResMut<TerminalFocus>),
     mut commands: Commands,
 ) {
     // Taking the resources mutably marks them changed, and a frame with no
@@ -493,7 +472,6 @@ pub(crate) fn read_input(
     let context = Context {
         agent: shown.0,
         busy,
-        clipboard: &clipboard,
         scratch: scratch.as_deref(),
         processes: processes.as_deref(),
         wake: &wake,
@@ -578,8 +556,7 @@ pub(crate) fn read_input(
                 },
             },
             Event::Resize(width, height) => {
-                view.set_changed();
-                screen.set_if_neq(TuiScreen(Rect::new(0, 0, width, height)));
+                screen.set_if_neq(TerminalSize(Rect::new(0, 0, width, height)));
             }
             Event::FocusGained => {
                 focus.set_if_neq(TerminalFocus(Some(true)));
@@ -762,7 +739,7 @@ fn act(
             Some(completion) => view.dismissed = Some(completion.start),
             None => {
                 if let Some(entity) = context.agent {
-                    commands.trigger(Interrupt::new(entity));
+                    commands.trigger(StopTurn::new(entity));
                 }
             }
         },
@@ -776,9 +753,7 @@ fn act(
                 .processes
                 .map(Processes::launcher)
                 .unwrap_or_default();
-            context
-                .clipboard
-                .paste_image(images, launcher, context.wake.clone());
+            clipboard::paste_image(images, launcher, context.wake, commands);
         }
         Do::SelectUp | Do::SelectDown => {
             if let Some((transcript, state)) = pane {

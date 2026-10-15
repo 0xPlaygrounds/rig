@@ -26,8 +26,8 @@ use rig_harness::rig_tools::process::Launcher;
 use rig_harness::rig_tools::workspace::Local as LocalWorkspace;
 use rig_tui::crossterm::event::{Event, KeyEventKind};
 use rig_tui::{
-    AppKeyBindingsExt, Editor, InputAction, InputSystems, KeyBinding, KeyInput, KeyPress,
-    KeyPressed, KeyScope, MainInput, TerminalEvents, TuiInputState, TuiKeys, TuiPlugin,
+    AppKeyBindingsExt, Editor, InputAction, InputContext, InputSystems, KeyBinding, KeyInput,
+    KeyPress, KeyPressed, KeyScope, MainInput, PendingInput, TuiKeys, TuiPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -390,7 +390,7 @@ struct Chipping<'w, 's> {
     scratch: Option<Res<'w, Scratch>>,
     processes: Option<Res<'w, Processes>>,
     wake: Res<'w, Wake>,
-    shown: Res<'w, Shown>,
+    shown: Res<'w, ShownAgent>,
     connections: Query<'w, 's, &'static Connection>,
     answerers: Answerers<'w, 's>,
     notices: MessageWriter<'w, Notice>,
@@ -401,8 +401,8 @@ struct Chipping<'w, 's> {
 /// image file pasted, Ctrl+V, a move or a deletion next to a chip, and
 /// Enter on a message with an image the model cannot read, warned once.
 fn chip_keys(
-    mut events: ResMut<TerminalEvents>,
-    state: Res<TuiInputState>,
+    mut events: ResMut<PendingInput>,
+    state: Res<InputContext>,
     mut input: MainInput,
     bindings: Query<(&KeyBinding, Option<&InputAction>)>,
     mut chipping: Chipping,
@@ -468,7 +468,7 @@ fn paste(text: &str, input: &mut Editor, chipping: &mut Chipping) -> bool {
 /// model cannot read; whether it was taken.
 fn act(
     action: InputAction,
-    state: &TuiInputState,
+    state: &InputContext,
     input: &mut Editor,
     chipping: &mut Chipping,
     warned: &mut Option<String>,
@@ -554,7 +554,7 @@ fn receive_images(
     clipboard: Res<ClipboardImages>,
     mut chips: ResMut<PasteChips>,
     mut input: MainInput,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok(results) = clipboard.results.lock() else {

@@ -1,63 +1,48 @@
-//! The view's clipboard: Ctrl+V saves the clipboard's image in the
-//! session's [`Scratch::images`](rig_harness::prelude::Scratch::images)
-//! directory and types `@path` for it, or says there is none, and a pasted
-//! path to an image file (a file dropped on the terminal) becomes `@path`
-//! too. The message attaches what `@path` names (see
-//! [`attach`](rig_tools::attach)). A [`CopyToClipboard`] goes to the
-//! terminal (OSC 52) and to this machine's clipboard as well, for a
-//! terminal that ignores OSC 52. The clipboard is read and written through
-//! [`rig_tools::clipboard`], with programs started as the app's
-//! [`Processes`](rig_harness::prelude::Processes) start every program, on a
-//! thread of its own; a plugin uses that module the same way.
+//! The view's clipboard.
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use crossbeam_channel::{Receiver, Sender};
+use bevy_tasks::{IoTaskPool, TaskPool};
 
 use super::editor::{Editor, MainEditor};
 use super::terminal::CopyToClipboard;
 use rig_ecs::agent::Notice;
-use rig_ecs::calls::Wake;
+use rig_ecs::tasks::{Running, Wake};
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::Processes;
-use rig_harness::primary::Shown;
-use rig_tools::clipboard;
 use rig_tools::process::Launcher;
+use rig_tools::{blocking, clipboard};
 
-/// Clipboard reads in flight; each sends the saved image's path, or why
-/// there is none.
-#[derive(Resource)]
-pub(crate) struct Clipboard {
-    sender: Sender<Result<PathBuf, String>>,
-    results: Receiver<Result<PathBuf, String>>,
-}
+/// The clipboard's image saved by a paste, or why there is none: what its
+/// task ends as.
+#[derive(Component)]
+pub(crate) struct PastedImage(Result<PathBuf, String>);
 
-impl Default for Clipboard {
-    fn default() -> Self {
-        let (sender, results) = crossbeam_channel::unbounded();
-        Self { sender, results }
+impl From<Result<PathBuf, String>> for PastedImage {
+    fn from(pasted: Result<PathBuf, String>) -> Self {
+        Self(pasted)
     }
 }
 
-impl Clipboard {
-    /// Reads the clipboard's image into `directory` on a thread, starting
-    /// the reader as `launcher` says.
-    pub(crate) fn paste_image(&self, directory: PathBuf, launcher: Launcher, wake: Wake) {
-        let sender = self.sender.clone();
-        let spawned = std::thread::Builder::new()
-            .name("rig-harness-clipboard".to_owned())
-            .spawn(move || {
-                sender.send(read_image(&launcher, &directory)).ok();
-                wake.wake();
-            });
-        if let Err(failure) = spawned {
-            self.sender
-                .send(Err(format!("could not read the clipboard: {failure}")))
-                .ok();
-        }
-    }
+/// Reads the clipboard's image into `directory` off the main thread,
+/// starting the reader as `launcher` says.
+pub(crate) fn paste_image(
+    directory: PathBuf,
+    launcher: Launcher,
+    wake: &Wake,
+    commands: &mut Commands,
+) {
+    let read = blocking(move || Ok(read_image(&launcher, &directory)));
+    let read = async move {
+        let failed = |failure| Err(format!("could not read the clipboard: {failure}"));
+        read.await.unwrap_or_else(failed)
+    };
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    let running = Running::spawn_into::<PastedImage, _>(pool, wake, read);
+    commands.spawn((Name::new("rig-tui: paste"), running));
 }
 
 /// Saves the clipboard's image in `directory`, or says why there is none.
@@ -77,48 +62,52 @@ fn read_image(launcher: &Launcher, directory: &Path) -> Result<PathBuf, String> 
 }
 
 /// Puts each text copied to the clipboard in this machine's clipboard too,
-/// on a thread, as the terminal may ignore the escape code that copies it.
+/// off the main thread, as the terminal may ignore the escape code that
+/// copies it.
 pub(crate) fn copy_to_system(
     mut copies: MessageReader<CopyToClipboard>,
     processes: Option<Res<Processes>>,
 ) {
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
     for CopyToClipboard(text) in copies.read() {
         let launcher = processes.as_deref().map(Processes::launcher);
         let launcher = launcher.unwrap_or_default();
         let text = text.clone();
-        let spawned = std::thread::Builder::new()
-            .name("rig-harness-copy".to_owned())
-            .spawn(move || match clipboard::write_text(&launcher, &text) {
-                Err(failure) if failure.kind() != ErrorKind::Unsupported => {
-                    warn!("could not copy to the clipboard: {failure}");
-                }
-                _ => {}
-            });
-        if let Err(failure) = spawned {
-            warn!("could not copy to the clipboard: {failure}");
-        }
+        let copy = blocking(move || Ok(clipboard::write_text(&launcher, &text)));
+        let copy = async move {
+            match copy.await {
+                Ok(Err(failure)) if failure.kind() == ErrorKind::Unsupported => {}
+                Ok(Err(failure)) => warn!("could not copy to the clipboard: {failure}"),
+                Err(failure) => warn!("could not copy to the clipboard: {failure}"),
+                Ok(Ok(())) => {}
+            }
+        };
+        pool.spawn(copy).detach();
     }
 }
 
-/// Types `@path` for each image read from the clipboard.
-pub(crate) fn receive_images(
-    clipboard: Res<Clipboard>,
-    shown: Res<Shown>,
+/// Types `@path` for an image a paste read from the clipboard, or says why
+/// there is none.
+pub(crate) fn type_pasted(
+    pasted: On<Insert<PastedImage>>,
+    images: Query<&PastedImage>,
+    shown: Res<ShownAgent>,
     mut input: Query<&mut Editor, With<MainEditor>>,
     mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
 ) {
-    for result in clipboard.results.try_iter() {
-        match result {
-            Ok(path) => {
-                if let Ok(mut input) = input.single_mut() {
-                    type_path(&mut input, &path);
-                }
-            }
-            Err(why) => {
-                notices.write(Notice::info(shown.0, why));
+    match images.get(pasted.entity).map(|image| &image.0) {
+        Ok(Ok(path)) => {
+            if let Ok(mut input) = input.single_mut() {
+                type_path(&mut input, path);
             }
         }
+        Ok(Err(why)) => {
+            notices.write(Notice::info(shown.0, why.clone()));
+        }
+        Err(_) => {}
     }
+    commands.entity(pasted.entity).despawn();
 }
 
 /// Types `@path` at the cursor, after a space when the text before it does

@@ -37,10 +37,11 @@ use flate2::write::GzEncoder;
 use rig_core::redact;
 use rig_harness::harness_protocol::{SessionDir, SessionId, VERSION};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_core::now_ms;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{
     MODEL, MemoryStore, Place, Rewrite, SavedAgent, Session, SessionMeta, Store, Strings,
-    check_name, fork, now_ms, rewrite,
+    check_name, fork, rewrite,
 };
 use rig_harness::rig_tools::process::Launcher;
 use rig_sessions::SessionTitle;
@@ -470,7 +471,7 @@ impl Plan {
 /// What an import needs of the app.
 struct Here<'a> {
     home: &'a Home,
-    stores: &'a SessionStores,
+    stores: &'a StoreOpener,
     models: Option<&'a Models>,
     installed: Vec<String>,
 }
@@ -682,8 +683,8 @@ fn track_changes(
 
 /// The key of every saved value of `saved`, its own and its agents'.
 fn saved_keys(saved: &Session) -> BTreeSet<String> {
-    let agents = saved.agents.iter().flat_map(|agent| agent.state.keys());
-    saved.state.keys().chain(agents).cloned().collect()
+    let agents = saved.agents.iter().flat_map(|agent| agent.saved.keys());
+    saved.saved.keys().chain(agents).cloned().collect()
 }
 
 /// What `/bundle` reads of the app.
@@ -955,7 +956,7 @@ impl OpenArgs {
 #[derive(bevy_ecs::system::SystemParam)]
 struct Importer<'w, 's> {
     home: Res<'w, RigHome>,
-    stores: Res<'w, SessionStores>,
+    stores: Res<'w, StoreOpener>,
     models: Option<Res<'w, Models>>,
     processes: Option<Res<'w, Processes>>,
     root: Res<'w, ProjectRoot>,

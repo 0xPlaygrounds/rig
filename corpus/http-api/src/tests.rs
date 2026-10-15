@@ -17,7 +17,7 @@ fn serving(test: &str) -> (App, Receiver<()>, Home) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Settings::from_toml("[serve]\naddr = \"127.0.0.1:0\""))
         .insert_resource(RigHome(home.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, PickPlugin, HttpApiPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, HttpApiPlugin));
     app.finish();
     app.update();
     (app, wakes, home)

@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, connect, first_agent, log_ended, reply, run_until,
     scratch_home,
@@ -130,7 +130,7 @@ fn comments_go_with_the_next_message_and_follow_forks() {
     ]);
     let home = scratch_home("ct-reply-review-comments");
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
-    app.add_plugins((AgentPlugin, JournalPlugin, ReviewCommentsPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, ReviewCommentsPlugin))
         .add_command("forget", "Take the first reply out", forget)
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -266,7 +266,7 @@ fn comments_go_with_the_next_message_and_follow_forks() {
     };
     assert!(cut.is_some(), "a message to fork before");
     let id = id.unwrap_or_default();
-    world.trigger(ForkSession {
+    world.write_message(ForkSession {
         from: None,
         cut: cut.map_or(ForkCut::Whole, |cut| ForkCut::Before(id.clone(), cut)),
         asker: None,
@@ -282,7 +282,7 @@ fn comments_go_with_the_next_message_and_follow_forks() {
         .map(|it| it.to.clone());
     let store = forked.and_then(|to| {
         app.world()
-            .resource::<SessionStores>()
+            .resource::<StoreOpener>()
             .open(&home.session(&to))
             .ok()
     });

@@ -62,7 +62,7 @@ impl DispatchScope {
         &self,
         runner: &AgentRunner,
         ctx: &HookContext,
-        outcome: &Result<Outcome, ErrorReport>,
+        outcome: &Result<Answered, ErrorReport>,
         call: Option<(&CallId, &ToolContext)>,
     ) -> OutcomeAction {
         let ((call_id, context), turn) = (call.unzip(), ctx.turn());
@@ -203,7 +203,7 @@ impl<M> CompletionScope<M> {
                     .clone()
                     .with_optional_finish_reason(response.finish_reason());
                 folded.aborted = None;
-                Ok(Outcome::Completion(folded))
+                Ok(Answered::Completion(folded))
             }
             Some(Err(report)) => Err(report.clone()),
             None => Err(error.map_or_else(no_answer, report_of)),
@@ -222,7 +222,7 @@ impl CompletionScope<UnaryTurnSource> {
         let (kind, options) = self.send()?;
         let bus = runner.config.bus.dispatcher();
         let answer = match bus.dispatch_with(model.key(), kind, options).await {
-            Ok(Outcome::Completion(response)) => Ok(response),
+            Ok(Answered::Completion(response)) => Ok(response),
             Ok(other) => Err(wrong_outcome("a completion", &other)),
             Err(report) => Err(report),
         };

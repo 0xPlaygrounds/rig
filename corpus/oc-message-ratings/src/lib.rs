@@ -17,14 +17,14 @@ use std::collections::BTreeMap;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Conversation as Saved, MessageKey};
 use rig_harness::rig_core::message::{AssistantContent, Message};
-use rig_harness::rig_memory::now_ms;
+use rig_harness::rig_core::now_ms;
 use rig_harness::sessions::SessionEntry;
 use rig_tui::crossterm::event::{KeyCode, KeyModifiers};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, EntryView, Focus, InputAction, ItemRow, KeyBinding,
-    KeyPress, KeyPressed, KeyScope, MainPane, ScrollTo, TranscriptItem, TranscriptView, TuiPlugin,
+    AppKeyBindingsExt, AppToolRenderersExt, EntryView, InputAction, ItemRow, KeyBinding, KeyPress,
+    KeyPressed, KeyScope, MainPane, ScrollTo, ShowAgent, TranscriptItem, TranscriptView, TuiPlugin,
     run_command,
 };
 use serde::{Deserialize, Serialize};
@@ -341,13 +341,13 @@ fn when(at_ms: u64) -> String {
 #[derive(bevy_ecs::system::SystemParam)]
 struct Project<'w> {
     paths: Option<Res<'w, SessionPaths>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     home: Option<Res<'w, RigHome>>,
 }
 
 impl Project<'_> {
     /// `RIG_HOME`, and how its sessions' stores open.
-    fn home_and_stores(&self) -> (Home, SessionStores) {
+    fn home_and_stores(&self) -> (Home, StoreOpener) {
         let home = self
             .home
             .as_ref()
@@ -423,7 +423,7 @@ fn open(
     let item = TranscriptItem::Aside(marker);
     view.expanded.insert(item.clone());
     view.selected = Some(item.clone());
-    commands.trigger(Focus { entity: agent });
+    commands.trigger(ShowAgent { entity: agent });
     commands.trigger(ScrollTo {
         pane,
         item: Some(item),

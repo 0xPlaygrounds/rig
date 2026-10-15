@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use rig_cassette::effect_log::EffectLog;
 use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
-use rig_harness::prelude::SessionStores;
+use rig_harness::prelude::StoreOpener;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::conversation::{Conversation, EntryRef, TurnEnd};
 use rig_harness::rig_core::effect::{EffectKind, EffectRecord, FamilyDescriptor};
@@ -80,7 +80,7 @@ pub struct Skipped {
 impl Export {
     /// The lines of the sessions of `home` that `options` keep, each
     /// session opened by `stores`, read only.
-    pub fn collect(options: &Options, home: &Home, stores: &SessionStores) -> Self {
+    pub fn collect(options: &Options, home: &Home, stores: &StoreOpener) -> Self {
         let mut export = Self::default();
         for (id, dir) in saved_sessions(home) {
             export.read += 1;
@@ -175,7 +175,7 @@ fn saved_sessions(home: &Home) -> Vec<(SessionId, SessionDir)> {
 fn session_lines(
     options: &Options,
     dir: &SessionDir,
-    stores: &SessionStores,
+    stores: &StoreOpener,
 ) -> Result<(Vec<String>, Dropped), String> {
     if let Some(wanted) = &options.project {
         let project = std::fs::read_to_string(dir.directory()).unwrap_or_default();

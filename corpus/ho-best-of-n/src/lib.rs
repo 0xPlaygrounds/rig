@@ -27,11 +27,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_tools::process::{KillOnDrop, Launcher, OutputLine, Spawn};
-use rig_tools::{Cut, MAX_BYTES, Shell, ShellArgs, blocking};
+use rig_tools::{MAX_BYTES, OutputLimit, Shell, ShellArgs, blocking};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -665,7 +665,7 @@ async fn verify(
     let diff = git.run(worktree, &["diff", base, &commit]).await?;
     let shell = Shell {
         launcher,
-        cut: Some(Cut {
+        cut: Some(OutputLimit {
             lines: 20,
             bytes: MAX_BYTES,
         }),
@@ -822,7 +822,7 @@ fn job_done(
         }
         (Work::Apply { k, why, .. }, Ok(_)) => {
             let note = note(&run, *k, why);
-            let deliver = Deliver::new(run.owner, note, DeliveryMode::Note);
+            let deliver = Deliver::new(run.owner, note, DeliveryMode::Inform);
             commands.trigger(deliver.with_author(Author::plugin("best-of")));
             finish(run_entity, &run, &mut commands);
         }
@@ -1099,7 +1099,7 @@ fn candidate_done(
 /// stops their turns and commands, the run's effects are cancelled with it,
 /// and its worktrees are removed.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     runs: Query<(Entity, &Run)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,

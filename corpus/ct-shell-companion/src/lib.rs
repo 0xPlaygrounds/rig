@@ -350,8 +350,8 @@ fn queue(server: &mut Server, request: Request) {
 /// What the dispatcher reads of the agents.
 #[derive(SystemParam)]
 struct Target<'w, 's> {
-    shown: Option<Res<'w, Shown>>,
-    primary: PrimaryQuery<'w, 's>,
+    shown: Option<Res<'w, ShownAgent>>,
+    primary: MainAgentQuery<'w, 's>,
     connected: Query<'w, 's, (), With<Connection>>,
     turns: Query<'w, 's, &'static TurnOf>,
     inbox: Query<'w, 's, &'static ForAgent, (With<Incoming>, Without<Settled>)>,
@@ -365,7 +365,7 @@ impl Target<'_, '_> {
             .shown
             .as_ref()
             .and_then(|shown| shown.0)
-            .or_else(|| primary(&self.primary))?;
+            .or_else(|| main_agent(&self.primary))?;
         let busy = self.turns.iter().any(|&TurnOf(of)| of == agent)
             || self.inbox.iter().any(|&ForAgent(of)| of == agent);
         (self.connected.contains(agent) && !busy).then_some(agent)

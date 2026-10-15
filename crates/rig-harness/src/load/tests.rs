@@ -2,7 +2,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use bevy_reflect::prelude::*;
-use rig_ecs::journal::ReflectSaved;
+use rig_ecs::session_log::ReflectSaved;
 
 use super::{AppKeepsExt, Keeps, PluginEntity, PluginSource, ProvidedBy, load};
 
@@ -55,7 +55,7 @@ fn what_a_plugin_spawns_in_build_and_finish_is_its_own() {
     assert_eq!(
         world
             .get::<PluginSource>(spawner)
-            .map(|source| source.krate.as_str()),
+            .map(|source| source.package.as_str()),
         Some("spawner")
     );
     let mut named = world.query::<(&Name, Option<&ProvidedBy>)>();

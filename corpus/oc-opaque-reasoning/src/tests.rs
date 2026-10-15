@@ -232,7 +232,7 @@ fn start(store: &MemoryStore, settings: &str) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Settings::from_toml(settings))
         .insert_resource(ProjectRoot(project()))
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, EffectLogPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, EffectLogPlugin))
         .add_plugins(OpaqueReasoningPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended);

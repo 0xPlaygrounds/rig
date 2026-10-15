@@ -6,7 +6,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, log_ended, reply, run_until, scripted_models,
 };
-use rig_telemetry::{SessionSpending, Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, SessionUsage, UsagePlugin};
 
 use super::*;
 
@@ -46,7 +46,7 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     app.insert_resource(scripted_models(models))
         .insert_resource(Settings::from_toml(settings))
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, WriteTool))
         .add_plugins((UsagePlugin, ReviewAgentPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -87,10 +87,12 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
         .iter(world)
         .count();
     assert_eq!(reviewers, 0);
-    let session = &world.resource::<SessionSpending>().0;
+    let session = &world.resource::<SessionUsage>().0;
     let reviewed = session.models.get("corpus-review/gpt-x");
     assert_eq!(reviewed.map(|spent| spent.calls), Some(1));
-    let own = world.get::<Spending>(agent).map(|spent| spent.total.calls);
+    let own = world
+        .get::<AgentUsage>(agent)
+        .map(|spent| spent.total.calls);
     assert_eq!(own, Some(4));
     std::fs::remove_dir_all(&dir).ok();
 }

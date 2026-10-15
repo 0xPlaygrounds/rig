@@ -1,6 +1,6 @@
 //! Watching a workspace's files: [`Watch`], what
-//! [`Workspace::watch`](crate::workspace::Workspace::watch) gives. [`Local`](crate::workspace::Local)
-//! hears of changes from the system (inotify, FSEvents, …); the default
+//! [`Workspace::watch`](crate::workspace::Workspace::watch) gives.
+//! [`Local`](crate::workspace::Local) hears of changes from the system (inotify, FSEvents, …); the default
 //! looks every second.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};

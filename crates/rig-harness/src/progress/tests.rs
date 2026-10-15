@@ -86,7 +86,7 @@ fn a_calls_reported_output_is_its_progress_and_what_it_answers_when_stopped() {
         .map(|line| line.0.clone())
         .collect();
     assert_eq!(lines, ["compiling b"]);
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     app.update();
     let outputs = &app.world().resource::<ToolOutputs>().0;
     let answer = outputs.get("b1").cloned().unwrap_or_default();

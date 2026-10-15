@@ -1,7 +1,6 @@
 //! The `search` tool, and [`find`], the search it runs, as data.
 
 use std::fmt;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -14,7 +13,7 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::fs::io_error;
+use crate::fs::listed;
 use crate::workspace::{Listing, Local, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
@@ -241,17 +240,18 @@ pub fn render(found: &Found) -> String {
 ///
 /// # Errors
 ///
-/// When the pattern or the glob is malformed, or the walk fails.
+/// When the pattern or the glob is malformed, the path does not exist, or
+/// the walk fails.
 pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolExecutionError> {
     let pattern = Regex::new(&args.pattern)
         .map_err(|error| ToolExecutionError::invalid_args(format!("bad pattern: {error}")))?;
     let root = args.path.as_deref().unwrap_or(".");
-    let files = workspace
-        .files(Path::new(root), args.glob.as_deref(), args.listing())
-        .map_err(|error| match error.kind() {
-            ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
-            _ => io_error(root, error),
-        })?;
+    let files = listed(
+        workspace,
+        Path::new(root),
+        args.glob.as_deref(),
+        args.listing(),
+    )?;
     let mut found = Found::default();
     for file in files {
         let small = matches!(

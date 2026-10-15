@@ -9,7 +9,7 @@
 //! [`GuiDialogs`]. The window, or a test, changes it only through the
 //! requests [`Show`], [`Submit`], [`Stop`], [`Toggle`], [`Choose`] and
 //! [`Dismiss`], which become the same requests the terminal view sends.
-//! The agent shown is the harness's [`Shown`], so the window and the
+//! The agent shown is the harness's [`ShownAgent`], so the window and the
 //! terminal view beside it show the same agent.
 //! With the default `window` feature, a Bevy UI window draws the model,
 //! redrawing a part only when its resource changed.
@@ -23,10 +23,10 @@ mod window;
 
 use std::collections::HashSet;
 
-use rig_activity::{Activity, ActivityPlugin, ActivitySystems, Status};
+use rig_activity::{Activity, ActivityPlugin, ActivityStatus, ActivitySystems};
 use rig_harness::prelude::*;
-use rig_harness::primary::primary_order;
 use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
+use rig_harness::rig_memory::main_order;
 
 /// The window's name as a front, and its option: `rig --gui`.
 pub const FRONT: &str = "gui";
@@ -50,7 +50,7 @@ impl Plugin for WindowGuiPlugin {
             .init_resource::<GuiTranscript>()
             .init_resource::<GuiInput>()
             .init_resource::<GuiDialogs>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .add_front(Front::new(FRONT).on_flag(FRONT, "Run the agent in a window"))
             .configure_sets(PostUpdate, GuiSystems.after(ActivitySystems))
             .add_systems(Update, (collect_notices, recall))
@@ -253,7 +253,7 @@ pub struct GuiDialogs {
     pub open: Vec<Dialog>,
 }
 
-/// Show `agent` and send what is typed to it: it becomes [`Shown`].
+/// Show `agent` and send what is typed to it: it becomes [`ShownAgent`].
 #[derive(Event, Clone, Copy, Debug)]
 pub struct Show {
     /// The agent.
@@ -293,7 +293,7 @@ pub struct Dismiss;
 /// What the agent does, for its row.
 fn status_text(activity: &Activity) -> String {
     match &activity.status {
-        Status::RunningTools if !activity.tools.is_empty() => {
+        ActivityStatus::RunningTools if !activity.tools.is_empty() => {
             let names: Vec<String> = activity
                 .tools
                 .iter()
@@ -317,7 +317,7 @@ type AgentItem<'a> = (
 /// Keeps the agent list.
 fn list_agents(agents: Query<AgentItem, With<Agent>>, mut list: ResMut<GuiAgents>) {
     let mut roots: Vec<_> = agents.iter().filter(|agent| !agent.4).collect();
-    roots.sort_by(|a, b| primary_order(a.4, a.2).cmp(&primary_order(b.4, b.2)));
+    roots.sort_by(|a, b| main_order(a.4, &a.2.0).cmp(&main_order(b.4, &b.2.0)));
     let mut rows = Vec::new();
     let mut stack: Vec<(Entity, usize)> = roots.iter().rev().map(|root| (root.0, 0)).collect();
     while let Some((agent, depth)) = stack.pop() {
@@ -344,7 +344,7 @@ fn list_agents(agents: Query<AgentItem, With<Agent>>, mut list: ResMut<GuiAgents
 /// Keeps the shown agent's transcript as blocks, rebuilt when its
 /// conversation changed.
 fn show_transcript(
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     conversations: Query<Ref<Conversation>>,
     mut transcript: ResMut<GuiTranscript>,
 ) {
@@ -374,7 +374,7 @@ fn show_transcript(
 /// The reply streaming in to the shown agent: what its turn's model call
 /// added up so far.
 fn stream_reply(
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     partials: Query<(&Partial, &ForAgent), (With<TurnCall>, Without<Settled>)>,
     mut transcript: ResMut<GuiTranscript>,
 ) {
@@ -404,7 +404,7 @@ fn blocks_of(conversation: &Conversation, opened: &HashSet<BlockKey>) -> Vec<Blo
             Message::User { content } => {
                 for part in content {
                     match part {
-                        UserContent::Text(_) if entry.is_stopped_note() => {
+                        UserContent::Text(_) if entry.is_stop_marker() => {
                             blocks.push(Block::Stopped);
                         }
                         UserContent::Text(text) => match conversation.author(index) {
@@ -552,7 +552,7 @@ fn collect_notices(mut notices: MessageReader<Notice>, mut transcript: ResMut<Gu
 /// and says why a refused command was.
 fn recall(
     mut recalled: MessageReader<Recalled>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut input: ResMut<GuiInput>,
     mut transcript: ResMut<GuiTranscript>,
 ) {
@@ -576,15 +576,15 @@ fn recall(
     }
 }
 
-fn show(show: On<Show>, agents: Query<(), With<Agent>>, mut shown: ResMut<Shown>) {
+fn show(show: On<Show>, agents: Query<(), With<Agent>>, mut shown: ResMut<ShownAgent>) {
     if agents.contains(show.agent) {
-        shown.set_if_neq(Shown(Some(show.agent)));
+        shown.set_if_neq(ShownAgent(Some(show.agent)));
     }
 }
 
 fn submit(
     _submit: On<Submit>,
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     dialogs: Res<GuiDialogs>,
     pickers: Query<&Picker>,
     mut input: ResMut<GuiInput>,
@@ -609,9 +609,9 @@ fn submit(
     commands.trigger(if refused { typed.literal() } else { typed });
 }
 
-fn stop(_stop: On<Stop>, shown: Res<Shown>, mut commands: Commands) {
+fn stop(_stop: On<Stop>, shown: Res<ShownAgent>, mut commands: Commands) {
     if let Some(entity) = shown.0 {
-        commands.trigger(Interrupt::new(entity));
+        commands.trigger(StopTurn::new(entity));
     }
 }
 

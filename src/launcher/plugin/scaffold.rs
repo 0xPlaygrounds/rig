@@ -1,18 +1,9 @@
 //! The `__name__` plugin of the rig agent, made by `rig plugin new`.
 //!
-//! The plugin guide, rig-harness's `PLUGINS.md` (its `plugin_guide` docs),
-//! states the rules every plugin follows (effects move through stages, and
-//! a hook is a system in one) and has a short copy-ready example of each
-//! extension point: a tool and gating its calls, asking the user, a slash
-//! command, what the user types, model requests, a turn's end, a plugin's
-//! own effects, settings, state kept with the session, time, the
-//! workspace and child processes, sessions and their store, turning off
-//! or replacing what another plugin added, fronts, options and commands of
-//! its own (`rig <name>`), transcript notes, the status line, a
-//! terminal panel, and a window. Every name they use comes from
-//! `rig_harness::prelude` or the plugin crate the example names, such as
-//! `rig_tui`; the optional `inspect` tool (crate `rig-inspect`) shows the
-//! rest.
+//! The plugin guide, rig-harness's `PLUGINS.md` (its `plugin_guide` docs), has
+//! the rules every plugin follows and a short example of each extension point.
+//! Every name it uses comes from `rig_harness::prelude` or the crate an example
+//! names; the optional `inspect` tool (crate `rig-inspect`) lists the rest.
 
 use rig_harness::prelude::*;
 
@@ -37,39 +28,13 @@ impl Plugin for ScaffoldPlugin {
             "Count the words of the agent's last answer",
             command,
         );
-        // The other extension points, each in the plugin guide:
-        // - a command's event:  trigger it from the command, commands.trigger(MyEvent { .. })
-        // - a tool:             app.add_tool(MyTool), a `PortableTool`; one found at run time
-        //                       with app.add_open_tool or world.spawn_tool ("A tool")
-        // - each model request: a system in `PrepareSystems::Edit` edits a turn's
-        //                       `ModelRequest` (prompt, tools, options, the model it goes
-        //                       to); one in `ReviewSystems::Act` takes a failed call over
-        //                       ("Model requests")
-        // - a tool call:        a system in `Stage::Gate` refuses or holds it, one in
-        //                       `Stage::Review` replaces its result ("Gating and reviewing")
-        // - ask the user:       spawn an `Ask` that holds what it asks about ("Asking the user")
-        // - a setting:          app.add_setting::<MySettings>("my-plugin"), read from
-        //                       RIG_HOME/settings.toml ("Settings")
-        // - a `rig <name>`:     app.add_front(Front::new("name")
-        //                       .on_command("name", "<args>", "What it does")), and in
-        //                       `finish`, `if app.runs_front("name") { … }` with its words
-        //                       from Invoked::command ("Commands of your own")
-        // - replace a built-in: insert `Disabled` on its entity ("Turning off or replacing")
-        // - what the user types: an `Incoming` message, changed by a system in
-        //                       `PrepareSystems::Edit`, taken over in `Stage::Gate`
-        //                       ("What the user types")
-        // - the status line:    with the crate rig-tui, a rig_tui::StatusItem in the
-        //                       agent's StatusItems ("The status line")
-        // - a turn's end:       a system in `Stage::Review` reads, replaces or holds a
-        //                       turn's proposed `TurnOutcome`, or carries the turn on;
-        //                       `On<Add<Settled>>` on a turn sees how it ended
-        //                       ("How a turn ends")
-        // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
-        //                       while an entity with KeepAwake(Duration::from_secs(1)) lives
-        // - once, later:        commands.delayed().duration(Duration::from_secs(5)).trigger(..)
-        // - a terminal panel:   with the crate rig-tui, spawn
-        //                       rig_tui::TuiPanel::new(Placement::Right(Constraint::Length(30)))
-        // - what is loaded:     Query<(&Name, &PluginSource)>, and ProvidedBy(plugin) on what each added
+        // Other extension points, each a section of the plugin guide:
+        // a tool ("A tool"), gating its calls ("Gating and reviewing tool
+        // calls"), asking the user ("Asking the user"), model requests, a
+        // turn's end ("How a turn ends"), settings, a `rig <name>` command
+        // ("Commands of your own"), replacing a built-in ("Turning off or
+        // replacing"), the status line and a terminal panel (crate rig-tui),
+        // time ("Time"), and what each plugin added (`ProvidedBy`).
     }
 }
 

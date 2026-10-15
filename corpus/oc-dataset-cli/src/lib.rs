@@ -1,6 +1,6 @@
 //! OC-24: `rig dataset export`, the saved sessions as a fine-tuning or
 //! evaluation dataset. The command reads each saved session through its
-//! store ([`SessionStores`]) without writing to it: every agent's log with
+//! store ([`StoreOpener`]) without writing to it: every agent's log with
 //! rig-memory, and the session's effect log for the system prompt and the
 //! tools its requests sent. Each main agent's conversation becomes one
 //! JSON line in OpenAI chat format, and each subagent's a line of its own
@@ -197,7 +197,7 @@ struct Sources<'w> {
     invoked: Option<Res<'w, Invoked>>,
     home: Option<Res<'w, RigHome>>,
     root: Option<Res<'w, ProjectRoot>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
 }
 
 /// Runs the command once, prints what it made, and exits with its status.
@@ -233,7 +233,7 @@ pub fn run(
     words: &[String],
     home: &Home,
     root: &std::path::Path,
-    stores: &SessionStores,
+    stores: &StoreOpener,
 ) -> DatasetRun {
     let mut options = match Options::parse(words) {
         Ok(Some(options)) => options,

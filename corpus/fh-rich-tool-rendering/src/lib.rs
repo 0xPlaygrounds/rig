@@ -19,7 +19,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{AssistantContent, Message};
 use rig_tui::{
     AppKeyBindingsExt, AppToolRenderersExt, InputAction, KeyBinding, KeyInput, KeyPress,
-    KeyPressed, MainTranscript, TerminalEvents, ToolRenderer, TranscriptItem, TuiPlugin,
+    KeyPressed, MainTranscript, PendingInput, ToolRenderer, TranscriptItem, TuiPlugin,
 };
 
 pub use looks::{COLLAPSED_LINES, SHELL_TAIL};
@@ -66,7 +66,7 @@ fn toggle_calls(
     pressed: On<KeyPressed>,
     agents: Query<&Conversation>,
     mut view: MainTranscript,
-    mut events: ResMut<TerminalEvents>,
+    mut events: ResMut<PendingInput>,
 ) {
     if view.selected.is_some() {
         events.0.push(KeyInput::Action(InputAction::Expand));

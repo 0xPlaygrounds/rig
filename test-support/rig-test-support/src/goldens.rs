@@ -312,7 +312,7 @@ impl rig_agent::agent::AgentHook for ReplaceAnswer {
         }
         let mut replacement = response.clone();
         replacement.choice = vec![rig_core::message::AssistantContent::text(REPLACED_ANSWER)];
-        rig_agent::agent::OutcomeAction::replace(Ok(rig_core::effect::Outcome::Completion(
+        rig_agent::agent::OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(
             replacement,
         )))
     }
@@ -929,7 +929,7 @@ impl rig_core::serve::Serve for NoteTaker {
         let outcome = match kind {
             rig_core::effect::EffectKind::Custom { payload, .. } => {
                 match serde_json::from_value::<Note>(payload) {
-                    Ok(note) => Ok(rig_core::effect::Outcome::Custom {
+                    Ok(note) => Ok(rig_core::effect::Answered::Custom {
                         payload: serde_json::to_value(NoteAck {
                             accepted: true,
                             at: note.at,
@@ -1468,8 +1468,8 @@ pub struct Lookup {
     pub model_key: rig_core::effect::HandlerKey,
 }
 
-fn tool_text(text: String) -> rig_core::effect::Outcome {
-    rig_core::effect::Outcome::ToolResult {
+fn tool_text(text: String) -> rig_core::effect::Answered {
+    rig_core::effect::Answered::ToolResult {
         result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text(text)),
     }
 }
@@ -1659,7 +1659,7 @@ impl rig_core::serve::Serve for Relay {
             })
             .await
             .expect("acknowledged");
-        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
             payload: serde_json::to_value(NoteAck {
                 accepted: ack.accepted,
                 at: ack.at,
@@ -1734,15 +1734,15 @@ fn is_add(kind: &rig_core::effect::EffectKind) -> bool {
     matches!(kind, rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add")
 }
 
-fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::Decision {
+fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::BeforeServe {
     match kind {
         rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add" => {
-            rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::ToolCall {
+            rig_core::serve::BeforeServe::Patch(rig_core::effect::EffectKind::ToolCall {
                 name: name.clone(),
                 args: args.to_owned(),
             })
         }
-        _ => rig_core::serve::Decision::Proceed,
+        _ => rig_core::serve::BeforeServe::Proceed,
     }
 }
 
@@ -1752,9 +1752,9 @@ macro_rules! keep_after {
             &self,
             _id: rig_core::effect::EffectId,
             _kind: &rig_core::effect::EffectKind,
-            _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-        ) -> rig_core::serve::Verdict {
-            rig_core::serve::Verdict::Keep
+            _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+        ) -> rig_core::serve::AfterServe {
+            rig_core::serve::AfterServe::Keep
         }
     };
 }
@@ -1765,8 +1765,8 @@ macro_rules! proceed_before {
             &self,
             _id: rig_core::effect::EffectId,
             _kind: &rig_core::effect::EffectKind,
-        ) -> rig_core::serve::Decision {
-            rig_core::serve::Decision::Proceed
+        ) -> rig_core::serve::BeforeServe {
+            rig_core::serve::BeforeServe::Proceed
         }
     };
 }
@@ -1782,11 +1782,11 @@ impl rig_core::serve::Intercept for DenyAddLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         if is_add(kind) {
-            rig_core::serve::Decision::deny(DENY_REASON)
+            rig_core::serve::BeforeServe::deny(DENY_REASON)
         } else {
-            rig_core::serve::Decision::Proceed
+            rig_core::serve::BeforeServe::Proceed
         }
     }
     keep_after!();
@@ -1803,7 +1803,7 @@ impl rig_core::serve::Intercept for PatchAddArgsLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_ARGS)
     }
     keep_after!();
@@ -1820,7 +1820,7 @@ impl rig_core::serve::Intercept for PatchAgainLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_AGAIN_ARGS)
     }
     keep_after!();
@@ -1838,17 +1838,17 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
+        outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
         match outcome {
-            Ok(rig_core::effect::Outcome::ToolResult { result }) if is_add(kind) => {
-                rig_core::serve::Verdict::Replace(Ok(rig_core::effect::Outcome::ToolResult {
+            Ok(rig_core::effect::Answered::ToolResult { result }) if is_add(kind) => {
+                rig_core::serve::AfterServe::Replace(Ok(rig_core::effect::Answered::ToolResult {
                     result: result
                         .clone()
                         .with_output(rig_core::tool::ToolOutput::text(REPLACED_RESULT)),
                 }))
             }
-            _ => rig_core::serve::Verdict::Keep,
+            _ => rig_core::serve::AfterServe::Keep,
         }
     }
 }
@@ -1856,7 +1856,7 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
 /// The world a suspending layer asks.
 pub type Asks = tokio::sync::mpsc::UnboundedSender<(
     rig_core::effect::EffectId,
-    futures::channel::oneshot::Sender<rig_core::serve::Decision>,
+    futures::channel::oneshot::Sender<rig_core::serve::BeforeServe>,
 )>;
 
 /// An approval gate: `before` sends the dispatch to the world and waits.
@@ -1873,13 +1873,13 @@ impl rig_core::serve::Intercept for ApprovalLayer {
         &self,
         id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         let (decide, decided) = futures::channel::oneshot::channel();
         self.asks.send((id, decide)).expect("the world listens");
         match decided.await {
             Ok(decision) => decision,
             Err(futures::channel::oneshot::Canceled) => {
-                rig_core::serve::Decision::Deny(rig_core::error::ErrorReport::new(
+                rig_core::serve::BeforeServe::Deny(rig_core::error::ErrorReport::new(
                     rig_core::error::ErrorKind::Internal,
                     "layer `ApprovalLayer`: the world closed the answer channel without deciding",
                 ))
@@ -1909,10 +1909,10 @@ pub fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>)
         while let Some((_, decide)) = asked.recv().await {
             match answer {
                 Answer::Approve => {
-                    let _ = decide.send(rig_core::serve::Decision::Proceed);
+                    let _ = decide.send(rig_core::serve::BeforeServe::Proceed);
                 }
                 Answer::Deny => {
-                    let _ = decide.send(rig_core::serve::Decision::deny(WORLD_DENY_REASON));
+                    let _ = decide.send(rig_core::serve::BeforeServe::deny(WORLD_DENY_REASON));
                 }
                 Answer::Never => {
                     reached.notify_one();
@@ -1935,14 +1935,14 @@ impl rig_core::serve::Intercept for WrongFamilyLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         if is_add(kind) {
-            rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::Custom {
+            rig_core::serve::BeforeServe::Patch(rig_core::effect::EffectKind::Custom {
                 kind: std::sync::Arc::from("corpus:wrong"),
                 payload: serde_json::Value::Null,
             })
         } else {
-            rig_core::serve::Decision::Proceed
+            rig_core::serve::BeforeServe::Proceed
         }
     }
     keep_after!();
@@ -1960,9 +1960,9 @@ impl rig_core::serve::Intercept for CancelStreamLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Replace(Err(rig_core::error::ErrorReport::new(
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Replace(Err(rig_core::error::ErrorReport::new(
             rig_core::error::ErrorKind::Cancelled,
             CANCEL_STREAM_REASON,
         )))
@@ -1980,8 +1980,8 @@ impl rig_core::serve::Intercept for DenyAllLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
-        rig_core::serve::Decision::deny(HOST_DENY_REASON)
+    ) -> rig_core::serve::BeforeServe {
+        rig_core::serve::BeforeServe::deny(HOST_DENY_REASON)
     }
     keep_after!();
 }
@@ -2131,7 +2131,7 @@ impl rig_core::serve::Serve for NeverAsked {
     ) -> rig_core::serve::Reply {
         self.reached
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
             payload: serde_json::to_value(NoteAck {
                 accepted: true,
                 at: "never".to_owned(),

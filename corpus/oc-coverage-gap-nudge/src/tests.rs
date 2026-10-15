@@ -87,7 +87,7 @@ fn handle_zero(dir: &Path) -> Vec<MockStreamEvent> {
 fn app(dir: &Path, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((AgentPlugin, JournalPlugin, ClockPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin))
         .add_plugins((EditTool, WriteTool, CoverageGapNudgePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);

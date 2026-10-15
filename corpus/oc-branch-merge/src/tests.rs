@@ -7,7 +7,7 @@ use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::ask::AskPlugin;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, app_in, calls, collect, connect, first_agent, log_ended,
     reply, run_until, scratch_home,
@@ -36,7 +36,13 @@ fn project(home: &Home) -> PathBuf {
 fn start(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(ProjectRoot(project(home)))
-        .add_plugins((AgentPlugin, JournalPlugin, AskPlugin, WriteTool, AnswerAsks))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            AskPlugin,
+            WriteTool,
+            AnswerAsks,
+        ))
         .add_plugins(BranchMergePlugin)
         .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
         .init_resource::<Ended>()
@@ -75,7 +81,7 @@ fn lines_of(app: &App, agent: Entity) -> Vec<Line> {
 fn active(app: &App, agent: Entity) -> String {
     app.world()
         .get::<Conversation>(agent)
-        .map(|conversation| conversation.branch_title().to_owned())
+        .map(|conversation| conversation.line_title().to_owned())
         .unwrap_or_default()
 }
 

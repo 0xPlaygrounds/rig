@@ -7,8 +7,8 @@ use serde_json::{Value, json};
 
 use crate::format::stamp_of;
 use crate::{
-    Files, Keep, LoadError, MemoryStore, Record, Session, Store, Strings, Writer, as_of, fork,
-    history, load, save,
+    Files, LogRecord, MemoryStore, NoRewrite, Session, SessionError, Store, Strings, Writer, as_of,
+    fork, history, load, save,
 };
 
 fn rating(value: Value) -> Aside {
@@ -82,7 +82,7 @@ fn a_fork_carries_the_asides_of_the_copied_messages_as_they_are_now() {
     // As of the cut, the copy is what the session was then.
     let records = history(&store, "main").expect("history");
     let cut = records.iter().find_map(|(stamp, record)| match record {
-        Record::Change(recorded) => match &recorded.change {
+        LogRecord::Change(recorded) => match &recorded.change {
             Change::Push { entries } if entries.iter().any(|entry| entry.id == Some(three)) => {
                 Some(stamp.n)
             }
@@ -106,14 +106,14 @@ fn a_fork_carries_the_asides_of_the_copied_messages_as_they_are_now() {
         .iter()
         .filter(|(stamp, _)| stamp.n >= cut)
         .map(|(stamp, record)| match record {
-            Record::Change(recorded) => (stamp.t, recorded.by.clone()),
+            LogRecord::Change(recorded) => (stamp.t, recorded.by.clone()),
             _ => (0, None),
         })
         .collect();
     let parent: Vec<_> = records
         .iter()
         .filter_map(|(stamp, record)| match record {
-            Record::Change(recorded)
+            LogRecord::Change(recorded)
                 if matches!(recorded.change, Change::Aside { .. })
                     && recorded.by != Some(Author::rig())
                     && stamp.n > cut =>
@@ -167,9 +167,9 @@ fn a_fork_of_a_session_in_format_1_is_refused_and_writes_nothing() {
         )
         .expect("written");
     let to = MemoryStore::default();
-    let refused = fork(&store, &to, None, &Keep);
+    let refused = fork(&store, &to, None, &NoRewrite);
     assert!(
-        matches!(&refused, Err(LoadError::Format { found: Some(found), .. }) if found == "rig-session/1"),
+        matches!(&refused, Err(SessionError::Format { found: Some(found), .. }) if found == "rig-session/1"),
         "{refused:?}"
     );
     let empty = |listed: std::io::Result<Vec<String>>| listed.expect("listed").is_empty();

@@ -29,7 +29,8 @@ use super::{EffectLog, canonical_local_ids, stable_hash};
 /// Selects request comparison by payload or [`stable_hash`], or none.
 /// Every comparison leaves out what a new session issues afresh: rig's tool
 /// call ids, and a completion's prompt-cache key. Payload diagnostics name
-/// the first differing field path; hash diagnostics include both hashes. Records retain the full request in every mode.
+/// the first differing field path; hash diagnostics include both hashes.
+/// Records keep the full request in every mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestCheck {
@@ -630,7 +631,7 @@ impl Serve for EffectLogReplayer {
                             ),
                         ))),
                         None => {
-                            if let Some(output) = record.tool_output {
+                            if let Some(output) = record.published {
                                 let Some(published) =
                                     dispatch.scope::<rig_core::tool::PublishedContext>()
                                 else {
@@ -658,7 +659,7 @@ impl Serve for EffectLogReplayer {
                                 // went on to carry: an earlier error would have been
                                 // its outcome.
                                 let (mut done, ending) = match record.outcome {
-                                    Ok(rig_core::effect::Outcome::Completion(response)) => {
+                                    Ok(rig_core::effect::Answered::Completion(response)) => {
                                         (Some(Box::new(response)), None)
                                     }
                                     Err(error)

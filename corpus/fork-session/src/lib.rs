@@ -17,10 +17,10 @@
 use corpus_checkpoint_rewind::{Rewind, RewindScope, Rewound};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::journal::SessionStore;
+use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_sessions::{NameSession, SessionsPlugin};
 use rig_tools::{ago, shorten};
-use rig_tui::{Focus, MainInput};
+use rig_tui::{MainInput, ShowAgent};
 
 /// Most characters of a message in the `/branch` picker.
 const LABEL_CHARS: usize = 70;
@@ -117,7 +117,7 @@ fn fork(
             files: None,
         })
         .id();
-    commands.trigger(ForkSession {
+    commands.write_message(ForkSession {
         asker: Some(asker),
         ..ForkSession::default()
     });
@@ -194,7 +194,7 @@ fn branch(
                     files,
                 })
                 .id();
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: None,
                 cut: ForkCut::Before(id.clone(), message),
                 asker: Some(asker),
@@ -334,7 +334,7 @@ fn how(parent: &ForkedFrom) -> String {
 fn arrive(
     store: Option<Res<SessionStore>>,
     started: Option<Res<AppStart>>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     input: Option<MainInput>,
     mut commands: Commands,
 ) {
@@ -351,8 +351,11 @@ fn arrive(
         return;
     };
     let agent = agents.iter().find(|(_, id, _)| id.0 == agent);
-    if let Some(entity) = agent.map(|(agent, ..)| agent).or_else(|| primary(&agents)) {
-        commands.trigger(Focus { entity });
+    if let Some(entity) = agent
+        .map(|(agent, ..)| agent)
+        .or_else(|| main_agent(&agents))
+    {
+        commands.trigger(ShowAgent { entity });
     }
     if let Some(mut input) = input {
         input.set(text);

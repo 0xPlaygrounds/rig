@@ -473,7 +473,7 @@ fn prepare(
 
 /// Refuses each `shell` command that names a variable a policy denies.
 fn refuse_denied(
-    mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>,
     policy: Res<EnvPolicy>,
 ) {
     let effective = policy.effective(None);

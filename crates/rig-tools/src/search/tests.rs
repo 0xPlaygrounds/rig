@@ -1,10 +1,11 @@
-use rig_core::tool::{FileRead, FilesRead, Tool, ToolContext, content_hash};
+use rig_core::tool::{FileRead, FilesRead, Tool, ToolContext, ToolErrorKind, content_hash};
 
 use super::{Search, SearchArgs, SearchHits, find, render};
 use crate::workspace::Local;
 
 /// A search's matches are data, hidden files and those outside the glob are
-/// left out, and the tool shows the same matches as text.
+/// left out, the tool shows the same matches as text, and a missing path is
+/// not found rather than empty.
 #[test]
 fn matches_are_data_and_hidden_files_are_left_out() {
     let dir = std::env::temp_dir().join(format!("rig-tools-search-{}", std::process::id()));
@@ -34,6 +35,11 @@ fn matches_are_data_and_hidden_files_are_left_out() {
     assert_eq!(render(&only_toml), "No matches.");
     assert!(find(&Local, &SearchArgs::new("(")).is_err());
     assert!(find(&Local, &args.glob("[")).is_err());
+    let missing = SearchArgs::new("secret").in_path(dir.join("missing").to_string_lossy());
+    assert_eq!(
+        find(&Local, &missing).err().map(|error| error.kind()),
+        Some(ToolErrorKind::NotFound)
+    );
     std::fs::remove_dir_all(dir).ok();
 }
 

@@ -13,7 +13,7 @@ impl Plugin for Noisy {
     fn build(&self, app: &mut App) {
         app.add_plugins(ParentHas::<Name>::in_schedule(Update))
             .add_systems(Startup, |mut commands: Commands| {
-                (0..KEPT).for_each(|n| warn!("warning {n}"));
+                (0..MAX_DIAGNOSTICS).for_each(|n| warn!("warning {n}"));
                 error!(agent = "a1", "about a1");
                 info!("not kept");
                 let parent = commands.spawn_empty().id();
@@ -40,7 +40,7 @@ fn warnings_and_errors_are_kept_tagged_and_bounded() {
         .take(2)
         .map(|l| {
             (
-                l.error,
+                l.level,
                 l.target.as_str(),
                 l.message.split(':').next(),
                 l.agent.as_deref(),
@@ -50,16 +50,22 @@ fn warnings_and_errors_are_kept_tagged_and_bounded() {
         .collect();
     let noisy = Some(std::any::type_name::<Noisy>());
     let bevy = (
-        false,
+        NoticeLevel::Warn,
         "bevy_app::hierarchy",
         Some("warning[B0004]"),
         None,
         None,
     );
-    let own = (true, module_path!(), Some("about a1"), Some("a1"), noisy);
+    let own = (
+        NoticeLevel::Error,
+        module_path!(),
+        Some("about a1"),
+        Some("a1"),
+        noisy,
+    );
     assert_eq!(newest, [bevy, own]);
     let oldest = kept.front().map(|logged| logged.message.as_str());
-    assert_eq!((kept.len(), oldest), (KEPT, Some("warning 2")));
+    assert_eq!((kept.len(), oldest), (MAX_DIAGNOSTICS, Some("warning 2")));
 }
 
 #[test]

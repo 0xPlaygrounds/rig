@@ -20,8 +20,8 @@ use bevy_reflect::TypeRegistry;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use rig_cassette::effect_log::jsonl::{self, SESSION_EFFECT_LOG};
 use rig_core::completion::{Usage, UsageTotals};
-use rig_core::effect::{Disposition, EffectId, EffectKind, EffectRecord, Outcome as Answered};
-use rig_ecs::journal::SessionStore;
+use rig_core::effect::{Answered, Disposition, EffectId, EffectKind, EffectRecord};
+use rig_ecs::session_log::SessionStore;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_sessions::SessionTitle;
@@ -177,7 +177,7 @@ impl Request {
 #[derive(SystemParam)]
 struct Sessions<'w> {
     store: Option<Res<'w, SessionStore>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     paths: Option<Res<'w, SessionPaths>>,
     title: Option<Res<'w, SessionTitle>>,
     home: Option<Res<'w, RigHome>>,
@@ -281,7 +281,7 @@ fn load(
         .into_iter()
         .filter(|agent| !agent.conversation.messages().is_empty())
         .map(|saved| ExportedAgent {
-            model: saved_value::<ModelChoice>(&saved.state, registry).map(|choice| choice.0),
+            model: saved_value::<ModelChoice>(&saved.saved, registry).map(|choice| choice.0),
             calls: records
                 .iter()
                 .filter(|record| record.scope.as_deref() == Some(saved.id.as_str()))

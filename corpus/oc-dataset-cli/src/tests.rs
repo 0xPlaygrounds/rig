@@ -39,7 +39,7 @@ fn session(
     let (mut app, wakes) = app_in(home, &id);
     app.insert_resource(scripted_models([model]))
         .insert_resource(ProjectRoot(project.to_owned()))
-        .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin, ReadTool))
+        .add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin, ReadTool))
         .add_open_tool("slow", "Wait.", ToolOptions::default(), slow)
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -60,7 +60,7 @@ fn session(
                     .try_query::<(&ToolRequest, &Started)>()
                     .is_some_and(|mut calls| calls.iter(world).next().is_some())
             });
-            app.world_mut().trigger(Interrupt::new(agent));
+            app.world_mut().trigger(StopTurn::new(agent));
         }
         run_until(&mut app, &wakes, |world| {
             world.resource::<Ended>().0.len() > done

@@ -24,7 +24,7 @@ use bevy_ecs::system::SystemParam;
 use bevy_log::{error, info, warn};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{Scope, Touches};
-use rig_harness::rig_memory::{DirStore, LoadError, Store};
+use rig_harness::rig_memory::{DirStore, SessionError, Store};
 use rig_harness::rig_tools::process::Launcher;
 use rig_reqwest::reqwest;
 use serde::Deserialize;
@@ -303,7 +303,7 @@ impl Plugin for GithubMentionPlugin {
                         .map_or_else(Launcher::default, Processes::launcher);
                     Git::new(launcher.in_dir(&root))
                         .restore(&thread, &at)
-                        .map_err(|why| LoadError::Io(std::io::Error::other(why)))?;
+                        .map_err(|why| SessionError::Io(std::io::Error::other(why)))?;
                 }
                 Ok(Arc::new(DirStore::open(at)?) as Arc<dyn Store>)
             });
@@ -789,7 +789,7 @@ fn write_comments(prompt: &mut String, comments: &Value, wanted: impl Fn(&Value)
 fn set_up_done(
     done: On<Insert<Done<Option<Setup>>>>,
     mut jobs: Query<&mut Done<Option<Setup>>, With<Job>>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     mut commands: Commands,
 ) {
     let Ok(mut setup) = jobs.get_mut(done.entity) else {
@@ -798,7 +798,7 @@ fn set_up_done(
     let failed = match setup.0.take() {
         Some(Setup::Go(work, prompt)) => {
             commands.insert_resource(work);
-            if let Some(agent) = primary(&agents) {
+            if let Some(agent) = main_agent(&agents) {
                 commands.trigger(Deliver::new(agent, prompt, DeliveryMode::Steer));
                 return;
             }
@@ -843,7 +843,7 @@ fn started(
 /// so the harness refuses it, as it does any call another plugin wants
 /// approved.
 fn needs_approval(
-    calls: Query<(Entity, &ToolRequest, &Footprint), (Undecided, ToolCalls, Without<Approved>)>,
+    calls: Query<(Entity, &ToolRequest, &Footprint), (ReadyToStart, ToolCalls, Without<Approved>)>,
     run: Res<Run>,
     mut commands: Commands,
 ) {

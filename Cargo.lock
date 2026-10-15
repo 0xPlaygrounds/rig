@@ -5360,6 +5360,7 @@ name = "corpus-fh-structured-compaction"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
+ "rig-cassette",
  "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
@@ -17443,7 +17444,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.18",
- "web-time",
 ]
 
 [[package]]
@@ -17682,12 +17682,9 @@ dependencies = [
  "bevy_reflect",
  "rig-compaction",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
- "rig-memory",
  "rig-tui",
- "serde",
  "serde_json",
 ]
 
@@ -17834,6 +17831,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_log",
  "bevy_reflect",
+ "bevy_tasks",
  "crossbeam-channel",
  "crossterm",
  "libc",

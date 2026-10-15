@@ -1,7 +1,7 @@
 //! The palette in the terminal view. Ctrl-P opens a box over the screen
 //! that takes the keys ([`KeyFocus`]), leaving the draft in the input as
 //! it is. What is typed is its filter, read in order from the
-//! [`TerminalEvents`], and the rows are ranked afresh from what exists
+//! [`PendingInput`], and the rows are ranked afresh from what exists
 //! each time it changes. Up and Down (or Tab) select, Enter picks, and Esc
 //! (or Ctrl-P again) closes it.
 
@@ -11,8 +11,8 @@ use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::{Block, List, ListItem, ListState, StatefulWidget};
 use rig_tui::{
-    AppKeyBindingsExt, Focus, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
-    MainInput, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TuiPanel, TuiPlugin,
+    AppKeyBindingsExt, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed,
+    MainInput, PanelCanvas, PendingInput, Placement, RequestRedraw, ShowAgent, TuiPanel, TuiPlugin,
     TuiSystems,
 };
 
@@ -103,9 +103,9 @@ fn toggle(
 /// for the agent shown. It closes when it loses the keys, as on an Esc it
 /// does not bind. The keys of the frame it opened in were the input's.
 fn type_in_palette(
-    events: Res<TerminalEvents>,
+    events: Res<PendingInput>,
     mut open: Query<(Entity, &mut Palette), With<TuiPanel>>,
-    (focus, shown): (Res<KeyFocus>, Res<Shown>),
+    (focus, shown): (Res<KeyFocus>, Res<ShownAgent>),
     sources: PaletteSources,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
@@ -185,7 +185,7 @@ fn activate(
                 input.set(format!("{name} "));
             }
         }
-        Action::Focus(shown) => commands.trigger(Focus { entity: *shown }),
+        Action::Focus(shown) => commands.trigger(ShowAgent { entity: *shown }),
         Action::Describe => {
             let off = if entry.off { " (off)" } else { "" };
             let text = format!("Tool {}{off}: {}", entry.label, entry.detail);

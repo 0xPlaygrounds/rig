@@ -52,7 +52,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let settings = "[tool_search]\ntools = [\"dummy_*\", \"jira_*\"]";
     app.set_error_handler(bevy_ecs::error::warn)
         .insert_resource(Settings::from_toml(settings))
-        .add_plugins((AgentPlugin, JournalPlugin, ToolSearchPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ToolSearchPlugin))
         .init_resource::<Created>()
         .init_resource::<Ended>()
         .add_observer(log_ended)

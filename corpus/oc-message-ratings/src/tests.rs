@@ -31,7 +31,7 @@ fn start(
     app.init_resource::<Ended>()
         .insert_resource(scripted_models(models.iter().copied()))
         .add_observer(log_ended)
-        .add_plugins((AgentPlugin, JournalPlugin, MessageRatingsPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, MessageRatingsPlugin));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut())?;
@@ -147,7 +147,7 @@ fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
     let before = turn_2.map(|turn_2| (AgentId("main".to_owned()), turn_2));
     assert!(before.is_some(), "turn 2 was asked");
     let cut = before.map_or(ForkCut::Whole, |(agent, at)| ForkCut::Before(agent, at));
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         ..ForkSession::default()
     });
@@ -221,14 +221,14 @@ fn ratings_stay_with_their_replies_never_reach_the_model_and_tally_by_model() {
 fn alt_down_rates_the_last_reply_from_the_input() {
     let store = MemoryStore::default();
     let (mut app, _wakes) = app_on(&store);
-    app.add_plugins((AgentPlugin, JournalPlugin, MessageRatingsPlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, MessageRatingsPlugin));
     tui_view(&mut app);
     let agent = app
         .world_mut()
         .spawn((Name::new("main"), Agent, AgentId("main".to_owned())))
         .id();
     // The agent the view shows, whose input the keys are pressed in.
-    app.insert_resource(Shown(Some(agent)));
+    app.insert_resource(ShownAgent(Some(agent)));
     app.finish();
     app.update();
     for message in [Message::user("Fix it."), Message::assistant("Fixed.")] {

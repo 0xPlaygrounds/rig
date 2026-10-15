@@ -1,4 +1,4 @@
-use rig_core::effect::{EffectId, EffectKind, Outcome};
+use rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::app_on;
 
@@ -11,7 +11,7 @@ fn record(id: u64, agent: &str, kind: &str, turn: u64) -> EffectRecord {
         kind: kind.into(),
         payload: rig_core::serde_json::json!({ "id": id }),
     };
-    let outcome = Ok(Outcome::Custom {
+    let outcome = Ok(Answered::Custom {
         payload: rig_core::serde_json::Value::Null,
     });
     let mut record = EffectRecord::new(EffectId::from_raw(id), "plugin".into(), kind, outcome);
@@ -59,6 +59,39 @@ fn the_records_of_one_turn_of_an_agent_read_back_from_the_store() {
     );
 }
 
+/// A tool registered while the app runs is described in the log's header,
+/// as the tools registered before it starts are.
+#[test]
+fn a_tool_registered_while_running_is_described_in_the_header() {
+    use rig_core::completion::ToolDefinition;
+    use rig_core::message::ToolName;
+
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = app_on(&store);
+    app.add_plugins((AgentPlugin, EffectLogPlugin));
+    app.finish();
+    app.update();
+    let late = ToolName::new("late").into_iter().map(|name| {
+        ToolDef(ToolDefinition::new(
+            name,
+            "registered late",
+            rig_core::serde_json::json!({}),
+        ))
+    });
+    app.world_mut().spawn_batch(late);
+    app.world_mut()
+        .write_message(EffectRecorded(record(1, "a", "note", 0)));
+    app.update();
+
+    let header = jsonl::read_session(&store).map(|log| log.header);
+    let keys: Vec<String> = header
+        .iter()
+        .flat_map(|header| &header.handlers)
+        .map(|handler| handler.key.to_string())
+        .collect();
+    assert!(keys.contains(&"tool:late".to_owned()), "{keys:?}");
+}
+
 /// A record of effect `id` whose payload says `text`.
 fn saying(id: u64, text: &str) -> EffectRecord {
     let mut record = record(id, "a", "note", 0);
@@ -77,7 +110,7 @@ fn a_rewrite_reaches_the_log_written_and_the_records_not_written_yet() {
     const SECRET: &str = "sk-123";
     let store = MemoryStore::default();
     let (mut app, _wakes) = app_on(&store);
-    app.add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin));
+    app.add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin));
     app.finish();
     app.update();
     app.world_mut()
@@ -85,7 +118,7 @@ fn a_rewrite_reaches_the_log_written_and_the_records_not_written_yet() {
     app.update();
     app.world_mut()
         .write_message(EffectRecorded(saying(2, &format!("again {SECRET}"))));
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: Author::plugin("redact"),
         with: Arc::new(Strings(|text: &mut String| {
             let hit = text.contains(SECRET);
@@ -127,7 +160,7 @@ fn a_resumed_session_sends_its_log_to_the_terminal_view() {
 
     let store = MemoryStore::default();
     let (mut before, _wakes) = app_on(&store);
-    before.add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin));
+    before.add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin));
     before.finish();
     before.update();
     for record in [record(1, "a", "note", 0), record(2, "a", "subagent", 0)] {
@@ -140,7 +173,7 @@ fn a_resumed_session_sends_its_log_to_the_terminal_view() {
     // The view's front, taking this headless run.
     app.add_front(Front::new(rig_tui::FRONT).headless())
         .add_message::<PastEffects>()
-        .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, EffectLogPlugin));
     collect::<PastEffects>(&mut app);
     app.finish();
     run_until(&mut app, &wakes, |world| {

@@ -76,7 +76,7 @@ fn session(
         ("test/main", main),
         ("test/tasks", tasks),
     ]))
-    .add_plugins((AgentPlugin, JournalPlugin, TaskQueuePlugin))
+    .add_plugins((AgentPlugin, SessionLogPlugin, TaskQueuePlugin))
     .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
     .init_resource::<Shells>()
     .init_resource::<Log>()
@@ -237,7 +237,7 @@ fn tasks_run_one_after_another_in_agents_of_their_own() {
 
     // `/queue open 1` shows T1, and what the user sends there goes to it.
     send(&mut app, agent, "/queue open 1");
-    let shown = app.world().resource::<Shown>().0;
+    let shown = app.world().resource::<ShownAgent>().0;
     assert_eq!(shown, Some(t1));
     send(&mut app, t1, "anything else?");
     run_until(&mut app, &wakes, |world| {

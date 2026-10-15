@@ -477,7 +477,7 @@ fn begin(
 fn hold_messages(
     messages: Query<
         (Entity, &ForAgent, &Decision),
-        (Undecided, IncomingMessages, Without<HeldForSplit>),
+        (ReadyToStart, IncomingMessages, Without<HeldForSplit>),
     >,
     agents: Query<&Splitting>,
     mut commands: Commands,
@@ -579,13 +579,13 @@ fn summarized(
                 .unwrap_or_else(|| slug(topic.as_deref().unwrap_or("split")));
             state.conclusions = Some(text);
             state.forking = Some(name.clone());
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: None,
                 cut: ForkCut::Line {
                     agent: id.clone(),
                     line: None,
                     through: state.last,
-                    take: Some(state.first),
+                    move_from: Some(state.first),
                     title: name,
                 },
                 asker: Some(split),
@@ -633,7 +633,7 @@ fn pointer_to(conversation: &Line, to: &SessionId) -> Option<(AsideId, usize)> {
 
 /// The saved session `to` of `home`: its conversation of `agent`.
 fn copy_of(
-    (stores, home): (&SessionStores, &Home),
+    (stores, home): (&StoreOpener, &Home),
     to: &SessionId,
     agent: &AgentId,
 ) -> Result<Line, String> {
@@ -663,7 +663,7 @@ fn put_back(conversation: &mut Line, to: &SessionId, copy: &Line) -> Result<(), 
 /// context message. The copy's revision once written, and whether it
 /// begins with that message.
 fn write_copy(
-    (stores, home, running): (&SessionStores, &Home, &SessionDir),
+    (stores, home, running): (&StoreOpener, &Home, &SessionDir),
     (from, to): (&SessionId, &SessionId),
     agent: &AgentId,
     split: &Split,
@@ -742,12 +742,7 @@ fn finish(
     splits: Query<&Split>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     holds: Query<(Entity, &SplitHold)>,
-    (stores, home, paths, wake): (
-        Res<SessionStores>,
-        Res<RigHome>,
-        Res<SessionPaths>,
-        Res<Wake>,
-    ),
+    (stores, home, paths, wake): (Res<StoreOpener>, Res<RigHome>, Res<SessionPaths>, Res<Wake>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -808,7 +803,7 @@ fn finish(
 fn undo(
     asked: On<UndoSplit>,
     mut agents: Query<(&AgentId, &mut Conversation), Without<ActiveTurn>>,
-    (stores, home): (Res<SessionStores>, Res<RigHome>),
+    (stores, home): (Res<StoreOpener>, Res<RigHome>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {

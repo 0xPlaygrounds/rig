@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{ModelSpec, ReasoningSupport};
 use rig_harness::rig_core::completion::Reasoning;
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::Message;
 use serde::Deserialize;
 
@@ -228,7 +228,9 @@ fn prepare(
 /// Refuses a turn call whose model cannot continue the prefill, before it
 /// is sent: the turn fails with the reason as its notice and keeps the
 /// user's message, and the prefill stays.
-fn refuse(mut calls: Query<(&Prefilled, &mut Decision), (Undecided, ModelCalls, With<TurnCall>)>) {
+fn refuse(
+    mut calls: Query<(&Prefilled, &mut Decision), (ReadyToStart, ModelCalls, With<TurnCall>)>,
+) {
     for (prefilled, mut decision) in &mut calls {
         let Prefilled::Refused { model } = prefilled else {
             continue;
@@ -248,7 +250,7 @@ fn join(
     mut calls: Query<
         (Entity, &Prefilled, &mut Outcome),
         (
-            Unreviewed,
+            ReadyToSettle,
             ModelCalls,
             With<TurnCall>,
             Without<SupersededBy>,

@@ -40,12 +40,15 @@ impl Default for Limits {
 
 /// An instruction file as read.
 pub struct InstructionFile {
+    /// Where it is.
     pub path: PathBuf,
+    /// Its text, up to the read limit.
     pub contents: Prefix,
 }
 
 /// The instruction files found, from the most general to the most specific.
 pub struct Instructions {
+    /// The files read.
     pub files: Vec<InstructionFile>,
     /// Files that exist but could not be read, with why.
     pub unreadable: Vec<String>,

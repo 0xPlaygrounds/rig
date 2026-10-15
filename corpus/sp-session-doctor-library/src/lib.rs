@@ -26,18 +26,18 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rig_core::conversation::{
-    ACTIVE, Aside, AsideId, BRANCH, Branch, Conversation, Kept, LINE, TURN,
+    ACTIVE_TITLE, Aside, AsideId, BRANCH, Branch, Conversation, KeptBranch, LINE_VALUES, TURN,
 };
 use rig_core::message::Message;
 use rig_memory::{
-    COMPACTED, DirStore, LoadError, MemoryStore, Repair, SPLIT, Session, Store, VERSION, Versioned,
-    Writer, upgrade,
+    COMPACTED, DirStore, MemoryStore, Repair, SPLIT, Session, SessionError, Store, VERSION,
+    Versioned, Writer, upgrade,
 };
 use serde::Serialize;
 
 /// The aside kinds rig's library crates define; any other is unknown to
 /// them.
-const KNOWN: [&str; 6] = [BRANCH, ACTIVE, LINE, TURN, COMPACTED, SPLIT];
+const KNOWN: [&str; 6] = [BRANCH, ACTIVE_TITLE, LINE_VALUES, TURN, COMPACTED, SPLIT];
 
 /// What a saved session is to this build of the library.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -331,7 +331,7 @@ fn check(name: &str, dir: &Path) -> (Checked, Option<Session>) {
     // The upgrade chain, run on a copy in memory: which logs need it.
     let upgraded = MemoryStore::default();
     let older = copy_store(&store, &upgraded)
-        .map_err(LoadError::from)
+        .map_err(SessionError::from)
         .and_then(|()| upgrade(&upgraded));
     match older {
         Ok(older) => {
@@ -357,9 +357,9 @@ fn check(name: &str, dir: &Path) -> (Checked, Option<Session>) {
 }
 
 /// The class of a session the library refuses with `error`.
-fn class_of(error: &LoadError) -> Class {
+fn class_of(error: &SessionError) -> Class {
     let newer = match error {
-        LoadError::Format {
+        SessionError::Format {
             found: Some(found), ..
         } => found
             .strip_prefix("rig-session/")
@@ -375,10 +375,10 @@ fn class_of(error: &LoadError) -> Class {
 }
 
 /// Why `log` cannot be read, as `error` says.
-fn problem(log: Option<&str>, error: &LoadError) -> Problem {
+fn problem(log: Option<&str>, error: &SessionError) -> Problem {
     let (log, line) = match error {
-        LoadError::Record { log, line, .. } => (Some(log.as_str()), Some(*line)),
-        LoadError::Format { log, .. } => (Some(log.as_str()), Some(1)),
+        SessionError::Record { log, line, .. } => (Some(log.as_str()), Some(*line)),
+        SessionError::Format { log, .. } => (Some(log.as_str()), Some(1)),
         _ => (log, None),
     };
     Problem {
@@ -498,7 +498,7 @@ fn write_copy(dir: &Path, out: &Path, read: &Session) -> Result<Vec<Tail>, Strin
 /// values, and its whole conversation.
 type Shape<'a> = (
     &'a [Message],
-    Vec<Kept>,
+    Vec<KeptBranch>,
     &'a BTreeMap<String, Versioned>,
     &'a Conversation,
 );
@@ -510,7 +510,7 @@ fn shapes(session: &Session) -> BTreeMap<&str, Shape<'_>> {
         let shape = (
             conversation.messages(),
             conversation.branches(),
-            &agent.state,
+            &agent.saved,
             conversation,
         );
         (agent.id.as_str(), shape)
@@ -540,7 +540,7 @@ fn differs(original: &Session, back: &Session) -> Option<String> {
         };
         return Some(format!("agent {agent}: other {what}"));
     }
-    if original.state != back.state {
+    if original.saved != back.saved {
         return Some("other session values".to_owned());
     }
     (unknown(original) != unknown(back)).then(|| "other unknown entries".to_owned())

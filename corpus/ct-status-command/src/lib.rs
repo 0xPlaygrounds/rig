@@ -25,7 +25,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_tools::process::{Launcher, Spawn};
 use rig_harness::rig_tools::workspace::Listing;
 use rig_sessions::SessionTitle;
-use rig_telemetry::SessionSpending;
+use rig_telemetry::SessionUsage;
 use rig_tui::{AppStatus, FRONT, Side, StatusItem, StatusSystems, Tone};
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +57,7 @@ impl Plugin for StatusCommandPlugin {
         app.add_setting::<StatusCommand>(SECTION)
             .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .init_resource::<AppStatus>()
             .init_resource::<StatusInput>()
             .init_resource::<Runs>()
@@ -290,11 +290,11 @@ type Observed<'a> = (
 /// Brings the [`StatusInput`] up to date, and wants a run when it changed.
 fn observe(
     (shown, root, paths, title, spending): (
-        Res<Shown>,
+        Res<ShownAgent>,
         Res<ProjectRoot>,
         Option<Res<SessionPaths>>,
         Option<Res<SessionTitle>>,
-        Option<Res<SessionSpending>>,
+        Option<Res<SessionUsage>>,
     ),
     agents: Query<Observed, With<Agent>>,
     mut input: ResMut<StatusInput>,

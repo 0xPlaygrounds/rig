@@ -64,7 +64,7 @@ fn a_fitting_example_goes_first_in_the_request_and_nowhere_else() {
     app.insert_resource(ProjectRoot(root.clone()))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             WatchPlugin,
             FewShotExamplesPlugin,
         ))

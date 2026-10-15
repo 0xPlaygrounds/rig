@@ -1,4 +1,4 @@
-use rig_core::tool::{OutputCut, Tool, ToolContext};
+use rig_core::tool::{OutputCut, Tool, ToolContext, ToolErrorKind};
 
 use super::{FilesListed, List, ListArgs};
 
@@ -90,4 +90,18 @@ fn hidden_files_are_listed_when_asked_for_or_named() {
         ".github/workflows/ci.yml\n"
     );
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// A path that does not exist is not found, not an empty listing.
+#[test]
+fn a_missing_path_is_not_found() {
+    let missing = std::env::temp_dir().join(format!("rig-tools-gone-{}", std::process::id()));
+    let listed = futures::executor::block_on(List::default().call(
+        &mut ToolContext::new(),
+        ListArgs::new(missing.to_string_lossy()),
+    ));
+    assert_eq!(
+        listed.err().map(|error| error.kind()),
+        Some(ToolErrorKind::NotFound)
+    );
 }

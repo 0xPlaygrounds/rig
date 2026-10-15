@@ -104,7 +104,7 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
         .init_resource::<Started>()
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             ChecklistRunnerPlugin,
             AnswerAsks,
         ))

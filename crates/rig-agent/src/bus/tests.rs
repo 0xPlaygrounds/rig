@@ -20,7 +20,7 @@ use rig_core::serve::{
 };
 use rig_core::{
     completion::CompletionRequest,
-    effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
+    effect::{Answered, EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
     rerank::{RerankResponse, RerankResult},
@@ -102,7 +102,7 @@ impl Serve for Echo {
             }
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
-                EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
+                EffectKind::Custom { payload, .. } => Ok(Answered::Custom { payload }),
                 other => Err(ErrorReport::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
@@ -154,7 +154,7 @@ async fn unary_dispatch_round_trips_through_a_spawned_driver() {
     let pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"n": 1})));
     let id = pending.id();
     let outcome = within(pending).await.expect("served");
-    assert!(matches!(outcome, Outcome::Custom { ref payload } if *payload == json!({"n": 1})));
+    assert!(matches!(outcome, Answered::Custom { ref payload } if *payload == json!({"n": 1})));
     assert_eq!(served.load(Ordering::SeqCst), 1);
     assert_eq!(
         id.as_u64(),
@@ -271,7 +271,7 @@ async fn concurrent_serving_across_keys_is_the_default() {
     let free_outcome = within(dispatcher.dispatch(&HandlerKey::from("free"), custom(json!(2))))
         .await
         .expect("free key is served while another is gated");
-    assert!(matches!(free_outcome, Outcome::Custom { ref payload } if *payload == json!(2)));
+    assert!(matches!(free_outcome, Answered::Custom { ref payload } if *payload == json!(2)));
     assert_eq!(served.load(Ordering::SeqCst), 1);
     let _ = open.send(());
     within(blocked_pending)
@@ -400,7 +400,7 @@ async fn tool_and_fn_adapters_serve_their_families() {
     ))
     .await
     .expect("served");
-    let Outcome::ToolResult { result, .. } = outcome else {
+    let Answered::ToolResult { result, .. } = outcome else {
         panic!("expected a tool result");
     };
     assert_eq!(result.output().as_json(), Some(&json!(5)));
@@ -414,7 +414,7 @@ async fn tool_and_fn_adapters_serve_their_families() {
     ))
     .await
     .expect("served");
-    let Outcome::ToolResult { result, .. } = outcome else {
+    let Answered::ToolResult { result, .. } = outcome else {
         panic!("expected a tool result");
     };
     assert_eq!(result.output().as_text(), Some("HI"));
@@ -500,7 +500,7 @@ impl Serve for DropCounter {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(Answered::Custom {
             payload: json!(null),
         }))
     }
@@ -590,7 +590,7 @@ impl Serve for AskUserHandler {
                 let ask: AskUser = serde_json::from_value(payload).expect("an AskUser");
                 json!({"text": format!("you asked: {}", ask.prompt)})
             };
-            rig_core::serve::Reply::Outcome(Ok(Outcome::Custom { payload: answer }))
+            rig_core::serve::Reply::Outcome(Ok(Answered::Custom { payload: answer }))
         }
     }
 }
@@ -803,7 +803,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
     let Some(Relayed::Done(response)) = items.pop() else {
         panic!("the stream ends with the response: {items:?}");
     };
-    let transcript = rig_core::streaming::Transcript::parse(
+    let transcript = rig_core::streaming::StreamRecord::parse(
         serde_json::to_value(
             items
                 .into_iter()
@@ -1017,7 +1017,7 @@ impl rig_core::serve::Recorder for Counting {
         false
     }
     fn event(&self, _id: rig_core::effect::EffectId, _event: &Item<StreamEvent>) {}
-    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Outcome, ErrorReport>) {
+    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Answered, ErrorReport>) {
         self.resolved.fetch_add(1, Ordering::SeqCst);
     }
 }
@@ -1086,7 +1086,7 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
 /// What a ticking host used to get from `Pending::poll_outcome`; the bus
 /// no longer offers it (a world holds no future to probe), and these tests
 /// keep it as a spelling of "poll once, no executor".
-fn probe(pending: &mut Pending) -> Option<Result<Outcome, ErrorReport>> {
+fn probe(pending: &mut Pending) -> Option<Result<Answered, ErrorReport>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     match pending.poll_unpin(&mut cx) {
         Poll::Ready(outcome) => Some(outcome),
@@ -1290,7 +1290,7 @@ impl Serve for Parent {
             };
             let outcome = match outcome {
                 Ok(outcome) => Ok(outcome),
-                Err(report) => Ok(Outcome::Custom {
+                Err(report) => Ok(Answered::Custom {
                     payload: json!({
                         "kind": format!("{:?}", report.kind),
                         "message": report.message,
@@ -1300,14 +1300,14 @@ impl Serve for Parent {
             return rig_core::serve::Reply::Outcome(outcome);
         }
         let outcome = match first {
-            Poll::Ready(Err(report)) => Ok(Outcome::Custom {
+            Poll::Ready(Err(report)) => Ok(Answered::Custom {
                 payload: json!({
                     "kind": format!("{:?}", report.kind),
                     "message": report.message,
                 }),
             }),
             Poll::Ready(Ok(outcome)) => Ok(outcome),
-            Poll::Pending => Ok(Outcome::Custom {
+            Poll::Pending => Ok(Answered::Custom {
                 payload: json!("accepted"),
             }),
         };
@@ -1320,7 +1320,7 @@ impl Serve for Parent {
 fn drive_to_outcome(
     driver: &mut BusDriver,
     pending: &mut super::Pending,
-) -> Option<Result<Outcome, ErrorReport>> {
+) -> Option<Result<Answered, ErrorReport>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     for _ in 0..16 {
         if let Poll::Ready(result) = pending.poll_unpin(&mut cx) {
@@ -1369,7 +1369,7 @@ fn a_dispatch_made_through_dispatch_context_carries_its_parent() {
         .expect("resolved")
         .expect("served");
     assert!(
-        matches!(&outcome, Outcome::Custom { payload } if *payload == json!("nested")),
+        matches!(&outcome, Answered::Custom { payload } if *payload == json!("nested")),
         "{outcome:?}"
     );
     assert_eq!(served.load(Ordering::SeqCst), 1);
@@ -1388,7 +1388,7 @@ fn a_dispatch_made_through_dispatch_context_carries_its_parent() {
 /// An approval gate: `before` sends the dispatch to the "world" and waits
 /// for its decision on a oneshot.
 struct Approval {
-    asks: std::sync::mpsc::Sender<(EffectId, oneshot::Sender<rig_core::serve::Decision>)>,
+    asks: std::sync::mpsc::Sender<(EffectId, oneshot::Sender<rig_core::serve::BeforeServe>)>,
 }
 
 impl rig_core::serve::Intercept for Approval {
@@ -1396,12 +1396,12 @@ impl rig_core::serve::Intercept for Approval {
         "approval".to_owned()
     }
 
-    async fn before(&self, id: EffectId, _kind: &EffectKind) -> rig_core::serve::Decision {
+    async fn before(&self, id: EffectId, _kind: &EffectKind) -> rig_core::serve::BeforeServe {
         let (decide, decided) = oneshot::channel();
         self.asks.send((id, decide)).expect("the world listens");
         match decided.await {
             Ok(decision) => decision,
-            Err(oneshot::Canceled) => rig_core::serve::Decision::Deny(ErrorReport::new(
+            Err(oneshot::Canceled) => rig_core::serve::BeforeServe::Deny(ErrorReport::new(
                 ErrorKind::Internal,
                 "layer `approval`: the world closed the answer channel without deciding",
             )),
@@ -1412,9 +1412,9 @@ impl rig_core::serve::Intercept for Approval {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Outcome, ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Keep
+        _outcome: &Result<Answered, ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1503,7 +1503,7 @@ impl Serve for CaptureLineage {
         if !self.complete {
             futures::future::pending::<()>().await;
         }
-        CoreReply::Outcome(Ok(Outcome::Custom {
+        CoreReply::Outcome(Ok(Answered::Custom {
             payload: json!("complete"),
         }))
     }
@@ -1675,7 +1675,7 @@ async fn labelled_retrieve_adapters_serve_side_by_side() {
         .await
         .expect("retrieved");
         assert!(
-            matches!(&found, Outcome::Documents(RetrievedDocuments::Ids(ids)) if ids.iter().map(|(_, id)| id.as_str()).eq([expected])),
+            matches!(&found, Answered::Documents(RetrievedDocuments::Ids(ids)) if ids.iter().map(|(_, id)| id.as_str()).eq([expected])),
             "retrieve:{label} answers from its own index: {found:?}"
         );
     }

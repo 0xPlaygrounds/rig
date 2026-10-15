@@ -23,8 +23,8 @@ use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::redact;
-use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_ecs::{StopTurns, WriteJournal};
+use rig_harness::rig_ecs::session_log::SessionStore;
+use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::rig_memory::{self, MemoryStore, Place, map_strings};
 use serde::Serialize;
 use serde_json::Value;
@@ -100,9 +100,9 @@ impl Plugin for RetroactiveRedactPlugin {
             .add_systems(
                 Last,
                 (
-                    withhold_arguments.after(StopTurns).before(WriteJournal),
+                    withhold_arguments.after(StopTurnsOnExit).before(WriteLogs),
                     rewritten
-                        .after(WriteJournal)
+                        .after(WriteLogs)
                         .run_if(on_message::<SessionRewritten>),
                 ),
             );
@@ -327,7 +327,7 @@ struct Here<'w, 's> {
     turns: Query<'w, 's, (), With<TurnOf>>,
     store: Option<Res<'w, SessionStore>>,
     paths: Option<Res<'w, SessionPaths>>,
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     home: Option<Res<'w, RigHome>>,
     scratch: Option<Res<'w, Scratch>>,
     answerers: Answerers<'w, 's>,
@@ -695,7 +695,7 @@ fn answered(
         forks,
     };
     let asker = commands.spawn(pending).id();
-    commands.trigger(RewriteSession {
+    commands.write_message(RewriteSession {
         by: Author::plugin(NAME),
         with: Arc::new(Strings(move |text: &mut String| {
             let mut hit = false;
@@ -718,7 +718,7 @@ fn rewritten(
     pending: Query<&Pending>,
     agents: Query<(Entity, &AgentId)>,
     (stores, home, paths): (
-        Option<Res<SessionStores>>,
+        Option<Res<StoreOpener>>,
         Option<Res<RigHome>>,
         Option<Res<SessionPaths>>,
     ),

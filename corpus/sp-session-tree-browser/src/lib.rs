@@ -27,7 +27,7 @@ use rig_tui::ratatui::text::Line as Row;
 use rig_tui::ratatui::widgets::{Block, Clear, Paragraph};
 use rig_tui::{
     InputAction, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope,
-    PaneKeys, PanelCanvas, Placement, RequestRedraw, TerminalEvents, TranscriptPane,
+    PaneKeys, PanelCanvas, PendingInput, Placement, RequestRedraw, TranscriptPane,
     TranscriptSource, TuiKeys, TuiPanel, TuiSystems,
 };
 
@@ -41,7 +41,7 @@ pub struct SessionTreeBrowserPlugin;
 impl Plugin for SessionTreeBrowserPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
+            .init_resource::<StoreOpener>()
             .add_command(
                 "browse",
                 "Browse the saved sessions and their branches; Enter resumes at a turn",
@@ -255,7 +255,7 @@ fn bind(world: &mut World, pane: Entity, code: KeyCode, act: Act) {
 
 /// The live session's row: the start of what its agent was first asked.
 fn live_row(world: &World, agent: Entity) -> SessionRow {
-    let shown = world.get_resource::<Shown>().and_then(|shown| shown.0);
+    let shown = world.get_resource::<ShownAgent>().and_then(|shown| shown.0);
     let conversation = world.get::<Conversation>(shown.unwrap_or(agent));
     let title = conversation.and_then(|conversation| first_typed(conversation));
     SessionRow {
@@ -269,7 +269,7 @@ fn live_row(world: &World, agent: Entity) -> SessionRow {
 /// off the main thread: only their listings are read.
 fn list(world: &mut World, root: Entity, live: SessionRow) {
     let home = world.resource::<RigHome>().0.clone();
-    let stores = world.resource::<SessionStores>().clone();
+    let stores = world.resource::<StoreOpener>().clone();
     let here = world
         .get_resource::<SessionPaths>()
         .map(|paths| paths.path().to_owned());
@@ -463,7 +463,7 @@ fn selected(browser: &Browser) -> Option<&Which> {
 /// Types the search while it is being typed: every key goes to it, Enter
 /// and Esc end it.
 fn type_search(
-    mut events: ResMut<TerminalEvents>,
+    mut events: ResMut<PendingInput>,
     mut browsers: Query<&mut Browser>,
     mut commands: Commands,
 ) {
@@ -601,7 +601,7 @@ fn refresh(world: &mut World) {
 /// Reads saved session `id` off the main thread, on a task under `root`.
 fn start_reading(world: &mut World, root: Entity, id: SessionId) {
     let dir = world.resource::<RigHome>().0.session(&id);
-    let stores = world.resource::<SessionStores>().clone();
+    let stores = world.resource::<StoreOpener>().clone();
     let Some(wake) = world.get_resource::<Wake>().cloned() else {
         return;
     };
@@ -627,7 +627,7 @@ fn start_reading(world: &mut World, root: Entity, id: SessionId) {
 fn conversation(world: &mut World, root: Entity, which: &Which) -> Option<Line> {
     match which {
         Which::Live => {
-            let agent = world.get_resource::<Shown>()?.0?;
+            let agent = world.get_resource::<ShownAgent>()?.0?;
             world
                 .get::<Conversation>(agent)
                 .map(|conversation| conversation.view())
@@ -851,7 +851,7 @@ fn resume(world: &mut World, root: Entity, node: usize) {
 
 /// Goes on in this session from the turn ending with `last`.
 fn resume_here(world: &mut World, last: MessageKey) -> Result<(), String> {
-    let agent = world.get_resource::<Shown>().and_then(|shown| shown.0);
+    let agent = world.get_resource::<ShownAgent>().and_then(|shown| shown.0);
     let agent = agent.ok_or("no agent is shown")?;
     let mut conversation = world
         .get_mut::<Conversation>(agent)
@@ -865,7 +865,7 @@ fn resume_saved(world: &mut World, id: &SessionId, last: MessageKey) -> Result<(
         .get_resource::<SessionPaths>()
         .cloned()
         .ok_or("this app keeps no session")?;
-    let stores = world.resource::<SessionStores>().clone();
+    let stores = world.resource::<StoreOpener>().clone();
     let dir = world.resource::<RigHome>().0.session(id);
     edit_stopped(&stores, &paths, &dir, |session| {
         let main = session.main_agent().map(|agent| agent.id.clone());

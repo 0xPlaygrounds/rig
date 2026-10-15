@@ -526,7 +526,7 @@ fn frame_began(mut perf: ResMut<Perf>) {
 
 /// Notes the keys the terminal view handles this frame.
 #[cfg(feature = "tui")]
-fn keys_seen(events: Res<rig_tui::TerminalEvents>, mut perf: ResMut<Perf>) {
+fn keys_seen(events: Res<rig_tui::PendingInput>, mut perf: ResMut<Perf>) {
     use rig_tui::crossterm::event::Event;
     for item in &events.0 {
         if let rig_tui::KeyInput::Event(Event::Key(key)) = item {

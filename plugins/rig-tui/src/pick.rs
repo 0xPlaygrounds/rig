@@ -1,40 +1,4 @@
-//! Choices over the transcript: the pickers of [`rig_harness::pick`] and
-//! the questions ([`Ask`]) of any plugin, which the view answers for
-//! every agent. One is shown at a time, in the order they came; the next
-//! waits until it is closed. What the user did in the one shown is its
-//! [`PickerState`], on its entity. A new [`Picker`] on the same entity
-//! fills it in place, as a search that finds more does: what is typed
-//! stays, and so does the item selected, found again by its command, else
-//! its label. The item highlighted is [`Highlighted`] on the entity, and a
-//! plugin's [`PickPreview`] there is drawn beside the list: text, or a
-//! conversation in a [`TranscriptPane`](crate::TranscriptPane). The user's
-//! choice is a [`Pick`](rig_harness::pick::Pick), which the harness
-//! carries out.
-//!
-//! A picker or question that takes several items shows a tick box on each:
-//! Tab ticks the selected item and moves on. Enter answers the selected
-//! one until ticks are in play (an item started ticked, or the user ticked
-//! or unticked one); from then on it answers exactly the ticked ones, even
-//! none. A question that takes text shows them too, so a choice goes with
-//! a note: Tab ticks a choice (one only, unless it takes several), and
-//! Enter on the typed answer answers the ticked choices with it as their
-//! note. Right shows what a choice says beyond its label
-//! ([`Choice::more`](rig_harness::ask::Choice::more)) in place of the
-//! body, and Left hides it. A long body above the list scrolls with
-//! Shift+Up and Shift+Down; PageUp and PageDown page the list. A picker or
-//! question may bind keys of its own ([`ChoiceKeys`]).
-//!
-//! A question superseded by another (`SupersededBy`, how a plugin changes
-//! an open [`Ask`]) is not shown; when it was the one shown, its successor
-//! takes its place with what the user did carried over by choice id: the
-//! ticks, what was typed and the choice selected.
-//!
-//! A question with initial text or a multi-line answer is answered in the
-//! input instead: its text replaces the draft until Enter answers or Esc
-//! refuses, and the draft comes back. A question shown beside the work
-//! ([`Ask::inline`]) waits in a strip above the input, which keeps the
-//! keys; Alt+1 to Alt+9 pick its choices, or answer it in the input, and
-//! Alt+0 dismisses it.
+//! Pickers and questions over the transcript.
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -98,10 +62,29 @@ pub enum ChoiceAction {
 }
 
 /// What the user did in the [`Picker`] or [`Ask`] the view shows, on its
-/// entity while it is shown: what is typed to filter or answer it, the row
-/// selected, what is ticked.
+/// entity while shown: the filter or answer typed, the row selected and
+/// what is ticked. The view shows every agent's and plugin's, one at a
+/// time, in the order they came. A new `Picker` on the entity refills the
+/// list and keeps all three (the selected row found again by its command,
+/// else its label). A question superseded by another (`SupersededBy`)
+/// hands them to its successor, by choice id. The item highlighted is
+/// [`Highlighted`] on the entity, and a [`PickPreview`] there is drawn
+/// beside the list.
+///
+/// Keys:
+/// - **Tab** ticks the selected row in one that takes several (or the
+///   choice a typed note goes with). Once anything is ticked, Enter
+///   answers exactly the ticked rows.
+/// - **Right** and **Left** show and hide a choice's
+///   [`more`](rig_harness::ask::Choice::more).
+/// - **Shift+Up** and **Shift+Down** scroll a long body; **PageUp** and
+///   **PageDown** page the list. A picker adds keys with [`ChoiceKeys`].
+/// - A question with initial text or a multi-line answer is answered in
+///   the input; Esc refuses it and brings the draft back.
+/// - An [`Ask::inline`] question waits in a strip above the input:
+///   Alt+1 to Alt+9 pick, and Alt+0 dismisses.
 #[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
-pub struct PickerState {
+pub struct PickerInput {
     /// What is typed.
     pub(crate) filter: String,
     /// The selected position among the visible rows.
@@ -125,7 +108,7 @@ pub struct PickerState {
     pub(crate) picked: Option<(String, String)>,
 }
 
-impl PickerState {
+impl PickerInput {
     /// What is typed, which filters the items or answers.
     pub fn filter(&self) -> &str {
         &self.filter
@@ -194,7 +177,7 @@ impl Item<'_> {
 impl Listing<'_> {
     /// What the selected row says beyond its label, when the user asked
     /// for it.
-    pub(crate) fn more(&self, choosing: &PickerState) -> Option<&str> {
+    pub(crate) fn more(&self, choosing: &PickerInput) -> Option<&str> {
         let rows = self.rows(&choosing.filter);
         match rows.get(choosing.selected) {
             Some(Row::Item(index)) if choosing.more => self.items.get(*index)?.more,
@@ -302,7 +285,7 @@ fn listing<'a>(ask: &'a Ask, keys: &'a [(KeyCode, ChoiceAction)]) -> Listing<'a>
 /// What the user did on the question `old` shows, carried over to its
 /// successor `new` by choice id: ticks (a new choice ticked as it starts),
 /// what was typed, the row selected and the draft.
-fn carried(choosing: PickerState, old: &Ask, new: &Ask) -> PickerState {
+fn carried(choosing: PickerInput, old: &Ask, new: &Ask) -> PickerInput {
     let id_at = |index: &usize| old.choices.get(*index).map(|choice| choice.id.as_str());
     let ticked: Vec<&str> = choosing.ticked.iter().filter_map(id_at).collect();
     let was = |id: &str| old.choices.iter().any(|choice| choice.id == id);
@@ -322,7 +305,7 @@ fn carried(choosing: PickerState, old: &Ask, new: &Ask) -> PickerState {
         other => other.copied(),
     };
     let selected = row.and_then(|row| new_rows.iter().position(|known| *known == row));
-    PickerState {
+    PickerInput {
         ticked: ticked.map(|(index, _)| index).collect(),
         selected: selected.unwrap_or_default(),
         ..choosing
@@ -331,7 +314,7 @@ fn carried(choosing: PickerState, old: &Ask, new: &Ask) -> PickerState {
 
 /// The pickers and questions shown, with what the user did in them: one at
 /// most.
-pub(crate) type Showing<'w, 's> = Query<'w, 's, (Entity, &'static mut PickerState)>;
+pub(crate) type Showing<'w, 's> = Query<'w, 's, (Entity, &'static mut PickerInput)>;
 
 /// Keeps the queue of pickers and questions in the order they came, and
 /// the first one shown: a new one waits, one closed or answered elsewhere
@@ -370,7 +353,7 @@ pub(crate) fn queue_choices(
         {
             commands
                 .entity(entity)
-                .try_remove::<(PickerState, Highlighted)>();
+                .try_remove::<(PickerInput, Highlighted)>();
             commands
                 .entity(next)
                 .try_insert(carried(shown.clone(), old, new));
@@ -417,7 +400,7 @@ pub(crate) fn queue_choices(
 /// Selects again, in `shown` filled again, the item `state` had selected,
 /// by its command, else its label, among the rows what is typed leaves;
 /// else the row it was on, as far as there are rows.
-fn refill(state: &mut PickerState, shown: &Listing<'_>) {
+fn refill(state: &mut PickerInput, shown: &Listing<'_>) {
     let rows = shown.rows(&state.filter);
     let item = |row: &Row| match row {
         Row::Item(index) => shown.items.get(*index),
@@ -452,7 +435,7 @@ pub(crate) fn show_first(
         }
         commands
             .entity(entity)
-            .try_remove::<(PickerState, Highlighted)>();
+            .try_remove::<(PickerInput, Highlighted)>();
     }
     let first = view.queue.iter().find_map(|&entity| {
         let shown = choices.shown(entity)?;
@@ -466,7 +449,7 @@ pub(crate) fn show_first(
             .filter(|(_, item)| shown.multiple && item.checked)
             .map(|(index, _)| index)
             .collect();
-        let state = PickerState {
+        let state = PickerInput {
             filter: String::new(),
             selected: shown.selected.min(shown.items.len().saturating_sub(1)),
             touched: !ticked.is_empty(),
@@ -488,7 +471,7 @@ pub(crate) fn show_first(
 /// and notes that item for a picker filled again, unless it was filled
 /// since: its selection is found again first.
 pub(crate) fn mark_highlighted(
-    mut showing: Query<(Entity, &mut PickerState, Option<&Highlighted>)>,
+    mut showing: Query<(Entity, &mut PickerInput, Option<&Highlighted>)>,
     filled: Query<(), Changed<Picker>>,
     choices: Choices,
     mut commands: Commands,
@@ -523,7 +506,7 @@ pub(crate) fn mark_highlighted(
 /// for closing without a choice.
 pub(crate) fn choice_key(
     key: KeyEvent,
-    choosing: &mut PickerState,
+    choosing: &mut PickerInput,
     shown: &Listing<'_>,
 ) -> Option<Option<Chosen>> {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -574,7 +557,7 @@ pub(crate) fn choice_key(
 /// [`choice_key`] does.
 fn choice_action(
     action: ChoiceAction,
-    choosing: &mut PickerState,
+    choosing: &mut PickerInput,
     shown: &Listing<'_>,
     rows: &[Row],
 ) -> Option<Option<Chosen>> {
@@ -604,7 +587,7 @@ fn choice_action(
 }
 
 /// Ticks or unticks the selected item; whether one is selected.
-fn tick(choosing: &mut PickerState, shown: &Listing<'_>, rows: &[Row]) -> bool {
+fn tick(choosing: &mut PickerInput, shown: &Listing<'_>, rows: &[Row]) -> bool {
     let Some(Row::Item(index)) = rows.get(choosing.selected) else {
         return false;
     };
@@ -622,7 +605,7 @@ fn tick(choosing: &mut PickerState, shown: &Listing<'_>, rows: &[Row]) -> bool {
 /// What Enter answers: the selected row, or once ticks are in play in a
 /// choice of several, exactly the ticked items; the typed answer with the
 /// ticked items as its note's.
-fn answer(choosing: &PickerState, shown: &Listing<'_>, rows: &[Row]) -> Option<Option<Chosen>> {
+fn answer(choosing: &PickerInput, shown: &Listing<'_>, rows: &[Row]) -> Option<Option<Chosen>> {
     match rows.get(choosing.selected)? {
         Row::Item(_) if choosing.touched && shown.multiple => {
             Some(Some(Chosen::items(choosing.ticked.clone())))
@@ -645,7 +628,7 @@ pub(crate) struct PreviewPane;
 /// scrolled to its entry, and none once the picker is closed or previews
 /// something else.
 pub(crate) fn follow_previews(
-    showing: Query<(Entity, &PickerState, Ref<PickPreview>)>,
+    showing: Query<(Entity, &PickerInput, Ref<PickPreview>)>,
     panes: Query<(Entity, &ChildOf), With<PreviewPane>>,
     mut commands: Commands,
 ) {

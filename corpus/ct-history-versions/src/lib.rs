@@ -13,7 +13,7 @@
 //!   version `n`, then puts back on top, verbatim, the entries appended
 //!   since; the restore is a version too.
 //!
-//! The changes are read from the kernel's [`Committed`] messages. A splice
+//! The changes are read from the kernel's [`ConversationChanged`] messages. A splice
 //! names the ids it removed, not their messages, so the plugin keeps a copy
 //! of each conversation ([`Shadow`]) folded from the same messages, and
 //! takes the "before" from it. A session rewrite ([`RewriteSession`], the
@@ -25,7 +25,7 @@ use std::collections::{HashMap, HashSet};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::conversation::Conversation as Chat;
-use rig_harness::rig_ecs::WriteJournal;
+use rig_harness::rig_ecs::WriteLogs;
 use rig_harness::rig_memory::{HeuristicTokenCounter, Place, TokenCounter, summary_in};
 use serde::{Deserialize, Serialize};
 
@@ -43,8 +43,7 @@ impl Plugin for HistoryVersionsPlugin {
             .init_resource::<AskedRewrites>()
             .register_required_components::<Agent, ConvVersions>()
             .keeps_saved::<ConvVersions>()
-            .add_observer(asked_rewrite)
-            .add_systems(Last, (record, prune).chain().after(WriteJournal))
+            .add_systems(Last, (asked_rewrite, record, prune).chain().after(WriteLogs))
             .add_command("conv-log", "List the versions of the conversation, newest first", log)
             .add_command("conv-diff", "What version N of the conversation changed: /conv-diff N", diff)
             .add_command(
@@ -122,7 +121,7 @@ pub struct ConvVersions {
 }
 
 /// The plugin's copy of an agent's conversation, folded from its
-/// [`Committed`] changes, as it was before each.
+/// [`ConversationChanged`] changes, as it was before each.
 #[derive(Component, Debug)]
 pub struct Shadow(Chat);
 
@@ -131,8 +130,10 @@ pub struct Shadow(Chat);
 #[derive(Resource, Default)]
 struct AskedRewrites(Vec<Author>);
 
-fn asked_rewrite(asked: On<RewriteSession>, mut rewrites: ResMut<AskedRewrites>) {
-    rewrites.0.push(asked.by.clone());
+fn asked_rewrite(mut asked: MessageReader<RewriteSession>, mut rewrites: ResMut<AskedRewrites>) {
+    rewrites
+        .0
+        .extend(asked.read().map(|asked| asked.by.clone()));
 }
 
 /// An agent as recording reads it.
@@ -147,14 +148,14 @@ type Recording<'a> = (
 /// Folds each agent's saved changes into its shadow, keeping a version of
 /// each that is not an append, and of each session rewrite.
 fn record(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     mut rewritten: MessageReader<SessionRewritten>,
     mut asked: ResMut<AskedRewrites>,
     mut agents: Query<Recording>,
     mut commands: Commands,
 ) {
-    let mut changes: HashMap<Entity, Vec<&Recorded>> = HashMap::new();
-    for Committed { agent, change } in committed.read() {
+    let mut changes: HashMap<Entity, Vec<&ChangeRecord>> = HashMap::new();
+    for ConversationChanged { agent, change } in committed.read() {
         changes.entry(*agent).or_default().push(change);
     }
     let mut rewrites = Vec::new();
@@ -200,7 +201,7 @@ fn record(
 
 /// Applies `change` to `shadow`, first keeping a version of it when it
 /// rewrites rather than appends.
-fn fold(shadow: &mut Chat, versions: &mut ConvVersions, change: &Recorded) {
+fn fold(shadow: &mut Chat, versions: &mut ConvVersions, change: &ChangeRecord) {
     let len = shadow.messages().len();
     let rewrites = match &change.change {
         Change::Splice { from, removed, .. } => !(removed.is_empty() && *from == len),

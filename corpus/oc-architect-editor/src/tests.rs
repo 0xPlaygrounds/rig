@@ -6,7 +6,7 @@ use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, reply,
     run_until, scripted_models,
 };
-use rig_telemetry::{SessionSpending, UsagePlugin};
+use rig_telemetry::{SessionUsage, UsagePlugin};
 use serde_json::json;
 
 use super::*;
@@ -102,7 +102,7 @@ fn the_architect_plans_and_the_editor_edits() {
         .insert_resource(ProjectRoot(dir.clone()))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_plugins((ReadTool, SearchTool, EditTool, WriteTool, ShellTool))
         .add_plugins((UsagePlugin, ArchitectEditorPlugin));
     collect::<Notice>(&mut app);
@@ -178,7 +178,7 @@ fn the_architect_plans_and_the_editor_edits() {
     assert_eq!(editor.request_count(), 5);
 
     // Each model's usage is counted apart, and `/usage` lists both.
-    let spent = &app.world().resource::<SessionSpending>().0.models;
+    let spent = &app.world().resource::<SessionUsage>().0.models;
     let tokens = |model: &str| {
         spent
             .get(model)

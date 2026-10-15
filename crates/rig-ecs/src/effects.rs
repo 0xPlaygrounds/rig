@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::ConditionalSendFuture;
-use rig_core::effect::Outcome;
+use rig_core::effect::Answered;
 use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::serve::{
@@ -28,7 +28,7 @@ use rig_core::tool::{PublishedContext, ToolResultContext};
 
 /// What a handler's run left: its answer, and what a tool published beside
 /// it, if anything.
-pub(crate) type Ran = (Result<Outcome, ErrorReport>, Option<ToolResultContext>);
+pub(crate) type Ran = (Result<Answered, ErrorReport>, Option<ToolResultContext>);
 
 /// The effect ids, and the records of the effects running.
 #[derive(Resource)]
@@ -73,7 +73,7 @@ impl Effects {
         consume: impl FnOnce(Reply) -> F + Send + 'static,
     ) -> impl ConditionalSendFuture<Output = Ran> + 'static
     where
-        F: ConditionalSendFuture<Output = Result<Outcome, ErrorReport>> + 'static,
+        F: ConditionalSendFuture<Output = Result<Answered, ErrorReport>> + 'static,
     {
         let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(self.buffer.clone());
         recorder.begin(id, handler.descriptor().key, kind.clone(), origin);

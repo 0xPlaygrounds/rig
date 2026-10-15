@@ -16,7 +16,7 @@
 //! (`shared_prefix`), asks the agent's model to summarize what the other
 //! branch did after it (or after the last merge from it), shows the
 //! summary for review (Accept / Edit / Cancel) and, on Accept, sends one
-//! note "Merged from branch `<name>`" to the agent (`DeliveryMode::Note`),
+//! note "Merged from branch `<name>`" to the agent (`DeliveryMode::Inform`),
 //! followed by an aside recording the source and the last merged message's
 //! key. A note into an inactive branch is put there directly, once no turn
 //! runs, and left for that branch's next request (`Halt::Kept`). With
@@ -102,7 +102,7 @@ pub fn lines(conversation: &Conversation) -> Vec<Line> {
         let (id, own) = match line.id {
             LineId::Active => (None, parts(n)),
             LineId::Branch(id) => (Some(id), line.at),
-            LineId::Session { .. } => return None,
+            LineId::Split { .. } => return None,
         };
         let end = line.at.saturating_add(line.entries);
         Some(Line {
@@ -341,7 +341,7 @@ fn branch(
         ));
         return;
     }
-    let left = conversation.branch_title().to_owned();
+    let left = conversation.line_title().to_owned();
     let end = conversation.messages().len();
     if let Err(failure) = conversation.branch_off(end, name, Author::plugin(NAME)) {
         notices.write(Notice::error(args.agent, failure.to_string()));
@@ -367,7 +367,7 @@ fn switch(
         ));
         return;
     };
-    if name == conversation.branch_title() {
+    if name == conversation.line_title() {
         return;
     }
     match go_to(&mut conversation, name) {
@@ -395,7 +395,7 @@ fn merge(
         .into_iter()
         .filter(|word| *word != "--with-files")
         .collect();
-    let active = conversation.branch_title().to_owned();
+    let active = conversation.line_title().to_owned();
     let (source, target) = match words.as_slice() {
         [source] => (*source, active.as_str()),
         [source, "into", target] => (*source, *target),
@@ -490,7 +490,7 @@ fn merge(
         Summarizing(pending),
         merging,
         ModelRequest::new(request),
-        Effect::child_of(None).with_purpose(NAME),
+        Effect::with_parent_id(None).with_purpose(NAME),
         ForAgent(args.agent),
     ));
 }
@@ -597,7 +597,7 @@ fn answered(
         note,
     };
     let merging = pending.merging();
-    if conversation.branch_title() == pending.target {
+    if conversation.line_title() == pending.target {
         deliver(&accepted, merging, &mut commands);
     } else if busy {
         commands.spawn((accepted, merging));
@@ -640,7 +640,7 @@ fn author_of(record: &MergeRecord) -> Author {
 /// turn's first.
 fn deliver(accepted: &Accepted, merging: Merging, commands: &mut Commands) {
     let (text, record) = note_of(accepted);
-    let note = Incoming::new(text, DeliveryMode::Note).with_author(author_of(&record));
+    let note = Incoming::new(text, DeliveryMode::Inform).with_author(author_of(&record));
     let agent = ForAgent(accepted.pending.agent);
     commands.spawn((note, agent, NoteOf(record), merging));
 }
@@ -709,7 +709,7 @@ fn append_elsewhere(
     let Ok(value) = serde_json::to_value(&record) else {
         return;
     };
-    let home = conversation.branch_title().to_owned();
+    let home = conversation.line_title().to_owned();
     if let Err(why) = go_to(conversation, target) {
         notices.write(Notice::error(agent, why));
         return;

@@ -12,7 +12,7 @@ use super::*;
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, commit_message, connect, log_ended, reply, run_until,
 };
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_telemetry::{AgentUsage, UsagePlugin};
 
 /// What a second Prepare system adds to every turn's request.
 const INJECTED: &str = "Context from another plugin.";
@@ -23,7 +23,7 @@ const INJECTED: &str = "Context from another plugin.";
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     rig_harness::load::<CompactionPlugin>(
@@ -199,7 +199,10 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     );
     assert!(live.len() < before.len());
     // The usage plugin counts the summary's call with the turn's.
-    let spent = app.world().get::<Spending>(agent).map(|spent| spent.total);
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .map(|spent| spent.total);
     assert_eq!(spent.map(|spent| spent.calls), Some(2));
 
     // A second compaction builds on the first summary without reading it
@@ -249,7 +252,7 @@ struct Resent(Vec<bool>);
 
 /// Sends the first summary again once it is answered, before it settles.
 fn resend_first_summary(
-    answered: Query<(Entity, Has<ProvidedBy>), (With<Summarizing>, Unreviewed)>,
+    answered: Query<(Entity, Has<ProvidedBy>), (With<Summarizing>, ReadyToSettle)>,
     mut resent: ResMut<Resent>,
     mut commands: Commands,
 ) {
@@ -401,7 +404,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         matches!(focus.as_slice(), [request] if request.contains("Additional focus: keep the sums")),
         "{focus:?}"
     );
-    world.trigger(Interrupt::new(agent));
+    world.trigger(StopTurn::new(agent));
     world.flush();
     for _ in 0..5 {
         app.update();
@@ -571,7 +574,9 @@ fn overflow_after_a_summary(per_turn: u32, own: Option<u32>) -> (Vec<String>, Op
             per_turn: Some(per_turn),
             ..CompactionOverrides::default()
         };
-        app.world_mut().entity_mut(agent).insert(Compaction(own));
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(CompactionKnobs(own));
     }
     ask(&mut app, &wakes, agent);
     (sent(&model), answer(&app))
@@ -613,7 +618,7 @@ struct Reviewed;
 /// Holds each answered summary call for review, as a plugin asking the
 /// user would.
 fn hold_for_review(
-    calls: Query<Entity, (With<Summarizing>, Unreviewed, Without<Reviewed>)>,
+    calls: Query<Entity, (With<Summarizing>, ReadyToSettle, Without<Reviewed>)>,
     asked: Query<&Reviewing>,
     mut commands: Commands,
 ) {
@@ -761,7 +766,9 @@ fn an_agents_own_policy_and_a_named_cut_decide_its_compaction() {
         cut: Some(rig_memory::Cut::Named("never".to_owned())),
         ..CompactionOverrides::default()
     };
-    app.world_mut().entity_mut(agent).insert(Compaction(never));
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(CompactionKnobs(never));
     let compact = |app: &mut App| {
         let focus = String::new();
         app.world_mut().trigger(Compact {
@@ -778,7 +785,9 @@ fn an_agents_own_policy_and_a_named_cut_decide_its_compaction() {
     );
     assert!(model.requests().is_empty());
 
-    app.world_mut().entity_mut(agent).remove::<Compaction>();
+    app.world_mut()
+        .entity_mut(agent)
+        .remove::<CompactionKnobs>();
     compact(&mut app);
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
@@ -829,7 +838,11 @@ fn a_policy_set_by_command_is_restored_inherited_and_unset_knobs_follow_the_defa
         keep_recent: Some(500),
         ..CompactionOverrides::default()
     };
-    let has = |app: &App, agent| app.world().get::<Compaction>(agent).map(|it| it.0.clone());
+    let has = |app: &App, agent| {
+        app.world()
+            .get::<CompactionKnobs>(agent)
+            .map(|it| it.0.clone())
+    };
     assert_eq!(has(&app, agent), Some(own.clone()));
     run(&mut app, "compaction bogus=1");
     // A refused command line comes back to the user with why.
@@ -866,7 +879,7 @@ fn a_policy_set_by_command_is_restored_inherited_and_unset_knobs_follow_the_defa
         .0
         .keep_asked = 7;
     let policy = |app: &App| {
-        let own = app.world().get::<Compaction>(agent);
+        let own = app.world().get::<CompactionKnobs>(agent);
         policy_of(own, app.world().resource::<CompactionDefault>())
     };
     let now = policy(&again);

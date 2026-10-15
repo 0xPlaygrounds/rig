@@ -27,7 +27,7 @@ use futures::{
 };
 
 use rig_core::{
-    effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
+    effect::{Answered, EffectId, EffectKind, HandlerDescriptor, HandlerKey},
     error::{ErrorKind, ErrorReport},
     streaming::Relayed,
     tool::{PublishedContext, ToolContext},
@@ -633,7 +633,7 @@ pub(super) struct Command {
 }
 
 pub(super) enum Reply {
-    Unary(oneshot::Sender<Result<Outcome, ErrorReport>>),
+    Unary(oneshot::Sender<Result<Answered, ErrorReport>>),
     Stream(mpsc::Sender<Result<Relayed, ErrorReport>>),
 }
 
@@ -1074,7 +1074,7 @@ pub struct Pending {
     /// The dispatch this one was made from, if a handler made it.
     parent: Option<EffectId>,
     state: PendingState,
-    receiver: oneshot::Receiver<Result<Outcome, ErrorReport>>,
+    receiver: oneshot::Receiver<Result<Answered, ErrorReport>>,
     shared: Arc<Shared>,
     /// This value's one slot in the bus's parked-sender list while it waits
     /// on a full buffer; holds the latest waker it was polled with.
@@ -1113,7 +1113,7 @@ impl fmt::Debug for Pending {
 }
 
 impl Future for Pending {
-    type Output = Result<Outcome, ErrorReport>;
+    type Output = Result<Answered, ErrorReport>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();

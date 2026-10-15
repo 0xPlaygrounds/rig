@@ -12,23 +12,9 @@
 //! machine the system tells it of changes; another workspace may look
 //! every second ([`Workspace::watch`]). It reports the files
 //! [`Workspace::files`] lists with the watch's [`Listing`] (by default
-//! leaving out ignored and hidden files and `target`).
-//!
-//! ```no_run
-//! use rig_harness::prelude::*;
-//!
-//! fn watch_templates(mut commands: Commands, root: Res<ProjectRoot>) {
-//!     commands.spawn(FileWatch::tree(root.0.join(".rig/templates")));
-//! }
-//!
-//! fn reload(mut changes: MessageReader<FileChanges>) {
-//!     for change in changes.read() {
-//!         for path in &change.paths {
-//!             println!("{} changed", path.display());
-//!         }
-//!     }
-//! }
-//! ```
+//! leaving out ignored and hidden files and `target`). The plugin guide's
+//! [files section](crate::plugin_guide#the-workspace-files-and-child-processes)
+//! has an example.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -40,7 +26,7 @@ use bevy_ecs::world::DeferredWorld;
 use bevy_log::warn;
 use bevy_tasks::futures_lite::{Stream, StreamExt as _, stream};
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_ecs::calls::{Done, Running, Wake};
+use rig_ecs::tasks::{Done, Running, Wake};
 use rig_tools::workspace::{Listing, Watch, Workspace};
 
 use crate::workspace::ProjectWorkspace;
@@ -106,7 +92,7 @@ impl Plugin for WatchPlugin {
 }
 
 /// What a watch saw: the files there, then a batch of changes.
-struct Looked(Vec<PathBuf>);
+struct Seen(Vec<PathBuf>);
 
 /// Starts the watch through the project's workspace.
 fn arm(mut world: DeferredWorld, context: HookContext) {
@@ -117,7 +103,7 @@ fn arm(mut world: DeferredWorld, context: HookContext) {
     let workspace = workspace.unwrap_or_default().0;
     let wake = world.get_resource::<Wake>().cloned().unwrap_or_default();
     let pool = IoTaskPool::get_or_init(TaskPool::default);
-    let running = Running::stream(pool, &wake, looks(workspace, watch));
+    let running = Running::stream(pool, &wake, watch_stream(workspace, watch));
     world.commands().entity(context.entity).insert(running);
 }
 
@@ -126,61 +112,65 @@ fn disarm(mut world: DeferredWorld, context: HookContext) {
     world
         .commands()
         .entity(context.entity)
-        .try_remove::<(Running, Done<Looked>)>();
+        .try_remove::<(Running, Done<Seen>)>();
 }
 
 /// Writes what a watch saw.
 fn changed(
-    looked: On<Insert<Done<Looked>>>,
-    seen: Query<&Done<Looked>, With<FileWatch>>,
+    inserted: On<Insert<Done<Seen>>>,
+    seen: Query<&Done<Seen>, With<FileWatch>>,
     mut changes: MessageWriter<FileChanges>,
 ) {
-    if let Ok(Done(Looked(paths))) = seen.get(looked.entity) {
+    if let Ok(Done(Seen(paths))) = seen.get(inserted.entity) {
         changes.write(FileChanges {
-            watch: looked.entity,
+            watch: inserted.entity,
             paths: paths.clone(),
         });
     }
 }
 
 /// Where a watch is.
-enum Look {
+enum WatchState {
     /// Not armed yet.
-    Arm(Arc<dyn Workspace>, FileWatch),
+    Unarmed(Arc<dyn Workspace>, FileWatch),
     /// Armed: the batches to come.
-    Watching(Watch),
+    Armed(Watch),
 }
 
 /// The files `watch` covers at first, then each batch of changes the
 /// workspace reports.
-fn looks(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<Item = Looked> {
-    stream::unfold(Some(Look::Arm(workspace, watch)), |look| async move {
-        match look? {
-            Look::Arm(workspace, watch) => {
-                // Armed before listing, so nothing made in between is missed.
-                let armed = workspace
-                    .clone()
-                    .watch(&watch.path, watch.recursive, watch.listing);
-                let there = there(&*workspace, &watch);
-                let next = match armed {
-                    Ok(armed) => Some(Look::Watching(armed)),
-                    Err(error) => {
-                        warn!("cannot watch {}: {error}", watch.path.display());
-                        None
-                    }
-                };
-                Some((Looked(there), next))
+fn watch_stream(workspace: Arc<dyn Workspace>, watch: FileWatch) -> impl Stream<Item = Seen> {
+    stream::unfold(
+        Some(WatchState::Unarmed(workspace, watch)),
+        |state| async move {
+            match state? {
+                WatchState::Unarmed(workspace, watch) => {
+                    // Armed before listing, so nothing made in between is missed.
+                    let armed =
+                        workspace
+                            .clone()
+                            .watch(&watch.path, watch.recursive, watch.listing);
+                    let files = files_now(&*workspace, &watch);
+                    let next = match armed {
+                        Ok(armed) => Some(WatchState::Armed(armed)),
+                        Err(error) => {
+                            warn!("cannot watch {}: {error}", watch.path.display());
+                            None
+                        }
+                    };
+                    Some((Seen(files), next))
+                }
+                WatchState::Armed(mut armed) => {
+                    let paths = armed.next().await?;
+                    Some((Seen(paths), Some(WatchState::Armed(armed))))
+                }
             }
-            Look::Watching(mut armed) => {
-                let paths = armed.next().await?;
-                Some((Looked(paths), Some(Look::Watching(armed))))
-            }
-        }
-    })
+        },
+    )
 }
 
 /// The files `watch` covers now, in path order.
-fn there(workspace: &dyn Workspace, watch: &FileWatch) -> Vec<PathBuf> {
+fn files_now(workspace: &dyn Workspace, watch: &FileWatch) -> Vec<PathBuf> {
     let root = watch.path.as_path();
     let mut files = workspace
         .files(root, None, watch.listing)

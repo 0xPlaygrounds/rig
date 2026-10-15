@@ -170,7 +170,7 @@ pub struct PaletteSources<'w, 's> {
     agents: Query<'w, 's, (Entity, &'static Name), With<Agent>>,
     tools: Query<'w, 's, (&'static ToolDef, Has<Disabled>)>,
     access: Query<'w, 's, &'static ToolAccess>,
-    shown: Option<Res<'w, Shown>>,
+    shown: Option<Res<'w, ShownAgent>>,
     entries: Query<'w, 's, &'static PaletteEntry>,
     recent: Res<'w, RecentPicks>,
 }

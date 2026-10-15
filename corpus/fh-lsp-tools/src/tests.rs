@@ -233,7 +233,7 @@ fn a_fake_server_answers_follows_edits_restarts_and_shuts_down() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(project.clone()))
         .insert_resource(RigHome(Home::at(project.join("home"))))
-        .add_plugins((ServicesPlugin, AgentPlugin, JournalPlugin, ExitPlugin))
+        .add_plugins((ServicesPlugin, AgentPlugin, SessionLogPlugin, ExitPlugin))
         .add_plugins((rig_coding_tools::EditTool, LspToolsPlugin))
         .init_resource::<Outputs>()
         .add_observer(

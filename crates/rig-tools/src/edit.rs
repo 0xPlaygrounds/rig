@@ -3,8 +3,8 @@
 //! at all. A byte-order mark and CRLF line endings are kept. Text that does
 //! not match exactly may still match line by line once trailing
 //! whitespace and typographic quotes, dashes and spaces are evened out, but
-//! only where exactly one place in the file matches. The result is a unified diff of the change; a failure
-//! says what to send instead.
+//! only where exactly one place in the file matches. The result is a unified
+//! diff of the change; a failure says what to send instead.
 
 use std::fmt::Write as _;
 use std::ops::Range;
@@ -74,6 +74,7 @@ impl EditArgs {
 }
 
 // One replacement of an `edit` call; not a doc comment, which the model would see.
+#[allow(missing_docs)]
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Replacement {

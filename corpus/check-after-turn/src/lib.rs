@@ -27,10 +27,10 @@ use std::path::{Path, PathBuf};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use glob::Pattern;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged};
-use rig_tools::{Cut, MAX_BYTES, Shell, ShellArgs};
+use rig_tools::{MAX_BYTES, OutputLimit, Shell, ShellArgs};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -280,7 +280,7 @@ fn run_check(
         launcher,
         spill: None,
         confine: false,
-        cut: Some(Cut {
+        cut: Some(OutputLimit {
             lines: TAIL_LINES,
             bytes: MAX_BYTES,
         }),
@@ -393,7 +393,7 @@ fn cancel_on_user(
 
 /// Stopping the agent stops its checks.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     runs: Query<(Entity, &ForAgent), With<CheckRun>>,
     mut states: Query<&mut CheckState>,
     mut commands: Commands,

@@ -223,7 +223,7 @@ fn annotate(
         let Ok((mut conversation, seen)) = agents.get_mut(agent) else {
             continue;
         };
-        let first = turn_data.first_message;
+        let first = turn_data.start;
         let users = conversation
             .request(first)
             .is_some_and(|request| request.is_users_own());

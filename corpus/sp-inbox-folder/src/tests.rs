@@ -51,7 +51,7 @@ fn start(root: &Path, models: Models) -> (App, Receiver<()>) {
     app.insert_resource(ProjectRoot(root.to_path_buf()))
         .insert_resource(Settings::from_toml("[inbox]\ndir = \"in\"\n"))
         .insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, InboxFolderPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, InboxFolderPlugin))
         .init_resource::<Order>()
         .add_observer(started)
         .add_observer(ended);
@@ -195,7 +195,7 @@ fn items_queue_per_agent_and_are_answered_beside_their_requests() {
 
 /// Wants the user to approve each `shell` call.
 fn ask_for_shell(
-    calls: Query<(Entity, &ToolRequest), (Undecided, ToolCalls, Without<Approved>)>,
+    calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls, Without<Approved>)>,
     mut commands: Commands,
 ) {
     for (call, request) in &calls {

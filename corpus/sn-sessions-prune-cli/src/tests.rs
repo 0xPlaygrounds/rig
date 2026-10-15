@@ -42,7 +42,7 @@ fn run(home: &Home, turns: &[&str], script: Vec<Vec<MockStreamEvent>>) -> (Sessi
     let model = MockCompletionModel::from_stream_turns(script);
     let (mut app, wakes) = app_in(home, &id);
     app.insert_resource(scripted_models([("test/model", &model)]))
-        .add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, SessionsPlugin))
         .add_open_tool("dump", "Dump a lot.", ToolOptions::default(), dump)
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -72,7 +72,7 @@ fn simple(home: &Home, prompt: &str) -> SessionId {
 
 /// Makes `id` last changed `days` ago, as if it ran then.
 fn age(home: &Home, id: &SessionId, days: u64) {
-    let Ok(store) = SessionStores::default().open(&home.session(id)) else {
+    let Ok(store) = StoreOpener::default().open(&home.session(id)) else {
         return;
     };
     let mut meta = SessionMeta::read(&*store).unwrap_or_default();
@@ -109,7 +109,7 @@ fn prune(home: &Home, words: &[&str]) -> (Option<ExitReason>, PruneReport) {
 
 /// The first agent's messages in session `id`, as `--resume` reads them.
 fn history(home: &Home, id: &SessionId) -> Vec<Message> {
-    let saved = SessionStores::default()
+    let saved = StoreOpener::default()
         .open(&home.session(id))
         .and_then(|store| Session::read(&*store))
         .unwrap_or_default();
@@ -179,7 +179,7 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
             .get::<Conversation>(agent)
             .and_then(|conversation| conversation.id(2)),
     );
-    world.trigger(ForkSession {
+    world.write_message(ForkSession {
         from: None,
         cut: before.map_or(ForkCut::Whole, |(agent, id)| ForkCut::Before(agent, id)),
         asker: None,
@@ -199,7 +199,7 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
         .flatten()
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<SessionId>().ok())
         .find(|id| {
-            let store = SessionStores::default().open(&home.session(id));
+            let store = StoreOpener::default().open(&home.session(id));
             store
                 .ok()
                 .and_then(|store| ForkedFrom::read(&*store))

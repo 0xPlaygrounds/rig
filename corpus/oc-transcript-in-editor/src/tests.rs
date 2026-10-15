@@ -48,7 +48,7 @@ fn start(
         .insert_resource(EditorTerminal)
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             TranscriptInEditorPlugin,
             AnswerAsks,
         ))

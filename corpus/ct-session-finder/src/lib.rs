@@ -30,9 +30,9 @@ use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
-use rig_harness::rig_ecs::journal::{SessionRestored, SessionStore};
+use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
 use rig_sessions::SwitchSession;
-use rig_tui::{CopyToClipboard, Focus, ItemRow, MainPane, ScrollTo, TranscriptItem};
+use rig_tui::{CopyToClipboard, ItemRow, MainPane, ScrollTo, ShowAgent, TranscriptItem};
 use serde::{Deserialize, Serialize};
 
 /// Snippets shown per session.
@@ -53,7 +53,7 @@ impl Plugin for SessionFinderPlugin {
     fn build(&self, app: &mut App) {
         let asker = app.world_mut().spawn(Name::new("session-finder")).id();
         app.init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
+            .init_resource::<StoreOpener>()
             .init_resource::<ProjectRoot>()
             .insert_resource(Asker(asker))
             .init_resource::<Resuming>()
@@ -268,7 +268,7 @@ struct Jump {
 /// What the search task needs.
 struct Place {
     home: Home,
-    stores: SessionStores,
+    stores: StoreOpener,
     project: std::path::PathBuf,
     current: Option<(SessionId, Arc<dyn Store>)>,
 }
@@ -277,7 +277,7 @@ struct Place {
 /// it, starts this one off the main thread and shows its picker.
 fn find(
     In(args): In<CommandArgs>,
-    (home, stores, root): (Res<RigHome>, Res<SessionStores>, Res<ProjectRoot>),
+    (home, stores, root): (Res<RigHome>, Res<StoreOpener>, Res<ProjectRoot>),
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     searches: Query<Entity, With<Search>>,
     wake: Res<Wake>,
@@ -593,7 +593,7 @@ fn acted(
             let cut = hit
                 .next
                 .map_or(ForkCut::Whole, |next| ForkCut::Before(agent, next));
-            commands.trigger(ForkSession {
+            commands.write_message(ForkSession {
                 from: Some(id.clone()),
                 cut,
                 asker: Some(asker.0),
@@ -639,7 +639,7 @@ fn leaving(
     reason: Res<ExitReason>,
     mut resuming: ResMut<Resuming>,
     home: Res<RigHome>,
-    stores: Res<SessionStores>,
+    stores: Res<StoreOpener>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Some((id, jump)) = resuming.0.take() else {
@@ -668,7 +668,7 @@ fn leaving(
 
 /// Focuses `agent` and scrolls `pane` to `message`.
 fn scroll(commands: &mut Commands, agent: Entity, pane: Entity, message: MessageId) {
-    commands.trigger(Focus { entity: agent });
+    commands.trigger(ShowAgent { entity: agent });
     commands.trigger(ScrollTo {
         pane,
         item: Some(TranscriptItem::Message(message)),

@@ -283,7 +283,7 @@ fn send_to_judge(
                 .and_then(|by| plugins.get(by.0).ok());
             plugin.map_or_else(Vec::new, |(name, source)| {
                 let mut names = vec![name.as_str().to_owned()];
-                names.extend(source.map(|source| source.krate.clone()));
+                names.extend(source.map(|source| source.package.clone()));
                 names
             })
         };
@@ -344,7 +344,7 @@ fn send_to_judge(
             Name::new("waiting for the safety judge"),
             Judging { call, shown },
             ModelRequest::new(ask).on(connection),
-            Effect::child_of(Some(effect.id())).with_purpose("judge"),
+            Effect::with_parent_id(Some(effect.id())).with_purpose("judge"),
             ForAgent(agent),
             HoldOf(call),
             WakeAt::after(Duration::from_secs(config.timeout_secs)),
@@ -372,7 +372,10 @@ fn time_out(
 
 /// Applies each verdict that came in to the call it held, and lets go.
 fn take_verdicts(
-    judges: Query<(Entity, &Judging, &Outcome, &ForAgent), (Unreviewed, ModelCalls, With<HoldOf>)>,
+    judges: Query<
+        (Entity, &Judging, &Outcome, &ForAgent),
+        (ReadyToSettle, ModelCalls, With<HoldOf>),
+    >,
     mut calls: Query<&mut Decision, ToolCalls>,
     answerers: Answerers,
     mut log: ResMut<JudgeLog>,

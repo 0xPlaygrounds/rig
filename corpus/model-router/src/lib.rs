@@ -271,7 +271,7 @@ fn route(
         };
         let first = turns
             .get(turn)
-            .map_or(0, |turn| conversation.start_of(turn.first_message));
+            .map_or(0, |turn| conversation.start_of(turn.start));
         let this_turn = conversation.messages().get(first..).unwrap_or_default();
         let read_only = |name: &str| {
             tools

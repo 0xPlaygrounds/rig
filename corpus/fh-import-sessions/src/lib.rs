@@ -18,7 +18,7 @@
 //! what is new to the session made the first time.
 //!
 //! A session is written with [`Session::save`] into a new session's store
-//! ([`Home::new_session`], [`SessionStores`]), with the source it came from
+//! ([`Home::new_session`], [`StoreOpener`]), with the source it came from
 //! in the plugin's own file there.
 
 mod parse;
@@ -183,7 +183,7 @@ impl Plugin for ImportSessionsPlugin {
 /// `rig import <tool> [path]`: prints what it imported, and exits.
 fn import_command_line(
     invoked: Res<Invoked>,
-    (home, stores): (Res<RigHome>, Res<SessionStores>),
+    (home, stores): (Res<RigHome>, Res<StoreOpener>),
     mut imported: MessageWriter<SessionImported>,
     mut commands: Commands,
 ) {
@@ -345,7 +345,7 @@ fn session_files(path: &Path) -> Vec<PathBuf> {
 /// each.
 fn import(
     asked: On<ImportSessions>,
-    (home, stores): (Res<RigHome>, Res<SessionStores>),
+    (home, stores): (Res<RigHome>, Res<StoreOpener>),
     mut imported: MessageWriter<SessionImported>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -372,7 +372,7 @@ fn import(
 /// Imports each session file of `source` at `path`, or in its default
 /// directory; what came of each. An error when there is none.
 fn import_all(
-    (home, stores): (&Home, &SessionStores),
+    (home, stores): (&Home, &StoreOpener),
     source: Source,
     path: Option<PathBuf>,
 ) -> Result<Vec<Result<SessionImported, String>>, String> {
@@ -425,7 +425,7 @@ fn marker_of(store: &dyn Store) -> Option<Marker> {
 /// Imports the session in `file` into its session under `home`, kept in a
 /// store `stores` open: a new one, or the one an earlier import of it made.
 fn import_file(
-    (home, stores): (&Home, &SessionStores),
+    (home, stores): (&Home, &StoreOpener),
     source: Source,
     file: &Path,
 ) -> io::Result<SessionImported> {
@@ -481,7 +481,7 @@ fn import_file(
 /// The session an earlier import of `source`'s session `id` made, with its
 /// marker.
 fn imported_session(
-    (home, stores): (&Home, &SessionStores),
+    (home, stores): (&Home, &StoreOpener),
     source: Source,
     id: &str,
 ) -> Option<(SessionId, SessionDir, Marker)> {

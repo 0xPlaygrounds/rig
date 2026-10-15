@@ -8,7 +8,7 @@
 //! built-in behaviour.
 //!
 //! - `summary`: rig-compaction summarizes the older turns, its knobs set
-//!   from the rule ([`Compaction`]), and the summary call goes to the
+//!   from the rule ([`CompactionKnobs`]), and the summary call goes to the
 //!   rule's `model`, with `prompt_file` as its system prompt.
 //! - `drop-tool-output`: the tool results older than `keep_recent_turns`
 //!   turns become the rule's `stub`, keeping every call and text; no model
@@ -24,7 +24,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rig_compaction::{Compact, Compaction, CompactionCuts, CompactionPlugin, Summarizing};
+use rig_compaction::{Compact, CompactionCuts, CompactionKnobs, CompactionPlugin, Summarizing};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, Usage};
 use rig_harness::rig_core::message::ToolResultContent;
@@ -397,7 +397,7 @@ fn knobs(rule: Option<&Rule>, window: Option<u32>) -> CompactionOverrides {
 /// Sets rig-compaction's knobs of `agent` to `wanted`, when they differ.
 fn set_knobs(
     agent: Entity,
-    own: Option<&Compaction>,
+    own: Option<&CompactionKnobs>,
     wanted: CompactionOverrides,
     commands: &mut Commands,
 ) {
@@ -405,7 +405,7 @@ fn set_knobs(
         Some(own) if own.0 == wanted => {}
         None if wanted.is_empty() => {}
         _ => {
-            commands.entity(agent).insert(Compaction(wanted));
+            commands.entity(agent).insert(CompactionKnobs(wanted));
         }
     }
 }
@@ -424,7 +424,7 @@ fn fit_by_rule(
         Identity,
         &mut Conversation,
         &mut LastUsage,
-        Option<&Compaction>,
+        Option<&CompactionKnobs>,
     )>,
     starts: ModelStarts,
     rules: Res<CompactionRules>,
@@ -436,7 +436,7 @@ fn fit_by_rule(
             continue;
         };
         let rule = rule_of(&rules, who);
-        let Ok((connection, sent, _)) = starts.sent(&model, Some(adapters), Some(agent)) else {
+        let Ok((connection, sent)) = starts.sent(&model, Some(adapters), Some(agent)) else {
             continue;
         };
         let window = connection.spec.context_window;
@@ -527,11 +527,11 @@ fn route_summaries(
 
 /// Leaves a record after each summary of a matched agent.
 fn record_summaries(
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     mut agents: Query<(Identity, &mut Conversation)>,
     rules: Res<CompactionRules>,
 ) {
-    for Committed { agent, change } in committed.read() {
+    for ConversationChanged { agent, change } in committed.read() {
         let Some(summary) = rig_compaction::summary_in(&change.change) else {
             continue;
         };
@@ -556,7 +556,7 @@ fn compact_now(
     mut agents: Query<(
         Identity,
         &mut Conversation,
-        Option<&Compaction>,
+        Option<&CompactionKnobs>,
         Option<&Connection>,
         Has<ActiveTurn>,
     )>,

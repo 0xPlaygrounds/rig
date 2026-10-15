@@ -2,7 +2,7 @@ use rig_harness::prelude::*;
 
 use super::super::view::TuiView;
 use crate::tests::{press, scratch, type_text, typed as typed_text, view_app};
-use crate::{CompletionKind, CompletionSource, TuiInputState};
+use crate::{CompletionKind, CompletionSource, InputContext};
 
 /// Whether a completion list is open.
 fn open(app: &App) -> bool {
@@ -40,7 +40,7 @@ fn a_marker_source_completes_a_word_anywhere_and_follows_its_lookup() {
     type_text(&mut app, "fixes #14");
     // Nothing matches yet, but a lookup sees what is typed.
     assert!(!open(&app));
-    let typed = app.world().resource::<TuiInputState>().typed();
+    let typed = app.world().resource::<InputContext>().typed();
     assert_eq!(typed, Some((CompletionKind::Marker('#'), "14")));
     // The lookup's answer opens the list without another key.
     let found = CompletionSource::marker('#')
@@ -56,7 +56,7 @@ fn a_marker_source_completes_a_word_anywhere_and_follows_its_lookup() {
         .spawn(CompletionSource::marker('@').candidate("nobody", ""));
     press(&mut app, "ctrl+c");
     type_text(&mut app, "/mod");
-    let typed = app.world().resource::<TuiInputState>().typed();
+    let typed = app.world().resource::<InputContext>().typed();
     assert_eq!(typed, Some((CompletionKind::Command, "mod")));
 }
 

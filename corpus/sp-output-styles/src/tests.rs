@@ -6,7 +6,7 @@ use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness::pick::PickPlugin;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, app_in, calls, collect, reply, run_until, scratch_home, scripted_models, tui_view,
 };
@@ -33,7 +33,7 @@ fn start(home: &Home, id: &SessionId, project: &Path, models: &Scripts) -> (App,
     app.insert_resource(ProjectRoot(project.to_owned()))
         .insert_resource(scripted_models(served))
         .insert_resource(TuiTestScreen::new(100, 30))
-        .add_plugins((AgentPlugin, JournalPlugin, PickPlugin, SubagentsPlugin));
+        .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, SubagentsPlugin));
     app.add_plugins(OutputStylesPlugin);
     collect::<SessionForked>(&mut app);
     collect::<Notice>(&mut app);
@@ -176,7 +176,7 @@ fn a_style_is_in_each_request_once_stays_out_of_subagents_and_follows_forks() {
         return;
     };
     let cut = ForkCut::Before(agent_id, two);
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         from: None,
         cut,
         asker: None,

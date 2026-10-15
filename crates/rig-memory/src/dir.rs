@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use crate::store::check_leaf;
-use crate::{Files, LoadError, Store, check_name};
+use crate::{Files, SessionError, Store, check_name};
 
 const LOGS: &str = "logs";
 const BLOBS: &str = "blobs";
@@ -62,16 +62,16 @@ impl DirStore {
     ///
     /// # Errors
     ///
-    /// [`LoadError::OldLayout`] when `dir` holds a top-level `*.jsonl`
+    /// [`SessionError::OldLayout`] when `dir` holds a top-level `*.jsonl`
     /// file, as a session saved by an older rig does; it is left as it is.
-    /// [`LoadError::Io`] when `dir` cannot be listed.
-    pub fn open(dir: impl Into<PathBuf>) -> Result<Self, LoadError> {
+    /// [`SessionError::Io`] when `dir` cannot be listed.
+    pub fn open(dir: impl Into<PathBuf>) -> Result<Self, SessionError> {
         let dir = dir.into();
         let old = names(&dir)?
             .into_iter()
             .any(|name| name.ends_with(LOG) && dir.join(&name).is_file());
         if old {
-            return Err(LoadError::OldLayout);
+            return Err(SessionError::OldLayout);
         }
         Ok(Self {
             files: DirFiles::new(dir.join(FILES)),
@@ -142,7 +142,7 @@ fn write_durable(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 /// Writes `bytes` to the part file beside `path`, whose folder it makes,
-/// synced with `sync`; its path.
+/// synced with `sync`, and returns the part file's path.
 fn write_part(path: &Path, bytes: &[u8], sync: bool) -> io::Result<PathBuf> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;

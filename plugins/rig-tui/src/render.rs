@@ -1,5 +1,7 @@
-//! Draws the focused agent: transcript, status line, input editor with its
-//! completion list, and the picker or question shown.
+//! The frame: when one is due ([`needs_redraw`]), where each panel goes
+//! ([`layout`]), how a transcript is laid out and lit
+//! ([`TranscriptLayout`]), and the compositor that copies every panel's
+//! canvas to the terminal under the view's overlays ([`render`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
@@ -8,7 +10,7 @@ use std::time::{Duration, Instant};
 use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ScheduleLabel;
-use bevy_ecs::system::SystemParam;
+use bevy_ecs::system::{SystemChangeTick, SystemParam};
 use crossterm::cursor::MoveTo;
 use ratatui::Frame;
 use ratatui::backend::Backend;
@@ -20,11 +22,13 @@ use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 
 use super::complete::Completion;
 use super::editor::{Caret, Editor};
-use super::input::TuiInputState;
+use super::input::InputContext;
 use super::keys::KeyFocus;
 use super::pane::{PaneState, TranscriptPane};
-use super::panel::{self, PanelCanvas, Placement, Repaint, RequestRedraw, TuiPanel};
-use super::pick::{Choices, InlineStrip, Listing, PickerState, Row};
+use super::panel::{
+    self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
+};
+use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
 use super::renderers::{
     AsideRenderer, CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks,
     MessageDecorator, MessageRenderer, MessageView, Renderers, Role, ToolCallView, ToolRenderer,
@@ -37,7 +41,7 @@ use super::transcript::{
     Transcript, live_call, notice_lines, plain_lines,
 };
 use super::view::{
-    Continuation, DrawnTranscript, Highlight, MarkIn, Notices, ShownNotice, TranscriptItem,
+    DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
     TranscriptSlot, TranscriptView, TuiView,
 };
 use super::wrap::wrap_all;
@@ -48,9 +52,9 @@ use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, SentTo};
+use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{PickPreview, Picker};
 use rig_harness::prelude::{CallOutput, ToolProgress};
-use rig_harness::primary::Shown;
 
 /// Most items the completion list shows at once.
 const COMPLETION_ROWS: usize = 8;
@@ -68,24 +72,13 @@ pub(crate) struct Paced {
     waiting: bool,
 }
 
-/// Whether anything drawn changed since the last frame: the view state (a
-/// key, a notice, a resize, a picker or question), the input and who has
-/// the keys, an agent's drawn components, a turn's calls and where a tool
-/// call stands (held, waiting, started, its progress, answered), a
-/// streaming reply, a status line item (a retry's wait counts down there),
-/// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
-/// conversation or comes with a notice. A streaming reply alone draws at
-/// most every [`STREAM_FRAME`]; the text that waits is drawn by one of the
-/// frames the kernel runs after the wake that brought it (see
-/// [`Wake`](rig_ecs::calls::Wake)), 16 ms apart, under any loop.
+/// Whether anything drawn changed since the last frame; the parameters
+/// are the list. A streaming reply alone draws at most every
+/// [`STREAM_FRAME`]; its waiting text is drawn by one of the frames the
+/// kernel runs after the wake that brought it ([`Wake`](rig_ecs::tasks::Wake)).
 pub(crate) fn needs_redraw(
-    (view, notices, facts, streaming): (
-        Res<TuiView>,
-        Res<Notices>,
-        Res<CallFacts>,
-        Res<StreamingCalls>,
-    ),
-    (focus, shown): (Res<KeyFocus>, Res<Shown>),
+    (view, notices, facts): (Res<TuiView>, Res<Notices>, Res<CallFacts>),
+    (focus, shown, screen): (Res<KeyFocus>, Res<ShownAgent>, Res<TerminalSize>),
     changed: Query<
         (),
         Or<(
@@ -111,12 +104,12 @@ pub(crate) fn needs_redraw(
             Changed<PaneState>,
             Changed<Editor>,
             Changed<StatusLine>,
-            Changed<PickerState>,
+            Changed<PickerInput>,
             Changed<PickPreview>,
             Changed<Picker>,
         )>,
     >,
-    partials: Query<(), Changed<Partial>>,
+    partials: Query<(), Or<(Changed<Partial>, Changed<StreamingCalls>)>>,
     messages: Query<(), (With<Incoming>, Or<(Added<Started>, Added<Outcome>)>)>,
     calls: Query<
         (),
@@ -131,46 +124,25 @@ pub(crate) fn needs_redraw(
         ),
     >,
     (app_status, test): (Option<Res<AppStatus>>, Option<Res<TuiTestScreen>>),
-    (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<Repaint>),
-    mut removed: (
-        RemovedComponents<TuiPanel>,
-        RemovedComponents<StatusItems>,
-        RemovedComponents<Holds>,
-        RemovedComponents<ToolProgress>,
-        (
-            RemovedComponents<TranscriptPane>,
-            RemovedComponents<Editor>,
-            RemovedComponents<PickerState>,
-        ),
-        RemovedLooks,
-    ),
+    (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<RedrawArea>),
     mut paced: Local<Paced>,
 ) -> bool {
-    // Every reader is drained, so none redraws again for the same change.
+    // Both readers are drained, so neither redraws again for the same change.
     let requested = requests.read().count() + repaints.read().count() > 0;
-    let removed = removed.0.read().count()
-        + removed.1.read().count()
-        + removed.2.read().count()
-        + removed.3.read().count()
-        + removed.4.0.read().count()
-        + removed.4.1.read().count()
-        + removed.4.2.read().count()
-        > 0
-        || removed.5.any();
     let changed = requested
-        || removed
         || view.is_changed()
         || notices.is_changed()
         || facts.is_changed()
         || shown.is_changed()
         || !widgets.is_empty()
         || focus.is_changed()
+        || screen.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
         || test.is_some_and(|test| test.is_changed())
         || !changed.is_empty()
         || !messages.is_empty()
         || !calls.is_empty();
-    paced.waiting |= !partials.is_empty() || streaming.is_changed();
+    paced.waiting |= !partials.is_empty();
     let now = Instant::now();
     let next = paced.drawn.map(|drawn| drawn + STREAM_FRAME);
     if changed || (paced.waiting && next.is_none_or(|next| now >= next)) {
@@ -181,33 +153,44 @@ pub(crate) fn needs_redraw(
     false
 }
 
-/// The looks taken out since the last frame: [`lay_out_panes`] draws
-/// what they drew again.
-///
-/// [`lay_out_panes`]: crate::pane::lay_out_panes
-#[derive(SystemParam)]
-pub(crate) struct RemovedLooks<'w, 's> {
-    tools: RemovedComponents<'w, 's, ToolRenderer>,
-    entries: RemovedComponents<'w, 's, EntryRenderer>,
-    contents: RemovedComponents<'w, 's, ContentRenderer>,
-    asides: RemovedComponents<'w, 's, AsideRenderer>,
-    messages: RemovedComponents<'w, 's, MessageRenderer>,
-    decorators: RemovedComponents<'w, 's, CallDecorator>,
-    message_decorators: RemovedComponents<'w, 's, MessageDecorator>,
+/// Redraws once something drawn went away.
+pub(crate) fn redraw_on_remove(
+    _: On<
+        Remove<(
+            TuiPanel,
+            StatusItems,
+            Holds,
+            ToolProgress,
+            TranscriptPane,
+            Editor,
+            PickerInput,
+        )>,
+    >,
+    mut redraw: MessageWriter<RequestRedraw>,
+) {
+    redraw.write(RequestRedraw);
 }
 
-impl RemovedLooks<'_, '_> {
-    /// Whether any was, each reader drained.
-    pub(crate) fn any(&mut self) -> bool {
-        self.tools.read().count()
-            + self.entries.read().count()
-            + self.contents.read().count()
-            + self.asides.read().count()
-            + self.messages.read().count()
-            + self.decorators.read().count()
-            + self.message_decorators.read().count()
-            > 0
+/// Lays every pane's transcript out again once a look went away.
+pub(crate) fn forget_looks(
+    _: On<
+        Remove<(
+            ToolRenderer,
+            EntryRenderer,
+            ContentRenderer,
+            AsideRenderer,
+            MessageRenderer,
+            CallDecorator,
+            MessageDecorator,
+        )>,
+    >,
+    mut panes: Query<&mut PaneState>,
+    mut redraw: MessageWriter<RequestRedraw>,
+) {
+    for mut pane in &mut panes {
+        pane.bypass_change_detection().transcript.clear();
     }
+    redraw.write(RequestRedraw);
 }
 
 /// Whether [`layout`] laid out a frame that [`render`] did not draw yet.
@@ -271,7 +254,7 @@ pub(crate) fn layout(
     screens: (Option<Res<Tui>>, Option<Res<TuiTestScreen>>),
     (view, previewed): (
         Res<TuiView>,
-        Query<(Entity, &PickerState), With<PickPreview>>,
+        Query<(Entity, &PickerInput), With<PickPreview>>,
     ),
     mut frame: ResMut<FrameLayout>,
     mut panels: Query<(
@@ -281,6 +264,7 @@ pub(crate) fn layout(
         Option<&Editor>,
         Has<InlineStrip>,
     )>,
+    (spawns, ticks): (PanelSpawns, SystemChangeTick),
 ) {
     let size = match screens {
         (Some(tui), _) => tui.terminal.size().ok(),
@@ -293,7 +277,7 @@ pub(crate) fn layout(
     let screen = Rect::new(0, 0, size.width, size.height);
     let inline = u16::from(!view.inline.is_empty());
     let mut panels: Vec<_> = panels.iter_mut().collect();
-    panels.sort_by_key(|(entity, ..)| panel::spawned(*entity));
+    panels.sort_by_key(|(entity, ..)| panel::spawn_order(ticks.this_run(), &spawns, *entity));
     let panels = panels
         .into_iter()
         .map(|(entity, panel, canvas, editor, strip)| {
@@ -382,7 +366,7 @@ impl CallStates<'_, '_> {
 }
 
 /// An agent, as its transcript draws it.
-pub(crate) struct ShownAgent<'a> {
+pub(crate) struct ShownConversation<'a> {
     pub(crate) entity: Entity,
     /// Its id; `None` for a conversation no agent of this app holds,
     /// which shows no notices.
@@ -407,7 +391,7 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) children: ChildCalls,
 }
 
-impl<'a> ShownAgent<'a> {
+impl<'a> ShownConversation<'a> {
     /// `conversation`, which no agent of this app holds, drawn as
     /// `entity`'s: no live parts, no notices.
     pub(crate) fn value(conversation: &'a conversation::Conversation, entity: Entity) -> Self {
@@ -452,7 +436,7 @@ pub(crate) struct Sources<'a> {
     /// The pane's view as plugins steer it: what is expanded and marked.
     pub(crate) view: &'a TranscriptView,
     /// The notices shown.
-    pub(crate) notices: &'a [ShownNotice],
+    pub(crate) notices: &'a Notices,
     /// The looks plugins added.
     pub(crate) renderers: &'a Renderers<'a>,
     /// What settled calls published and how long they ran.
@@ -511,7 +495,7 @@ pub struct TranscriptLayout<'w, 's> {
     live: Query<'w, 's, LiveEffect, Without<Settled>>,
     names: Query<'w, 's, &'static Name>,
     facts: Res<'w, CallFacts>,
-    streaming: Res<'w, StreamingCalls>,
+    streaming: Query<'w, 's, &'static StreamingCalls>,
     notices: Res<'w, Notices>,
 }
 
@@ -570,12 +554,12 @@ impl TranscriptLayout<'_, '_> {
         width: u16,
         expanded: Expanded,
     ) -> DrawnTranscript {
-        let shown = ShownAgent::value(conversation, Entity::PLACEHOLDER);
+        let shown = ShownConversation::value(conversation, Entity::PLACEHOLDER);
         let renderers = self.looks.by_kind(None);
-        let facts = CallFacts::default();
+        let (facts, notices) = (CallFacts::default(), Notices::default());
         let sources = Sources {
             view,
-            notices: &[],
+            notices: &notices,
             renderers: &renderers,
             facts: &facts,
             whole: expanded == Expanded::All,
@@ -588,7 +572,7 @@ impl TranscriptLayout<'_, '_> {
 
     /// The agent `entity` as its transcript draws it, its conversation
     /// `changed` since the last frame or not; `None` when it is no agent.
-    pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownAgent<'_>> {
+    pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownConversation<'_>> {
         let (id, conversation) = self.agents.get(entity).ok()?;
         let turn = self.active.get(entity).ok();
         let calls = turn.and_then(|turn| self.turns.get(turn.turn()).ok());
@@ -600,8 +584,7 @@ impl TranscriptLayout<'_, '_> {
                 streams.filter_map(|call| Some((call, self.partials.get(call).ok()?)));
             streams.next_back()
         });
-        let streaming = partial.map(|(call, _)| self.streaming.of(call));
-        let streaming = streaming.unwrap_or_default().iter();
+        let streaming = partial.and_then(|(call, _)| self.streaming.get(call).ok());
         let mut inbox: Vec<(&Effect, &Incoming)> = self
             .accepted
             .iter()
@@ -609,7 +592,7 @@ impl TranscriptLayout<'_, '_> {
             .map(|(effect, message, _)| (effect, message))
             .collect();
         inbox.sort_by_key(|(effect, _)| effect.id());
-        Some(ShownAgent {
+        Some(ShownConversation {
             entity,
             id: Some(id),
             conversation,
@@ -618,7 +601,11 @@ impl TranscriptLayout<'_, '_> {
             calls: self.calls.of(calls.into_iter().flat_map(Calls::iter)),
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial,
-            streaming: streaming.map(|(_, call)| call.clone()).collect(),
+            streaming: streaming
+                .into_iter()
+                .flat_map(StreamingCalls::calls)
+                .cloned()
+                .collect(),
             asides: asides(conversation),
             children: self.facts.children(&self.live_calls(), &id.0),
         })
@@ -655,12 +642,12 @@ impl TranscriptLayout<'_, '_> {
     }
 
     /// The notices shown.
-    pub(crate) fn notices(&self) -> &[ShownNotice] {
-        self.notices.all()
+    pub(crate) fn notices(&self) -> &Notices {
+        &self.notices
     }
 }
 
-/// Brings `transcript` up to date with the agent shown and returns its
+/// Brings `transcript` up to date with the shown agent and returns its
 /// parts at `width`: each message, with the notices written inside it,
 /// after the notes and notices written before it; then those after the
 /// last message, the reply streaming in with the tool calls it streams,
@@ -669,7 +656,7 @@ impl TranscriptLayout<'_, '_> {
 pub(crate) fn lay_out_transcript(
     transcript: &mut Transcript,
     sources: &Sources<'_>,
-    shown: Option<&ShownAgent<'_>>,
+    shown: Option<&ShownConversation<'_>>,
     width: u16,
 ) -> Vec<Part> {
     let wrap_width = usize::from(width.max(1));
@@ -677,7 +664,7 @@ pub(crate) fn lay_out_transcript(
     let view = sources.view;
     let Some(shown) = shown else {
         let (mut extra, mut marks) = (Vec::new(), Marks::new());
-        let notices = sources.notices.iter().enumerate();
+        let notices = sources.notices.numbered();
         for notice in notices.filter(|(_, notice)| notice.is_for_every_agent()) {
             notice_lines(notice, &mut extra, &mut marks);
         }
@@ -702,10 +689,9 @@ pub(crate) fn lay_out_transcript(
         marks: &view.marks,
     };
     let notices = shown.id.map(|id| (id, sources.notices));
-    let notices = notices.into_iter().flat_map(|(id, notices)| {
-        let notices = notices.iter().enumerate();
-        notices.map(move |(at, notice)| (id, at, notice))
-    });
+    let notices = notices
+        .into_iter()
+        .flat_map(|(id, notices)| notices.numbered().map(move |(at, notice)| (id, at, notice)));
     for (id, at, notice) in notices {
         let before = match notice.slot(id, conversation) {
             None => continue,
@@ -836,7 +822,7 @@ impl Lights<'_> {
 /// splits lights on both rows.
 pub(crate) fn light(
     rows: &[Line<'static>],
-    continues: &[Option<Continuation>],
+    continues: &[Option<RowWrap>],
     first: usize,
     lights: &Lights<'_>,
 ) -> Vec<Line<'static>> {
@@ -886,7 +872,7 @@ struct Slot {
 /// the row it starts in. A match over a character an earlier match lit is
 /// no match.
 pub(crate) fn lit<'a, 'line: 'a>(
-    rows: impl IntoIterator<Item = (&'a Line<'line>, Option<&'a Continuation>)>,
+    rows: impl IntoIterator<Item = (&'a Line<'line>, Option<&'a RowWrap>)>,
     first: usize,
     lights: &Lights<'_>,
 ) -> Vec<LitRow> {
@@ -1028,11 +1014,12 @@ pub(crate) fn render(
     (mut tui, mut test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
     mut drew: ResMut<TuiFrame>,
     view: Res<TuiView>,
-    (state, focus, choices): (Res<TuiInputState>, Res<KeyFocus>, Choices),
+    (state, focus, choices): (Res<InputContext>, Res<KeyFocus>, Choices),
     mut frame_layout: ResMut<FrameLayout>,
     (panels, carets): (Query<(Entity, &TuiPanel, &PanelCanvas)>, Query<&Caret>),
-    mut showing: Query<(Entity, &mut PickerState, Option<&PickPreview>)>,
-    mut repaints: MessageReader<Repaint>,
+    (spawns, ticks): (PanelSpawns, SystemChangeTick),
+    mut showing: Query<(Entity, &mut PickerInput, Option<&PickPreview>)>,
+    mut repaints: MessageReader<RedrawArea>,
 ) -> Result {
     if !std::mem::take(&mut frame_layout.due) {
         return Ok(());
@@ -1053,7 +1040,8 @@ pub(crate) fn render(
         found.map(|(.., canvas)| canvas.area())
     });
     let mut panels: Vec<_> = panels.iter().collect();
-    panels.sort_by_key(|(entity, panel, _)| (layer(panel), panel::spawned(*entity)));
+    let order = |entity| panel::spawn_order(ticks.this_run(), &spawns, entity);
+    panels.sort_by_key(|(entity, panel, _)| (layer(panel), order(*entity)));
     let (under, over_picker): (Vec<_>, Vec<_>) = panels
         .into_iter()
         .partition(|(_, panel, _)| layer(panel) < 3);
@@ -1272,7 +1260,7 @@ const LEAST_LIST: usize = 3;
 /// several, its tick box; for free text, the typed answer.
 fn draw_choice(
     frame: &mut Frame,
-    choosing: &mut PickerState,
+    choosing: &mut PickerInput,
     shown: &Listing<'_>,
     preview: Option<(&PickPreview, Rect)>,
 ) -> Rect {
@@ -1399,7 +1387,7 @@ fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
         let when = match message.mode {
             DeliveryMode::Steer => "steering",
             DeliveryMode::Queue => "after this turn",
-            DeliveryMode::Note => "noted",
+            DeliveryMode::Inform => "noted",
         };
         let text = message.text();
         let first = text.lines().next().unwrap_or_default();

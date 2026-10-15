@@ -5,9 +5,9 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use crossbeam_channel::Receiver;
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult};
-use rig_ecs::calls::Wake;
 use rig_ecs::stage::{AgentPass, IfStopped, Outcome, Stage};
-use rig_tools::{Cut, Live};
+use rig_ecs::tasks::Wake;
+use rig_tools::{Live, OutputLimit};
 
 /// A line about a running call's progress, such as `12 of 40 files` or a
 /// command's last line of output, that the call's owner keeps current on
@@ -75,7 +75,7 @@ impl CallOutput {
     /// The output so far, cut as tool output is cut: its last lines, after
     /// a line saying how many earlier ones were left out.
     pub fn text(&self) -> String {
-        let (kept, dropped) = Cut::default().tail(&self.kept);
+        let (kept, dropped) = OutputLimit::default().tail(&self.kept);
         match self.cut_lines + dropped {
             0 => kept.to_owned(),
             cut => format!("[{cut} earlier lines cut]\n{kept}"),
@@ -89,7 +89,7 @@ impl CallOutput {
             self.kept.push_str(&piece);
             came = true;
         }
-        let cut = Cut::default();
+        let cut = OutputLimit::default();
         if self.kept.len() > 2 * cut.bytes {
             let (kept, dropped) = cut.tail(&self.kept);
             self.cut_lines += dropped;

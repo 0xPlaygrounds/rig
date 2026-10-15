@@ -18,14 +18,14 @@
 
 use bevy_log::warn;
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::window::{TokenBudget, view};
+use rig_harness::rig_memory::recent::{TokenBudget, view};
 use rig_harness::rig_memory::{Summarizer, SummaryLimits, SummaryPrompts};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    Editor, InputSystems, KeyInput, MainEditor, PanelCanvas, Placement, TerminalEvents,
-    TuiInputState, TuiKeys, TuiPanel, TuiSystems,
+    Editor, InputContext, InputSystems, KeyInput, MainEditor, PanelCanvas, PendingInput, Placement,
+    TuiKeys, TuiPanel, TuiSystems,
 };
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -181,13 +181,13 @@ fn recap_on_resume(started: Option<Res<AppStart>>, mut commands: Commands) {
 /// Puts the idle clock off with every change of the main agent's
 /// conversation.
 fn note_activity(
-    mut committed: MessageReader<Committed>,
-    agents: PrimaryQuery,
+    mut committed: MessageReader<ConversationChanged>,
+    agents: MainAgentQuery,
     clocks: Query<Entity, With<IdleClock>>,
     config: Res<RecapConfig>,
     mut commands: Commands,
 ) {
-    let main = primary(&agents);
+    let main = main_agent(&agents);
     if committed.read().any(|change| Some(change.agent) == main) {
         for clock in &clocks {
             commands.entity(clock).insert(idle_wait(&config));
@@ -199,11 +199,8 @@ fn note_activity(
 /// typed character after the idle clock ran out asks for a recap. Any key
 /// before then puts the clock off.
 fn watch_keys(
-    mut events: ResMut<TerminalEvents>,
-    (input, state): (
-        Option<Single<&Editor, With<MainEditor>>>,
-        Res<TuiInputState>,
-    ),
+    mut events: ResMut<PendingInput>,
+    (input, state): (Option<Single<&Editor, With<MainEditor>>>, Res<InputContext>),
     clocks: Query<(Entity, Has<Due>), With<IdleClock>>,
     cards: Query<Entity, With<RecapCard>>,
     config: Res<RecapConfig>,
@@ -257,14 +254,14 @@ fn recap_command(
 /// conversation is too short.
 fn want_recap(
     want: On<WantRecap>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     conversations: Query<(&Conversation, Option<&Connection>)>,
     pending: Query<(), (With<RecapCall>, Without<Settled>)>,
     (config, models): (Res<RecapConfig>, Res<Models>),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    let Some(agent) = primary(&agents) else {
+    let Some(agent) = main_agent(&agents) else {
         return;
     };
     let Ok((conversation, own)) = conversations.get(agent) else {
@@ -371,13 +368,13 @@ fn time_out(
 /// and takes the one shown away.
 fn discard_on_send(
     deliver: On<Deliver>,
-    agents: PrimaryQuery,
+    agents: MainAgentQuery,
     pending: Query<Entity, (With<RecapCall>, Without<Settled>)>,
     mut commands: Commands,
 ) {
     let message = &deliver.message;
     let users = message.author.kind == AuthorKind::User && message.command().is_none();
-    if !users || Some(deliver.entity) != primary(&agents) {
+    if !users || Some(deliver.entity) != main_agent(&agents) {
         return;
     }
     for call in &pending {

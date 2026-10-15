@@ -407,7 +407,12 @@ fn approve_granted(
             &ForAgent,
             &Decision,
         ),
-        (Undecided, ToolCalls, With<NeedsApproval>, Without<Approved>),
+        (
+            ReadyToStart,
+            ToolCalls,
+            With<NeedsApproval>,
+            Without<Approved>,
+        ),
     >,
     agents: Query<(&AgentId, Option<&WorkDir>)>,
     grants: Query<&Grant>,

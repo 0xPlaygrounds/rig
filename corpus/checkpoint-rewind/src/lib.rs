@@ -184,7 +184,10 @@ impl Repo<'_> {
 /// answers a message of the user's until the files are snapshotted, unless
 /// a gate before it decided the call.
 fn snapshot(
-    calls: Query<(Entity, &CallOf, &ForAgent, &Decision), (Undecided, ModelCalls, With<TurnCall>)>,
+    calls: Query<
+        (Entity, &CallOf, &ForAgent, &Decision),
+        (ReadyToStart, ModelCalls, With<TurnCall>),
+    >,
     turns: Query<&Turn, Without<Snapshotted>>,
     agents: Query<(&Conversation, &Checkpoints), Without<SpawnedBy>>,
     mut commands: Commands,
@@ -200,7 +203,7 @@ fn snapshot(
             continue;
         };
         commands.entity(turn_entity).insert(Snapshotted);
-        let Some((message, text)) = user_text(conversation, turn.first_message) else {
+        let Some((message, text)) = user_text(conversation, turn.start) else {
             continue;
         };
         // A retried or restored turn answers a message that has one.
@@ -569,7 +572,7 @@ impl Rewinder<'_, '_> {
             let stopped = message
                 .checked_sub(1)
                 .and_then(|before| conversation.entries().nth(before))
-                .is_some_and(|entry| entry.is_stopped_note());
+                .is_some_and(|entry| entry.is_stop_marker());
             let from = if stopped {
                 message.saturating_sub(1)
             } else {

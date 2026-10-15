@@ -131,7 +131,11 @@ struct Watching {
 }
 
 /// The agent a request asks for a subagent from.
-type Parent<'a> = (Option<&'a ModelChoice>, &'a Effort, &'a ToolAccess);
+type Parent<'a> = (
+    Option<&'a ModelChoice>,
+    &'a ReasoningSetting,
+    &'a ToolAccess,
+);
 
 /// The key of `request` from `parent`'s settings, as rig-subagents would
 /// settle them, or `None` when it is no task the cache takes.
@@ -225,7 +229,7 @@ fn reuse(
     mut requests: Query<
         (Entity, &SpawnSubagent, &ForAgent, &ChildOf, &mut Decision),
         (
-            Undecided,
+            ReadyToStart,
             PluginEffects,
             Without<Ask>,
             Without<Looked>,

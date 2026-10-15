@@ -4,7 +4,7 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::RELOAD_EXIT_CODE;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
-use rig_ecs::stage::{AgentPass, Decision, HoldOf, Outcome, PluginEffects, Stage, Undecided};
+use rig_ecs::stage::{AgentPass, Decision, HoldOf, Outcome, PluginEffects, ReadyToStart, Stage};
 
 use super::{Exit, ExitPlugin, ExitReason, ExitRequest};
 
@@ -91,7 +91,7 @@ fn a_switch_without_the_launcher_keeps_the_app_running() {
 struct NotesHold;
 
 fn hold_first_exit(
-    exits: Query<(Entity, &Decision), (With<ExitRequest>, Undecided, PluginEffects)>,
+    exits: Query<(Entity, &Decision), (With<ExitRequest>, ReadyToStart, PluginEffects)>,
     mut held: Local<bool>,
     mut commands: Commands,
 ) {
@@ -136,7 +136,7 @@ fn a_refused_exit_still_exits() {
     let mut app = app();
     app.add_systems(
         AgentPass,
-        (|mut exits: Query<&mut Decision, (With<ExitRequest>, Undecided, PluginEffects)>| {
+        (|mut exits: Query<&mut Decision, (With<ExitRequest>, ReadyToStart, PluginEffects)>| {
             for mut decision in &mut exits {
                 decision.decide(
                     rig_core::effect::Decider::plugin("test"),

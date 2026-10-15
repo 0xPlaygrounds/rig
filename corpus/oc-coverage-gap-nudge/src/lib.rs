@@ -771,7 +771,7 @@ fn attach_waiting(
 ) {
     for (entity, mut message, &ForAgent(agent)) in &mut typed {
         let users = message.author.kind == AuthorKind::User
-            && message.mode != DeliveryMode::Note
+            && message.mode != DeliveryMode::Inform
             && message.command().is_none();
         let Ok(mut state) = agents.get_mut(agent) else {
             continue;
@@ -803,7 +803,7 @@ fn cancel_on_new_turn(
 
 /// An interrupt calls off its agent's coverage run.
 fn cancel_on_interrupt(
-    interrupt: On<Interrupt>,
+    interrupt: On<StopTurn>,
     runs: Query<(Entity, &CoverageRun)>,
     mut agents: Query<&mut Coverage>,
     mut commands: Commands,

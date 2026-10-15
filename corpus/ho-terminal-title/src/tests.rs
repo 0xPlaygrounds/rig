@@ -95,7 +95,7 @@ fn the_title_follows_the_turn_rings_once_and_is_given_back() {
             hold: true,
             held: false,
         })
-        .add_plugins((AgentPlugin, JournalPlugin, ExitPlugin, TitlePlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ExitPlugin, TitlePlugin))
         .add_systems(AgentPass, hold.in_set(Stage::Review));
     let model = MockCompletionModel::from_stream_turns([reply("One."), reply("Two.")]);
     let line = connect(&model);

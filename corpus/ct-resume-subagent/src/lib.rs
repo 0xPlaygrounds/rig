@@ -8,7 +8,7 @@
 //! - `/subagents` lists the subagents: short id, task, model, turns,
 //!   tokens, and when each last finished.
 //! - `/talk <id>` asks the terminal view to show that subagent and send
-//!   what the user types to it ([`rig_tui::Focus`]); `/talk main` goes
+//!   what the user types to it ([`rig_tui::ShowAgent`]); `/talk main` goes
 //!   back. Its replies stay in its own conversation: a message from the
 //!   user opens no request, so rig-subagents reports nothing to the parent.
 //! - `follow_up {agent_id, message}` sends one of the caller's own
@@ -24,9 +24,9 @@
 use bevy_reflect::Reflect;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
-use rig_harness::rig_memory::now_ms;
+use rig_harness::rig_core::now_ms;
 use rig_subagents::{Lifecycle, OpenRequests, Subtask};
-use rig_telemetry::Spending;
+use rig_telemetry::AgentUsage;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -160,12 +160,12 @@ fn on_follow_up(
         )),
         Some(&(agent, ..)) => {
             let request = RequestId(called.tool_call.id.to_string());
-            let author = Author::agent(called.caller.clone(), Some(request));
+            let author = Author::agent(called.agent_id.clone(), Some(request));
             let message = Incoming::new(called.args.message.trim(), DeliveryMode::Queue);
             commands.spawn((
                 message.with_author(author),
                 ForAgent(agent),
-                Effect::child_of(Some(called.effect)),
+                Effect::with_parent_id(Some(called.effect)),
                 FollowUpOf(called.call),
             ));
             None
@@ -334,7 +334,7 @@ fn stamp_finished(
 fn drop_oldest(
     changed: Query<(), Changed<FinishedAt>>,
     kept: Query<(Entity, &FinishedAt, Has<ActiveTurn>, Option<&OpenRequests>), With<Subtask>>,
-    (settings, shown): (Res<KeptSubagents>, Option<Res<Shown>>),
+    (settings, shown): (Res<KeptSubagents>, Option<Res<ShownAgent>>),
     mut commands: Commands,
 ) {
     if changed.is_empty() {
@@ -382,7 +382,7 @@ fn find<'a>(
 fn talk(
     In(args): In<CommandArgs>,
     subagents: Query<(Entity, &AgentId, Option<&AgentTitle>), With<Subtask>>,
-    roots: PrimaryQuery,
+    roots: MainAgentQuery,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -395,8 +395,8 @@ fn talk(
         return;
     }
     if wanted == "main" {
-        if let Some(main) = primary(&roots) {
-            commands.trigger(rig_tui::Focus { entity: main });
+        if let Some(main) = main_agent(&roots) {
+            commands.trigger(rig_tui::ShowAgent { entity: main });
             notices.write(Notice::info(main, "Talking to the main agent."));
         }
         return;
@@ -406,7 +406,7 @@ fn talk(
         notices.write(Notice::error(args.agent, why));
         return;
     };
-    commands.trigger(rig_tui::Focus { entity: agent });
+    commands.trigger(rig_tui::ShowAgent { entity: agent });
     let task = title.map(|title| format!(" (\"{}\")", title.0));
     let text = format!(
         "Talking to subagent `{}`{}. /talk main goes back.",
@@ -422,7 +422,7 @@ type Listed<'a> = (
     Option<&'a AgentTitle>,
     Option<&'a ModelChoice>,
     &'a Conversation,
-    Option<&'a Spending>,
+    Option<&'a AgentUsage>,
     Option<&'a FinishedAt>,
     Has<ActiveTurn>,
 );

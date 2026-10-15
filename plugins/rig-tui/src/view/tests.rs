@@ -26,7 +26,7 @@ fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {
     use rig_core::completion::Message;
     use rig_core::message::UserContent;
     let (mut app, agent) = view_app();
-    let note = Deliver::new(agent, "first", DeliveryMode::Note);
+    let note = Deliver::new(agent, "first", DeliveryMode::Inform);
     app.world_mut().trigger(note);
     app.update();
     app.world_mut()
@@ -128,10 +128,10 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
     let (mut app, agent) = view_app();
     let id = AgentId("a1".to_owned());
     app.world_mut().entity_mut(agent).insert(id.clone());
-    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     say(&mut app, agent, Message::user("question"));
     say(&mut app, agent, Message::assistant("answer"));
-    // About every agent: drawn where the agent shown was.
+    // About every agent: drawn where the shown agent was.
     app.world_mut()
         .write_message(Notice::info(Option::<Entity>::None, "Every agent."));
     app.update();
@@ -158,7 +158,7 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
 fn a_notice_about_an_agent_gone_before_it_is_read_is_drawn_in_no_other_transcript() {
     use rig_core::completion::Message;
     let (mut app, agent) = view_app();
-    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     say(&mut app, agent, Message::user("question"));
     // A helper whose model call fails retires in the same pass.
     let helper = app.world_mut().spawn(Agent).id();
@@ -202,11 +202,44 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
     assert_eq!(top, Some((item, 0)));
 }
 
+#[test]
+fn a_notice_keeps_its_name_once_older_ones_are_dropped() {
+    let (mut app, agent) = view_app();
+    let pane = crate::tests::main_pane(app.world());
+    say(
+        &mut app,
+        agent,
+        rig_core::completion::Message::user("question"),
+    );
+    let notice = |app: &mut App, index: usize| {
+        let text = format!("notice {index}");
+        app.world_mut().write_message(Notice::info(agent, text));
+        app.update();
+    };
+    let scroll_to = |app: &mut App, item: TranscriptItem| {
+        let row = ItemRow::Top(0);
+        app.world_mut().trigger(ScrollTo {
+            pane,
+            item: Some(item),
+            row,
+        });
+        crate::tests::on_screen(app, agent, 5).first().cloned()
+    };
+    (0..KEPT_NOTICES).for_each(|index| notice(&mut app, index));
+    let shown = scroll_to(&mut app, TranscriptItem::Notice(KEPT_NOTICES / 2));
+    assert_eq!(shown.as_deref(), Some("notice 100"));
+    let top = crate::tests::main_view(&app).top().cloned();
+    // The oldest goes; the item named at the top still names that notice.
+    notice(&mut app, KEPT_NOTICES);
+    let item = top.map(|(item, _)| item);
+    assert_eq!(item.and_then(|item| scroll_to(&mut app, item)), shown);
+}
+
 /// A transcript of notes of `said`, laid out at 12 columns.
 fn laid_out_narrow(said: &[&str]) -> Option<DrawnTranscript> {
     let (mut app, agent) = view_app();
     for text in said {
-        let note = Deliver::new(agent, *text, DeliveryMode::Note);
+        let note = Deliver::new(agent, *text, DeliveryMode::Inform);
         app.world_mut().trigger(note);
         app.update();
     }

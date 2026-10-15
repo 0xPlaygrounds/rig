@@ -309,7 +309,7 @@ struct Reading {
 /// each the turn has not touched yet: at once in this machine's workspace,
 /// else off the main thread under a hold on the call.
 fn snapshot(
-    calls: Query<(Entity, &Footprint, &ForAgent, &Decision), (Undecided, ToolCalls)>,
+    calls: Query<(Entity, &Footprint, &ForAgent, &Decision), (ReadyToStart, ToolCalls)>,
     parents: Query<&SpawnedBy>,
     mut agents: Query<&mut TurnFiles>,
     (switch, workspace, wake): (Res<LeftoverSwitch>, Res<ProjectWorkspace>, Res<Wake>),

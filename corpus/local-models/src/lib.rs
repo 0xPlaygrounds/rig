@@ -36,7 +36,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Transport};
 use rig_harness::rig_core::completion::Message;
-use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::http_client::{
     DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response,
@@ -44,7 +44,7 @@ use rig_harness::rig_core::http_client::{
 use rig_harness::rig_core::operation::Completion;
 use rig_harness::rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use rig_harness::rig_core::serve::adapters::ModelAdapter;
-use rig_harness::rig_core::serve::{Decision, ErasedHandler, Intercept, Verdict};
+use rig_harness::rig_core::serve::{AfterServe, BeforeServe, ErasedHandler, Intercept};
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -502,19 +502,19 @@ impl Intercept for Local {
         TAG.to_owned()
     }
 
-    async fn before(&self, _id: EffectId, kind: &EffectKind) -> Decision {
+    async fn before(&self, _id: EffectId, kind: &EffectKind) -> BeforeServe {
         if let Self::Down(why) = self {
-            return Decision::Deny(ErrorReport::new(ErrorKind::Http, why).with_retryable(false));
+            return BeforeServe::Deny(ErrorReport::new(ErrorKind::Http, why).with_retryable(false));
         }
         let EffectKind::Completion { request, stream } = kind else {
-            return Decision::Proceed;
+            return BeforeServe::Proceed;
         };
         let mut request = request.clone();
         let Some(Message::System { content }) = request.chat_history.first_mut() else {
-            return Decision::Proceed;
+            return BeforeServe::Proceed;
         };
         content.push_str(&format!("\n\n<{TAG}>\n{NO_TOOLS}\n</{TAG}>"));
-        Decision::Patch(EffectKind::Completion {
+        BeforeServe::Patch(EffectKind::Completion {
             request,
             stream: *stream,
         })
@@ -525,8 +525,8 @@ impl Intercept for Local {
         _id: EffectId,
         _kind: &EffectKind,
         _outcome: &Result<Answered, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
+    ) -> AfterServe {
+        AfterServe::Keep
     }
 }
 

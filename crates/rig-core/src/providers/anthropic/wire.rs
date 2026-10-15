@@ -57,11 +57,10 @@ pub struct Quirks {
     /// A gateway that does not leaves Rig-generated tools unchanged.
     pub strict_tool_schemas: bool,
     /// Whether the provider takes thinking back without a signature, as
-    /// Kimi does (pi's `allowEmptySignature`). Elsewhere unsigned thinking
+    /// Kimi does. Elsewhere unsigned thinking
     /// replays as text.
     pub unsigned_thinking: bool,
-    /// How a request with tools asks the provider to stream tool input
-    /// (pi's `supportsEagerToolInputStreaming`).
+    /// How a request with tools asks the provider to stream tool input.
     pub tool_input_streaming: ToolInputStreaming,
 }
 
@@ -95,8 +94,8 @@ impl Quirks {
     }
 
     /// Default to 4096 output tokens without constrained tool schemas, with
-    /// eager tool input, which pi sends every Messages-format provider it
-    /// does not know to reject it.
+    /// eager tool input, which a Messages-format provider takes unless it is
+    /// known to reject it.
     pub const fn gateway() -> Self {
         Self {
             max_tokens: MaxTokens::Fixed(4096),
@@ -584,7 +583,7 @@ impl crate::completion::ReplayTarget for Messages {
     /// assistant turns, on models that read images: every Claude model, and
     /// on another dialect each model its catalog entry lists as reading
     /// them, or for a model the catalog does not list each dialect's
-    /// documented vision naming (pi's model data agrees).
+    /// documented vision naming.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         let rule: Option<fn(&str) -> bool> = match self.provider.dialect.name {
             name if name == ANTHROPIC.name => None,
@@ -621,8 +620,7 @@ impl crate::completion::ReplayTarget for Messages {
         }
     }
 
-    /// Anthropic takes call ids of `[a-zA-Z0-9_-]`, at most 64 long (pi's
-    /// rule).
+    /// Anthropic takes call ids of `[a-zA-Z0-9_-]`, at most 64 long.
     fn normalize_tool_call_id(
         &self,
         id: &str,

@@ -163,7 +163,7 @@ fn limit(
             Has<Restored>,
             &mut Decision,
         ),
-        (Undecided, ToolCalls, Without<Slot>),
+        (ReadyToStart, ToolCalls, Without<Slot>),
     >,
     slots: Query<&Slot>,
     limits: Res<Limits>,

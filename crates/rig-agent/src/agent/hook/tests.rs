@@ -22,7 +22,7 @@ fn dispatch_event(kind: &EffectKind) -> DispatchEvent<'_> {
 /// Builds an outcome event for `kind` that resolved to `outcome`.
 fn outcome_event<'a>(
     kind: &'a EffectKind,
-    outcome: &'a Result<Outcome, ErrorReport>,
+    outcome: &'a Result<Answered, ErrorReport>,
 ) -> OutcomeEvent<'a> {
     OutcomeEvent {
         id: EffectId::from_raw(1),
@@ -38,7 +38,7 @@ fn outcome_event<'a>(
 /// outcome as the engine carries it (format 5).
 fn outcome_event_with<'a>(
     kind: &'a EffectKind,
-    outcome: &'a Result<Outcome, ErrorReport>,
+    outcome: &'a Result<Answered, ErrorReport>,
     context: &'a ToolContext,
 ) -> OutcomeEvent<'a> {
     OutcomeEvent {
@@ -71,7 +71,7 @@ fn assert_skipped(action: &DispatchAction, reason: &str) {
 /// The tool result a `Replace` carries; `None` for anything else.
 fn replaced_result(action: &OutcomeAction) -> Option<&ToolResult> {
     match action {
-        OutcomeAction::Replace(Ok(Outcome::ToolResult { result, .. })) => Some(result),
+        OutcomeAction::Replace(Ok(Answered::ToolResult { result, .. })) => Some(result),
         _ => None,
     }
 }
@@ -170,7 +170,7 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
         .unwrap();
 
     let kind = tool_call_kind();
-    let outcome = Ok(Outcome::ToolResult {
+    let outcome = Ok(Answered::ToolResult {
         result: raw.clone(),
     });
     let action = stack

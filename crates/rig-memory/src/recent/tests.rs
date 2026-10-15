@@ -31,7 +31,7 @@ fn results(ids: &[&str]) -> Message {
 }
 
 #[test]
-fn a_window_never_keeps_a_result_without_its_call() {
+fn a_view_never_keeps_a_result_without_its_call() {
     let history = [
         Message::user("start"),
         call("1"),
@@ -41,11 +41,11 @@ fn a_window_never_keeps_a_result_without_its_call() {
         Message::user("next"),
     ];
     // The newest four start at the system message, before a result whose
-    // call they cut off: the window moves past it.
+    // call they cut off: the view moves past it.
     let kept = view(&history, &LastMessages(4));
     assert_eq!(kept, &history[4..]);
     assert!(validate(kept).is_ok());
-    // A window that keeps the call keeps the result.
+    // A rule that keeps the call keeps the result.
     assert_eq!(view(&history, &LastMessages(5)), &history[1..]);
     // A budget cuts the same way.
     let counter = HeuristicTokenCounter::default();

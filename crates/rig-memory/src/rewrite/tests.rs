@@ -9,8 +9,8 @@ use serde_json::json;
 use super::{Messages, Place, Rewrite, Strings, rewrite_file, rewrite_value};
 use crate::format::stamp_of;
 use crate::{
-    Files, LoadError, MemoryStore, Record, Rewrote, SESSION, Session, Store, Writer, history, load,
-    rewrite, save,
+    Files, LogRecord, LogRewrite, MemoryStore, SESSION, Session, SessionError, Store, Writer,
+    history, load, rewrite, save,
 };
 
 /// Replaces `sk-1` with `[R]` everywhere.
@@ -77,8 +77,8 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     let note = json!({ "sk-1": "about sk-1" });
     main.add_aside(Aside::new("note", Author::plugin("btw"), note).after(Some(look)));
     writer.save("main", &mut main);
-    writer.state("main", "rig::title", Some(json!("about sk-1").into()), true);
-    writer.state(SESSION, "theme", Some(json!("dark").into()), false);
+    writer.save_value("main", "rig::title", Some(json!("about sk-1").into()), true);
+    writer.save_value(SESSION, "theme", Some(json!("dark").into()), false);
     let mut other = Conversation::from_messages([Message::user("plain")]);
     writer.save("other", &mut other);
     let mut replaced = Conversation::from_messages([Message::user("a reset with sk-1")]);
@@ -114,7 +114,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     assert_eq!(main_log.records, 4);
     assert_eq!(main_log.changed_keys, ["rig::title"]);
     assert_eq!(
-        main_log.state.get("rig::title"),
+        main_log.saved.get("rig::title"),
         Some(&json!("about [R]").into())
     );
     assert_eq!(
@@ -157,7 +157,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     assert_eq!(saved.conversation.revision(), main.revision());
     assert_ne!(saved.conversation.lineage(), main.lineage());
     let rewrote = &saved.rewrites;
-    assert!(matches!(rewrote.as_slice(), [Rewrote { by: who, .. }] if *who == by));
+    assert!(matches!(rewrote.as_slice(), [LogRewrite { by: who, .. }] if *who == by));
     let texts: Vec<String> = saved.conversation.messages().iter().map(text_of).collect();
     assert_eq!(texts, ["look at [R]", "", "the key [R] is set"]);
     assert!(
@@ -179,7 +179,7 @@ fn a_rewrite_maps_every_value_in_place_keeping_each_records_stamp() {
     stale.push(Message::user("more sk-1"));
     let refused = save(&*store, "main", &mut stale);
     assert!(
-        matches!(&refused, Err(LoadError::Changed { log }) if log == "main"),
+        matches!(&refused, Err(SessionError::Changed { log }) if log == "main"),
         "{refused:?}"
     );
 
@@ -247,7 +247,7 @@ fn a_session_it_cannot_read_is_refused_before_anything_is_written() {
     let before = everything(&store);
     let refused = rewrite(&store, Author::plugin("redact"), &redact());
     assert!(
-        matches!(&refused, Err(LoadError::Format { found: Some(found), .. }) if found == "rig-session/1"),
+        matches!(&refused, Err(SessionError::Format { found: Some(found), .. }) if found == "rig-session/1"),
         "{refused:?}"
     );
     assert_eq!(everything(&store), before);
@@ -262,7 +262,7 @@ fn a_session_it_cannot_read_is_refused_before_anything_is_written() {
     let before = everything(&store);
     let refused = rewrite(&store, Author::plugin("redact"), &redact());
     assert!(
-        matches!(&refused, Err(LoadError::Record { line: 3, .. })),
+        matches!(&refused, Err(SessionError::Record { line: 3, .. })),
         "{refused:?}"
     );
     assert_eq!(everything(&store), before);
@@ -278,7 +278,7 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     writer.start();
     let mut live = Conversation::from_messages([Message::user("my key is sk-1")]);
     writer.save("main", &mut live);
-    writer.state("main", "mode", Some(json!("sk-1").into()), true);
+    writer.save_value("main", "mode", Some(json!("sk-1").into()), true);
     // Queued, not written yet.
     let rewritten = writer
         .rewrite(Author::plugin("redact"), &redact())
@@ -287,7 +287,7 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     live.reread(main.conversation.clone()).expect("reread");
     assert_eq!(live.messages(), [Message::user("my key is [R]")]);
     // The host puts the rewritten value back: nothing is written.
-    writer.state("main", "mode", Some(json!("[R]").into()), true);
+    writer.save_value("main", "mode", Some(json!("[R]").into()), true);
     live.push(Message::assistant("ok"));
     let saved = writer.save("main", &mut live);
     assert!(
@@ -299,11 +299,11 @@ fn a_writer_goes_on_after_a_rewrite_without_a_reset_even_once_stopped() {
     let session = Session::read(&*store).expect("read");
     let main = session.agent("main").expect("main");
     assert_eq!(main.conversation, live);
-    assert_eq!(main.state.get("mode"), Some(&json!("[R]").into()));
+    assert_eq!(main.saved.get("mode"), Some(&json!("[R]").into()));
     let modes = history(&*store, "main").expect("history");
     let modes = modes
         .iter()
-        .filter(|(_, record)| matches!(record, Record::State { key, .. } if key == "mode"));
+        .filter(|(_, record)| matches!(record, LogRecord::Saved { key, .. } if key == "mode"));
     assert_eq!(modes.count(), 1);
 
     // A write fails: logging stops, and a rewrite still runs.
@@ -414,11 +414,7 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
     let kept = read.branches().into_iter().next().expect("a branch");
     let (id, stashed) = (kept.id, kept.branch);
     assert_eq!(stashed.title, "main");
-    assert_eq!(
-        read.branch_title(),
-        "about [R]",
-        "the title is rewritten too"
-    );
+    assert_eq!(read.line_title(), "about [R]", "the title is rewritten too");
     let texts: Vec<String> = stashed
         .entries
         .iter()

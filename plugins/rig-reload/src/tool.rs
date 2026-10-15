@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -26,7 +27,7 @@ const RELOAD_DESCRIPTION: &str = "Rebuild the agent with the plugins in plugins.
 /// prompt's section on what the agent is.
 pub(crate) fn add(app: &mut App) {
     app.add_systems(Startup, describe);
-    if launcher::executable().is_some() {
+    if harness_protocol::launcher().is_some() {
         app.add_open_tool(
             RELOAD_TOOL,
             RELOAD_DESCRIPTION,
@@ -60,7 +61,7 @@ fn on_reload_tool(
                 format!(
                     "The model of agent {} asked to reload: the agent rebuilds and \
                      restarts once no turn runs. /reload cancel cancels it.",
-                    called.caller.short()
+                    called.agent_id.short()
                 ),
             ));
             ToolResult::success(
@@ -98,7 +99,7 @@ fn describe(
             .iter()
             .map(|(name, source)| {
                 let short = name.rsplit("::").next().unwrap_or_default();
-                format!("{short} ({})", source.krate)
+                format!("{short} ({})", source.package)
             })
             .collect(),
     );
@@ -108,14 +109,14 @@ fn describe(
         "You are rig, a coding agent that is a Bevy app made of plugins. Plugins: {plugins}. \
          Slash commands, which the user types: {slash_commands}. Tools: {tools}."
     );
-    if let Some(launcher) = launcher::executable() {
+    if let Some(launcher) = harness_protocol::launcher() {
         let home = Home::from_env();
         text.push_str(&format!(
             "\nYou extend yourself with plugins, Bevy plugins in crates of their own. \
              `$RIG_LAUNCHER plugin new <name>` (the launcher is {launcher}) makes a working one \
              in {home}/plugins/<name> and lists it in {home}/plugins.toml; change that list only \
              with `$RIG_LAUNCHER plugin add` or `remove`, and never edit rig's own crates. The \
-             plugin cookbook {guide} shows each extension point. Check a change with \
+             plugin guide {guide} shows each extension point. Check a change with \
              `$RIG_LAUNCHER plugin check --build`, not cargo, then call the `reload` tool and end \
              your turn: the agent rebuilds and restarts in this session. A failed build keeps \
              this one running and its errors come to you as a note.",

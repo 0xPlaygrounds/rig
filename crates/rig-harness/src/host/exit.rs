@@ -18,10 +18,9 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::{RELOAD_EXIT_CODE, SessionId};
 use rig_core::effect::{Decider, EffectKind};
 use rig_ecs::agent::Notice;
-use rig_ecs::calls::Wake;
 use rig_ecs::stage::{Decision, EffectRequest, Outcome, Settled, Started};
+use rig_ecs::tasks::Wake;
 
-use super::launcher;
 use super::session::SessionPaths;
 
 /// The exit code of a signalled exit, as a shell reports Ctrl+C.
@@ -138,7 +137,10 @@ fn on_exit(exit: On<Exit>, mut commands: Commands) {
 
 /// Tells the launcher which session to run next.
 fn name_switch(world: &World, target: Option<&SessionId>) -> Result<(), String> {
-    match (world.get_resource::<SessionPaths>(), launcher::executable()) {
+    match (
+        world.get_resource::<SessionPaths>(),
+        crate::harness_protocol::launcher(),
+    ) {
         (Some(paths), Some(_)) => {
             let target = target.map(SessionId::as_str).unwrap_or_default();
             fs::write(paths.switch(), target).map_err(|failure| failure.to_string())

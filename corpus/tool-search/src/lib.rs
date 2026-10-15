@@ -17,7 +17,7 @@ use bevy_ecs::system::SystemParam;
 use glob::Pattern;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Section, ToolDefinition};
-use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
 use schemars::JsonSchema;
@@ -131,7 +131,7 @@ impl Registry<'_, '_> {
         }
         let from_plugin = by
             .and_then(|by| self.plugins.get(by.0).ok())
-            .is_some_and(|source| self.config.plugins.contains(&source.krate));
+            .is_some_and(|source| self.config.plugins.contains(&source.package));
         let glob = |glob: &String| Pattern::new(glob).is_ok_and(|glob| glob.matches(name));
         from_plugin || self.config.tools.iter().any(glob)
     }
@@ -164,7 +164,7 @@ fn offer(
         (
             Added<Admitted>,
             ModelCalls,
-            Or<(With<TurnCall>, With<BuildFrom>)>,
+            Or<(With<TurnCall>, With<SideCall>)>,
         ),
     >,
     registry: Registry,
@@ -280,7 +280,7 @@ fn score(def: &ToolDefinition, terms: &[String]) -> usize {
 /// allows it): before its result is committed, this activates the tool and
 /// says so at the end of the result.
 fn activate_on_call(
-    mut calls: Query<(&ToolRequest, &ForAgent, &mut Outcome), (Unreviewed, ToolCalls)>,
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut Outcome), (ReadyToSettle, ToolCalls)>,
     registry: Registry,
     mut agents: Query<(&ToolAccess, &mut ActivatedTools)>,
 ) {

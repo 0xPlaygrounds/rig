@@ -37,7 +37,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::{Schedules, SystemKey};
 use bevy_log::error;
 use bevy_reflect::prelude::*;
-use rig_ecs::restore::{RetiredSaved, SavedKeys, SavedUpgrades};
+use rig_ecs::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades};
 use rig_memory::Upgrade;
 
 /// Where a plugin comes from, on the entity [`load`] spawns for it.
@@ -45,7 +45,7 @@ use rig_memory::Upgrade;
 #[reflect(Component, Clone, Debug)]
 pub struct PluginSource {
     /// Its package, such as `rig-harness`.
-    pub krate: String,
+    pub package: String,
     /// Where the package is built from, as `plugins.toml` names it, such
     /// as `path /home/me/.rig/plugins/viz` or `version 0.3`.
     pub source: String,
@@ -132,14 +132,14 @@ fn systems(world: &World) -> HashSet<(String, SystemKey)> {
 
 /// Adds `P`, unless the app has it already (another plugin added it), as
 /// the generated `main.rs` adds each plugin `plugins.toml` lists: with an
-/// entity of its own, named after it, from `krate` at `source`.
-pub fn load<P: Plugin + Default>(app: &mut App, krate: &str, source: &str) {
+/// entity of its own, named after it, from `package` at `source`.
+pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
     if app.is_plugin_added::<P>() {
         return;
     }
     let plugin = P::default();
     let source = PluginSource {
-        krate: krate.to_owned(),
+        package: package.to_owned(),
         source: source.to_owned(),
     };
     let entity = app
@@ -169,14 +169,13 @@ pub fn load<P: Plugin + Default>(app: &mut App, krate: &str, source: &str) {
 }
 
 /// What a plugin keeps with the session, on the entity [`load`] spawned for
-/// it: the saved values it owns, by the key the journal saves them under
-/// (the type path, such as `my_plugin::Counter`, or a stable one such as
-/// `rig::model`), the kinds of the asides it versions, and its folders of
-/// session files in
+/// it: the saved values it owns, by their saved key (the type path, such as
+/// `my_plugin::Counter`, or a stable one such as `rig::model`), the kinds of
+/// the asides it versions, and its folders of session files in
 /// [`PluginData::session`](crate::prelude::PluginData::session), such as
 /// `vim`. A plugin says so in `build`, `finish` or `cleanup`
 /// ([`AppKeepsExt`]); nothing infers it. A saved value no plugin keeps is
-/// the core's, or one whose plugin did not say.
+/// the kernel's or the harness's, or one whose plugin did not say.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Default, Clone, Debug)]
 pub struct Keeps {
@@ -229,7 +228,7 @@ pub trait AppKeepsExt {
 
     /// A saved key no build reads any more, such as a deleted type's path:
     /// its values are kept in the file and never reported.
-    fn retired_saved(&mut self, key: &'static str) -> &mut Self;
+    fn ignore_saved_key(&mut self, key: &'static str) -> &mut Self;
 
     /// This plugin's saved value `T` (an agent component or a resource) is
     /// logged and restored under `key`, such as `goals.goal`, rather than its
@@ -250,7 +249,7 @@ pub struct SavedAs<'a> {
 
 impl<'a> SavedAs<'a> {
     /// The value is listed too: copied into the session's listing
-    /// (rig-memory's `SessionMeta::data`) whenever it changes, so a listing
+    /// (rig-memory's `SessionMeta::listed`) whenever it changes, so a listing
     /// and a session picker show and filter by it without opening a log.
     /// Keep listed values small.
     pub fn listed(self) -> &'a mut App {
@@ -315,9 +314,9 @@ impl AppKeepsExt for App {
         SavedAs { app: self, key }
     }
 
-    fn retired_saved(&mut self, key: &'static str) -> &mut Self {
+    fn ignore_saved_key(&mut self, key: &'static str) -> &mut Self {
         let world = self.world_mut();
-        let mut retired = world.get_resource_or_init::<RetiredSaved>();
+        let mut retired = world.get_resource_or_init::<IgnoredSavedKeys>();
         retired.0.insert(key.to_owned());
         keep(world, |keeps| &mut keeps.saved, key);
         self

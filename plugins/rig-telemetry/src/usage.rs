@@ -1,25 +1,22 @@
-//! What model calls used and cost, and `/usage`. Every model call
-//! ([`ModelRequest`]) that settles with a reply, a turn's or a plugin's,
-//! adds the usage its provider reported to its agent's [`Spending`], to the
-//! session's [`SessionSpending`], both saved with the session, and to its
-//! turn's [`TurnSpending`], also when the turn-failure rule rejects the
-//! reply. A call that settles without a reply (cancelled, superseded, or
-//! failed mid-stream) adds its [`CallUsage`], when whoever knows what it
-//! used put one on it, the same way. Each [`Spending`] keeps the total, and the same split per model
-//! that answered and per purpose the call was made for (`turn`, `compaction`,
-//! a plugin's own), as plain data: a budget plugin reads
-//! [`SessionSpending`] in a Gate system, and a plugin that pays for work
-//! that is no model request [`record`](Spending::record)s it in both.
-//! rig-core prices a reply its provider did not price at the model's
-//! catalog [`Pricing`](rig_core::catalog::Pricing), so the cost here is
-//! the provider's figure or the catalog's list price. A call counts under
-//! the model it went to ([`SentTo`]), and the context in use is the
-//! agent's [`LastUsage`], which the kernel keeps (the next request sends
-//! all of it again), against the window of the model its last turn reply
-//! came from, such as the member of a race that won. Other plugins add lines to `/usage` with
-//! [`UsageRow`]s. With the default `tui` feature, each agent's status
-//! line in the terminal view shows its meter (tokens in and out, cached
-//! input, cost, context) and what its turn spent so far.
+//! What model calls used and cost, and `/usage`.
+//!
+//! - **What counts.** Every settled model call ([`ModelRequest`]), a turn's
+//!   or a plugin's, adds its usage to its agent's [`AgentUsage`], the
+//!   session's [`SessionUsage`] (both saved) and its turn's [`TurnUsage`].
+//!   A reply the turn-failure rule rejects still counts. A call settled
+//!   without a reply (cancelled, superseded, failed mid-stream) counts its
+//!   [`CallUsage`], if one was put on it.
+//! - **How it is kept.** Each [`AgentUsage`] keeps a total, and splits per
+//!   model ([`SentTo`]) and per purpose (`turn`, `compaction`, a plugin's
+//!   own). Cost is the provider's figure, else the catalog's
+//!   [`Pricing`](rig_core::catalog::Pricing).
+//! - **Context in use.** The agent's [`LastUsage`], against the window of
+//!   the model its last turn reply came from.
+//! - **Extending.** A budget plugin reads [`SessionUsage`] in a Gate
+//!   system, and a plugin paying for other work
+//!   [`record`](AgentUsage::record)s it. [`UsageRow`]s add lines to
+//!   `/usage`. With the `tui` feature, each agent's status line shows its
+//!   meter and what its turn used so far.
 
 use std::collections::BTreeMap;
 
@@ -37,18 +34,19 @@ pub struct UsagePlugin;
 
 impl Plugin for UsagePlugin {
     fn build(&self, app: &mut App) {
-        app.register_required_components::<Agent, Spending>()
-            .register_required_components::<TurnOf, TurnSpending>()
-            .init_resource::<SessionSpending>()
-            .keeps_saved::<Spending>()
-            .keeps_saved::<SessionSpending>()
+        app.register_required_components::<Agent, AgentUsage>()
+            .register_required_components::<TurnOf, TurnUsage>()
+            .init_resource::<SessionUsage>()
             .add_command(
                 "usage",
                 "Show the tokens, cost and context this agent, its subagents and the session used",
                 usage,
             )
-            .add_observer(record_spending)
+            .add_observer(record_usage)
             .add_observer(forget_window);
+        // The keys from before the rename, so older sessions keep their usage.
+        let _ = app.saved_as::<AgentUsage>("rig_telemetry::usage::Spending");
+        let _ = app.saved_as::<SessionUsage>("rig_telemetry::usage::SessionSpending");
         super::resume::add(app);
         #[cfg(feature = "tui")]
         status::add(app);
@@ -57,12 +55,12 @@ impl Plugin for UsagePlugin {
 
 /// Model calls' usage summed, as rig-core's [`UsageTotals`] sums it: in
 /// all, and split per model and per purpose. On every agent (its calls),
-/// saved with the session; the session's is [`SessionSpending`] and a
-/// turn's a [`TurnSpending`].
+/// saved with the session; the session's is [`SessionUsage`] and a
+/// turn's a [`TurnUsage`].
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Spending {
+pub struct AgentUsage {
     /// Every call.
     pub total: UsageTotals,
     /// Per model that answered, by catalog reference (`vendor/model`).
@@ -72,7 +70,7 @@ pub struct Spending {
     pub purposes: BTreeMap<String, UsageTotals>,
 }
 
-impl Spending {
+impl AgentUsage {
     /// Adds a finished call's `usage`, answered by `model` and made for
     /// `purpose`.
     pub fn record(&mut self, model: Option<&str>, purpose: Option<&str>, usage: &Usage) {
@@ -94,12 +92,12 @@ impl Spending {
 /// despawned included. Saved with the session.
 #[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct SessionSpending(pub Spending);
+pub struct SessionUsage(pub AgentUsage);
 
 /// What the running turn's model calls used so far, on the turn entity.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
-pub struct TurnSpending(pub UsageTotals);
+pub struct TurnUsage(pub UsageTotals);
 
 /// A line another plugin adds to `/usage`, such as what is left of a
 /// budget: spawn one and keep its `text` current. Lines come after the
@@ -156,8 +154,8 @@ fn forget_window(changed: On<Insert<Connection>>, mut commands: Commands) {
     commands.entity(changed.entity).try_remove::<Window>();
 }
 
-/// A model call as [`record_spending`] reads it.
-type SpendingCall<'a> = (
+/// A model call as [`record_usage`] reads it.
+type UsageCall<'a> = (
     (&'a ModelRequest, &'a Effect, Option<&'a SentTo>),
     (Option<&'a Outcome>, Option<&'a CallUsage>),
     (Option<&'a ForAgent>, Option<&'a CallOf>, Has<TurnCall>),
@@ -168,12 +166,12 @@ type SpendingCall<'a> = (
 /// to (where it was sent, else the call's own connection, else its
 /// agent's, else the one its reply names) and its purpose. A turn's reply
 /// that reported its tokens sets its agent's [`Window`].
-fn record_spending(
+fn record_usage(
     settled: On<Add<Settled>>,
-    calls: Query<SpendingCall>,
-    mut turns: Query<&mut TurnSpending>,
-    mut agents: Query<(Option<&mut Spending>, Option<&Connection>)>,
-    mut session: ResMut<SessionSpending>,
+    calls: Query<UsageCall>,
+    mut turns: Query<&mut TurnUsage>,
+    mut agents: Query<(Option<&mut AgentUsage>, Option<&Connection>)>,
+    mut session: ResMut<SessionUsage>,
     mut commands: Commands,
 ) {
     let Ok(((request, effect, sent), (outcome, estimate), (agent, of, turn_call))) =
@@ -223,24 +221,24 @@ fn record_spending(
 fn usage(
     In(args): In<CommandArgs>,
     agents: Query<(
-        &Spending,
+        &AgentUsage,
         &LastUsage,
         (Option<&Connection>, Option<&Window>),
         Option<&ActiveTurn>,
     )>,
-    turns: Query<&TurnSpending>,
-    everyone: Query<(&Name, &Spending), With<Agent>>,
+    turns: Query<&TurnUsage>,
+    everyone: Query<(&Name, &AgentUsage), With<Agent>>,
     families: Query<&Spawned>,
-    session: Res<SessionSpending>,
+    session: Res<SessionUsage>,
     rows: Query<&UsageRow>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((Spending { total: spent, .. }, last, (connection, window), turn)) =
+    let Ok((AgentUsage { total: spent, .. }, last, (connection, window), turn)) =
         agents.get(args.agent)
     else {
         return;
     };
-    let SessionSpending(session) = &*session;
+    let SessionUsage(session) = &*session;
     let total = &session.total;
     let mut lines = Vec::new();
     if total.calls == 0 {
@@ -250,7 +248,7 @@ fn usage(
     } else {
         lines.push(format!("This agent: {spent}."));
     }
-    if let Some(TurnSpending(turn)) = turn.and_then(|turn| turns.get(turn.turn()).ok())
+    if let Some(TurnUsage(turn)) = turn.and_then(|turn| turns.get(turn.turn()).ok())
         && turn.calls > 0
     {
         lines.push(format!("This turn: {turn}."));

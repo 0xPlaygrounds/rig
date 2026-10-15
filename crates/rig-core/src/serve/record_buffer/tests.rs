@@ -18,8 +18,8 @@ fn tool(name: &str) -> EffectKind {
     }
 }
 
-fn answer(text: &str) -> Result<Outcome, ErrorReport> {
-    Ok(Outcome::ToolResult {
+fn answer(text: &str) -> Result<Answered, ErrorReport> {
+    Ok(Answered::ToolResult {
         result: ToolResult::skipped(text),
     })
 }
@@ -135,7 +135,7 @@ fn discard_drops_patch_replaces_and_tool_output_lands_before_the_outcome() {
     buffer.tool_output(patched, ToolResultContext::default());
     let record = buffer.take(patched).expect("resolved");
     assert_eq!(json(&record.kind), json(&tool("c")));
-    assert_eq!(record.tool_output, Some(ToolResultContext::default()));
+    assert_eq!(record.published, Some(ToolResultContext::default()));
 
     buffer.begin(
         dropped,
@@ -163,7 +163,10 @@ fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
     let recorded = Arc::new(buffer.clone());
     let dispatch = Dispatch::new(id, true).recorded_by(recorded);
     let outcome = block_on(async { handler.handle(kind, dispatch).await.into_outcome().await });
-    assert!(matches!(outcome, Ok(Outcome::Completion(_))), "{outcome:?}");
+    assert!(
+        matches!(outcome, Ok(Answered::Completion(_))),
+        "{outcome:?}"
+    );
     assert!(
         buffer.kept_events(id).is_some_and(|items| items >= 3),
         "two deltas and the end"
@@ -227,7 +230,7 @@ fn an_open_record_settles_once_and_a_dropped_one_is_cancelled() {
     assert_eq!(outcomes.first(), Some(&json(&answer("first"))));
     assert_eq!(
         outcomes.get(1),
-        Some(&json(&Err::<Outcome, _>(cancelled())))
+        Some(&json(&Err::<Answered, _>(cancelled())))
     );
 }
 
@@ -252,7 +255,7 @@ fn a_panic_is_an_internal_error_recorded_as_the_outcome() {
     let error = block_on(catch_panics(Some(recorder), id, boom())).expect_err("panicked");
     assert_eq!(error.kind, crate::error::ErrorKind::Internal);
     let record = buffer.take(id).expect("resolved");
-    assert_eq!(json(&record.outcome), json(&Err::<Outcome, _>(error)));
+    assert_eq!(json(&record.outcome), json(&Err::<Answered, _>(error)));
 
     let unrecorded = block_on(catch_panics(None, id, boom()));
     assert!(unrecorded.is_err_and(|error| error.to_string().contains("panicked: boom")));

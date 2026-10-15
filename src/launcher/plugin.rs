@@ -1,9 +1,9 @@
 //! `rig plugin`: make a plugin crate under `RIG_HOME/plugins` and list it
 //! in `plugins.toml` (`new`), add or remove an entry (`add`, `remove`),
 //! and check the list (`check`, with `--build` also building the agent
-//! without staging it). Every change is checked before it is written, so
-//! nobody edits the file by hand. Plugin crates live outside every workspace, so making one never
-//! touches the rig repository or a project.
+//! without staging it). Every change is checked before it is written, so a
+//! command never leaves a broken file. Plugin crates live outside every
+//! workspace, so making one never touches the rig repository or a project.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use rig::harness_protocol::Home;
 
 use super::Result;
-use super::config::{self, Config, Source};
+use super::plugin_list::{self, PluginList, Source};
 use super::project::{
     CORE_CRATES, PACKAGE, RigSource, crate_dir, manifest_string, quoted, quoted_path, rig_patch,
     rig_version,
@@ -61,9 +61,9 @@ pub fn run(home: &Home, args: &[&str]) -> Result<()> {
 fn new(home: &Home, name: &str) -> Result<()> {
     let source = RigSource::detect()?;
     validate_name(name, &source)?;
-    let config_path = home.config();
-    let config = Config::load(&config_path)?;
-    if let Some(listed) = config
+    let plugins_toml = home.plugins_toml();
+    let list = PluginList::load(&plugins_toml)?;
+    if let Some(listed) = list
         .plugins
         .iter()
         .find(|plugin| plugin.package.name == name)
@@ -107,7 +107,7 @@ fn new(home: &Home, name: &str) -> Result<()> {
         quoted(&format!("plugins/{name}")),
         quoted(&format!("{library}::{type_name}")),
     );
-    if let Err(failure) = config::append(&config_path, &entry, |_| Ok(())) {
+    if let Err(failure) = plugin_list::append(&plugins_toml, &entry, |_| Ok(())) {
         fs::remove_dir_all(&directory).ok();
         return Err(failure);
     }
@@ -118,7 +118,7 @@ fn new(home: &Home, name: &str) -> Result<()> {
          or `rig build`, builds it and applies it. Its src/lib.rs lists what else a\n\
          plugin adds, such as a top-level `rig {name}` command of its own.",
         directory.display(),
-        config_path.display()
+        plugins_toml.display()
     );
     Ok(())
 }
@@ -156,16 +156,16 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
         entry.push_str(&format!("{key} = {}\n", quoted(value)));
     }
     entry.push_str(&format!("plugin = {}\n", quoted(type_path)));
-    let config_path = home.config();
-    config::append(&config_path, &entry, |config| {
-        match config.plugins.last().and_then(check_plugin) {
+    let plugins_toml = home.plugins_toml();
+    plugin_list::append(&plugins_toml, &entry, |list| {
+        match list.plugins.last().and_then(check_plugin) {
             Some(problem) => Err(problem.into()),
             None => Ok(()),
         }
     })?;
     println!(
         "Added `{type_path}` to {}.\n/reload in the agent, or `rig build`, builds it.",
-        config_path.display()
+        plugins_toml.display()
     );
     Ok(())
 }
@@ -173,8 +173,8 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
 /// `rig plugin remove <type>`: the entry of `type_path`, with the comment
 /// lines right above it, taken out of `plugins.toml`. Its crate stays.
 fn remove(home: &Home, type_path: &str) -> Result<()> {
-    let config_path = home.config();
-    let directory = Config::load(&config_path)?
+    let plugins_toml = home.plugins_toml();
+    let directory = PluginList::load(&plugins_toml)?
         .plugins
         .into_iter()
         .find(|plugin| plugin.type_path == type_path)
@@ -182,14 +182,14 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
             Source::Path(directory) => Some(directory),
             Source::Git { .. } | Source::Version(_) | Source::Rig => None,
         });
-    config::remove(&config_path, type_path)?;
+    plugin_list::remove(&plugins_toml, type_path)?;
     let crate_note = directory
         .map(|directory| format!("; its crate {} is left in place", directory.display()))
         .unwrap_or_default();
     println!(
         "Removed `{type_path}` from {}{crate_note}.\n\
          /reload in the agent, or `rig build`, applies it.",
-        config_path.display()
+        plugins_toml.display()
     );
     Ok(())
 }
@@ -268,7 +268,7 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
          \n\
          [dependencies]\n\
          # Everything a plugin uses: Bevy's app and ECS (`rig_harness::prelude`) and the\n\
-         # agent runtime (`rig_harness::rig_ecs`). Another plugin's types come from its\n\
+         # kernel (`rig_harness::rig_ecs`). Another plugin's types come from its\n\
          # crate, at the same version: the terminal view's panels from rig-tui (with\n\
          # `rig_tui::ratatui`), what agents do from rig-activity. The agent builds every\n\
          # plugin with its own rig crates. A Bevy crate, such as `bevy` for a window,\n\
@@ -314,17 +314,22 @@ fn lib_rs(name: &str, type_name: &str) -> String {
 /// and its library is the crate the plugin type names. Whether the code
 /// builds is for [`check_build`] (`--build`) or `rig build` to say.
 fn check(home: &Home) -> Result<()> {
-    let config = Config::load(&home.config())?;
-    let problems: Vec<String> = config.plugins.iter().filter_map(check_plugin).collect();
+    let list = PluginList::load(&home.plugins_toml())?;
+    let problems: Vec<String> = list.plugins.iter().filter_map(check_plugin).collect();
     if problems.is_empty() {
         println!(
             "{}: {} plugins, all valid; `rig plugin check --build` builds the agent with them.",
-            home.config().display(),
-            config.plugins.len()
+            home.plugins_toml().display(),
+            list.plugins.len()
         );
         return Ok(());
     }
-    Err(format!("{}:\n  {}", home.config().display(), problems.join("\n  ")).into())
+    Err(format!(
+        "{}:\n  {}",
+        home.plugins_toml().display(),
+        problems.join("\n  ")
+    )
+    .into())
 }
 
 /// `rig plugin check --build`: builds the agent project with the listed
@@ -341,7 +346,7 @@ fn check_build(home: &Home) -> Result<()> {
 }
 
 /// What is wrong with a plugin listed by path, if anything.
-fn check_plugin(plugin: &config::Plugin) -> Option<String> {
+fn check_plugin(plugin: &plugin_list::PluginEntry) -> Option<String> {
     let package = &plugin.package;
     let Source::Path(directory) = &package.source else {
         return None;

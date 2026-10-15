@@ -328,3 +328,38 @@ fn compactions_are_undone_newest_first_with_their_ids_and_states() {
     save(&store, "agent", &mut conversation).expect("saved");
     assert_eq!(load(&store, "agent").expect("loaded"), conversation);
 }
+
+/// Each knob `/compaction` names is set over the policy, shows the value
+/// it was set to, and once unset shows the base's again; a value a knob
+/// does not take, and a knob that is none of them, are refused with why.
+#[test]
+fn every_knob_sets_shows_and_unsets_its_value() {
+    let base = CompactionPolicy::default();
+    let mut own = CompactionOverrides::default();
+    let values = ["100", "200", "300", "400", "5", "mine"];
+    for (knob, value) in CompactionOverrides::KNOBS.iter().zip(values) {
+        assert!(!own.sets(knob), "{knob}");
+        assert_eq!(own.set(knob, value, &base), Ok(()));
+        assert!(own.sets(knob), "{knob}");
+        assert_eq!(own.apply(&base).knob(knob), value);
+    }
+    let limits = own.apply(&base).summarizer.limits;
+    assert_eq!(limits.summary_tokens, base.summarizer.limits.summary_tokens);
+    for knob in CompactionOverrides::KNOBS {
+        assert_eq!(own.unset(knob), Ok(()));
+        assert_eq!(own.apply(&base).knob(knob), base.knob(knob));
+    }
+    assert!(own.is_empty());
+
+    let refused = |result: Result<(), String>, why: &str| {
+        assert!(
+            result.as_ref().is_err_and(|it| it.contains(why)),
+            "{result:?}"
+        );
+    };
+    refused(own.set("keep", "lots", &base), "takes a number of tokens");
+    refused(own.set("per-turn", "-1", &base), "takes a count");
+    refused(own.set("bogus", "1", &base), "there is no knob `bogus`");
+    refused(own.unset("bogus"), "the knobs are reserve, keep");
+    assert!(own.is_empty());
+}

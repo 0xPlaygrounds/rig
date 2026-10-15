@@ -30,7 +30,7 @@ struct Held;
 
 /// Holds each model call of an agent on a model in [`Hold`].
 fn hold_calls(
-    calls: Query<(Entity, &ForAgent), (Undecided, ModelCalls, Without<Held>)>,
+    calls: Query<(Entity, &ForAgent), (ReadyToStart, ModelCalls, Without<Held>)>,
     agents: Query<&ModelChoice>,
     hold: Res<Hold>,
     mut commands: Commands,
@@ -87,7 +87,7 @@ fn app_in(
         .insert_resource(Settings::from_toml(&settings))
         .insert_resource(ProjectRoot(dir))
         .insert_resource(Hold(hold.iter().map(|&model| model.to_owned()).collect()))
-        .add_plugins((AgentPlugin, JournalPlugin, ClockPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin))
         .add_plugins((ReadTool, EditTool, WriteTool, ShellTool, ConsultPlugin))
         .add_plugins((UsagePlugin, EffectLogPlugin))
         .add_systems(AgentPass, hold_calls.in_set(Stage::Gate))
@@ -292,7 +292,7 @@ fn interrupting_the_agent_stops_its_consultants() {
     run_until(&mut app, &wakes, held);
     assert!(held(app.world()));
 
-    app.world_mut().trigger(Interrupt::new(agent));
+    app.world_mut().trigger(StopTurn::new(agent));
     app.world_mut().resource_mut::<Hold>().0.clear();
     let gone = |world: &World| {
         world

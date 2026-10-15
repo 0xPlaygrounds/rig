@@ -63,11 +63,7 @@ fn run_for(app: &mut App, wakes: &Receiver<()>, wall: Duration) {
 
 /// A change of the command's input: what the session spent.
 fn spend(app: &mut App) {
-    app.world_mut()
-        .resource_mut::<SessionSpending>()
-        .0
-        .total
-        .cost += 0.01;
+    app.world_mut().resource_mut::<SessionUsage>().0.total.cost += 0.01;
     app.update();
 }
 
@@ -99,7 +95,7 @@ fn the_item_follows_the_session_through_slow_failing_and_replaced_scripts() {
         })
         .add_front(Front::new(FRONT).on_terminal())
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, WatchPlugin))
         .add_plugins((
             rig_harness::clock::ClockPlugin,
             rig_harness::pick::PickPlugin,

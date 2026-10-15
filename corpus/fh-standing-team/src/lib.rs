@@ -268,7 +268,7 @@ fn delegated(
         .push_back(Job {
             call: called.call,
             task: called.args.task.clone(),
-            asker: called.caller.clone(),
+            asker: called.agent_id.clone(),
             request: RequestId(called.tool_call.id.to_string()),
             message: None,
             turn: None,
@@ -301,7 +301,7 @@ fn delegated(
         request,
         Hiring(name.to_owned()),
         ForAgent(called.agent),
-        Effect::child_of(Some(called.effect)),
+        Effect::with_parent_id(Some(called.effect)),
     ));
 }
 
@@ -484,7 +484,7 @@ fn called_off(
     match (job.turn, member) {
         (Some(_), Some((agent, _))) => {
             let reason = Some("the delegating agent was stopped".to_owned());
-            commands.trigger(Interrupt {
+            commands.trigger(StopTurn {
                 entity: agent,
                 reason,
             });
@@ -507,7 +507,7 @@ fn called_off(
 /// Refuses a scoped member's write outside its scope, as its call is about
 /// to run: what a call writes is its [`Footprint`], from the tool.
 fn keep_in_scope(
-    mut calls: Query<(&Footprint, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
+    mut calls: Query<(&Footprint, &ForAgent, &mut Decision), (ReadyToStart, ToolCalls)>,
     members: Query<(&TeamMember, Option<&WorkDir>)>,
     team: Res<Team>,
     root: Res<ProjectRoot>,

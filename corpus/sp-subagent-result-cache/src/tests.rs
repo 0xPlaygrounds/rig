@@ -44,7 +44,7 @@ impl Session {
             .init_resource::<ToolOutputs>()
             .add_plugins((
                 AgentPlugin,
-                JournalPlugin,
+                SessionLogPlugin,
                 SubagentsPlugin,
                 ReadTool,
                 SearchTool,

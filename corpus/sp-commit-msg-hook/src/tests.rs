@@ -90,7 +90,12 @@ fn rig(
     .insert_resource(scripted_models([("test/model", model)]))
     .insert_resource(ProjectRoot(repo.to_owned()))
     .insert_resource(processes)
-    .add_plugins((AgentPlugin, JournalPlugin, ExitPlugin, CommitMsgHookPlugin));
+    .add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        ExitPlugin,
+        CommitMsgHookPlugin,
+    ));
     app.finish();
     run_until(&mut app, &wakes, |world| {
         world.contains_resource::<CommandRun>()

@@ -31,8 +31,9 @@ use bevy_log::warn;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
-use rig_harness::rig_memory::{Session, now_ms};
+use rig_harness::rig_memory::Session;
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::{
@@ -177,10 +178,8 @@ fn call_settled(
         agent: name.map_or_else(|| id.short().to_owned(), |name| name.as_str().to_owned()),
         agent_id: id.0.clone(),
         turn: turn.index.saturating_add(1),
-        asked: conversation
-            .request(turn.first_message)
-            .map(|entry| entry.key()),
-        prompt: prompt(agent, turn.first_message, &agents, &turns),
+        asked: conversation.request(turn.start).map(|entry| entry.key()),
+        prompt: prompt(agent, turn.start, &agents, &turns),
         tool: request.call.function.name.as_str().to_owned(),
         call_id: request.call.id.to_string(),
         at_ms: now_ms(),
@@ -220,7 +219,7 @@ fn prompt(
         let parents = parent.and_then(|&SpawnedBy(parent)| {
             let (.., active) = agents.get(parent).ok()?;
             let turn = turns.get(active?.turn()).ok()?;
-            Some((parent, turn.first_message))
+            Some((parent, turn.start))
         });
         let Some(next) = parents else {
             break;
@@ -455,7 +454,7 @@ impl Answer {
 /// opened turn's panel takes.
 #[derive(bevy_ecs::system::SystemParam)]
 struct Opening<'w, 's> {
-    stores: Option<Res<'w, SessionStores>>,
+    stores: Option<Res<'w, StoreOpener>>,
     session: Option<Res<'w, SessionPaths>>,
     agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
     focus: Option<ResMut<'w, KeyFocus>>,

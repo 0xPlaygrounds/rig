@@ -39,8 +39,8 @@ use rig_tui::ratatui::text::Line;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
     AppKeyBindingsExt, HistorySystems, InputSystems, KeyBinding, KeyFocus, KeyInput, KeyPress,
-    KeyPressed, KeyScope, MainInput, PanelCanvas, Placement, PromptHistory, RequestRedraw,
-    TerminalEvents, TuiPanel, TuiPlugin, TuiSystems,
+    KeyPressed, KeyScope, MainInput, PanelCanvas, PendingInput, Placement, PromptHistory,
+    RequestRedraw, TuiPanel, TuiPlugin, TuiSystems,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -194,7 +194,7 @@ impl Plugin for HistoryPlugin {
         app.add_setting::<HistorySettings>("history")
             .init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
-            .init_resource::<Shown>()
+            .init_resource::<ShownAgent>()
             .init_resource::<History>()
             .init_resource::<Typing>()
             .register_required_components::<Agent, Draft>()
@@ -310,7 +310,7 @@ fn offer(history: Res<History>, mut prompts: ResMut<PromptHistory>) {
 /// once when it is emptied or another agent is shown (whose draft the
 /// input then holds), else once typing paused for [`QUIET`].
 fn follow_input(
-    shown: Res<Shown>,
+    shown: Res<ShownAgent>,
     mut input: MainInput,
     mut typing: ResMut<Typing>,
     mut drafts: Query<&mut Draft>,
@@ -441,7 +441,7 @@ fn spread(prompt: &str, filter: &str) -> Option<usize> {
 /// Enter puts the selected prompt in the input. Esc, which the view
 /// answers by taking the keys back, closes it.
 fn type_search(
-    events: Res<TerminalEvents>,
+    events: Res<PendingInput>,
     mut searches: Query<(Entity, &mut Search)>,
     focus: Res<KeyFocus>,
     mut input: Option<MainInput>,

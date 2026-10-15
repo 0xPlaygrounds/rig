@@ -3,9 +3,9 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_core::effect::EffectKind;
 use rig_ecs::agent::Agent;
-use rig_ecs::journal::SessionStore;
+use rig_ecs::session_log::SessionStore;
 use rig_ecs::stage::{
-    AgentPass, EffectRequest, ForAgent, Outcome, PluginEffects, Stage, Started, Undecided,
+    AgentPass, EffectRequest, ForAgent, Outcome, PluginEffects, ReadyToStart, Stage, Started,
 };
 use rig_memory::MemoryStore;
 
@@ -14,7 +14,7 @@ use crate::ask::{Answer, Answerer, Ask, AskPlugin};
 
 /// A Gate system of the plugin `by`, which wants every plugin effect
 /// approved.
-fn wants(by: &'static str) -> impl FnMut(Query<Entity, (Undecided, PluginEffects)>, Commands) {
+fn wants(by: &'static str) -> impl FnMut(Query<Entity, (ReadyToStart, PluginEffects)>, Commands) {
     move |effects, mut commands| {
         for effect in &effects {
             commands

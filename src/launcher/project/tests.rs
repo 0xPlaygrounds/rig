@@ -1,4 +1,4 @@
-use super::super::config::{Package, Plugin, TEMPLATE, parse};
+use super::super::plugin_list::{Package, PluginEntry, TEMPLATE, parse};
 use super::*;
 
 fn checkout() -> PathBuf {
@@ -20,7 +20,7 @@ fn the_default_plugins_come_from_the_checkout_and_only_what_they_use_is_patched(
     let checkout = checkout();
     let source = RigSource::Local(checkout.clone());
     let used = parse(TEMPLATE, Path::new("/home"))
-        .map(|config| rig_crates(&config, &source))
+        .map(|list| rig_crates(&list, &source))
         .unwrap_or_default();
     // Every plugin crate but the optional ones, and what they depend on.
     for name in [
@@ -54,14 +54,17 @@ fn the_default_plugins_come_from_the_checkout_and_only_what_they_use_is_patched(
 fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
     let checkout = checkout();
     // A crate outside rig that depends on what rig-tui depends on.
-    let viz = Plugin {
+    let viz = PluginEntry {
         type_path: "viz::VizPlugin".to_owned(),
         package: Package {
             name: "viz".to_owned(),
             source: Source::Path(checkout.join("plugins/rig-tui")),
         },
     };
-    let used = rig_crates(&Config { plugins: vec![viz] }, &RigSource::Local(checkout));
+    let used = rig_crates(
+        &PluginList { plugins: vec![viz] },
+        &RigSource::Local(checkout),
+    );
     assert!(used.contains("rig-harness") && used.contains("rig-ecs"));
     assert!(!used.contains("rig-tui") && !used.contains("viz"));
 }

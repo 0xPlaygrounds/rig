@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::{ToolAnnotations, ToolDefinition, message::ToolName},
-    effect::{EffectKind, Outcome},
+    effect::{Answered, EffectKind},
     serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -411,7 +411,7 @@ impl DynamicTool {
         )
         .await;
         match outcome {
-            Ok(Outcome::ToolResult { result }) => {
+            Ok(Answered::ToolResult { result }) => {
                 context.accept_dispatch_result(published.take().unwrap_or_default());
                 result.into_result()
             }

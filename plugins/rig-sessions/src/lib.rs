@@ -1,19 +1,17 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`, and
-//! [`NameSession`] for a plugin naming any session. Each change of a
-//! conversation, title, label, model or listed value rewrites the
-//! session's listing in its store (rig-memory's [`SessionMeta`]: the title
-//! of its [`SessionTitle`], the [`ResumeLabel`]s plugins add, such as
-//! rig-telemetry's cost, the main agent's model and message count, the
-//! values plugins list with rig-harness's `saved_as(..).listed()`, and when
-//! it was updated), which `/resume` lists and a resumed session reads its
-//! title back from, as does a session rewritten through rig-memory
-//! (`RewriteSession`). `/resume` without arguments is the harness's native
-//! session picker ([`SessionPicker`]); with the default `tui` feature the
-//! terminal view's status line shows the session's name. Running another
-//! session is the launcher's job, so the agent stays one session per
-//! process: it names the next session in [`SessionDir::switch`] and exits
-//! with the reload code, as `/reload` does, and the launcher starts it in
-//! its own directory.
+//! [`NameSession`] for a plugin naming any session.
+//!
+//! The session's listing (rig-memory's [`SessionMeta`]) is rewritten on
+//! every change of a conversation, the [`SessionTitle`], a [`ResumeLabel`],
+//! the main agent's model or a value plugins list with rig-harness's
+//! `saved_as(..).listed()`. `/resume` lists sessions from it, and a resumed
+//! or rewritten (`RewriteSession`) session reads its title back from it.
+//! `/resume` with no argument opens the harness's [`SessionPicker`]. With
+//! the `tui` feature, the status line shows the session's name.
+//!
+//! The agent runs one session per process: switching names the next one in
+//! [`SessionDir::switch`] and exits with the reload code, and the launcher
+//! starts it in its own directory.
 
 use std::any::TypeId;
 use std::collections::BTreeMap;
@@ -29,22 +27,22 @@ use rig_core::serde_json;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::rig_memory::{SessionMeta, Versioned, main_order, title_of};
 
-use rig_ecs::WriteJournal;
+use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
-use rig_ecs::journal::{Committed, SessionRewritten, SessionStore};
 use rig_ecs::model::ModelChoice;
 use rig_ecs::prelude::{SavedKeys, SavedUpgrades, now_ms};
+use rig_ecs::session_log::{ConversationChanged, SessionRewritten, SessionStore};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
-use rig_harness::primary::primary_order;
 use rig_harness::sessions::SessionPicker;
 
 #[cfg(feature = "tui")]
 mod tui;
 
-/// `/new`, `/resume`, `/name`, and the listing cache written at the end of
-/// each turn.
+/// `/new`, `/resume` and `/name`, and the session's listing
+/// ([`SessionMeta`]), rewritten whenever a conversation, the title, a
+/// [`ResumeLabel`], a model or a listed value changes.
 #[derive(Default)]
 pub struct SessionsPlugin;
 
@@ -53,7 +51,6 @@ impl Plugin for SessionsPlugin {
         app.init_resource::<SessionTitle>()
             .init_resource::<Listed>()
             .init_resource::<ListedValues>()
-            .init_resource::<RigHome>()
             .add_command("new", "Start a new session; this one is kept", new)
             .add_command(
                 "resume",
@@ -74,7 +71,7 @@ impl Plugin for SessionsPlugin {
                     reread_title.run_if(on_message::<SessionRewritten>),
                     read_listed,
                     update_meta.run_if(
-                        on_message::<Committed>
+                        on_message::<ConversationChanged>
                             .or_eager(resource_changed::<SessionTitle>)
                             .or_eager(labels_changed)
                             .or_eager(models_changed)
@@ -82,7 +79,7 @@ impl Plugin for SessionsPlugin {
                     ),
                 )
                     .chain()
-                    .after(WriteJournal),
+                    .after(WriteLogs),
             )
             .add_systems(
                 Last,
@@ -131,7 +128,7 @@ impl SessionTitle {
 
 /// A part of this session's line in `/resume`, such as its goal: spawn
 /// one and keep its `text` current. It is written with the session's
-/// listing cache ([`SessionMeta::labels`]), so `/resume` shows it for sessions
+/// listing ([`SessionMeta::labels`]), so `/resume` shows it for sessions
 /// that are not running, after the title, by `tag`; an empty `text`, or
 /// Bevy's `Disabled` on the entity, leaves it out.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
@@ -174,7 +171,7 @@ pub struct NameSession {
     pub name: String,
 }
 
-/// What the session's listing cache holds, as last written or read back,
+/// What the session's listing holds, as last written or read back,
 /// its time left out: a title, label, model or listed value set to what it
 /// already says is no change, so resuming a session leaves its place in
 /// `/resume`.
@@ -290,7 +287,7 @@ fn listed_types(world: &World) -> Vec<ListedType> {
 }
 
 /// Reads the session's name from its directory and its title from its
-/// listing cache.
+/// listing.
 fn restore_title(
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     mut title: ResMut<SessionTitle>,
@@ -307,7 +304,7 @@ fn restore_title(
 }
 
 /// Reads the name and title back after the session was rewritten
-/// ([`SessionRewritten`]): the rewrite mapped the listing cache and the
+/// ([`SessionRewritten`]): the rewrite mapped the listing and the
 /// name file too, so the title in memory is not written back over them.
 fn reread_title(
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
@@ -336,7 +333,7 @@ fn models_changed(models: Query<(), (With<Agent>, Changed<ModelChoice>)>) -> boo
     !models.is_empty()
 }
 
-/// Rewrites the session's listing cache when a conversation changed, and
+/// Rewrites the session's listing when a conversation changed, and
 /// on a new name, label, model or listed value, once some agent logged a
 /// message; the first time, the title takes the start of the first message
 /// typed. The main agent's model and how many messages its line holds are
@@ -344,7 +341,7 @@ fn models_changed(models: Query<(), (With<Agent>, Changed<ModelChoice>)>) -> boo
 fn update_meta(
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     (mut title, mut listed): (ResMut<SessionTitle>, ResMut<Listed>),
-    mut committed: MessageReader<Committed>,
+    mut committed: MessageReader<ConversationChanged>,
     agents: Query<
         (
             &AgentId,
@@ -363,7 +360,7 @@ fn update_meta(
     // The agents the user started come first: the title is theirs, not a
     // spawned agent's.
     let mut agents: Vec<_> = agents.iter().collect();
-    agents.sort_by(|a, b| primary_order(a.2, a.0).cmp(&primary_order(b.2, b.0)));
+    agents.sort_by(|a, b| main_order(a.2, &a.0.0).cmp(&main_order(b.2, &b.0.0)));
     if title.typed.is_empty()
         && let Some(typed) = agents
             .iter()
@@ -387,7 +384,7 @@ fn update_meta(
                 .and_then(|(.., model)| model.map(|model| model.0.clone()))
                 .unwrap_or_default(),
             messages: main.map_or(0, |(_, conversation, ..)| conversation.messages().len()),
-            data: values.0.clone(),
+            listed: values.0.clone(),
         },
     );
     if !changed && *listed == now {

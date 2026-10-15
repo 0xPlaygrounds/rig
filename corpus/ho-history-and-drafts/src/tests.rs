@@ -11,13 +11,13 @@ use rig_tui::{Editor, MainEditor};
 
 use super::*;
 
-/// The kernel, the journal, the pickers' `Shown` and the plugin on
+/// The kernel, the journal, the pickers' `ShownAgent` and the plugin on
 /// `store`, with `RIG_HOME` at `home`, after the first frame.
 fn start(store: &MemoryStore, home: &Home) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(ProjectRoot(home.root().join("project")))
-        .add_plugins((AgentPlugin, JournalPlugin, PickPlugin, HistoryPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, PickPlugin, HistoryPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

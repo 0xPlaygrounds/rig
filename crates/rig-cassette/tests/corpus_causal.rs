@@ -292,7 +292,7 @@ fn a_refused_child_leaves_no_record() {
     for cell in [&SAME_KEY_SERIAL_REFUSED, &SAME_KEY_FROM_THREAD_REFUSED] {
         let log = corpus::golden(cell.fixture);
         assert_eq!(log.len(), 3, "{}", cell.fixture);
-        let Ok(rig_core::effect::Outcome::ToolResult { result, .. }) = &log[1].outcome else {
+        let Ok(rig_core::effect::Answered::ToolResult { result, .. }) = &log[1].outcome else {
             panic!("a tool result: {:?}", log[1].outcome);
         };
         assert_eq!(result.output().render(), "refused:Request");

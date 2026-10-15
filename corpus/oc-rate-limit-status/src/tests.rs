@@ -123,10 +123,15 @@ fn the_item_follows_the_providers_limits_and_the_model() {
 
     let home = scratch_home("oc-rate-limit-status");
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
-    app.add_plugins((AgentPlugin, JournalPlugin, TuiPlugin, RateLimitStatusPlugin))
-        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
-        .init_resource::<Ended>()
-        .add_observer(log_ended);
+    app.add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        TuiPlugin,
+        RateLimitStatusPlugin,
+    ))
+    .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+    .init_resource::<Ended>()
+    .add_observer(log_ended);
     collect::<Notice>(&mut app);
     let mut models = app.world_mut().resource_mut::<Models>();
     for (vendor, address) in [("deepseek", throttled), ("groq", silent)] {

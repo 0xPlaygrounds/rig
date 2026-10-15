@@ -20,11 +20,13 @@ use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
     Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnOutcome,
 };
-use rig_ecs::calls::{PollCalls, Wake};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
-use rig_ecs::model::{Effort, ModelChoice, Models};
+use rig_ecs::model::{ModelChoice, Models, ReasoningSetting};
 use rig_ecs::prelude::{Author, RequestId};
-use rig_ecs::stage::{AgentLoop, Effect, ForAgent, Outcome, Settled, SupersededBy};
+use rig_ecs::stage::{
+    AgentLoop, Effect, ForAgent, Outcome, Settled, despawn_open_children, follow_successor,
+};
+use rig_ecs::tasks::{PollTasks, Wake};
 use rig_ecs::tools::ToolRequest;
 
 /// The [`Harness`] resource and the jobs, replies and tool calls behind it.
@@ -35,12 +37,12 @@ impl Plugin for HarnessPlugin {
         app.init_resource::<Jobs>()
             .init_resource::<Replies>()
             .add_systems(PreStartup, insert_harness)
-            .add_systems(Update, run_jobs.before(PollCalls).before(AgentLoop))
+            .add_systems(Update, run_jobs.before(PollTasks).before(AgentLoop))
             .add_observer(end_replies)
             .add_observer(drop_replies)
             .add_observer(answer_call)
-            .add_observer(follow_successor)
-            .add_observer(end_with_call);
+            .add_observer(follow_successor::<HarnessCall>)
+            .add_observer(despawn_open_children::<HarnessCall>);
     }
 }
 
@@ -229,7 +231,10 @@ fn spawn_agent(
     let inherited = parent.map(|parent| {
         (
             world.get::<ModelChoice>(parent).cloned(),
-            world.get::<Effort>(parent).copied().unwrap_or_default(),
+            world
+                .get::<ReasoningSetting>(parent)
+                .copied()
+                .unwrap_or_default(),
             world.get::<SystemPrompt>(parent).cloned(),
             world.get::<ToolAccess>(parent).cloned(),
         )
@@ -420,37 +425,5 @@ fn answer_call(settled: On<Add<Settled>>, mut calls: Query<(&Outcome, &mut Harne
     };
     if let Some(answer) = call.0.take() {
         answer.send(Ok(outcome.tool_result())).ok();
-    }
-}
-
-/// Moves where a [`Harness`] tool call's result goes to its successor,
-/// when another plugin sends the call again, such as a watchdog.
-fn follow_successor(
-    superseded: On<Add<SupersededBy>>,
-    mut calls: Query<(&SupersededBy, &mut HarnessCall)>,
-    mut commands: Commands,
-) {
-    if let Ok((by, mut call)) = calls.get_mut(superseded.entity)
-        && let Some(answer) = call.0.take()
-    {
-        commands
-            .entity(by.successor())
-            .try_insert(HarnessCall(Some(answer)));
-    }
-}
-
-/// Ends the tool calls a call made through a [`Harness`] that are still
-/// open when it settles, such as one a gate holds when an interrupt ends
-/// the call: each is despawned, which records it as cancelled and ends
-/// whatever held it.
-fn end_with_call(
-    settled: On<Add<Settled>>,
-    children: Query<&Children>,
-    open: Query<(), (With<HarnessCall>, Without<Settled>)>,
-    mut commands: Commands,
-) {
-    let calls = children.get(settled.entity).into_iter().flatten();
-    for &call in calls.filter(|&&call| open.contains(call)) {
-        commands.entity(call).despawn();
     }
 }

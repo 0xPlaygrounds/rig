@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use rig_compaction::{AppCompactionExt, Compaction, CompactionPlugin, summary_author};
+use rig_compaction::{AppCompactionExt, CompactionKnobs, CompactionPlugin, summary_author};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::rig_memory::{CompactionOverrides, Cut};
 use rig_harness::settings::Settings;
@@ -24,7 +24,7 @@ fn start(
     app.insert_resource(Settings::from_toml(settings));
     app.add_plugins((
         AgentPlugin,
-        JournalPlugin,
+        SessionLogPlugin,
         CompactionPlugin,
         HistoryVersionsPlugin,
     ))
@@ -123,7 +123,7 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
     });
     app.world_mut()
         .entity_mut(agent)
-        .insert(Compaction(CompactionOverrides {
+        .insert(CompactionKnobs(CompactionOverrides {
             cut: Some(Cut::Named("keep-two-turns".to_owned())),
             ..CompactionOverrides::default()
         }));
@@ -188,7 +188,7 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
         hit
     });
     let by_redactor = Author::plugin("redact");
-    app.world_mut().trigger(RewriteSession {
+    app.world_mut().write_message(RewriteSession {
         by: by_redactor,
         with: Arc::new(with),
         asker: None,

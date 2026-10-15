@@ -29,10 +29,10 @@ use rig_tools::context::{Instructions, Limits};
 use rig_tools::workspace::Workspace;
 
 use rig_ecs::agent::{Agent, Notice, TurnOf};
-use rig_ecs::calls::{Running, Wake};
 use rig_ecs::prompt::{AgentSections, PromptSection, SectionOf};
 use rig_ecs::stage::{Admitted, AgentPass, HoldOf, PrepareSystems};
-use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
+use rig_ecs::tasks::{Running, Wake};
+use rig_ecs::turn::{ModelRequest, SideCall, TurnCall};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::services::{ProjectRoot, RigHome, WorkDir};
 use rig_harness::settings::AppSettingsExt;
@@ -101,8 +101,7 @@ pub struct ProjectContextPlugin;
 
 impl Plugin for ProjectContextPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<RigHome>()
-            .init_resource::<ProjectRoot>()
+        app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .add_setting::<ContextLimits>("context");
         let section = PromptSection::new(PromptSection::ORDER_PROJECT, PROJECT, "");
@@ -155,7 +154,7 @@ impl Plugin for ProjectContextPlugin {
 /// [`PrepareSystems::Compose`], so every plugin that edits the prompt sees
 /// it whole.
 fn default_prompt(
-    mut calls: Query<&mut ModelRequest, (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>)>,
+    mut calls: Query<&mut ModelRequest, (Added<Admitted>, Or<(With<TurnCall>, With<SideCall>)>)>,
 ) {
     for mut call in &mut calls {
         if let Some(prompt) = &mut call.prompt
@@ -414,7 +413,7 @@ fn read_files(
 /// Holds each model call built from an agent while the instruction files
 /// are read off the main thread, in [`PrepareSystems::Compose`].
 fn wait_for_instructions(
-    calls: Query<Entity, (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>)>,
+    calls: Query<Entity, (Added<Admitted>, Or<(With<TurnCall>, With<SideCall>)>)>,
     reading: Query<Entity, With<Reading>>,
     mut commands: Commands,
 ) {

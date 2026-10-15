@@ -1,16 +1,16 @@
 //! A conversation kept over time with rig-core and rig-memory alone, no
-//! model needed: it is saved and resumed, a window chooses what a request
-//! sends, and old tool outputs are cleared to free context.
+//! model needed: it is saved and resumed, a rule of recent messages
+//! chooses what a request sends, and old tool outputs are cleared to free context.
 //!
 //! ```sh
-//! cargo run -p rig-memory --example conversation_window_and_compaction
+//! cargo run -p rig-memory --example recent_messages_and_compaction
 //! ```
 
 use rig_core::completion::Message;
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName, UserContent,
 };
-use rig_memory::window::{LastMessages, TokenBudget, view};
+use rig_memory::recent::{LastMessages, TokenBudget, view};
 use rig_memory::{ClearToolOutputs, MemoryStore, load, save, summary_author};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -46,10 +46,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         conversation.messages().len()
     );
 
-    // What a request would send under two windows.
+    // What a request would send under two rules.
     let last = view(conversation.messages(), &LastMessages(5));
     let budget = view(conversation.messages(), &TokenBudget::new(2_000));
-    println!("the last 5 messages window keeps {}", last.len());
+    println!("the last 5 messages keep {}", last.len());
     println!("a 2,000-token budget keeps {}", budget.len());
 
     // Clearing old tool outputs is a recorded splice that keeps every id.

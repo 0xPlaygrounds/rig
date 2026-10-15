@@ -12,8 +12,8 @@ use rig_tools::fs::{read_json, write_json};
 use serde::{Deserialize, Serialize};
 
 use rig_ecs::agent::{Agent, SpawnedBy};
-use rig_ecs::journal::SessionRestored;
-use rig_ecs::model::{Effort, ModelChoice};
+use rig_ecs::model::{ModelChoice, ReasoningSetting};
+use rig_ecs::session_log::SessionRestored;
 
 /// Remembers the last chosen model and reasoning setting and gives them to
 /// an agent that starts without a model.
@@ -22,8 +22,7 @@ pub struct DefaultsPlugin;
 
 impl Plugin for DefaultsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<RigHome>()
-            .add_systems(PostStartup, apply_defaults)
+        app.add_systems(PostStartup, apply_defaults)
             .add_observer(remember.run_if(resource_exists::<SessionRestored>));
     }
 }
@@ -32,7 +31,7 @@ impl Plugin for DefaultsPlugin {
 struct Defaults {
     model: Option<ModelChoice>,
     #[serde(default)]
-    effort: Effort,
+    effort: ReasoningSetting,
 }
 
 impl Defaults {
@@ -80,8 +79,8 @@ fn apply_defaults(
 /// restored: restoring inserts them, which is not a choice. A failed log
 /// write does not stop it. Subagents are not remembered.
 fn remember(
-    chosen: On<Insert<(ModelChoice, Effort)>>,
-    agents: Query<(&ModelChoice, &Effort), Without<SpawnedBy>>,
+    chosen: On<Insert<(ModelChoice, ReasoningSetting)>>,
+    agents: Query<(&ModelChoice, &ReasoningSetting), Without<SpawnedBy>>,
     home: Res<RigHome>,
 ) {
     let Ok((model, effort)) = agents.get(chosen.entity) else {

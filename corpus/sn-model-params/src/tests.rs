@@ -48,7 +48,7 @@ fn start(
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(ProjectRoot(home.root().join("project")))
         .insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, ModelsPlugin, SubagentsPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ModelsPlugin, SubagentsPlugin))
         .add_plugins(ModelParamsPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -312,7 +312,12 @@ seed = 7
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(ProjectRoot(home.root().join("project")))
         .insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, ModelsPlugin, ModelParamsPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            ModelsPlugin,
+            ModelParamsPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);

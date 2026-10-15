@@ -69,7 +69,7 @@ fn app(
         .insert_resource(AppStart(reason))
         .insert_resource(TuiTestScreen::new(80, 30))
         .insert_resource(Settings::from_toml(&settings))
-        .add_plugins((AgentPlugin, JournalPlugin, AwayRecapPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, AwayRecapPlugin))
         .add_open_tool("edit", "Edit a file.", ToolOptions::default(), edited)
         .init_resource::<Ended>()
         .add_observer(log_ended)
@@ -179,7 +179,7 @@ fn a_resumed_session_is_recapped_beside_the_work() {
         "{shown}"
     );
     assert_eq!(saved_messages(&store), saved);
-    let state = Session::read(&store).map(|session| format!("{:?}", session.state));
+    let state = Session::read(&store).map(|session| format!("{:?}", session.saved));
     assert!(state.is_ok_and(|state| state.contains("Pending: run tests")));
     let agent = first_agent(resumed.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let live = resumed.world().get::<Conversation>(agent);

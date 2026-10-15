@@ -22,7 +22,7 @@ use super::*;
 
 /// The session recorded in `dir`, read as the app's stores read it.
 fn recorded_source(dir: &std::path::Path) -> io::Result<ReplaySource> {
-    let store = SessionStores::default().open(&SessionDir::at(dir))?;
+    let store = StoreOpener::default().open(&SessionDir::at(dir))?;
     ReplaySource::from_store(&*store, ReplayFlags::default())
 }
 
@@ -45,7 +45,7 @@ fn without_tools(mut calls: Query<&mut Adapters, Added<Admitted>>) {
 /// (when there is one) as [`without_tools`] adapts it.
 fn with_agents(app: &mut App, connection: Option<Connection>) {
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_systems(AgentPass, without_tools.in_set(Stage::Prepare))
         .add_tool_with(
             Write::default(),

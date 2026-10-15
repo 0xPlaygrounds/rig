@@ -2,8 +2,9 @@
 //! over by spawning a successor it is `SupersededBy`, such as a watchdog
 //! sending a stalled call again ([`resend`]): the old effect then settles
 //! as superseded, with no outcome applied. The plugin that owns the effect,
-//! and waits for its outcome by a marker of its own, follows it with
-//! [`follow_successor`], so the successor's outcome is the one it takes.
+//! and waits for its outcome by a marker of its own, follows it with the
+//! kernel's [`follow_successor`](rig_ecs::stage::follow_successor), so the
+//! successor's outcome is the one it takes.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -28,56 +29,21 @@
 
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::CallOf;
-use rig_ecs::stage::{Effect, EffectRequest, ForAgent, HoldOf, Settled, SupersededBy};
+use rig_ecs::stage::{Effect, EffectRequest, ForAgent, Settled, SupersededBy};
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
+use rig_ecs::turn::{ModelRequest, SideCall, TurnCall};
 
 use crate::load::ProvidedBy;
 
-/// When an effect carrying `M` is superseded, moves `M`, and the hold the
-/// effect keeps (`HoldOf`), to the successor, so the owner keeps its work.
-/// The successor's hold is inserted before the old one is removed, so the
-/// held effect is never unheld in between:
-/// `app.add_observer(follow_successor::<Summarizing>)`.
-pub fn follow_successor<M: Component>(
-    superseded: On<Add<SupersededBy>>,
-    owned: Query<(&SupersededBy, Option<&HoldOf>), With<M>>,
-    mut commands: Commands,
-) {
-    let old = superseded.entity;
-    let Ok((by, hold)) = owned.get(old) else {
-        return;
-    };
-    let new = by.successor();
-    let held = hold.map(|&HoldOf(held)| held);
-    commands.queue(move |world: &mut World| {
-        let Ok(mut to) = world.get_entity_mut(new) else {
-            return;
-        };
-        if let Some(held) = held {
-            to.insert(HoldOf(held));
-        }
-        let Ok(mut from) = world.get_entity_mut(old) else {
-            return;
-        };
-        let marker = from.take::<M>();
-        if held.is_some() {
-            from.remove::<HoldOf>();
-        }
-        if let (Some(marker), Ok(mut to)) = (marker, world.get_entity_mut(new)) {
-            to.insert(marker);
-        }
-    });
-}
-
 /// Sends `effect` again: spawns a successor that supersedes it, with its
 /// request, unless it settled or was superseded already. A [`TurnCall`]
-/// or [`BuildFrom`] is built anew by the kernel. A plugin's own
+/// or [`SideCall`] is built anew by the kernel. A plugin's own
 /// [`ModelRequest`], [`EffectRequest`] or [`ToolRequest`] is copied as it
 /// is now, with its Prepare edits (a model call's adapters, apart in
 /// `Adapters`, are pushed again in Prepare), and its [`Effect`] parent and
 /// purpose, `CallOf`, `ForAgent`, `ChildOf`, `ProvidedBy` and `Name`. The
-/// owner's markers follow by [`follow_successor`]: `commands.queue(resend(call))`.
+/// owner's markers follow by [`follow_successor`](rig_ecs::stage::follow_successor):
+/// `commands.queue(resend(call))`.
 pub fn resend(effect: Entity) -> impl Command {
     move |world: &mut World| {
         let Ok(old) = world.get_entity(effect) else {
@@ -89,10 +55,10 @@ pub fn resend(effect: Entity) -> impl Command {
         if old.contains::<Settled>() || old.contains::<SupersededBy>() {
             return;
         }
-        let mut again = Effect::child_of(was.parent);
+        let mut again = Effect::with_parent_id(was.parent);
         again.purpose.clone_from(&was.purpose);
         let turn_call = old.contains::<TurnCall>();
-        let build_from = old.get::<BuildFrom>().copied();
+        let build_from = old.get::<SideCall>().copied();
         let copied = if turn_call || build_from.is_some() {
             (None, None, None)
         } else {

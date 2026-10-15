@@ -41,7 +41,7 @@ impl Operation for Completion {
     type Event = StreamEvent;
     type End = Finish;
     type Response = CompletionResponse;
-    type Fold = Turn;
+    type Fold = ReplyFold;
     type Emit = Assembled;
 
     /// The call's span names the model the request overrides to, when it
@@ -81,13 +81,13 @@ impl Operation for Completion {
             origin.context =
                 replay.map(|target| crate::completion::history::context_of(request, target, model));
         }
-        Turn {
+        ReplyFold {
             span,
             facts: call.wire.facts.cloned().unwrap_or_default(),
             wire: replay.is_some_and(|target| target.states_finish_reason()),
             call_id_slot: replay.and_then(|target| target.call_id_slot()),
             accept_unknown_finish: request.accept_unknown_finish_reasons,
-            ..Turn::new(origin)
+            ..ReplyFold::new(origin)
         }
     }
 
@@ -246,7 +246,7 @@ pub enum Block {
 /// It is both sides of one reply: the writer state a decoder writes through
 /// (the open items by wire index) and the blocks the consumer has taken, in
 /// their position.
-pub struct Turn {
+pub struct ReplyFold {
     span: tracing::Span,
     /// Who the reply is from; the end adds the provider's model and id.
     origin: Origin,
@@ -487,7 +487,7 @@ fn stream_call(items: &mut Items, draft: &mut Draft) {
     }
 }
 
-impl Turn {
+impl ReplyFold {
     /// The writer of a reply from `origin`.
     pub(crate) fn new(origin: Origin) -> Self {
         Self {
@@ -657,7 +657,7 @@ impl Turn {
 
     /// The id a call closing now takes, and the provider item it keeps:
     /// `id`, or, when the provider sent none or one an earlier call of the
-    /// reply holds, a fresh rig-issued id (as pi issues). A renamed call
+    /// reply holds, a fresh rig-issued id. A renamed call
     /// keeps no item, since the item names the id it lost; a call sent with
     /// no id keeps its item only on a wire whose items have an id slot,
     /// which replay then fills with the id its result gets.
@@ -1271,7 +1271,7 @@ pub fn merge(item: &mut serde_json::Value, delta: &serde_json::Map<String, serde
     }
 }
 
-impl Fold<Completion> for Turn {
+impl Fold<Completion> for ReplyFold {
     fn absorb(&mut self, event: &StreamEvent) -> Result<(), ProviderError> {
         match event {
             StreamEvent::Start { part, .. } => {
@@ -1650,7 +1650,7 @@ impl<'id> Out<'id, Completion> {
 pub(crate) fn events_of(
     response: &CompletionResponse,
 ) -> Result<Vec<Item<StreamEvent>>, ProviderError> {
-    let mut turn = Turn::new(response.origin.clone());
+    let mut turn = ReplyFold::new(response.origin.clone());
     let mut items = Items::new();
     for content in &response.choice {
         turn.write_content(&mut items, content.clone())?;

@@ -21,7 +21,7 @@ struct Ran(Vec<String>);
 fn shown(app: &mut App) -> Option<String> {
     let world = app.world_mut();
     let entity = world
-        .query_filtered::<Entity, With<PickerState>>()
+        .query_filtered::<Entity, With<PickerInput>>()
         .single(world)
         .ok()?;
     let title = world
@@ -145,8 +145,8 @@ fn a_picker_filled_in_batches_keeps_what_is_typed_and_selected() {
     let more = batch(&["a.rs", "aa.rs", "b.rs", "c.md", "d.rs"]);
     app.world_mut().entity_mut(picker).insert(more);
     app.update();
-    let state = app.world().get::<PickerState>(picker);
-    assert_eq!(state.map(PickerState::filter), Some("rs"));
+    let state = app.world().get::<PickerInput>(picker);
+    assert_eq!(state.map(PickerInput::filter), Some("rs"));
     assert_eq!(highlighted(&app), Some(Highlighted(2)));
     press(&mut app, "enter");
     assert_eq!(
@@ -355,7 +355,7 @@ fn a_question_beside_the_work_leaves_the_keys_to_the_input() {
 
 #[test]
 fn the_item_highlighted_is_known_by_its_place_among_all_the_items() {
-    use crate::TuiInputState;
+    use crate::InputContext;
 
     let (mut app, _) = view_app();
     let picker = Picker::new("Branch")
@@ -366,7 +366,7 @@ fn the_item_highlighted_is_known_by_its_place_among_all_the_items() {
     // Shown in one frame, noted at the start of the next.
     app.update();
     app.update();
-    let selection = |app: &App| app.world().resource::<TuiInputState>().selection();
+    let selection = |app: &App| app.world().resource::<InputContext>().selection();
     assert_eq!(selection(&app), Some(0));
     press(&mut app, "down");
     assert_eq!(selection(&app), Some(1));
@@ -461,7 +461,7 @@ fn a_superseded_question_keeps_the_users_ticks() {
     app.update();
     let world = app.world_mut();
     let shown = world
-        .query_filtered::<Entity, With<PickerState>>()
+        .query_filtered::<Entity, With<PickerInput>>()
         .single(world);
     assert_eq!(shown.ok(), Some(new));
     press(&mut app, "enter");

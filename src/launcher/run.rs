@@ -1,20 +1,18 @@
-//! `rig`: build the agent before every start, then run it.
-//! [`RELOAD_EXIT_CODE`] restarts it on the staged build. A new build runs as this launcher's own trial
-//! and becomes the good build once it signals ready, in the launcher's
-//! [`RunDir`]; one that exits before that is rolled back to the last good
-//! build. Several launchers can share one `RIG_HOME`: building and staging
-//! take the root's lock, a `/reload` build and its trial are per session,
-//! and the ready file is per launcher.
+//! Running the agent. [`RELOAD_EXIT_CODE`] restarts it on the staged build;
+//! a new build is this launcher's trial until it signals ready in the
+//! launcher's [`RunDir`]. Several launchers can share one `RIG_HOME`:
+//! building and staging take the root's lock, a `/reload` build and its
+//! trial are per session, and the ready file is per launcher.
 //!
-//! `rig` starts a new session, and `rig --resume <id or name>` an earlier
-//! one, in the directory it ran in. The agent's `/new` and `/resume` leave a
-//! [`SessionDir::switch`] file and exit with the reload code; the launcher
-//! then runs that session instead, in its own directory. A session left
-//! without a message, by a clean quit or a switch, leaves no directory.
-//! Each start tells the agent why it started ([`StartReason`]).
+//! `rig` starts a new session, and `rig --resume <id or name>` an earlier one,
+//! in the directory it ran in. The agent's `/new` and `/resume` leave a
+//! [`SessionDir::switch`] file and exit with the reload code; the launcher then
+//! runs that session instead, in its own directory. A session left without a
+//! message, by a clean quit or a switch, leaves no directory. Each start tells
+//! the agent why it started ([`StartReason`]).
 //!
 //! The command line is read once the agent is built, against what its
-//! plugins add ([`Described::invocation`]), and the agent gets it in its
+//! plugins add ([`AgentDescription::invocation`]), and the agent gets it in its
 //! canonical form ([`Invocation`]). A plugin's command runs in a new
 //! session, or with `--resume` in that one, unless its front keeps no
 //! session, which the agent refuses. A headless run (`--print`, stdin piped
@@ -34,12 +32,12 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
 use rig::harness_protocol::{
-    Described, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SecretInfo, SessionDir, SessionId,
-    StartReason, env, secret_variable,
+    AgentDescription, DescribedSecret, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SessionDir,
+    SessionId, StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, Staging, child};
-use super::{Result, home};
+use super::{Result, locks};
 
 /// How often the launcher looks for the ready file while the agent runs.
 const POLL: Duration = Duration::from_millis(100);
@@ -74,11 +72,11 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     };
     let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
-        let _lock = home::lock(home)?;
+        let _lock = locks::hold_build_lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
-        home::sweep(home)?;
-        let run = home::hold_run(home)?;
+        locks::sweep(home)?;
+        let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
         let failure = rebuild(home, &claimed.id)?;
         let built = failure.as_ref().map(|failure| {
@@ -105,7 +103,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
                 return Ok(refused(&why));
             }
         };
-        let _lock = home::lock(home)?;
+        let _lock = locks::hold_build_lock(home)?;
         let (next, notice) = claim(home, start, here.as_deref())?;
         absent(fs::rename(
             home.staged_for(&claimed.id),
@@ -157,23 +155,23 @@ fn refused(why: &str) -> ExitCode {
 
 /// What the plugins of the build the launcher of `session` starts next add
 /// to the command line; nothing when there is no build or it cannot say.
-fn report(home: &Home, session: &SessionId) -> Described {
+fn report(home: &Home, session: &SessionId) -> AgentDescription {
     let Some(binary) = next_build(home, session) else {
-        return Described::default();
+        return AgentDescription::default();
     };
     build::described(home, &binary).unwrap_or_else(|failure| {
         eprintln!("warning: the agent build does not say what its plugins add: {failure}");
-        Described::default()
+        AgentDescription::default()
     })
 }
 
 /// The report of the build a new session starts with, as kept from its
 /// last build; `None` when it has none. It never builds.
-pub fn last_report(home: &Home) -> Option<Described> {
+pub fn last_report(home: &Home) -> Option<AgentDescription> {
     [home.staged(), home.good()]
         .into_iter()
         .find(|binary| binary.exists())
-        .and_then(|binary| build::kept_report(home, &binary))
+        .and_then(|binary| build::good_report(home, &binary))
 }
 
 /// The build the launcher of `session` starts next, as [`pick`] picks it,
@@ -398,7 +396,7 @@ fn take_switch(directory: &SessionDir) -> Result<Option<Start>> {
 /// A build `/reload` staged for it goes with the switch. When the target
 /// cannot be run, the current session carries on, told why.
 fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Option<String>)> {
-    let _lock = home::lock(home)?;
+    let _lock = locks::hold_build_lock(home)?;
     let here = current.directory.clone();
     match claim(home, target, here.as_deref()) {
         Ok((next, notice)) => {
@@ -463,14 +461,14 @@ impl Claimed {
 
 /// The session to run for `start` from the working directory `here`, held
 /// locked, and the line the agent shows about it. Call it holding
-/// [`home::lock`].
+/// [`locks::hold_build_lock`].
 fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Option<String>)> {
     let (id, lock, notice, reason) = match start {
         Start::Resume(id) => {
             if !home.session(&id).is_saved() {
                 return Err(format!("session {id} has no saved conversation").into());
             }
-            let lock = home::hold_session(home, &id)?
+            let lock = locks::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is open in another rig"))?;
             (
                 id,
@@ -481,7 +479,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
         }
         Start::New => {
             let (id, _) = home.new_session()?;
-            let lock = home::hold_session(home, &id)?
+            let lock = locks::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is already running"))?;
             (id, lock, None, StartReason::New)
         }
@@ -571,7 +569,7 @@ impl Drop for TypeAhead {
 /// answer; `None` when the user pressed Ctrl+C. The terminal reads byte by
 /// byte with its signals off, so Ctrl+C arrives as a byte and the mode is
 /// given back, echo included, whatever the answer.
-fn ask_secret(secret: &SecretInfo) -> Result<Option<String>> {
+fn ask_secret(secret: &DescribedSecret) -> Result<Option<String>> {
     let mut stderr = std::io::stderr();
     write!(stderr, "{} ({}): ", secret.help, secret.name)?;
     stderr.flush()?;

@@ -33,7 +33,7 @@ fn start(home: &Home, id: &SessionId, version: Version) -> (App, Receiver<()>, E
     let (mut app, wakes) = app_in(home, id);
     app.insert_resource(TuiTestScreen::new(100, 20));
     rig_harness_test_support::tui_view(&mut app);
-    app.add_plugins((AgentPlugin, JournalPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);
@@ -159,7 +159,7 @@ fn an_upgrade_reads_old_lists_and_a_downgrade_leaves_new_ones_alone() {
     run(&mut app, agent, "work add a");
     run(&mut app, agent, "work add b");
     say(&mut app, &wakes, agent, "Let's go.");
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut: ForkCut::Whole,
         ..ForkSession::default()
     });

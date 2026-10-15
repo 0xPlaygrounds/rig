@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_ecs::journal::JournalPlugin;
+use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::MemoryStore;
 
 use super::*;
@@ -19,7 +19,7 @@ fn session(
     app.set_error_handler(bevy_ecs::error::warn)
         .insert_resource(RigHome(home.clone()))
         .insert_resource(ProjectRoot(home.root().join("project")))
-        .add_plugins((AgentPlugin, JournalPlugin, LongTermMemoryPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, LongTermMemoryPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();

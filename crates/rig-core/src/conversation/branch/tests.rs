@@ -1,7 +1,7 @@
 use serde_json::json;
 
-use super::super::{Aside, AsideId, Author, Conversation, Halt, MessageKey, Recorded};
-use super::{ACTIVE, BRANCH, Branch, BranchError, LINE, MAIN, MergeAt, shared_prefix};
+use super::super::{Aside, AsideId, Author, ChangeRecord, Conversation, Halt, MessageKey};
+use super::{ACTIVE_TITLE, BRANCH, Branch, BranchError, LINE_VALUES, MAIN, MergeAt, shared_prefix};
 use crate::completion::Message;
 use crate::message::{AssistantContent, CallId, ToolName};
 
@@ -14,7 +14,7 @@ fn titles(conversation: &Conversation) -> Vec<String> {
     branches.map(|kept| kept.branch.title).collect()
 }
 
-fn fold(changes: &[Recorded]) -> Conversation {
+fn fold(changes: &[ChangeRecord]) -> Conversation {
     let mut folded = Conversation::new();
     for change in changes {
         let applied = folded.apply(change);
@@ -56,7 +56,7 @@ fn a_branch_switched_away_and_back_keeps_ids_made_times_and_asides() {
     assert_eq!(conversation.aside(rated), Some(&rating));
     assert_eq!(conversation.aside(first), None);
     assert_eq!(titles(&conversation), ["blue"]);
-    assert_eq!(conversation.branch_title(), MAIN);
+    assert_eq!(conversation.line_title(), MAIN);
 
     let second = conversation
         .branches()
@@ -72,7 +72,7 @@ fn a_branch_switched_away_and_back_keeps_ids_made_times_and_asides() {
     assert_eq!(keys(&conversation), blue);
     assert_eq!(conversation.aside(rated), None);
     assert_eq!(titles(&conversation), [MAIN]);
-    assert_eq!(conversation.branch_title(), "blue");
+    assert_eq!(conversation.line_title(), "blue");
 
     log.extend(conversation.take_unsaved());
     let folded = fold(&log);
@@ -163,7 +163,7 @@ fn a_branch_at_the_end_keeps_the_empty_line_it_leaves() {
     let left = conversation.branch_off(len, "try", by.clone());
     assert!(left.is_ok(), "{left:?}");
     assert_eq!(keys(&conversation), main, "nothing was taken out");
-    assert_eq!(conversation.branch_title(), "try");
+    assert_eq!(conversation.line_title(), "try");
     conversation.dated(2_000, |conversation| {
         conversation.push(Message::user("Try another way."));
     });
@@ -176,11 +176,11 @@ fn a_branch_at_the_end_keeps_the_empty_line_it_leaves() {
             .is_ok()
     );
     assert_eq!(keys(&conversation), main);
-    assert_eq!(conversation.branch_title(), MAIN);
+    assert_eq!(conversation.line_title(), MAIN);
     assert_eq!(titles(&conversation), ["try"]);
     let titled = conversation
         .asides()
-        .filter(|(_, aside)| aside.kind == ACTIVE);
+        .filter(|(_, aside)| aside.kind == ACTIVE_TITLE);
     assert_eq!(titled.count(), 0, "main needs no title aside");
 
     let tried_id = conversation.branches().first().map(|kept| kept.id);
@@ -200,11 +200,11 @@ fn a_branch_at_the_end_keeps_the_empty_line_it_leaves() {
     assert!(conversation.branch_off(1, "short", by).is_ok());
     let titled: Vec<_> = conversation
         .asides()
-        .filter(|(_, aside)| aside.kind == ACTIVE)
+        .filter(|(_, aside)| aside.kind == ACTIVE_TITLE)
         .collect();
     assert_eq!(titled.len(), 1);
     assert_eq!(titled.first().and_then(|(_, aside)| aside.after), None);
-    assert_eq!(conversation.branch_title(), "short");
+    assert_eq!(conversation.line_title(), "short");
 
     log.extend(conversation.take_unsaved());
     assert_eq!(fold(&log), conversation);
@@ -249,7 +249,7 @@ fn a_nested_branch_is_listed_and_reached_in_one_switch() {
     );
 
     assert!(conversation.switch_branch(main, by).is_ok());
-    assert_eq!(conversation.branch_title(), MAIN);
+    assert_eq!(conversation.line_title(), MAIN);
     assert_eq!(conversation.line(None), line);
     assert_eq!(titles(&conversation), ["c", "b"]);
     assert_eq!(conversation.line(Some(AsideId::default())), None);
@@ -308,7 +308,7 @@ fn a_line_value_goes_with_its_line_through_switches() {
     assert_eq!(conversation.line_values(), None);
     let lines = conversation
         .asides()
-        .filter(|(_, aside)| aside.kind == LINE);
+        .filter(|(_, aside)| aside.kind == LINE_VALUES);
     assert_eq!(lines.count(), 0, "an empty line keeps no aside");
 
     log.extend(conversation.take_unsaved());
@@ -384,11 +384,7 @@ fn a_range_moved_out_and_merged_back_is_where_it_was() {
         .collect();
     assert_eq!(listed, [(moved, 2, true, "aside")]);
     assert_eq!(rated.and_then(|rated| conversation.aside(rated)), None);
-    assert_eq!(
-        conversation.branch_title(),
-        MAIN,
-        "the line keeps its title"
-    );
+    assert_eq!(conversation.line_title(), MAIN, "the line keeps its title");
 
     let merged = conversation.merge_branch(moved, by);
     assert_eq!(merged.map(|spliced| spliced.restored.len()), Ok(3));
@@ -497,7 +493,7 @@ fn a_line_copied_out_merges_back_by_appending_or_where_it_was_moved_from() {
     let side = conversation.branches().first().map(|kept| kept.id);
     let line = conversation.line(side).unwrap_or_default();
     let copy = conversation.line_conversation(side, line.len());
-    assert_eq!(copy.as_ref().map(Conversation::branch_title), Some("side"));
+    assert_eq!(copy.as_ref().map(Conversation::line_title), Some("side"));
     let copied: Vec<_> = copy.as_ref().map(keys).unwrap_or_default();
     let line_keys: Vec<_> = line
         .iter()
@@ -513,7 +509,11 @@ fn a_line_copied_out_merges_back_by_appending_or_where_it_was_moved_from() {
         .iter()
         .flat_map(|copy| copy.asides().map(|(_, aside)| aside.kind.clone()))
         .collect();
-    assert_eq!(kinds, [ACTIVE, LINE, "rating"], "no branch on the way");
+    assert_eq!(
+        kinds,
+        [ACTIVE_TITLE, LINE_VALUES, "rating"],
+        "no branch on the way"
+    );
     let short = conversation.line_conversation(side, 3);
     assert_eq!(short.as_ref().and_then(Conversation::line_values), None);
     assert_eq!(

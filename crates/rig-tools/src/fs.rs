@@ -13,7 +13,7 @@ use rig_core::tool::{FileChange, FileState, Hunk, HunkLine, Lines, ToolExecution
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::workspace::{Contents, Local, Workspace};
+use crate::workspace::{Contents, Listing, Local, Stat, Workspace};
 
 /// Reads `path` as text after checking, without opening it, that it is a
 /// regular file of at most [`MAX_FILE_BYTES`](crate::MAX_FILE_BYTES):
@@ -185,6 +185,33 @@ pub fn io_error(path: &str, error: io::Error) -> ToolExecutionError {
         ErrorKind::PermissionDenied => ToolExecutionError::permission_denied(message),
         _ => ToolExecutionError::other(message),
     }
+}
+
+/// The files `workspace` lists under `root` ([`Workspace::files`]), for a
+/// tool to show: a missing `root` is a not-found error, so the model can tell
+/// a wrong path from an empty one, and a malformed glob is an
+/// invalid-arguments error.
+pub(crate) fn listed(
+    workspace: &dyn Workspace,
+    root: &Path,
+    glob: Option<&str>,
+    listing: Listing,
+) -> Result<Vec<PathBuf>, ToolExecutionError> {
+    let shown = root.to_string_lossy();
+    if workspace
+        .stat(root)
+        .map_err(|error| io_error(&shown, error))?
+        == Stat::Missing
+    {
+        let missing = io::Error::new(ErrorKind::NotFound, "no such file or directory");
+        return Err(io_error(&shown, missing));
+    }
+    workspace
+        .files(root, glob, listing)
+        .map_err(|error| match error.kind() {
+            ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
+            _ => io_error(&shown, error),
+        })
 }
 
 /// `path` as the file tools open it: made absolute against `base` (`None`:

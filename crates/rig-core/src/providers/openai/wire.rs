@@ -322,8 +322,7 @@ pub struct Quirks {
     /// their compatible spellings). Any other reason fails the turn.
     pub finishes: &'static [(&'static str, crate::completion::FinishReason)],
     /// The field rebuilt reasoning goes under, which every assistant message
-    /// then carries, empty when the turn has none (pi's
-    /// `requiresReasoningContentOnAssistantMessages`). `None` sends
+    /// then carries, empty when the turn has none. `None` sends
     /// reasoning only under the field it arrived in.
     pub reasoning_field: Option<&'static str>,
     /// Whether `completion_tokens_details.reasoning_tokens` can be trusted as

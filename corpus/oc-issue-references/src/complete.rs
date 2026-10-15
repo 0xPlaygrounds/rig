@@ -1,11 +1,11 @@
 //! `#` completion in the terminal view's input: a [`CompletionSource`] for
 //! the `#` marker whose candidates are the open issues, numbers listed
 //! with their titles, loaded in the background the first time the user
-//! types a `#` word ([`TuiInputState::typed`]).
+//! types a `#` word ([`InputContext::typed`]).
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_tui::{CompletionKind, CompletionSource, TuiInputState};
+use rig_tui::{CompletionKind, CompletionSource, InputContext};
 
 use crate::{Locate, State, load_open_issues};
 
@@ -46,14 +46,14 @@ fn offer_marker(mut commands: Commands) {
 
 /// Starts loading the open issues the first time a `#` word is typed.
 fn load_on_hash(
-    input: Option<Res<TuiInputState>>,
+    input: Option<Res<InputContext>>,
     mut open: ResMut<OpenIssues>,
     state: Res<State>,
     locate: Locate,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let typed = input.as_deref().and_then(TuiInputState::typed);
+    let typed = input.as_deref().and_then(InputContext::typed);
     if open.loading || !matches!(typed, Some((CompletionKind::Marker('#'), _))) {
         return;
     }

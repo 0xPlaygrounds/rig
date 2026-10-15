@@ -10,7 +10,7 @@ use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, collect, log_ended, reply, run_until, scripted_models,
     tui_view,
 };
-use rig_tui::{Focus, TuiTestScreen};
+use rig_tui::{ShowAgent, TuiTestScreen};
 use serde_json::json;
 
 use super::*;
@@ -82,7 +82,7 @@ fn app(
         }
     };
     app.insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, ReplyPrefillPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReplyPrefillPlugin))
         .add_systems(AgentPass, held.in_set(PrepareSystems::Edit))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
         .init_resource::<Ended>()
@@ -97,7 +97,7 @@ fn app(
     app.finish();
     app.cleanup();
     app.update();
-    app.world_mut().trigger(Focus { entity: agent });
+    app.world_mut().trigger(ShowAgent { entity: agent });
     (app, agent, wakes)
 }
 

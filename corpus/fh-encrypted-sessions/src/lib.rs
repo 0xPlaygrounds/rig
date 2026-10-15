@@ -29,7 +29,7 @@ use std::sync::{Arc, OnceLock};
 
 use rig_harness::harness_protocol::{Home, SessionDir, secret_variable};
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{DirStore, LoadError};
+use rig_harness::rig_memory::{DirStore, SessionError};
 use serde::Deserialize;
 
 mod reseal;
@@ -164,7 +164,7 @@ impl Vault {
     }
 
     /// The store of the session in `dir`.
-    fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, LoadError> {
+    fn open(&self, dir: &SessionDir) -> Result<Arc<dyn Store>, SessionError> {
         let config = self.0.config.clone().map_err(io::Error::other)?;
         let plain = Arc::new(DirStore::open(dir.path())?);
         let sealed = match Sealing::of(&*plain)? {
@@ -230,7 +230,7 @@ impl Plugin for EncryptedSessionsPlugin {
             key: OnceLock::new(),
         }));
         let opening = vault.clone();
-        app.insert_resource(SessionStores::new(move |dir| opening.open(dir)))
+        app.insert_resource(StoreOpener::new(move |dir| opening.open(dir)))
             .insert_resource(vault);
         if seals {
             app.insert_resource(Scratch(None));

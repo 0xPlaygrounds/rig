@@ -36,7 +36,7 @@ fn start(
         .insert_resource(Models(Connector::new(Catalog::default())))
         .add_plugins((
             AgentPlugin,
-            JournalPlugin,
+            SessionLogPlugin,
             EditTool,
             ShellTool,
             CompactionPlugin,
@@ -235,7 +235,7 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_follow_forks() {
     let cut = fork_at.map_or(ForkCut::Whole, |at| {
         ForkCut::Before(AgentId("main".to_owned()), at)
     });
-    app.world_mut().trigger(ForkSession {
+    app.world_mut().write_message(ForkSession {
         cut,
         ..ForkSession::default()
     });

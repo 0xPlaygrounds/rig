@@ -44,7 +44,7 @@ impl PortableTool for Read {
 fn start(store: &MemoryStore, runs: &Arc<AtomicUsize>) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin, LoopBreakerPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin, LoopBreakerPlugin))
         .add_tool(Read(runs.clone()))
         .init_resource::<Ended>()
         .add_observer(log_ended)
