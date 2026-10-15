@@ -990,8 +990,20 @@ impl AgentRun {
                     self.next_step()
                 } else {
                     // Accept schema-compatible JSON text without requiring a tool call;
-                    // other nonempty answers may consume an output retry.
-                    if let Some(output_tool_name) = policy.output_tool()
+                    // other nonempty answers may consume an output retry. So may a
+                    // native answer whose schema the provider never received.
+                    let reprompt = if let Some(output_tool_name) = policy.output_tool() {
+                        Some(structured_output::reprompt_text_answer(output_tool_name))
+                    } else if policy.unenforced_schema() {
+                        self.output_schema.as_ref().map(|schema| {
+                            structured_output::reprompt_unstructured_answer(
+                                &rig_core::json_utils::to_canonical_string(schema),
+                            )
+                        })
+                    } else {
+                        None
+                    };
+                    if let Some(reprompt) = reprompt
                         && !items.iter().all(AssistantContent::is_blank)
                         && self.can_reprompt_for_output()
                         && !structured_output::text_satisfies_schema(
@@ -999,9 +1011,7 @@ impl AgentRun {
                             &choice_text(&items),
                         )
                     {
-                        self.history.commit([Message::user(
-                            structured_output::reprompt_text_answer(output_tool_name),
-                        )]);
+                        self.history.commit([Message::user(reprompt)]);
                         return self.reprompt_for_output();
                     }
 

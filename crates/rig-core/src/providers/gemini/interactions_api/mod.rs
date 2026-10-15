@@ -14,7 +14,7 @@
 use serde_json::{Map, Value, json};
 use url::form_urlencoded;
 
-use crate::completion::{CompletionRequest, Media, Replay, ReplayTarget};
+use crate::completion::{CompletionRequest, Media, ProviderCapabilities, Replay, ReplayTarget};
 use crate::error::EncodeError;
 use crate::message::{
     AssistantContent, DocumentData, DocumentMediaType, DocumentSourceKind as Source, Message,
@@ -22,7 +22,7 @@ use crate::message::{
 };
 use crate::providers::internal::wire_ids::WireIds;
 use crate::telemetry::GenAiOperation;
-use crate::wire::{Descriptor, Mode};
+use crate::wire::{Capabilities, Descriptor, Mode};
 
 /// Streaming helpers for the Interactions API.
 pub mod streaming;
@@ -71,10 +71,14 @@ impl crate::wire::Wire for Interactions {
     type Decoder<'id> = streaming::InteractionsDecoder;
     type Reassembler = streaming::document::Interaction;
 
+    /// This wire does not map `output_schema` onto the request.
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
             .facts(&self.facts)
+            .capabilities(Capabilities::completion(
+                ProviderCapabilities::default().with_output_schema_dropped(true),
+            ))
             .telemetry(|_| GenAiOperation::Chat)
             .replay(self)
     }

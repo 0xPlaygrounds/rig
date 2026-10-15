@@ -686,18 +686,21 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
 
     // Mistral's fixed-width model is the same mechanism with a different
     // table: 1024 reported, and no `output_dimension` on the wire.
-    let mistral = OpenAIConfig::with_key(&MISTRAL, "k").embedding(MISTRAL_EMBED, None);
-    assert_eq!(mistral.describe().capabilities.ndims, 1_024);
-    let encoded = mistral
-        .encode(documents(), Mode::Unary)
-        .expect("the native width encodes");
-    assert!(
-        json_body(&encoded.request)
-            .get("output_dimension")
-            .is_none(),
-        "{}",
-        json_body(&encoded.request)
-    );
+    // Codestral Embed's default is reported too, and is not sent.
+    for (model, ndims) in [(MISTRAL_EMBED, 1_024), (CODESTRAL_EMBED, 1_536)] {
+        let mistral = OpenAIConfig::with_key(&MISTRAL, "k").embedding(model, None);
+        assert_eq!(mistral.describe().capabilities.ndims, ndims, "{model}");
+        let encoded = mistral
+            .encode(documents(), Mode::Unary)
+            .expect("the native width encodes");
+        assert!(
+            json_body(&encoded.request)
+                .get("output_dimension")
+                .is_none(),
+            "{}",
+            json_body(&encoded.request)
+        );
+    }
 }
 
 /// A width the dialect cannot honour is refused before the request is built.

@@ -8,7 +8,8 @@
           "family": "completion",
           "model": "default",
           "capabilities": {
-            "composes_native_output_with_tools": true
+            "composes_native_output_with_tools": true,
+            "defers_output_schema_with_tools": true
           }
         }
       },

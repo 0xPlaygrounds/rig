@@ -408,8 +408,8 @@ cargo test -p rig-cassette --all-features --test gemini \
 Record mode scrubs and safety-checks cassette contents before writing fixtures,
 and the committed cassette safety tests enforce the same scrubbed form during
 normal test runs. Scrubbing removes credentials (API keys, bearer tokens,
-cookies, OAuth tokens, SigV4 material), AWS account numbers in ARNs and
-home-directory paths, drops response headers outside a small allowlist, and
+cookies, OAuth tokens, SigV4 material), AWS account numbers in ARNs, account
+team ids a provider quotes (`team_REDACTED_<n>`) and home-directory paths, drops response headers outside a small allowlist, and
 normalizes volatile timestamps. Everything else the provider sent is recorded
 verbatim:
 thinking signatures, encrypted and redacted reasoning, tool-call and response
@@ -758,8 +758,8 @@ with caching off as the baseline.
   tokens.
 
 To add a provider, give `CacheWire` a variant with its reader (the call path, the usage fields,
-the first user message), add a `with_<provider>_long_run_cassette` wrapper and register it
-with the cassette-safety scan, and record one 100-turn fixture and its baseline.
+the first user message), add a `with_<provider>_long_run_cassette` wrapper (the cassette-safety
+scan finds it by name), and record one 100-turn fixture and its baseline.
 Rates come from the provider's price page, quoted with the date. Thresholds are placeholders
 until a first recording confirms them; never loosen one to make a recording pass. Record with:
 

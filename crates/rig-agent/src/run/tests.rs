@@ -883,6 +883,58 @@ fn a_text_answer_is_not_reprompted_for_an_output_tool_the_turn_did_not_advertise
     assert_eq!(response.output(), "plain prose");
 }
 
+/// A native answer from a provider that never received the schema is
+/// checked against it: prose is reprompted once with the schema, and the
+/// run settles on its last answer once the output budget is spent. With the
+/// schema enforced on the wire, the same prose is the answer.
+#[test]
+fn a_native_answer_the_provider_never_constrained_is_checked_against_the_schema() {
+    let schema = json!({"type": "object", "required": ["answer"]});
+    let unenforced = |text: &str| {
+        let mut turn = text_turn(text);
+        turn.policy = std::mem::take(&mut turn.policy).with_unenforced_schema(true);
+        turn
+    };
+
+    let mut run = AgentRun::new("what is six times seven?")
+        .max_turns(4)
+        .with_output_validation(Some(schema.clone()), 1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(unenforced("forty two, roughly"))
+            .expect("model_response should succeed"),
+    );
+    let (prompt, _, turn) = expect_call_model(&mut run);
+    assert_eq!(turn, 2);
+    let prompt_json = serde_json::to_string(&prompt).expect("prompt should serialize");
+    assert!(prompt_json.contains("JSON Schema"), "{prompt_json}");
+    expect_continue(
+        run.model_response(unenforced("still prose"))
+            .expect("model_response should succeed"),
+    );
+    assert_eq!(expect_done(&mut run).output(), "still prose");
+
+    let mut run = AgentRun::new("what is six times seven?")
+        .max_turns(4)
+        .with_output_validation(Some(schema.clone()), 1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(unenforced(r#"{"answer": 42}"#))
+            .expect("model_response should succeed"),
+    );
+    assert_eq!(expect_done(&mut run).output(), r#"{"answer": 42}"#);
+
+    let mut run = AgentRun::new("what is six times seven?")
+        .max_turns(4)
+        .with_output_validation(Some(schema), 1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(text_turn("forty two, roughly"))
+            .expect("model_response should succeed"),
+    );
+    assert_eq!(expect_done(&mut run).output(), "forty two, roughly");
+}
+
 /// A skipped call to the pinned output tool on a turn whose policy does not
 /// name it is an ordinary skipped call, not the run's answer.
 #[test]

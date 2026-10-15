@@ -1,0 +1,18 @@
+when:
+  path: /v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=19560e50d23f9645-1b6c7897c7a1fb39-61a9c620055ec7d9-cb400fda38b3ea4b
+  body: null
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a13f09-b413-7295-bf98-cb793bbe81ee
+  body: '{"code":"1500","message":"Invalid model: voxtral-small-latest","object":"error","param":null,"raw_status_code":400,"type":"invalid_model"}'

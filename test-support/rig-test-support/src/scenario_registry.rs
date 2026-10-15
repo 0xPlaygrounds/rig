@@ -17,11 +17,8 @@ pub enum ScenarioError {
 
 /// Collect recorded scenarios, excluding ignored functions and matrix rows.
 /// Direct calls retain support for literal `CassetteSpec` builder expressions.
-pub fn cassette_scenarios(
-    source: &str,
-    wrapper_names: &[&'static str],
-) -> Result<Vec<String>, ScenarioError> {
-    Ok(cassette_scenario_sites(source, wrapper_names)?
+pub fn cassette_scenarios(source: &str) -> Result<Vec<String>, ScenarioError> {
+    Ok(cassette_scenario_sites(source)?
         .into_iter()
         .map(|site| site.scenario)
         .collect())
@@ -39,15 +36,19 @@ pub struct ScenarioSite {
     pub declared: Vec<String>,
 }
 
+/// Whether `name` is a cassette wrapper by convention: it starts with `with_`
+/// and contains `cassette`, and its first argument is the scenario.
+pub fn is_cassette_wrapper_name(name: &str) -> bool {
+    name.starts_with("with_") && name.contains("cassette")
+}
+
 /// Like [`cassette_scenarios`], keeping each scenario's wrapper and the
-/// account failures its spec declares.
-pub fn cassette_scenario_sites(
-    source: &str,
-    wrapper_names: &[&'static str],
-) -> Result<Vec<ScenarioSite>, ScenarioError> {
+/// account failures its spec declares. Every call to a function named by
+/// [`is_cassette_wrapper_name`] is a wrapper call, except inside such a
+/// function, whose body forwards its scenario to another wrapper.
+pub fn cassette_scenario_sites(source: &str) -> Result<Vec<ScenarioSite>, ScenarioError> {
     let syntax = syn::parse_file(source)?;
     let mut visitor = CassetteScenarioVisitor {
-        wrapper_names,
         scenarios: Vec::new(),
         failures: Vec::new(),
     };
@@ -59,10 +60,12 @@ pub fn cassette_scenario_sites(
     }
 }
 
-/// The functions in `source` that declare account failures on their
-/// cassette session, with what they declare: a call to
+/// Every free function and impl method in `source`, in source order, with
+/// the account failures it declares on its cassette session: a call to
 /// `expect_account_failure(AccountFailure::X)` declares `X`, and a call to
-/// `bogus_api_key()` declares `Auth`.
+/// `bogus_api_key()` declares `Auth`. A function that declares nothing is
+/// listed with none, so a caller can tell a same-named helper that declares
+/// nothing from one that is absent.
 pub fn declaring_functions(source: &str) -> Result<Vec<(String, Vec<String>)>, ScenarioError> {
     let syntax = syn::parse_file(source)?;
     let mut visitor = DeclaringVisitor::default();
@@ -76,17 +79,29 @@ struct DeclaringVisitor {
     current: Option<(String, Vec<String>)>,
 }
 
+impl DeclaringVisitor {
+    fn enter(&mut self, name: &syn::Ident) -> Option<(String, Vec<String>)> {
+        self.current.replace((name.to_string(), Vec::new()))
+    }
+
+    fn leave(&mut self, outer: Option<(String, Vec<String>)>) {
+        if let Some(function) = std::mem::replace(&mut self.current, outer) {
+            self.functions.push(function);
+        }
+    }
+}
+
 impl<'ast> Visit<'ast> for DeclaringVisitor {
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        let outer = self
-            .current
-            .replace((node.sig.ident.to_string(), Vec::new()));
+        let outer = self.enter(&node.sig.ident);
         visit::visit_item_fn(self, node);
-        if let Some((name, declared)) = std::mem::replace(&mut self.current, outer)
-            && !declared.is_empty()
-        {
-            self.functions.push((name, declared));
-        }
+        self.leave(outer);
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        let outer = self.enter(&node.sig.ident);
+        visit::visit_impl_item_fn(self, node);
+        self.leave(outer);
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
@@ -101,6 +116,33 @@ impl<'ast> Visit<'ast> for DeclaringVisitor {
             list.push(declared);
         }
         visit::visit_expr_method_call(self, node);
+    }
+}
+
+/// The account failures a call from `caller` to a helper declares, given
+/// every definition of that helper name as (file, declared failures): the
+/// definitions in the calling file when there are any, else all of them,
+/// provided they agree. Same-named helpers are never merged. Errors name the
+/// files of the disagreeing definitions: the call cannot be resolved
+/// without a module path.
+pub fn wrapper_declarations<'a>(
+    definitions: &'a [(std::path::PathBuf, std::collections::BTreeSet<String>)],
+    caller: &std::path::Path,
+) -> Result<std::collections::BTreeSet<String>, Vec<&'a std::path::Path>> {
+    let local: Vec<_> = definitions
+        .iter()
+        .filter(|(file, _)| file == caller)
+        .collect();
+    let candidates: Vec<_> = if local.is_empty() {
+        definitions.iter().collect()
+    } else {
+        local
+    };
+    let mut distinct = candidates.iter().map(|(_, declared)| declared);
+    match distinct.next() {
+        None => Ok(std::collections::BTreeSet::new()),
+        Some(first) if distinct.all(|declared| declared == first) => Ok(first.clone()),
+        Some(_) => Err(candidates.iter().map(|(file, _)| file.as_path()).collect()),
     }
 }
 
@@ -131,19 +173,18 @@ fn spec_declarations(expr: &Expr) -> Vec<String> {
     }
 }
 
-struct CassetteScenarioVisitor<'a> {
-    wrapper_names: &'a [&'static str],
+struct CassetteScenarioVisitor {
     scenarios: Vec<ScenarioSite>,
     failures: Vec<String>,
 }
 
-impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
+impl<'ast> Visit<'ast> for CassetteScenarioVisitor {
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
         match matrix_registry::Matrix::of(node).transpose() {
             Ok(matrix) => {
                 if let Some((wrapper, scenarios)) =
                     matrix.and_then(matrix_registry::Matrix::recorded)
-                    && self.wrapper_names.contains(&wrapper.as_str())
+                    && is_cassette_wrapper_name(&wrapper)
                 {
                     self.scenarios
                         .extend(scenarios.into_iter().map(|scenario| ScenarioSite {
@@ -165,13 +206,17 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
         if node.attrs.iter().any(|attr| attr.path().is_ident("ignore")) {
             return;
         }
+        // A wrapper's own body forwards its scenario; it is not a call site.
+        if is_cassette_wrapper_name(&node.sig.ident.to_string()) {
+            return;
+        }
 
         visit::visit_item_fn(self, node);
     }
 
     fn visit_expr_call(&mut self, node: &'ast ExprCall) {
         if let Some(wrapper_name) = cassette_wrapper_name(node)
-            && self.wrapper_names.contains(&wrapper_name.as_str())
+            && is_cassette_wrapper_name(&wrapper_name)
         {
             match node.args.first() {
                 Some(expr) => match cassette_scenario_value(expr) {

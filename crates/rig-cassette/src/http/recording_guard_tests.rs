@@ -344,3 +344,148 @@ fn the_attempt_root_is_in_the_target_directory_the_binary_was_built_in() {
     );
     assert_eq!(target_dir_of(Path::new("/usr/local/bin/tool")), None);
 }
+
+/// A streamed Responses reply: the creation event names the stored response.
+const CREATED_STREAM: &str = "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_direct\"}}\n\n\
+event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_direct\"}}\n\n";
+
+fn openai_direct_recorder(ledger: &Path) -> DirectRecorder {
+    DirectRecorder {
+        interactions: Arc::new(Mutex::new(Vec::new())),
+        ledger: Arc::new(relay::LedgerTarget {
+            path: ledger.to_path_buf(),
+            provider: "openai".to_owned(),
+            scenario: "direct/stream".to_owned(),
+            origin: "https://api.openai.com".to_owned(),
+        }),
+    }
+}
+
+fn tap(ledger: &Path) -> LedgerTap {
+    LedgerTap {
+        stream: Box::pin(futures::stream::empty()),
+        recorder: openai_direct_recorder(ledger),
+        method: "POST".to_owned(),
+        uri: "https://api.openai.com/v1/responses".to_owned(),
+        request_body: Bytes::from_static(b"{}"),
+        status: 200,
+        sse: true,
+        pending: Vec::new(),
+    }
+}
+
+fn ledger_ids(ledger: &Path) -> Vec<String> {
+    ledger::outstanding(ledger)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect()
+}
+
+/// The ledger ids seen as each chunk of a streamed reply reaches the caller.
+async fn ids_per_chunk(ledger: &Path, request_body: &'static str) -> Vec<Vec<String>> {
+    use futures::StreamExt as _;
+
+    let stub = httpmock::MockServer::start_async().await;
+    stub.mock_async(|when, then| {
+        when.method("POST").path("/v1/responses");
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(CREATED_STREAM);
+    })
+    .await;
+    let client = DirectRecordingHttpClient::new(Some(openai_direct_recorder(ledger)));
+    let request = HttpRequest::builder()
+        .method("POST")
+        .uri(format!("{}/v1/responses", stub.base_url()))
+        .body(Bytes::from_static(request_body.as_bytes()))
+        .expect("request");
+    let mut stream = client
+        .send_streaming(request)
+        .await
+        .expect("stream opens")
+        .into_body();
+    let mut seen = Vec::new();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        body.extend_from_slice(&chunk.expect("chunk"));
+        seen.push(ledger_ids(ledger));
+    }
+    assert_eq!(
+        body,
+        CREATED_STREAM.as_bytes(),
+        "the reply passes through whole"
+    );
+    seen
+}
+
+#[tokio::test]
+async fn the_direct_path_logs_a_streamed_creation_before_the_caller_reads_it() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let seen = ids_per_chunk(&ledger_path, "{}").await;
+    assert!(!seen.is_empty());
+    for (index, ids) in seen.iter().enumerate() {
+        assert_eq!(ids, &["resp_direct"], "chunk {index}");
+    }
+
+    // `store: false` creates nothing, streamed or not.
+    let stateless = dir.path().join("stateless.jsonl");
+    let seen = ids_per_chunk(&stateless, r#"{"store":false}"#).await;
+    assert!(seen.iter().all(Vec::is_empty), "{seen:?}");
+}
+
+#[test]
+fn a_streamed_event_is_logged_when_its_last_byte_arrives() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let mut tap = tap(&ledger_path);
+    // CRLF-delimited, so every terminator spans several one-byte chunks.
+    let crlf = CREATED_STREAM.replace('\n', "\r\n");
+    let first_event_end = crlf.find("\r\n\r\n").expect("an event") + 4;
+    for (index, byte) in crlf.bytes().enumerate() {
+        tap.feed(&[byte]);
+        let logged = !ledger_ids(&ledger_path).is_empty();
+        assert_eq!(logged, index + 1 >= first_event_end, "byte {index}");
+    }
+    assert!(tap.pending.is_empty(), "every complete event was consumed");
+}
+
+#[test]
+fn a_stream_dropped_before_its_end_still_logs_what_it_held() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    // A JSON (not SSE) reply is checked once complete; the caller read all
+    // of it but dropped the stream before polling its end.
+    let mut tap = tap(&ledger_path);
+    tap.sse = false;
+    // A blank line inside a JSON body does not end an event.
+    tap.feed(b"{\n\n\"id\":\"resp_dropped\",\"object\":\"response\"}");
+    assert!(ledger_ids(&ledger_path).is_empty());
+    drop(tap);
+    assert_eq!(ledger_ids(&ledger_path), ["resp_dropped"]);
+}
+
+#[test]
+fn every_stream_but_a_known_binary_one_is_tapped() {
+    let headers = |content_type: &str| {
+        let mut headers = http_client::HeaderMap::new();
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_str(content_type).expect("header"),
+        );
+        headers
+    };
+    assert!(LedgerTap::taps(&headers(
+        "text/event-stream; charset=utf-8"
+    )));
+    assert!(LedgerTap::taps(&headers("application/json")));
+    assert!(LedgerTap::taps(&http_client::HeaderMap::new()));
+    for binary in [
+        "audio/mpeg",
+        "image/png",
+        "video/mp4",
+        "application/octet-stream",
+    ] {
+        assert!(!LedgerTap::taps(&headers(binary)), "{binary}");
+    }
+}

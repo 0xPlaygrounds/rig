@@ -124,6 +124,80 @@ then:
 ---
 provider: xai
 encoder: POST /v1/responses
+shape: 070e6a2bb65fbc6c
+calls: []
+ends:
+- completed
+- in_progress
+source: xai/request_identity_matrix/responses.yaml#1
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: 964de88e-ad86-9a59-a0cd-46d806dde5d1
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"964de88e-ad86-9a59-a0cd-46d806dde5d1","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"964de88e-ad86-9a59-a0cd-46d806dde5d1","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The user requested the","item_id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" exact phrase \"stream","item_id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" identity probe\".","item_id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","output_index":0,"sequence_number":7,"summary_index":0,"text":"The user requested the exact phrase \"stream identity probe\".","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","output_index":0,"part":{"text":"The user requested the exact phrase \"stream identity probe\".","type":"summary_text"},"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","status":"completed","summary":[{"text":"The user requested the exact phrase \"stream identity probe\".","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":10,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":11,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"stream","item_id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","logprobs":[],"output_index":1,"sequence_number":12,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" identity","item_id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","logprobs":[],"output_index":1,"sequence_number":13,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" probe","item_id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","logprobs":[],"output_index":1,"sequence_number":14,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","logprobs":[],"output_index":1,"sequence_number":15,"text":"stream identity probe","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"},"sequence_number":16,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"}],"id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":17,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"964de88e-ad86-9a59-a0cd-46d806dde5d1","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_964de88e-ad86-9a59-a0cd-46d806dde5d1","status":"completed","summary":[{"text":"The user requested the exact phrase \"stream identity probe\".","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"}],"id":"msg_964de88e-ad86-9a59-a0cd-46d806dde5d1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":199,"output_tokens":348},"cost_in_usd_ticks":9668500,"input_tokens":199,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":341,"output_tokens_details":{"reasoning_tokens":338},"total_tokens":540},"user":null},"sequence_number":18,"type":"response.completed"}
+
+---
+provider: xai
+encoder: POST /v1/responses
 shape: 102b2f029f30afc0
 calls: []
 ends:
@@ -200,6 +274,23 @@ then:
 ---
 provider: xai
 encoder: POST /v1/responses
+shape: 1ca3ee325de34285
+calls:
+- subtract
+ends:
+- completed
+source: xai/tools/tools_smoke.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: ab4ae815-e78d-95a3-b60c-646a30b52eb0
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"ab4ae815-e78d-95a3-b60c-646a30b52eb0","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_ab4ae815-e78d-95a3-b60c-646a30b52eb0","status":"completed","summary":[{"text":"Calculating 2 minus 5.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"x\":2.0,\"y\":5.0}","call_id":"call-a7977ae7-2a0a-472f-bd83-921477c6b3b3-0","id":"fc_ab4ae815-e78d-95a3-b60c-646a30b52eb0_0","name":"subtract","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"},{"description":"Subtract y from x (that is, x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":412,"output_tokens":148},"cost_in_usd_ticks":7406000,"input_tokens":412,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":144,"output_tokens_details":{"reasoning_tokens":131},"total_tokens":556},"user":null}'
+---
+provider: xai
+encoder: POST /v1/responses
 shape: 1ebd978794265fa1
 calls: []
 ends:
@@ -244,8 +335,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 584c58c5-68c9-9e44-b68a-a57760590e4e
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"584c58c5-68c9-9e44-b68a-a57760590e4e","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_584c58c5-68c9-9e44-b68a-a57760590e4e","status":"completed","summary":[{"text":"Extracting topics from the text about Grace and her dog.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"topics\":[\"rainy weather\",\"dog walking\",\"park visit\",\"personal preferences\"]}","call_id":"call-23577919-f744-4d95-8d37-036308e0e20c-0","id":"fc_584c58c5-68c9-9e44-b68a-a57760590e4e_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":400,"output_tokens":363},"cost_in_usd_ticks":11959000,"input_tokens":400,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":359,"output_tokens_details":{"reasoning_tokens":334},"total_tokens":759},"user":null}'
+    value: c9710f75-ed63-9024-8ed2-3155e63c1865
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"c9710f75-ed63-9024-8ed2-3155e63c1865","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_c9710f75-ed63-9024-8ed2-3155e63c1865","status":"completed","summary":[{"text":"Extracting topics from the text about Linus buying milk and bread for dinner.\n\nIdentifying topics like shopping, food, and dinner. Preparing to call the submit function with the extracted topics.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"topics\":[\"shopping\",\"groceries\",\"dinner\"]}","call_id":"call-9898c81e-1ea7-4f25-aa5e-ef5f0958ed64-0","id":"fc_c9710f75-ed63-9024-8ed2-3155e63c1865_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":400,"output_tokens":298},"cost_in_usd_ticks":11006000,"input_tokens":400,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":294,"output_tokens_details":{"reasoning_tokens":275},"total_tokens":694},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -303,15 +394,49 @@ shape: 3159f82228c31a2b
 calls: []
 ends:
 - completed
-source: xai/reasoning_roundtrip/nonstreaming.yaml#1
+source: xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml#0
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 4bcbbea2-9886-9a8c-99a8-797fe3b0c356
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"4bcbbea2-9886-9a8c-99a8-797fe3b0c356","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"encrypted_content":"JXSOsab8BR+yRpPsFiQ/Itcth496I4nN4Dz+PZOgC4JlzX2qsdrVczz/1QzI1koSE939Aqh6GD1zbgWpnoNWz55bcKK4gGOYUJVjuLwkF1AGDtEdiZKSxvx/tSeAz05ohxm7IOKkIRk1FF2RmtXk3hKyGgqj/C6oCVpXLDArIqc+e3juEWiJDT+jtkeYCNlDMr9dSuTEOdLZ/hGgBaS0JipN3kL/9auWunAjrYdLCcTnqvgcpQpuhpCU3W0RiGo/DmEHwaid75C4Unl0LK4eCBXsRMQYccGL6IyF94QMa5SkuGJrOKENl3c0oXp/JURSn2OpSFj9BoXZLAYPVRht1IaBy5KgQgQEcE7YWiiPKO6D3IYUvspWbrG4+GiAXT1I1FlS4deGbBzWqNbcais4Y7RJ62+SKXUxq0j9oMAtPdre3v+1aii1pJ15fkRFUXLl46NjiRIGlGLDGUYehuCHaf9Rh4TwqNBu2tR9QUG/AjUigXhhQNa1ZqXLZfFHB+Tl2EpzghjFhamvc5ekjjq0uQeXGPvpR2DDyLniSR0AWnyRJQCFQvK6Z6JOnM/aE2kjgpUFtUGgT22jOVIp2Dyq0puJrrsQYz+ih5+RBMcXa2M4NxTW4bS/FyQwEbybBDe9D7XT0jZwgx2JAoSI2FrzlIQtjNJczMgJSq2SsgDvNkG4x1oxf5GPgraBVMcifNHGH574odRPPPkO3mi6qPAcKwmGNgdQ/+Sm/HZUgeuHXKMuBkW780NSwVImgiT3wiSnCbai2UGpYlyg1zPzTsnojbnLGS4wTgY8Z9kWw1ysT91SpOP20oU9ibyi1Fy0Z7ELKEABihTZw7Qa5aA/Adwg2ktbyQUVCU/EN1u6L9XeaSafPR8LvGLlLutilw0M6MZwVdliOx3VwnBRHAj4y1dyKNzLa6xVFHKInCImjqws81GrZ7GMzREVvnjEorTOYLrG0q9+i0aM4TY9AxcONC9iWb/lj5fqDWyBDZE+DtSOOI9hsrDtPwkIY2l7UyaOWDY020OomkmjaeB1XP+WjtJnDr8ZdTr89iwWHMK2/52nLr2RCDDLLSlaJ5vONJdduWfTad1l33GBi3zVu70+PoM1d5N8K25UxNmbQzMijDYdg0JFN4N0qz8hZ/LKOpO+tK6qmokLi0m/PCFCAbOh+I/JSAIOctUIfnPplzj65hoa9hj4wzUcoYgSPLjIyvQ+hMKIfbPqQvKfUaMjWWqgcaLrMbn0nZDyfiJScgwmIerMjryYAdjL3L+E0jwA0+iYjZGmGPBg55uzM1B4C40mjTpxKKG3Ne4nCef5ExrW+4PS8ixWNgv8tJJv/tN9ZkdyBbbLWY+kBTOGAAdewciUx1XuQIrqee3/fA3TnmkXTXyxjqSL5M/tg0/qQFuDA3VKylYtcboUIJit5E2HxnuP+70nhsiBSswNTRRLNH2cahxVN2NVuaWVQO60DZDPO6v3gj2Ts/5gPX2r02KUtW5GWobfr357DM0yEwSqB5kJUOpcvi42LXr0w3onij/StjJCK5WI/jAuDBv0WbbHdWexHPQqH05UJSKe35nB2Z/Fzqg17tm4Bn7B74qLhcbJeFn7y41e8RSbEKbRQIP0zwhrZWLJIlBVzST72ZEDTSSbKzQLRYFDyvchbdEMY2odQC3pfBkNXPvliPWl8omwd/sHvc1Fn9jlmGO78DsYc2J33hmsWnmn4685MXiCL3M9KiHiu577GKfpEK6ip7uISgC746IOnbBmtCxgjWz+RtNHL+Q3aVYbhZQq6dnNZWgq2ubve7q8SSNCfIFTKiS67zlpu6sbhJ4fEYJJ5XEPhnjaAafgAiq7iwWIhedbtUfLn/drYRLnhsP5UrzKqC7CFKcBfdxhKqZDlupbdxwb6xIszW1JrPK7elBSdZfKTAhpkhEQaJHqMddaihVKkpwCz05ogguzh59c45z0YEzvINGEk6xqkPQvg6oJCCp7hESlpWi72ptK2dcaDSoAs7g5kfFdCnpUrWl4vJBw/dCkgMkoX2j5Jq5uffFiXsHusjrXlSDiIEUu/7MMYNVcnHsTuXRpnEy3g/t4XIeVCNRwTspCw+8+ovhT2nKFlrYPV3dnr/5XmF12GWh+ORMNWA2o1JG1sA8SbsfW2iAgtw7jVmw0r78GgHtU64EITcuy9QPemhJNR5DmdEGpRfXGuaa9vifyBWJDsxDBZogvto5Mnh+l+Y09N6CxKumLiu7Peeo5Wrp6zi/TAZ/DgLWLmB2HuPQ2hMyS/32Cw7zlKQBPffwXls9+08HUKzILTJalXiHgcybzWY/ZM6yS33TJQtDY56+dt7byIbTa7VXyIVe8ufcyMWGptBIyRCISykr2iRAujlg1U4ZR/MftbpaR9JMFlNsHKLnaK/nxyakrSIwrw5UMOhXiJRjXV5PHhXau4rsUQ0NAJt9KlcVMpeqJmEPikYil8E83GEsgrRjWaSX1J4UhaOn19il/LgbHQBRCndRnZLSSeATb6JuhZRNo+dAMjUHUQFuXxmiFn+4jg1mrm9DAdzlVhHeI01/b6NsKk1k2lKWg1v+FIP8ZYkqQQGCxHCAiXr6O3tJyBv70ruikU7jqOM1anUL0T01xZh6WQwkMI6RJ3oXsCViQmPyrUnJh7GZV1Y8XFs9VwHXCzmQnEiHkjHsGGuS2YXC900AcFSq+8YUtC4JAknjrLQ","id":"rs_4bcbbea2-9886-9a8c-99a8-797fe3b0c356","status":"completed","summary":[{"text":"Both trains slow by 10 km/h after each has traveled half the original distance. That is 69 km for each train.\n\nThe 10 km/h reduction applies after each train covers 69 km at its original speed. The first train therefore travels the first 69 km at 60 km/h, then slows to 50 km/h.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"They meet ~2 h 28 min after first departs (~1 h 58 min after second), ~136 km from A.\n\n**Phases (first slows after 69 km; second after 69 km):**  \n- 0–0.5 h: first covers 30 km (gap 270 km).  \n- Both at full speed: first covers remaining 39 km in 0.65 h (second: 58.5 km). Gap now 172.5 km.  \n- First at 50 km/h, second finishes 10.5 km in ~0.117 h (gap ~156.2 km).  \n- Both reduced (130 km/h combined): ~1.20 h to close rest.  \nTotal time from first: ~2.467 h; distance ~136 km.","type":"output_text"}],"id":"msg_4bcbbea2-9886-9a8c-99a8-797fe3b0c356","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":1027,"output_tokens":787},"cost_in_usd_ticks":29649500,"input_tokens":1027,"input_tokens_details":{"cached_tokens":256},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":780,"output_tokens_details":{"reasoning_tokens":614},"total_tokens":1807},"user":null}'
+    value: 1e981dde-6c04-981b-b174-b0aae41eaf85
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"1e981dde-6c04-981b-b174-b0aae41eaf85","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"encrypted_content":"vziflJjw9HwEYvrBYU6wKh0b57acFfF/KruPnH+O5Sq4wk0F9Zc7u2MFJ4WKp4FRX2/QxmN54GNDxj7IgMeD8DrJqqZ0TQOCsJMwdKdeQrFOIUfs4cZtiBp4pyqWCPyqoaitrQM7foG5OyvCixKFsKWiWKUit+YcVhedBxyHnRZBRS+bZXp5EnYnbkU+2/4IgSKJNhmhTtRNl0U4B5CmantwCGPXBis4lijr3sGUtHKjBO77s7HJ+5uIQqGaCy/RTcJkfDOouOLSujqu0ZRHSMyrtnoG/xAvA1VcBpZrYlZUsk4Qzdf+q2zq4AUNPilT4khKVvistbOcEsUScH7JOm0AoAZ9XG83FGAWQsBQlHg5TkVHgRtDE+hWo+ZpBDnuAmO2Ynb6mUhfVVKyARNvdDEbWFpR1SM47iCf8c3stXEJ4/UKoQMCn7RlcjIAy2UEPbBvTYtVeYSMGV8q33QKiB0CyIbVjnrnNr60mKrrB2Uu6WbX8No6T/sgTB+E/vyQGw05E9ORJZSES+OMkMr/fOr7bnQuInwge7usVjG/4QKxUIFyHm9xlbLVhlu5Q0uDRvN5HWWSPbimv6z0WGmb06VevjJ/iLczCKFODt9FcDOEoBxaig2hUr/6viK30jvM4Ws0aCoFpZSGMQuQga8fX09j6knjNk7AvvA23M4aHbURY7pdZZzBuk7UeSwURQEkTK3BZX1PLNNmMThoMQ9idZT1qvcA483WUqBVh2pGl0UrLw0C77A5+JXoywVGyqUsMwH/Er2ActYuhRKULLIfvHIfZUaiyJIpS238edCi/qS+9EYPBvv7UVuYRdbYhivdSYYeQxE9fl6EITLXkiUbRg9GsiR8D/N82sqUgGf7bpJj0uSOKa4k1+M5ACai4+cwsLr5LzE213A+WAplfsAq6p9fQYgNj2a9hLI","id":"rs_1e981dde-6c04-981b-b174-b0aae41eaf85","status":"completed","summary":[{"text":"Three probes each verify two cassettes. The total number of verifications is 6.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"6\n\nThe calculation follows directly from multiplication: 3 probes each perform 2 independent verifications, yielding a total of 6. No overlap or shared state is indicated, so the count remains additive.","type":"output_text"}],"id":"msg_1e981dde-6c04-981b-b174-b0aae41eaf85","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":228,"output_tokens":195},"cost_in_usd_ticks":6181000,"input_tokens":228,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":187,"output_tokens_details":{"reasoning_tokens":146},"total_tokens":415},"user":null}'
+---
+provider: xai
+encoder: POST /v1/responses
+shape: 32ae151c4b2cd56c
+calls:
+- escape_echo
+ends:
+- completed
+source: xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#3
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: a0e30c5f-2054-9aad-8d4d-5bb3fdc448bf
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a0e30c5f-2054-9aad-8d4d-5bb3fdc448bf","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"arguments":"{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}","call_id":"call-26f1868a-c1aa-4429-afae-0948ad61c66f-3","id":"fc_a0e30c5f-2054-9aad-8d4d-5bb3fdc448bf_0","name":"escape_echo","status":"completed","type":"function_call"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":false,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":890,"output_tokens":72},"cost_in_usd_ticks":11506000,"input_tokens":890,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":69,"output_tokens_details":{"reasoning_tokens":42},"total_tokens":959},"user":null}'
+---
+provider: xai
+encoder: POST /v1/responses
+shape: 32ae151c4b2cd56c
+calls:
+- join_labels
+ends:
+- completed
+source: xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#2
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 491b0dd4-ad6f-980e-a618-bc792ac3717f
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"491b0dd4-ad6f-980e-a618-bc792ac3717f","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"arguments":"{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}","call_id":"call-eb66add3-87d5-41bc-8cce-ab6c26c844a7-2","id":"fc_491b0dd4-ad6f-980e-a618-bc792ac3717f_0","name":"join_labels","status":"completed","type":"function_call"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":false,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":841,"output_tokens":85},"cost_in_usd_ticks":5842500,"input_tokens":841,"input_tokens_details":{"cached_tokens":640},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":82,"output_tokens_details":{"reasoning_tokens":54},"total_tokens":923},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -341,7 +466,7 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 9ae5354b-f047-97fd-bb1e-4557280f9b2d
+    value: 1074d596-a318-97a2-ad98-9d6303f97b26
   body: '{"code":"invalid-argument","error":"Temperature must be less than 2 but temperature = 7"}'
 ---
 provider: xai
@@ -459,8 +584,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 4ca6dbc4-6557-96b1-b88c-88ba2def4633
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"4ca6dbc4-6557-96b1-b88c-88ba2def4633","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_4ca6dbc4-6557-96b1-b88c-88ba2def4633","status":"completed","summary":[{"text":"The xAI cassette release validation plan is requested with lane canary, risk low, and checks set to compile=true and replay=true.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"{\n  \"release\": {\n    \"lane\": \"canary\",\n    \"risk\": \"low\"\n  },\n  \"checks\": [\n    {\n      \"name\": \"compile\",\n      \"required\": true\n    },\n    {\n      \"name\": \"replay\",\n      \"required\": true\n    }\n  ]\n}","type":"output_text"}],"id":"msg_4ca6dbc4-6557-96b1-b88c-88ba2def4633","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"schema":{"additionalProperties":false,"properties":{"checks":{"items":{"additionalProperties":false,"properties":{"name":{"type":"string"},"required":{"type":"boolean"}},"required":["name","required"],"type":"object"},"type":"array"},"release":{"additionalProperties":false,"properties":{"lane":{"type":"string"},"risk":{"type":"string"}},"required":["lane","risk"],"type":"object"}},"required":["release","checks"],"type":"object"},"type":"json_schema"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":335,"output_tokens":400},"cost_in_usd_ticks":12643500,"input_tokens":335,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":392,"output_tokens_details":{"reasoning_tokens":326},"total_tokens":727},"user":null}'
+    value: 1f870c47-38ab-9807-909a-7fe4f2d994da
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"1f870c47-38ab-9807-909a-7fe4f2d994da","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_1f870c47-38ab-9807-909a-7fe4f2d994da","status":"completed","summary":[{"text":"Retrieving the xAI cassette release validation plan with lane canary, low risk, and checks set to compile=true and replay=true.\n\nThe response must match the JSON schema with release lane and risk fields, plus a checks array of name and required boolean pairs.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"{\n  \"release\": {\n    \"lane\": \"canary\",\n    \"risk\": \"low\"\n  },\n  \"checks\": [\n    {\"name\": \"compile\", \"required\": true},\n    {\"name\": \"replay\", \"required\": true}\n  ]\n}","type":"output_text"}],"id":"msg_1f870c47-38ab-9807-909a-7fe4f2d994da","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"schema":{"additionalProperties":false,"properties":{"checks":{"items":{"additionalProperties":false,"properties":{"name":{"type":"string"},"required":{"type":"boolean"}},"required":["name","required"],"type":"object"},"type":"array"},"release":{"additionalProperties":false,"properties":{"lane":{"type":"string"},"risk":{"type":"string"}},"required":["lane","risk"],"type":"object"}},"required":["release","checks"],"type":"object"},"type":"json_schema"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":335,"output_tokens":369},"cost_in_usd_ticks":11868500,"input_tokens":335,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":361,"output_tokens_details":{"reasoning_tokens":305},"total_tokens":696},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -485,15 +610,15 @@ shape: 4536d54026d23064
 calls: []
 ends:
 - completed
-source: xai/request_identity_matrix/responses.yaml#0
+source: xai/image_input_matrix/generated_image_as_user_content.yaml#1
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: d18f7c95-22e4-97e7-a8d7-dcb7441c9694
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"d18f7c95-22e4-97e7-a8d7-dcb7441c9694","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"identity probe","type":"output_text"}],"id":"msg_d18f7c95-22e4-97e7-a8d7-dcb7441c9694","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":198,"output_tokens":125},"cost_in_usd_ticks":3384000,"input_tokens":198,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":117,"output_tokens_details":{"reasoning_tokens":115},"total_tokens":315},"user":null}'
+    value: 2c46312f-8b8d-9c34-8492-5f8b99351bd4
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"2c46312f-8b8d-9c34-8492-5f8b99351bd4","incomplete_details":null,"instructions":null,"max_output_tokens":1024,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"red","type":"output_text"}],"id":"msg_2c46312f-8b8d-9c34-8492-5f8b99351bd4","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":1263,"output_tokens":102},"cost_in_usd_ticks":16793500,"input_tokens":1263,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":94,"output_tokens_details":{"reasoning_tokens":93},"total_tokens":1357},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -514,42 +639,53 @@ then:
 ---
 provider: xai
 encoder: POST /v1/responses
-shape: 56e78bc3256d2e48
+shape: 519c31c7d3de1893
 calls:
-- get_status_word
+- inspect_manifest
 ends:
 - completed
-- in_progress
-source: xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml#0
+source: xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#1
 then:
   status: 200
   header:
   - name: content-type
-    value: text/event-stream
+    value: application/json
   - name: x-request-id
-    value: a4e3f585-54d4-95c7-a20b-b87ff62e0ca7
-  body: |+
-    event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a4e3f585-54d4-95c7-a20b-b87ff62e0ca7","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
-
-    event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a4e3f585-54d4-95c7-a20b-b87ff62e0ca7","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
-
-    event: response.output_item.added
-    data: {"item":{"arguments":"","call_id":"call-1ed39b96-2d95-4162-a14f-fd600114148f-0","id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
-
-    event: response.function_call_arguments.delta
-    data: {"delta":"{}","item_id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
-
-    event: response.function_call_arguments.done
-    data: {"arguments":"{}","item_id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.done"}
-
-    event: response.output_item.done
-    data: {"item":{"arguments":"{}","call_id":"call-1ed39b96-2d95-4162-a14f-fd600114148f-0","id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","status":"completed","type":"function_call"},"output_index":0,"sequence_number":5,"type":"response.output_item.done"}
-
-    event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a4e3f585-54d4-95c7-a20b-b87ff62e0ca7","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"arguments":"{}","call_id":"call-1ed39b96-2d95-4162-a14f-fd600114148f-0","id":"fc_a4e3f585-54d4-95c7-a20b-b87ff62e0ca7_0","name":"get_status_word","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":324,"output_tokens":270},"cost_in_usd_ticks":8684000,"input_tokens":324,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":266,"output_tokens_details":{"reasoning_tokens":259},"total_tokens":590},"user":null},"sequence_number":6,"type":"response.completed"}
-
+    value: c45e57d2-e094-906d-a6d9-e5ca5959c9ce
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"c45e57d2-e094-906d-a6d9-e5ca5959c9ce","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_c45e57d2-e094-906d-a6d9-e5ca5959c9ce","status":"completed","summary":[{"text":"The production-readiness scenario requires calling exactly one tool at a time in sequence.\n\nThe first tool call returned EMPTY-OK. The remaining three tools will be invoked in sequence: inspect_manifest, join_labels, and escape_echo.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}","call_id":"call-52ca51bd-300b-4c34-aeaf-757f8bc32e12-1","id":"fc_c45e57d2-e094-906d-a6d9-e5ca5959c9ce_0","name":"inspect_manifest","status":"completed","type":"function_call"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":false,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":757,"output_tokens":362},"cost_in_usd_ticks":17093500,"input_tokens":757,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":359,"output_tokens_details":{"reasoning_tokens":286},"total_tokens":1116},"user":null}'
+---
+provider: xai
+encoder: POST /v1/responses
+shape: 519c31c7d3de1893
+calls:
+- ping_empty
+ends:
+- completed
+source: xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 6345f30c-d1e5-9a4b-9fad-bd6d41d5b033
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6345f30c-d1e5-9a4b-9fad-bd6d41d5b033","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_6345f30c-d1e5-9a4b-9fad-bd6d41d5b033","status":"completed","summary":[{"text":"Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-5bf43d07-af9b-4658-808f-87011c860928-0","id":"fc_6345f30c-d1e5-9a4b-9fad-bd6d41d5b033_0","name":"ping_empty","status":"completed","type":"function_call"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":false,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":743,"output_tokens":314},"cost_in_usd_ticks":15718500,"input_tokens":743,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":311,"output_tokens_details":{"reasoning_tokens":305},"total_tokens":1054},"user":null}'
+---
+provider: xai
+encoder: POST /v1/responses
+shape: 5350cb15a1c1c591
+calls: []
+ends:
+- completed
+source: xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#4
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: c86b5674-c697-914a-beb2-d06c0ff14be9
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"c86b5674-c697-914a-beb2-d06c0ff14be9","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_c86b5674-c697-914a-beb2-d06c0ff14be9","status":"completed","summary":[{"text":"The production-readiness scenario requires calling exactly one tool at a time in sequence.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.","type":"output_text"}],"id":"msg_c86b5674-c697-914a-beb2-d06c0ff14be9","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":false,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":944,"output_tokens":121},"cost_in_usd_ticks":13281000,"input_tokens":944,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":113,"output_tokens_details":{"reasoning_tokens":90},"total_tokens":1057},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -606,23 +742,6 @@ then:
   - name: x-request-id
     value: 12f9ab78-5f5a-9e31-92b4-8f4ea09febb1
   body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"12f9ab78-5f5a-9e31-92b4-8f4ea09febb1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1","status":"completed","summary":[{"text":"Extracting structured address data from the provided text.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}","call_id":"call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0","id":"fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"city":{"type":["string","null"]},"state":{"type":["string","null"]},"street":{"type":["string","null"]},"zip_code":{"type":["string","null"]}},"title":"Address","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":409,"output_tokens":183},"cost_in_usd_ticks":7596500,"input_tokens":409,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":180,"output_tokens_details":{"reasoning_tokens":155},"total_tokens":589},"user":null}'
----
-provider: xai
-encoder: POST /v1/responses
-shape: 5b6c79724c693a1c
-calls:
-- submit
-ends:
-- completed
-source: xai/multi_extract/batch_multi_extract_chain.yaml#2
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  - name: x-request-id
-    value: 0b312bec-7ca3-929e-a914-ff41be745afc
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"0b312bec-7ca3-929e-a914-ff41be745afc","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"arguments":"{\"topics\":[\"Ada Lovelace\",\"Charles Babbage\",\"analytical engines\",\"early programming\"]}","call_id":"call-39c1832b-a060-4814-be46-14c505df4778-0","id":"fc_0b312bec-7ca3-929e-a914-ff41be745afc_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":399,"output_tokens":253},"cost_in_usd_ticks":9221500,"input_tokens":399,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":250,"output_tokens_details":{"reasoning_tokens":224},"total_tokens":649},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -847,15 +966,15 @@ calls:
 - submit
 ends:
 - completed
-source: xai/multi_extract/batch_multi_extract_chain.yaml#3
+source: xai/multi_extract/batch_multi_extract_chain.yaml#1
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: c3445036-c681-9b1b-bbdc-1256bae1bfde
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"c3445036-c681-9b1b-bbdc-1256bae1bfde","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_c3445036-c681-9b1b-bbdc-1256bae1bfde","status":"completed","summary":[{"text":"I am extracting sentiment and confidence from the text about Ada Lovelace and Charles Babbage.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"sentiment\":0.0,\"confidence\":0.9}","call_id":"call-61ada0fe-075a-410a-b401-3e7cb7aed7a1-0","id":"fc_c3445036-c681-9b1b-bbdc-1256bae1bfde_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":434,"output_tokens":272},"cost_in_usd_ticks":10134000,"input_tokens":434,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":269,"output_tokens_details":{"reasoning_tokens":252},"total_tokens":703},"user":null}'
+    value: 4b92135b-7df5-917d-9cd1-6574806ac05f
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"4b92135b-7df5-917d-9cd1-6574806ac05f","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_4b92135b-7df5-917d-9cd1-6574806ac05f","status":"completed","summary":[{"text":"The task is to extract sentiment and confidence from the given text.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"sentiment\":0.0,\"confidence\":1.0}","call_id":"call-9f0dbf04-0f32-428d-b8a1-0ce573c3ecd4-0","id":"fc_4b92135b-7df5-917d-9cd1-6574806ac05f_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":434,"output_tokens":213},"cost_in_usd_ticks":9331000,"input_tokens":434,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":210,"output_tokens_details":{"reasoning_tokens":193},"total_tokens":644},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -1062,8 +1181,26 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: fad16835-1280-9a69-b786-727bc85d4961
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"fad16835-1280-9a69-b786-727bc85d4961","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_fad16835-1280-9a69-b786-727bc85d4961","status":"completed","summary":[{"text":"I will call lookup_harbor_label exactly once with an empty object. I will not answer in prose.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-cf700213-a20d-4db7-9d00-4eb61856acd5-0","id":"fc_fad16835-1280-9a69-b786-727bc85d4961_0","name":"lookup_harbor_label","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":290,"output_tokens":276},"cost_in_usd_ticks":8434000,"input_tokens":290,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":273,"output_tokens_details":{"reasoning_tokens":264},"total_tokens":563},"user":null}'
+    value: e5dd4bca-669b-9228-a244-75797808c9c2
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"e5dd4bca-669b-9228-a244-75797808c9c2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_e5dd4bca-669b-9228-a244-75797808c9c2","status":"completed","summary":[{"text":"I will call lookup_harbor_label exactly once with an empty object and avoid prose.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-4c574d22-c3dd-4aef-99a5-7ce1137e49bc-0","id":"fc_e5dd4bca-669b-9228-a244-75797808c9c2_0","name":"lookup_harbor_label","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":290,"output_tokens":342},"cost_in_usd_ticks":10731000,"input_tokens":290,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":338,"output_tokens_details":{"reasoning_tokens":329},"total_tokens":628},"user":null}'
+---
+provider: xai
+encoder: POST /v1/responses
+shape: 8c10221ed2cd28c9
+calls:
+- lookup_harbor_label
+- lookup_orchard_label
+ends:
+- completed
+source: xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: 45382da6-e136-9f7a-bc0b-c2b848e47a46
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"45382da6-e136-9f7a-bc0b-c2b848e47a46","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_45382da6-e136-9f7a-bc0b-c2b848e47a46","status":"completed","summary":[{"text":"I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-a4e2a8b2-20b9-4b44-9ae4-0444511f415f-0","id":"fc_45382da6-e136-9f7a-bc0b-c2b848e47a46_0","name":"lookup_harbor_label","status":"completed","type":"function_call"},{"arguments":"{}","call_id":"call-a4e2a8b2-20b9-4b44-9ae4-0444511f415f-1","id":"fc_45382da6-e136-9f7a-bc0b-c2b848e47a46_1","name":"lookup_orchard_label","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":398,"output_tokens":290},"cost_in_usd_ticks":10806000,"input_tokens":398,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":287,"output_tokens_details":{"reasoning_tokens":271},"total_tokens":685},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -1460,32 +1597,15 @@ shape: 9de2a6dea7040dfb
 calls: []
 ends:
 - completed
-source: xai/image_input_matrix/generated_image_as_user_content.yaml#1
+source: xai/request_identity_matrix/responses.yaml#0
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 32d8e9b9-4f64-984b-994d-586b608e505b
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"32d8e9b9-4f64-984b-994d-586b608e505b","incomplete_details":null,"instructions":null,"max_output_tokens":1024,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_32d8e9b9-4f64-984b-994d-586b608e505b","status":"completed","summary":[{"text":"The image is not visible. I cannot determine the single colour.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"red\n\n\nThe image is a uniform solid red field with no other colors, gradients, or elements present. The requested response format is a single lowercase word naming that color.","type":"output_text"}],"id":"msg_32d8e9b9-4f64-984b-994d-586b608e505b","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":1263,"output_tokens":163},"cost_in_usd_ticks":17646500,"input_tokens":1263,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":155,"output_tokens_details":{"reasoning_tokens":121},"total_tokens":1418},"user":null}'
----
-provider: xai
-encoder: POST /v1/responses
-shape: aa7b7c2ae3036de4
-calls:
-- subtract
-ends:
-- completed
-source: xai/tools/tools_smoke.yaml#0
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  - name: x-request-id
-    value: d3ac8ded-c7be-95c8-a08c-11e2df3ee407
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"d3ac8ded-c7be-95c8-a08c-11e2df3ee407","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"arguments":"{\"x\":2.0,\"y\":5.0}","call_id":"call-4d5110b7-a59a-4700-adb1-cd27824bc5a0-0","id":"fc_d3ac8ded-c7be-95c8-a08c-11e2df3ee407_0","name":"subtract","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"},{"description":"Subtract y from x (that is, x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":412,"output_tokens":97},"cost_in_usd_ticks":5459000,"input_tokens":412,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":93,"output_tokens_details":{"reasoning_tokens":80},"total_tokens":505},"user":null}'
+    value: 6d1d318d-7c28-9130-8bde-ad12fb281e03
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6d1d318d-7c28-9130-8bde-ad12fb281e03","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_6d1d318d-7c28-9130-8bde-ad12fb281e03","status":"completed","summary":[{"text":"The user requested the exact phrase \"identity probe\".","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"identity probe","type":"output_text"}],"id":"msg_6d1d318d-7c28-9130-8bde-ad12fb281e03","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":198,"output_tokens":130},"cost_in_usd_ticks":4181000,"input_tokens":198,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":122,"output_tokens_details":{"reasoning_tokens":120},"total_tokens":320},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -1505,23 +1625,6 @@ then:
 ---
 provider: xai
 encoder: POST /v1/responses
-shape: ab30f653e22f3c53
-calls:
-- submit
-ends:
-- completed
-source: xai/multi_extract/batch_multi_extract_chain.yaml#1
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  - name: x-request-id
-    value: 178fc4ee-6046-94bf-a4c5-a3664b2a9b1d
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"178fc4ee-6046-94bf-a4c5-a3664b2a9b1d","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"arguments":"{\"sentiment\":0.0,\"confidence\":1.0}","call_id":"call-9ff31041-a7d2-468a-bccc-409763a5fb6a-0","id":"fc_178fc4ee-6046-94bf-a4c5-a3664b2a9b1d_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":435,"output_tokens":233},"cost_in_usd_ticks":9171500,"input_tokens":435,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":230,"output_tokens_details":{"reasoning_tokens":213},"total_tokens":665},"user":null}'
----
-provider: xai
-encoder: POST /v1/responses
 shape: ac3fc5583df35ebf
 calls: []
 ends:
@@ -1533,8 +1636,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 39a37739-a3d5-92be-8562-de13dbcfcebc
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"39a37739-a3d5-92be-8562-de13dbcfcebc","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_39a37739-a3d5-92be-8562-de13dbcfcebc","status":"completed","summary":[{"text":"The user instructed me not to call tools.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"no-tool-answer","type":"output_text"}],"id":"msg_39a37739-a3d5-92be-8562-de13dbcfcebc","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"none","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":295,"output_tokens":195},"cost_in_usd_ticks":6371500,"input_tokens":295,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":188,"output_tokens_details":{"reasoning_tokens":185},"total_tokens":483},"user":null}'
+    value: 9df5150c-6e8e-9cb7-8ab4-e5e7fdddc680
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"9df5150c-6e8e-9cb7-8ab4-e5e7fdddc680","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_9df5150c-6e8e-9cb7-8ab4-e5e7fdddc680","status":"completed","summary":[{"text":"The user instructed me not to call tools.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"no-tool-answer","type":"output_text"}],"id":"msg_9df5150c-6e8e-9cb7-8ab4-e5e7fdddc680","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"none","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":295,"output_tokens":228},"cost_in_usd_ticks":7868500,"input_tokens":295,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":221,"output_tokens_details":{"reasoning_tokens":218},"total_tokens":516},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -1945,73 +2048,6 @@ then:
 ---
 provider: xai
 encoder: POST /v1/responses
-shape: bbe380d969129ae2
-calls: []
-ends:
-- completed
-- in_progress
-source: xai/request_identity_matrix/responses.yaml#1
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: text/event-stream
-  - name: x-request-id
-    value: 6482e2c8-cdee-9a33-a65e-f68fe60ef9ee
-  body: |+
-    event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
-
-    event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
-
-    event: response.output_item.added
-    data: {"item":{"content":[],"id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
-
-    event: response.content_part.added
-    data: {"content_index":0,"item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":"stream","item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" identity","item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","logprobs":[],"output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" probe","item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","logprobs":[],"output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
-
-    event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","logprobs":[],"output_index":0,"sequence_number":7,"text":"stream identity probe","type":"response.output_text.done"}
-
-    event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"},"sequence_number":8,"type":"response.content_part.done"}
-
-    event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"}],"id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
-
-    event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","incomplete_details":null,"instructions":null,"max_output_tokens":64,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"stream identity probe","type":"output_text"}],"id":"msg_6482e2c8-cdee-9a33-a65e-f68fe60ef9ee","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":199,"output_tokens":153},"cost_in_usd_ticks":4096500,"input_tokens":199,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":145,"output_tokens_details":{"reasoning_tokens":142},"total_tokens":344},"user":null},"sequence_number":10,"type":"response.completed"}
-
----
-provider: xai
-encoder: POST /v1/responses
-shape: bef3b310ab596506
-calls:
-- submit
-ends:
-- completed
-source: xai/multi_extract/batch_multi_extract_chain.yaml#8
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  - name: x-request-id
-    value: 06b0ae73-744e-94d0-9c37-60e2e23dd43e
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"06b0ae73-744e-94d0-9c37-60e2e23dd43e","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"The text mentions going to the store to buy milk and bread for dinner, so possible extracted topics include shopping, groceries, and dinner.","type":"output_text"}],"id":"msg_06b0ae73-744e-94d0-9c37-60e2e23dd43e","role":"assistant","status":"completed","type":"message"},{"arguments":"{\"topics\":[\"shopping\",\"groceries\",\"dinner\"]}","call_id":"call-3a50dbbb-b8fa-4aca-9d4d-963846b6a0d8-0","id":"fc_06b0ae73-744e-94d0-9c37-60e2e23dd43e_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":400,"output_tokens":507},"cost_in_usd_ticks":15509000,"input_tokens":400,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":501,"output_tokens_details":{"reasoning_tokens":455},"total_tokens":901},"user":null}'
----
-provider: xai
-encoder: POST /v1/responses
 shape: bfd8565e61bcec09
 calls: []
 ends:
@@ -2172,260 +2208,62 @@ calls: []
 ends:
 - completed
 - in_progress
-source: xai/streaming/streaming_smoke.yaml#0
+source: xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml#0
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: caa72d8b-134c-9cb0-87aa-a650d88e26e9
+    value: 3713a295-5a4f-942d-a369-27787b867935
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"caa72d8b-134c-9cb0-87aa-a650d88e26e9","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"3713a295-5a4f-942d-a369-27787b867935","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"caa72d8b-134c-9cb0-87aa-a650d88e26e9","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"3713a295-5a4f-942d-a369-27787b867935","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"id":"rs_3713a295-5a4f-942d-a369-27787b867935","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.reasoning_summary_part.added
-    data: {"item_id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+    data: {"item_id":"rs_3713a295-5a4f-942d-a369-27787b867935","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"I will explain what ","item_id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"The user wants a single-word","item_id":"rs_3713a295-5a4f-942d-a369-27787b867935","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"a solar eclipse is in","item_id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
-
-    event: response.reasoning_summary_text.delta
-    data: {"delta":" one short paragraph.","item_id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" reply: pong.","item_id":"rs_3713a295-5a4f-942d-a369-27787b867935","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.done
-    data: {"item_id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","output_index":0,"sequence_number":7,"summary_index":0,"text":"I will explain what a solar eclipse is in one short paragraph.","type":"response.reasoning_summary_text.done"}
+    data: {"item_id":"rs_3713a295-5a4f-942d-a369-27787b867935","output_index":0,"sequence_number":6,"summary_index":0,"text":"The user wants a single-word reply: pong.","type":"response.reasoning_summary_text.done"}
 
     event: response.reasoning_summary_part.done
-    data: {"item_id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","output_index":0,"part":{"text":"I will explain what a solar eclipse is in one short paragraph.","type":"summary_text"},"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+    data: {"item_id":"rs_3713a295-5a4f-942d-a369-27787b867935","output_index":0,"part":{"text":"The user wants a single-word reply: pong.","type":"summary_text"},"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","status":"completed","summary":[{"text":"I will explain what a solar eclipse is in one short paragraph.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+    data: {"item":{"id":"rs_3713a295-5a4f-942d-a369-27787b867935","status":"completed","summary":[{"text":"The user wants a single-word reply: pong.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":8,"type":"response.output_item.done"}
 
     event: response.output_item.added
-    data: {"item":{"content":[],"id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":10,"type":"response.output_item.added"}
+    data: {"item":{"content":[],"id":"msg_3713a295-5a4f-942d-a369-27787b867935","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":9,"type":"response.output_item.added"}
 
     event: response.content_part.added
-    data: {"content_index":0,"item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":11,"type":"response.content_part.added"}
+    data: {"content_index":0,"item_id":"msg_3713a295-5a4f-942d-a369-27787b867935","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":10,"type":"response.content_part.added"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"A","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":12,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" solar","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":13,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" eclipse","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":14,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" occurs","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":15,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" when","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":16,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":17,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" Moon","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":18,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" passes","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":19,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" directly","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":20,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" between","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":21,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":22,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" Earth","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":23,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" and","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":24,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":25,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" Sun","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":26,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":27,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" casting","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":28,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" its","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":29,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" shadow","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":30,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" on","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":31,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" Earth","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":32,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" and","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":33,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" temporarily","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":34,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" blocking","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":35,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" or","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":36,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" dim","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":37,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":"ming","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":38,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":39,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" Sun","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":40,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":"'s","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":41,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" light","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":42,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":43,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" This","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":44,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" alignment","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":45,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" can","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":46,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" produce","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":47,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" a","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":48,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" total","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":49,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" eclipse","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":50,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" (","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":51,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":"Sun","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":52,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" fully","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":53,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" obscured","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":54,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":"),","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":55,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" partial","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":56,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" eclipse","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":57,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":58,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" or","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":59,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" annular","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":60,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" eclipse","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":61,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" (","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":62,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":"Sun","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":63,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" appearing","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":64,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" as","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":65,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" a","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":66,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" ring","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":67,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":"),","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":68,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" depending","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":69,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" on","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":70,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":71,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" Moon","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":72,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":"'s","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":73,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" distance","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":74,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" and","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":75,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" position","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":76,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":77,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"pong","item_id":"msg_3713a295-5a4f-942d-a369-27787b867935","logprobs":[],"output_index":1,"sequence_number":11,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","logprobs":[],"output_index":1,"sequence_number":78,"text":"A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking or dimming the Sun's light. This alignment can produce a total eclipse (Sun fully obscured), partial eclipse, or annular eclipse (Sun appearing as a ring), depending on the Moon's distance and position.","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_3713a295-5a4f-942d-a369-27787b867935","logprobs":[],"output_index":1,"sequence_number":12,"text":"pong","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking or dimming the Sun's light. This alignment can produce a total eclipse (Sun fully obscured), partial eclipse, or annular eclipse (Sun appearing as a ring), depending on the Moon's distance and position.","type":"output_text"},"sequence_number":79,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_3713a295-5a4f-942d-a369-27787b867935","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"pong","type":"output_text"},"sequence_number":13,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking or dimming the Sun's light. This alignment can produce a total eclipse (Sun fully obscured), partial eclipse, or annular eclipse (Sun appearing as a ring), depending on the Moon's distance and position.","type":"output_text"}],"id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":80,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"pong","type":"output_text"}],"id":"msg_3713a295-5a4f-942d-a369-27787b867935","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":14,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"caa72d8b-134c-9cb0-87aa-a650d88e26e9","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_caa72d8b-134c-9cb0-87aa-a650d88e26e9","status":"completed","summary":[{"text":"I will explain what a solar eclipse is in one short paragraph.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, casting its shadow on Earth and temporarily blocking or dimming the Sun's light. This alignment can produce a total eclipse (Sun fully obscured), partial eclipse, or annular eclipse (Sun appearing as a ring), depending on the Moon's distance and position.","type":"output_text"}],"id":"msg_caa72d8b-134c-9cb0-87aa-a650d88e26e9","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":219,"output_tokens":269},"cost_in_usd_ticks":7246500,"input_tokens":219,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":261,"output_tokens_details":{"reasoning_tokens":195},"total_tokens":480},"user":null},"sequence_number":81,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"3713a295-5a4f-942d-a369-27787b867935","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_3713a295-5a4f-942d-a369-27787b867935","status":"completed","summary":[{"text":"The user wants a single-word reply: pong.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"pong","type":"output_text"}],"id":"msg_3713a295-5a4f-942d-a369-27787b867935","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":199,"output_tokens":173},"cost_in_usd_ticks":5293500,"input_tokens":199,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":166,"output_tokens_details":{"reasoning_tokens":165},"total_tokens":365},"user":null},"sequence_number":15,"type":"response.completed"}
 
 ---
 provider: xai
@@ -2459,64 +2297,67 @@ then:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: 93c243e3-be44-9fb6-8057-fde06a0c5de3
+    value: 24c198c0-3d6c-9beb-8b98-b11a963f2c56
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"93c243e3-be44-9fb6-8057-fde06a0c5de3","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"24c198c0-3d6c-9beb-8b98-b11a963f2c56","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"93c243e3-be44-9fb6-8057-fde06a0c5de3","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"24c198c0-3d6c-9beb-8b98-b11a963f2c56","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.reasoning_summary_part.added
-    data: {"item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+    data: {"item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"Preparing to call inspect_manifest","item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"Preparing to call inspect_manifest","item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" once for project rig-xai","item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" once for project rig-xai","item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" with critical=true,","item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" with critical=true,","item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" retries=2, and the ","item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" retries=2, and the ","item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"specified steps. Will","item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"specified steps. Will","item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" note `streamed nested","item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" note `streamed nested","item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" JSON`.","item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" JSON`.","item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"\n\nThe tool call will use the XML-inspired format with project, flags, steps, and note as direct text parameters.","item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.done
-    data: {"item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"sequence_number":11,"summary_index":0,"text":"Preparing to call inspect_manifest once for project rig-xai with critical=true, retries=2, and the specified steps. Will note `streamed nested JSON`.","type":"response.reasoning_summary_text.done"}
+    data: {"item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"sequence_number":12,"summary_index":0,"text":"Preparing to call inspect_manifest once for project rig-xai with critical=true, retries=2, and the specified steps. Will note `streamed nested JSON`.\n\nThe tool call will use the XML-inspired format with project, flags, steps, and note as direct text parameters.","type":"response.reasoning_summary_text.done"}
 
     event: response.reasoning_summary_part.done
-    data: {"item_id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","output_index":0,"part":{"text":"Preparing to call inspect_manifest once for project rig-xai with critical=true, retries=2, and the specified steps. Will note `streamed nested JSON`.","type":"summary_text"},"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+    data: {"item_id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","output_index":0,"part":{"text":"Preparing to call inspect_manifest once for project rig-xai with critical=true, retries=2, and the specified steps. Will note `streamed nested JSON`.\n\nThe tool call will use the XML-inspired format with project, flags, steps, and note as direct text parameters.","type":"summary_text"},"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","status":"completed","summary":[{"text":"Preparing to call inspect_manifest once for project rig-xai with critical=true, retries=2, and the specified steps. Will note `streamed nested JSON`.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":13,"type":"response.output_item.done"}
+    data: {"item":{"id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","status":"completed","summary":[{"text":"Preparing to call inspect_manifest once for project rig-xai with critical=true, retries=2, and the specified steps. Will note `streamed nested JSON`.\n\nThe tool call will use the XML-inspired format with project, flags, steps, and note as direct text parameters.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":14,"type":"response.output_item.done"}
 
     event: response.output_item.added
-    data: {"item":{"arguments":"","call_id":"call-b8c96329-bc14-4927-b39a-0ac006948d15-0","id":"fc_93c243e3-be44-9fb6-8057-fde06a0c5de3_0","name":"inspect_manifest","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":14,"type":"response.output_item.added"}
+    data: {"item":{"arguments":"","call_id":"call-7c34d23f-eabf-471b-b910-f62bf98eb8b7-0","id":"fc_24c198c0-3d6c-9beb-8b98-b11a963f2c56_0","name":"inspect_manifest","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":15,"type":"response.output_item.added"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"streamed nested JSON\"}","item_id":"fc_93c243e3-be44-9fb6-8057-fde06a0c5de3_0","output_index":1,"sequence_number":15,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"streamed nested JSON\"}","item_id":"fc_24c198c0-3d6c-9beb-8b98-b11a963f2c56_0","output_index":1,"sequence_number":16,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.done
-    data: {"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"streamed nested JSON\"}","item_id":"fc_93c243e3-be44-9fb6-8057-fde06a0c5de3_0","name":"inspect_manifest","output_index":1,"sequence_number":16,"type":"response.function_call_arguments.done"}
+    data: {"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"streamed nested JSON\"}","item_id":"fc_24c198c0-3d6c-9beb-8b98-b11a963f2c56_0","name":"inspect_manifest","output_index":1,"sequence_number":17,"type":"response.function_call_arguments.done"}
 
     event: response.output_item.done
-    data: {"item":{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"streamed nested JSON\"}","call_id":"call-b8c96329-bc14-4927-b39a-0ac006948d15-0","id":"fc_93c243e3-be44-9fb6-8057-fde06a0c5de3_0","name":"inspect_manifest","status":"completed","type":"function_call"},"output_index":1,"sequence_number":17,"type":"response.output_item.done"}
+    data: {"item":{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"streamed nested JSON\"}","call_id":"call-7c34d23f-eabf-471b-b910-f62bf98eb8b7-0","id":"fc_24c198c0-3d6c-9beb-8b98-b11a963f2c56_0","name":"inspect_manifest","status":"completed","type":"function_call"},"output_index":1,"sequence_number":18,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"93c243e3-be44-9fb6-8057-fde06a0c5de3","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_93c243e3-be44-9fb6-8057-fde06a0c5de3","status":"completed","summary":[{"text":"Preparing to call inspect_manifest once for project rig-xai with critical=true, retries=2, and the specified steps. Will note `streamed nested JSON`.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"streamed nested JSON\"}","call_id":"call-b8c96329-bc14-4927-b39a-0ac006948d15-0","id":"fc_93c243e3-be44-9fb6-8057-fde06a0c5de3_0","name":"inspect_manifest","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":457,"output_tokens":543},"cost_in_usd_ticks":17868500,"input_tokens":457,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":540,"output_tokens_details":{"reasoning_tokens":479},"total_tokens":997},"user":null},"sequence_number":18,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"24c198c0-3d6c-9beb-8b98-b11a963f2c56","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_24c198c0-3d6c-9beb-8b98-b11a963f2c56","status":"completed","summary":[{"text":"Preparing to call inspect_manifest once for project rig-xai with critical=true, retries=2, and the specified steps. Will note `streamed nested JSON`.\n\nThe tool call will use the XML-inspired format with project, flags, steps, and note as direct text parameters.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"streamed nested JSON\"}","call_id":"call-7c34d23f-eabf-471b-b910-f62bf98eb8b7-0","id":"fc_24c198c0-3d6c-9beb-8b98-b11a963f2c56_0","name":"inspect_manifest","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":457,"output_tokens":445},"cost_in_usd_ticks":15393500,"input_tokens":457,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":441,"output_tokens_details":{"reasoning_tokens":380},"total_tokens":898},"user":null},"sequence_number":19,"type":"response.completed"}
 
 ---
 provider: xai
@@ -2602,73 +2443,82 @@ then:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: 45486ef8-573b-9d6c-915b-a425cf9f6fad
+    value: a370819c-a1e2-9ffc-b5e1-68f93c823a07
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"45486ef8-573b-9d6c-915b-a425cf9f6fad","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a370819c-a1e2-9ffc-b5e1-68f93c823a07","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"45486ef8-573b-9d6c-915b-a425cf9f6fad","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a370819c-a1e2-9ffc-b5e1-68f93c823a07","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.reasoning_summary_part.added
-    data: {"item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+    data: {"item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"I will call get_status_word","item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"I will call get_status_word","item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" once and reply with","item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" once and reply with","item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":" the exact returned ","item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":" the exact returned ","item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"word in one short sentence.","item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"word in one short sentence.","item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"\n\nThe function returned","item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" \"azure\". I will reply with that exact word in one short sentence.","item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.done
-    data: {"item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"sequence_number":8,"summary_index":0,"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"response.reasoning_summary_text.done"}
+    data: {"item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"sequence_number":10,"summary_index":0,"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.\n\nThe function returned \"azure\". I will reply with that exact word in one short sentence.","type":"response.reasoning_summary_text.done"}
 
     event: response.reasoning_summary_part.done
-    data: {"item_id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":0,"part":{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"},"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+    data: {"item_id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":0,"part":{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.\n\nThe function returned \"azure\". I will reply with that exact word in one short sentence.","type":"summary_text"},"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":10,"type":"response.output_item.done"}
+    data: {"item":{"id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.\n\nThe function returned \"azure\". I will reply with that exact word in one short sentence.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":12,"type":"response.output_item.done"}
 
     event: response.output_item.added
-    data: {"item":{"content":[],"id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":11,"type":"response.output_item.added"}
+    data: {"item":{"content":[],"id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":13,"type":"response.output_item.added"}
 
     event: response.content_part.added
-    data: {"content_index":0,"item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":12,"type":"response.content_part.added"}
+    data: {"content_index":0,"item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":14,"type":"response.content_part.added"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"The","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":13,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"The","item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","logprobs":[],"output_index":1,"sequence_number":15,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" word","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":14,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" returned","item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","logprobs":[],"output_index":1,"sequence_number":16,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" is","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":15,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" word","item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","logprobs":[],"output_index":1,"sequence_number":17,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" azure","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":16,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" is","item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","logprobs":[],"output_index":1,"sequence_number":18,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":17,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" azure","item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","logprobs":[],"output_index":1,"sequence_number":19,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","logprobs":[],"output_index":1,"sequence_number":20,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","logprobs":[],"output_index":1,"sequence_number":18,"text":"The word is azure.","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","logprobs":[],"output_index":1,"sequence_number":21,"text":"The returned word is azure.","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"},"sequence_number":19,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"The returned word is azure.","type":"output_text"},"sequence_number":22,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"}],"id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":20,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The returned word is azure.","type":"output_text"}],"id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":23,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"45486ef8-573b-9d6c-915b-a425cf9f6fad","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_45486ef8-573b-9d6c-915b-a425cf9f6fad","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"The word is azure.","type":"output_text"}],"id":"msg_45486ef8-573b-9d6c-915b-a425cf9f6fad","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":337,"output_tokens":295},"cost_in_usd_ticks":8052500,"input_tokens":337,"input_tokens_details":{"cached_tokens":320},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":288,"output_tokens_details":{"reasoning_tokens":283},"total_tokens":625},"user":null},"sequence_number":21,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"a370819c-a1e2-9ffc-b5e1-68f93c823a07","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_a370819c-a1e2-9ffc-b5e1-68f93c823a07","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.\n\nThe function returned \"azure\". I will reply with that exact word in one short sentence.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"The returned word is azure.","type":"output_text"}],"id":"msg_a370819c-a1e2-9ffc-b5e1-68f93c823a07","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":337,"output_tokens":475},"cost_in_usd_ticks":14543500,"input_tokens":337,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":467,"output_tokens_details":{"reasoning_tokens":461},"total_tokens":804},"user":null},"sequence_number":24,"type":"response.completed"}
 
 ---
 provider: xai
@@ -2744,36 +2594,86 @@ then:
 ---
 provider: xai
 encoder: POST /v1/responses
+shape: d636ce2e3d67f210
+calls:
+- get_status_word
+ends:
+- completed
+- in_progress
+source: xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: 6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"I will call get_status_word","item_id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" once and reply with","item_id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the exact returned ","item_id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"word in one short sentence.","item_id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","output_index":0,"sequence_number":8,"summary_index":0,"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","output_index":0,"part":{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"},"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":10,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call-45007c88-2c41-4a49-91ce-91f17fec5525-0","id":"fc_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20_0","name":"get_status_word","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":11,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{}","item_id":"fc_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20_0","output_index":1,"sequence_number":12,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{}","item_id":"fc_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20_0","name":"get_status_word","output_index":1,"sequence_number":13,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{}","call_id":"call-45007c88-2c41-4a49-91ce-91f17fec5525-0","id":"fc_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20_0","name":"get_status_word","status":"completed","type":"function_call"},"output_index":1,"sequence_number":14,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20","status":"completed","summary":[{"text":"I will call get_status_word once and reply with the exact returned word in one short sentence.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-45007c88-2c41-4a49-91ce-91f17fec5525-0","id":"fc_6c3f6351-3be7-9ea0-bc84-b37a1cbc4e20_0","name":"get_status_word","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return a harmless status word.","name":"get_status_word","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":324,"output_tokens":296},"cost_in_usd_ticks":10006000,"input_tokens":324,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":292,"output_tokens_details":{"reasoning_tokens":285},"total_tokens":616},"user":null},"sequence_number":15,"type":"response.completed"}
+
+---
+provider: xai
+encoder: POST /v1/responses
 shape: d7d40b0cdd444b6d
 calls:
 - submit
 ends:
 - completed
-source: xai/multi_extract/batch_multi_extract_chain.yaml#0
+source: xai/multi_extract/batch_multi_extract_chain.yaml#2
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 55a0a182-ca1e-9a19-9dc3-7fc63669c63b
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"55a0a182-ca1e-9a19-9dc3-7fc63669c63b","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_55a0a182-ca1e-9a19-9dc3-7fc63669c63b","status":"completed","summary":[{"text":"The task is to extract names from the text. The only name mentioned is Linus.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"names\":[\"Linus\"]}","call_id":"call-c03c13e8-a026-4aa1-9052-2d697e26d098-0","id":"fc_55a0a182-ca1e-9a19-9dc3-7fc63669c63b_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":400,"output_tokens":237},"cost_in_usd_ticks":8834000,"input_tokens":400,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":234,"output_tokens_details":{"reasoning_tokens":222},"total_tokens":634},"user":null}'
----
-provider: xai
-encoder: POST /v1/responses
-shape: d8aed0fd13679795
-calls: []
-ends:
-- completed
-source: xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml#0
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  - name: x-request-id
-    value: 0ff7e521-cd7c-9b28-9642-51924541e29d
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"0ff7e521-cd7c-9b28-9642-51924541e29d","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"encrypted_content":"Mv6r5OTbiVq/sX0/Fu6XiSokaJXQVoXmBmp6Y1qlTVkqF7wQZ1BkUcL3ZDQiPuh+fMo6V4rMAuBf9GhAL5fwCcnaDQ2c+B5cS0IG5bLe7qnWsePl9ymv8/KZbhbPGKcRVSHGJ1vkp7oYmGOYlDpglodUKrUwMuIBDeP6FmhUdNOeqiULjAUavb4xBc7Ogo/TRileI4LNGCxC3eBNfuIXgsynT61eUiQalEfB94q7QOLVmOtQV0zj7SVv8vQ6a1ADM+ADjr78pGQ1oB8w8PDcDmOZGd9x1vnKR3S1hWQbCRFjJi0UUa6YC+ce8TtCAKk36CxQEaiRAS5Cvzq4kEy3ovLNEyKHh9rlNFcBaIe0UnqEgWydA2ZmTZeKufLXc5tto/i0tG2rO26wcSKd4llLGPfDVvOQRz3usXkRuS3kHC5tL/+2wHyqDQS4P2sdAeU/T9SWxF1uxUfA/giYD1QQww0JqSceIjhaDhGkuXC2wfpdKGGEDWKPWG2dDfaBLX6gMjNvlImvx24NVOIH4kNDk+0Dib0/+w3lDfW0goVQcKQ5YboNTJfQinMMnJKJZ8+wPbqtPaswjEbpzPyNjGzhJx4z5T8G02ShRPfKvCmIX2wRjQ+V90K6L2LptKI8rc1jKMdl3kNI5HTnTqWpQmpQ4wX5HfSgOYhMgfNf+EY/7r0wmhvX26d1RWqp9cdsooiP8D1+kq5m0NaYg4RYCm+jjHP3Cv4AOqCdoByYegkt/GVfLSjZ6t8zoq5YSDFqF0IJSk2vtuEhEdZURFlUA6qpWGMWE7pHk9OmaboBpG86E4sbKJa/EWvWqRlmmAEzd9uWfg","id":"rs_0ff7e521-cd7c-9b28-9642-51924541e29d","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"6","type":"output_text"}],"id":"msg_0ff7e521-cd7c-9b28-9642-51924541e29d","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":228,"output_tokens":135},"cost_in_usd_ticks":4009000,"input_tokens":228,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":127,"output_tokens_details":{"reasoning_tokens":126},"total_tokens":355},"user":null}'
+    value: 34fbca7f-104d-9792-9834-6b465ce3ab90
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"34fbca7f-104d-9792-9834-6b465ce3ab90","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_34fbca7f-104d-9792-9834-6b465ce3ab90","status":"completed","summary":[{"text":"The task is to extract names from the text. The only name present is Linus.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"names\":[\"Linus\"]}","call_id":"call-2ca81279-9e01-4958-be49-765ddc1e7ac5-0","id":"fc_34fbca7f-104d-9792-9834-6b465ce3ab90_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":400,"output_tokens":227},"cost_in_usd_ticks":9256000,"input_tokens":400,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":224,"output_tokens_details":{"reasoning_tokens":212},"total_tokens":624},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -2806,25 +2706,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: b8b77604-2cc8-94aa-86c2-296e10a5ae2c
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"b8b77604-2cc8-94aa-86c2-296e10a5ae2c","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_b8b77604-2cc8-94aa-86c2-296e10a5ae2c","status":"completed","summary":[{"text":"I will call the orchard-label tool exactly once with an empty object and no other tools.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-a0cfb6c2-3326-492b-8cd2-b7ada1f58c42-0","id":"fc_b8b77604-2cc8-94aa-86c2-296e10a5ae2c_0","name":"lookup_orchard_label","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":{"name":"lookup_orchard_label","type":"function"},"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":332,"output_tokens":488},"cost_in_usd_ticks":14259000,"input_tokens":332,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":485,"output_tokens_details":{"reasoning_tokens":477},"total_tokens":817},"user":null}'
----
-provider: xai
-encoder: POST /v1/responses
-shape: f0132abf82e9081a
-calls:
-- submit
-ends:
-- completed
-source: xai/multi_extract/batch_multi_extract_chain.yaml#7
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  - name: x-request-id
-    value: 708c758f-cf73-92a3-b640-eaf8efff4f75
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"708c758f-cf73-92a3-b640-eaf8efff4f75","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"arguments":"{\"names\":[\"Grace\"]}","call_id":"call-96ec5568-6f1e-4be5-8ef0-cc7d9febf8ed-0","id":"fc_708c758f-cf73-92a3-b640-eaf8efff4f75_0","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":400,"output_tokens":386},"cost_in_usd_ticks":12534000,"input_tokens":400,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":382,"output_tokens_details":{"reasoning_tokens":371},"total_tokens":782},"user":null}'
+    value: 30a8559d-d0e6-945c-a168-5aad1dd42d3b
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"30a8559d-d0e6-945c-a168-5aad1dd42d3b","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_30a8559d-d0e6-945c-a168-5aad1dd42d3b","status":"completed","summary":[{"text":"I will call the orchard-label tool exactly once with an empty object and no other tools.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call-5ad6677d-7c43-43f0-913a-e90d4d694b28-0","id":"fc_30a8559d-d0e6-945c-a168-5aad1dd42d3b_0","name":"lookup_orchard_label","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":{"name":"lookup_orchard_label","type":"function"},"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":332,"output_tokens":405},"cost_in_usd_ticks":12856000,"input_tokens":332,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":402,"output_tokens_details":{"reasoning_tokens":394},"total_tokens":734},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses
@@ -2855,8 +2738,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: af1bad2b-f189-9afd-b2ec-1a5ceba430e4
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"af1bad2b-f189-9afd-b2ec-1a5ceba430e4","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"-3","type":"output_text"}],"id":"msg_af1bad2b-f189-9afd-b2ec-1a5ceba430e4","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"},{"description":"Subtract y from x (that is, x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":438,"output_tokens":42},"cost_in_usd_ticks":2293000,"input_tokens":438,"input_tokens_details":{"cached_tokens":384},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":34,"output_tokens_details":{"reasoning_tokens":32},"total_tokens":472},"user":null}'
+    value: 16229de7-2cec-91cc-ab61-e233c9f85fb6
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"16229de7-2cec-91cc-ab61-e233c9f85fb6","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"-3.0","type":"output_text"}],"id":"msg_16229de7-2cec-91cc-ab61-e233c9f85fb6","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"},{"description":"Subtract y from x (that is, x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":438,"output_tokens":40},"cost_in_usd_ticks":2243000,"input_tokens":438,"input_tokens_details":{"cached_tokens":384},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":32,"output_tokens_details":{"reasoning_tokens":28},"total_tokens":470},"user":null}'
 ---
 provider: xai
 encoder: POST /v1/responses

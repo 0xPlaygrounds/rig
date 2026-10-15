@@ -72,13 +72,6 @@ where
 
 /// Cassette wrapper for the groq prompt-caching matrix
 /// (`crates/rig-cassette/fixtures/cassettes/groq/prompt_caching/`).
-///
-/// Builds the cassette directly rather than delegating to [`with_groq_cassette_result`]: this
-/// provider's cassette-safety `source_dir` covers `support.rs` itself, and the
-/// scan requires every call to a *registered* wrapper to pass a string-literal
-/// scenario. A delegating wrapper passes its `spec` variable through, which the
-/// scan reports as an unregistered scenario. The duplication is three lines and
-/// the alternative is an unscannable suite.
 pub(super) async fn with_groq_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

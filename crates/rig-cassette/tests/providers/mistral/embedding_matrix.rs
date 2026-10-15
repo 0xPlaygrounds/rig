@@ -64,6 +64,29 @@ async fn dimensions_request() {
     .await;
 }
 
+/// Codestral Embed answers a request naming no width at 1536, so a handle
+/// that names none reports that width and sends no `output_dimension`.
+#[tokio::test]
+async fn codestral_default_width() {
+    with_mistral_embedding_cassette(
+        "embedding_matrix/codestral_default_width",
+        |client| async move {
+            let model = client.embedding(mistral::embedding::CODESTRAL_EMBED, None);
+            assert_eq!(model.capabilities().ndims, 1_536);
+            // One input keeps the fixture small.
+            let response = model
+                .call(inputs().into_iter().take(1).collect::<Vec<_>>())
+                .await
+                .expect("embedding at the default width should succeed");
+            assert_eq!(response.embeddings.len(), 1);
+            for embedding in &response.embeddings {
+                assert_eq!(embedding.vec.len(), 1_536);
+            }
+        },
+    )
+    .await;
+}
+
 /// A rejected request surfaces the provider's own error body, preserved raw.
 #[tokio::test]
 async fn error_preserves_provider_body() {

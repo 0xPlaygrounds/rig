@@ -58,3 +58,69 @@ fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
         OutputMode::Prompted,
     );
 }
+
+/// A Native turn to a provider that drops the schema marks its policy, which
+/// survives serde, so the run checks the answer; a carrying provider's does not.
+#[test]
+fn a_native_schema_the_provider_drops_marks_the_turn_unenforced() {
+    let spec = RunSpec {
+        output_schema: Some(serde_json::json!({"type": "object", "required": ["answer"]})),
+        ..RunSpec::default()
+    };
+    let prepare = |capabilities: ProviderCapabilities| {
+        prepare_request(
+            &spec,
+            &capabilities,
+            &[Message::user("hi")],
+            vec![],
+            None,
+            None,
+        )
+        .expect("prepare")
+    };
+
+    let dropped = prepare(ProviderCapabilities::default().with_output_schema_dropped(true));
+    assert_eq!(dropped.output_mode, OutputMode::Native);
+    assert!(dropped.policy.unenforced_schema());
+    let json = serde_json::to_string(&dropped).expect("serialize");
+    let restored: PreparedRequest = serde_json::from_str(&json).expect("deserialize");
+    assert!(restored.policy.unenforced_schema());
+
+    assert!(
+        !prepare(ProviderCapabilities::default())
+            .policy
+            .unenforced_schema()
+    );
+
+    // A wire that defers the schema while tools are advertised leaves a turn
+    // with tools unenforced, and one without tools enforced.
+    let deferring = ProviderCapabilities::default()
+        .with_native_output_tool_composition(true)
+        .with_output_schema_deferred_with_tools(true);
+    assert!(!prepare(deferring).policy.unenforced_schema());
+    let with_tool = prepare_request(
+        &spec,
+        &deferring,
+        &[Message::user("hi")],
+        vec![ToolDefinition {
+            name: rig_core::message::ToolName::new("add").expect("tool name"),
+            description: "adds".to_string(),
+            parameters: serde_json::json!({"type": "object"}),
+            annotations: Default::default(),
+        }],
+        None,
+        None,
+    )
+    .expect("prepare");
+    assert_eq!(with_tool.output_mode, OutputMode::Native);
+    assert!(with_tool.policy.unenforced_schema());
+    // So does a raw tool in `additional_params`, which the wire also sends.
+    let raw = RunSpec {
+        additional_params: Some(serde_json::json!({"tools": [{"type": "function"}]})),
+        ..spec.clone()
+    };
+    let with_raw_tool =
+        prepare_request(&raw, &deferring, &[Message::user("hi")], vec![], None, None)
+            .expect("prepare");
+    assert!(with_raw_tool.policy.unenforced_schema());
+}

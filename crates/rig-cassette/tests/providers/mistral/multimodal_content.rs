@@ -30,7 +30,7 @@ const VISION_MODEL: &str = mistral::MISTRAL_SMALL;
 /// The only Mistral family that reports `capabilities.audio`. Every other
 /// model silently substitutes a server-side transcript, so an audio cell run
 /// against one would pass without proving the audio chunk was understood.
-const AUDIO_MODEL: &str = "voxtral-small-latest";
+const AUDIO_MODEL: &str = mistral::VOXTRAL_SMALL;
 
 /// A 64×64 PNG filled with one flat colour (#DC1414). Small enough to embed in
 /// a fixture, unambiguous enough that "what colour is this" has one answer.

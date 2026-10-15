@@ -40,7 +40,7 @@ anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,st
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stop_sequences:[str],tools:[{}]}	1	anthropic/empty_stop_sequence_matrix/with_tools_empty_stop.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stop_sequences:[str]}	1	anthropic/raw_capture_matrix/raw_exposes_stop_sequence.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],temperature:num,tool_choice:{},tools:[{}]}	20	anthropic/corpus_causal/completion_streamed.yaml#0
-anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],temperature:num}	8	anthropic/corpus_host/custom_at_start_streamed.yaml#0
+anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],temperature:num}	7	anthropic/corpus_host/custom_at_start_streamed.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],thinking:{},tool_choice:{},tools:[{}]}	4	anthropic/models/sonnet_5_5/session.yaml#26
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],thinking:{}}	1	anthropic/corpus_request_shape/thinking_streamed.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],tool_choice:{},tools:[{}]}	14	anthropic/lifecycle_matrix/entry_log_order.yaml#0
@@ -52,7 +52,7 @@ anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,st
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,system:[{}],temperature:num,thinking:{},tools:[{}]}	1	anthropic/corpus_shaping/thinking_second_turn.yaml#1
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,system:[{}],temperature:num,tool_choice:{},tools:[{}]}	12	anthropic/corpus_output/tool_choice_required.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,system:[{}],temperature:num,tools:[{}]}	64	anthropic/checkpoint_matrix/parallel_batch.yaml#0
-anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,system:[{}],temperature:num}	36	anthropic/corpus_causal/completion_concurrent.yaml#1
+anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,system:[{}],temperature:num}	26	anthropic/corpus_causal/completion_concurrent.yaml#1
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,system:[{}],thinking:{},tool_choice:{},tools:[{}]}	2	anthropic/models/sonnet_5_5/session.yaml#45
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,system:[{}],thinking:{},tools:[{}]}	23	anthropic/corpus_output/tool_thinking.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,system:[{}],thinking:{}}	2	anthropic/corpus_request_shape/thinking_unary.yaml#0
@@ -68,9 +68,9 @@ anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,to
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str}	3	anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result.yaml#1
 anthropic	POST /v1/messages	request	$.cache_control {ttl:str,type:"ephemeral"}	1	anthropic/strict_schema_integrations/one_hour_automatic_caching_coexists_with_strict_tools.yaml#0
 anthropic	POST /v1/messages	request	$.cache_control {type:"ephemeral"}	267	anthropic/long_run_caching/document_60.yaml#0
-anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"assistant"}	343	anthropic/adversarial/empty_signed_reasoning.yaml#1
+anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"assistant"}	340	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"system"}	102	anthropic/long_run_caching/mid_system_every_10_60.yaml#20
-anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"user"}	552	anthropic/adversarial/empty_signed_reasoning.yaml#0
+anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"user"}	541	anthropic/adversarial/empty_signed_reasoning.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[] {caller:{},content:[{}],tool_use_id:str,type:"web_search_tool_result"}	1	anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {caller:{},id:str,input:{},name:str,type:"tool_use"}	268	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {citations:[{}],text:str,type:"text"}	63	anthropic/long_run_caching/document_60.yaml#1
@@ -83,7 +83,7 @@ anthropic	POST /v1/messages	request	$.messages[].content[] {id:str,input:{},name
 anthropic	POST /v1/messages	request	$.messages[].content[] {signature:str,thinking:str,type:"thinking"}	257	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {source:{},type:"document"}	6	anthropic/corpus_request_shape/static_context.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[] {source:{},type:"image"}	6	anthropic/models/sonnet_5_5/session.yaml#13
-anthropic	POST /v1/messages	request	$.messages[].content[] {text:str,type:"text"}	552	anthropic/adversarial/empty_signed_reasoning.yaml#0
+anthropic	POST /v1/messages	request	$.messages[].content[] {text:str,type:"text"}	541	anthropic/adversarial/empty_signed_reasoning.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[].caller {type:"direct"}	269	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[].citations {enabled:bool}	78	anthropic/long_run_caching/document_60.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[].citations[] {cited_text:str,document_index:num,document_title:str,end_char_index:num,start_char_index:num,type:"char_location"}	60	anthropic/long_run_caching/document_60.yaml#1
@@ -102,7 +102,7 @@ anthropic	POST /v1/messages	request	$.output_config.format.schema {$schema:str,a
 anthropic	POST /v1/messages	request	$.output_config.format.schema {additionalProperties:bool,properties:{},required:[str],type:"object"}	5	anthropic/corpus_output/tool_under_none_degrades.yaml#0
 anthropic	POST /v1/messages	request	$.output_config.format.schema.properties.* {type:"string"}	8	anthropic/corpus_output/tool_under_none_degrades.yaml#0
 anthropic	POST /v1/messages	request	$.system[] {cache_control:{},text:str,type:"text"}	2	anthropic/prompt_caching/static_prefix_with_explicit_tool_marker_at_marker_limit.yaml#0
-anthropic	POST /v1/messages	request	$.system[] {text:str,type:"text"}	503	anthropic/agent/completion_smoke.yaml#0
+anthropic	POST /v1/messages	request	$.system[] {text:str,type:"text"}	492	anthropic/agent/completion_smoke.yaml#0
 anthropic	POST /v1/messages	request	$.system[].cache_control {ttl:str,type:"ephemeral"}	2	anthropic/prompt_caching/static_prefix_with_explicit_tool_marker_at_marker_limit.yaml#0
 anthropic	POST /v1/messages	request	$.thinking {block_binding:{},display:str,type:"adaptive"}	7	anthropic/context_binding/between_tools_after_tool_change.yaml#0
 anthropic	POST /v1/messages	request	$.thinking {block_binding:{},type:"adaptive"}	294	anthropic/long_run_caching/document_60.yaml#0
@@ -288,7 +288,7 @@ anthropic	POST /v1/messages	reply	667690444c20af97	24	anthropic/long_run_caching
 anthropic	POST /v1/messages	reply	6928de3ca98a8669	1	bank:anthropic/checkpoint_matrix/large_result.yaml#0
 anthropic	POST /v1/messages	reply	6969bea644091b15	5	anthropic/context_binding/between_tools_after_tool_change.yaml#0
 anthropic	POST /v1/messages	reply	69c3faacf90ab427	1	bank:anthropic/opus_4_7/messages_tools_smoke.yaml#0
-anthropic	POST /v1/messages	reply	6c01d772e1b347a8	12	anthropic/corpus_host/custom_at_start_streamed.yaml#0
+anthropic	POST /v1/messages	reply	6c01d772e1b347a8	11	anthropic/corpus_host/custom_at_start_streamed.yaml#0
 anthropic	POST /v1/messages	reply	6c171d3cb53a840a	1	anthropic/long_loop_matrix/parallel_calls.yaml#0
 anthropic	POST /v1/messages	reply	6f2cf8ec8c89761f	2	anthropic/corpus_outcome/model_error.yaml#0
 anthropic	POST /v1/messages	reply	77055423b88342a8	1	bank:anthropic/session_matrix/memory_unary.yaml#0
@@ -306,7 +306,7 @@ anthropic	POST /v1/messages	reply	8e4e7b40058a1e35	1	anthropic/raw_stream_captur
 anthropic	POST /v1/messages	reply	8fa44ea0f17602d1	1	bank:anthropic/models/opus_5_5/session.yaml#14
 anthropic	POST /v1/messages	reply	911f1c26aa9ff38e	1	anthropic/malformed_tool_args_matrix/streaming_malformed_call_is_answered_with_an_error.yaml#0
 anthropic	POST /v1/messages	reply	918d061035ad367b	1	anthropic/raw_capture_matrix/raw_exposes_tool_use_block.yaml#0
-anthropic	POST /v1/messages	reply	92a55882b05e0eba	38	anthropic/agent/completion_smoke.yaml#0
+anthropic	POST /v1/messages	reply	92a55882b05e0eba	28	anthropic/agent/completion_smoke.yaml#0
 anthropic	POST /v1/messages	reply	92ea36b9d57153ad	3	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	reply	9659796c4e46b9c9	1	anthropic/messages_strict_tools/nested_optional_object_can_be_omitted.yaml#0
 anthropic	POST /v1/messages	reply	9673f08f8b7d4ae4	1	bank:anthropic/messages_strict_tools/nullable_union_can_emit_null.yaml#0
@@ -1441,6 +1441,9 @@ llamacpp	POST /v1/responses	reply	a6b00ad5b2113274	1	llamacpp/unmapped_surface/r
 mistral	GET /v1/models	request	$ empty	2	mistral/models/list_models_rejected_key_reports_api_error_with_context.yaml#0
 mistral	GET /v1/models	reply	5fc1919bd3c8120e	1	mistral/models/list_models_rejected_key_reports_api_error_with_context.yaml#0
 mistral	GET /v1/models	reply	a75805d39fea65db	1	mistral/models/list_models_smoke.yaml#0
+mistral	POST /v1/audio/transcriptions	request	$ empty	2	mistral/transcription/voxtral_mini_transcribes_the_audio_fixture.yaml#0
+mistral	POST /v1/audio/transcriptions	reply	e65646a9921ffca5	1	mistral/transcription/voxtral_mini_transcribes_the_audio_fixture.yaml#0
+mistral	POST /v1/audio/transcriptions	reply	fc17dc6e29263fc6	1	mistral/transcription/voxtral_small_is_not_a_transcription_model.yaml#0
 mistral	POST /v1/chat/completions	request	$ {logprobs:bool,max_tokens:num,messages:[{}],model:str,stream:bool,top_logprobs:num}	1	mistral/logprobs_rejection_matrix/streaming_ministral_3b.yaml#0
 mistral	POST /v1/chat/completions	request	$ {logprobs:bool,max_tokens:num,messages:[{}],model:str,top_logprobs:num}	1	mistral/logprobs_rejection_matrix/blocking_ministral_3b.yaml#0
 mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,n:num,stream:bool,temperature:num}	1	mistral/capability_edges/streaming_with_two_candidates_answers_from_the_first.yaml#0
@@ -1460,6 +1463,8 @@ mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:
 mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,tool_choice:str,tools:[{}]}	1	mistral/terminal_metadata_matrix/blocking_ministral_3b_tiny_tool.yaml#0
 mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,tools:[{}]}	7	mistral/history_survival_matrix/unary.yaml#0
 mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str}	1	mistral/terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_one.yaml#0
+mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,stream:bool}	2	mistral/reasoning_roundtrip/streaming.yaml#0
+mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str}	2	mistral/reasoning_roundtrip/nonstreaming.yaml#0
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,response_format:{}}	1	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,stream:bool,temperature:num}	1	mistral/multimodal_content/streaming_agent_sends_audio.yaml#0
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,stream:bool,tool_choice:str,tools:[{}]}	1	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
@@ -1468,17 +1473,20 @@ mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,temperature
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,tool_choice:str,tools:[{}]}	3	mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none.yaml#0
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,tool_choice:{},tools:[{}]}	1	mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none.yaml#2
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str}	1	mistral/response_identity_edge/blocking_unauthorized_carries_the_correlation_id.yaml#0
-mistral	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"system"}	27	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"assistant"}	2	mistral/reasoning_roundtrip/nonstreaming.yaml#1
+mistral	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"system"}	31	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"user"}	3	mistral/multimodal_content/blocking_document_and_image_in_one_message.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[] {content:str,role:"assistant"}	8	mistral/history_survival_matrix/streaming.yaml#4
 mistral	POST /v1/chat/completions	request	$.messages[] {content:str,role:"tool",tool_call_id:str}	13	mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
-mistral	POST /v1/chat/completions	request	$.messages[] {content:str,role:"user"}	42	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[] {content:str,role:"user"}	46	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[] {role:"assistant",tool_calls:[{}]}	13	mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[].content[] {document_name:str,document_url:str,type:"document_url"}	1	mistral/multimodal_content/blocking_document_and_image_in_one_message.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[].content[] {image_url:{},type:"image_url"}	1	mistral/multimodal_content/blocking_document_and_image_in_one_message.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[].content[] {input_audio:str,type:"input_audio"}	2	mistral/multimodal_content/blocking_raw_model_sends_audio.yaml#0
-mistral	POST /v1/chat/completions	request	$.messages[].content[] {text:str,type:"text"}	29	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[].content[] {text:str,type:"text"}	33	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[].content[] {thinking:[{}],type:"thinking"}	2	mistral/reasoning_roundtrip/nonstreaming.yaml#1
 mistral	POST /v1/chat/completions	request	$.messages[].content[].image_url {detail:str,url:str}	1	mistral/multimodal_content/blocking_document_and_image_in_one_message.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[].content[].thinking[] {text:str,type:"text"}	2	mistral/reasoning_roundtrip/nonstreaming.yaml#1
 mistral	POST /v1/chat/completions	request	$.messages[].tool_calls[] {function:{},id:str,type:"function"}	13	mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[].tool_calls[].function {arguments:str,name:str}	13	mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
 mistral	POST /v1/chat/completions	request	$.response_format {json_schema:{},type:"json_schema"}	2	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
@@ -1510,14 +1518,17 @@ mistral	POST /v1/chat/completions	request	$.tools[].function.parameters.properti
 mistral	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.*.items.properties.* {type:"string"}	1	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 mistral	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.*.properties.* {type:"boolean"}	2	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 mistral	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.*.properties.* {type:"integer"}	1	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+mistral	POST /v1/chat/completions	reply	0b13d60709719185	1	mistral/reasoning_roundtrip/streaming.yaml#1
 mistral	POST /v1/chat/completions	reply	1129b06aeaf85b47	1	mistral/terminal_metadata_matrix/streaming_mistral_small_tiny_plain_two.yaml#0
 mistral	POST /v1/chat/completions	reply	1da6e59c3fb3ece4	2	mistral/logprobs_rejection_matrix/blocking_ministral_3b.yaml#0
 mistral	POST /v1/chat/completions	reply	487ce6c58e19093e	6	mistral/history_survival_matrix/streaming.yaml#3
 mistral	POST /v1/chat/completions	reply	5b5738492f604cf8	1	mistral/terminal_metadata_matrix/blocking_ministral_3b_tiny_tool.yaml#0
 mistral	POST /v1/chat/completions	reply	5fc1919bd3c8120e	1	mistral/response_identity_edge/blocking_unauthorized_carries_the_correlation_id.yaml#0
 mistral	POST /v1/chat/completions	reply	6c85b0d686bb0dae	1	mistral/tool_truncation_matrix/streaming_ministral_3b_low_model.yaml#0
+mistral	POST /v1/chat/completions	reply	7e4c3779fa8f3d06	2	mistral/reasoning_roundtrip/nonstreaming.yaml#0
 mistral	POST /v1/chat/completions	reply	8314867d055ae798	1	mistral/multimodal_content/blocking_raw_model_sends_audio.yaml#0
 mistral	POST /v1/chat/completions	reply	a058d541203620c2	8	mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none.yaml#0
+mistral	POST /v1/chat/completions	reply	a6ebab26b7401ad1	1	mistral/reasoning_roundtrip/streaming.yaml#0
 mistral	POST /v1/chat/completions	reply	ab32ad417d439cd4	12	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
 mistral	POST /v1/chat/completions	reply	b4e24c1c2bc3845a	6	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 mistral	POST /v1/chat/completions	reply	c28734ec7bb3e6c3	1	mistral/request_shape_matrix/streaming_mistral_small_json_any.yaml#0
@@ -1527,8 +1538,8 @@ mistral	POST /v1/chat/completions	reply	dc0b82b5495e5d5a	1	mistral/multimodal_co
 mistral	POST /v1/chat/completions	reply	dd80b9217858cb27	1	mistral/terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_one.yaml#0
 mistral	POST /v1/chat/completions	reply	fc17dc6e29263fc6	1	mistral/response_identity_edge/streaming_error_carries_the_correlation_id.yaml#0
 mistral	POST /v1/embeddings	request	$ {input:[str],model:str,output_dimension:num}	1	mistral/embedding_matrix/dimensions_request.yaml#0
-mistral	POST /v1/embeddings	request	$ {input:[str],model:str}	3	mistral/capability_edges/one_request_over_mistrals_batch_cap_is_rejected.yaml#0
-mistral	POST /v1/embeddings	reply	c94ca3de5571e916	2	mistral/embedding_matrix/dimensions_request.yaml#0
+mistral	POST /v1/embeddings	request	$ {input:[str],model:str}	4	mistral/capability_edges/one_request_over_mistrals_batch_cap_is_rejected.yaml#0
+mistral	POST /v1/embeddings	reply	c94ca3de5571e916	3	mistral/embedding_matrix/codestral_default_width.yaml#0
 mistral	POST /v1/embeddings	reply	caa17854b2d669eb	1	mistral/capability_edges/one_request_over_mistrals_batch_cap_is_rejected.yaml#0
 mistral	POST /v1/embeddings	reply	fc17dc6e29263fc6	1	mistral/embedding_matrix/error_preserves_provider_body.yaml#0
 mistralrs	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,stream_options:{}}	1	mistralrs/streaming/chat_completions_stream_emits_reasoning_and_text_incrementally.yaml#0
@@ -2564,40 +2575,42 @@ xai	POST /v1/responses	request	$ {include:[str],input:[{}],max_output_tokens:num
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],max_output_tokens:num,model:str,store:bool,tools:[{}]}	5	xai/image_input_matrix/generated_image_as_tool_result.yaml#1
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],max_output_tokens:num,model:str,store:bool}	2	xai/stateful_chain_matrix/file_id_chain.yaml#1
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,parallel_tool_calls:bool,store:bool,stream:bool,tools:[{}]}	5	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#0
-xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,reasoning:{}}	1	xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml#0
+xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,reasoning:{},store:bool}	1	xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml#0
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,store:bool,stream:bool,tools:[{}]}	3	xai/permission_control/permission_control_streaming_example.yaml#0
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,store:bool,stream:bool}	1	xai/streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering.yaml#1
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,store:bool,text:{},tools:[{}]}	2	xai/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml#0
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,store:bool,tool_choice:str,tools:[{}]}	1	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,store:bool,tools:[{}]}	2	xai/permission_control/permission_control_prompt_example.yaml#0
 xai	POST /v1/responses	request	$ {include:[str],input:[{}],model:str,store:bool}	2	xai/reasoning_roundtrip/nonstreaming.yaml#0
-xai	POST /v1/responses	request	$ {input:[{}],max_output_tokens:num,model:str,stream:bool}	1	xai/request_identity_matrix/responses.yaml#1
-xai	POST /v1/responses	request	$ {input:[{}],max_output_tokens:num,model:str,temperature:num}	1	xai/request_identity_matrix/responses.yaml#2
-xai	POST /v1/responses	request	$ {input:[{}],max_output_tokens:num,model:str}	2	xai/image_input_matrix/generated_image_as_user_content.yaml#1
-xai	POST /v1/responses	request	$ {input:[{}],model:str,stream:bool,tool_choice:str,tools:[{}]}	1	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
-xai	POST /v1/responses	request	$ {input:[{}],model:str,stream:bool,tools:[{}]}	2	xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml#0
-xai	POST /v1/responses	request	$ {input:[{}],model:str,stream:bool}	1	xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml#0
-xai	POST /v1/responses	request	$ {input:[{}],model:str,text:{}}	1	xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml#0
-xai	POST /v1/responses	request	$ {input:[{}],model:str,tool_choice:str,tools:[{}]}	11	xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml#0
-xai	POST /v1/responses	request	$ {input:[{}],model:str,tool_choice:{},tools:[{}]}	1	xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml#1
-xai	POST /v1/responses	request	$ {input:[{}],model:str,tools:[{}]}	2	xai/tools/tools_smoke.yaml#0
-xai	POST /v1/responses	request	$ {input:[{}],model:str}	2	xai/agent/completion_smoke.yaml#0
-xai	POST /v1/responses	request	$.input[] {arguments:str,call_id:str,id:str,name:str,status:"completed",type:"function_call"}	11	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#1
+xai	POST /v1/responses	request	$ {input:[{}],max_output_tokens:num,model:str,store:bool,stream:bool}	1	xai/request_identity_matrix/responses.yaml#1
+xai	POST /v1/responses	request	$ {input:[{}],max_output_tokens:num,model:str,store:bool,temperature:num}	1	xai/request_identity_matrix/responses.yaml#2
+xai	POST /v1/responses	request	$ {input:[{}],max_output_tokens:num,model:str,store:bool}	2	xai/image_input_matrix/generated_image_as_user_content.yaml#1
+xai	POST /v1/responses	request	$ {input:[{}],model:str,parallel_tool_calls:bool,store:bool,tools:[{}]}	7	xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#0
+xai	POST /v1/responses	request	$ {input:[{}],model:str,store:bool,stream:bool,tool_choice:str,tools:[{}]}	1	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$ {input:[{}],model:str,store:bool,stream:bool,tools:[{}]}	2	xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml#0
+xai	POST /v1/responses	request	$ {input:[{}],model:str,store:bool,stream:bool}	1	xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml#0
+xai	POST /v1/responses	request	$ {input:[{}],model:str,store:bool,text:{}}	1	xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml#0
+xai	POST /v1/responses	request	$ {input:[{}],model:str,store:bool,tool_choice:str,tools:[{}]}	11	xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml#0
+xai	POST /v1/responses	request	$ {input:[{}],model:str,store:bool,tool_choice:{},tools:[{}]}	1	xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml#1
+xai	POST /v1/responses	request	$ {input:[{}],model:str,store:bool,tools:[{}]}	2	xai/tools/tools_smoke.yaml#0
+xai	POST /v1/responses	request	$ {input:[{}],model:str,store:bool}	2	xai/agent/completion_smoke.yaml#0
+xai	POST /v1/responses	request	$.input[] {arguments:str,call_id:str,id:str,name:str,status:"completed",type:"function_call"}	16	xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#1
 xai	POST /v1/responses	request	$.input[] {arguments:str,call_id:str,name:str,type:"function_call"}	1	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
 xai	POST /v1/responses	request	$.input[] {call_id:str,output:[{}],status:"completed",type:"function_call_output"}	1	xai/image_input_matrix/generated_image_as_tool_result.yaml#2
-xai	POST /v1/responses	request	$.input[] {call_id:str,output:str,status:"completed",type:"function_call_output"}	11	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
+xai	POST /v1/responses	request	$.input[] {call_id:str,output:str,status:"completed",type:"function_call_output"}	16	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
 xai	POST /v1/responses	request	$.input[] {content:[{}],id:str,role:"assistant",status:"completed",type:"message"}	6	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
-xai	POST /v1/responses	request	$.input[] {content:[{}],role:"system",type:"message"}	41	xai/agent/completion_smoke.yaml#0
-xai	POST /v1/responses	request	$.input[] {content:[{}],role:"user",type:"message"}	56	xai/agent/completion_smoke.yaml#0
+xai	POST /v1/responses	request	$.input[] {content:[{}],role:"system",type:"message"}	48	xai/agent/completion_smoke.yaml#0
+xai	POST /v1/responses	request	$.input[] {content:[{}],role:"user",type:"message"}	63	xai/agent/completion_smoke.yaml#0
 xai	POST /v1/responses	request	$.input[] {encrypted_content:str,id:str,status:"completed",summary:[],type:"reasoning"}	1	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#4
 xai	POST /v1/responses	request	$.input[] {encrypted_content:str,id:str,status:"completed",summary:[{}],type:"reasoning"}	12	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#1
+xai	POST /v1/responses	request	$.input[] {id:str,status:"completed",summary:[{}],type:"reasoning"}	7	xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#1
 xai	POST /v1/responses	request	$.input[].content[] {annotations:[],logprobs:[],text:str,type:"output_text"}	3	xai/prompt_caching/blocking_probe.yaml#2
 xai	POST /v1/responses	request	$.input[].content[] {annotations:[],text:str,type:"output_text"}	3	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
 xai	POST /v1/responses	request	$.input[].content[] {detail:str,image_url:str,type:"input_image"}	1	xai/image_input_matrix/generated_image_as_user_content.yaml#1
 xai	POST /v1/responses	request	$.input[].content[] {file_id:str,type:"input_file"}	2	xai/stateful_chain_matrix/file_id_chain.yaml#1
-xai	POST /v1/responses	request	$.input[].content[] {text:str,type:"input_text"}	56	xai/agent/completion_smoke.yaml#0
+xai	POST /v1/responses	request	$.input[].content[] {text:str,type:"input_text"}	63	xai/agent/completion_smoke.yaml#0
 xai	POST /v1/responses	request	$.input[].output[] {detail:str,image_url:str,type:"input_image"}	1	xai/image_input_matrix/generated_image_as_tool_result.yaml#2
-xai	POST /v1/responses	request	$.input[].summary[] {text:str,type:"summary_text"}	12	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#1
+xai	POST /v1/responses	request	$.input[].summary[] {text:str,type:"summary_text"}	19	xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#1
 xai	POST /v1/responses	request	$.reasoning {effort:str,summary:str}	1	xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml#0
 xai	POST /v1/responses	request	$.text {format:{}}	3	xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml#0
 xai	POST /v1/responses	request	$.text.format {name:str,schema:{},strict:bool,type:"json_schema"}	3	xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml#0
@@ -2611,34 +2624,37 @@ xai	POST /v1/responses	request	$.text.format.schema.properties.*.items.propertie
 xai	POST /v1/responses	request	$.text.format.schema.properties.*.items.properties.* {type:"string"}	1	xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml#0
 xai	POST /v1/responses	request	$.text.format.schema.properties.*.properties.* {type:"string"}	1	xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml#0
 xai	POST /v1/responses	request	$.tool_choice {name:str,type:"function"}	1	xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml#1
-xai	POST /v1/responses	request	$.tools[] {description:str,name:str,parameters:{},strict:bool,type:"function"}	40	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
+xai	POST /v1/responses	request	$.tools[] {description:str,name:str,parameters:{},strict:bool,type:"function"}	47	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
 xai	POST /v1/responses	request	$.tools[] {type:"web_search"}	2	xai/web_search_citations/streamed_and_unary.yaml#0
 xai	POST /v1/responses	request	$.tools[].parameters {$schema:str,properties:{},required:[str],title:str,type:"object"}	9	xai/multi_extract/batch_multi_extract_chain.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters {properties:{},required:[],type:"object"}	14	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters {properties:{},required:[str],type:"object"}	18	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters {properties:{},required:[],type:"object"}	21	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters {properties:{},required:[str],type:"object"}	23	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 xai	POST /v1/responses	request	$.tools[].parameters {properties:{},type:"object"}	4	xai/permission_control/permission_control_prompt_example.yaml#0
 xai	POST /v1/responses	request	$.tools[].parameters.properties.* {description:str,type:"number"}	2	xai/tools/tools_smoke.yaml#0
 xai	POST /v1/responses	request	$.tools[].parameters.properties.* {description:str,type:"string"}	8	xai/prompt_caching/blocking_probe.yaml#0
 xai	POST /v1/responses	request	$.tools[].parameters.properties.* {format:str,type:"number"}	3	xai/multi_extract/batch_multi_extract_chain.yaml#1
-xai	POST /v1/responses	request	$.tools[].parameters.properties.* {items:{},type:"array"}	12	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters.properties.* {properties:{},required:[str],type:"object"}	6	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters.properties.* {type:"string"}	8	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters.properties.*.items {properties:{},required:[str],type:"object"}	6	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters.properties.*.items {type:"string"}	11	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters.properties.*.items.properties.* {type:"integer"}	6	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters.properties.*.items.properties.* {type:"string"}	6	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters.properties.*.properties.* {type:"boolean"}	6	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
-xai	POST /v1/responses	request	$.tools[].parameters.properties.*.properties.* {type:"integer"}	6	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.* {items:{},type:"array"}	17	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.* {properties:{},required:[str],type:"object"}	11	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.* {type:"string"}	13	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.*.items {properties:{},required:[str],type:"object"}	11	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.*.items {type:"string"}	16	xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.*.items.properties.* {type:"integer"}	11	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.*.items.properties.* {type:"string"}	11	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.*.properties.* {type:"boolean"}	11	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+xai	POST /v1/responses	request	$.tools[].parameters.properties.*.properties.* {type:"integer"}	11	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 xai	POST /v1/responses	reply	03c8b869f5e737b7	1	xai/streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering.yaml#1
 xai	POST /v1/responses	reply	063234d1e5d554ff	1	xai/permission_control/permission_control_prompt_example.yaml#1
+xai	POST /v1/responses	reply	070e6a2bb65fbc6c	1	xai/request_identity_matrix/responses.yaml#1
 xai	POST /v1/responses	reply	102b2f029f30afc0	1	xai/agent/completion_smoke.yaml#0
 xai	POST /v1/responses	reply	14438acc1dcc6f01	1	bank:xai/session_matrix/memory_streamed.yaml#0
+xai	POST /v1/responses	reply	1ca3ee325de34285	1	xai/tools/tools_smoke.yaml#0
 xai	POST /v1/responses	reply	1ebd978794265fa1	1	bank:xai/portability_matrix/from_anthropic.yaml#0
 xai	POST /v1/responses	reply	1f53a35c4de1f46f	1	bank:xai/raw_capture_matrix/raw_exposes_status_and_service_tier.yaml#0
-xai	POST /v1/responses	reply	23888df926f71e99	1	xai/multi_extract/batch_multi_extract_chain.yaml#5
+xai	POST /v1/responses	reply	23888df926f71e99	3	xai/multi_extract/batch_multi_extract_chain.yaml#4
 xai	POST /v1/responses	reply	2504156f168d4a2a	1	bank:xai/history_survival_matrix/unary.yaml#0
 xai	POST /v1/responses	reply	257a9319f5e4cb75	1	xai/web_search_citations/streamed_and_unary.yaml#1
-xai	POST /v1/responses	reply	3159f82228c31a2b	2	xai/reasoning_roundtrip/nonstreaming.yaml#0
+xai	POST /v1/responses	reply	3159f82228c31a2b	3	xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml#0
+xai	POST /v1/responses	reply	32ae151c4b2cd56c	2	xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#2
 xai	POST /v1/responses	reply	38129947c0b64b1c	1	xai/stateful_chain_matrix/file_id_chain.yaml#1
 xai	POST /v1/responses	reply	39756ff0959e5c52	2	xai/request_identity_matrix/responses.yaml#2
 xai	POST /v1/responses	reply	3a0a7e8b5fdc9bfc	1	bank:xai/session_matrix/other_model.yaml#0
@@ -2646,52 +2662,48 @@ xai	POST /v1/responses	reply	3a0b3779b1fa7fa0	3	xai/prompt_caching/blocking_prob
 xai	POST /v1/responses	reply	3e7d92a8e06487f6	1	bank:xai/history_survival_matrix/streaming.yaml#0
 xai	POST /v1/responses	reply	3ecd741cdaaefe4f	1	xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml#0
 xai	POST /v1/responses	reply	440f3d1fce0cef91	1	bank:xai/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml#0
-xai	POST /v1/responses	reply	4536d54026d23064	1	xai/request_identity_matrix/responses.yaml#0
+xai	POST /v1/responses	reply	4536d54026d23064	1	xai/image_input_matrix/generated_image_as_user_content.yaml#1
 xai	POST /v1/responses	reply	4b1d79a43367adab	1	xai/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml#0
-xai	POST /v1/responses	reply	56e78bc3256d2e48	1	xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml#0
+xai	POST /v1/responses	reply	519c31c7d3de1893	2	xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#0
+xai	POST /v1/responses	reply	5350cb15a1c1c591	1	xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#4
+xai	POST /v1/responses	reply	56e78bc3256d2e48	1	bank:xai/streaming_tools/raw_stream_emits_required_zero_arg_tool_call.yaml#0
 xai	POST /v1/responses	reply	58a49c8389c0feb1	1	bank:xai/extractor_usage/usage_tracking_works_for_different_schemas.yaml#1
-xai	POST /v1/responses	reply	5b6c79724c693a1c	1	xai/multi_extract/batch_multi_extract_chain.yaml#2
 xai	POST /v1/responses	reply	67b0827861f76b46	3	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#0
-xai	POST /v1/responses	reply	68f70f83709aebe8	2	xai/multi_extract/batch_multi_extract_chain.yaml#3
+xai	POST /v1/responses	reply	68f70f83709aebe8	3	xai/multi_extract/batch_multi_extract_chain.yaml#1
 xai	POST /v1/responses	reply	773663b30a5a5496	1	bank:xai/session_matrix/memory_streamed.yaml#2
 xai	POST /v1/responses	reply	7e1d80a2c7b08fbf	1	xai/image_input_matrix/generated_image_as_tool_result.yaml#1
 xai	POST /v1/responses	reply	87445c1177987057	1	xai/permission_control/permission_control_prompt_example.yaml#0
 xai	POST /v1/responses	reply	8745637aa0b51d9e	1	xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0
 xai	POST /v1/responses	reply	8843644774fcdfd8	1	bank:xai/session_matrix/other_model.yaml#1
 xai	POST /v1/responses	reply	8a93ea1c3c87b071	1	bank:xai/history_survival_matrix/streaming.yaml#2
-xai	POST /v1/responses	reply	8c10221ed2cd28c9	1	xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml#0
+xai	POST /v1/responses	reply	8c10221ed2cd28c9	2	xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#0
 xai	POST /v1/responses	reply	8fa7af5146b18af5	1	xai/web_search_citations/streamed_and_unary.yaml#0
 xai	POST /v1/responses	reply	9044892e6a4ad4e5	1	xai/image_input_matrix/generated_image_as_tool_result.yaml#2
 xai	POST /v1/responses	reply	92abe3d2fb34b883	1	xai/permission_control/permission_control_streaming_example.yaml#0
 xai	POST /v1/responses	reply	97531b367fe24abe	1	bank:xai/extractor_usage/usage_tracking_works_for_different_schemas.yaml#0
 xai	POST /v1/responses	reply	9b0ccf929be1865f	1	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#4
-xai	POST /v1/responses	reply	9de2a6dea7040dfb	1	xai/image_input_matrix/generated_image_as_user_content.yaml#1
-xai	POST /v1/responses	reply	aa7b7c2ae3036de4	1	xai/tools/tools_smoke.yaml#0
+xai	POST /v1/responses	reply	9de2a6dea7040dfb	1	xai/request_identity_matrix/responses.yaml#0
 xai	POST /v1/responses	reply	aac8f5c636a50d6a	1	xai/stateful_chain_matrix/file_id_chain.yaml#2
-xai	POST /v1/responses	reply	ab30f653e22f3c53	1	xai/multi_extract/batch_multi_extract_chain.yaml#1
-xai	POST /v1/responses	reply	ac3fc5583df35ebf	1	xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml#2
+xai	POST /v1/responses	reply	ac3fc5583df35ebf	2	xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#1
 xai	POST /v1/responses	reply	aeb3015611556392	1	bank:xai/reasoning_tool_roundtrip/streaming.yaml#1
 xai	POST /v1/responses	reply	b59b501151fb4232	1	xai/streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering.yaml#0
-xai	POST /v1/responses	reply	b5c92843c9d3fb61	1	xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml#0
+xai	POST /v1/responses	reply	b5c92843c9d3fb61	1	bank:xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml#0
 xai	POST /v1/responses	reply	bb9c9cfae612fa8d	1	bank:xai/reasoning_tool_roundtrip/streaming.yaml#0
-xai	POST /v1/responses	reply	bbe380d969129ae2	1	xai/request_identity_matrix/responses.yaml#1
-xai	POST /v1/responses	reply	bef3b310ab596506	1	xai/multi_extract/batch_multi_extract_chain.yaml#8
 xai	POST /v1/responses	reply	bfd8565e61bcec09	1	bank:xai/history_survival_matrix/streaming.yaml#5
 xai	POST /v1/responses	reply	c1aaf90b91f559e5	1	xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#3
 xai	POST /v1/responses	reply	c4a987d833e97424	1	bank:xai/history_survival_matrix/unary.yaml#6
 xai	POST /v1/responses	reply	c4b3f9ab34a89769	1	bank:xai/extractor/extractor_smoke.yaml#0
-xai	POST /v1/responses	reply	c4e3d13152d24d39	1	bank:xai/streaming/streaming_smoke.yaml#0
+xai	POST /v1/responses	reply	c4e3d13152d24d39	1	xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml#0
 xai	POST /v1/responses	reply	c5ea938a9a49f7bf	1	xai/reasoning_tool_roundtrip/nonstreaming.yaml#1
 xai	POST /v1/responses	reply	cb5c3185a8df6a02	1	xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 xai	POST /v1/responses	reply	cfd82560fb764ad9	1	xai/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml#1
 xai	POST /v1/responses	reply	d092d52e3351e27e	1	xai/permission_control/permission_control_streaming_example.yaml#1
 xai	POST /v1/responses	reply	d5c64b01a292339c	1	xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml#1
 xai	POST /v1/responses	reply	d6285ce3f844c706	3	xai/prompt_caching/streaming_probe.yaml#0
-xai	POST /v1/responses	reply	d7d40b0cdd444b6d	1	xai/multi_extract/batch_multi_extract_chain.yaml#0
-xai	POST /v1/responses	reply	d8aed0fd13679795	1	xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml#0
+xai	POST /v1/responses	reply	d636ce2e3d67f210	1	xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml#0
+xai	POST /v1/responses	reply	d7d40b0cdd444b6d	3	xai/multi_extract/batch_multi_extract_chain.yaml#0
 xai	POST /v1/responses	reply	e16caf4a821df98d	1	xai/reasoning_tool_roundtrip/nonstreaming.yaml#0
 xai	POST /v1/responses	reply	ef038848b5ebaf4e	1	xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml#1
-xai	POST /v1/responses	reply	f0132abf82e9081a	2	xai/multi_extract/batch_multi_extract_chain.yaml#6
 xai	POST /v1/responses	reply	f1d59a55a4e42f6a	1	bank:xai/session_matrix/checkpoint_other_model.yaml#1
 xai	POST /v1/responses	reply	f3c665a657e299f2	1	xai/tools/tools_smoke.yaml#1
 xai	POST /v1/responses	reply	f3fe3858c08c09f3	1	bank:xai/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml#1

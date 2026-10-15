@@ -1596,6 +1596,8 @@ mistral/raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call.
 mistral/raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier.yaml	POST /v1/chat/completions;487ce6c58e19093e;
 mistral/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml	POST /v1/chat/completions;487ce6c58e19093e;
 mistral/raw_stream_capture_matrix/stream_tool_call_raw_round_trips_terminal_type.yaml	POST /v1/chat/completions;b4e24c1c2bc3845a;lookup_city
+mistral/reasoning_roundtrip/nonstreaming.yaml	POST /v1/chat/completions;7e4c3779fa8f3d06;	POST /v1/chat/completions;7e4c3779fa8f3d06;
+mistral/reasoning_roundtrip/streaming.yaml	POST /v1/chat/completions;a6ebab26b7401ad1;	POST /v1/chat/completions;0b13d60709719185;
 mistral/request_shape_matrix/blocking_ministral_3b_json_any.yaml	POST /v1/chat/completions;ab32ad417d439cd4;
 mistral/request_shape_matrix/blocking_ministral_3b_json_auto.yaml	POST /v1/chat/completions;ab32ad417d439cd4;
 mistral/request_shape_matrix/blocking_ministral_3b_json_none.yaml	POST /v1/chat/completions;ab32ad417d439cd4;
@@ -2753,9 +2755,11 @@ xai/agent/completion_smoke.yaml	POST /v1/responses;102b2f029f30afc0;
 xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml	POST /v1/responses;8745637aa0b51d9e;
 xai/agent_tool_sessions/multimodal_image_input_mixed_text_ordering.yaml	POST /v1/responses;102b2f029f30afc0;
 xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml	POST /v1/responses;3ecd741cdaaefe4f;
+xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml	POST /v1/responses;8c10221ed2cd28c9;lookup_harbor_label,lookup_orchard_label	POST /v1/responses;ac3fc5583df35ebf;
 xai/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml	POST /v1/responses;b59b501151fb4232;lookup_harbor_label,lookup_orchard_label	POST /v1/responses;f3fe3858c08c09f3;
 xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml	POST /v1/responses;cb5c3185a8df6a02;inspect_manifest
-xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml	POST /v1/responses;d8aed0fd13679795;
+xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml	POST /v1/responses;3159f82228c31a2b;
+xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml	POST /v1/responses;519c31c7d3de1893;ping_empty	POST /v1/responses;519c31c7d3de1893;inspect_manifest	POST /v1/responses;32ae151c4b2cd56c;join_labels	POST /v1/responses;32ae151c4b2cd56c;escape_echo	POST /v1/responses;5350cb15a1c1c591;
 xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml	POST /v1/responses;67b0827861f76b46;ping_empty	POST /v1/responses;67b0827861f76b46;inspect_manifest	POST /v1/responses;67b0827861f76b46;join_labels	POST /v1/responses;c1aaf90b91f559e5;escape_echo	POST /v1/responses;9b0ccf929be1865f;
 xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml	POST /v1/responses;8c10221ed2cd28c9;lookup_harbor_label	POST /v1/responses;ef038848b5ebaf4e;lookup_orchard_label	POST /v1/responses;ac3fc5583df35ebf;
 xai/context/context_smoke.yaml	POST /v1/responses;1f53a35c4de1f46f;
@@ -2768,9 +2772,9 @@ xai/extractor_usage/usage_tracking_works_for_different_schemas.yaml	POST /v1/res
 xai/history_survival_matrix/streaming.yaml	POST /v1/responses;3e7d92a8e06487f6;lookup_record	POST /v1/responses;8a93ea1c3c87b071;verify_code	POST /v1/responses;8a93ea1c3c87b071;verify_code	POST /v1/responses;bfd8565e61bcec09;	POST /v1/responses;8a93ea1c3c87b071;verify_code	POST /v1/responses;bfd8565e61bcec09;	POST /v1/responses;bfd8565e61bcec09;
 xai/history_survival_matrix/unary.yaml	POST /v1/responses;2504156f168d4a2a;lookup_record	POST /v1/responses;2504156f168d4a2a;verify_code	POST /v1/responses;2504156f168d4a2a;verify_code	POST /v1/responses;fc382100d3bb687e;	POST /v1/responses;2504156f168d4a2a;verify_code	POST /v1/responses;fc382100d3bb687e;	POST /v1/responses;c4a987d833e97424;
 xai/image_input_matrix/generated_image_as_tool_result.yaml	-	POST /v1/responses;7e1d80a2c7b08fbf;render_swatch	POST /v1/responses;9044892e6a4ad4e5;
-xai/image_input_matrix/generated_image_as_user_content.yaml	-	POST /v1/responses;9de2a6dea7040dfb;
+xai/image_input_matrix/generated_image_as_user_content.yaml	-	POST /v1/responses;4536d54026d23064;
 xai/loaders/loaders_smoke.yaml	POST /v1/responses;102b2f029f30afc0;
-xai/multi_extract/batch_multi_extract_chain.yaml	POST /v1/responses;d7d40b0cdd444b6d;submit	POST /v1/responses;ab30f653e22f3c53;submit	POST /v1/responses;5b6c79724c693a1c;submit	POST /v1/responses;68f70f83709aebe8;submit	POST /v1/responses;68f70f83709aebe8;submit	POST /v1/responses;23888df926f71e99;submit	POST /v1/responses;f0132abf82e9081a;submit	POST /v1/responses;f0132abf82e9081a;submit	POST /v1/responses;bef3b310ab596506;submit
+xai/multi_extract/batch_multi_extract_chain.yaml	POST /v1/responses;d7d40b0cdd444b6d;submit	POST /v1/responses;68f70f83709aebe8;submit	POST /v1/responses;d7d40b0cdd444b6d;submit	POST /v1/responses;68f70f83709aebe8;submit	POST /v1/responses;23888df926f71e99;submit	POST /v1/responses;23888df926f71e99;submit	POST /v1/responses;d7d40b0cdd444b6d;submit	POST /v1/responses;68f70f83709aebe8;submit	POST /v1/responses;23888df926f71e99;submit
 xai/permission_control/permission_control_prompt_example.yaml	POST /v1/responses;87445c1177987057;read_file_head,read_file_tail	POST /v1/responses;063234d1e5d554ff;
 xai/permission_control/permission_control_streaming_example.yaml	POST /v1/responses;92abe3d2fb34b883;read_file_head,read_file_tail	POST /v1/responses;d092d52e3351e27e;
 xai/portability_matrix/from_anthropic.yaml	POST /v1/responses;1ebd978794265fa1;
@@ -2782,14 +2786,14 @@ xai/raw_capture_matrix/raw_exposes_status_and_service_tier.yaml	POST /v1/respons
 xai/raw_capture_matrix/raw_round_trips_responses_type.yaml	POST /v1/responses;1f53a35c4de1f46f;
 xai/raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type.yaml	POST /v1/responses;1f53a35c4de1f46f;
 xai/raw_completion_parity_matrix/raw_normalize_reproduces_completion.yaml	POST /v1/responses;1f53a35c4de1f46f;	POST /v1/responses;1f53a35c4de1f46f;
-xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml	POST /v1/responses;b5c92843c9d3fb61;
+xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml	POST /v1/responses;c4e3d13152d24d39;
 xai/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml	POST /v1/responses;b5c92843c9d3fb61;
 xai/reasoning_roundtrip/nonstreaming.yaml	POST /v1/responses;3159f82228c31a2b;	POST /v1/responses;3159f82228c31a2b;
 xai/reasoning_roundtrip/streaming.yaml	POST /v1/responses;03c8b869f5e737b7;	POST /v1/responses;03c8b869f5e737b7;
 xai/reasoning_tool_roundtrip/nonstreaming.yaml	POST /v1/responses;e16caf4a821df98d;get_weather	POST /v1/responses;c5ea938a9a49f7bf;
 xai/reasoning_tool_roundtrip/streaming.yaml	POST /v1/responses;bb9c9cfae612fa8d;get_weather	POST /v1/responses;aeb3015611556392;
 xai/request_hook/request_hook_records_prompt_and_response.yaml	POST /v1/responses;102b2f029f30afc0;
-xai/request_identity_matrix/responses.yaml	POST /v1/responses;4536d54026d23064;	POST /v1/responses;bbe380d969129ae2;	POST /v1/responses;39756ff0959e5c52;
+xai/request_identity_matrix/responses.yaml	POST /v1/responses;9de2a6dea7040dfb;	POST /v1/responses;070e6a2bb65fbc6c;	POST /v1/responses;39756ff0959e5c52;
 xai/response_identity/auth_rejection_classifies_with_contract.yaml	POST /v1/responses;39756ff0959e5c52;
 xai/response_identity/nonstreaming_response_carries_identity.yaml	POST /v1/responses;102b2f029f30afc0;
 xai/response_identity/provider_error_classifies_with_contract_but_reports_no_id.yaml	POST /v1/responses;39756ff0959e5c52;
@@ -2805,7 +2809,7 @@ xai/stateful_chain_matrix/file_id_chain.yaml	-	POST /v1/responses;38129947c0b64b
 xai/streaming/streaming_smoke.yaml	POST /v1/responses;c4e3d13152d24d39;
 xai/streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering.yaml	POST /v1/responses;b59b501151fb4232;get_status_word	POST /v1/responses;03c8b869f5e737b7;
 xai/streaming_tools/raw_stream_emits_required_zero_arg_tool_call.yaml	POST /v1/responses;56e78bc3256d2e48;ping
-xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml	POST /v1/responses;56e78bc3256d2e48;get_status_word	POST /v1/responses;d5c64b01a292339c;
-xai/tools/tools_smoke.yaml	POST /v1/responses;aa7b7c2ae3036de4;subtract	POST /v1/responses;f3c665a657e299f2;
+xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml	POST /v1/responses;d636ce2e3d67f210;get_status_word	POST /v1/responses;d5c64b01a292339c;
+xai/tools/tools_smoke.yaml	POST /v1/responses;1ca3ee325de34285;subtract	POST /v1/responses;f3c665a657e299f2;
 xai/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml	POST /v1/responses;4b1d79a43367adab;weather	POST /v1/responses;cfd82560fb764ad9;
 xai/web_search_citations/streamed_and_unary.yaml	POST /v1/responses;8fa7af5146b18af5;	POST /v1/responses;257a9319f5e4cb75;

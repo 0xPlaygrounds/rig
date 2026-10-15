@@ -153,6 +153,23 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
         default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), "claude-3-opus"),
         None
     );
+    // A gateway's vendor-prefixed spelling reads the same row.
+    assert_eq!(
+        default_max_tokens_for_model(
+            crate::catalog::ModelFacts::builtin(),
+            "anthropic/claude-opus-5"
+        ),
+        Some(128_000)
+    );
+    // The family guess stays with Anthropic's own spellings: a gateway's
+    // unlisted id is refused rather than sent a limit the model may not take.
+    assert_eq!(
+        default_max_tokens_for_model(
+            crate::catalog::ModelFacts::builtin(),
+            "anthropic/claude-opus-4.1"
+        ),
+        None
+    );
     // An id the catalog does not list takes its family's default.
     assert_eq!(
         default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), "claude-opus-4.6"),

@@ -49,6 +49,7 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
                 .map_err(|error| invalid(error.to_string()))
         }
         "@layout" => crate::test_layout::check(root).map_err(invalid),
+        "@sorted-blocks" => crate::sorted_blocks::check(root).map_err(invalid),
         "@packaging" => crate::packaging::check(root).map_err(invalid),
         "@wires" => crate::wires::check(root).map_err(invalid),
         "@options-guards" => super::guards::check(root).map_err(invalid),

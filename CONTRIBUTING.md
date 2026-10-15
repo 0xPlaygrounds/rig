@@ -15,6 +15,8 @@ Contributions are always encouraged and welcome. Pull request descriptions shoul
 
 Commit messages should follow the [Conventional Commit](https://conventionalcommits.org/en/v1.0.0) format (prefixing with `feat`, `fix`, etc.) as this integrates into our auto-releases via a [release-plz](https://github.com/MarcoIeni/release-plz) Github action.
 
+Lists between `sorted: start` and `sorted: end` markers (in `Cargo.toml`, rig-core's providers module list and the README integration table) stay sorted, so insert new entries in place; `cargo xtask check-sorted-blocks` checks it in CI.
+
 Do not edit `CHANGELOG.md`, `crates/*/CHANGELOG.md` or `MIGRATING.md` in a pull request; CI fails the PR if you do. Put changelog bullets and migration notes in the PR description under `## Changelog` and `## Migration` (the PR template has both); the release PR regenerates both files from them.
 
 It is also highly suggested to comment on issues you're interested in working on. By doing so, it allows others to see that something is being worked on and therefore avoids frustrating situations, such as multiple contributors opening a PR for the same issue. In such a case, any duplicate PRs will be closed unless it is clear that the original contributor is unable to continue the work.

@@ -433,10 +433,8 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
 crate::matrix::case_matrix! {
     wrapper: with_xai_cassette_result, family: agent_tool_sessions_case;
     # [tokio :: test]
-    # [ignore = "stale cassette: the shared session cell sends no `store: false`, so xAI stores its responses and the recorder refuses the re-record"]
     sequential_complex_tool_calls_nonstreaming: ("agent_tool_sessions/sequential_complex_tool_calls_nonstreaming", sequential_complex_tool_calls_nonstreaming_0);
     # [tokio :: test]
-    # [ignore = "stale cassette: the shared session cell sends no `store: false`, so xAI stores its responses and the recorder refuses the re-record"]
     parallel_tool_calls_single_turn_nonstreaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming", parallel_tool_calls_single_turn_nonstreaming_3);
 }
 

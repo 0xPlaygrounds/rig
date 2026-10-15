@@ -13,6 +13,7 @@ mod multi_extract;
 mod multimodal_content;
 mod permission_control;
 mod prompt_caching;
+mod reasoning_roundtrip;
 mod request_hook;
 mod request_shape_matrix;
 mod response_identity_edge;

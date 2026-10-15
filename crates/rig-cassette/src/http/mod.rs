@@ -2326,8 +2326,8 @@ fn sanitize_path_segment(segment: &str) -> String {
         .collect()
 }
 
-/// Return YAML in recorded form: credentials, AWS account numbers and
-/// home-directory paths scrubbed, everything the provider sent kept verbatim.
+/// Return YAML in recorded form: credentials, AWS account numbers, account
+/// team ids and home-directory paths scrubbed, everything the provider sent kept verbatim.
 /// Placeholders an older fixture already holds are left in place, so the
 /// function is the identity on every committed cassette.
 /// Panics if the cassette cannot be parsed.
@@ -2778,8 +2778,8 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 const OAUTH_TOKEN_KEYS: &[&str] = &["access_token", "id_token", "refresh_token"];
 
 /// Removes credentials (sensitive headers and query parameters, and every
-/// secret [`rig_core::redact`] finds), AWS account numbers and home-directory
-/// paths from a recording and normalizes its volatile fields. Everything else the provider
+/// secret [`rig_core::redact`] finds), AWS account numbers, account team ids
+/// and home-directory paths from a recording and normalizes its volatile fields. Everything else the provider
 /// sent is kept verbatim, so a fixture can seed a live call and a replay
 /// decodes the provider's own bytes.
 #[derive(Default)]
@@ -2962,6 +2962,11 @@ impl CassetteScrubber {
                         *text = self.placeholder(text, "id_");
                         return;
                     }
+
+                    if matches!(key, "team" | "team_id" | "teamid") && is_uuid(text) {
+                        *text = self.placeholder(text, "team_");
+                        return;
+                    }
                 }
 
                 *text = self.scrub_text(text);
@@ -2986,7 +2991,21 @@ impl CassetteScrubber {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
+        let scrubbed = self.scrub_team_ids(&scrubbed);
         scrub_local_filesystem_paths(&scrubbed)
+    }
+
+    /// Replace each UUID [`next_team_id`] finds with a `team_` placeholder.
+    fn scrub_team_ids(&mut self, text: &str) -> String {
+        let mut output = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some((before, team, after)) = next_team_id(rest) {
+            output.push_str(before);
+            output.push_str(&self.placeholder(team, "team_"));
+            rest = after;
+        }
+        output.push_str(rest);
+        output
     }
 
     /// Replace 12-digit account-ID segments in ARNs, preserving partition,
@@ -3142,6 +3161,70 @@ fn find_query_param(input: &str, needle: &str) -> Option<usize> {
     None
 }
 
+/// The first UUID in `text` a provider names as the account's team, split
+/// out as `(before, uuid, after)`: the word `team` or `teams` (not inside a
+/// longer word), then any run of separators (ASCII whitespace and
+/// `` _ / : = - ( [ " ' \ ` ``) and the word `id` in any case, then a
+/// hyphenated UUID. This covers `your team <uuid>`, `team ID <uuid>`,
+/// `team_id: <uuid>`, `/teams/<uuid>` and `team (<uuid>)`.
+fn next_team_id(text: &str) -> Option<(&str, &str, &str)> {
+    const UUID_LEN: usize = 36;
+    let bytes = text.as_bytes();
+    let mut from = 0;
+    while let Some(found) = find_ascii_case_insensitive(text.get(from..)?, "team") {
+        let start = from + found;
+        from = start + "team".len();
+        let word_start = start
+            .checked_sub(1)
+            .and_then(|before| bytes.get(before))
+            .is_none_or(|byte| !byte.is_ascii_alphanumeric());
+        if !word_start {
+            continue;
+        }
+        let mut cursor = from;
+        if bytes
+            .get(cursor)
+            .is_some_and(|byte| byte.eq_ignore_ascii_case(&b's'))
+        {
+            cursor += 1;
+        }
+        loop {
+            if bytes
+                .get(cursor)
+                .is_some_and(|byte| byte.is_ascii_whitespace() || b"_/:=-([`\"'\\".contains(byte))
+            {
+                cursor += 1;
+            } else if bytes
+                .get(cursor..cursor + 2)
+                .is_some_and(|word| word.eq_ignore_ascii_case(b"id"))
+            {
+                cursor += 2;
+            } else {
+                break;
+            }
+        }
+        let end = cursor + UUID_LEN;
+        let bounded = bytes
+            .get(end)
+            .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-');
+        if let Some(team) = text.get(cursor..end)
+            && bounded
+            && is_uuid(team)
+        {
+            return Some((text.get(..cursor)?, team, text.get(end..)?));
+        }
+    }
+    None
+}
+
+/// Whether `text` is a hyphenated UUID (8-4-4-4-12 hex digits).
+fn is_uuid(text: &str) -> bool {
+    text.split('-').map(str::len).eq([8, 4, 4, 4, 12])
+        && text
+            .bytes()
+            .all(|byte| byte == b'-' || byte.is_ascii_hexdigit())
+}
+
 fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
     let input = input.as_bytes();
     let needle = needle.as_bytes();
@@ -3155,9 +3238,9 @@ fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
 mod tests;
 
 /// A reqwest client that buffers unary responses and optionally records complete
-/// exchanges, preserving non-UTF-8 bodies as base64. Multipart requests are
-/// not recorded, but a file they upload is logged in the created-resource
-/// ledger; streaming requests pass through untouched.
+/// exchanges, preserving non-UTF-8 bodies as base64. Multipart and streaming
+/// requests are not recorded, but what they create is logged in the
+/// created-resource ledger before the caller reads it.
 #[derive(Clone, Debug, Default)]
 pub struct DirectRecordingHttpClient {
     inner: rig_reqwest::ReqwestClient,
@@ -3260,7 +3343,136 @@ impl HttpClientExt for DirectRecordingHttpClient {
     where
         T: Into<Bytes> + Send,
     {
-        self.inner.send_streaming(req)
+        let inner = self.inner.clone();
+        let recorder = self.recorder.clone();
+        let (parts, body) = req.into_parts();
+        let body: Bytes = body.into();
+        let method = parts.method.to_string();
+        let uri = parts.uri.to_string();
+        let request = HttpRequest::from_parts(parts, body.clone());
+        async move {
+            let response = inner.send_streaming(request).await?;
+            let Some(recorder) = recorder else {
+                return Ok(response);
+            };
+            // An error reply creates nothing, and a binary stream names nothing.
+            if !response.status().is_success() || !LedgerTap::taps(response.headers()) {
+                return Ok(response);
+            }
+            let sse = response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.to_ascii_lowercase().starts_with("text/event-stream"));
+            let (parts, stream) = response.into_parts();
+            let tap = LedgerTap {
+                stream,
+                recorder,
+                method,
+                uri,
+                request_body: body,
+                status: parts.status.as_u16(),
+                sse,
+                pending: Vec::new(),
+            };
+            let stream: http_client::BoxedStream = Box::pin(tap);
+            Ok(HttpResponse::from_parts(parts, stream))
+        }
+    }
+}
+
+/// A streamed reply on the direct path that logs what it creates: each
+/// complete SSE event before the chunk that completes it reaches the caller,
+/// and the bytes after the last event (a body that is not SSE) when the
+/// stream ends or is dropped.
+struct LedgerTap {
+    stream: http_client::BoxedStream,
+    recorder: DirectRecorder,
+    method: String,
+    uri: String,
+    request_body: Bytes,
+    status: u16,
+    /// Whether the body is SSE, read event by event; any other body is
+    /// read whole when the stream ends.
+    sse: bool,
+    /// Bytes after the last complete event.
+    pending: Vec<u8>,
+}
+
+impl LedgerTap {
+    /// Whether a streamed reply with `headers` is tapped: every body but a
+    /// known binary one (audio, image, video, octet stream).
+    fn taps(headers: &http_client::HeaderMap) -> bool {
+        let content_type = headers
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        !["audio/", "image/", "video/", "application/octet-stream"]
+            .iter()
+            .any(|binary| content_type.starts_with(binary))
+    }
+
+    fn feed(&mut self, bytes: &[u8]) {
+        // Only the new bytes, and three before them for a split `\r\n\r\n`,
+        // can complete an event, so a body without one is scanned once.
+        let from = self.pending.len().saturating_sub(3);
+        self.pending.extend_from_slice(bytes);
+        if !self.sse {
+            return;
+        }
+        let fresh = self.pending.get(from..).unwrap_or_default();
+        if !fresh.windows(2).any(|pair| pair == b"\n\n")
+            && !fresh.windows(4).any(|quad| quad == b"\r\n\r\n")
+        {
+            return;
+        }
+        let events = relay::complete_events(&self.pending).concat();
+        self.log(&events);
+        self.pending.drain(..events.len());
+    }
+
+    /// Check the bytes after the last complete event. The second call, on
+    /// drop after the stream ended, finds nothing left.
+    fn finish(&mut self) {
+        let rest = std::mem::take(&mut self.pending);
+        if !rest.iter().all(u8::is_ascii_whitespace) {
+            self.log(&rest);
+        }
+    }
+
+    fn log(&self, body: &[u8]) {
+        self.recorder.log_created(
+            &self.method,
+            &self.uri,
+            &self.request_body,
+            self.status,
+            body,
+        );
+    }
+}
+
+impl futures::Stream for LedgerTap {
+    type Item = http_client::Result<Bytes>;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        let polled = this.stream.as_mut().poll_next(cx);
+        match &polled {
+            std::task::Poll::Ready(Some(Ok(bytes))) => this.feed(bytes),
+            std::task::Poll::Ready(None) => this.finish(),
+            _ => {}
+        }
+        polled
+    }
+}
+
+impl Drop for LedgerTap {
+    fn drop(&mut self) {
+        self.finish();
     }
 }
 

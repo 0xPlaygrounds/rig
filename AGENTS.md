@@ -121,6 +121,8 @@ errors, and use the WASM-compatible bounds.
   or `tests.rs` beside `mod.rs`/`lib.rs`. `cargo xtask check-test-layout`
   enforces this in CI.
 - Avoid unrelated refactors.
+- Insert entries into lists marked `sorted: start` / `sorted: end` in place;
+  `cargo xtask check-sorted-blocks` enforces case-insensitive order in CI.
 - Prefer the cleanest implementation.
 - Break things if the result is better.
 
@@ -130,6 +132,9 @@ Provider regressions should usually include cassette-backed tests. Follow
 [tests/README.md](tests/README.md#cassette-provider-tests) for replay/record
 commands and fixture safety review; never record or rewrite fixtures merely
 to make verification pass.
+Cassette wrappers are found by name, with no registry: a function named
+`with_*cassette*` takes the scenario first and is called only from its own
+`crates/rig-cassette/tests/providers/<provider>/` directory.
 
 ## Verification
 

@@ -57,7 +57,7 @@ async fn responses_extras_from_unary_recordings() {
         .extras::<XaiExt>()
         .unwrap_or_else(|| panic!("an xAI reply"))
         .unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(extras.cost_in_usd_ticks, Some(6_734_000));
+    assert_eq!(extras.cost_in_usd_ticks, Some(9_406_000));
     assert_eq!(extras.num_sources_used, Some(0));
     assert_eq!(extras.num_server_side_tools_used, Some(0));
 

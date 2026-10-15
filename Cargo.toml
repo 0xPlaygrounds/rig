@@ -245,12 +245,16 @@ rust-version = "1.97.1"
 #
 # The `rig` facade is the workspace-root package; examples depend on it via
 # `rig.workspace = true` (add per-example features at the use site).
+# sorted: start
 rig = { path = ".", version = "0.44.0" }
 rig-agent = { path = "crates/rig-agent", version = "0.44.0" }
+rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", default-features = false }
+rig-core = { path = "crates/rig-core", version = "0.44.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.44.0" }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.44.0" }
-rig-core = { path = "crates/rig-core", version = "0.44.0" }
-rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", default-features = false }
+# sorted: end
+
+# sorted: start
 anyhow = "1"
 arrow-array = "58"
 assert_fs = "1"
@@ -258,7 +262,6 @@ assert_fs = "1"
 # (`BrpMessage::sender`).
 async-channel = "2.3"
 async-stream = "0.3"
-axum = "0.8"
 aws-config = { version = "1", default-features = false }
 # 1.124: `OutputConfig`/`ServiceTier`/citations types rig-bedrock maps.
 aws-sdk-bedrockruntime = { version = "1.124", default-features = false }
@@ -266,6 +269,7 @@ aws-smithy-eventstream = "0.61"
 aws-smithy-http-client = { version = "1", default-features = false }
 aws-smithy-runtime-api = "1"
 aws-smithy-types = "1"
+axum = "0.8"
 base64 = "0.22"
 # Bevy is pinned exactly: a Bevy plugin only links against the one Bevy
 # version of its app, and rig-harness is the app. `bevy_tasks` is also the
@@ -292,10 +296,10 @@ chrono = "0.4"
 convert_case = "0.11"
 crossbeam-channel = "0.5.15"
 crossterm = "0.29"
+ctrlc = "3.4.4"
 # Benchmarks (`benches/`, compiled in CI, never run there). 0.1.15: timings
 # net of the allocation counter (`AllocProfiler`).
 divan = "0.1.15"
-ctrlc = "3.4.4"
 dotenvy = "0.15"
 epub = "2"
 # 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
@@ -304,13 +308,13 @@ fastrand = "2"
 futures = "0.3"
 futures-timer = "3"
 glob = "0.3"
-google-cloud-auth = "1"
-google-cloud-gax = "1"
 # 1.7: `ThinkingLevel`, `ImageConfig`, `FunctionResponse{Blob,FileData}`.
 # 1.8: `generate_content_response::UsageMetadata::tool_use_prompt_tokens_details`.
 google-cloud-aiplatform-v1 = { version = "1.8", default-features = false, features = [
     "prediction-service",
 ] }
+google-cloud-auth = "1"
+google-cloud-gax = "1"
 http = "1"
 http-body = "1"
 httpdate = "1"
@@ -339,6 +343,9 @@ ordered-float = "5"
 # 0.4.2: the first release whose `sqlx` feature accepts sqlx 0.9.
 pgvector = "0.4.2"
 proc-macro2 = "1"
+prost = "0.14"
+prost-reflect = { version = "0.16", features = ["serde"] }
+prost-types = "0.14"
 pulldown-cmark = { version = "0.13", default-features = false }
 # 1.10: the `Qdrant` client, `Payload`, and the query/upsert builders.
 qdrant-client = { version = "1.10", default-features = false, features = [
@@ -353,18 +360,17 @@ reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
 reqwest-retry = "0.9"
 rmcp = "3.5"
-url = "2"
 rusqlite = "0.32"
-scylla = "1"
+safetensors = "0.8"
 schemars = "1"
+scylla = "1"
 serde = "1"
-serde_yaml = "0.9"
 # 1.0.54: the `float_roundtrip` feature.
 serde_json = "1.0.54"
-safetensors = "0.8"
+serde_path_to_error = "0.1"
+serde_yaml = "0.9"
 sha2 = "0.10"
 similar = "2.7"
-serde_path_to_error = "0.1"
 sqlite-vec = "0.1"
 sqlx = "0.9"
 # 0.8.3: `Engine::new_sandboxed` and the thread state controller rig-steel uses.
@@ -377,28 +383,27 @@ term_size = "0.3"
 testcontainers = "0.27"
 textwrap = "0.16"
 thiserror = "2"
+tokenizers = { version = "0.22", default-features = false }
 tokio = "1"
 tokio-rusqlite = { version = "0.6", default-features = false }
 tokio-test = "0.4"
 tokio-tungstenite = { version = "0.29", default-features = false }
-tokenizers = { version = "0.22", default-features = false }
 tonic = "0.14"
 tonic-build = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
-prost = "0.14"
-prost-reflect = { version = "0.16", features = ["serde"] }
-prost-types = "0.14"
 tracing = "0.1"
 # 0.2.5: `Instrumented<S>: Stream` under `futures-03` for futures 0.3 stable.
 tracing-futures = "0.2.5"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = "0.3"
 unicode-width = "0.2"
+url = "2"
 uuid = "1"
-wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 web-time = "1"
+# sorted: end
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
@@ -408,12 +413,14 @@ exclude-members = ["crates/rig-core", "crates/rig-derive"]
 workspace = true
 
 [dependencies]
-rig-typesafeai = { path = "crates/rig-typesafeai", version = "0.44.0", optional = true, default-features = false }
 rig-core = { path = "crates/rig-core", version = "0.44.0", default-features = false }
 rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", optional = true, default-features = false }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.44.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.44.0", optional = true, default-features = false }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.44.0", optional = true }
+rig-derive = { path = "crates/rig-derive", version = "0.44.0", optional = true }
+# Companion crates, one optional dependency per `crates/rig-*` integration.
+# sorted: start
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.44.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.44.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.44.0", optional = true, default-features = false }
@@ -421,7 +428,6 @@ rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.44.0", optiona
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.44.0", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.44.0", optional = true, default-features = false }
 rig-memory = { path = "crates/rig-memory", version = "0.44.0", optional = true, default-features = false }
-rig-derive = { path = "crates/rig-derive", version = "0.44.0", optional = true }
 rig-milvus = { path = "crates/rig-milvus", version = "0.44.0", optional = true, default-features = false }
 rig-mongodb = { path = "crates/rig-mongodb", version = "0.44.0", optional = true, default-features = false }
 rig-neo4j = { path = "crates/rig-neo4j", version = "0.44.0", optional = true, default-features = false }
@@ -431,8 +437,10 @@ rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.44.0", optional = 
 rig-scylladb = { path = "crates/rig-scylladb", version = "0.44.0", optional = true, default-features = false }
 rig-sqlite = { path = "crates/rig-sqlite", version = "0.44.0", optional = true, default-features = false }
 rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.44.0", optional = true, default-features = false }
+rig-typesafeai = { path = "crates/rig-typesafeai", version = "0.44.0", optional = true, default-features = false }
 rig-vectorize = { path = "crates/rig-vectorize", version = "0.44.0", optional = true, default-features = false }
 rig-vertexai = { path = "crates/rig-vertexai", version = "0.44.0", optional = true, default-features = false }
+# sorted: end
 
 # The bundled websocket backend is native-only (tungstenite needs a tokio
 # reactor and raises a `compile_error!` on wasm), so it is scoped to non-wasm
@@ -453,25 +461,24 @@ rig-vertexai = { path = "crates/rig-vertexai", version = "0.44.0", optional = tr
 rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.44.0", optional = true }
 
 [dev-dependencies]
-rig-test-support = { path = "test-support/rig-test-support" }
-rig-history-conformance = { path = "test-support/rig-history-conformance" }
-# The facade's tests use the recorder directly, whatever `cassette` is set to.
-rig-cassette = { path = "crates/rig-cassette", default-features = false, features = ["agent"] }
+# sorted: start
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
-rig-core = { path = "crates/rig-core", version = "0.44.0", default-features = false, features = [
-  "test-utils",
-] }
-rig-agent = { path = "crates/rig-agent", version = "0.44.0", default-features = false, features = [
-  "test-utils",
-] }
-tokio = { workspace = true, features = ["full"] }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 base64 = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true, features = ["record", "proxy"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
+rig-agent = { path = "crates/rig-agent", version = "0.44.0", default-features = false, features = [
+  "test-utils",
+] }
+# The facade's tests use the recorder directly, whatever `cassette` is set to.
+rig-cassette = { path = "crates/rig-cassette", default-features = false, features = ["agent"] }
+rig-core = { path = "crates/rig-core", version = "0.44.0", default-features = false, features = [
+  "test-utils",
+] }
+rig-history-conformance = { path = "test-support/rig-history-conformance" }
+rig-test-support = { path = "test-support/rig-test-support" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 # float_roundtrip keeps cassette scrubbing idempotent on float-heavy bodies
@@ -482,9 +489,12 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
 serde_yaml = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
+tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+# sorted: end
+
 [features]
-typesafeai = ["dep:rig-typesafeai"]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent", "rig-cassette?/agent"]
 # `rig::cassette`: effect-log recording and replay. With `agent`, also the
@@ -495,6 +505,8 @@ test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
 # lane) enables it so the guard still runs, while ad-hoc `cargo test` skips it.
 facade-build-tests = []
+# Companion-crate features, one per optional dependency above.
+# sorted: start
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]
 fastembed = [
@@ -517,8 +529,10 @@ s3vectors = ["dep:rig-s3vectors"]
 scylladb = ["dep:rig-scylladb"]
 sqlite = ["dep:rig-sqlite"]
 surrealdb = ["dep:rig-surrealdb"]
+typesafeai = ["dep:rig-typesafeai"]
 vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
+# sorted: end
 audio = ["rig-core/audio", "rig-agent?/audio"]
 image = ["rig-core/image", "rig-agent?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]

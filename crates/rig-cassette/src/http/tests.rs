@@ -987,3 +987,54 @@ then:
         "scrubbing is idempotent"
     );
 }
+
+#[test]
+fn a_team_id_a_provider_quotes_is_scrubbed() {
+    let team = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d";
+    let other = "11111111-2222-3333-4444-555555555555";
+    let yaml = format!(
+        "when:\n  path: /v1/responses\n  method: POST\n  body: '{{\"model\":\"grok-x\",\"metadata\":{{\"run\":\"{other}\"}}}}'\nthen:\n  status: 404\n  body: '{{\"error\":\"The model grok-x does not exist or your team {team} does not have access to it. Quote your team ID.\",\"team_id\":\"{team}\",\"name\":\"team\"}}'\n"
+    );
+    let scrubbed = scrub_cassette_contents(&yaml);
+    assert!(!scrubbed.contains(team), "{scrubbed}");
+    // One id, one placeholder, in prose and under its key alike.
+    assert_eq!(scrubbed.matches("team_REDACTED_1").count(), 2, "{scrubbed}");
+    // A UUID nobody names as a team, and a `team` key holding no UUID, are data.
+    assert!(scrubbed.contains(other), "{scrubbed}");
+    assert!(scrubbed.contains(r#""name":"team""#), "{scrubbed}");
+    assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed, "idempotent");
+}
+
+#[test]
+fn every_way_a_provider_quotes_a_team_id_is_scrubbed() {
+    let team = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d";
+    let upper = team.to_ascii_uppercase();
+    let cassette = |body: &str| {
+        scrub_cassette_contents(&format!(
+            "when:\n  path: /v1/x\n  method: POST\n  body: ''\nthen:\n  status: 404\n  body: '{body}'\n"
+        ))
+    };
+    for phrasing in [
+        format!("your team {team} lacks access"),
+        format!("quote your team ID {team}"),
+        format!("team_id: {team}"),
+        format!("Team={upper}"),
+        format!("GET /v1/teams/{team}/usage"),
+        format!("team ({team})"),
+        format!("team `{team}`"),
+    ] {
+        let scrubbed = cassette(&phrasing);
+        assert!(
+            scrubbed.contains("team_REDACTED_1") && !scrubbed.contains(team),
+            "{phrasing}: {scrubbed}"
+        );
+        assert!(!scrubbed.contains(&upper), "{phrasing}: {scrubbed}");
+    }
+    for kept in [
+        format!("steam {team}"),
+        format!("teammate {team}"),
+        format!("team idea {team}"),
+    ] {
+        assert!(cassette(&kept).contains(team), "{kept}");
+    }
+}
