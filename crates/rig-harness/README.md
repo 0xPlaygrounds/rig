@@ -40,18 +40,25 @@ The default `plugins.toml`, in order:
 | `rig-models` | `DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
 | `rig-sessions` | `SessionsPlugin` | `/new`, `/resume`, `/name` |
 | `rig-compaction` | `CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
-| `rig-splits` | `SplitsPlugin` | `/split` and `/splits`: splitting a conversation at any entry into a branch or a new session, moving a range out, switching, comparing and merging back |
 | `rig-telemetry` | `UsagePlugin` | what model calls cost; `/usage` |
 | `rig-activity` | `ActivityPlugin` | what each agent is doing, for views |
-| `rig-telemetry` | `EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
-| `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `SearchTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace (`DeleteTool`, `MoveTool` and `ListTool` are there too, not listed by default) |
+| `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace (`SearchTool`, `DeleteTool`, `MoveTool` and `ListTool` are there too, not listed by default) |
 | `rig-coding-tools` | `AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-reload` | `ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and the system prompt's section on what the agent is (its plugins, commands and tools) and how it writes plugins |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit`, `/agents` |
-| `rig-subagents` | `SubagentsPlugin` | the `task`, `message` and `wait` tools |
-| `rig-telemetry` | `DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
 | `rig-print` | `PrintPlugin` | `--print`: the front of a run with `-p` or with stdin piped in |
 | `rig-tui` | `TuiPlugin` | the terminal view: the front of a run on an interactive terminal, with the status line and pickers other plugins add to |
+
+Not listed by default, each added with its own entry:
+
+| Crate | Plugin | What it adds |
+|---|---|---|
+| `rig-splits` | `SplitsPlugin` | `/split` and `/splits`: splitting a conversation at any entry into a branch or a new session, moving a range out, switching, comparing and merging back |
+| `rig-telemetry` | `EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
+| `rig-subagents` | `SubagentsPlugin` | the `task`, `message` and `wait` tools |
+| `rig-telemetry` | `DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
+| `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |
+| `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools |
 
 An entry names its crate, `crate = "rig-tui"`, and no source: the agent
 builds rig's own crates from the rig checkout it is built from
