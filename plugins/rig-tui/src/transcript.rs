@@ -785,15 +785,11 @@ impl Look<'_> {
         }
     }
 
-    /// Hashes what message `index` (with `id`) looks like besides its
+    /// A hash of what message `index` (with `id`) looks like besides its
     /// messages: its notices, whether it is expanded, and its calls' states,
     /// output so far, expansion and running times.
-    fn hash_message(
-        &self,
-        (index, id): (usize, Option<MessageId>),
-        message: &Message,
-        hasher: &mut DefaultHasher,
-    ) {
+    fn hash_message(&self, (index, id): (usize, Option<MessageId>), message: &Message) -> u64 {
+        let hasher = &mut DefaultHasher::new();
         self.hash_inside(index, hasher);
         (self.whole, self.note_cut).hash(hasher);
         id.map(|id| self.is_expanded(&TranscriptItem::Message(id)))
@@ -814,6 +810,7 @@ impl Look<'_> {
                 }
             }
         }
+        hasher.finish()
     }
 
     /// A hash of all of it but the renderers, whose changes
@@ -872,7 +869,10 @@ fn level_code(level: NoticeLevel) -> u8 {
 /// One message's look: its lines and where its items are in them, those
 /// lines wrapped to the width, and the items drawn cut, when noted.
 struct Cached {
-    fingerprint: u64,
+    /// The message as it was laid out.
+    message: Message,
+    /// [`Look::hash_message`] of it then.
+    look: u64,
     lines: Vec<Line<'static>>,
     line_marks: Marks,
     wrapped: Wrapped,
@@ -966,16 +966,25 @@ impl Transcript {
         if !changed && looks_alike && self.messages.len() == messages.len() {
             return;
         }
+        // A message's look depends on it and its neighbours, so each is
+        // compared once with the one laid out last time, before any is
+        // replaced; a message past either end matches only another.
+        let same: Vec<bool> = (0..=messages.len())
+            .map(|at| match (self.messages.get(at), messages.get(at)) {
+                (Some(cached), Some(message)) => cached.message == *message,
+                (cached, message) => cached.is_none() && message.is_none(),
+            })
+            .collect();
         self.messages.truncate(messages.len());
         for (index, message) in messages.iter().enumerate() {
             let previous = index.checked_sub(1).and_then(|before| messages.get(before));
             let next = messages.get(index + 1);
-            let id = conversation.id(index);
-            let fingerprint = fingerprint([previous, Some(message), next], look, (index, id));
+            let look_hash = look.hash_message((index, conversation.id(index)), message);
             if self
                 .messages
                 .get(index)
-                .is_some_and(|cached| cached.fingerprint == fingerprint)
+                .is_some_and(|cached| cached.look == look_hash)
+                && (index.saturating_sub(1)..=index + 1).all(|at| same.get(at) == Some(&true))
             {
                 continue;
             }
@@ -983,7 +992,8 @@ impl Transcript {
                 message_lines(message, (conversation, index), previous, next, look);
             let wrapped = wrap_marked(&lines, &line_marks, usable);
             let cached = Cached {
-                fingerprint,
+                message: message.clone(),
+                look: look_hash,
                 lines,
                 line_marks,
                 wrapped,
@@ -1397,29 +1407,6 @@ impl Scroll {
         });
         (top, if grew { Below::New } else { Below::More })
     }
-}
-
-/// A hash of what message `index`'s look depends on: it and its
-/// neighbours, and `look`'s part for it.
-fn fingerprint(
-    messages: [Option<&Message>; 3],
-    look: &Look<'_>,
-    at: (usize, Option<MessageId>),
-) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    if let [_, Some(message), _] = messages {
-        look.hash_message(at, message, &mut hasher);
-    }
-    for message in messages {
-        match message {
-            Some(message) => {
-                hasher.write_u8(1);
-                hasher.write(&serde_json::to_vec(message).unwrap_or_default());
-            }
-            None => hasher.write_u8(0),
-        }
-    }
-    hasher.finish()
 }
 
 /// The tool results a message carries.
