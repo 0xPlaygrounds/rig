@@ -31,7 +31,11 @@
 //! App::new().add_systems(Startup, spawn).add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
 //! ```
 
+use std::cmp::Reverse;
+
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::SpawnDetails;
 use bevy_reflect::prelude::*;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -119,7 +123,7 @@ pub enum Placement {
     /// Columns right of the transcript.
     Right(Constraint),
     /// Rows at the bottom of the screen, under the input box, such as a row
-    /// of suggestions; several stack in entity order.
+    /// of suggestions; several stack in the order spawned.
     BelowInput(Constraint),
     /// A box centred over the whole screen, drawn over everything but the
     /// view's own overlays (the picker and the completion list).
@@ -190,10 +194,18 @@ impl PanelCanvas {
     }
 }
 
-/// Where `entity` comes in the order panels are laid out and drawn: the
-/// order they were spawned, the default screen's first.
-pub(super) fn spawned(entity: Entity) -> (u32, Entity) {
-    (entity.index_u32(), entity)
+/// The spawn ticks of the panels, for [`spawn_order`].
+pub(super) type PanelSpawns<'w, 's> = Query<'w, 's, SpawnDetails, With<TuiPanel>>;
+
+/// Where `panel` comes in the order panels are laid out and drawn: the
+/// order they were spawned, the default screen's first. Bevy hands a
+/// despawned entity's index out again, so the spawn tick orders them, and
+/// the index only those spawned at one tick (`Entity`'s own order is not
+/// the index's).
+pub(super) fn spawn_order(now: Tick, spawns: &PanelSpawns, panel: Entity) -> (Reverse<u32>, u32) {
+    let spawned = spawns.get(panel).map(SpawnDetails::spawn_tick);
+    let age = spawned.map_or(0, |spawned| now.get().wrapping_sub(spawned.get()));
+    (Reverse(age), panel.index_u32())
 }
 
 /// The smallest transcript a panel may leave.

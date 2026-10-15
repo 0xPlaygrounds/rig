@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ScheduleLabel;
-use bevy_ecs::system::SystemParam;
+use bevy_ecs::system::{SystemChangeTick, SystemParam};
 use crossterm::cursor::MoveTo;
 use ratatui::Frame;
 use ratatui::backend::Backend;
@@ -24,7 +24,7 @@ use super::input::InputContext;
 use super::keys::KeyFocus;
 use super::pane::{PaneState, TranscriptPane};
 use super::panel::{
-    self, PanelCanvas, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
+    self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
 };
 use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
 use super::renderers::{
@@ -268,6 +268,7 @@ pub(crate) fn layout(
         Option<&Editor>,
         Has<InlineStrip>,
     )>,
+    (spawns, ticks): (PanelSpawns, SystemChangeTick),
 ) {
     let size = match screens {
         (Some(tui), _) => tui.terminal.size().ok(),
@@ -280,7 +281,7 @@ pub(crate) fn layout(
     let screen = Rect::new(0, 0, size.width, size.height);
     let inline = u16::from(!view.inline.is_empty());
     let mut panels: Vec<_> = panels.iter_mut().collect();
-    panels.sort_by_key(|(entity, ..)| panel::spawned(*entity));
+    panels.sort_by_key(|(entity, ..)| panel::spawn_order(ticks.this_run(), &spawns, *entity));
     let panels = panels
         .into_iter()
         .map(|(entity, panel, canvas, editor, strip)| {
@@ -1021,6 +1022,7 @@ pub(crate) fn render(
     (state, focus, choices): (Res<InputContext>, Res<KeyFocus>, Choices),
     mut frame_layout: ResMut<FrameLayout>,
     (panels, carets): (Query<(Entity, &TuiPanel, &PanelCanvas)>, Query<&Caret>),
+    (spawns, ticks): (PanelSpawns, SystemChangeTick),
     mut showing: Query<(Entity, &mut PickerInput, Option<&PickPreview>)>,
     mut repaints: MessageReader<RedrawArea>,
 ) -> Result {
@@ -1043,7 +1045,8 @@ pub(crate) fn render(
         found.map(|(.., canvas)| canvas.area())
     });
     let mut panels: Vec<_> = panels.iter().collect();
-    panels.sort_by_key(|(entity, panel, _)| (layer(panel), panel::spawned(*entity)));
+    let order = |entity| panel::spawn_order(ticks.this_run(), &spawns, entity);
+    panels.sort_by_key(|(entity, panel, _)| (layer(panel), order(*entity)));
     let (under, over_picker): (Vec<_>, Vec<_>) = panels
         .into_iter()
         .partition(|(_, panel, _)| layer(panel) < 3);

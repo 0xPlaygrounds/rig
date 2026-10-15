@@ -132,6 +132,34 @@ fn a_panel_below_the_input_takes_the_rows_under_the_input_box() {
 }
 
 #[test]
+fn panels_are_laid_out_in_the_order_spawned_whatever_their_entity_index() {
+    use bevy_ecs::prelude::*;
+    use ratatui::layout::Constraint;
+
+    use crate::tests::view_app;
+    use crate::{Placement, TuiFrame, TuiPanel, TuiTestScreen};
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let world = app.world_mut();
+    let gone: Vec<Entity> = (0..200).map(|_| world.spawn_empty().id()).collect();
+    let left = || TuiPanel::new(Placement::Left(Constraint::Length(10)));
+    let older = world.spawn(left()).id();
+    app.update();
+    // Bevy hands out the indices of despawned entities again, in batches.
+    let world = app.world_mut();
+    gone.into_iter().for_each(|entity| {
+        world.despawn(entity);
+    });
+    let newer = world.spawn(left()).id();
+    assert!(newer.index() < older.index());
+    app.update();
+    let frame = app.world().resource::<TuiFrame>();
+    let x = |panel| frame.area(panel).map(|area| area.x);
+    assert_eq!((x(older), x(newer)), (Some(0), Some(10)), "{frame:?}");
+}
+
+#[test]
 fn a_highlight_may_match_case_and_the_one_placed_first_wins() {
     let line = Line::from("Error: error at ERROR");
     let (current, rest) = (Style::new().on_red(), Style::new().on_yellow());
