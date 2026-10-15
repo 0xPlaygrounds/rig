@@ -8,6 +8,9 @@
 pub mod anthropic;
 pub mod anthropic_minimax;
 pub mod anthropic_moonshot;
+pub mod anthropic_ollama;
+pub mod anthropic_opencode;
+pub mod anthropic_opencode_go;
 pub mod anthropic_xiaomimimo;
 pub mod anthropic_zai;
 pub mod azure;
@@ -33,6 +36,7 @@ pub mod ollama;
 pub mod ollama_native;
 pub mod openai_chat;
 pub mod openai_responses;
+pub mod opencode;
 pub mod openrouter;
 pub mod perplexity;
 pub mod together;
@@ -49,6 +53,9 @@ pub const SUITE_WIRES: &[&str] = &[
     anthropic_zai::HISTORY_WIRE,
     anthropic_minimax::HISTORY_WIRE,
     anthropic_xiaomimimo::HISTORY_WIRE,
+    anthropic_opencode::HISTORY_WIRE,
+    anthropic_opencode_go::HISTORY_WIRE,
+    anthropic_ollama::HISTORY_WIRE,
     chatgpt::HISTORY_WIRE,
     cohere::HISTORY_WIRE,
     cohere_native::HISTORY_WIRE,
@@ -77,4 +84,5 @@ pub const SUITE_WIRES: &[&str] = &[
     minimax::HISTORY_WIRE,
     moonshot::HISTORY_WIRE,
     xiaomimimo::HISTORY_WIRE,
+    opencode::HISTORY_WIRE,
 ];

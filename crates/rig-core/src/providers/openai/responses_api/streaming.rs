@@ -184,6 +184,9 @@ struct Slot {
     named: bool,
     /// Whether the call's tool name was stated.
     titled: bool,
+    /// A call's done item that stated no arguments before any streamed,
+    /// held until they have.
+    pending: Option<Value>,
 }
 
 /// The item types the client executes, which nothing in rig answers: they
@@ -487,6 +490,7 @@ impl ResponsesDecoder {
             custom,
             named: item.str("call_id").is_some_and(|id| !id.is_empty()),
             titled: item.str("name").is_some_and(|name| !name.is_empty()),
+            pending: None,
         });
         let slot = self.slots.len() - 1;
         if let Some(index) = index {
@@ -511,6 +515,7 @@ impl ResponsesDecoder {
             return Ok(());
         };
         open.open = false;
+        open.pending = None;
         let at = open.at;
         if open.kind == Kind::Call {
             flush(open, out)?;
@@ -604,17 +609,29 @@ impl ResponsesDecoder {
     }
 
     /// The item at `slot` is done: it merges into what streamed and becomes
-    /// the block's native.
+    /// the block's native. A call done before any of its arguments, when
+    /// more may `follow`, waits for them: some providers state the item
+    /// done and then stream its arguments.
     fn done(
         &mut self,
         slot: usize,
         item: Value,
+        follow: bool,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         let Some(done) = self.slots.get_mut(slot) else {
             return Ok(());
         };
+        if follow
+            && done.kind == Kind::Call
+            && done.arguments.is_empty()
+            && arguments_of(&item).is_none()
+        {
+            done.pending = Some(item);
+            return Ok(());
+        }
         done.open = false;
+        done.pending = None;
         if done.id.is_none() {
             done.id = item_id(&item).map(str::to_owned);
         }
@@ -624,7 +641,18 @@ impl ResponsesDecoder {
         match done.kind {
             Kind::Call => {
                 nameless = !done.titled && item.str("name").is_none_or(str::is_empty);
-                let arguments = arguments_of(&item).unwrap_or_else(|| streamed_arguments(done));
+                let stated = arguments_of(&item);
+                let arguments = stated.clone().unwrap_or_else(|| streamed_arguments(done));
+                // The item replays verbatim, so a function call's states
+                // the arguments that streamed.
+                if let (None, false, false, Some(fields)) = (
+                    &stated,
+                    done.custom,
+                    done.arguments.is_empty(),
+                    item.as_object_mut(),
+                ) {
+                    fields.insert("arguments".to_owned(), Value::String(arguments.clone()));
+                }
                 let rest = remainder(done, &arguments, out)?;
                 out.fragment(
                     Some(at),
@@ -714,7 +742,7 @@ impl ResponsesDecoder {
                     .as_object_mut()
                     .and_then(|frame| frame.shift_remove("item"))
                     .unwrap_or_default();
-                self.done(slot, item, out)
+                self.done(slot, item, true, out)
             }
             // A refusal is the assistant's message for that turn.
             "response.output_text.delta" | "response.refusal.delta" => {
@@ -843,7 +871,18 @@ impl ResponsesDecoder {
                 )?,
             };
             taken.insert(slot);
-            self.done(slot, item, &mut out)?;
+            self.done(slot, item, false, &mut out)?;
+        }
+        // A call held for arguments the terminal did not restate completes
+        // with what streamed.
+        let waiting: Vec<(usize, Value)> = self
+            .slots
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(at, slot)| Some((at, slot.pending.take()?)))
+            .collect();
+        for (slot, item) in waiting {
+            self.done(slot, item, false, &mut out)?;
         }
         // Reasoning still waiting is complete when nothing after it is left
         // open.

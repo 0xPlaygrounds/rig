@@ -179,11 +179,14 @@ impl Chat {
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
         let quirks = &self.provider.dialect.quirks;
+        let path = match quirks.strict_tools_path {
+            Some(path) if self.strict_tools => path,
+            _ => quirks.completion_path,
+        };
         // Azure's deployment URL remains pinned to the handle, not a request override.
-        let uri = self.provider.uri(
-            quirks.completion_path,
-            self.provider.deployment(&self.model),
-        );
+        let uri = self
+            .provider
+            .uri(path, self.provider.deployment(&self.model));
         let builder = headers(
             &self.provider,
             &request,
@@ -234,7 +237,7 @@ impl Chat {
         Ok(Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header)
             .with_projection(ChatDecoder::project)
-            .with_route(Some(quirks.completion_path)))
+            .with_route(Some(path)))
     }
 
     /// The field every assistant message carries its reasoning under,

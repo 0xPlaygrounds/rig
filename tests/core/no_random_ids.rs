@@ -6,7 +6,7 @@
 //! Tool-call handles for wires that carry no id used to draw from
 //! `fastrand`; they now derive from the block that assembled the call or
 //! the call's index in the response. This guard pins the remaining random
-//! sources to the two transport headers, the LSH index, retry jitter and
+//! sources to transport headers, the LSH index, retry jitter and
 //! a saved log's lineage token, none of which can reach a request, a
 //! message or an effect record.
 
@@ -70,6 +70,10 @@ const GENERATE_SITES: &[(&str, &str)] = &[
         "crates/rig-core/src/providers/chatgpt/mod.rs",
         "a `session-id` transport header",
     ),
+    (
+        "crates/rig-core/src/providers/internal/session.rs",
+        "a gateway's session transport header",
+    ),
 ];
 
 fn offenders(root: &Path, needle: &str, allowed: &[(&str, &str)]) -> Vec<String> {
@@ -122,7 +126,7 @@ fn randomness_is_drawn_only_where_it_cannot_reach_a_record() {
     let generate = generator_offenders(&root);
     assert!(
         generate.is_empty(),
-        "`id::generate` is called outside the two transport headers:\n{}",
+        "`id::generate` is called outside the transport headers:\n{}",
         generate.join("\n")
     );
 }

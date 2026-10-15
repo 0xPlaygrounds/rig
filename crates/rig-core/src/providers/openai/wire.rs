@@ -204,6 +204,10 @@ pub struct ResponsesQuirks {
     pub contract: ResponsesContract,
     /// Whether newly constructed Responses wires normalize tools for strict validation.
     pub strict_tools_by_default: bool,
+    /// Whether the endpoint returns reasoning ciphertext on request. Without
+    /// it, a request never asks for `reasoning.encrypted_content`, which an
+    /// endpoint that serves no ciphertext rejects.
+    pub reasoning_ciphertext: bool,
 }
 
 impl ResponsesQuirks {
@@ -214,6 +218,7 @@ impl ResponsesQuirks {
             system_instructions: SystemInstructionsPlacement::Instructions,
             contract: ResponsesContract::OpenAi,
             strict_tools_by_default: false,
+            reasoning_ciphertext: true,
         }
     }
 }
@@ -283,6 +288,10 @@ pub struct Quirks {
     pub completion_route: Route,
     /// The chat-completions path, relative to the base URL.
     pub completion_path: &'static str,
+    /// The chat-completions path a request with strict tools goes to, when
+    /// the provider validates strict schemas only there. `None` uses
+    /// [`Self::completion_path`].
+    pub strict_tools_path: Option<&'static str>,
     /// The embeddings path.
     pub embeddings_path: &'static str,
     /// The model-listing path.
@@ -339,7 +348,8 @@ pub struct Quirks {
     pub accepts_file_ids: bool,
     /// The rewrite this dialect applies to the serialized chat body.
     pub rewrite: BodyRewrite,
-    /// Paths that strip a trailing `/v1` from the configured base URL.
+    /// Paths served at the root: a trailing `/v1`, or the path's own first
+    /// segment, is dropped from the configured base URL.
     pub root_relative_routes: &'static [&'static str],
     /// Whether the model is the modality endpoint's *path* rather than a
     /// body field. Hugging Face's router addresses transcription and image
@@ -382,6 +392,7 @@ impl Quirks {
             routing: Routing::Path,
             completion_route: Route::Chat,
             completion_path: "/chat/completions",
+            strict_tools_path: None,
             embeddings_path: "/embeddings",
             models_path: "/models",
             verify_path: "/models",
@@ -812,13 +823,21 @@ impl OpenAIConfig {
     }
 
     /// The base URL `path` resolves against: the configured one, with the
-    /// version segment dropped for a route the dialect serves at the root.
+    /// version segment, or the route's own first segment, dropped for a
+    /// route the dialect serves at the root.
     fn base(&self, path: &str) -> &str {
         let base = self.base_url.trim_end_matches('/');
-        if self.dialect.quirks.root_relative_routes.contains(&path) {
-            return base.strip_suffix("/v1").unwrap_or(base);
+        if !self.dialect.quirks.root_relative_routes.contains(&path) {
+            return base;
         }
-        base
+        let first = path
+            .get(1..)
+            .and_then(|rest| rest.find('/'))
+            .and_then(|end| path.get(..=end))
+            .unwrap_or(path);
+        base.strip_suffix("/v1")
+            .or_else(|| base.strip_suffix(first))
+            .unwrap_or(base)
     }
 
     /// The sub-provider the Hugging Face router forwards to. `None` on the

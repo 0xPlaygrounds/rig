@@ -40,7 +40,7 @@ const CRATES: [(&str, Option<&str>); 5] = [
 /// rig-core's provider modules, by the first path segment under
 /// `providers/`, and the vendor each serves. A module missing here fails
 /// the guard once it holds a model constant.
-const MODULES: [(&str, &str); 26] = [
+const MODULES: [(&str, &str); 27] = [
     ("anthropic", "anthropic"),
     ("azure", "azure.openai"),
     ("chatgpt", "chatgpt"),
@@ -59,6 +59,7 @@ const MODULES: [(&str, &str); 26] = [
     ("moonshot", "moonshot"),
     ("ollama", "ollama"),
     ("openai", "openai"),
+    ("opencode", "opencode"),
     ("openrouter", "openrouter"),
     ("perplexity", "perplexity"),
     ("together", "together"),
@@ -93,7 +94,11 @@ fn names_no_model(module: &[String], name: &str) -> bool {
         || name.starts_with("ANTHROPIC_VERSION")
         || matches!(
             name,
-            "PROVIDER_NAME" | "AZURE_DEFAULT_API_VERSION" | "DEFAULT_LOCATION"
+            "PROVIDER_NAME"
+                | "GO_PROVIDER_NAME"
+                | "SESSION_HEADER"
+                | "AZURE_DEFAULT_API_VERSION"
+                | "DEFAULT_LOCATION"
         )
         || (extension && (name == "PROVIDER" || name.ends_with("_BETA")))
 }

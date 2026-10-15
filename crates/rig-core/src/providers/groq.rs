@@ -4,6 +4,8 @@
 //! request sets its reasoning effort with
 //! [`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning);
 //! Groq's own fields such as `reasoning_format` are typed in [`extension`].
+//! Chat Completions is the default route; Groq's beta Responses API is
+//! reached with [`OpenAI::responses`](crate::providers::openai::OpenAI::responses).
 //!
 //! ```no_run
 //! use rig_core::providers::groq;

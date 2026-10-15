@@ -74,12 +74,20 @@ pub const AZURE: Dialect = Dialect {
     ..Dialect::gateway(crate::providers::azure::PROVIDER_NAME, "", "AZURE_API_KEY")
 };
 
+/// Where DeepSeek serves strict function calling.
+const DEEPSEEK_STRICT_PATH: &str = "/beta/chat/completions";
+
 /// DeepSeek.
 pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
         // DeepSeek accepts json_object through additional_params, not json_schema.
         supports_response_format: false,
         verify_path: "/user/balance",
+        // Strict function calling is a beta feature: only the beta base
+        // validates a strict schema, and the main one ignores `strict`. The
+        // path is the root's, whether the base names `/v1` or `/beta`.
+        strict_tools_path: Some(DEEPSEEK_STRICT_PATH),
+        root_relative_routes: &[DEEPSEEK_STRICT_PATH],
         rewrite: BodyRewrite::DeepSeek,
         // Its thinking models take `reasoning_content` back on every
         // assistant message (pi).
@@ -96,6 +104,14 @@ pub const DEEPSEEK: Dialect = Dialect {
 /// Groq.
 pub const GROQ: Dialect = Dialect {
     request_id_header: Some("x-request-id"),
+    quirks: Quirks {
+        // The Responses route rejects `include`.
+        responses: ResponsesQuirks {
+            reasoning_ciphertext: false,
+            ..ResponsesQuirks::openai()
+        },
+        ..Quirks::openai()
+    },
     ..Dialect::gateway(
         crate::providers::groq::PROVIDER_NAME,
         "https://api.groq.com/openai/v1",
@@ -427,6 +443,13 @@ pub const MOONSHOT: Dialect = Dialect {
         // Moonshot rejects `json_schema` response formats.
         supports_response_format: false,
         rewrite: BodyRewrite::Moonshot,
+        // The Responses route takes no `system` role in `input` and serves
+        // no reasoning ciphertext.
+        responses: ResponsesQuirks {
+            system_instructions: SystemInstructionsPlacement::AllInstructions,
+            reasoning_ciphertext: false,
+            ..ResponsesQuirks::openai()
+        },
         ..Quirks::openai()
     },
     ..Dialect::gateway(
@@ -465,6 +488,36 @@ pub const COHERE: Dialect = Dialect::gateway(
     "https://api.cohere.ai/compatibility/v1",
     "COHERE_API_KEY",
 );
+
+/// OpenCode Zen: GPT, Grok and Muse Spark models on `/responses`, every
+/// other model on Chat Completions.
+pub const OPENCODE: Dialect = Dialect {
+    quirks: Quirks {
+        hooks: Some(&crate::providers::opencode::HOOKS),
+        // The model listing is public, so it checks no credential.
+        verify_path: "",
+        ..Quirks::openai()
+    },
+    ..Dialect::gateway(
+        crate::providers::opencode::PROVIDER_NAME,
+        crate::providers::opencode::API_BASE_URL,
+        crate::providers::opencode::API_KEY_ENV,
+    )
+};
+
+/// OpenCode Go: Zen's routing, and the session header Go requires.
+pub const OPENCODE_GO: Dialect = Dialect {
+    quirks: Quirks {
+        hooks: Some(&crate::providers::opencode::GO_HOOKS),
+        verify_path: "",
+        ..Quirks::openai()
+    },
+    ..Dialect::gateway(
+        crate::providers::opencode::GO_PROVIDER_NAME,
+        crate::providers::opencode::GO_API_BASE_URL,
+        crate::providers::opencode::API_KEY_ENV,
+    )
+};
 
 /// An Ollama daemon's OpenAI-compatible API. Its embedding and model-listing
 /// endpoints are its own wires.

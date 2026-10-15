@@ -1,17 +1,23 @@
 //! Doubleword's model identifiers.
 //!
 //! [`from_env`] and [`new`] build a client on the [`DOUBLEWORD`](crate::providers::openai::wire::DOUBLEWORD) dialect for
-//! realtime chat and embeddings. Async polling and batch
-//! submission are not modeled by these operations.
+//! chat and embeddings. Its Responses route takes
+//! [`ServiceTier::Flex`](crate::completion::ServiceTier::Flex), Doubleword's
+//! async tier: the request queues at a lower rate, and the call returns the
+//! finished response. Background polling and batch submission are not
+//! modeled.
 //!
 //! ```no_run
+//! use rig_core::completion::{GenerationOptions, ServiceTier};
 //! use rig_core::providers::doubleword;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let doubleword = doubleword::from_env()?;
 //! let chat = doubleword.chat(doubleword::QWEN3_5_9B);
+//! let flex = doubleword.responses(doubleword::QWEN3_5_9B);
+//! let options = GenerationOptions::default().service_tier(ServiceTier::Flex);
 //! let embedding = doubleword.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
-//! # let _ = (chat, embedding);
+//! # let _ = (chat, flex, options, embedding);
 //! # Ok(())
 //! # }
 //! ```

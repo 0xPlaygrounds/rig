@@ -1,11 +1,15 @@
 //! DeepSeek model identifiers. [`from_env`] and [`new`] build a client on the [`DEEPSEEK`](crate::providers::openai::wire::DEEPSEEK) dialect.
 //!
+//! A chat wire with [strict tools](crate::providers::openai::wire::Chat::with_strict_tools)
+//! sends to DeepSeek's beta base, where a tool call follows its schema
+//! exactly and a schema strict mode cannot hold is rejected.
+//!
 //! ```no_run
 //! use rig_core::providers::deepseek;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let deepseek_chat = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
-//! # let _ = deepseek_chat;
+//! let mut deepseek_chat = deepseek::from_env()?.chat(deepseek::DEEPSEEK_FLASH);
+//! deepseek_chat.wire = deepseek_chat.wire.with_strict_tools();
 //! # Ok(())
 //! # }
 //! ```

@@ -109,20 +109,26 @@ pub struct ModelsPage {
     last_id: Option<String>,
 }
 
+/// One listed model. A gateway's listing may name no display name.
 #[derive(Debug, Deserialize)]
 struct ModelEntry {
     id: String,
-    display_name: String,
+    #[serde(default)]
+    display_name: Option<String>,
 }
 
 impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        ModelInfo::new(entry.id, entry.display_name)
+        match entry.display_name {
+            Some(name) => ModelInfo::new(entry.id, name),
+            None => ModelInfo::from_id(entry.id),
+        }
     }
 }
 
 /// The credential-check wire: `GET /v1/models`, status only, decoded by
-/// the shared [`VerifyDecoder`].
+/// the shared [`VerifyDecoder`]. A dialect whose listing is public checks
+/// nothing and refuses to encode.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Verify {
     /// The provider this wire speaks to.
@@ -142,6 +148,12 @@ impl Wire for Verify {
     }
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+        if !self.provider.dialect.quirks.listing_checks_credential {
+            return Err(EncodeError::request(format!(
+                "{} offers no endpoint that checks a credential without consuming tokens",
+                self.provider.dialect.name
+            )));
+        }
         let request = self
             .provider
             .headers(http::Request::get(format!(

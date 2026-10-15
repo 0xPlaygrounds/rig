@@ -1235,7 +1235,7 @@ pub(crate) fn responses_options(
     fields: OptionFields<'_>,
 ) -> OptionMap {
     use super::responses_api::wire::ResponsesContract;
-    use super::wire::{OPENAI, OPENROUTER};
+    use super::wire::{DOUBLEWORD, OPENAI, OPENROUTER};
     let model = request.model.as_deref().unwrap_or(&responses.model);
     let facts = &responses.facts;
     let dialect = &responses.provider.dialect;
@@ -1252,6 +1252,9 @@ pub(crate) fn responses_options(
             if dialect.name == crate::providers::copilot::wire::DIALECT.name =>
         {
             copilot_responses(fields)
+        }
+        ResponsesContract::OpenAi if dialect.name == DOUBLEWORD.name => {
+            doubleword_responses(fields)
         }
         ResponsesContract::OpenAi => refuse_all(
             fields,
@@ -1367,6 +1370,40 @@ fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_
             Mapping::unsupported("Responses has no stop parameter")
         }),
         cache_key: Mapping::unrouted(fields.cache_key),
+    }
+}
+
+/// Doubleword's Responses route, where its tiers live: `flex` queues the
+/// request at a lower rate and the call still returns the finished response.
+/// Every other cell is unverified.
+fn doubleword_responses(fields: OptionFields<'_>) -> OptionMap {
+    let OptionMap {
+        reasoning,
+        cache,
+        service_tier: _,
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+        cache_key,
+    } = refuse_all(fields, "unverified for this provider");
+    OptionMap {
+        reasoning,
+        cache,
+        service_tier: Mapping::of(fields.service_tier, |tier| match tier {
+            ServiceTier::Auto | ServiceTier::Default => {
+                Mapping::Omit("requests run on the realtime tier unless one is named")
+            }
+            ServiceTier::Flex => send("service_tier", "flex"),
+            ServiceTier::Priority => send("service_tier", "priority"),
+        }),
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+        cache_key,
     }
 }
 

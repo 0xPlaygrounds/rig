@@ -357,8 +357,8 @@ mod option_matrix {
     use rig::providers::openai::responses_api::wire::Responses;
     use rig::providers::openai::wire::{
         AZURE, Chat, DOUBLEWORD, Dialect, GROQ, HUGGINGFACE, HYPERBOLIC, LLAMACPP, MINIMAX, MIRA,
-        MISTRAL, MOONSHOT, OLLAMA, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY, TOGETHER, VENICE,
-        XIAOMIMIMO, ZAI,
+        MISTRAL, MOONSHOT, OLLAMA, OPENAI, OPENCODE, OPENCODE_GO, OPENROUTER, OpenAIConfig,
+        PERPLEXITY, TOGETHER, VENICE, XIAOMIMIMO, ZAI,
     };
     use rig_core::error::ProviderError;
     use rig_core::wire::{Body, Mode, Wire};
@@ -818,6 +818,8 @@ mod option_matrix {
                 refused(),
             ),
             ("mira", chat(&MIRA, "claude-3.5-sonnet"), refused()),
+            ("opencode", chat(&OPENCODE, "kimi-k3"), refused()),
+            ("opencode-go", chat(&OPENCODE_GO, "kimi-k3"), refused()),
         ]
     }
 
@@ -887,6 +889,12 @@ mod option_matrix {
                     Refuse,
                 ],
             ),
+            (
+                // A request that names no tier runs on the realtime one.
+                "doubleword",
+                responses(&DOUBLEWORD, "Qwen/Qwen3.5-9B"),
+                [Refuse, Refuse, Omit, Refuse, Refuse, Refuse, Refuse, Refuse],
+            ),
         ]
     }
 
@@ -935,6 +943,21 @@ mod option_matrix {
                     Refuse,
                     Merge(json!({"stop_sequences": ["END"]})),
                 ],
+            ),
+            (
+                "opencode",
+                messages(&anthropic::wire::OPENCODE, "claude-sonnet-5-5"),
+                refused(),
+            ),
+            (
+                "opencode-go",
+                messages(&anthropic::wire::OPENCODE_GO, "claude-haiku-5-5"),
+                refused(),
+            ),
+            (
+                "ollama",
+                messages(&anthropic::wire::OLLAMA, "qwen3:4b"),
+                refused(),
             ),
         ]
     }

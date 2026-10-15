@@ -9,7 +9,7 @@ use crate::message::{
     AssistantContent, AssistantMessage, CallId, DocumentMediaType, DocumentSourceKind, Image,
     ImageMediaType, ToolName, ToolResult, ToolResultContent, UserContent,
 };
-use crate::providers::openai::wire::{GROQ, OpenAIConfig};
+use crate::providers::openai::wire::{DEEPSEEK, GROQ, OpenAIConfig};
 use crate::test_utils::json_body;
 use crate::wire::{Mode, Operation, Wire};
 
@@ -380,4 +380,52 @@ fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
         "a text document goes as its text: {body:#}"
     );
     Ok(())
+}
+
+/// DeepSeek validates a strict schema only on its beta base, so a wire with
+/// strict tools sends there, each function marked strict, whichever of its
+/// documented bases is configured; one without keeps the configured base.
+#[test]
+fn deepseek_strict_tools_go_to_its_beta_base() {
+    let chat = |base: &str| {
+        OpenAIConfig::with_key(&DEEPSEEK, "key")
+            .with_base_url(base)
+            .chat("deepseek-flash")
+    };
+    let beta = "https://api.deepseek.com/beta/chat/completions";
+    for (wire, uri, strict) in [
+        (
+            chat("https://api.deepseek.com"),
+            "https://api.deepseek.com/chat/completions",
+            None,
+        ),
+        (
+            chat("https://api.deepseek.com").with_strict_tools(),
+            beta,
+            Some(true),
+        ),
+        (
+            chat("https://api.deepseek.com/v1").with_strict_tools(),
+            beta,
+            Some(true),
+        ),
+        (
+            chat("https://api.deepseek.com/beta/").with_strict_tools(),
+            beta,
+            Some(true),
+        ),
+    ] {
+        let mut request = CompletionRequest::new("hi");
+        request.tools = vec![tool("lookup")];
+        let request = crate::operation::Completion::prepare(request, &wire.describe())
+            .expect("the request prepares");
+        let encoded = wire.encode(request, Mode::Unary).expect("encodes");
+        assert_eq!(encoded.request.uri(), uri);
+        let body = json_body(&encoded.request);
+        assert_eq!(
+            body.pointer("/tools/0/function/strict")
+                .and_then(Value::as_bool),
+            strict
+        );
+    }
 }

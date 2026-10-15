@@ -61,6 +61,8 @@ pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
     &openai::wire::XIAOMIMIMO,
     &openai::wire::COHERE,
     &openai::wire::OLLAMA,
+    &openai::wire::OPENCODE,
+    &openai::wire::OPENCODE_GO,
     &crate::providers::xai::DIALECT,
     &crate::providers::chatgpt::DIALECT,
     &crate::providers::copilot::wire::DIALECT,
@@ -209,7 +211,8 @@ impl Registered {
     fn requires_credential(&self) -> bool {
         match self {
             Self::OpenAi(dialect) => openai_requires_credential(dialect),
-            Self::Anthropic(_) | Self::Gemini => true,
+            Self::Anthropic(dialect) => dialect.quirks.auth == anthropic::wire::Auth::ApiKey,
+            Self::Gemini => true,
         }
     }
 }
@@ -394,7 +397,8 @@ impl ProviderId {
     ///
     /// A vendor registered in one family has that family as its primary.
     /// The vendors registered in two declare theirs: Anthropic's for
-    /// `minimax`, OpenAI's for `zai`, `moonshot` and `xiaomimimo`. A model
+    /// `minimax`, OpenAI's for `zai`, `moonshot`, `xiaomimimo`, `opencode`,
+    /// `opencode-go` and `ollama`. A model
     /// reference that names no family is reached by its catalog row's,
     /// which is the primary unless the row says otherwise.
     pub fn catalog(vendor: &str) -> Option<Self> {
@@ -622,11 +626,14 @@ impl ProviderId {
 
 /// The primary family of each vendor registered in more than one, as
 /// models.dev lists the vendor's own API. [`ProviderId::catalog`] reads it.
-const PRIMARY: [(&str, Format); 4] = [
+const PRIMARY: [(&str, Format); 7] = [
     ("zai", Format::OpenAi),
     ("minimax", Format::Anthropic),
     ("moonshot", Format::OpenAi),
     ("xiaomimimo", Format::OpenAi),
+    ("opencode", Format::OpenAi),
+    ("opencode-go", Format::OpenAi),
+    ("ollama", Format::OpenAi),
 ];
 
 /// The family a reference to `vendor`'s `model` that names none is reached
