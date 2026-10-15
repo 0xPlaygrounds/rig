@@ -18,6 +18,18 @@ pub(crate) mod schema;
 pub mod wire;
 pub mod wire_ids;
 
+/// A JSON object written as `json!` writes one, with each value moved in
+/// through `Value::from`: `json!` copies every value it interpolates, so a
+/// request body built around owned values is built with this instead.
+macro_rules! object {
+    ($($key:literal: $value:expr),* $(,)?) => {
+        serde_json::Value::Object(serde_json::Map::from_iter([
+            $(($key.to_owned(), serde_json::Value::from($value))),*
+        ]))
+    };
+}
+pub(crate) use object;
+
 /// A rig logging target for [`trace_json`]. An enum (not a `&str`) because
 /// `tracing` targets must be literals, so the dispatch is total by
 /// construction.

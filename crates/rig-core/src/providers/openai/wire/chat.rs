@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::catalog::ModelFacts;
@@ -22,6 +23,7 @@ use crate::message::{
 };
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
+use crate::providers::internal::object;
 use crate::providers::internal::openai_chat_completions_compatible::{
     finish_reason, native_finish_reason, provider_error_envelope,
 };
@@ -84,12 +86,12 @@ fn image_url(image: &crate::message::Image, user: bool) -> Result<Value, EncodeE
     if let Some(detail) = detail {
         part.insert("detail".to_owned(), serde_json::to_value(detail)?);
     }
-    Ok(json!({"type": "image_url", "image_url": part}))
+    Ok(object! {"type": "image_url", "image_url": part})
 }
 
 /// One user content part as Chat Completions carries it.
 fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
-    let file = |file: Value| json!({"type": "file", "file": file});
+    let file = |file: Value| object! {"type": "file", "file": file};
     Ok(match part {
         UserContent::Text(text) => json!({"type": "text", "text": text.text}),
         UserContent::Image(image) => image_url(image, true)?,
@@ -98,10 +100,10 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
             match &document.data {
                 DocumentData::Text(text) => json!({"type": "text", "text": text}),
                 DocumentData::File(Source::FileId(id)) => file(json!({ "file_id": id })),
-                DocumentData::File(Source::Base64(data)) if pdf => file(json!({
+                DocumentData::File(Source::Base64(data)) if pdf => file(object! {
                     "file_data": format!("data:application/pdf;base64,{data}"),
                     "filename": "document.pdf",
-                })),
+                }),
                 // OpenRouter and Mistral fetch a PDF a URL names.
                 DocumentData::File(Source::Url(url)) if pdf => {
                     file(json!({"file_data": url, "filename": "document.pdf"}))
@@ -119,7 +121,7 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
         UserContent::Video(video) => {
             let mime = video.media_type.as_ref().map(MimeType::to_mime_type);
             let url = media_url(&video.data, mime).ok_or_else(|| unsendable("a video"))?;
-            json!({"type": "video_url", "video_url": {"url": url}})
+            object! {"type": "video_url", "video_url": object! {"url": url}}
         }
         UserContent::ToolResult(_) => return Err(unsendable("a tool result as a content part")),
     })
@@ -129,41 +131,40 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
 /// into one string, or its parts as an array when the wire asks for one or
 /// it holds an image, which has no string form.
 fn tool_message(result: &ToolResult, ids: &WireIds, array: bool) -> Result<Value, EncodeError> {
-    let parts = result
-        .content
-        .iter()
-        .map(|part| match part {
-            ToolResultContent::Text(text) => Ok(json!({"type": "text", "text": text.text})),
-            ToolResultContent::Json { value } => {
-                Ok(json!({"type": "text", "text": value.to_string()}))
-            }
+    fn text(part: &ToolResultContent) -> Option<Cow<'_, str>> {
+        match part {
+            ToolResultContent::Text(text) => Some(Cow::Borrowed(&text.text)),
+            ToolResultContent::Json { value } => Some(Cow::Owned(value.to_string())),
+            ToolResultContent::Image(_) => None,
+        }
+    }
+    let image = |part: &ToolResultContent| matches!(part, ToolResultContent::Image(_));
+    let content = if array || result.content.iter().any(image) {
+        let parts = result.content.iter().map(|part| match part {
             ToolResultContent::Image(image) => image_url(image, false),
-        })
-        .collect::<Result<Vec<_>, EncodeError>>()?;
-    let content = if array
-        || parts
-            .iter()
-            .any(|part| part.str("type") == Some("image_url"))
-    {
-        Value::Array(parts)
+            _ => Ok(object! {"type": "text", "text": text(part).unwrap_or_default()}),
+        });
+        Value::Array(parts.collect::<Result<_, EncodeError>>()?)
     } else {
-        let texts: Vec<&str> = parts.iter().filter_map(|part| part.str("text")).collect();
+        let texts: Vec<Cow<'_, str>> = result.content.iter().filter_map(text).collect();
         Value::String(texts.join("\n"))
     };
     let id = ids.spell(&result.call);
-    Ok(json!({"role": "tool", "tool_call_id": id, "content": content}))
+    Ok(object! {"role": "tool", "tool_call_id": id, "content": content})
 }
 
 /// Push the user parts gathered so far as one message: a lone text part as
 /// a plain string.
 fn user_message(messages: &mut Vec<Value>, parts: &mut Vec<Value>) {
-    let content = match parts.as_slice() {
+    let content = match parts.as_mut_slice() {
         [] => return,
-        [part] if part.str("type") == Some("text") => part.get("text").cloned().unwrap_or_default(),
+        [part] if part.str("type") == Some("text") => {
+            part.get_mut("text").map(Value::take).unwrap_or_default()
+        }
         _ => Value::Array(std::mem::take(parts)),
     };
     parts.clear();
-    messages.push(json!({"role": "user", "content": content}));
+    messages.push(object! {"role": "user", "content": content});
 }
 
 impl Chat {
@@ -337,7 +338,7 @@ impl Chat {
                         function.insert("strict".to_owned(), Value::Bool(true));
                     }
                 }
-                tools.push(json!({"type": "function", "function": function}));
+                tools.push(object! {"type": "function", "function": function});
             }
             // Passthrough tools, function or native (Groq's `browser_search`),
             // join the typed ones in one array.
@@ -652,7 +653,7 @@ fn call_item(call: &ToolCall, replay: Replay<'_>, ids: &WireIds, custom: &[Strin
         };
         ("custom", "input", input)
     } else {
-        let arguments = Value::Object(call.function.arguments.clone()).to_string();
+        let arguments = serde_json::to_string(&call.function.arguments).unwrap_or_default();
         ("function", "arguments", arguments)
     };
     let slot = item
@@ -981,21 +982,22 @@ impl crate::completion::ReplayTarget for Chat {
     /// as a content part (Mistral's thinking), an opaque item only as a
     /// typed part, and never an image.
     fn sends_alone(&self, block: &AssistantContent) -> bool {
-        let ids = crate::providers::internal::wire_ids::WireIds::default();
-        match (block, block.replay(self, &ids)) {
-            (AssistantContent::ToolCall(_), _) => true,
-            (AssistantContent::Text(text), Replay::Item(item)) => {
-                !text.text.is_empty() || item.get("audio").is_some()
+        let replay = || block.replay(self, &WireIds::default());
+        match block {
+            AssistantContent::ToolCall(_) => true,
+            AssistantContent::Text(text) => {
+                !text.text.is_empty()
+                    || matches!(replay(), Replay::Item(item) if item.get("audio").is_some())
             }
-            (AssistantContent::Text(text), _) => !text.text.is_empty(),
-            (AssistantContent::Reasoning(_), Replay::Item(item)) => item.get("type").is_some(),
-            (AssistantContent::Reasoning(_), Replay::Identity(identity)) => {
-                identity.get("type").and_then(Value::as_str) == Some("thinking")
-            }
-            (AssistantContent::Opaque(opaque), _) => opaque.item.get("type").is_some(),
-            (AssistantContent::Reasoning(_), Replay::Rebuild) | (AssistantContent::Image(_), _) => {
-                false
-            }
+            AssistantContent::Reasoning(_) => match replay() {
+                Replay::Item(item) => item.get("type").is_some(),
+                Replay::Identity(identity) => {
+                    identity.get("type").and_then(Value::as_str) == Some("thinking")
+                }
+                Replay::Rebuild => false,
+            },
+            AssistantContent::Opaque(opaque) => opaque.item.get("type").is_some(),
+            AssistantContent::Image(_) => false,
         }
     }
 }
