@@ -374,10 +374,14 @@ fn an_agentic_reply_reads_as_one_turn() {
 /// the chunks into one response.
 #[tokio::test]
 async fn a_stream_decodes_text_and_calls_and_folds_its_document() {
-    let fragment = |arguments: &str| ToolCall {
+    let fragment = |name: &str, arguments: &str| ToolCall {
         index: Some(0),
         status: proto::ToolCallStatus::InProgress as i32,
-        ..call("call_2", ToolCallType::ClientSideTool, arguments)
+        tool: Some(tool_call::Tool::Function(FunctionCall {
+            name: name.to_owned(),
+            arguments: arguments.to_owned(),
+        })),
+        ..call("call_2", ToolCallType::ClientSideTool, "")
     };
     let frames = vec![
         chunk(text("Hel"), proto::FinishReason::ReasonInvalid, None),
@@ -396,7 +400,7 @@ async fn a_stream_decodes_text_and_calls_and_folds_its_document() {
         ),
         chunk(
             Delta {
-                tool_calls: vec![fragment(r#"{"x":2,"#), fragment(r#""y":2}"#)],
+                tool_calls: vec![fragment("ad", r#"{"x":2,"#), fragment("d", r#""y":2}"#)],
                 ..Delta::default()
             },
             proto::FinishReason::ReasonInvalid,
@@ -431,11 +435,20 @@ async fn a_stream_decodes_text_and_calls_and_folds_its_document() {
         .choice
         .iter()
         .filter_map(|block| match block {
-            AssistantContent::ToolCall(call) => Some(call.function.arguments_value()),
+            AssistantContent::ToolCall(call) => Some((
+                call.function.name.to_string(),
+                call.function.arguments_value(),
+            )),
             _ => None,
         })
         .collect();
-    assert_eq!(calls, [json!({"x": 1, "y": 1}), json!({"x": 2, "y": 2})]);
+    assert_eq!(
+        calls,
+        [
+            ("add".to_owned(), json!({"x": 1, "y": 1})),
+            ("add".to_owned(), json!({"x": 2, "y": 2}))
+        ]
+    );
     assert_eq!(reply.usage.total_tokens, Some(17));
     assert_eq!(
         reply.raw.pointer("/outputs/0/message/content"),

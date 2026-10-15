@@ -59,10 +59,6 @@ pub(crate) fn request(body: ChatBody) -> Result<GetCompletionsRequest, EncodeErr
     if prompt_cache_key.is_some() {
         return Err(unsendable("`prompt_cache_key`"));
     }
-    // Rig reads one candidate; xAI's outputs are read as the turns of one.
-    if rest.get("n").and_then(Value::as_u64).is_some_and(|n| n > 1) {
-        return Err(unsendable("more than one candidate (`n`)"));
-    }
     if let Some(tokens) = max_completion_tokens {
         rest.entry("max_tokens").or_insert(tokens);
     }
@@ -100,7 +96,13 @@ pub(crate) fn request(body: ChatBody) -> Result<GetCompletionsRequest, EncodeErr
             rest.insert(key.to_owned(), value);
         }
     }
-    from_json(Value::Object(rest)).map_err(|error| EncodeError::request(error.to_string()))
+    let request: GetCompletionsRequest =
+        from_json(Value::Object(rest)).map_err(|error| EncodeError::request(error.to_string()))?;
+    // Rig reads one candidate; xAI's outputs are read as the turns of one.
+    if request.n.is_some_and(|n| n > 1) {
+        return Err(unsendable("more than one candidate (`n`)"));
+    }
+    Ok(request)
 }
 
 /// A Chat Completions enum string as the proto enum value `prefix` names;
@@ -305,18 +307,20 @@ impl Calls {
             return None;
         }
         self.calling.insert(output);
-        if call.index.is_some() {
-            self.fragmented.insert(call.id.clone());
-        } else if self.fragmented.contains(&call.id) {
+        let Some(proto::tool_call::Tool::Function(called)) = &call.tool else {
             return None;
-        }
-        let mut function = Map::new();
-        if let Some(proto::tool_call::Tool::Function(called)) = &call.tool {
-            if !called.name.is_empty() {
-                function.insert("name".to_owned(), called.name.clone().into());
-            }
-            function.insert("arguments".to_owned(), called.arguments.clone().into());
-        }
+        };
+        // A fragment's name may itself be a fragment, so a call streamed in
+        // pieces sends its arguments as they come and its name once, from
+        // the completed copy, which states it whole.
+        let function = if call.index.is_some() {
+            self.fragmented.insert(call.id.clone());
+            json!({ "arguments": called.arguments })
+        } else if self.fragmented.contains(&call.id) {
+            json!({ "name": called.name })
+        } else {
+            json!({ "name": called.name, "arguments": called.arguments })
+        };
         Some(json!({ "id": call.id, "type": "function", "function": function }))
     }
 
