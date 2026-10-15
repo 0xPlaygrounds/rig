@@ -1713,6 +1713,90 @@
           "reasoning_default": "medium"
         }
       },
+      "gemini-3.8-flash-lite-tts": {
+        "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-lite-tts https://ai.google.dev/gemini-api/docs/pricing",
+        "note": "not on models.dev; the model page lists Thinking: Not supported; the paid price doubles on 2027-01-01",
+        "name": "Gemini 3.8 Flash-Lite TTS",
+        "reasoning": false,
+        "reasoning_options": [],
+        "tool_call": false,
+        "structured_output": false,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 8192,
+          "output": 16384
+        },
+        "cost": {
+          "input": 0.5,
+          "output": 6
+        }
+      },
+      "gemini-3.8-flash-tts": {
+        "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts https://ai.google.dev/gemini-api/docs/pricing",
+        "note": "not on models.dev; the model page lists Thinking: Not supported; the paid price doubles on 2027-01-01",
+        "name": "Gemini 3.8 Flash TTS",
+        "reasoning": false,
+        "reasoning_options": [],
+        "tool_call": false,
+        "structured_output": false,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 8192,
+          "output": 16384
+        },
+        "cost": {
+          "input": 0.5,
+          "output": 9
+        }
+      },
+      "gemini-nano-banana-2.1": {
+        "source": "https://ai.google.dev/gemini-api/docs/models/gemini-nano-banana-2.1 https://ai.google.dev/gemini-api/docs/pricing",
+        "note": "not on models.dev; output is the image price, text and thinking output is $7.50",
+        "name": "Nano Banana 2.1",
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "minimal",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "tool_call": false,
+        "structured_output": false,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video",
+            "pdf"
+          ]
+        },
+        "limit": {
+          "context": 131072,
+          "output": 32768
+        },
+        "cost": {
+          "input": 1.5,
+          "output": 30
+        },
+        "rig": {
+          "reasoning_default": "medium"
+        }
+      },
       "gemma-4-26b-a4b-it": {
         "source": "https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api",
         "note": "thinkingLevel `high` turns thinking on and `minimal` turns it off",

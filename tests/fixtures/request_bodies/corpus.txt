@@ -1317,7 +1317,9 @@ gemini-3.8-flash-2026-01-01
 gemini-3.8-flash-20260101
 gemini-3.8-flash-exp
 gemini-3.8-flash-latest
+gemini-3.8-flash-lite-tts
 gemini-3.8-flash-preview-09-2025
+gemini-3.8-flash-tts
 gemini-3.8-flash:latest
 gemini-9-pro
 gemini-embedding-001
@@ -1331,6 +1333,7 @@ gemini-embedding-001:latest
 gemini-embedding-2
 gemini-flash-latest
 gemini-flash-lite-latest
+gemini-nano-banana-2.1
 gemini-omni-flash-preview
 gemini-pro
 gemma-2-2b-it
