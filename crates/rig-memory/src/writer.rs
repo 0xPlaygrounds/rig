@@ -10,9 +10,9 @@ use rig_core::conversation::{Author, Change, ChangeRecord, Conversation, Lineage
 use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
+use crate::upgrade::upgrade_logs;
 use crate::{
     Repair, Rewrite, Rewritten, SHELVED, Session, SessionError, Stamp, Store, Versioned, rewrite,
-    upgrade,
 };
 use rig_core::now_ms;
 
@@ -391,15 +391,15 @@ impl Writer {
     /// Reads like [`Session::read`], so a broken, too-old or too-new
     /// session is refused before anything is written. Then each torn tail
     /// is moved to `recovered/<log>-<k>.part` ([`Repair::TornTail`]), and
-    /// an older format is rewritten in this one ([`upgrade`]). Nothing is
+    /// an older format is rewritten in this one ([`upgrade`](crate::upgrade)). Nothing is
     /// logged until [`start`](Self::start).
     ///
     /// # Errors
     ///
     /// As [`Session::read`], or when setting a torn tail aside fails.
     pub fn open(store: Arc<dyn Store>) -> Result<(Self, Session), SessionError> {
-        let upgraded = upgrade(&*store)?;
-        let mut folded = fold_all(&*store, true)?;
+        let (upgraded, logs) = upgrade_logs(&*store)?;
+        let mut folded = fold_all(&*store, &logs, true)?;
         let mut repairs = repairs(&*store, &folded)?;
         for repair in &mut repairs {
             if let Repair::TornTail {

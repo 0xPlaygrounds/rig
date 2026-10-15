@@ -15,10 +15,10 @@ use serde_json::Value;
 
 use crate::blobs::{named_blobs, store_change};
 use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_change, write_meta};
-use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
-use crate::upgrade::each_record;
+use crate::session::{Fold, Folded, fold_lines, read_header};
+use crate::upgrade::{each_record, upgrade_logs};
 use crate::writer::set_aside_tail;
-use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned, upgrade};
+use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned};
 use rig_core::now_ms;
 
 /// Where a value being rewritten is kept.
@@ -729,12 +729,8 @@ pub fn rewrite(
     by: Author,
     with: &dyn Rewrite,
 ) -> Result<Rewritten, SessionError> {
-    upgrade(store)?;
     let mut logs: Vec<(String, LogLines, Folded)> = Vec::new();
-    for name in store.logs()? {
-        let Some(lines) = log_lines(store, &name)? else {
-            continue;
-        };
+    for (name, lines) in upgrade_logs(store)?.1 {
         if let Some(folded) = fold_lines(&name, &lines, Fold::default(), &|_| {
             Err(io::ErrorKind::NotFound.into())
         })? {
