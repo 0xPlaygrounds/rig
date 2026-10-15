@@ -118,8 +118,11 @@ impl<D: Serialize> InMemoryVectorStore<D> {
                 self.embeddings.insert(id, (doc, embeddings));
             }
             None => {
+                let gives_dimension = embeddings.iter().any(|embedding| !embedding.vec.is_empty());
                 self.embeddings.insert(id, (doc, embeddings));
-                self.initialize_lsh_index();
+                if gives_dimension {
+                    self.initialize_lsh_index();
+                }
             }
         }
     }
