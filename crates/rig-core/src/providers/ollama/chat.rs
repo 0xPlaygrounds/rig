@@ -13,6 +13,7 @@
 //! ```
 
 use serde_json::{Map, Value, json};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::completion::options::{BaseInput, FinalBody, RawAt, request_params};
@@ -245,23 +246,23 @@ impl Chat {
 
 /// The text and images of one user message as they gather.
 #[derive(Default)]
-struct UserParts {
-    texts: Vec<String>,
+struct UserParts<'a> {
+    texts: Vec<&'a str>,
     images: Vec<String>,
 }
 
-impl UserParts {
+impl<'a> UserParts<'a> {
     /// Add a part: text, or an image as base64 data. The adapter has
     /// replaced every other part ([`ReplayTarget::encodes`]).
-    fn add(&mut self, part: &UserContent) -> Result<(), EncodeError> {
+    fn add(&mut self, part: &'a UserContent) -> Result<(), EncodeError> {
         match part {
-            UserContent::Text(text) => self.texts.push(text.text.clone()),
+            UserContent::Text(text) => self.texts.push(&text.text),
             UserContent::Image(image) => match &image.data {
                 Source::Base64(data) => self.images.push(data.clone()),
                 _ => return Err(unsendable("an image that is not base64 data")),
             },
             UserContent::Document(document) => match &document.data {
-                DocumentData::Text(text) => self.texts.push(text.clone()),
+                DocumentData::Text(text) => self.texts.push(text),
                 DocumentData::File(_) => return Err(unsendable("a document")),
             },
             UserContent::Audio(_) => return Err(unsendable("audio")),
@@ -304,17 +305,20 @@ fn tool_message(result: &ToolResult, ids: &WireIds) -> Result<Value, EncodeError
         .content
         .iter()
         .map(|part| match part {
-            ToolResultContent::Text(text) => Ok(text.text.clone()),
-            ToolResultContent::Json { value } => Ok(value.to_string()),
+            ToolResultContent::Text(text) => Ok(Cow::Borrowed(text.text.as_str())),
+            ToolResultContent::Json { value } => Ok(Cow::Owned(value.to_string())),
             ToolResultContent::Image(_) => Err(unsendable("an image in a tool result")),
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(json!({
-        "role": "tool",
-        "content": texts.join("\n"),
-        "tool_name": result.name,
-        "tool_call_id": ids.spell(&result.call),
-    }))
+    Ok(Value::Object(Map::from_iter([
+        ("role".to_owned(), Value::from("tool")),
+        ("content".to_owned(), Value::String(texts.join("\n"))),
+        ("tool_name".to_owned(), Value::from(result.name.as_str())),
+        (
+            "tool_call_id".to_owned(),
+            Value::String(ids.spell(&result.call)),
+        ),
+    ])))
 }
 
 /// `call` as a `tool_calls` entry: its item as the daemon sent it when it is
