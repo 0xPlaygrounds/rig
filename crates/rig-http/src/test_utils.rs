@@ -196,7 +196,9 @@ impl RecordingHttpClient {
         message: impl Into<String>,
         headers: http::HeaderMap,
     ) -> Self {
-        Self::scripted(MockHttpResponse::error_with_headers(status, message, headers))
+        Self::scripted(MockHttpResponse::error_with_headers(
+            status, message, headers,
+        ))
     }
 
     /// Create a client that hands back a non-success HTTP response carrying
@@ -336,9 +338,7 @@ impl HttpClientExt for SequencedHttpClient {
     {
         let (parts, body) = req.into_parts();
         let response = self.answer(parts, body.into());
-        async move {
-            RecordingHttpClient::build_unary_response(response.ok_or_else(not_implemented)?)
-        }
+        async move { RecordingHttpClient::build_unary_response(response.ok_or_else(not_implemented)?) }
     }
 
     fn send_multipart<U>(
@@ -350,9 +350,7 @@ impl HttpClientExt for SequencedHttpClient {
     {
         let (parts, _body) = req.into_parts();
         let response = self.answer(parts, Bytes::new());
-        async move {
-            RecordingHttpClient::build_unary_response(response.ok_or_else(not_implemented)?)
-        }
+        async move { RecordingHttpClient::build_unary_response(response.ok_or_else(not_implemented)?) }
     }
 
     fn send_streaming<T>(
@@ -364,7 +362,11 @@ impl HttpClientExt for SequencedHttpClient {
     {
         let (parts, body) = req.into_parts();
         let response = self.answer(parts, body.into());
-        future::ready(response.ok_or_else(not_implemented).and_then(streaming_response))
+        future::ready(
+            response
+                .ok_or_else(not_implemented)
+                .and_then(streaming_response),
+        )
     }
 }
 
