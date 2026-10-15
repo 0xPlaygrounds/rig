@@ -283,11 +283,11 @@ impl Wire for VoiceClones {
                 use crate::http_client::MultipartForm;
                 use crate::http_client::multipart::Part;
 
-                let extension = std::path::Path::new(&audio.filename)
+                let format = std::path::Path::new(&audio.filename)
                     .extension()
                     .and_then(std::ffi::OsStr::to_str)
                     .map(str::to_ascii_lowercase);
-                if !matches!(extension.as_deref(), Some("mp3" | "m4a" | "wav")) {
+                if !matches!(format.as_deref(), Some("mp3" | "m4a" | "wav")) {
                     return Err(EncodeError::request(format!(
                         "MiniMax clones voices from mp3, m4a or wav files, not `{}`",
                         audio.filename
