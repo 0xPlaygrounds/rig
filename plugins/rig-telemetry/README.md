@@ -1,14 +1,12 @@
 # rig-telemetry
 
-What the agent records about itself: what model calls cost, per agent, turn
-and session and split per model and purpose (`AgentUsage`, `SessionUsage`),
-in `/usage`, which other plugins add `UsageRow`s to, in each session's line in
-`/resume` (a rig-sessions `ResumeLabel`), and the terminal view's
-status line with the default `tui` feature (`UsagePlugin`), every model and tool call in the session's `effects.jsonl`
-(`EffectLogPlugin`), and the process's warnings and errors, Bevy's included,
-as the `Diagnostics` resource (`DiagnosticsPlugin`).
+What the [rig coding agent](../../crates/rig-harness) records about itself, in
+three default plugins:
 
-A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
-on the public API of the crates it depends on. Its plugins are in the default
-`plugins.toml`, and each can be removed from it. It is not published yet: the
-agent builds it from a rig checkout (`RIG_SOURCE`).
+- `UsagePlugin`: what model calls used and cost, per agent, turn and session,
+  split per model and purpose (`AgentUsage`, `SessionUsage`), in `/usage`
+  (plugins add `UsageRow`s), in each session's `/resume` line and, with the
+  default `tui` feature, in the status line;
+- `EffectLogPlugin`: every settled effect in the session's `effects.jsonl`;
+- `DiagnosticsPlugin`: the process's warnings and errors, Bevy's included, as
+  the `Diagnostics` resource.

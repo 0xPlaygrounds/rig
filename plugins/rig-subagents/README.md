@@ -1,15 +1,9 @@
 # rig-subagents
 
-Subagents (`SubagentsPlugin`): the `task`, `message` and `wait` tools, with
-which an agent starts child agents, sends them and its peers requests, and
-waits for their reports, and how the terminal view draws their calls (the
-default `tui` feature). Every agent is spawned through a `SpawnSubagent`
-request, an effect other plugins edit, refuse or hold in the stages, which
-is also how a plugin spawns helper agents of its own; `[subagents]
-max_depth` in the settings says how deep agents nest. Built only on the
-kernel's public API; leave it out and there are no subagents.
-
-A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
-on the public API of the crates it depends on. Its plugin is in the default
-`plugins.toml`, and can be removed from it. It is not published yet: the agent
-builds it from a rig checkout (`RIG_SOURCE`).
+Subagents (`SubagentsPlugin`), one of the
+[rig coding agent](../../crates/rig-harness)'s default plugins: the `task`,
+`message` and `wait` tools, with which an agent starts child agents, sends
+them and its peers requests, and waits for their reports. Every agent is
+spawned through a `SpawnSubagent` effect that other plugins edit, refuse or
+hold, which is also how a plugin spawns helpers of its own. `[subagents]
+max_depth` in the settings caps nesting. Without it there are no subagents.

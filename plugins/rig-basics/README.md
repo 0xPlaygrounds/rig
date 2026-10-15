@@ -1,16 +1,11 @@
 # rig-basics
 
-The basic slash commands, `/help`, `/retry`, `/quit` and, with the default
-`tui` feature, `/agents` and the agents at work in the terminal view's status
-line (`BasicCommandsPlugin`), and the project context (`ProjectContextPlugin`): the
-instruction files (`AGENTS.md` or `CLAUDE.md`) and the environment in every
-agent's system prompt, re-read when a turn starts, as much of them as
-`[context]` in `settings.toml` allows (`ContextLimits`, with a notice for a file
-cut short), and `/context`. Other
-plugins add to `/context` with `ContextEntry`s and to each agent's line in
-`/agents` with `AgentColumn`s.
+Two of the [rig coding agent](../../crates/rig-harness)'s default plugins:
 
-A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
-on the public API of the crates it depends on. Its plugins are in the default
-`plugins.toml`, and each can be removed from it. It is not published yet: the
-agent builds it from a rig checkout (`RIG_SOURCE`).
+- `BasicCommandsPlugin`: `/help`, `/retry`, `/quit` and, with the default
+  `tui` feature, `/agents` and the counts of agents at work in the status
+  line. Plugins add columns to `/agents` with `AgentColumn`s.
+- `ProjectContextPlugin`: the instruction files (`AGENTS.md` or `CLAUDE.md`)
+  and the environment in every agent's system prompt, re-read when a turn
+  starts, cut to `[context]` in `settings.toml` (`ContextLimits`), and
+  `/context`, which plugins add to with `ContextEntry`s.

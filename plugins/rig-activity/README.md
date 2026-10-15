@@ -1,13 +1,10 @@
 # rig-activity
 
-What each agent is doing, kept for views: every agent's `Activity` (its
-status, from a question waiting for the user to a plugin's work after the
-turn, and its open tool calls), its status in the terminal view's status line
-(the default `tui` feature), and the
-`MessageFeed` of recent deliveries. `ActivityPlugin` keeps them, and a window
-or panel plugin reads them.
+What each agent is doing, kept for views (`ActivityPlugin`), one of the
+[rig coding agent](../../crates/rig-harness)'s default plugins:
 
-A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
-on the public API of the crates it depends on. Its plugin is in the default
-`plugins.toml`, and can be removed from it. It is not published yet: the agent
-builds it from a rig checkout (`RIG_SOURCE`).
+- every agent's `Activity`: its status, from a question waiting for the user
+  to a plugin's work after the turn, and its open tool calls;
+- the `MessageFeed` of recent deliveries;
+- with the default `tui` feature, each agent's status in the terminal view's
+  status line.
