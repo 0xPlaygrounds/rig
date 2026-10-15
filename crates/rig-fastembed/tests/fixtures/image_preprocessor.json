@@ -1,0 +1,12 @@
+{
+  "image_processor_type": "CLIPImageProcessor",
+  "do_resize": true,
+  "size": {
+    "height": 2,
+    "width": 2
+  },
+  "do_center_crop": false,
+  "do_rescale": true,
+  "rescale_factor": 0.00392156862745098,
+  "do_normalize": false
+}

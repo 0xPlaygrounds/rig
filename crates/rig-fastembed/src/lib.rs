@@ -2,13 +2,15 @@
 //!
 //! A loaded `fastembed` model is the [`Fastembed`] transport, the runtime
 //! behind a local embedding wire ([`text_embeddings`]) that embeds in the
-//! calling process. The default feature set enables Hugging Face model
+//! calling process. [`FastembedImage`] provides local image embeddings from
+//! encoded image bytes. The default feature set enables Hugging Face model
 //! downloads and ONNX Runtime binary downloads.
 //!
 //! ```no_run
 //! use rig_core::Model;
 //! use rig_fastembed::{Fastembed, FastembedModel, text_embeddings};
 //!
+//! # #[cfg(feature = "hf-hub")]
 //! # fn run() -> Result<(), rig_fastembed::FastembedError> {
 //! let model = Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?.embedding(&FastembedModel::AllMiniLML6V2Q, None)?;
 //! # let _ = model;
@@ -19,6 +21,10 @@
 //! `rig-fastembed` is native-only and does not target `wasm32-unknown-unknown`.
 //! The root `rig` facade re-exports this crate as `rig::fastembed` when one of
 //! its Fastembed features is enabled.
+
+pub mod image;
+
+pub use image::{FastembedImage, FastembedImageModel, image_embeddings};
 
 use std::sync::Arc;
 use std::{error::Error as StdError, fmt};
