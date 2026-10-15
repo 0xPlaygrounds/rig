@@ -33,8 +33,8 @@ impl Listing {
 /// One agent's line of the session in `store`: `agent` (the main agent when
 /// `None`, found from the logs' headers alone), its `line` (active when
 /// `None`), folded from that agent's log only, older formats through the
-/// chain, writing nothing. The agent's id and the line as a conversation,
-/// with ids and made-times kept.
+/// chain, writing nothing. Returns the agent's id and the line as a
+/// conversation, with ids and made-times kept.
 ///
 /// # Errors
 ///

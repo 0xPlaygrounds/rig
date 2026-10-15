@@ -117,16 +117,13 @@ pub struct SplitOf<'a> {
     pub through: Option<MessageId>,
 }
 
-/// Writes into `to`, an empty store, a session holding only `of`'s line of
-/// the session in `from` (read strictly, older formats through the chain):
-/// one log for the agent, the same id, its line as one reset with ids and
-/// made-times kept, its saved values as they are now, the session log's
-/// values, the blobs its images name, the session's plugin files, and its
-/// listing ([`SessionMeta`]) with the copied line's length, so a listing
-/// shows the split and its listed values before it ever runs. The
-/// asides that follow the copied entries come along, nested branches
-/// among them, but not the branches on the path to the line copied. The
-/// copy as written.
+/// Writes into `to`, an empty store, a new session holding only `of`'s line
+/// of the session in `from`: one log for the agent, under the same id, with
+/// ids and made-times kept. Its saved values, the session log's values, the
+/// blobs it names, the plugin files and a listing ([`SessionMeta`]) come
+/// along, so a session list shows the split before it ever runs. The asides
+/// after the copied entries come too, but not the branches on the path to
+/// the line. Returns the copied line as written.
 ///
 /// # Errors
 ///

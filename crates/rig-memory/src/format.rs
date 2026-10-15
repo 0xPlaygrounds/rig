@@ -12,11 +12,6 @@
 //! ([`rewrite`](crate::rewrite)) and when; each rewrite gives the log a
 //! fresh lineage.
 //!
-//! A log is written in one format, the one its header names: every record
-//! of it is of that format. Logs of an older format, from [`OLDEST`] on,
-//! read through a chain of steps ([`upgrade`](crate::upgrade)), and are
-//! rewritten in this one before anything is appended to them.
-//!
 //! A record keeps when each entry was made: a new entry was made when its
 //! record says (`t`), an entry put back as it was says so itself (`made`),
 //! and a reset's state carries each entry's.
@@ -68,14 +63,15 @@ pub enum SessionError {
     /// The store failed.
     #[error(transparent)]
     Io(#[from] io::Error),
-    /// The directory holds a session saved by an older rig, which this one
-    /// does not read; it is left as it is.
+    /// The directory holds the single-file layout older than [`OLDEST`] (a
+    /// top-level `*.jsonl`), which this rig does not read; it is left as it
+    /// is.
     #[error(
         "this session was saved by an older version of rig, whose format this one does not read"
     )]
     OldLayout,
-    /// A log's header names another format, or none: one an older or a
-    /// newer rig saved, which this one does not read; it is left as it is.
+    /// A log's header names a format outside [`OLDEST`]..=[`VERSION`], or
+    /// none; it is left as it is.
     #[error("{}", refusal(.log, .found.as_deref()))]
     Format {
         /// The log.

@@ -1,21 +1,7 @@
-//! Building blocks for compacting a long conversation: a
-//! [`CompactionPolicy`] that says when and where to cut it and plans the
-//! summary of its older messages, a [`SummaryState`] with the summary and
-//! the values tracked across compactions, a [`Summarizer`] that asks a
-//! model for the summary, and [`ClearToolOutputs`], which frees context
-//! without a model call. Over a [`Conversation`]:
-//! [`CompactionPolicy::plan_summary`] plans the summary of its messages not
-//! summarized yet ([`summarized_prefix`]), [`apply_summary`] puts the
-//! summary in their place as an entry by [`summary_author`], and
-//! [`ClearToolOutputs::clear_conversation`] clears old outputs keeping
-//! every entry's id.
-//!
-//! The summarizer's default prompts ask for pi's structured checkpoint;
-//! the tool arguments a summary keeps track of are the caller's.
-//!
-//! A policy is plain serde data, so a host keeps one per agent and saves
-//! it; [`CompactionOverrides`] holds the knobs one source sets (settings, an
-//! agent) over another, and a named [`Cut`] is resolved in [`CutRules`].
+//! Compacting a long conversation: a [`CompactionPolicy`] says when and where to cut and plans
+//! the summary, which [`apply_summary`] puts in place of the older messages; [`ClearToolOutputs`]
+//! frees context without a model call. The default prompts and limits follow the
+//! [pi coding agent](https://github.com/badlogic/pi-mono).
 //!
 //! ```
 //! use rig_memory::{CompactionPolicy, CutRules, SummaryState};
@@ -323,8 +309,8 @@ pub struct CompactionPolicy {
     /// The tool arguments tracked across compactions.
     pub tracked: Vec<TrackArgument>,
     /// Tokens of the newest messages an automatic compaction keeps as they
-    /// are, a quarter of the model's window at most (pi's
-    /// `keepRecentTokens`): the work carries on, so its recent part stays.
+    /// are, a quarter of the model's window at most: the work carries on,
+    /// so its recent part stays.
     pub keep_recent: usize,
     /// Tokens of the newest messages a compaction the user asked for keeps
     /// as they are; the newest reply or message always stays.
@@ -343,7 +329,7 @@ impl Default for CompactionPolicy {
     /// [`Summarizer::DEFAULT`], nothing tracked, the newest 20k tokens kept
     /// by an automatic compaction and none beyond the newest reply or
     /// message by an asked one, all but the newest 40k tokens of tool
-    /// output cleared (opencode's `PRUNE_PROTECT`), cut by [`Cut::Budget`],
+    /// output cleared, cut by [`Cut::Budget`],
     /// and two summaries a turn.
     fn default() -> Self {
         Self {
@@ -404,14 +390,12 @@ impl CompactionPolicy {
         }
     }
 
-    /// Where a new compaction for `reason` of `messages`, whose first
-    /// `from` are summarized already, should end with `spec`, by the
-    /// policy's [`Cut`] (a named one from `rules`, by [`Cut::Budget`] when
-    /// `rules` has none of that name): the first message it keeps, after
-    /// `from` and at most `messages.len()`, or `None` when nothing new would
-    /// be summarized. By [`Cut::Budget`], a compaction that must happen (the
-    /// user asked, or the model refused the request as too long) still
-    /// summarizes a short conversation's older messages.
+    /// Where a compaction for `reason` should end: the index of the first
+    /// message it keeps, or `None` when nothing new would be summarized.
+    /// `from` is how many leading messages are summaries already
+    /// ([`summarized_prefix`]). Uses the policy's [`Cut`]; a name missing
+    /// from `rules` falls back to [`Cut::Budget`], which still summarizes a
+    /// short conversation when the user asked or the model overflowed.
     pub fn cut(
         &self,
         messages: &[Message],
@@ -443,11 +427,9 @@ impl CompactionPolicy {
         }
     }
 
-    /// Plans a compaction for `reason` ending at `upto` (from
-    /// [`Self::cut`]), of `messages` whose first `from` were summarized into
-    /// `state` already: the state the new summary goes into, with the tool
-    /// arguments the messages summarized anew used that the policy tracks,
-    /// and the request for that summary to `spec`.
+    /// The summary request for a compaction ending at `upto`, and the
+    /// [`SummaryState`] the new summary goes into (with the tracked
+    /// arguments of the newly summarized messages).
     pub fn plan(
         &self,
         state: &SummaryState,
@@ -524,12 +506,8 @@ pub struct SummaryPlan {
 }
 
 impl CompactionPolicy {
-    /// Plans a compaction of `conversation` for `reason`, written by
-    /// `spec`, building on `state`, its cut named in `rules`: where it cuts
-    /// ([`Self::cut`]) and the
-    /// summary request ([`Self::plan`]) of its messages not summarized yet
-    /// ([`summarized_prefix`]). `None` when nothing new would be
-    /// summarized.
+    /// [`cut`](Self::cut) and [`plan`](Self::plan) in one step, for
+    /// `conversation`. Returns `None` when nothing new would be summarized.
     ///
     /// # Errors
     ///
@@ -720,7 +698,7 @@ pub struct SummaryPrompts {
 }
 
 impl SummaryPrompts {
-    /// pi's structured checkpoint of an agent's work: goal, constraints,
+    /// A structured checkpoint of an agent's work: goal, constraints,
     /// progress, decisions, next steps and critical context.
     pub const DEFAULT: Self = Self {
         system: Cow::Borrowed(
@@ -786,7 +764,7 @@ pub struct SummaryLimits {
 
 impl SummaryLimits {
     /// 16k tokens reserved, summaries up to 12k tokens, 2,000-character
-    /// snippets and 400k characters for an unknown window (pi's values).
+    /// snippets and 400k characters for an unknown window.
     pub const DEFAULT: Self = Self {
         reserve: 16_384,
         summary_tokens: 12_000,
@@ -810,8 +788,7 @@ impl Default for SummaryPrompts {
 /// Builds the request for a summary of a conversation's older messages and
 /// reads the summary from the model's answer. The conversation goes as
 /// text in one user message, so the model reads it rather than continues
-/// it. The format follows pi's
-/// (`references/pi/packages/coding-agent/src/core/compaction/compaction.ts:507-579`).
+/// it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Summarizer {
@@ -925,8 +902,7 @@ impl Summarizer {
     }
 
     /// `messages` as text, one labelled block per part, with long tool
-    /// outputs and arguments cut (pi's `serializeConversation`,
-    /// `references/pi/packages/coding-agent/src/core/compaction/utils.ts:114-159`).
+    /// outputs and arguments cut.
     fn serialize(&self, messages: &[Message]) -> String {
         let snippet = |text: &str| snippet(text, self.limits.snippet_chars);
         let mut parts: Vec<String> = Vec::new();
@@ -1023,13 +999,12 @@ pub struct Cleared {
     pub tokens: usize,
 }
 
-/// Frees context by clearing the outputs of older tool calls, newest kept first: walking back from the end, the outputs
-/// within the first `keep_tokens` stay, and every older one is replaced by
-/// a placeholder. The last message is never touched: it is what the model
-/// must answer. Error results stay, being short and telling the model what
-/// went wrong. The calls themselves stay, so the conversation keeps its
-/// shape (opencode's `prune`,
-/// `references/opencode/packages/opencode/src/session/compaction.ts:271-316`).
+/// Frees context by clearing the outputs of older tool calls: walking back
+/// from the end, the outputs within the first `keep_tokens` stay, and every
+/// older one is replaced by a placeholder. The last message is never
+/// touched: it is what the model must answer. Error results stay, being
+/// short and telling the model what went wrong. The calls themselves stay,
+/// so the conversation keeps its shape.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClearToolOutputs {

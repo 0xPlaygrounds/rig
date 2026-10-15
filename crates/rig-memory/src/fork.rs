@@ -43,24 +43,16 @@ struct Carry {
     aside: Option<Aside>,
 }
 
-/// Copies the session in `from` into `to`, an empty store, as it was
-/// before message `before` (a log and the id of a message of its
-/// conversation) was made: each log up to the records made before the one
-/// that made that message, leaving out a log with no change of its
-/// conversation by then (such as an agent spawned later). Without
-/// `before`, every log whole. A torn tail is never copied.
+/// Copies the session in `from` into `to` (an empty store), whole or as it
+/// was before message `before` (a log and a message id) was made. Agents
+/// with no change by then are left out; torn tails are never copied.
 ///
-/// Each copied record's values go through `with` ([`NoRewrite`](crate::NoRewrite)
-/// for a plain copy), each copied log gets a lineage of its own, so a
-/// conversation of one never passes as a continuation of the other, and
-/// each is read back strictly before anything is written. After a cut,
-/// every aside that follows an entry made before it (or none) and is not
-/// rig's own ([`AuthorKind::Rig`]: the kernel's marks, which describe the
-/// run at the cut) is carried as it is now: put, replaced or removed by a
-/// record after the copied ones, with the time and author of the record
-/// that last set it, so [`as_of`](crate::as_of) the cut still shows the
-/// asides as they were then. Every blob, and the session's plugin files
-/// (`plugins/…`) through [`Rewrite::file`], are copied too.
+/// Every copied value goes through `with` ([`NoRewrite`](crate::NoRewrite)
+/// for a plain copy), and every copied log gets a new lineage. After a cut,
+/// plugin and user asides that follow a copied entry are carried as they
+/// are now, so [`as_of`](crate::as_of) the cut still shows them as they
+/// were; rig's own asides ([`AuthorKind::Rig`]) are not carried. Blobs and
+/// `plugins/` files (through [`Rewrite::file`]) are copied too.
 ///
 /// # Errors
 ///

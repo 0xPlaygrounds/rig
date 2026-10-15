@@ -1,9 +1,6 @@
-//! Reading a session back, saving to it from data, and its history:
-//! [`Session::read`] folds every log, strictly, without writing anything,
-//! and [`Session::read_lenient`] every log that reads; [`Session::save`],
-//! [`load`] and [`save`] are for programs that keep a conversation over
-//! time without a running [`Writer`](crate::Writer); [`history`] and
-//! [`as_of`] read one log's records and its conversation as of a record.
+//! Reading a session back ([`Session`]), saving to it without a running
+//! [`Writer`](crate::Writer) ([`load`], [`save`]), and one log's history
+//! ([`history`], [`as_of`]).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
@@ -411,7 +408,7 @@ pub(crate) fn skipped<'a>(
         .collect();
     let mut skipped = HashSet::new();
     for &(name, ..) in &logs {
-        // A loop cannot happen, but a bound costs nothing.
+        // Parents come from the logs' headers; the bound stops a corrupt store's loop.
         let up = std::iter::successors(Some(name), |id| parents.get(id).copied().flatten());
         if up.take(logs.len() + 1).any(|id| gone.contains(id)) {
             skipped.insert(name);
@@ -529,7 +526,7 @@ impl Session {
         book.set_aside(torn.map(|(log, kept, _)| (log, kept)));
         book.start();
         for agent in &mut self.agents {
-            book.open_log(&agent.id, agent.parent.as_deref());
+            let _ = book.opened(&agent.id, agent.parent.as_deref());
             book.save(store, &agent.id, &mut agent.conversation);
             let known = had(&agent.id).map(|log| &log.state);
             book.states(&agent.id, known, &agent.saved);
@@ -621,7 +618,7 @@ pub fn save(
     book.set_aside(kept.map(|kept| (log.to_owned(), kept)));
     book.raise_n(next_n(store)?);
     book.start();
-    book.open_log(log, None);
+    let _ = book.opened(log, None);
     book.save(store, log, conversation);
     book.flush(store)
 }

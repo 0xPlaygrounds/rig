@@ -7,12 +7,7 @@
 //! store is rewritten in the current one the first time anything writes to
 //! it, never on a read. A saved value carries its own version, which a
 //! plugin moves on with steps of its own ([`Upgrades::add`]); a value no
-//! step reads is set aside under [`SHELVED`], never dropped.
-//!
-//! Every bump of the format first freezes a session the old writer wrote as
-//! `fixtures/rig-session-<N>/` (the ignored test `write_the_fixture_of_this_format`
-//! writes it), then adds the step from `N` here; a test reads every fixture
-//! with the current reader. Fixtures are never edited.
+//! step reads is shelved under [`SHELVED`], never dropped.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -42,9 +37,11 @@ pub(crate) struct Step {
 
 /// The chain, a step from each format since [`OLDEST`](crate::OLDEST) to
 /// the next.
-///
-/// v2 → v3: a `state` record without `v` is version 1 in both; nothing
-/// else changed.
+// Every bump of the format first freezes a session the old writer wrote as
+// `fixtures/rig-session-<N>/` (the ignored test
+// `write_the_fixture_of_this_format` writes it), then adds the step from `N`
+// here; a test reads every fixture with the current reader. Fixtures are
+// never edited.
 pub(crate) const STEPS: &[Step] = &[Step {
     from: 2,
     header: None,

@@ -5,13 +5,11 @@ use std::sync::Arc;
 use rig_core::completion::Message;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
-/// Counts the tokens contributed by a single [`Message`].
-///
-/// Implementors should pick a counting strategy appropriate for their target
-/// provider (for example, `tiktoken-rs` for OpenAI). Counting must be cheap;
-/// it runs once per message a window or a compaction weighs.
+/// Counts the tokens of one [`Message`]: the provider's tokenizer (such as
+/// `tiktoken-rs` for OpenAI) or an estimate. It runs once per message a
+/// window or a compaction weighs, so it must be cheap.
 pub trait TokenCounter: WasmCompatSend + WasmCompatSync {
-    /// Approximate the number of tokens contributed by `message`.
+    /// About how many tokens `message` costs.
     fn count(&self, message: &Message) -> usize;
 }
 
@@ -41,7 +39,7 @@ impl TokenCounter for Box<dyn TokenCounter> {
 
 /// Estimates token cost from UTF-8 lengths, rounded up per text-bearing part.
 /// Tool calls count name bytes plus serialized argument bytes. Attachments and
-/// message overhead have fixed costs. These estimates do not bound provider usage.
+/// message overhead have fixed costs.
 ///
 /// ```
 /// use rig_core::completion::Message;
@@ -58,7 +56,7 @@ pub struct HeuristicTokenCounter {
 }
 
 impl HeuristicTokenCounter {
-    /// Create a counter with explicit parameters.
+    /// A counter with these parameters.
     ///
     /// Non-finite ratios and ratios below `1.0` become `1.0`.
     /// Overhead and attachment costs may be zero.
@@ -92,7 +90,7 @@ impl HeuristicTokenCounter {
         tokens.ceil() as usize
     }
 
-    /// Approximate the tokens of one item of a user message, without the
+    /// About how many tokens one item of a user message costs, without the
     /// per-message overhead.
     pub(crate) fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
         use rig_core::message::UserContent;
@@ -118,7 +116,7 @@ impl HeuristicTokenCounter {
         }
     }
 
-    /// Approximate the tokens of one item of an assistant message, without
+    /// About how many tokens one item of an assistant message costs, without
     /// the per-message overhead.
     fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
         use rig_core::message::AssistantContent;

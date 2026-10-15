@@ -54,9 +54,7 @@ pub struct SessionMeta {
 }
 
 impl SessionMeta {
-    /// The listing kept in `files`, if it has one that reads. Generic, so
-    /// it is passed as it is where a store is any `Files`, such as
-    /// `store.as_deref().and_then(SessionMeta::read)`.
+    /// The listing kept in `files`, if it has one that reads.
     pub fn read(files: &(impl Files + ?Sized)) -> Option<Self> {
         serde_json::from_slice(&files.read_file(META).ok()?).ok()
     }
@@ -70,12 +68,12 @@ impl SessionMeta {
         files.write_file(META, &serde_json::to_vec_pretty(self)?)
     }
 
-    /// Brings it up to `session`, as a running rig keeps it, for a writer
-    /// of a session no rig runs: the main agent's model and how many
-    /// messages its line holds, and each listed value (of a key in `listed`, or one it lists
-    /// already) as the session's own, else the first agent's in
-    /// [`main_order`] that has one, a value no longer there unlisted;
-    /// `updated` is now. Its title and labels are left.
+    /// Updates this listing from `session`, for a program that writes a
+    /// session no rig is running: the main agent's model and message count,
+    /// `updated` set to now, and each listed value (keys in `listed`, plus
+    /// those already listed), taken from the session's own values, else from
+    /// the first agent by [`main_order`] that has one. A value that is gone
+    /// is unlisted. The title and labels stay.
     pub fn relist(&mut self, session: &Session, listed: &BTreeSet<String>) {
         let mut agents: Vec<_> = session.agents.iter().filter(|a| !a.retired).collect();
         agents.sort_by(|a, b| {
@@ -128,7 +126,6 @@ pub struct ForkedFrom {
 
 impl ForkedFrom {
     /// The session the session in `files` was forked from, if it was.
-    /// Generic, as [`SessionMeta::read`] is.
     pub fn read(files: &(impl Files + ?Sized)) -> Option<Self> {
         serde_json::from_slice(&files.read_file(PARENT).ok()?).ok()
     }

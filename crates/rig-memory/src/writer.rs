@@ -18,7 +18,7 @@ use rig_core::now_ms;
 
 /// One log as the writer keeps it.
 #[derive(Default)]
-struct Log {
+pub(crate) struct Log {
     /// 0 for an agent the user started, 1 for its subagents, and so on.
     depth: usize,
     next_seq: u64,
@@ -64,7 +64,7 @@ impl Book {
             .collect();
         let mut book = Self::default();
         for log in folded {
-            // A loop cannot happen, but a bound costs nothing.
+            // Parents come from the logs' headers; the bound stops a corrupt store's loop.
             let ancestors = std::iter::successors(log.header.parent.as_deref(), |parent| {
                 parents.get(parent).copied().flatten()
             });
@@ -104,13 +104,9 @@ impl Book {
         self.live && self.failure.is_none()
     }
 
-    /// The log `name`, started when it has none with a header naming
-    /// `parent`; `None` while nothing is logged.
-    pub fn open_log(&mut self, name: &str, parent: Option<&str>) {
-        self.opened(name, parent);
-    }
-
-    fn opened(&mut self, name: &str, parent: Option<&str>) -> Option<&mut Log> {
+    /// The log `name`, started first with a header naming `parent` when it
+    /// has none; `None` while nothing is logged.
+    pub fn opened(&mut self, name: &str, parent: Option<&str>) -> Option<&mut Log> {
         if !self.is_live() {
             return None;
         }
@@ -309,7 +305,7 @@ impl Book {
         self.meta(name, &Meta::Retired);
     }
 
-    /// Marks the newest value of `key` in the log `name` as set aside.
+    /// Marks the newest value of `key` in the log `name` as shelved.
     pub fn shelve(&mut self, name: &str, key: &str, saved: Versioned) {
         if let Some(log) = self.logs.get_mut(name) {
             log.set_aside.insert(key.to_owned(), saved);
@@ -389,15 +385,14 @@ impl Writer {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Opens the session in `store` to go on with it: reads it as
-    /// [`Session::read`] does, refusing a broken session, or one older
-    /// than [`OLDEST`](crate::OLDEST) or newer than this format, before
-    /// anything is written, then sets each torn tail aside in the file
-    /// `recovered/<log>-<k>.part` and cuts it off ([`Repair::TornTail`]),
-    /// and rewrites a session an older rig saved in this format
-    /// ([`upgrade`]).
-    /// The session read leaves out retired agents and the agents they
-    /// spawned. The writer logs to `store` once started, after its logs.
+    /// Opens the session in `store` to go on with it, and returns the
+    /// session as read (retired agents and their subagents left out).
+    ///
+    /// Reads like [`Session::read`], so a broken, too-old or too-new
+    /// session is refused before anything is written. Then each torn tail
+    /// is moved to `recovered/<log>-<k>.part` ([`Repair::TornTail`]), and
+    /// an older format is rewritten in this one ([`upgrade`]). Nothing is
+    /// logged until [`start`](Self::start).
     ///
     /// # Errors
     ///
@@ -452,7 +447,7 @@ impl Writer {
     /// Starts the log `log`, of an agent spawned by the agent `parent`,
     /// unless it has one.
     pub fn open_log(&self, log: &str, parent: Option<&str>) {
-        self.inner().book.open_log(log, parent);
+        let _ = self.inner().book.opened(log, parent);
     }
 
     /// Queues the unsaved changes of `conversation` for the log `log` and
@@ -483,10 +478,9 @@ impl Writer {
         self.inner().book.retire(log);
     }
 
-    /// The newest value of `key` in the log `log`, `saved`, is set aside:
-    /// no step reads it. The first time `key` is written again, `saved` is
-    /// first written under the side key `rig.set_aside/<key>/v<N>`
-    /// ([`SHELVED`]), so it is kept and the key goes on.
+    /// Marks `saved`, the newest value of `key` in log `log`, as one no
+    /// upgrade step reads. Before `key` is next written, `saved` is moved to
+    /// `rig.set_aside/<key>/v<N>` ([`SHELVED`]), so nothing is lost.
     pub fn shelve(&self, log: &str, key: &str, saved: Versioned) {
         self.inner().book.shelve(log, key, saved);
     }
@@ -497,28 +491,18 @@ impl Writer {
         self.inner().book.hold(log, key);
     }
 
-    /// Rewrites the session's saved history through `with`, as done by
-    /// `by` ([`rewrite`]), under this writer's lock, so no save interleaves:
-    /// what it queued is written first; the logs and files are rewritten;
-    /// the writer then goes on with each rewritten log's lineage and saved
-    /// values, its counts unchanged, so it neither writes a reset for a
-    /// conversation reread from [`Rewritten`] nor writes a saved value the
-    /// rewrite already holds again. Once logging stopped
-    /// ([`failure`](Self::failure)), it still rewrites what the store holds
-    /// and stays stopped. A writer without a store rewrites nothing.
-    ///
-    /// The host then rereads what it keeps in memory: each agent's
-    /// conversation from [`RewrittenLog::conversation`], each saved value
-    /// in [`RewrittenLog::changed_keys`]. A log not started yet (only saved
-    /// values that do not start a log) is not in the store, so it is not
-    /// rewritten.
+    /// [`rewrite`] for a running session: queued records are written first,
+    /// and no save interleaves. The writer then goes on with each log's new
+    /// lineage and values, so it writes no reset. The host re-reads what it
+    /// holds in memory from the returned [`RewrittenLog`]s. Once logging
+    /// stopped ([`failure`](Self::failure)), it still rewrites the store and
+    /// stays stopped; a log not started yet is not rewritten.
     ///
     /// # Errors
     ///
     /// As [`rewrite`].
     ///
-    /// [`RewrittenLog::conversation`]: crate::RewrittenLog::conversation
-    /// [`RewrittenLog::changed_keys`]: crate::RewrittenLog::changed_keys
+    /// [`RewrittenLog`]: crate::RewrittenLog
     pub fn rewrite(&self, by: Author, with: &dyn Rewrite) -> Result<Rewritten, SessionError> {
         let mut inner = self.inner();
         let Inner { store, book } = &mut *inner;
@@ -550,8 +534,9 @@ impl Writer {
 
 /// Copies the bytes of the log `log` after its first `kept` to the free
 /// file `recovered/<log>-<k>.part`, then replaces the log with the bytes
-/// before them; that file's name. A crash between the two leaves the tail
-/// in the log, set aside again by the next open.
+/// before them. Returns the name of the file the tail went to. A crash
+/// between the two leaves the tail in the log, set aside again by the next
+/// open.
 pub(crate) fn set_aside_tail(
     store: &dyn Store,
     log: &str,

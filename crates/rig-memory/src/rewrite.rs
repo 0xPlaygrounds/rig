@@ -1,9 +1,6 @@
-//! Rewriting a session's saved history in place: [`rewrite`] maps every
-//! value a session keeps (the messages, asides and saved values of each
-//! record, and every file of its store) through a [`Rewrite`], keeping
-//! each record where it is with its stamp. [`Strings`] maps every string,
-//! as a redaction or a path remap does; [`Messages`] maps only messages;
-//! [`NoRewrite`] maps nothing.
+//! Rewriting a session's saved history in place ([`rewrite`]) through a
+//! [`Rewrite`]: [`Strings`] maps every string, [`Messages`] only messages,
+//! [`NoRewrite`] nothing.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
@@ -43,24 +40,20 @@ pub enum Place<'a> {
         /// The log.
         log: &'a str,
     },
-    /// In the file `name` (a JSON file, a line of a JSON-lines file, a
-    /// text file): of the store, or one a host or a plugin keeps from the
-    /// session outside it (scratch, its own data); or in a copy a host or
-    /// a plugin holds in memory of what such a file holds.
+    /// In the file `name`: one of the store's, one a host keeps outside it,
+    /// or a copy of either held in memory.
     File {
         /// The file.
         name: &'a str,
     },
 }
 
-/// A change of values wherever a session keeps them. Each hook changes its
-/// argument in place and says whether it did; the defaults leave it, but
-/// for [`file`](Self::file), which reads a JSON file through
-/// [`value`](Self::value), each line of a JSON-lines file through `value`
-/// (a line that is not JSON through [`text`](Self::text)), other UTF-8
-/// through `text`, and leaves anything else. A hook cannot change what
-/// kind a record is, drop one or add one, so a rewritten log keeps its
-/// shape. Shared between owners, so it takes `&self`.
+/// A change applied to every value a session keeps. Each hook edits its
+/// argument in place and returns whether it changed anything. Every hook
+/// defaults to no change, except [`file`](Self::file), which sends JSON
+/// files to [`value`](Self::value), JSON-lines files line by line, and
+/// other UTF-8 to [`text`](Self::text). A hook cannot add, drop or re-kind
+/// a record. Shared between owners, so it takes `&self`.
 pub trait Rewrite: Send + Sync {
     /// A message of a push, a splice, a reset or a branch aside
     /// ([`Branch`]). Images are as stored: `blob:<sha256>.<ext>` in a push,
@@ -621,7 +614,7 @@ pub(crate) fn map_change(
 /// [`Rewrite::message`], the asides inside it the same way, and the rest
 /// of it (its kind, author and title) through [`Rewrite::aside`]; any
 /// other aside through `aside` whole. Each string goes through one hook
-/// once. Whether it changed.
+/// once. Returns whether it changed.
 pub(crate) fn map_aside(with: &dyn Rewrite, at: &Place<'_>, aside: &mut Aside) -> bool {
     let Some(mut branch) = Branch::of(aside) else {
         return with.aside(at, aside);
@@ -718,7 +711,10 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// Not for a session a running [`Writer`](crate::Writer) logs to: that is
 /// [`Writer::rewrite`](crate::Writer::rewrite). Another process must not
 /// rewrite a running session; rig-memory cannot tell, so a program
-/// rewriting a rig session first checks that no rig runs it.
+/// rewriting a rig session first checks that no rig runs it. Values a host
+/// keeps in memory, and files it keeps outside the store, are the host's
+/// to read again from the returned [`Rewritten`] or to map with the same
+/// `with` ([`rewrite_value`], [`rewrite_file`]).
 ///
 /// # Errors
 ///

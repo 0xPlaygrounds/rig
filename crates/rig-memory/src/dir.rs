@@ -142,7 +142,7 @@ fn write_durable(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 /// Writes `bytes` to the part file beside `path`, whose folder it makes,
-/// synced with `sync`; its path.
+/// synced with `sync`, and returns the part file's path.
 fn write_part(path: &Path, bytes: &[u8], sync: bool) -> io::Result<PathBuf> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
