@@ -131,6 +131,11 @@ pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
     /// Build the final stream item surfaced at `Done`, or `None` when the
     /// surface discards it (the blocking fold) so the engine skips the work.
     fn final_item(&self, response: &PromptResponse) -> Option<Surfaced>;
+
+    /// Adopt `response`, ended by a hook's finish request, as the final turn
+    /// in place of the last model turn this source saw. The blocking surface
+    /// keeps no turn, so it does nothing.
+    fn finished(&mut self, _agent_span: &tracing::Span, _response: &PromptResponse) {}
 }
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
@@ -250,22 +255,28 @@ where
         }
 
         // Set once a hook's finish request ended the run in place of a model
-        // call, so the final item carries the requested output.
+        // call, so the source's final turn is the requested output.
         let mut finished = false;
 
         'outer: loop {
             flush_entries!();
             // A hook's finish request replaces the next model call this step
             // reaches; the run takes it when it does.
-            let mut finish = hook_ctx.requested_finish();
-            let requested = finish.is_some();
+            let step = match hook_ctx.requested_finish() {
+                Some(output) => {
+                    let mut pending = Some(output);
+                    let step = run.advance(&mut pending);
+                    finished = pending.is_none();
+                    step
+                }
+                None => run.next_step(),
+            };
             // A failed step is not projected: a failed turn may have committed
             // calls it never answers, and the error carries that history.
-            let step = match run.advance(&mut finish) {
+            let step = match step {
                 Ok(step) => step,
                 Err(err) => fail!(err, break 'outer),
             };
-            finished |= requested && finish.is_none();
             project!('outer);
 
             match step {
@@ -428,6 +439,9 @@ where
                         max_turns = runner.config.max_turns,
                         "Agent run finished"
                     );
+                    if finished {
+                        source.finished(&agent_span, &response);
+                    }
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
                     if runner.config.hooks.observes(StepEventKind::RunSettled) {
                         runner
@@ -445,13 +459,7 @@ where
                     // Build the final item only when the surface forwards it
                     // (streaming). The blocking fold discards it, so its source
                     // returns `None` and the extra full-response clone is skipped.
-                    // A finished run's answer is the requested output, not the
-                    // last model turn the source saw.
-                    let final_item = match finished {
-                        true => S::STREAMS.then(|| Surfaced::Final(response.clone())),
-                        false => source.final_item(&response),
-                    };
-                    if let Some(final_item) = final_item {
+                    if let Some(final_item) = source.final_item(&response) {
                         yield Ok(DriveItem::Surfaced(final_item));
                     }
                     yield Ok(DriveItem::Done(response));
@@ -1120,6 +1128,13 @@ impl TurnSource for StreamingTurnSource {
                 .with_completion_calls(response.completion_calls.clone())
                 .with_messages(response.messages.clone()),
         ))
+    }
+
+    fn finished(&mut self, agent_span: &tracing::Span, response: &PromptResponse) {
+        // The output came from no model call, so it has no chat span.
+        let no_chat = tracing::Span::none();
+        self.record_turn_telemetry(agent_span, &no_chat, &response.content, false);
+        self.last_final_choice = response.content.clone();
     }
 }
 
