@@ -330,19 +330,28 @@ fn a_model_handler_names_what_its_model_leaves_out() {
     .map_stream("same", |_| |relayed| vec![relayed]);
     // Shared and erased again, as a host registers one handler twice.
     let handler = ErasedHandler::new(Arc::new(ErasedHandler::new(handler)));
-    let kind = EffectKind::Completion {
-        request: crate::completion::CompletionRequest::new("hi")
-            .temperature(0.2)
-            .top_p(0.9)
-            .into(),
-        stream: true,
+    let request = crate::completion::CompletionRequest::new("hi")
+        .temperature(0.2)
+        .top_p(0.9);
+    let left_out = |request: &crate::completion::CompletionRequest| -> Vec<String> {
+        let kind = EffectKind::Completion {
+            request: request.clone().into(),
+            stream: true,
+        };
+        handler
+            .check(&kind)
+            .iter()
+            .map(|refusal| refusal.option.to_string())
+            .collect()
     };
-    let left_out: Vec<String> = handler
-        .check(&kind)
-        .iter()
-        .map(|refusal| refusal.option.to_string())
-        .collect();
-    assert_eq!(left_out, ["top_p", "temperature"]);
+    assert_eq!(left_out(&request), ["top_p", "temperature"]);
+    // The next call, a message longer, is answered as the last was; one
+    // that changes an option is checked again.
+    let next = request
+        .clone()
+        .message(crate::completion::Message::user("and then?"));
+    assert_eq!(left_out(&next), ["top_p", "temperature"]);
+    assert_eq!(left_out(&next.temperature(None)), ["top_p"]);
     assert!(http.requests().is_empty(), "a check sends nothing");
     let call = EffectKind::ToolCall {
         name: "lookup".to_owned(),
