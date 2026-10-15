@@ -55,7 +55,7 @@
 //! ```
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hasher};
 use std::io::{self, BufRead, BufReader, Write};
@@ -288,10 +288,14 @@ impl Writer {
         };
         let mut plan: Option<Plan> = None;
         for base in known.bases(&chain) {
+            let keep = shared(base, &history);
             let under = plan.as_ref().map(|plan| plan.cost);
-            if let Some(cheaper) = Plan::of(base, &history, &tools, known, under)? {
+            if let Some(cheaper) = Plan::of(base, keep, &history, &tools, known, under)? {
                 plan = Some(cheaper);
             }
+        }
+        for sent in history.iter().filter(|sent| sent.value.is_some()) {
+            known.seen.entry(sent.text.hash).or_insert(known.noted);
         }
         let written = match &mut plan {
             Some(plan) => std::mem::take(&mut plan.written),
@@ -347,6 +351,12 @@ struct Known {
     chains: BTreeMap<String, VecDeque<Head>>,
     /// Tool-call records' successful results as JSON text, latest last.
     results: VecDeque<(EffectId, String)>,
+    /// The hash of every text a request's history held, ever, with the
+    /// first request that held it, counted in the order noted: a request
+    /// noted before it holds no such text.
+    seen: HashMap<u64, usize>,
+    /// How many completion requests were noted.
+    noted: usize,
     highest: Option<EffectId>,
     /// Whether there is a line that is not blank.
     has_lines: bool,
@@ -400,6 +410,8 @@ struct Head {
     sent: Option<Arc<CompletionRequest>>,
     /// Each text's hash and place in `history`, in order.
     starts: OnceLock<Vec<(u64, usize)>>,
+    /// How many requests were noted before it.
+    noted: usize,
 }
 
 impl Head {
@@ -564,6 +576,12 @@ impl Known {
             };
             (history, field("tools").map(Text::of))
         });
+        // A request this writer wrote noted its new texts itself.
+        if sent.is_none() {
+            for text in &history {
+                self.seen.entry(text.hash).or_insert(self.noted);
+            }
+        }
         let sent = sent.filter(|sent| sent.chat_history.len() == history.len());
         let reply = match (
             record.pointer("/outcome/Ok/choice"),
@@ -583,7 +601,9 @@ impl Known {
             reply,
             sent: sent.cloned(),
             starts: OnceLock::new(),
+            noted: self.noted,
         });
+        self.noted += 1;
         while chain.len() > RECENT {
             chain.pop_front();
         }
@@ -832,17 +852,12 @@ impl Plan {
     /// when they share nothing with it or it costs `under` or more.
     fn of(
         base: &Head,
+        keep: usize,
         history: &[Sent<'_>],
         tools: &Text,
         known: &Known,
         under: Option<usize>,
     ) -> io::Result<Option<Self>> {
-        let keep = base
-            .history
-            .iter()
-            .zip(history)
-            .take_while(|(kept, sent)| **kept == sent.text)
-            .count();
         let mut reused = keep > 0;
         let mut then = Vec::new();
         let mut written = Vec::new();
@@ -852,8 +867,11 @@ impl Plan {
             if under.is_some_and(|under| cost >= under) {
                 return Ok(None);
             }
-            let run = base
-                .starts(sent.text.hash)
+            let held = known.seen.get(&sent.text.hash);
+            let run = (held.is_some_and(|first| *first <= base.noted))
+                .then(|| base.starts(sent.text.hash))
+                .into_iter()
+                .flatten()
                 .map(|from| {
                     let kept = base.history.get(from..).unwrap_or_default();
                     let sent = history.get(at..).unwrap_or_default();
@@ -925,6 +943,13 @@ impl Plan {
             cost,
         }))
     }
+}
+
+/// How many of `base`'s first messages `history` starts with.
+fn shared(base: &Head, history: &[Sent<'_>]) -> usize {
+    (base.history.iter().zip(history))
+        .take_while(|(kept, sent)| **kept == sent.text)
+        .count()
 }
 
 /// The parts of a completion record's raw provider document a log leaves
