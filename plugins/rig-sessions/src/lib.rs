@@ -52,7 +52,6 @@ impl Plugin for SessionsPlugin {
         app.init_resource::<SessionTitle>()
             .init_resource::<Listed>()
             .init_resource::<ListedValues>()
-            .init_resource::<RigHome>()
             .add_command("new", "Start a new session; this one is kept", new)
             .add_command(
                 "resume",

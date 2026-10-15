@@ -22,8 +22,7 @@ pub struct DefaultsPlugin;
 
 impl Plugin for DefaultsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<RigHome>()
-            .add_systems(PostStartup, apply_defaults)
+        app.add_systems(PostStartup, apply_defaults)
             .add_observer(remember.run_if(resource_exists::<SessionRestored>));
     }
 }

@@ -40,7 +40,6 @@ pub(super) fn add(app: &mut App) {
             AgentPass,
             stop_restored.in_set(SubagentSystems::StopRestored),
         )
-        .add_message::<SessionRewritten>()
         .add_systems(
             Update,
             follow_rewrites.run_if(on_message::<SessionRewritten>),

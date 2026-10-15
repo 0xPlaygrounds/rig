@@ -101,8 +101,7 @@ pub struct ProjectContextPlugin;
 
 impl Plugin for ProjectContextPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<RigHome>()
-            .init_resource::<ProjectRoot>()
+        app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .add_setting::<ContextLimits>("context");
         let section = PromptSection::new(PromptSection::ORDER_PROJECT, PROJECT, "");

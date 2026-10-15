@@ -43,8 +43,6 @@ impl Plugin for SplitsPlugin {
     fn build(&self, app: &mut App) {
         let asker = app.world_mut().spawn(Name::new("rig-splits")).id();
         app.insert_resource(Asker(asker))
-            .init_resource::<RigHome>()
-            .init_resource::<StoreOpener>()
             .add_command(
                 "split",
                 "Split the conversation at an entry into a branch, or with `new` a new session; \
