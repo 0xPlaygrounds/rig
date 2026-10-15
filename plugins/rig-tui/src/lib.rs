@@ -173,7 +173,6 @@ impl Plugin for TuiViewPlugin {
             .init_resource::<TuiFrame>()
             .init_resource::<Notices>()
             .init_resource::<transcript::CallFacts>()
-            .init_resource::<transcript::StreamingCalls>()
             .init_resource::<TerminalSize>()
             .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
@@ -255,6 +254,8 @@ pub fn add_view(app: &mut App) {
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
         .init_resource::<clipboard::Clipboard>()
+        .register_required_components::<rig_ecs::agent::Partial, transcript::StreamingCalls>()
+        .add_observer(transcript::forget_streams)
         .add_systems(Startup, (view::load_notices, view::load_draft))
         .add_systems(
             PreUpdate,

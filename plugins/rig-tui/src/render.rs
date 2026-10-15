@@ -79,12 +79,7 @@ pub(crate) struct Paced {
 /// frames the kernel runs after the wake that brought it (see
 /// [`Wake`](rig_ecs::tasks::Wake)), 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
-    (view, notices, facts, streaming): (
-        Res<TuiView>,
-        Res<Notices>,
-        Res<CallFacts>,
-        Res<StreamingCalls>,
-    ),
+    (view, notices, facts): (Res<TuiView>, Res<Notices>, Res<CallFacts>),
     (focus, shown): (Res<KeyFocus>, Res<ShownAgent>),
     changed: Query<
         (),
@@ -116,7 +111,7 @@ pub(crate) fn needs_redraw(
             Changed<Picker>,
         )>,
     >,
-    partials: Query<(), Changed<Partial>>,
+    partials: Query<(), Or<(Changed<Partial>, Changed<StreamingCalls>)>>,
     messages: Query<(), (With<Incoming>, Or<(Added<Started>, Added<Outcome>)>)>,
     calls: Query<
         (),
@@ -170,7 +165,7 @@ pub(crate) fn needs_redraw(
         || !changed.is_empty()
         || !messages.is_empty()
         || !calls.is_empty();
-    paced.waiting |= !partials.is_empty() || streaming.is_changed();
+    paced.waiting |= !partials.is_empty();
     let now = Instant::now();
     let next = paced.drawn.map(|drawn| drawn + STREAM_FRAME);
     if changed || (paced.waiting && next.is_none_or(|next| now >= next)) {
@@ -511,7 +506,7 @@ pub struct TranscriptLayout<'w, 's> {
     live: Query<'w, 's, LiveEffect, Without<Settled>>,
     names: Query<'w, 's, &'static Name>,
     facts: Res<'w, CallFacts>,
-    streaming: Res<'w, StreamingCalls>,
+    streaming: Query<'w, 's, &'static StreamingCalls>,
     notices: Res<'w, Notices>,
 }
 
@@ -600,8 +595,7 @@ impl TranscriptLayout<'_, '_> {
                 streams.filter_map(|call| Some((call, self.partials.get(call).ok()?)));
             streams.next_back()
         });
-        let streaming = partial.map(|(call, _)| self.streaming.of(call));
-        let streaming = streaming.unwrap_or_default().iter();
+        let streaming = partial.and_then(|(call, _)| self.streaming.get(call).ok());
         let mut inbox: Vec<(&Effect, &Incoming)> = self
             .accepted
             .iter()
@@ -618,7 +612,11 @@ impl TranscriptLayout<'_, '_> {
             calls: self.calls.of(calls.into_iter().flat_map(Calls::iter)),
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial,
-            streaming: streaming.map(|(_, call)| call.clone()).collect(),
+            streaming: streaming
+                .into_iter()
+                .flat_map(StreamingCalls::calls)
+                .cloned()
+                .collect(),
             asides: asides(conversation),
             children: self.facts.children(&self.live_calls(), &id.0),
         })

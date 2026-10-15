@@ -819,9 +819,9 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
             event,
         });
         app.update();
-        let calls = app.world().resource::<StreamingCalls>().of(effect).to_vec();
-        let calls = calls.into_iter().map(|(_, call)| call).collect();
-        drawn_rows(app, agent, 100, calls)
+        let calls = app.world().get::<StreamingCalls>(effect);
+        let calls = calls.into_iter().flat_map(StreamingCalls::calls).cloned();
+        drawn_rows(app, agent, 100, calls.collect())
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
@@ -842,20 +842,18 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
     let done = ToolCall::from_wire("call-7", ToolFunction::new(name, json!({ "path": "a.md" })));
     let content = AssistantContent::ToolCall(done.clone());
     stream(&mut app, StreamEvent::End { part, content });
-    let calls = app.world().resource::<StreamingCalls>().of(effect).to_vec();
+    let calls = app.world().get::<StreamingCalls>(effect);
     assert_eq!(
-        calls.first().map(|(_, call)| call.id.clone()),
+        calls
+            .and_then(|calls| calls.calls().next())
+            .map(|call| call.id.clone()),
         Some(done.id)
     );
     // Once the reply is in the conversation, its streaming calls go.
     app.world_mut().entity_mut(effect).remove::<Partial>();
     app.update();
-    assert!(
-        app.world()
-            .resource::<StreamingCalls>()
-            .of(effect)
-            .is_empty()
-    );
+    let calls = app.world().get::<StreamingCalls>(effect);
+    assert!(calls.is_none_or(|calls| calls.calls().next().is_none()));
 }
 
 /// An app with what a [`TranscriptLayout`] reads and no kernel, so the
@@ -863,7 +861,6 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
 fn layout_app() -> (App, Entity) {
     let mut app = App::new();
     app.init_resource::<CallFacts>()
-        .init_resource::<StreamingCalls>()
         .init_resource::<crate::Notices>()
         .init_resource::<rig_ecs::effects::Effects>()
         .add_message::<EffectRecorded>()

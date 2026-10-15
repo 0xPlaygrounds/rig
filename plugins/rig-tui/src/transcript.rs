@@ -578,35 +578,29 @@ pub(crate) fn note_agent_name(
     }
 }
 
-/// The tool calls a model call is streaming, by the model call, in the
-/// order they opened: each as far as its arguments came, or finished.
-#[derive(Resource, Default)]
-pub(crate) struct StreamingCalls(HashMap<Entity, Vec<(rig_core::streaming::Part, ToolCall)>>);
-
-/// The JSON of a streaming call's arguments so far, by model call and part.
-#[derive(Default)]
-pub(crate) struct Fragments(HashMap<(Entity, rig_core::streaming::Part), String>);
+/// The tool calls a model call streams while its reply does ([`Partial`]
+/// requires it), in the order they opened: each as far as its arguments
+/// came, with their JSON so far, or finished.
+#[derive(Component, Default)]
+pub(crate) struct StreamingCalls(Vec<(rig_core::streaming::Part, ToolCall, String)>);
 
 impl StreamingCalls {
-    /// The calls `effect` streams.
-    pub(crate) fn of(&self, effect: Entity) -> &[(rig_core::streaming::Part, ToolCall)] {
-        self.0.get(&effect).map_or(&[], Vec::as_slice)
+    /// The calls, in the order they opened.
+    pub(crate) fn calls(&self) -> impl Iterator<Item = &ToolCall> {
+        self.0.iter().map(|(_, call, _)| call)
     }
 }
 
 /// Follows the tool calls models stream: a call opens with its tool's
-/// name, its arguments grow, and it ends with the finished call. A model
-/// call's go once it is in the conversation, its [`Partial`] gone.
+/// name, its arguments grow, and it ends with the finished call.
 pub(crate) fn follow_streams(
     mut deltas: MessageReader<StreamDelta>,
-    live: Query<(), With<Partial>>,
-    mut streaming: ResMut<StreamingCalls>,
-    mut fragments: Local<Fragments>,
+    mut streams: Query<&mut StreamingCalls, With<Partial>>,
 ) {
-    let calls = streaming.bypass_change_detection();
-    let mut changed = false;
     for delta in deltas.read() {
-        let effect = delta.effect;
+        let Ok(mut calls) = streams.get_mut(delta.effect) else {
+            continue;
+        };
         match &delta.event {
             StreamEvent::Start {
                 part,
@@ -615,13 +609,11 @@ pub(crate) fn follow_streams(
             } => {
                 let id = CallId::from_wire(format!("streaming-{}", part.index()));
                 let call = ToolCall::new(id, ToolFunction::new(name.clone(), Default::default()));
-                calls.0.entry(effect).or_default().push((*part, call));
+                calls.0.push((*part, call, String::new()));
             }
             StreamEvent::Arguments { part, json } => {
-                let text = fragments.0.entry((effect, *part)).or_default();
-                text.push_str(json);
-                let found = calls.0.get_mut(&effect).into_iter().flatten();
-                if let Some((_, call)) = found.into_iter().find(|(at, _)| at == part) {
+                if let Some((_, call, text)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
+                    text.push_str(json);
                     call.function.arguments = parse_partial_arguments(text);
                 }
             }
@@ -629,20 +621,20 @@ pub(crate) fn follow_streams(
                 part,
                 content: AssistantContent::ToolCall(done),
             } => {
-                let found = calls.0.get_mut(&effect).into_iter().flatten();
-                if let Some((_, call)) = found.into_iter().find(|(at, _)| at == part) {
+                if let Some((_, call, _)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
                     *call = done.clone();
                 }
             }
-            _ => continue,
+            _ => {}
         }
-        changed = true;
     }
-    let before = calls.0.len();
-    calls.0.retain(|effect, _| live.contains(*effect));
-    fragments.0.retain(|(effect, _), _| live.contains(*effect));
-    if changed || calls.0.len() != before {
-        streaming.set_changed();
+}
+
+/// Forgets a model call's streaming calls once its reply is in the
+/// conversation, its [`Partial`] gone.
+pub(crate) fn forget_streams(gone: On<Remove<Partial>>, mut streams: Query<&mut StreamingCalls>) {
+    if let Ok(mut calls) = streams.get_mut(gone.entity) {
+        calls.0.clear();
     }
 }
 
