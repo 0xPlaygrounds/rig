@@ -133,7 +133,18 @@ async fn websocket_and_sse_yield_the_same_items_and_response() {
     }
     let http_response = over_http.finish().await.expect("folds");
 
-    let script = Script::turns([messages.clone(), messages]);
+    // The second turn answers as another response, as a provider does.
+    let again = messages
+        .iter()
+        .map(|message| {
+            let mut event: serde_json::Value = serde_json::from_str(message).expect("JSON event");
+            if let Some(id) = event.pointer_mut("/response/id") {
+                *id = json!("resp_again");
+            }
+            event.to_string()
+        })
+        .collect::<Vec<_>>();
+    let script = Script::turns([messages, again]);
     let client = test_client();
     let socket = socket(&client, &script);
     let mut over_socket = socket.stream("hello").expect("opens");
@@ -244,15 +255,21 @@ async fn chaining_continues_the_last_response_and_late_done_is_ignored() {
     );
 
     let mut second = socket.stream("second").expect("opens");
+    let mut cleared = false;
     while let Some(item) = second.next().await {
         assert!(
             !matches!(item.expect("item"), Item::Unknown(_)),
             "the previous turn's response.done leaked"
         );
+        // Clearing the chain mid-turn holds: the turn does not continue it.
+        if !cleared {
+            socket.transport.clear_chain();
+            cleared = true;
+        }
     }
     assert_eq!(text(&second.finish().await.expect("second")), "two");
+    assert_eq!(socket.transport.last_response_id(), None);
 
-    socket.transport.clear_chain();
     assert_eq!(text(&socket.call("third").await.expect("third")), "three");
 
     let sent = script.sent();

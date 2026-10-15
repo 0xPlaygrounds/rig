@@ -124,7 +124,9 @@ fn the_lifecycle_reader_ends_skips_and_chains() {
         }
     ));
     assert_eq!(chain.previous.get().as_deref(), Some("resp_1"));
-    // The previous turn's trailing `response.done` is skipped.
+    // The previous turn's events, its trailing `response.done` among them,
+    // are skipped.
+    assert!(matches!(chain.read(&completed), Lifecycle::Skip));
     let late = event("response.done", "resp_1", "completed");
     assert!(matches!(chain.read(&late), Lifecycle::Skip));
 

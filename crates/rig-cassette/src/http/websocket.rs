@@ -222,6 +222,7 @@ impl<B: WebSocketClientExt> WebSocketClientExt for CassetteSocket<B> {
                         turns,
                         turn: None,
                         recorder,
+                        logged: Vec::new(),
                     }) as BoxedWebSocketConnection)
                 }
                 SocketMode::Replay(state) => {
@@ -252,6 +253,8 @@ struct Recording {
     /// This connection's turn in flight, by its index in `turns`.
     turn: Option<usize>,
     recorder: Option<DirectRecorder>,
+    /// The resources this connection's turns created that the ledger holds.
+    logged: Vec<String>,
 }
 
 impl WebSocketConnection for Recording {
@@ -293,18 +296,15 @@ impl WebSocketConnection for Recording {
                 && let Some(turn) = self.turn
                 && let Some(turn) = lock(&self.turns).get_mut(turn)
             {
-                // The ledger sees what a turn created before the caller
-                // does: the response the turn's first event names.
-                if let Some(recorder) = &self.recorder
-                    && turn.received.is_empty()
-                {
-                    let body = sse(&text);
-                    recorder.log_created(
+                // The ledger sees what a turn created before the caller does.
+                if let Some(recorder) = &self.recorder {
+                    recorder.log_unseen(
                         "GET",
                         &turn.uri,
                         turn.sent.as_bytes(),
                         SWITCHING_PROTOCOLS,
-                        body.as_bytes(),
+                        sse(&text).as_bytes(),
+                        &mut self.logged,
                     );
                 }
                 turn.received.push(text);

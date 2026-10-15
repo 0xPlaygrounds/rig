@@ -345,9 +345,10 @@ impl ResponsesWebSocket {
         self.previous.get()
     }
 
-    /// Start the next chained turn on a fresh chain. Never waits for a turn.
+    /// Start the next chained turn on a fresh chain: a turn in flight does
+    /// not continue the chain when it ends. Never waits for a turn.
     pub fn clear_chain(&self) {
-        self.previous.set(None);
+        self.previous.clear();
     }
 
     /// Close the connection with a close handshake, after the turn in
@@ -508,7 +509,7 @@ impl Session {
         // Set before the write: a write cut off midway may still have
         // reached the provider, whose reply must not reach the next turn.
         self.dirty = true;
-        self.chain.end_turn();
+        self.chain.begin_turn();
         if let Err(error) = self.socket.send(Frame::Text(text)).await {
             self.mark_failed();
             transport_failed(slot);
@@ -539,7 +540,7 @@ impl Session {
                 self.dirty = false;
                 // The caller never saw the drained turn's response, so a
                 // chained turn must not continue it.
-                self.chain.previous.set(None);
+                self.chain.previous.reset();
                 Ok(())
             }
             Ok(Err(error)) => Err(error),
@@ -620,33 +621,63 @@ enum Lifecycle {
     Corrupt(ProviderError),
 }
 
-/// The response chain across turns, the trailing `response.done` to skip,
-/// and the response the turn in flight opened.
+/// The response chain across turns, the last turn's response whose
+/// trailing events to skip, and the response the turn in flight opened.
 #[derive(Debug, Default)]
 struct Chain {
     previous: Previous,
     pending_done_response_id: Option<String>,
     current_response_id: Option<String>,
+    /// The chain's clearing count when the turn in flight was sent.
+    epoch: u64,
 }
 
 /// The response a chained turn continues, shared by the connection and its
 /// handles: a plain lock, so reading it never waits for a turn.
 #[derive(Debug, Default, Clone)]
-struct Previous(Arc<std::sync::Mutex<Option<String>>>);
+struct Previous(Arc<std::sync::Mutex<Chained>>);
+
+#[derive(Debug, Default)]
+struct Chained {
+    id: Option<String>,
+    /// How many times a caller cleared the chain.
+    epoch: u64,
+}
 
 impl Previous {
-    fn lock(&self) -> std::sync::MutexGuard<'_, Option<String>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Chained> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn get(&self) -> Option<String> {
-        self.lock().clone()
+        self.lock().id.clone()
     }
 
-    fn set(&self, id: Option<String>) {
-        *self.lock() = id;
+    fn epoch(&self) -> u64 {
+        self.lock().epoch
+    }
+
+    /// End the chain.
+    fn reset(&self) {
+        self.lock().id = None;
+    }
+
+    /// End the chain, so no turn in flight continues it.
+    fn clear(&self) {
+        let mut chained = self.lock();
+        chained.id = None;
+        chained.epoch = chained.epoch.wrapping_add(1);
+    }
+
+    /// Continue the chain with `id`, the response of a turn sent at
+    /// `epoch`, unless a caller cleared the chain since.
+    fn continue_with(&self, epoch: u64, id: Option<String>) {
+        let mut chained = self.lock();
+        if chained.epoch == epoch {
+            chained.id = id;
+        }
     }
 }
 
@@ -686,17 +717,17 @@ impl Chain {
             Lifecycle::Frame | Lifecycle::Skip | Lifecycle::Last { settled: false, .. } => {}
             Lifecycle::Last { settled: true, .. } => self.end_turn(),
             Lifecycle::Fail(_) => {
-                self.previous.set(None);
+                self.previous.reset();
                 self.end_turn();
             }
-            Lifecycle::Corrupt(_) => self.previous.set(None),
+            Lifecycle::Corrupt(_) => self.previous.reset(),
         }
         lifecycle
     }
 
     /// Forget everything but the shared handle: the connection failed.
     fn reset(&mut self) {
-        self.previous.set(None);
+        self.previous.reset();
         self.pending_done_response_id = None;
         self.end_turn();
     }
@@ -704,6 +735,12 @@ impl Chain {
     /// Forget which response the turn in flight opened.
     fn end_turn(&mut self) {
         self.current_response_id = None;
+    }
+
+    /// A turn is sent: it continues the chain unless a caller clears it.
+    fn begin_turn(&mut self) {
+        self.end_turn();
+        self.epoch = self.previous.epoch();
     }
 
     /// Whether `probe` names a response other than the one this turn opened,
@@ -720,6 +757,15 @@ impl Chain {
             // part of a turn, and must not end one as a whole body.
             Err(error) => return Lifecycle::Corrupt(error.into()),
         };
+        let id = probe.response_id();
+        // The last turn's response sends nothing more for this one: an event
+        // of it, such as its trailing `response.done`, is skipped.
+        if id.is_some() && id == self.pending_done_response_id {
+            if probe.kind == "response.done" {
+                self.pending_done_response_id = None;
+            }
+            return Lifecycle::Skip;
+        }
         match probe.kind.as_str() {
             "response.created"
             | "response.queued"
@@ -744,17 +790,18 @@ impl Chain {
             }
             kind @ ("response.completed" | "response.incomplete" | "response.failed") => {
                 self.pending_done_response_id = probe.response_id();
-                let chained = (kind != "response.failed")
-                    .then(|| probe.response_id())
-                    .flatten();
-                self.previous.set(chained);
+                if kind == "response.failed" {
+                    self.previous.reset();
+                } else {
+                    self.previous.continue_with(self.epoch, probe.response_id());
+                }
                 Lifecycle::Last {
                     frame: None,
                     settled: true,
                 }
             }
             "error" => {
-                self.previous.set(None);
+                self.previous.reset();
                 // An error after the turn's response opened may leave that
                 // response still sending: its rest is drained, not read as
                 // the next turn's.
@@ -764,15 +811,10 @@ impl Chain {
                 }
             }
             "response.done" => {
-                let id = probe.response_id();
-                if id.is_some() && self.pending_done_response_id == id {
-                    self.pending_done_response_id = None;
-                    return Lifecycle::Skip;
-                }
                 if self.foreign(&probe) {
                     return Lifecycle::Skip;
                 }
-                self.pending_done_response_id = None;
+                self.pending_done_response_id = id;
                 self.done(&probe)
             }
             _ => Lifecycle::Frame,
@@ -799,10 +841,11 @@ impl Chain {
                 ));
             }
         };
-        let chained = (terminal != "response.failed")
-            .then(|| probe.response_id())
-            .flatten();
-        self.previous.set(chained);
+        if terminal == "response.failed" {
+            self.previous.reset();
+        } else {
+            self.previous.continue_with(self.epoch, probe.response_id());
+        }
         let frame = json!({ "type": terminal, "response": probe.response });
         Lifecycle::Last {
             frame: Some(frame.to_string()),

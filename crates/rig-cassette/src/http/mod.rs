@@ -320,20 +320,46 @@ impl DirectRecorder {
         status: u16,
         response_body: &[u8],
     ) {
+        self.log_unseen(
+            method,
+            uri,
+            request_body,
+            status,
+            response_body,
+            &mut Vec::new(),
+        );
+    }
+
+    /// [`Self::log_created`] for the resources `seen` does not name, which
+    /// it then names: a reply that arrives in parts states a resource more
+    /// than once.
+    fn log_unseen(
+        &self,
+        method: &str,
+        uri: &str,
+        request_body: &[u8],
+        status: u16,
+        response_body: &[u8],
+        seen: &mut Vec<String>,
+    ) {
         if !accepted(status) {
             return;
         }
         let path = url::Url::parse(uri)
             .map(|url| url.path().to_owned())
             .unwrap_or_else(|_| uri.to_owned());
-        let created = ledger::created_resources(
+        let created: Vec<_> = ledger::created_resources(
             &self.ledger.provider,
             &self.ledger.origin,
             method,
             &path,
             request_body,
             response_body,
-        );
+        )
+        .into_iter()
+        .filter(|resource| !seen.contains(&resource.id))
+        .collect();
+        seen.extend(created.iter().map(|resource| resource.id.clone()));
         ledger::append(
             &self.ledger.path,
             &created
