@@ -20,6 +20,12 @@ use std::{fs, path::Path};
 
 /// Transcript and normalized provider metadata, with provider-specific data
 /// available through [`Self::raw`].
+///
+/// Timings and speaker labels are filled only when the provider returned
+/// them, which usually takes a provider option passed through
+/// [`TranscriptionRequestBuilder::additional_params`], such as
+/// `{"response_format": "verbose_json", "timestamp_granularities": ["segment", "word"]}`
+/// on OpenAI-compatible endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResponse {
     /// The transcribed text.
@@ -41,6 +47,21 @@ pub struct TranscriptionResponse {
     /// Transport request ID from HTTP headers, or `None` when unreported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
+    /// Language of the audio as the provider reported it, either a code
+    /// such as `"en"` or a name such as `"english"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// Length of the audio in seconds, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+    /// Timed stretches of the transcript, in the provider's order. Empty when
+    /// the provider returned none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<TranscriptSegment>,
+    /// Timed words, in the provider's order. Empty when the provider returned
+    /// none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub words: Vec<TranscriptWord>,
     /// Provider response document. Defaults to null until populated.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
@@ -58,9 +79,48 @@ impl TranscriptionResponse {
             model: None,
             response_id: None,
             provider_request_id: None,
+            language: None,
+            duration: None,
+            segments: Vec::new(),
+            words: Vec::new(),
             raw: serde_json::Value::Null,
         }
     }
+}
+
+/// A timed stretch of a transcript. Times are seconds from the start of the
+/// audio.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TranscriptSegment {
+    /// When the segment starts.
+    pub start: f64,
+    /// When the segment ends.
+    pub end: f64,
+    /// The segment's text, with the provider's spacing.
+    pub text: String,
+    /// Who spoke it, when the provider diarized the audio. Labels are the
+    /// provider's own, such as `"0"`, `"A"` or `"speaker_1"`, and are stable
+    /// within one response only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
+}
+
+/// A timed word of a transcript. Times are seconds from the start of the
+/// audio.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TranscriptWord {
+    /// The word, with the provider's spacing and punctuation.
+    pub word: String,
+    /// When the word starts.
+    pub start: f64,
+    /// When the word ends.
+    pub end: f64,
+    /// Who spoke it, labeled as on [`TranscriptSegment::speaker`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
+    /// The provider's confidence in the word, from 0 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
 }
 
 /// Struct representing a general transcription request that can be sent to a transcription model provider.

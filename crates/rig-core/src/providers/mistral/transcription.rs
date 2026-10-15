@@ -1,7 +1,11 @@
 //! Mistral's transcription model identifiers.
 //!
-//! Diarization and audio-second metadata remain in
-//! [`crate::transcription::TranscriptionResponse::raw`].
+//! `timestamp_granularities` (`["segment"]` or `["word"]`) and `diarize: true`
+//! in `additional_params` fill
+//! [`TranscriptionResponse::segments`](crate::transcription::TranscriptionResponse::segments),
+//! one per word at word granularity, with speaker labels such as
+//! `"speaker_1"`. Audio-second usage remains in
+//! [`TranscriptionResponse::raw`](crate::transcription::TranscriptionResponse::raw).
 //!
 //! ```no_run
 //! use rig_core::providers::mistral;

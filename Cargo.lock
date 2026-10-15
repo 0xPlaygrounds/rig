@@ -21149,6 +21149,7 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "rig",
+ "serde_json",
  "tokio",
 ]
 

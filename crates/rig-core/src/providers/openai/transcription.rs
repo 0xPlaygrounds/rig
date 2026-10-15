@@ -1,6 +1,14 @@
+//! The transcription reply shared by OpenAI and the endpoints compatible
+//! with it, and OpenAI's transcription model identifier.
+//!
+//! `whisper-1` returns timed segments with `response_format: "verbose_json"`,
+//! and timed words as well with `timestamp_granularities: ["segment", "word"]`.
+//! `gpt-4o-transcribe-diarize` labels segments with speakers such as `"A"`
+//! under `response_format: "diarized_json"`.
 use crate::completion::Usage;
 use crate::error::ProviderError;
-use crate::transcription;
+use crate::json_utils;
+use crate::transcription::{self, TranscriptSegment, TranscriptWord};
 use serde::{Deserialize, Serialize};
 
 pub const WHISPER_1: &str = "whisper-1";
@@ -12,6 +20,72 @@ pub struct TranscriptionResponse {
     /// [`transcription::TranscriptionResponse::usage`]; duration remains raw.
     #[serde(default)]
     pub usage: Option<TranscriptionUsage>,
+    /// Language of the audio, reported by verbose and diarized formats.
+    #[serde(default)]
+    pub language: Option<String>,
+    /// Length of the audio in seconds, reported by verbose and diarized
+    /// formats.
+    #[serde(default)]
+    pub duration: Option<f64>,
+    /// Timed segments, reported by verbose and diarized formats.
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
+    pub segments: Vec<TranscriptionSegment>,
+    /// Timed words, reported when word timestamps were requested.
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
+    pub words: Vec<TranscriptionWord>,
+}
+
+/// A timed segment. Fields beyond these, such as Whisper's token ids and
+/// log probabilities, stay on the raw document.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TranscriptionSegment {
+    /// Start, in seconds. Mistral may report no time.
+    #[serde(default)]
+    pub start: Option<f64>,
+    /// End, in seconds. Mistral may report no time.
+    #[serde(default)]
+    pub end: Option<f64>,
+    /// The segment's text.
+    pub text: String,
+    /// The diarized speaker. Mistral names this field `speaker_id`.
+    #[serde(default, alias = "speaker_id")]
+    pub speaker: Option<Speaker>,
+}
+
+/// A timed word.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TranscriptionWord {
+    /// The word.
+    pub word: String,
+    /// Start, in seconds.
+    pub start: f64,
+    /// End, in seconds.
+    pub end: f64,
+    /// The diarized speaker.
+    #[serde(default)]
+    pub speaker: Option<Speaker>,
+    /// Confidence from 0 to 1.
+    #[serde(default)]
+    pub confidence: Option<f64>,
+}
+
+/// A speaker label: an index on some gateways, a name on others.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum Speaker {
+    /// A numeric speaker index.
+    Index(u64),
+    /// A speaker name or letter.
+    Label(String),
+}
+
+impl From<Speaker> for String {
+    fn from(speaker: Speaker) -> Self {
+        match speaker {
+            Speaker::Index(index) => index.to_string(),
+            Speaker::Label(label) => label,
+        }
+    }
 }
 
 /// Duration or token accounting selected by the wire's `type` tag.
@@ -95,8 +169,37 @@ impl TranscriptionResponse {
             | Some(TranscriptionUsage::Other(_))
             | None => Usage::default(),
         };
+        // A segment without both times is not a timed segment; its text is
+        // still in `text`.
+        let segments = self
+            .segments
+            .into_iter()
+            .filter_map(|segment| {
+                Some(TranscriptSegment {
+                    start: segment.start?,
+                    end: segment.end?,
+                    text: segment.text,
+                    speaker: segment.speaker.map(String::from),
+                })
+            })
+            .collect();
+        let words = self
+            .words
+            .into_iter()
+            .map(|word| TranscriptWord {
+                word: word.word,
+                start: word.start,
+                end: word.end,
+                speaker: word.speaker.map(String::from),
+                confidence: word.confidence,
+            })
+            .collect();
         Ok(transcription::TranscriptionResponse {
             usage,
+            language: self.language,
+            duration: self.duration,
+            segments,
+            words,
             ..transcription::TranscriptionResponse::new(self.text)
         })
     }
