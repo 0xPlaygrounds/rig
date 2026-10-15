@@ -47,8 +47,12 @@ pub struct Document {
     pub id: String,
     /// Text content passed to the model as retrieval or static context.
     pub text: String,
-    /// Images sent with the text, in order.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Images sent with the text, in order. Raw bytes serialize as base64.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "images_as_base64"
+    )]
     pub images: Vec<Image>,
     /// Additional string metadata rendered before the document text.
     #[serde(flatten)]
@@ -103,6 +107,25 @@ impl Document {
         parts.push(text(CLOSING.to_owned()));
         parts
     }
+}
+
+/// Serialize `images` with raw bytes as base64, so a stored document keeps
+/// them compact and whole (a vector store's results drop long arrays).
+fn images_as_base64<S: serde::Serializer>(
+    images: &[Image],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use super::message::DocumentSourceKind;
+    use base64::Engine as _;
+    serializer.collect_seq(images.iter().map(|image| match &image.data {
+        DocumentSourceKind::Raw(bytes) => std::borrow::Cow::Owned(Image {
+            data: DocumentSourceKind::Base64(
+                base64::engine::general_purpose::STANDARD.encode(bytes),
+            ),
+            ..image.clone()
+        }),
+        _ => std::borrow::Cow::Borrowed(image),
+    }))
 }
 
 /// The closing tag of a document's `<file>` block.

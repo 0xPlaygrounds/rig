@@ -92,9 +92,17 @@ impl AgentHook for DynamicContext {
 
 /// A retrieved result as a context document. A stored [`Document`] comes
 /// back as itself, images included, under the result's id when it has
-/// none; any other value is sent as its pretty-printed JSON.
+/// none. It may sit under a `document` key, as stores that keep a record
+/// around it (MongoDB, S3 Vectors) return it. Any other value is sent as its
+/// pretty-printed JSON.
 fn context_document(result: VectorSearchResult<serde_json::Value>) -> Document {
-    match <Document as serde::Deserialize>::deserialize(&result.document) {
+    let stored = <Document as serde::Deserialize>::deserialize(&result.document).or_else(|error| {
+        result
+            .document
+            .get("document")
+            .map_or(Err(error), <Document as serde::Deserialize>::deserialize)
+    });
+    match stored {
         Ok(document) if document.id.is_empty() => Document {
             id: result.id,
             ..document

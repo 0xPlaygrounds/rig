@@ -274,6 +274,29 @@ fn a_document_with_images_joins_the_history_around_its_images() {
     );
 }
 
+/// Raw image bytes are stored as base64, which survives a vector store's
+/// results; those drop long arrays.
+#[test]
+fn a_raw_image_is_stored_as_base64() {
+    use crate::message::{DocumentSourceKind, Image};
+    let bytes = vec![7u8; 500];
+    let raw = Image {
+        data: DocumentSourceKind::Raw(bytes.clone()),
+        ..Image::default()
+    };
+    let stored = serde_json::to_value(test_document("raw", "").with_image(raw))
+        .expect("a document serializes");
+    let restored: Document = serde_json::from_value(stored).expect("and reads back");
+    let expected = Image {
+        data: DocumentSourceKind::Base64(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            bytes,
+        )),
+        ..Image::default()
+    };
+    assert_eq!(restored.images, vec![expected]);
+}
+
 #[test]
 fn documents_join_the_first_user_message_so_roles_alternate() {
     let request = CompletionRequest::new(Message::user("Prompt"))
