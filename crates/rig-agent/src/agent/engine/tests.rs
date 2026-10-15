@@ -3113,6 +3113,64 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
     );
 }
 
+/// An invalid-call hook that skips the call and asks the run to finish: the
+/// skip is committed, then the run finishes in place of the next model call
+/// on both surfaces, though no model-call budget is left.
+#[tokio::test]
+async fn a_finish_after_an_invalid_call_skip_wins_over_the_budget_on_both_surfaces() {
+    struct SkipAndFinish;
+    impl AgentHook for SkipAndFinish {
+        async fn on_invalid_tool_call(
+            &self,
+            ctx: &HookContext,
+            _: &InvalidToolCallContext,
+        ) -> Option<InvalidToolCallAction> {
+            ctx.finish("gave up");
+            Some(InvalidToolCallAction::skip("tool not permitted"))
+        }
+    }
+
+    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+        MockTurn::text("unreachable"),
+    ]))
+    .tool(MockAddTool)
+    .build()
+    .prompt("do the thing")
+    .max_turns(1)
+    .add_hook(SkipAndFinish)
+    .run()
+    .await
+    .expect("the blocking run finishes");
+
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+        vec![
+            MockStreamEvent::text("unreachable"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+    ]))
+    .tool(MockAddTool)
+    .build()
+    .prompt("do the thing")
+    .max_turns(1)
+    .add_hook(SkipAndFinish)
+    .stream();
+    let streamed = drive_to_final_response(stream).await;
+
+    for response in [&blocking, &streamed] {
+        assert_eq!(response.output(), "gave up");
+        assert_eq!(response.completion_calls.len(), 1);
+        assert!(tool_result_text_in_history(
+            &response.messages,
+            "tool not permitted"
+        ));
+    }
+}
+
 /// Skips a *valid* tool call before execution; observes everything else.
 struct SkipToolCallHook(&'static str);
 

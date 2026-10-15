@@ -366,9 +366,11 @@ impl HookContext {
 
     /// End the run successfully with `output` as its final answer in place of
     /// its next model call. Tool calls the model already made still run and are
-    /// answered first. A run that ends on its own first keeps its own answer.
-    /// The first request wins. `output` is committed as an assistant turn and
-    /// is the response's output; a streamed run surfaces it in its final item.
+    /// answered first. A model call already preparing or dispatched when the
+    /// request is made still runs, and a run that ends on its own first keeps
+    /// its own answer. The first request wins. `output` is committed as an
+    /// assistant turn and is the response's output; a streamed run surfaces it
+    /// in its final item.
     pub fn finish(&self, output: impl Into<String>) {
         self.finish
             .lock()

@@ -255,16 +255,17 @@ where
 
         'outer: loop {
             flush_entries!();
-            // A finish requested mid-turn waits for the turn's tool calls.
-            if let Some(output) = hook_ctx.requested_finish() {
-                finished |= run.try_finish(output);
-            }
+            // A hook's finish request replaces the next model call this step
+            // reaches; the run takes it when it does.
+            let mut finish = hook_ctx.requested_finish();
+            let requested = finish.is_some();
             // A failed step is not projected: a failed turn may have committed
             // calls it never answers, and the error carries that history.
-            let step = match run.next_step() {
+            let step = match run.advance(&mut finish) {
                 Ok(step) => step,
                 Err(err) => fail!(err, break 'outer),
             };
+            finished |= requested && finish.is_none();
             project!('outer);
 
             match step {
@@ -314,12 +315,9 @@ where
                         Ok(model) => model,
                         Err(report) => fail!(PromptError::Report(report), break 'outer),
                     };
-                    // A completion-call or selection hook may have asked to
-                    // finish: the call is never issued.
-                    if let Some(output) = hook_ctx.requested_finish()
-                        && run.try_finish(output)
-                    {
-                        finished = true;
+                    // A completion-call or selection hook asked to finish:
+                    // the next step finishes in place of this call.
+                    if hook_ctx.requested_finish().is_some() {
                         continue 'outer;
                     }
 
