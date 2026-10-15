@@ -45,20 +45,20 @@ each plugin added): ask it before reading rig's source.
   before one message. A **line value** follows its line (`Follows`).
 - **Effects.** An **effect** is a unit of work as an entity moving through the
   **stages** (Arrive, Review, Commit, Admit, Prepare, Gate, Start); a **phase**
-  is an ordered part of one (`PrepareSystems`, `ReviewSystems`, `GateSystems`).
-  A **call** is a model or tool call, never an async task; a **task** is
-  off-thread work on an entity (`Running` becomes `Done<T>`). A **frame** is a
-  Bevy update, a **pass** one run of `AgentPass`. **Ready to start** and **ready
-  to settle** are the gate's and the reviewer's filters (`ReadyToStart`,
-  `ReadyToSettle`). A **decision** is a gate's first-wins answer, applied at
-  Start (`Decision`); a **hold** is any entity `HoldOf` an effect; to **settle**
-  is Commit's last step, recording the effect. An **answer** is what a handler
-  or decision gave (`effect::Answered`), the **outcome** the answer or an error
-  (`Outcome`). A **handler** serves an effect, a **layer** wraps one
-  (`Intercept`: `BeforeServe`, `AfterServe`), an **adapter** changes the model a
-  call goes to. An **open tool**'s calls are answered by observers; a
-  **footprint** is what a tool call may read and change; **facts** are typed
-  values a handler publishes beside its answer (`Published`).
+  is an ordered part of one (`PrepareSystems`, `ReviewSystems`, `GateSystems`),
+  a **hook** a plugin's system in a stage. A **call** is a model or tool call,
+  never a **task**: off-thread work on an entity (`Running` becomes `Done<T>`).
+  A **frame** is a Bevy update, a **pass** one run of `AgentPass`. **Ready to
+  start** and **ready to settle** are Gate's and Review's filters
+  (`ReadyToStart`, `ReadyToSettle`). A **decision** is a gate's first-wins
+  answer, applied at Start (`Decision`); a **hold** is any entity `HoldOf` an
+  effect; to **settle** is Commit's last step, recording the effect. An
+  **answer** is what a handler or decision gave (`effect::Answered`), the
+  **outcome** the answer or an error (`Outcome`). A **handler** serves an
+  effect, a **layer** wraps one (`Intercept`: `BeforeServe`, `AfterServe`), an
+  **adapter** changes the model a call goes to. An **open tool**'s calls are
+  answered by observers; a **footprint** what a tool call may read and change;
+  **facts** are typed values a handler publishes with its answer (`Published`).
 - **Messages.** A **message** is text sent to an agent (`Incoming`) to
   **steer**, **queue** or **inform** (no answer needed); the **inbox** holds
   accepted, unanswered ones. A **notice** is a transient line for the user
@@ -969,8 +969,8 @@ fn time_to_first(
 # How a turn ends
 
 A turn is an entity `TurnOf` its agent, with a `Turn`: its `index` among the
-agent's turns over the session, and `first_message`, the `MessageId` it begins
-at (`conversation.start_of(id)` is its index now, `asked(id)` the entries it
+agent's turns over the session, and `start`, the `MessageId` it begins at
+(`conversation.start_of(id)` is its index now, `asked(id)` the entries it
 answers, `request(id)` the one that asked). It is spawned before its first
 request is built, so an `On<Add<TurnOf>>` observer's edit is in that request;
 once ended it loses `TurnOf` and keeps `ForAgent`.
@@ -996,15 +996,15 @@ a `TurnOutcome`.
 
 **Turn records.** Each turn is saved in its agent's conversation as a
 `TurnRecord` aside by rig (`TURN`), and `Turn` is filled from it, a
-restarted turn's too: its `index`, where it began (`start`), and how it
-ended, `TurnEnd::Answered { by }`, `Failed { why }` or `Stopped { why }`,
-or `None` while it runs or once a crash or an exit cut it short;
-`conversation.turns()` lists them, for a program without the app too. A
-stop mid-reply saves what streamed as an aborted reply
-(`StopReason::Aborted`) no model reads again, its request `halted()`
-`Stopped`, and the kernel's note after it by `Author::rig()`
-(`EntryRef::is_stop_marker`); a failed or plugin-stopped turn's request is
-halted `Kept`. A front shows a stop from the halt, never from text.
+restarted turn's too: its `index`, `start`, and how it ended,
+`TurnEnd::Answered { answer }`, `Failed { why }` or `Stopped { why }`, or
+`None` while it runs or once a crash or an exit cut it short;
+`conversation.turns()` lists them, for a program without the app too. A stop
+mid-reply saves what streamed as an aborted reply (`StopReason::Aborted`) no
+model reads again, its request `halted()` `Stopped`, and the kernel's note
+after it by `Author::rig()` (`EntryRef::is_stop_marker`); a failed or
+plugin-stopped turn's request is halted `Kept`. A front shows a stop from
+the halt, never from text.
 
 **Ending a turn with an answer already known**, such as the JSON a
 `submit` tool was called with: a Gate system decides the turn's next
@@ -1015,7 +1015,7 @@ turn ends `Answered` with it, and `--print` prints it as the answer.
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Usage};
 use rig_harness::rig_core::effect;
-use rig_harness::rig_core::message::{AssistantContent, Origin as Made, Text};
+use rig_harness::rig_core::message::{AssistantContent, Origin, Text};
 
 fn build(app: &mut App) {
     app.add_systems(AgentPass, end_with.in_set(Stage::Gate))
@@ -1034,8 +1034,8 @@ fn end_with(
     for (&CallOf(turn), mut decision) in &mut calls {
         if let Ok(EndWith(text)) = turns.get(turn) {
             let choice = vec![AssistantContent::Text(Text::new(text.clone()))];
-            let made = Made::new("plugin", "submit", "submit");
-            let reply = CompletionResponse::new(choice, Usage::default(), made, serde_json::Value::Null);
+            let origin = Origin::new("plugin", "submit", "submit");
+            let reply = CompletionResponse::new(choice, Usage::default(), origin, serde_json::Value::Null);
             decision.decide(Decider::plugin("end-with"), Outcome(Ok(effect::Answered::Completion(reply))));
         }
     }
@@ -1398,7 +1398,7 @@ upgrade on first write. rig's saved values have stable keys
 `SessionMeta { title, .. }.write(&*store)`.
 
 ```rust,no_run
-use rig_compaction::{AppCompactionExt, Compaction};
+use rig_compaction::{AppCompactionExt, CompactionKnobs};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_memory::{CompactionOverrides, Cut};
@@ -1416,7 +1416,7 @@ fn build(app: &mut App) {
 fn tight(spawned: On<Add<SpawnedBy>>, mut commands: Commands) {
     let cut = Some(Cut::Named("before-last-user".into()));
     let own = CompactionOverrides { keep_recent: Some(4), cut, ..Default::default() };
-    commands.entity(spawned.entity).insert(Compaction(own));
+    commands.entity(spawned.entity).insert(CompactionKnobs(own));
 }
 
 /// `/undo`: the user's last message and everything after it go, unless a
@@ -2168,7 +2168,7 @@ fn find(
 # The status line
 
 The terminal view's row under the transcript shows the `StatusItems` of
-the agent shown and of its running turn, which every agent and turn has,
+the shown agent and of its running turn, which every agent and turn has,
 and the app's `AppStatus`. A plugin shows an item in a system in
 `StatusSystems::Show` that runs when what it shows changed:
 `items.show(item)` puts it at its place (side and order) in place of the
@@ -2225,7 +2225,7 @@ A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 (`BelowInput`), or a box over the screen (`Over`). The plugin draws it
 into its `PanelCanvas` in `TuiSystems::Draw`, run only for a frame that is
 drawn, and writes a `RequestRedraw` when its own state changed;
-`TerminalSize` is the terminal's size, `ShownAgent` names the agent shown;
+`TerminalSize` is the terminal's size, `ShownAgent` names the shown agent;
 `Within { panel, part, of }` is a column of another panel.
 
 ```rust,no_run
@@ -2265,7 +2265,7 @@ fn draw(
 
 The default screen (`DefaultScreenPlugin` in `TuiPlugin`) is made of
 widgets a plugin places too, each in a `TuiPanel`: a `TranscriptPane` of
-the agent shown (`TranscriptSource::Shown`), one live (`Agent(entity)`),
+the shown agent (`TranscriptSource::Shown`), one live (`Agent(entity)`),
 or a conversation read from a saved session or a split (`Value`), which
 scrolls and selects with `PaneKeys` while it has the `KeyFocus`; an
 `Editor` (the main one `MainEditor`); a `StatusLine { agent }`.
