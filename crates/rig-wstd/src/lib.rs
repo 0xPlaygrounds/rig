@@ -9,7 +9,7 @@
         clippy::unreachable
     )
 )]
-//! The WASI HTTP transport for Rig. [`WstdClient`] implements Rig's
+//! The WASI HTTP transport for Rig. `WstdClient` implements Rig's
 //! `HttpClientExt` over the `wasi:http` client of
 //! [`wstd`](https://docs.rs/wstd), so provider clients run inside a WASI 0.2
 //! component, for example under `wasmtime run -S http`.
