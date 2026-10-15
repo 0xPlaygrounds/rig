@@ -120,59 +120,6 @@ pub(crate) fn check_with(
     }
 }
 
-/// Whether `a` and `b` get the same [`check_with`] answer: every field but
-/// the messages equal, and the same leading system prompt or none in both,
-/// as [`without_messages`] keeps.
-pub(crate) fn same_check(
-    a: &crate::completion::CompletionRequest,
-    b: &crate::completion::CompletionRequest,
-) -> bool {
-    use crate::completion::{CompletionRequest, Message};
-    let system = |request: &CompletionRequest| {
-        request
-            .chat_history
-            .first()
-            .filter(|message| matches!(&***message, Message::System { .. }))
-            .cloned()
-    };
-    let same_system = match (system(a), system(b)) {
-        (Some(a), Some(b)) => Arc::ptr_eq(&a, &b) || a == b,
-        (a, b) => a.is_none() && b.is_none(),
-    };
-    let CompletionRequest {
-        model,
-        chat_history: _,
-        documents,
-        tools,
-        temperature,
-        max_tokens,
-        tool_choice,
-        additional_params,
-        output_schema,
-        record_telemetry_content,
-        accept_unknown_finish_reasons,
-        foreign_reasoning,
-        options,
-        provider_options,
-        cache_points,
-    } = a;
-    same_system
-        && *model == b.model
-        && *documents == b.documents
-        && *tools == b.tools
-        && *temperature == b.temperature
-        && *max_tokens == b.max_tokens
-        && *tool_choice == b.tool_choice
-        && *additional_params == b.additional_params
-        && *output_schema == b.output_schema
-        && *record_telemetry_content == b.record_telemetry_content
-        && *accept_unknown_finish_reasons == b.accept_unknown_finish_reasons
-        && *foreign_reasoning == b.foreign_reasoning
-        && *options == b.options
-        && *provider_options == b.provider_options
-        && *cache_points == b.cache_points
-}
-
 /// `request` with its leading system prompt and a stand-in prompt as its
 /// messages, everything else as it is: what [`check_with`] dry-runs.
 pub(crate) fn without_messages(

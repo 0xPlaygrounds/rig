@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     completion::{CompletionRequest, ModelRef, UnsupportedOption},
-    driver::{DynModel, Sending, same_check, without_messages},
+    driver::{DynModel, Sending, without_messages},
     effect::{
         Answered, EffectFamily, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs,
         FamilyDescriptor, HandlerDescriptor, HandlerKey, RetrieveQuery, RetrievedDocuments,
@@ -57,16 +57,9 @@ fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
 pub struct ModelAdapter<Op: Operation> {
     label: ModelRef,
     model: DynModel<Op>,
-    /// The last completion request [`Serve::check`] answered, without its
-    /// messages, and what the model refused of it.
-    checked: Mutex<Option<Checked>>,
-}
-
-/// A completion request's check, for the next request that gets the same
-/// one ([`same_check`](crate::driver::same_check)).
-struct Checked {
-    request: CompletionRequest,
-    refused: Vec<UnsupportedOption>,
+    /// The last completion request [`Serve::check`] answered, as it was
+    /// checked (without its messages), and what the model refused of it.
+    checked: Mutex<Option<(CompletionRequest, Vec<UnsupportedOption>)>>,
 }
 
 impl<Op: Operation> ModelAdapter<Op> {
@@ -160,22 +153,20 @@ impl Serve for ModelAdapter<Completion> {
             return Vec::new();
         };
         let memo = request.provider_options.is_empty();
+        let checked = without_messages(request);
         if memo
-            && let Ok(checked) = self.checked.lock()
-            && let Some(checked) = checked.as_ref()
-            && same_check(&checked.request, request)
+            && let Ok(last) = self.checked.lock()
+            && let Some((last, refused)) = last.as_ref()
+            && *last == checked
         {
-            return checked.refused.clone();
+            return refused.clone();
         }
         let refused = match self.model.check(request) {
             Err(crate::completion::CheckError::Unsupported(refused)) => refused,
             Ok(()) | Err(crate::completion::CheckError::Invalid(_)) => Vec::new(),
         };
-        if memo && let Ok(mut checked) = self.checked.lock() {
-            *checked = Some(Checked {
-                request: without_messages(request),
-                refused: refused.clone(),
-            });
+        if memo && let Ok(mut last) = self.checked.lock() {
+            *last = Some((checked, refused.clone()));
         }
         refused
     }
