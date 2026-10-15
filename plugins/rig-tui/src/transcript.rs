@@ -1,6 +1,6 @@
 //! The transcript's wrapped rows, kept per message. A frame re-renders and
 //! re-wraps only the messages that changed (a message's look also depends
-//! on the next message's results, its notices and what is expanded),
+//! on the next message's results and its notices),
 //! re-wraps without re-rendering when the width changed, and copies out
 //! only the rows on screen. Each message keeps where its items are (the
 //! message, its calls), so the view can scroll to one, select it and say
@@ -25,8 +25,7 @@ use rig_core::tool::ToolResultContext;
 use super::render::{Lights, light, lit};
 use super::renderers::{
     AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
-    MessageView, RESULT_LINES, Renderers, Role, ToolCallView, excerpt, plugin_name, result_style,
-    result_text,
+    MessageView, Renderers, Role, ToolCallView, plugin_name, result_style, result_text, text_rows,
 };
 use super::view::{
     DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, RowWrap, ShownNotice, TextMark,
@@ -647,13 +646,6 @@ pub(crate) struct Look<'a> {
     /// The notices and notes drawn inside a message, by its index, each
     /// with the content item it goes before.
     pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
-    /// The items drawn whole.
-    pub(crate) expanded: &'a HashSet<TranscriptItem>,
-    /// Whether every item is drawn whole, as if expanded.
-    pub(crate) whole: bool,
-    /// Whether to note which items are drawn cut, which draws each item
-    /// not expanded whole too.
-    pub(crate) note_cut: bool,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
     /// The calls under each tool call that started any.
@@ -688,49 +680,20 @@ impl ShownAside<'_> {
     }
 
     /// The aside as its renderer sees it.
-    pub(crate) fn view(&self, expanded: bool) -> AsideView<'_> {
+    pub(crate) fn view(&self) -> AsideView<'_> {
         AsideView {
             id: self.id,
             aside: self.aside,
-            expanded,
         }
     }
 
-    /// Its lines, whole when `expanded`; none for a kind nothing draws.
-    pub(crate) fn lines(&self, renderers: &Renderers<'_>, expanded: bool) -> Vec<Line<'static>> {
-        renderers.aside(&self.view(expanded)).unwrap_or_default()
+    /// Its lines; none for a kind nothing draws.
+    pub(crate) fn lines(&self, renderers: &Renderers<'_>) -> Vec<Line<'static>> {
+        renderers.aside(&self.view()).unwrap_or_default()
     }
 }
 
 impl Look<'_> {
-    /// Whether `item` is drawn whole.
-    pub(crate) fn is_expanded(&self, item: &TranscriptItem) -> bool {
-        self.whole || self.expanded.contains(item)
-    }
-
-    /// The lines `draw` draws, whole when `expanded`, and whether they are
-    /// cut: noted only when asked, by drawing them whole too.
-    pub(crate) fn drawn(
-        &self,
-        expanded: bool,
-        draw: impl Fn(bool) -> Vec<Line<'static>>,
-    ) -> (Vec<Line<'static>>, bool) {
-        let (lines, (), cut) = self.drawn_with(expanded, |expanded| (draw(expanded), ()));
-        (lines, cut)
-    }
-
-    /// As [`drawn`](Self::drawn), with what `draw` says beside the lines
-    /// drawn; only the lines tell whether they are cut.
-    pub(crate) fn drawn_with<T>(
-        &self,
-        expanded: bool,
-        draw: impl Fn(bool) -> (Vec<Line<'static>>, T),
-    ) -> (Vec<Line<'static>>, T, bool) {
-        let (lines, beside) = draw(expanded);
-        let cut = self.note_cut && !expanded && draw(true).0 != lines;
-        (lines, beside, cut)
-    }
-
     /// The marks in `text`, each with the span it draws.
     pub(crate) fn marks_in(&self, text: MarkIn) -> Vec<(usize, ratatui::text::Span<'static>)> {
         let marks = self.marks.iter().filter(|mark| mark.r#in == text);
@@ -759,7 +722,6 @@ impl Look<'_> {
                     serde_json::to_vec(&shown.aside.value)
                         .unwrap_or_default()
                         .hash(hasher);
-                    self.is_expanded(&shown.item()).hash(hasher);
                 }
             }
         }
@@ -776,14 +738,11 @@ impl Look<'_> {
     }
 
     /// A hash of what message `index` (with `id`) looks like besides its
-    /// messages: its notices, whether it is expanded, and its calls' states,
-    /// output so far, expansion and running times.
+    /// messages: its notices and its calls' states, output so far and
+    /// running times.
     fn hash_message(&self, (index, id): (usize, Option<MessageId>), message: &Message) -> u64 {
         let hasher = &mut DefaultHasher::new();
         self.hash_inside(index, hasher);
-        (self.whole, self.note_cut).hash(hasher);
-        id.map(|id| self.is_expanded(&TranscriptItem::Message(id)))
-            .hash(hasher);
         let marks = self.marks.iter();
         marks
             .filter(|mark| matches!(mark.r#in, MarkIn::Message { id: of, .. } if Some(of) == id))
@@ -793,8 +752,6 @@ impl Look<'_> {
                 if let AssistantContent::ToolCall(call) = item {
                     self.calls.get(&call.id).hash(hasher);
                     self.outputs.get(&call.id).hash(hasher);
-                    self.is_expanded(&TranscriptItem::Call(call.id.clone()))
-                        .hash(hasher);
                     self.facts.of(&call.id).1.hash(hasher);
                     hash_children(self.children.get(&call.id), hasher);
                 }
@@ -815,19 +772,7 @@ impl Look<'_> {
         }
         self.calls.hash(&mut hasher);
         self.outputs.hash(&mut hasher);
-        (self.whole, self.note_cut).hash(&mut hasher);
         self.marks.hash(&mut hasher);
-        // Sets in no order: a sum of each one's hash.
-        let unordered = |item: &dyn Fn(&mut DefaultHasher)| {
-            let mut hasher = DefaultHasher::new();
-            item(&mut hasher);
-            hasher.finish()
-        };
-        let expanded = self
-            .expanded
-            .iter()
-            .map(|item| unordered(&|h| item.hash(h)));
-        expanded.fold(0u64, u64::wrapping_add).hash(&mut hasher);
         // The settled calls' facts and children change only with it.
         self.facts.changes.hash(&mut hasher);
         for (call, children) in &self.children.live {
@@ -856,8 +801,8 @@ fn level_code(level: NoticeLevel) -> u8 {
     }
 }
 
-/// One message's look: its lines and where its items are in them, those
-/// lines wrapped to the width, and the items drawn cut, when noted.
+/// One message's look: its lines and where its items are in them, and
+/// those lines wrapped to the width.
 struct Cached {
     /// The message as it was laid out.
     message: Arc<Message>,
@@ -866,7 +811,6 @@ struct Cached {
     lines: Vec<Line<'static>>,
     line_marks: Marks,
     wrapped: Wrapped,
-    cut: Vec<TranscriptItem>,
 }
 
 /// Lines wrapped to a width: the rows, whether each continues the row
@@ -890,22 +834,21 @@ pub(crate) struct Transcript {
 
 /// A part of the transcript, in order: a message's cached rows, or rows
 /// made for this frame (notices, a note, the reply streaming in), with
-/// where the items among them are and those drawn cut.
+/// where the items among them are.
 pub(crate) enum Part {
     Message(usize),
-    Rows(Wrapped, Vec<TranscriptItem>),
+    Rows(Wrapped),
 }
 
 impl Part {
-    /// `lines`, with the items `marks` says are in them, `cut` of them
-    /// drawn cut, wrapped to `width`.
+    /// `lines`, with the items `marks` says are in them, wrapped to
+    /// `width`.
     pub(crate) fn rows(
         lines: &[Line<'static>],
         marks: &[(TranscriptItem, Range<usize>)],
-        cut: Vec<TranscriptItem>,
         width: usize,
     ) -> Self {
-        Self::Rows(wrap_marked(lines, marks, width), cut)
+        Self::Rows(wrap_marked(lines, marks, width))
     }
 }
 
@@ -981,7 +924,7 @@ impl Transcript {
             {
                 continue;
             }
-            let (lines, line_marks, cut) =
+            let (lines, line_marks) =
                 message_lines(message, (conversation, index), previous, next, look);
             let wrapped = wrap_marked(&lines, &line_marks, usable);
             let cached = Cached {
@@ -990,7 +933,6 @@ impl Transcript {
                 lines,
                 line_marks,
                 wrapped,
-                cut,
             };
             match self.messages.get_mut(index) {
                 Some(slot) => *slot = cached,
@@ -1008,7 +950,7 @@ impl Transcript {
     fn wrapped<'a>(&'a self, part: &'a Part) -> Option<&'a Wrapped> {
         match part {
             Part::Message(index) => self.messages.get(*index).map(|cached| &cached.wrapped),
-            Part::Rows(wrapped, _) => Some(wrapped),
+            Part::Rows(wrapped) => Some(wrapped),
         }
     }
 
@@ -1026,18 +968,6 @@ impl Transcript {
         wrapped
             .map(|wrapped| wrapped.marks.as_slice())
             .unwrap_or_default()
-    }
-
-    /// A part's items drawn cut, as far as noted.
-    fn cut<'a>(&'a self, part: &'a Part) -> &'a [TranscriptItem] {
-        match part {
-            Part::Message(index) => self
-                .messages
-                .get(*index)
-                .map(|cached| cached.cut.as_slice())
-                .unwrap_or_default(),
-            Part::Rows(_, cut) => cut.as_slice(),
-        }
     }
 
     /// Every item's rows in the whole transcript `parts` make, top to
@@ -1136,8 +1066,7 @@ impl Transcript {
             continues: continues.cloned(),
             lit: counts.next().unwrap_or_default(),
         });
-        let cut = parts.iter().flat_map(|part| self.cut(part)).cloned();
-        DrawnTranscript::new(agent, rows.collect(), items, cut.collect(), on_screen)
+        DrawnTranscript::new(agent, rows.collect(), items, on_screen)
     }
 
     /// `highlights`, with where in `parts`, whose items `marks` says, their
@@ -1436,39 +1365,25 @@ fn message_lines(
     previous: Option<&Message>,
     next: Option<&Message>,
     look: &Look<'_>,
-) -> (Vec<Line<'static>>, Marks, Vec<TranscriptItem>) {
+) -> (Vec<Line<'static>>, Marks) {
     let mut lines = Vec::new();
     let mut marks = Marks::new();
-    let mut cut = Vec::new();
-    // Whether the message's own text is drawn cut.
-    let mut message_cut = false;
     let id = conversation.id(at);
     let author = conversation.author(at);
     let stopped = conversation
         .entries()
         .nth(at)
         .is_some_and(|entry| entry.is_stop_marker());
-    let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
     let inside = look.inside(at);
-    let inside_before = |item: usize,
-                         lines: &mut Vec<Line<'static>>,
-                         marks: &mut Marks,
-                         cut: &mut Vec<TranscriptItem>| {
+    let inside_before = |item: usize, lines: &mut Vec<Line<'static>>, marks: &mut Marks| {
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
             match inside {
                 Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
                 Inside::Aside(shown) => {
-                    let item = shown.item();
-                    let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                        shown.lines(look.renderers, expanded)
-                    });
                     let start = lines.len();
                     lines.push(Line::default());
-                    lines.extend(drawn);
-                    marks.push((item.clone(), start..lines.len()));
-                    if is_cut {
-                        cut.push(item);
-                    }
+                    lines.extend(shown.lines(look.renderers));
+                    marks.push((shown.item(), start..lines.len()));
                 }
             }
         }
@@ -1477,11 +1392,13 @@ fn message_lines(
         Message::System { .. } => {}
         Message::User { content } => {
             for (item_at, item) in content.iter().enumerate() {
-                inside_before(item_at, &mut lines, &mut marks, &mut cut);
+                inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     UserContent::Text(text) => {
-                        if let Some((label, count)) = attached_file(&text.text) {
+                        if let Some((label, body)) = attached_file(&text.text) {
+                            let count = body.lines().count();
                             lines.push(Line::from(format!("  [{label}, {count} lines]")).dim());
+                            lines.extend(text_rows(body, Style::new().dim()));
                             continue;
                         }
                         if stopped {
@@ -1495,11 +1412,7 @@ fn message_lines(
                         };
                         match author.filter(other) {
                             Some(author) => {
-                                let (drawn, is_cut) = look.drawn(expanded, |expanded| {
-                                    delivered_lines(author, &text.text, expanded, look)
-                                });
-                                lines.extend(drawn);
-                                message_cut |= is_cut;
+                                lines.extend(delivered_lines(author, &text.text, look));
                             }
                             None => lines.extend(look.renderers.message(&MessageView {
                                 role: Role::User,
@@ -1513,18 +1426,13 @@ fn message_lines(
                     // Drawn under its call already.
                     UserContent::ToolResult(result) if answers(previous, result) => {}
                     UserContent::ToolResult(result) => {
-                        let (text, style) = (result_text(result), result_style(result.is_error));
-                        let (drawn, is_cut) = look.drawn(expanded, |expanded| {
-                            let limit = if expanded { usize::MAX } else { RESULT_LINES };
-                            excerpt(&text, limit, style)
-                        });
-                        lines.extend(drawn);
-                        message_cut |= is_cut;
+                        let style = result_style(result.is_error);
+                        lines.extend(text_rows(&result_text(result), style));
                     }
                     other => {
                         if let Some(block) = ContentBlock::of_user(other) {
                             let view = (id, item_at, block, false);
-                            content_lines(view, look, (&mut lines, &mut marks, &mut cut));
+                            content_lines(view, look, (&mut lines, &mut marks));
                         }
                     }
                 }
@@ -1532,7 +1440,7 @@ fn message_lines(
         }
         Message::Assistant(assistant) => {
             for (item_at, item) in assistant.content.iter().enumerate() {
-                inside_before(item_at, &mut lines, &mut marks, &mut cut);
+                inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     AssistantContent::Text(text) => {
                         lines.push(Line::default());
@@ -1559,36 +1467,29 @@ fn message_lines(
                         let result = tool_results(next).find(|result| result.call == call.id);
                         let (facts, took) = look.facts.of(&call.id);
                         let item = TranscriptItem::Call(call.id.clone());
-                        let expanded = look.is_expanded(&item);
-                        let (drawn, decorated, is_cut) = look.drawn_with(expanded, |expanded| {
-                            let view = ToolCallView {
-                                call,
-                                result,
-                                state: look.state(&call.id, result),
-                                expanded,
-                                facts,
-                                took,
-                                output: look.outputs.get(&call.id).map(String::as_str),
-                                children: look.children.get(&call.id).map_or(&[], Vec::as_slice),
-                            };
-                            look.renderers.call_decorated(&view)
-                        });
+                        let view = ToolCallView {
+                            call,
+                            result,
+                            state: look.state(&call.id, result),
+                            facts,
+                            took,
+                            output: look.outputs.get(&call.id).map(String::as_str),
+                            children: look.children.get(&call.id).map_or(&[], Vec::as_slice),
+                        };
+                        let (drawn, decorated) = look.renderers.call_decorated(&view);
                         let start = lines.len();
                         lines.extend(drawn);
-                        marks.push((item.clone(), start..lines.len()));
+                        marks.push((item, start..lines.len()));
                         for (name, rows) in decorated {
                             let decoration = TranscriptItem::Decoration(call.id.clone(), name);
                             marks.push((decoration, start + rows.start..start + rows.end));
-                        }
-                        if is_cut {
-                            cut.push(item);
                         }
                     }
                     // A provider item with no meaning here shows nothing.
                     other => {
                         if let Some(block) = ContentBlock::of_assistant(other) {
                             let view = (id, item_at, block, true);
-                            content_lines(view, look, (&mut lines, &mut marks, &mut cut));
+                            content_lines(view, look, (&mut lines, &mut marks));
                         }
                     }
                 }
@@ -1612,13 +1513,9 @@ fn message_lines(
         }
     }
     if let Some(id) = id {
-        let message = TranscriptItem::Message(id);
-        marks.insert(0, (message.clone(), 0..lines.len()));
-        if message_cut {
-            cut.insert(0, message);
-        }
+        marks.insert(0, (TranscriptItem::Message(id), 0..lines.len()));
     }
-    (lines, marks, cut)
+    (lines, marks)
 }
 
 /// Draws the content block `block`, the `index`-th of the message `id`
@@ -1627,43 +1524,25 @@ fn message_lines(
 fn content_lines(
     (id, index, block, assistant): (Option<MessageId>, usize, ContentBlock<'_>, bool),
     look: &Look<'_>,
-    (lines, marks, cut): (
-        &mut Vec<Line<'static>>,
-        &mut Marks,
-        &mut Vec<TranscriptItem>,
-    ),
+    (lines, marks): (&mut Vec<Line<'static>>, &mut Marks),
 ) {
-    let item = id.map(|id| TranscriptItem::Content(id, index));
-    let expanded = item.as_ref().is_some_and(|item| look.is_expanded(item));
-    let (drawn, is_cut) = look.drawn(expanded, |expanded| {
-        let view = ContentView {
-            message: id,
-            index,
-            block,
-            assistant,
-            expanded,
-        };
-        look.renderers.content(&view)
-    });
+    let view = ContentView {
+        message: id,
+        index,
+        block,
+        assistant,
+    };
     let start = lines.len();
-    lines.extend(drawn);
-    if let Some(item) = item {
-        marks.push((item.clone(), start..lines.len()));
-        if is_cut {
-            cut.push(item);
-        }
+    lines.extend(look.renderers.content(&view));
+    if let Some(id) = id {
+        marks.push((TranscriptItem::Content(id, index), start..lines.len()));
     }
 }
 
 /// Text an agent or a plugin sent, without the header the model reads:
 /// drawn by the renderer of the plugin that sent it, if it has one, else
 /// as where it came from and its start.
-fn delivered_lines(
-    author: &Author,
-    text: &str,
-    expanded: bool,
-    look: &Look<'_>,
-) -> Vec<Line<'static>> {
+fn delivered_lines(author: &Author, text: &str, look: &Look<'_>) -> Vec<Line<'static>> {
     let body = author
         .header()
         .and_then(|header| text.strip_prefix(&header))
@@ -1673,7 +1552,6 @@ fn delivered_lines(
         plugin: plugin_name(author),
         title: &label,
         text: body,
-        expanded,
     };
     look.renderers.entry(&view)
 }

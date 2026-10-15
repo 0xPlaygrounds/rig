@@ -27,8 +27,6 @@ rig-models = { path = "../../plugins/rig-models" }
 rig-print = { path = "../../plugins/rig-print" }
 rig-reload = { path = "../../plugins/rig-reload" }
 rig-sessions = { path = "../../plugins/rig-sessions" }
-rig-splits = { path = "../../plugins/rig-splits" }
-rig-subagents = { path = "../../plugins/rig-subagents" }
 rig-telemetry = { path = "../../plugins/rig-telemetry" }
 rig-tui = { path = "../../plugins/rig-tui" }
 

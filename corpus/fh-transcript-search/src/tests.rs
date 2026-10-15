@@ -12,8 +12,7 @@ use rig_tui::{DrawnRow, Editor, MainEditor};
 
 use super::*;
 
-/// What `cargo build` printed: the error is past the lines the transcript
-/// shows of a result.
+/// What `cargo build` printed, an error among its lines.
 const BUILD_OUTPUT: &str = "   Compiling app v0.1.0\n\
     warning: unused import\n\
     --> src/lib.rs:1:5\n\
@@ -99,11 +98,10 @@ fn typed(text: &str) -> Vec<KeyCode> {
     text.chars().map(KeyCode::Char).collect()
 }
 
-/// `agent`'s transcript as the view lays it out with its items
-/// `expanded`, `width` columns wide.
-fn laid_out(app: &mut App, agent: Entity, expanded: Expanded, width: u16) -> DrawnTranscript {
+/// `agent`'s transcript as the view lays it out, `width` columns wide.
+fn laid_out(app: &mut App, agent: Entity, width: u16) -> DrawnTranscript {
     let lay_out = move |layout: TranscriptLayout, view: Single<&TranscriptView, With<MainPane>>| {
-        layout.lay_out(&view, agent, width, expanded)
+        layout.lay_out(&view, agent, width)
     };
     let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
     laid_out.unwrap_or_default()
@@ -122,7 +120,7 @@ fn counter(app: &mut App) -> Option<String> {
 }
 
 #[test]
-fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
+fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
     let model = MockCompletionModel::from_stream_turns([
         reply(FIRST_REPLY),
         calls("c1", "shell", serde_json::json!({})),
@@ -166,13 +164,9 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(app.world().resource::<Ended>().0.len(), 3);
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
 
-    // Turn 2's `shell` output is drawn cut, without the error.
+    // Turn 2's `shell` output, with the error.
     let call = TranscriptItem::Call(CallId::from_wire("c1"));
-    let shown = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
-    assert!(shown.is_cut(&call));
-    let cut = shown.item(&call).unwrap_or_default();
-    assert!(cut.rows().iter().all(|row| !row.text.contains("E0425")));
-    let whole = laid_out(&mut app, agent, Expanded::All, u16::MAX);
+    let whole = laid_out(&mut app, agent, u16::MAX);
     let rows = whole.rows_of(&call).unwrap_or_default();
     let before: Vec<&str> = whole
         .rows()
@@ -200,8 +194,8 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(input(&app), "");
 
     // With an item of the transcript selected, `/` opens the search.
-    // Lower case finds it: the view expands the call, lights the match
-    // and scrolls to its row; Enter takes it.
+    // Lower case finds it: the view lights the match and scrolls to its
+    // row; Enter takes it.
     edit_view(&mut app, |view| view.selected = Some(call.clone()));
     rig_harness_test_support::press(&mut app, "/");
     assert_eq!(
@@ -213,7 +207,6 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     press(&mut app, keys);
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
     let view = main_view(&app);
-    assert!(view.expanded.contains(&call));
     let spans = view.highlights.iter().flat_map(|lit| &lit.spans);
     let spans: Vec<Option<&TranscriptItem>> = spans.map(|span| span.item.as_ref()).collect();
     assert_eq!(spans, [Some(&call)]);
@@ -222,8 +215,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     let at = row.map(|row| (Some(call.clone()), ItemRow::Top(row)));
     assert_eq!(scrolls.last(), at.as_ref());
     let scrolled = scrolls.len();
-    let drawn = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
-    assert!(!drawn.is_cut(&call));
+    let drawn = laid_out(&mut app, agent, u16::MAX);
     assert_eq!(drawn.lit_in(&call), 1);
 
     // Esc after Enter: the view stays at the match, unlit; the bar took
@@ -232,7 +224,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     press(&mut app, [KeyCode::Esc]);
     assert_eq!(counter(&mut app), None);
     let view = main_view(&app);
-    assert!(view.highlights.is_empty() && view.expanded.contains(&call));
+    assert!(view.highlights.is_empty());
     assert_eq!(app.world().resource::<Scrolls>().0.len(), scrolled);
     press(&mut app, [KeyCode::Esc]);
     let view = main_view(&app);
@@ -241,7 +233,6 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         (input(&app), app.world().resource::<Interrupts>().0),
         ("", 0)
     );
-    edit_view(&mut app, |view| view.expanded.clear());
 
     // A capital letter makes the search match case. What arrives while
     // searching is searched too, with no key pressed.
@@ -257,9 +248,9 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     press(&mut app, [KeyCode::Esc]);
 
     // A regular expression counts what the same expression finds in the
-    // rendered transcript, every item whole.
+    // rendered transcript.
     search(&mut app, typed(r"re:fn \w+\("));
-    let whole = laid_out(&mut app, agent, Expanded::All, u16::MAX);
+    let whole = laid_out(&mut app, agent, u16::MAX);
     let reference = Regex::new(r"fn \w+\(").map_or(0, |regex| {
         let rows = whole.rows().iter();
         rows.map(|row| regex.find_iter(&row.text).count()).sum()
@@ -267,15 +258,14 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(reference, 5, "{whole:#?}");
     let counted = format!("{reference}/{reference}");
     assert_eq!(counter(&mut app), Some(counted));
-    let drawn = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
-    assert_eq!(lit(&drawn, ""), reference);
+    assert_eq!(lit(&whole, ""), reference);
     press(&mut app, [KeyCode::Esc]);
 
     // The view lights what the expression matched, not each place the
     // text it matched is: the last reply's `fn main` starts no line.
     search(&mut app, typed(r"re:^fn \w+"));
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
-    let drawn = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
+    let drawn = laid_out(&mut app, agent, u16::MAX);
     assert_eq!((lit(&drawn, "fn run(n"), lit(&drawn, "calls it")), (1, 0));
     press(&mut app, [KeyCode::Esc]);
 
@@ -285,7 +275,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     let split = "cannot find function";
     search(&mut app, typed(split));
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
-    let narrow = laid_out(&mut app, agent, Expanded::All, 24);
+    let narrow = laid_out(&mut app, agent, 24);
     assert!(narrow.rows().iter().all(|row| !row.text.contains(split)));
     assert_eq!(narrow.lit_in(&call), 1);
     let hits = Regex::new(split).map_or_else(|_| Vec::new(), |regex| find(&regex, agent, &narrow));
@@ -297,11 +287,11 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         "{narrow:#?}"
     );
 
-    // Esc without Enter: what the search expanded collapses and the view
-    // scrolls back to where it was, following the newest output.
+    // Esc without Enter: the view scrolls back to where it was, following
+    // the newest output.
     press(&mut app, [KeyCode::Esc]);
     let view = main_view(&app);
-    assert!(view.highlights.is_empty() && view.expanded.is_empty());
+    assert!(view.highlights.is_empty());
     let last = app.world().resource::<Scrolls>().0.last().cloned();
     assert_eq!(last, Some((None, ItemRow::Top(0))));
     assert_eq!(app.world().resource::<ShownAgent>().0, Some(agent));

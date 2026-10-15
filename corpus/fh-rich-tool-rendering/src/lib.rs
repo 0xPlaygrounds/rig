@@ -2,27 +2,19 @@
 //!
 //! The built-in tools' calls get looks of their own, in place of the
 //! default plugins' ([`TOOLS`]): `edit` and `write` as a coloured,
-//! highlighted diff that collapses after [`COLLAPSED_LINES`] lines, `shell`
-//! as `$ command` with its output as it comes, then the last
-//! [`SHELL_TAIL`] lines and `exit N · 4.2s`, `read` as one line with the
-//! lines read, `search` as a count with the first matches. The terminal
-//! view draws a call through its look while the model still streams its
-//! arguments, and keeps each call's expanded state; Ctrl+O expands the
-//! call selected (Alt+Up), or with none, expands or collapses every call.
-//! Any other tool keeps its own renderer or the default look; the looks
-//! never change what is saved or sent.
+//! highlighted diff, `shell` as `$ command` with its output as it comes,
+//! then all of it and `exit N · 4.2s`, `read` as a line with the lines
+//! read and the content highlighted, `search` as a count with the
+//! matches. The terminal view draws a call through its look while the
+//! model still streams its arguments. Any other tool keeps its own
+//! renderer or the default look; the looks never change what is saved or
+//! sent.
 
 mod highlight;
 mod looks;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::{AssistantContent, Message};
-use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, InputAction, KeyBinding, KeyInput, KeyPress,
-    KeyPressed, MainTranscript, PendingInput, ToolRenderer, TranscriptItem, TuiPlugin,
-};
-
-pub use looks::{COLLAPSED_LINES, SHELL_TAIL};
+use rig_tui::{AppToolRenderersExt, ToolRenderer};
 
 /// The tools this plugin draws: the default plugins' looks of them are
 /// turned off.
@@ -51,49 +43,6 @@ impl Plugin for RichToolRenderingPlugin {
         for tool in TOOLS {
             app.add_tool_renderer(tool, looks::render);
         }
-        if app.is_plugin_added::<TuiPlugin>() {
-            // A global binding shadows the input's own Ctrl+O.
-            let toggle = KeyBinding::new(KeyPress::ctrl('o'), "Expand or collapse tool calls");
-            app.add_key_binding(toggle, toggle_calls);
-        }
-    }
-}
-
-/// Ctrl+O: the selected item expanded or collapsed, as the view does it;
-/// with none selected, every tool call of the agent shown collapsed when
-/// one is expanded, else every one expanded.
-fn toggle_calls(
-    pressed: On<KeyPressed>,
-    agents: Query<&Conversation>,
-    mut view: MainTranscript,
-    mut events: ResMut<PendingInput>,
-) {
-    if view.selected.is_some() {
-        events.0.push(KeyInput::Action(InputAction::Expand));
-        return;
-    }
-    let Some(conversation) = pressed.agent.and_then(|agent| agents.get(agent).ok()) else {
-        return;
-    };
-    let calls: Vec<TranscriptItem> = conversation
-        .messages()
-        .iter()
-        .filter_map(|message| match &**message {
-            Message::Assistant(assistant) => Some(assistant.content.iter()),
-            _ => None,
-        })
-        .flatten()
-        .filter_map(|item| match item {
-            AssistantContent::ToolCall(call) => Some(TranscriptItem::Call(call.id.clone())),
-            _ => None,
-        })
-        .collect();
-    if calls.iter().any(|call| view.expanded.contains(call)) {
-        for call in &calls {
-            view.expanded.remove(call);
-        }
-    } else {
-        view.expanded.extend(calls);
     }
 }
 

@@ -6,17 +6,10 @@ use rig_tools::fs::file_change;
 use rig_tools::{SearchHits, split_status};
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{RESULT_LINES, ToolCallView, excerpt};
+use rig_tui::{ToolCallView, text_rows};
 use serde_json::Value;
 
 use crate::highlight::{Lang, spans};
-
-/// Lines of a diff shown while it is collapsed.
-pub const COLLAPSED_LINES: usize = 30;
-/// Lines of a command's output shown while it is collapsed.
-pub const SHELL_TAIL: usize = 5;
-/// Matches of a search shown while it is collapsed.
-const MATCHES: usize = 3;
 
 /// The background of an added and of a removed line.
 const ADDED: Color = Color::Indexed(22);
@@ -31,16 +24,6 @@ pub(crate) fn render(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         "search" => search(view),
         _ => view.default_lines(),
     }
-}
-
-/// The marker after a collapsed body: how many lines are not shown.
-fn more(hidden: usize, view: &ToolCallView<'_>) -> Option<Line<'static>> {
-    let how = if view.expanded {
-        ""
-    } else {
-        " (Ctrl+O to expand)"
-    };
-    (hidden > 0).then(|| Line::from(format!("    … {hidden} more lines{how}")).dim())
 }
 
 /// A line of a unified diff: its sign, then its text highlighted, on a
@@ -97,7 +80,7 @@ fn diffs(view: &ToolCallView<'_>, path: &str) -> Vec<String> {
 }
 
 /// `edit` and `write`: the path with the lines added and removed, then
-/// the change as a diff, cut after [`COLLAPSED_LINES`] lines.
+/// the change as a diff.
 fn change(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let diffs = diffs(view, &path);
@@ -111,18 +94,16 @@ fn change(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let title = format!("{} {path}", view.name());
     let mut lines = vec![view.header(title, format!("+{added} -{removed}"))];
     if view.failed() {
-        lines.extend(view.result_lines(RESULT_LINES));
+        lines.extend(view.result_lines());
         return lines;
     }
-    let shown = view.limit(COLLAPSED_LINES);
     let lang = Lang::of(&path);
-    lines.extend(body.iter().take(shown).map(|line| diff_line(line, lang)));
-    lines.extend(more(body.len().saturating_sub(shown), view));
+    lines.extend(body.iter().map(|line| diff_line(line, lang)));
     lines
 }
 
-/// `shell`: `$ command`; while it runs, its output so far; then the end
-/// of its output, its exit code and how long it ran, red when it failed.
+/// `shell`: `$ command`; while it runs, its output so far; then its
+/// output, its exit code and how long it ran, red when it failed.
 fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let command = view.argument("command").unwrap_or_default();
     let mut command_lines = command.lines();
@@ -132,8 +113,8 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let text = view.result_text();
     let Some(text) = text.as_deref().filter(|_| !view.failed()) else {
         match view.output {
-            Some(output) => lines.extend(printed(output, view, Style::new().dim())),
-            None => lines.extend(view.result_lines(RESULT_LINES)),
+            Some(output) => lines.extend(printed(output, Style::new().dim())),
+            None => lines.extend(view.result_lines()),
         }
         return lines;
     };
@@ -147,7 +128,7 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     } else {
         Style::new().dim()
     };
-    lines.extend(printed(output, view, style));
+    lines.extend(printed(output, style));
     // Answered in an earlier run, the call has no facts: the tool's own
     // line says how it ended.
     let Some(status) = status else {
@@ -173,34 +154,20 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     lines
 }
 
-/// What a command printed: collapsed, its first line, a count of the
-/// lines hidden and its last [`SHELL_TAIL`] lines. When the tool cut the
-/// output, its first line is the tool's note saying how much and which
-/// file has all of it.
-fn printed(output: &str, view: &ToolCallView<'_>, style: Style) -> Vec<Line<'static>> {
-    let output: Vec<&str> = output.lines().collect();
-    let tail = view.limit(SHELL_TAIL);
-    let hidden = output.len().saturating_sub(tail.saturating_add(1));
-    let line = |line: &&str| Line::styled(format!("    {}", line.replace('\t', "    ")), style);
-    if hidden == 0 {
-        return output.iter().map(line).collect();
-    }
-    let first = output.first().map(line);
-    let last = output.iter().skip(hidden.saturating_add(1)).map(line);
-    first
-        .into_iter()
-        .chain(more(hidden, view))
-        .chain(last)
-        .collect()
+/// What a command printed. When the tool cut the output, its first line
+/// is the tool's note saying how much and which file has all of it.
+fn printed(output: &str, style: Style) -> Vec<Line<'static>> {
+    let line = |line: &str| Line::styled(format!("    {}", line.replace('\t', "    ")), style);
+    output.lines().map(line).collect()
 }
 
-/// `read`: one line with the path and the lines it showed; the content
-/// when expanded.
+/// `read`: a line with the path and the lines it showed, then the
+/// content.
 fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let Some(text) = view.result_text().filter(|_| !view.failed()) else {
         let mut lines = vec![view.header(format!("read {path}"), "")];
-        lines.extend(view.result_lines(RESULT_LINES));
+        lines.extend(view.result_lines());
         return lines;
     };
     // Answered in an earlier run, the call has no facts: no range.
@@ -210,14 +177,12 @@ fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let shown = read.and_then(|read| read.0.first().and_then(|file| file.lines));
     let range = shown.map(range).unwrap_or_default();
     let mut lines = vec![view.header(format!("read {path}"), range)];
-    if view.expanded {
-        let lang = Lang::of(&path);
-        lines.extend(text.lines().map(|line| {
-            let mut parts = vec![Span::from("    ")];
-            parts.extend(spans(&line.replace('\t', "  "), lang));
-            Line::from(parts)
-        }));
-    }
+    let lang = Lang::of(&path);
+    lines.extend(text.lines().map(|line| {
+        let mut parts = vec![Span::from("    ")];
+        parts.extend(spans(&line.replace('\t', "  "), lang));
+        Line::from(parts)
+    }));
     lines
 }
 
@@ -233,7 +198,7 @@ fn range(shown: LinesShown) -> String {
     }
 }
 
-/// `search`: how many matches, then the first few.
+/// `search`: how many matches, then each.
 fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let pattern = view.argument("pattern").unwrap_or_default().to_owned();
     let title = format!("search {pattern}");
@@ -243,7 +208,7 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let Some(SearchHits(found)) = found else {
         // Not run yet, failed, or answered in an earlier run.
         let mut lines = vec![view.header(title, "")];
-        lines.extend(view.result_lines(view.limit(MATCHES)));
+        lines.extend(view.result_lines());
         return lines;
     };
     let count = match (found.hits.len(), found.stopped) {
@@ -253,10 +218,6 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     };
     let hits: Vec<String> = found.hits.iter().map(ToString::to_string).collect();
     let mut lines = vec![view.header(title, count)];
-    lines.extend(excerpt(
-        &hits.join("\n"),
-        view.limit(MATCHES),
-        Style::new().dim(),
-    ));
+    lines.extend(text_rows(&hits.join("\n"), Style::new().dim()));
     lines
 }

@@ -27,7 +27,7 @@
 //! - **The terminal:** [`RunInTerminal`], [`TerminalWrite`],
 //!   [`CopyToClipboard`], [`TuiFrame`], [`TerminalFocus`]; a test draws to a
 //!   [`TuiTestScreen`].
-//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`excerpt`].
+//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`text_rows`].
 //!
 //! The view shows every plugin's pickers and every agent's questions, one
 //! at a time ([`PickerInput`]). All of this exists in every run, also under
@@ -81,13 +81,13 @@ pub use panel::{
 };
 pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerInput};
 pub use ratatui;
-pub use render::{Expanded, TranscriptLayout, TuiFrame};
+pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
     AppToolRenderersExt, AsideRenderer, AsideView, CallDecorator, CallState, ChildCall,
     ContentBlock, ContentKind, ContentRenderer, ContentView, DecorateMessage, DecoratedMessage,
-    EntryRenderer, EntryView, MessageDecorator, MessageRenderer, MessageView, RESULT_LINES,
-    RenderAside, RenderContent, RenderEntry, RenderMessage, RenderToolCall, Role, ToolCallView,
-    ToolRenderer, branch_lines, excerpt, split_lines,
+    EntryRenderer, EntryView, MessageDecorator, MessageRenderer, MessageView, RenderAside,
+    RenderContent, RenderEntry, RenderMessage, RenderToolCall, Role, ToolCallView, ToolRenderer,
+    branch_lines, split_lines, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
@@ -356,12 +356,7 @@ fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
         "✗ build failed (noted for the agent)",
         Style::new().red().bold(),
     )];
-    let limit = if entry.expanded {
-        usize::MAX
-    } else {
-        RESULT_LINES
-    };
-    lines.extend(excerpt(entry.text, limit, Style::new().red().dim()));
+    lines.extend(text_rows(entry.text, Style::new().red().dim()));
     lines
 }
 

@@ -410,12 +410,12 @@ without `rig-tui` puts it behind a default `tui = ["dep:rig-tui"]` feature.
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{AppToolRenderersExt, RESULT_LINES};
+use rig_tui::AppToolRenderersExt;
 
 fn build(app: &mut App) {
     app.add_tool_renderer("word_count", |call| {
         let mut lines = vec![call.header("Count", call.argument("path").unwrap_or_default())];
-        lines.extend(call.result_lines(RESULT_LINES));
+        lines.extend(call.result_lines());
         for child in call.children {
             let indent = "  ".repeat(child.depth + 1);
             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
@@ -2063,7 +2063,7 @@ fn stats(home: Res<RigHome>, stores: Res<StoreOpener>, mut commands: Commands) {
 A plugin puts a note in an agent's transcript as an
 [aside](#changing-history), `Note::new(title, text).aside(author, after)`,
 after a message (`after`, a `MessageId`, or the summary that replaced it),
-its title shown collapsed and its text expanded. Every front draws it, no
+with its title and its text. Every front draws it, no
 model sees it, and it comes back on `/resume`, `/reload` and in a fork,
 unless `unsaved()`; `Note::of(aside)` reads one.
 
@@ -2075,10 +2075,10 @@ with `add_aside_renderer(kind, ..)` (rig's branch and split pointers:
 `add_message_renderer(Role::User, ..)`. The transcript is a
 `TranscriptPane` ([another](#what-agents-do-and-say-in-a-terminal-panel)),
 the default screen's marked `MainPane`. Plugins read and set a pane's
-`TranscriptView` component (`MainTranscript` for the main one): the items
-`expanded` and `selected` (Alt+Up and Alt+Down select, Ctrl+O expands),
-the `highlights` lit, the `marks` (a `TextMark` label inside a reply's
-text or a streaming call's) and where it is scrolled (`top()`, placed in
+`TranscriptView` component (`MainTranscript` for the main one): the item
+`selected` (Alt+Up and Alt+Down select), the `highlights` lit, the `marks`
+(a `TextMark` label inside a reply's text or a streaming call's) and where
+it is scrolled (`top()`, placed in
 `TuiSystems::Layout`; a panel fitted to it changes in `TuiSystems::Fit`,
 drawn the same frame). `ScrollTo { pane, item, row }` scrolls to a
 `TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at
@@ -2114,9 +2114,7 @@ fn build(app: &mut App) {
         .add_command("find", "Light a text and show the last message with it", find)
         .add_entry_renderer("mark", |entry| {
             let mut lines = vec![Line::from(format!("★ {}", entry.title)).yellow()];
-            if entry.expanded {
-                lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
-            }
+            lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
             lines
         })
         // An image keeps four rows, which `place_images` draws it over.

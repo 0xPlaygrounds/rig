@@ -4,12 +4,12 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 
 /// `text` coloured as a unified diff when it holds a hunk header, else
-/// `None`. At most `limit` lines.
-pub fn unified_lines(text: &str, limit: usize) -> Option<Vec<Line<'static>>> {
+/// `None`.
+pub fn unified_lines(text: &str) -> Option<Vec<Line<'static>>> {
     if !text.lines().any(|line| line.starts_with("@@")) {
         return None;
     }
-    let mut lines: Vec<Line<'static>> = text
+    let lines: Vec<Line<'static>> = text
         .lines()
         .map(|line| {
             let line = line.replace('\t', "    ");
@@ -26,10 +26,5 @@ pub fn unified_lines(text: &str, limit: usize) -> Option<Vec<Line<'static>>> {
             }
         })
         .collect();
-    if lines.len() > limit {
-        let rest = lines.len() - limit;
-        lines.truncate(limit);
-        lines.push(Line::from(format!("    … {rest} more diff lines")).dim());
-    }
     Some(lines)
 }

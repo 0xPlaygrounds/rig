@@ -7,21 +7,18 @@
 //! What is typed searches as it is typed, ignoring case unless the query
 //! has a capital letter; `re:` makes the rest a regular expression. It
 //! searches the transcript as the view lays it out ([`TranscriptLayout`]),
-//! every item whole, at the width it draws at:
-//! each line as its renderer draws it, its wrapped rows rejoined, a
-//! collapsed output's cut lines included, the notices where they are drawn
-//! and the reply streaming in.
+//! at the width it draws at: each line as its renderer draws it, its
+//! wrapped rows rejoined, the notices where they are drawn and the reply
+//! streaming in.
 //!
 //! The matches the view draws are lit in the transcript, each where the
 //! search found it ([`Highlight::spans`]), the one shown in a style of its
 //! own, across the rows a wrap split one into. Moving to one scrolls the
-//! view to its row ([`ScrollTo`] with [`ItemRow::Top`]), expanding the items it
-//! is in that are drawn cut. Enter takes it; `n` (or Enter again) and `N`
+//! view to its row ([`ScrollTo`] with [`ItemRow::Top`]). Enter takes it; `n` (or Enter again) and `N`
 //! (or Shift+Enter) move, wrapping around, and the bar counts (`3/17`).
 //! Tab searches every agent, naming the agent of the match and showing it. Esc
 //! closes the bar and unlights the matches; unless a match was taken, it
-//! also collapses what the search expanded and scrolls back to where the
-//! view was. The bar takes the keys it does, so none of them reaches the
+//! also scrolls back to where the view was. The bar takes the keys it does, so none of them reaches the
 //! input or its bindings: its Esc does not also stop the agent. The search
 //! only reads: it never changes a conversation.
 
@@ -35,10 +32,10 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Highlight, InputSystems, ItemRow,
-    KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope, LineSpan, MainPane,
-    PanelCanvas, PendingInput, Placement, RequestRedraw, ScrollTo, ShowAgent, TranscriptItem,
-    TranscriptLayout, TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Highlight, InputSystems, ItemRow, KeyBinding,
+    KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope, LineSpan, MainPane, PanelCanvas,
+    PendingInput, Placement, RequestRedraw, ScrollTo, ShowAgent, TranscriptItem, TranscriptLayout,
+    TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
 };
 
 /// Whose transcript is searched.
@@ -174,8 +171,6 @@ pub struct TranscriptSearch {
     back: Option<(Entity, Option<(TranscriptItem, usize)>)>,
     /// The match the view was last scrolled to, and its row then.
     went: Option<(MatchKey, usize)>,
-    /// The items the search expanded, which were drawn cut before.
-    expanded: Vec<TranscriptItem>,
     /// The highlights it lit.
     lit: Vec<Highlight>,
 }
@@ -207,7 +202,6 @@ impl TranscriptSearch {
             dirty: true,
             back,
             went: None,
-            expanded: Vec::new(),
             lit: Vec::new(),
         }
     }
@@ -329,9 +323,11 @@ impl TranscriptSearch {
 
 /// `drawn`, the matches as the view draws them, lit where it draws them:
 /// the one `shown` first, in a style of its own, then the rest.
-fn highlights(drawn: &[Hit], shown: Option<&MatchKey>) -> Vec<Highlight> {
-    let (current, rest): (Vec<&Hit>, Vec<&Hit>) =
-        drawn.iter().partition(|hit| Some(&hit.key()) == shown);
+fn highlights<'a>(
+    drawn: impl Iterator<Item = &'a Hit>,
+    shown: Option<&MatchKey>,
+) -> Vec<Highlight> {
+    let (current, rest): (Vec<&Hit>, Vec<&Hit>) = drawn.partition(|hit| Some(&hit.key()) == shown);
     let current = (current, Style::new().black().on_cyan());
     let rest = (rest, Style::new().black().on_yellow());
     [current, rest]
@@ -424,8 +420,8 @@ impl Transcripts<'_, '_> {
     }
 
     /// The matches of `regex` in the transcript of the agent shown, or of
-    /// every agent, laid out as the view draws it with every item whole,
-    /// at the width it draws at.
+    /// every agent, laid out as the view draws it, at the width it draws
+    /// at.
     fn find(&self, regex: &Regex, scope: Scope, view: &TranscriptView) -> Vec<Hit> {
         let mut agents: Vec<Entity> = self
             .agents
@@ -435,7 +431,7 @@ impl Transcripts<'_, '_> {
         agents.sort();
         let width = view.width().unwrap_or(u16::MAX);
         let laid_out = agents.into_iter().filter_map(|agent| {
-            let laid_out = self.layout.lay_out(view, agent, width, Expanded::All)?;
+            let laid_out = self.layout.lay_out(view, agent, width)?;
             Some(find(regex, agent, &laid_out))
         });
         laid_out.flatten().collect()
@@ -513,11 +509,7 @@ fn follow(
 }
 
 /// Lights the matches where the view draws them, ahead of other plugins'
-/// highlights, and, when the match shown moved, scrolls to its row,
-/// expanding the items it is in that are drawn cut, in place of those the
-/// search expanded before. The row is the match's as the view draws its
-/// item with those expanded, not whole: a call cut before the match in
-/// the same message still draws cut.
+/// highlights, and, when the match shown moved, scrolls to its row.
 fn show(
     search: &mut TranscriptSearch,
     (pane, view): (Entity, &mut Mut<TranscriptView>),
@@ -529,54 +521,15 @@ fn show(
     let jump = (went != search.went).then(|| search.current().cloned());
     search.went = went;
     let jump = jump.flatten();
-    let width = view.width().unwrap_or(u16::MAX);
-    let as_shown = |view: &TranscriptView, agent| {
-        let layout = &transcripts.layout;
-        layout.lay_out(view, agent, width, Expanded::AsShown)
-    };
-    if let Some(hit) = &jump {
-        for item in search
-            .expanded
-            .extract_if(.., |item| !hit.within.contains(item))
-        {
-            view.expanded.remove(&item);
-        }
-        let cut: Vec<TranscriptItem> = as_shown(view, hit.agent)
-            .map(|drawn| {
-                hit.within
-                    .iter()
-                    .filter(|item| drawn.is_cut(item))
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        for item in cut {
-            if view.expanded.insert(item.clone()) {
-                search.expanded.push(item);
-            }
-        }
-    }
     // The agent the view draws once it jumps.
     let agent = jump.as_ref().map(|hit| hit.agent).or(transcripts.shown.0);
-    let laid_out = agent.and_then(|agent| as_shown(view, agent));
-    let drawn = search.regex.as_ref().zip(agent).zip(laid_out.as_ref());
-    let drawn = drawn.map(|((regex, agent), laid_out)| find(regex, agent, laid_out));
-    let drawn = drawn.unwrap_or_default();
     if let Some(hit) = jump {
-        let found = drawn.iter().find(|found| found.key() == hit.key());
-        let row = ItemRow::Top(found.map_or(hit.row, |found| found.row));
-        let item = hit.item().cloned();
+        let (item, row) = (hit.item().cloned(), ItemRow::Top(hit.row));
         commands.trigger(ShowAgent { entity: hit.agent });
         commands.trigger(ScrollTo { pane, item, row });
     }
-    // Drawn cut, the match shown counts among other matches of its item.
-    let whole = |hit: &Hit| {
-        laid_out
-            .as_ref()
-            .is_some_and(|laid_out| !hit.within.iter().any(|item| laid_out.is_cut(item)))
-    };
-    let shown = shown.filter(|_| search.current().is_some_and(whole));
-    let lit = highlights(&drawn, shown.as_ref());
+    let drawn = search.hits.iter().filter(|hit| Some(hit.agent) == agent);
+    let lit = highlights(drawn, shown.as_ref());
     if lit != search.lit {
         view.highlights
             .retain(|highlight| !search.lit.contains(highlight));
@@ -586,7 +539,7 @@ fn show(
 }
 
 /// Closes the bar and unlights the matches; with no match taken, also
-/// collapses what it expanded and scrolls back to where the view was.
+/// scrolls back to where the view was.
 fn close(
     bar: Entity,
     search: &mut TranscriptSearch,
@@ -600,9 +553,6 @@ fn close(
     }
     if search.taken {
         return;
-    }
-    for item in search.expanded.drain(..) {
-        view.expanded.remove(&item);
     }
     if let Some((agent, top)) = search.back.take() {
         let (item, row) = top.map_or((None, 0), |(item, row)| (Some(item), row));

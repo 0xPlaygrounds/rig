@@ -315,7 +315,8 @@ and `@` completes paths of the project (skipping what `.gitignore` leaves out);
 Tab or Enter takes the selected one. A command that is unknown or refused, such
 as one with arguments it does not take, comes back in the input with the
 reason; Enter then sends it to the model as it is. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
-tool's call in its own way; a plugin can draw its own tools' calls with
+tool's call in its own way, always whole: every call's arguments and result,
+every diff and every note, nothing cut or folded; a plugin can draw its own tools' calls with
 `app.add_tool_renderer` (`rig_tui::AppToolRenderersExt`). PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
 

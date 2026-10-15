@@ -435,7 +435,7 @@ fn draw_diff(
             .get(&diff.path)
             .map(TouchedFile::session_diff)
             .unwrap_or_default();
-        let lines = rig_tui::diff::unified_lines(&text, usize::MAX)
+        let lines = rig_tui::diff::unified_lines(&text)
             .unwrap_or_else(|| vec![Line::from("No diff for this file.").dim()]);
         let title = format!("{} (Esc closes)", shown(&diff.path, &root.0));
         let area = canvas.area();

@@ -433,7 +433,7 @@ type LiveEffect = (
 
 /// What the transcript is drawn from besides the agent.
 pub(crate) struct Sources<'a> {
-    /// The pane's view as plugins steer it: what is expanded and marked.
+    /// The pane's view as plugins steer it: what is marked.
     pub(crate) view: &'a TranscriptView,
     /// The notices shown.
     pub(crate) notices: &'a Notices,
@@ -441,10 +441,6 @@ pub(crate) struct Sources<'a> {
     pub(crate) renderers: &'a Renderers<'a>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
-    /// Whether every item is drawn whole, as if expanded.
-    pub(crate) whole: bool,
-    /// Whether to note which items are drawn cut.
-    pub(crate) note_cut: bool,
 }
 
 /// Lays out an agent's transcript as the terminal view draws it, without
@@ -459,17 +455,17 @@ pub(crate) struct Sources<'a> {
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
-/// use rig_tui::{Expanded, MainPane, TranscriptLayout, TranscriptView};
+/// use rig_tui::{MainPane, TranscriptLayout, TranscriptView};
 ///
-/// /// `/export`: the agent's transcript as the main pane draws it, every
-/// /// item whole, a line per row.
+/// /// `/export`: the agent's transcript as the main pane draws it, a line
+/// /// per row.
 /// fn export(
 ///     In(args): In<CommandArgs>,
 ///     layout: TranscriptLayout,
 ///     view: Single<&TranscriptView, With<MainPane>>,
 /// ) {
 ///     let width = view.width().unwrap_or(100);
-///     let Some(laid_out) = layout.lay_out(&view, args.agent, width, Expanded::All) else {
+///     let Some(laid_out) = layout.lay_out(&view, args.agent, width) else {
 ///         return;
 ///     };
 ///     let rows: Vec<&str> = laid_out.rows().iter().map(|row| row.text.as_str()).collect();
@@ -499,31 +495,17 @@ pub struct TranscriptLayout<'w, 's> {
     notices: Res<'w, Notices>,
 }
 
-/// Which items a [`TranscriptLayout`] lays out whole.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Expanded {
-    /// Those the view draws whole, its [`TranscriptView::expanded`]; the
-    /// rest are cut as their look says.
-    #[default]
-    AsShown,
-    /// Every item, as the view draws it once expanded.
-    All,
-}
-
 impl TranscriptLayout<'_, '_> {
     /// `agent`'s transcript laid out in rows `width` columns wide (as
     /// [`TranscriptView::width`] says the view draws it; `u16::MAX` keeps
-    /// a line in one row), its items drawn whole as `expanded` says and
-    /// the matches of `view`'s highlights counted, as the view would draw
-    /// it with `view`. It says which items are drawn cut, and has no rows
-    /// on screen. [`DrawnTranscript::item`] takes one item's rows out of
+    /// a line in one row), the matches of `view`'s highlights counted, as
+    /// the view would draw it with `view`. It has no rows on screen. [`DrawnTranscript::item`] takes one item's rows out of
     /// it. `None` when `agent` is no agent.
     pub fn lay_out(
         &self,
         view: &TranscriptView,
         agent: Entity,
         width: u16,
-        expanded: Expanded,
     ) -> Option<DrawnTranscript> {
         let shown = self.agent(agent, true)?;
         let renderers = self.looks.by_kind(None);
@@ -532,8 +514,6 @@ impl TranscriptLayout<'_, '_> {
             notices: self.notices(),
             renderers: &renderers,
             facts: &self.facts,
-            whole: expanded == Expanded::All,
-            note_cut: true,
         };
         let mut transcript = Transcript::default();
         let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
@@ -544,15 +524,14 @@ impl TranscriptLayout<'_, '_> {
     /// session read with `rig_memory::Session::read`), laid out as
     /// [`lay_out`](Self::lay_out) lays out an agent's: the same order,
     /// renderers and wrapping, with no live calls, notices or facts, and
-    /// the matches of `view`'s highlights counted. Its marks and expanded
-    /// items name messages by id, which another conversation's messages
+    /// the matches of `view`'s highlights counted. Its marks name messages
+    /// by id, which another conversation's messages
     /// may share: lay out with a view of its own.
     pub fn lay_out_conversation(
         &self,
         view: &TranscriptView,
         conversation: &conversation::Conversation,
         width: u16,
-        expanded: Expanded,
     ) -> DrawnTranscript {
         let shown = ShownConversation::value(conversation, Entity::PLACEHOLDER);
         let renderers = self.looks.by_kind(None);
@@ -562,8 +541,6 @@ impl TranscriptLayout<'_, '_> {
             notices: &notices,
             renderers: &renderers,
             facts: &facts,
-            whole: expanded == Expanded::All,
-            note_cut: true,
         };
         let mut transcript = Transcript::default();
         let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
@@ -668,7 +645,7 @@ pub(crate) fn lay_out_transcript(
         for notice in notices.filter(|(_, notice)| notice.is_for_every_agent()) {
             notice_lines(notice, &mut extra, &mut marks);
         }
-        parts.push(Part::rows(&extra, &marks, Vec::new(), wrap_width));
+        parts.push(Part::rows(&extra, &marks, wrap_width));
         return parts;
     };
     let (conversation, count) = (shown.conversation, shown.conversation.messages().len());
@@ -681,9 +658,6 @@ pub(crate) fn lay_out_transcript(
         calls: &shown.calls,
         outputs: &shown.outputs,
         inside: HashMap::new(),
-        expanded: &view.expanded,
-        whole: sources.whole,
-        note_cut: sources.note_cut,
         facts: sources.facts,
         children: &shown.children,
         marks: &view.marks,
@@ -727,15 +701,10 @@ pub(crate) fn lay_out_transcript(
     for index in 0..=count {
         let (notices, asides) = after.next().unwrap_or_default();
         for aside in asides {
-            let item = aside.item();
-            let (drawn, cut) = look.drawn(look.is_expanded(&item), |expanded| {
-                aside.lines(sources.renderers, expanded)
-            });
             let mut lines = vec![Line::default()];
-            lines.extend(drawn);
-            let marks = [(item.clone(), 0..lines.len())];
-            let cut = if cut { vec![item] } else { Vec::new() };
-            parts.push(Part::rows(&lines, &marks, cut, wrap_width));
+            lines.extend(aside.lines(sources.renderers));
+            let marks = [(aside.item(), 0..lines.len())];
+            parts.push(Part::rows(&lines, &marks, wrap_width));
         }
         let (mut extra, mut marks) = (Vec::new(), Marks::new());
         for notice in notices {
@@ -767,11 +736,11 @@ pub(crate) fn lay_out_transcript(
                 extra.extend(sources.renderers.call(&view));
             }
             inbox_lines(&shown.inbox, &mut extra);
-            parts.push(Part::rows(&extra, &marks, Vec::new(), wrap_width));
+            parts.push(Part::rows(&extra, &marks, wrap_width));
             break;
         }
         if !extra.is_empty() {
-            parts.push(Part::rows(&extra, &marks, Vec::new(), wrap_width));
+            parts.push(Part::rows(&extra, &marks, wrap_width));
         }
         parts.push(Part::Message(index));
     }

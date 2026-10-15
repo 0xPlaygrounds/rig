@@ -3,17 +3,14 @@
 
 use rig_tui::ratatui::style::Stylize;
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{CallState, ChildCall, RESULT_LINES, ToolCallView};
-
-/// The most characters of a consultant's tool call's arguments shown.
-const ARGUMENTS: usize = 60;
+use rig_tui::{CallState, ChildCall, ToolCallView};
 
 /// A `consult` call.
 pub(crate) fn consult(view: &ToolCallView) -> Vec<Line<'static>> {
     let question = view.argument("question").unwrap_or_default();
     let mut lines = vec![view.header("Consult", question)];
     lines.extend(view.children.iter().map(child));
-    lines.extend(view.result_lines(view.limit(RESULT_LINES)));
+    lines.extend(view.result_lines());
     lines
 }
 
@@ -24,11 +21,6 @@ fn child(child: &ChildCall) -> Line<'static> {
     let what = match &child.call {
         Some(call) => {
             let arguments = serde_json::Value::Object(call.function.arguments.clone());
-            let mut arguments = arguments.to_string();
-            if let Some((at, _)) = arguments.char_indices().nth(ARGUMENTS) {
-                arguments.truncate(at);
-                arguments.push('…');
-            }
             format!("{} {arguments}", child.name)
         }
         None => child.name.clone(),

@@ -1,11 +1,10 @@
 //! View state, kept apart from the agent core: the shown agent (the
 //! harness's [`ShownAgent`]), the input's completion, the pickers and questions
 //! waiting to be shown, each transcript pane as plugins read and steer it
-//! ([`TranscriptView`]): what is expanded and selected, the text lit and
+//! ([`TranscriptView`]): what is selected, the text lit and
 //! where it is scrolled, and the recent notices ([`Notices`]), which a
 //! reload keeps in the session's [`PluginData`] for the build it starts.
 
-use std::collections::HashSet;
 use std::ops::Range;
 
 use bevy_ecs::prelude::*;
@@ -124,9 +123,7 @@ pub enum TranscriptItem {
 /// ```
 #[derive(Component, Clone, Debug, Default)]
 pub struct TranscriptView {
-    /// Items drawn whole; the rest are drawn cut, as their look says.
-    pub expanded: HashSet<TranscriptItem>,
-    /// The item the user selected, drawn marked; Ctrl+O expands it.
+    /// The item the user selected, drawn marked.
     pub selected: Option<TranscriptItem>,
     /// Text lit where the transcript draws it, such as a search's
     /// matches; text a wrap splits across two rows is lit on both.
@@ -264,13 +261,12 @@ pub enum ItemRow {
 }
 
 /// The transcript as the view drew it at its last frame: every row laid
-/// out, on screen or not, as drawn (wrapped, cut where its item is
-/// collapsed, as its renderer drew it), with the items they belong to,
-/// those drawn cut, and the matches the view lit in each. A plugin counts
-/// and scrolls over this, not over the source text.
+/// out, on screen or not, as drawn (wrapped, as its renderer drew it),
+/// with the items they belong to and the matches the view lit in each. A
+/// plugin counts and scrolls over this, not over the source text.
 /// [`TranscriptLayout`](crate::TranscriptLayout) lays one out without
-/// drawing it, for any agent, cut as drawn or whole; a plugin's test, with
-/// no terminal to draw, inserts such a one as this resource.
+/// drawing it, for any agent; a plugin's test, with no terminal to draw,
+/// inserts such a one as this resource.
 ///
 /// It costs nothing until a plugin adds it to a pane. From then on, each
 /// frame that lays out the pane, in
@@ -278,8 +274,7 @@ pub enum ItemRow {
 /// every row of it, and with [`TranscriptView::highlights`] set counts
 /// their matches in each, so its work and memory grow with the
 /// transcript; a streaming reply draws at most about 30 frames a second.
-/// An item laid out again is also drawn whole once, to tell whether it is
-/// cut. Frames that draw the same rows leave it unchanged, so
+/// Frames that draw the same rows leave it unchanged, so
 /// `Ref::is_changed` says what is drawn changed.
 ///
 /// ```no_run
@@ -302,7 +297,6 @@ pub struct DrawnTranscript {
     area: ratatui::layout::Rect,
     rows: Vec<DrawnRow>,
     items: Vec<(TranscriptItem, Range<usize>)>,
-    cut: Vec<TranscriptItem>,
     on_screen: Range<usize>,
 }
 
@@ -361,13 +355,12 @@ impl DrawnRow {
 }
 
 impl DrawnTranscript {
-    /// The transcript `agent`'s `rows` make, `items` among them, `cut` of
-    /// them drawn cut, with `on_screen` on screen.
+    /// The transcript `agent`'s `rows` make, `items` among them, with
+    /// `on_screen` on screen.
     pub(crate) fn new(
         agent: Option<Entity>,
         rows: Vec<DrawnRow>,
         items: Vec<(TranscriptItem, Range<usize>)>,
-        cut: Vec<TranscriptItem>,
         on_screen: Range<usize>,
     ) -> Self {
         Self {
@@ -375,7 +368,6 @@ impl DrawnTranscript {
             area: ratatui::layout::Rect::default(),
             rows,
             items,
-            cut,
             on_screen,
         }
     }
@@ -468,21 +460,13 @@ impl DrawnTranscript {
         rows.iter().map(DrawnRow::lit_total).sum()
     }
 
-    /// Whether `item` is drawn cut: collapsed, it draws less than it does
-    /// expanded, such as a shell call's last lines of output. Expanding it
-    /// draws it whole. A message is cut when its own text is, not when
-    /// only a call or a note in it is.
-    pub fn is_cut(&self, item: &TranscriptItem) -> bool {
-        self.cut.contains(item)
-    }
-
     /// The rows on screen; none in one laid out without drawing it.
     pub fn on_screen(&self) -> Range<usize> {
         self.on_screen.clone()
     }
 
     /// Only `item`'s rows, as a transcript of their own: its rows from 0,
-    /// the items drawn in it with which are cut, and its rows on screen.
+    /// the items drawn in it, and its rows on screen.
     /// `None` when it is not drawn.
     pub fn item(&self, item: &TranscriptItem) -> Option<Self> {
         let at = self.items.iter().position(|(drawn, _)| drawn == item)?;
@@ -498,11 +482,6 @@ impl DrawnTranscript {
             .filter(|(_, inner)| within(inner))
             .map(|(item, inner)| (item.clone(), inner.start - start..inner.end - start))
             .collect();
-        let cut = self
-            .cut
-            .iter()
-            .filter(|cut| items.iter().any(|(item, _)| item == *cut));
-        let cut = cut.cloned().collect();
         let on_screen = self.on_screen.start.max(rows.start)..self.on_screen.end.min(rows.end);
         let on_screen = if on_screen.is_empty() {
             0..0
@@ -514,7 +493,6 @@ impl DrawnTranscript {
             area: self.area,
             rows: self.rows.get(rows).unwrap_or_default().to_vec(),
             items,
-            cut,
             on_screen,
         })
     }
@@ -719,13 +697,6 @@ impl TranscriptView {
     /// Notes the width the layout laid the pane out at.
     pub(crate) fn set_width(&mut self, width: u16) {
         self.width = Some(width);
-    }
-
-    /// Expands `item` when collapsed, collapses it when expanded.
-    pub(crate) fn toggle(&mut self, item: TranscriptItem) {
-        if !self.expanded.remove(&item) {
-            self.expanded.insert(item);
-        }
     }
 }
 

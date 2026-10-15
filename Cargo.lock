@@ -17295,8 +17295,6 @@ dependencies = [
  "rig-print",
  "rig-reload",
  "rig-sessions",
- "rig-splits",
- "rig-subagents",
  "rig-telemetry",
  "rig-tui",
  "serde_json",

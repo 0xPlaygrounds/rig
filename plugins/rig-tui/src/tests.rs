@@ -252,9 +252,8 @@ fn a_plugins_test_lays_out_a_transcript_without_a_terminal() {
     let note = Deliver::new(agent, "a note", DeliveryMode::Inform);
     app.world_mut().trigger(note);
     app.update();
-    let lay_out = move |layout: TranscriptLayout| {
-        layout.lay_out(&TranscriptView::default(), agent, 40, Expanded::AsShown)
-    };
+    let lay_out =
+        move |layout: TranscriptLayout| layout.lay_out(&TranscriptView::default(), agent, 40);
     let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
     assert!(laid_out.is_some());
     let Some(drawn) = laid_out else { return };

@@ -27,7 +27,7 @@ fn a_text_file_is_attached_as_numbered_lines_and_typed_text_is_not_one() {
         .ok()
         .map(|manifest| manifest.lines().count());
     assert_eq!(
-        attached_file(text).map(|(label, lines)| (label.to_owned(), Some(lines))),
+        attached_file(text).map(|(label, body)| (label.to_owned(), Some(body.lines().count()))),
         Some((path, lines))
     );
     assert_eq!(attached_file("<file path=\"x\"> is how it starts"), None);

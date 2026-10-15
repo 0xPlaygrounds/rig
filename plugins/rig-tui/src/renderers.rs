@@ -17,19 +17,8 @@ use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_harness::rig_core::conversation::Note;
 use rig_harness::rig_memory::SplitPointer;
-use rig_tools::shorten;
 
 use super::{diff, markdown};
-
-/// Characters of a call's arguments shown on its header line.
-const ARGUMENT_CHARS: usize = 160;
-/// Lines of a result the default look shows.
-pub const RESULT_LINES: usize = 4;
-/// Lines of a diff shown.
-const DIFF_LINES: usize = 40;
-/// Characters of one result line shown: a longer line, such as a whole
-/// JSON answer, ends in `…`.
-const LINE_CHARS: usize = 240;
 
 /// A tool call and its result, if it has one yet, as a renderer sees them.
 pub struct ToolCallView<'a> {
@@ -40,8 +29,6 @@ pub struct ToolCallView<'a> {
     pub result: Option<&'a ToolResult>,
     /// Where the call stands.
     pub state: CallState,
-    /// Whether it is drawn whole: the user expanded it.
-    pub expanded: bool,
     /// What the call published, such as rig-core's `ExitStatus` and
     /// `FilesChanged`, once it settled: in this run, or in an earlier one
     /// of a resumed session whose effect log was kept.
@@ -111,14 +98,13 @@ pub enum CallState {
 pub(crate) const UNNAMED_HOLD: &str = "unnamed hold";
 
 impl<'a> ToolCallView<'a> {
-    /// `call`, answered by `result` if it was, standing as `state`,
-    /// collapsed, with no facts or output known.
+    /// `call`, answered by `result` if it was, standing as `state`, with
+    /// no facts or output known.
     pub fn new(call: &'a ToolCall, result: Option<&'a ToolResult>, state: CallState) -> Self {
         Self {
             call,
             result,
             state,
-            expanded: false,
             facts: None,
             took: None,
             output: None,
@@ -167,41 +153,21 @@ impl<'a> ToolCallView<'a> {
         Line::from(spans)
     }
 
-    /// Up to `limit` lines of the result under a `⎿`, red for an error,
-    /// and how many more there are. A unified diff is coloured. The line
-    /// that says the tool cut its output ([`OutputCut`]) is shown whole,
-    /// on its side. Before the result, a running call's progress line.
-    pub fn result_lines(&self, limit: usize) -> Vec<Line<'static>> {
+    /// The whole result under a `⎿`, red for an error. A unified diff is
+    /// coloured. The line that says the tool cut its output
+    /// ([`OutputCut`]), naming the file with all of it, is on its side.
+    /// Before the result, a running call's progress.
+    pub fn result_lines(&self) -> Vec<Line<'static>> {
         let Some(text) = self.result_text() else {
             return self.progress_lines();
         };
         if !self.failed()
-            && let Some(lines) = diff::unified_lines(&text, DIFF_LINES)
+            && let Some(lines) = diff::unified_lines(&text)
         {
             return lines;
         }
         let (output, marker) = self.cut_marker(&text);
-        let more = format!("… {} more lines", output.len().saturating_sub(limit));
-        let more = (output.len() > limit).then_some(more.as_str());
-        let shown = output.iter().copied().take(limit).chain(more);
-        result_rows(shown, marker, result_style(self.failed()))
-    }
-
-    /// The last `limit` lines of the result, where a command's errors and
-    /// summary are, after a count of the earlier ones; the line that says
-    /// the tool cut its output ([`OutputCut`]), naming the file with all
-    /// of it, is shown whole, on its side. Before the result, a running
-    /// call's progress line.
-    pub fn tail_lines(&self, limit: usize) -> Vec<Line<'static>> {
-        let Some(text) = self.result_text() else {
-            return self.progress_lines();
-        };
-        let (output, marker) = self.cut_marker(&text);
-        let skipped = output.len().saturating_sub(limit);
-        let earlier = format!("… {skipped} earlier lines");
-        let earlier = (skipped > 0).then_some(earlier.as_str());
-        let shown = earlier.into_iter().chain(output.into_iter().skip(skipped));
-        result_rows(shown, marker, result_style(self.failed()))
+        result_rows(output.into_iter(), marker, result_style(self.failed()))
     }
 
     /// The lines of `text`, the result, without the line that says the
@@ -225,30 +191,22 @@ impl<'a> ToolCallView<'a> {
         (lines, marker)
     }
 
-    /// A running call's progress line (its first line) under a `⎿`,
-    /// where its result goes once it answers; none without one.
+    /// A running call's progress under a `⎿`, where its result goes once
+    /// it answers; none without one.
     pub fn progress_lines(&self) -> Vec<Line<'static>> {
         let CallState::Running(Some(progress)) = &self.state else {
             return Vec::new();
         };
-        let line = progress.lines().next().unwrap_or_default();
-        result_rows(std::iter::once(line), None, Style::new().yellow())
+        result_rows(progress.lines(), None, Style::new().yellow())
     }
 
-    /// The look of a tool with no renderer: the name and arguments, then
-    /// the first lines of the result, or all of it when expanded.
+    /// The look of a tool with no renderer: the name, the arguments and
+    /// the result.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         let arguments = serde_json::Value::Object(self.call.function.arguments.clone()).to_string();
-        let mut lines =
-            vec![self.header(self.name().to_owned(), shorten(&arguments, ARGUMENT_CHARS))];
-        lines.extend(self.result_lines(self.limit(RESULT_LINES)));
+        let mut lines = vec![self.header(self.name().to_owned(), arguments)];
+        lines.extend(self.result_lines());
         lines
-    }
-
-    /// `limit` lines, or every line when the call is expanded: what a
-    /// renderer shows of its result.
-    pub fn limit(&self, limit: usize) -> usize {
-        if self.expanded { usize::MAX } else { limit }
     }
 }
 
@@ -264,24 +222,17 @@ pub struct EntryView<'a> {
     pub title: &'a str,
     /// What it holds; a delivered text without the header the model reads.
     pub text: &'a str,
-    /// Whether it is drawn whole: the user expanded it.
-    pub expanded: bool,
 }
 
 impl EntryView<'_> {
     /// The look of a plugin with no renderer: `⤶` and the title, then
-    /// the first lines of the text, or all of it when expanded.
+    /// the text.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         let mut lines = vec![Line::styled(
             format!("⤶ {}", self.title),
             Style::new().magenta().bold(),
         )];
-        let limit = if self.expanded {
-            usize::MAX
-        } else {
-            RESULT_LINES
-        };
-        lines.extend(excerpt(self.text, limit, Style::new().dim()));
+        lines.extend(text_rows(self.text, Style::new().dim()));
         lines
     }
 }
@@ -373,8 +324,6 @@ pub struct ContentView<'a> {
     pub block: ContentBlock<'a>,
     /// Whether the message was written by the model.
     pub assistant: bool,
-    /// Whether it is drawn whole: the user expanded it.
-    pub expanded: bool,
 }
 
 impl ContentView<'_> {
@@ -413,18 +362,14 @@ pub(crate) fn result_style(failed: bool) -> Style {
     }
 }
 
-/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, and
-/// a count of the rest.
-pub fn excerpt(text: &str, limit: usize, style: Style) -> Vec<Line<'static>> {
-    let all: Vec<&str> = text.lines().collect();
-    let more = format!("… {} more lines", all.len().saturating_sub(limit));
-    let more = (all.len() > limit).then_some(more.as_str());
-    result_rows(all.into_iter().take(limit).chain(more), None, style)
+/// The lines of `text` in `style`, the first under a `⎿`.
+pub fn text_rows(text: &str, style: Style) -> Vec<Line<'static>> {
+    result_rows(text.lines(), None, style)
 }
 
-/// `lines` of a result in `style`, the first under a `⎿`, each shortened,
-/// with `marker` whole before them when the output's end was kept and
-/// after them when its start was.
+/// `lines` of a result in `style`, the first under a `⎿`, with `marker`
+/// before them when the output's end was kept and after them when its
+/// start was.
 fn result_rows<'t>(
     lines: impl Iterator<Item = &'t str>,
     marker: Option<(&'t str, KeptEnd)>,
@@ -435,18 +380,11 @@ fn result_rows<'t>(
         Some((marker, KeptEnd::Start)) => (None, Some(marker)),
         None => (None, None),
     };
-    let lines = lines.map(|line| (line, false));
-    let rows = before.map(|marker| (marker, true)).into_iter().chain(lines);
-    let rows = rows.chain(after.map(|marker| (marker, true)));
+    let rows = before.into_iter().chain(lines).chain(after);
     rows.enumerate()
-        .map(|(index, (line, whole))| {
+        .map(|(index, line)| {
             let prefix = if index == 0 { "  ⎿ " } else { "    " };
             let line = line.replace('\t', "    ");
-            let line = if whole {
-                line
-            } else {
-                shorten(&line, LINE_CHARS)
-            };
             Line::styled(format!("{prefix}{line}"), style)
         })
         .collect()
@@ -624,8 +562,6 @@ pub struct AsideView<'a> {
     pub id: AsideId,
     /// The aside.
     pub aside: &'a Aside,
-    /// Whether it is drawn whole: the user expanded it.
-    pub expanded: bool,
 }
 
 /// The default look of a kept branch (`rig.branch`): `↳`, its title and
@@ -1091,7 +1027,6 @@ impl Renderers<'_> {
                 plugin: plugin_name(&view.aside.author),
                 title: &note.title,
                 text: &note.text,
-                expanded: view.expanded,
             };
             return Some(self.entry(&entry));
         }

@@ -5,7 +5,7 @@
 //! terminal view's input) rate the agent's last reply. A rating is two
 //! saved asides after that reply in the agent's conversation: a
 //! [`Rating`] (the data, kind [`Rating::KIND`]) and a [`Note`] the fronts
-//! draw as a marker whose expanded text is the reason. Asides never reach
+//! draw as a marker with the reason. Asides never reach
 //! a model and are saved, restored and forked with the conversation, so a
 //! rating stays with its reply. `/ratings` lists the session's ratings and
 //! jumps to one; `/ratings --all` reads every saved session of the project
@@ -150,8 +150,7 @@ fn bind_keys(app: &mut App) {
     }
 }
 
-/// The marker's look: the verdict and reason, then the model when
-/// expanded.
+/// The marker's look: the verdict and reason, then the model.
 fn marker(entry: &EntryView<'_>) -> Vec<Line<'static>> {
     let style = if entry.title.starts_with("good") {
         Style::new().green()
@@ -159,14 +158,8 @@ fn marker(entry: &EntryView<'_>) -> Vec<Line<'static>> {
         Style::new().red()
     };
     let mut lines = vec![Line::styled(format!("◈ {}", entry.title), style)];
-    if entry.expanded {
-        lines.extend(
-            entry
-                .text
-                .lines()
-                .map(|line| Line::from(line.to_owned()).dim()),
-        );
-    }
+    let text = entry.text.lines();
+    lines.extend(text.map(|line| Line::from(line.to_owned()).dim()));
     lines
 }
 
@@ -395,7 +388,7 @@ fn list(
 }
 
 /// Shows the agent of the rating chosen in a `/ratings` picker in the
-/// main pane, scrolled to the rating, expanded and selected.
+/// main pane, scrolled to the rating and selected.
 fn open(
     picked: On<Picked>,
     opens: Query<&Opens>,
@@ -421,7 +414,6 @@ fn open(
     };
     let (pane, mut view) = pane.into_inner();
     let item = TranscriptItem::Aside(marker);
-    view.expanded.insert(item.clone());
     view.selected = Some(item.clone());
     commands.trigger(ShowAgent { entity: agent });
     commands.trigger(ScrollTo {

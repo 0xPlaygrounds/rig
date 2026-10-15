@@ -279,7 +279,7 @@ pub enum KeyScope {
     /// selected ([`TranscriptView::selected`](crate::TranscriptView::selected))
     /// and no panel has the [`KeyFocus`]. Its bindings are found after the
     /// global ones and before the input's, whose keys work otherwise, so
-    /// moving the selection, expanding and scrolling go on reading. The
+    /// moving the selection and scrolling go on reading. The
     /// reading ends when the input's text changes or is sent, and on Esc,
     /// which the view binds here to give the keys back to the input.
     Transcript,
@@ -532,9 +532,6 @@ pub enum InputAction {
     /// Selects none, which gives the keys back to the input: Esc while
     /// the person reads the transcript ([`KeyScope::Transcript`]).
     Deselect,
-    /// Expands or collapses the item selected, or with none, the newest
-    /// tool call.
-    Expand,
     /// Answers the question shown beside the work with its choice of this
     /// number, counted from 1, or the number after its choices: types its
     /// answer in the input.
@@ -628,7 +625,6 @@ fn built_in() -> Vec<(Keys, &'static str, InputAction)> {
         (ctrl('v'), "Paste an image", Do::PasteImage),
         (with(meta, K::Up), "Select the item above", Do::SelectUp),
         (with(meta, K::Down), "Select the item below", Do::SelectDown),
-        (ctrl('o'), "Expand or collapse", Do::Expand),
     ]
 }
 

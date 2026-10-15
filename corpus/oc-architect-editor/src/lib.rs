@@ -644,12 +644,12 @@ fn shown(base: &Path, path: &str) -> String {
 }
 
 /// How the terminal view draws an `implement` call: the description, the
-/// editor's calls under it when expanded, then the result.
+/// editor's calls under it, then the result.
 #[cfg(feature = "tui")]
 mod look {
     use rig_harness::prelude::*;
     use rig_tui::ratatui::text::Line;
-    use rig_tui::{AppToolRenderersExt, RESULT_LINES, ToolCallView};
+    use rig_tui::{AppToolRenderersExt, ToolCallView};
 
     use super::IMPLEMENT;
 
@@ -660,19 +660,12 @@ mod look {
     fn look(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         let description = view.argument("description").unwrap_or_default();
         let mut lines = vec![view.header("Implement", description.to_owned())];
-        let editor_calls = view.children.len();
-        if view.expanded {
-            for child in view.children {
-                let indent = "  ".repeat(child.depth + 2);
-                let said = child.line.as_deref().unwrap_or_default();
-                lines.push(Line::from(format!("{indent}↳ {} {said}", child.name)));
-            }
-        } else if editor_calls > 0 {
-            lines.push(Line::from(format!(
-                "    editor: {editor_calls} calls (expand to see)"
-            )));
+        for child in view.children {
+            let indent = "  ".repeat(child.depth + 2);
+            let said = child.line.as_deref().unwrap_or_default();
+            lines.push(Line::from(format!("{indent}↳ {} {said}", child.name)));
         }
-        lines.extend(view.result_lines(view.limit(RESULT_LINES)));
+        lines.extend(view.result_lines());
         lines
     }
 }
