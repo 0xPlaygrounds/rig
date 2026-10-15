@@ -6,14 +6,23 @@ use crate::message::{
     StopReason, Text, ToolCall, ToolFunction, ToolName, ToolResult, ToolResultContent, UserContent,
 };
 
-/// [`super::adapt_for`] over the plain messages the tests write.
+/// [`super::adapt_for`] over the plain messages the tests write, after
+/// every shorter history, so it adapts from where they left off, as a fresh
+/// adaption does.
 fn adapt_for(
     history: &[Message],
     target: &dyn ReplayTarget,
     request: &Request<'_>,
 ) -> Vec<Message> {
-    let history = history.iter().cloned().map(Arc::new).collect();
-    let adapted = super::adapt_for(history, target, request);
+    let history: Vec<Arc<Message>> = history.iter().cloned().map(Arc::new).collect();
+    let mut memo = Memo::default();
+    let mut adapted = Vec::new();
+    for end in 1..=history.len() {
+        let shorter = history.get(..end).unwrap_or_default().to_vec();
+        adapted = super::adapt_for(shorter.clone(), target, request, &mut memo);
+        let fresh = super::adapt_for(shorter, target, request, &mut Memo::default());
+        assert_eq!(adapted, fresh, "resumed after {end} messages");
+    }
     adapted.into_iter().map(Arc::unwrap_or_clone).collect()
 }
 
@@ -1030,7 +1039,7 @@ fn cache_points_follow_the_history_through_adapting() {
         if let Some(documents) = documents {
             crate::completion::request::insert_after_leading_system(&mut sent, documents.clone());
         }
-        let adapted = super::adapt_for(sent, &TARGET, &request);
+        let adapted = super::adapt_for(sent, &TARGET, &request, &mut super::Memo::default());
         cache_points(points, &written, documents, &adapted, &TARGET, &request)
     };
     let written = vec![
@@ -1092,4 +1101,38 @@ fn cache_points_follow_the_history_through_adapting() {
         },
     ];
     assert_eq!(moved(&steered, None, &[Messages(3)]), [Messages(2)]);
+}
+
+#[test]
+fn a_growing_history_adapts_from_its_last_turn_as_a_fresh_one_does() {
+    // Turns reuse a call id, so a later turn's call is renamed against the
+    // ids the kept messages claimed.
+    let session = [
+        Message::system("be brief"),
+        Message::user("q1"),
+        turn(Some(same()), vec![call("c")]),
+        Message::User {
+            content: vec![result("c", "one")],
+        },
+        turn(Some(same()), vec![AssistantContent::text("a1")]),
+        Message::user("q2"),
+        turn(Some(same()), vec![call("c")]),
+        Message::User {
+            content: vec![result("c", "two")],
+        },
+        turn(Some(other()), vec![call("c|x")]),
+        Message::User {
+            content: vec![result("c|x", "three")],
+        },
+        turn(Some(same()), vec![AssistantContent::text("a2")]),
+    ];
+    let session: Vec<Arc<Message>> = session.into_iter().map(Arc::new).collect();
+    let mut memo = Memo::default();
+    for end in 1..=session.len() {
+        let history = session.get(..end).unwrap_or_default().to_vec();
+        let resumed = super::adapt_for(history.clone(), &TARGET, &Request::default(), &mut memo);
+        let fresh = super::adapt_for(history, &TARGET, &Request::default(), &mut Memo::default());
+        assert_eq!(resumed, fresh, "after {end} messages");
+    }
+    assert_eq!(memo.given.len(), session.len(), "the history was kept");
 }

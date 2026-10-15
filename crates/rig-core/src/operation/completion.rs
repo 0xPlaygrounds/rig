@@ -166,7 +166,12 @@ impl Operation for Completion {
             }
             request.documents.clear();
         }
-        let adapted = crate::completion::history::adapt_for(history, target, &shape);
+        // What the model's last request left; another request waits for it.
+        let mut kept = wire.prepared.and_then(|prepared| prepared.0.lock().ok());
+        let mut fresh = Default::default();
+        let memo = kept.as_deref_mut().unwrap_or(&mut fresh);
+        let adapted = crate::completion::history::adapt_for(history, target, &shape, memo);
+        drop(kept);
         if let Some((written, documents)) = written {
             request.cache_points = crate::completion::history::cache_points(
                 &request.cache_points,

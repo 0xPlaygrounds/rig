@@ -32,8 +32,8 @@ use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::document::Reassemble;
 use crate::wire::{
-    Call, Capabilities, Decoder, Flow, Mode, Operation, Out, Request, Response, Shared, Wire,
-    WireEvent,
+    Call, Capabilities, Decoder, Descriptor, Flow, Mode, Operation, Out, Request, Response, Shared,
+    Wire, WireEvent,
 };
 
 mod dyn_model;
@@ -55,12 +55,18 @@ pub struct Model<W, T = crate::http_client::DynHttpClient> {
     pub wire: W,
     /// How the payload travels.
     pub transport: T,
+    /// What preparing the last request leaves for the next.
+    prepared: crate::wire::Prepared,
 }
 
 impl<W, T> Model<W, T> {
     /// Pair `wire` with the `transport` that sends it.
     pub fn new(wire: W, transport: T) -> Self {
-        Self { wire, transport }
+        Self {
+            wire,
+            transport,
+            prepared: crate::wire::Prepared::default(),
+        }
     }
 }
 
@@ -406,7 +412,10 @@ where
     /// `request` prepared and encoded as [`Self::call`] would, with nothing
     /// sent.
     pub(crate) fn dry_run(&self, request: Request<W>) -> Result<(), ProviderError> {
-        let describe = self.wire.describe();
+        let describe = Descriptor {
+            prepared: Some(&self.prepared),
+            ..self.wire.describe()
+        };
         let request = <W::Op as Operation>::prepare(request, &describe)?;
         self.wire.encode(request, Mode::Unary)?;
         Ok(())
@@ -421,7 +430,10 @@ where
         mode: Mode,
         sending: Sending,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        let describe = self.wire.describe();
+        let describe = Descriptor {
+            prepared: Some(&self.prepared),
+            ..self.wire.describe()
+        };
         let request = <W::Op as Operation>::prepare(request, &describe)?;
         let provider = describe.name.to_owned();
         let mut call = Call::new(&describe, mode);

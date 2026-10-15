@@ -13,6 +13,8 @@
 //! assert_eq!(frame.as_str(), "response");
 //! ```
 
+use std::sync::{Arc, Mutex};
+
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -214,6 +216,20 @@ pub trait Operation: Sized + 'static {
     fn observed_usage(end: &Self::End) -> Option<&crate::completion::Usage> {
         let _ = end;
         None
+    }
+}
+
+/// What a model keeps from preparing one request for the next
+/// ([`Descriptor::prepared`]): a completion's history as it was last
+/// adapted, so a history that grew is adapted only from its last turn on. A
+/// model's clones share it.
+#[derive(Clone, Debug, Default)]
+pub struct Prepared(pub(crate) Arc<Mutex<crate::completion::history::Memo>>);
+
+/// What a model kept never makes two models differ.
+impl PartialEq for Prepared {
+    fn eq(&self, _: &Self) -> bool {
+        true
     }
 }
 
@@ -483,6 +499,9 @@ pub struct Descriptor<'a> {
     /// The model facts a completion wire encodes with, which its replies are
     /// priced by. `None` answers from the built-in catalog.
     pub facts: Option<&'a crate::catalog::ModelFacts>,
+    /// What the model kept from preparing its last request, which the
+    /// driver lends [`Operation::prepare`]; `None` from the wire itself.
+    pub prepared: Option<&'a Prepared>,
 }
 
 impl<'a> Descriptor<'a> {
@@ -495,6 +514,7 @@ impl<'a> Descriptor<'a> {
             capabilities: Capabilities::default(),
             telemetry: None,
             facts: None,
+            prepared: None,
         }
     }
 

@@ -481,8 +481,33 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   kept, for the request boundary to reject.
 pub fn adapt(history: &[Message], target: &dyn ReplayTarget) -> Vec<Message> {
     let history = history.iter().cloned().map(Arc::new).collect();
-    let adapted = adapt_for(history, target, &Request::default());
+    let adapted = adapt_for(history, target, &Request::default(), &mut Memo::default());
     adapted.into_iter().map(Arc::unwrap_or_clone).collect()
+}
+
+/// What [`adapt_for`] keeps of a settled history for the next request
+/// adapted the same way: the history up to its last turn, what the messages
+/// before that turn became, and the call ids they claimed. A message's
+/// shape depends only on the messages before it, but for the last turn's,
+/// so a history that starts with the same messages (the same `Arc`s, or
+/// equal ones) is adapted from that turn on.
+#[derive(Debug, Default)]
+pub(crate) struct Memo {
+    shape: Option<Shape>,
+    given: Vec<Arc<Message>>,
+    shaped: Vec<Option<Arc<Message>>>,
+    taken: HashSet<String>,
+}
+
+/// What adapting reads besides the messages.
+#[derive(Debug, PartialEq)]
+struct Shape {
+    api: Api,
+    provider: String,
+    model: String,
+    context: Option<crate::message::Fingerprint>,
+    accepts: Accepts,
+    from_user: bool,
 }
 
 /// What `adapt` reads of the request a history is sent with.
@@ -574,6 +599,7 @@ pub(crate) fn adapt_for(
     history: Vec<Arc<Message>>,
     target: &dyn ReplayTarget,
     request: &Request<'_>,
+    memo: &mut Memo,
 ) -> Vec<Arc<Message>> {
     let model = request.model.unwrap_or(target.model());
     let stored = request.stored;
@@ -586,11 +612,38 @@ pub(crate) fn adapt_for(
     let mut accepts = target.accepts(model);
     accepts.tools &= request.tools;
     accepts.foreign_reasoning &= request.foreign_reasoning;
-    let hosted = hosted_pairs(&history, target, &same);
+    let starts_with_user = target.starts_with_user() && !stored;
+    let shape = Shape {
+        api: same.api.clone(),
+        provider: same.provider.to_owned(),
+        model: model.to_owned(),
+        context: same.context,
+        accepts,
+        from_user: starts_with_user,
+    };
+    let resumed = memo.shape.as_ref() == Some(&shape)
+        && history.get(..memo.given.len()).is_some_and(|given| {
+            given
+                .iter()
+                .zip(&memo.given)
+                .all(|(message, was)| Arc::ptr_eq(message, was) || message == was)
+        });
+    if !resumed {
+        *memo = Memo::default();
+    }
+    // The last message kept was the last turn, so it is adapted again.
+    let from = memo.given.len().saturating_sub(1);
     let last_turn = history
         .iter()
         .rposition(|message| matches!(&**message, Message::Assistant(_)));
-    let mut ids = Renamed::default();
+    let (hosted, open) = hosted_pairs(&history, from, last_turn, target, &same);
+    let mut ids = Renamed {
+        to: Vec::new(),
+        before: &memo.taken,
+        taken: HashSet::new(),
+    };
+    let mut claimed = Vec::new();
+    let mut kept = 0;
     let form = Form {
         target,
         model,
@@ -598,7 +651,12 @@ pub(crate) fn adapt_for(
     };
     // A message adapting leaves as it is goes on as the same `Arc`.
     let mut shaped: Vec<Option<Arc<Message>>> = Vec::with_capacity(history.len());
-    for (at, message) in history.iter().enumerate() {
+    shaped.extend(memo.shaped.iter().cloned());
+    for (at, message) in history.iter().enumerate().skip(from) {
+        if Some(at) == last_turn {
+            claimed = ids.taken.iter().map(|id| id.to_string()).collect();
+            kept = shaped.len();
+        }
         match &**message {
             Message::System { content } => {
                 if !content.trim().is_empty() {
@@ -642,8 +700,23 @@ pub(crate) fn adapt_for(
             }
         }
     }
-    let starts_with_user = target.starts_with_user() && !stored;
-    if settled(&shaped, starts_with_user, accepts.tools) {
+    let (before, tail) = shaped.split_at(memo.shaped.len().min(shaped.len()));
+    let last = before.last().and_then(Option::as_deref);
+    if settled(tail, last, starts_with_user, accepts.tools) {
+        drop(ids);
+        // The next history adapts from the last turn on unless a hosted use
+        // before it may yet pair.
+        match last_turn.filter(|_| !open) {
+            Some(upto) => {
+                let given = history.get(memo.given.len()..=upto).unwrap_or_default();
+                memo.given.extend(given.iter().cloned());
+                let shaped = shaped.get(memo.shaped.len()..kept).unwrap_or_default();
+                memo.shaped.extend(shaped.iter().cloned());
+                memo.taken.extend(claimed);
+                memo.shape = Some(shape);
+            }
+            None => *memo = Memo::default(),
+        }
         let settled: Vec<Arc<Message>> = shaped.into_iter().flatten().collect();
         #[cfg(test)]
         {
@@ -658,6 +731,8 @@ pub(crate) fn adapt_for(
         }
         return settled;
     }
+    drop(ids);
+    *memo = Memo::default();
     let shaped = shaped
         .into_iter()
         .map(|message| message.map(Arc::unwrap_or_clone));
@@ -671,9 +746,13 @@ pub(crate) fn adapt_for(
 /// alternate (from a user message when `starts_with_user`), and each turn's
 /// calls are answered exactly, results first, by the user message after it.
 /// Without `tools`, it holds no call or result at all.
-fn settled(history: &[Option<Arc<Message>>], starts_with_user: bool, tools: bool) -> bool {
+fn settled<'a>(
+    history: &'a [Option<Arc<Message>>],
+    mut last: Option<&'a Message>,
+    starts_with_user: bool,
+    tools: bool,
+) -> bool {
     let mut waiting: Vec<&CallId> = Vec::new();
-    let mut last: Option<&Message> = None;
     for message in history {
         let Some(message) = message.as_deref() else {
             return false;
@@ -811,7 +890,8 @@ pub(crate) fn cache_points(
                     documents.clone(),
                 );
             }
-            Some(shared_prefix(adapted, &adapt_for(prefix, target, request)))
+            let prefix = adapt_for(prefix, target, request, &mut Memo::default());
+            Some(shared_prefix(adapted, &prefix))
         })
         .collect()
 }
@@ -1012,11 +1092,12 @@ fn leading_system(history: Vec<Message>) -> Vec<Message> {
 /// counter. The renames of the latest turn map its results, in call order,
 /// so two calls that shared an id are answered by the results that followed
 /// them in turn.
-#[derive(Default)]
 struct Renamed<'a> {
     /// For the latest turn: each call's source id and the id it took, in
     /// call order.
     to: Vec<(Cow<'a, CallId>, Cow<'a, CallId>)>,
+    /// The ids an earlier adaption of the same messages claimed ([`Memo`]).
+    before: &'a HashSet<String>,
     taken: HashSet<Cow<'a, str>>,
 }
 
@@ -1039,7 +1120,7 @@ impl<'a> Renamed<'a> {
             CallId::Provider(_) => {
                 let mut id = wanted.clone();
                 let mut attempt: u64 = 1;
-                while self.taken.contains(&id) {
+                while self.before.contains(id.as_ref()) || self.taken.contains(&id) {
                     id = Cow::Owned(with_counter(&wanted, attempt));
                     attempt += 1;
                 }
@@ -1249,15 +1330,23 @@ fn assistant<'a>(
 /// the model's own replayed turns. A use pairs with the next result of its id,
 /// in its turn or a later one: a programmatic tool call's code execution
 /// returns its result in the turn after the client call it made. A second use
-/// of an id before its result leaves the first unpaired.
+/// of an id before its result leaves the first unpaired. Read from message
+/// `from` on, with whether a use was still open when message `boundary`
+/// began.
 fn hosted_pairs(
     history: &[Arc<Message>],
+    from: usize,
+    boundary: Option<usize>,
     target: &dyn ReplayTarget,
     same: &Same<'_>,
-) -> HashSet<(usize, usize)> {
+) -> (HashSet<(usize, usize)>, bool) {
     let mut open: HashMap<String, (usize, usize)> = HashMap::new();
     let mut paired = HashSet::new();
-    for (at, message) in history.iter().enumerate() {
+    let mut open_at_boundary = false;
+    for (at, message) in history.iter().enumerate().skip(from) {
+        if Some(at) == boundary {
+            open_at_boundary = !open.is_empty();
+        }
         let Message::Assistant(turn) = &**message else {
             continue;
         };
@@ -1287,7 +1376,7 @@ fn hosted_pairs(
             }
         }
     }
-    paired
+    (paired, open_at_boundary)
 }
 
 /// A same-model turn's kept blocks (`None` where `adapt` dropped one), with
