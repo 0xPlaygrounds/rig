@@ -360,6 +360,30 @@ impl DirectRecorder {
             impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
         >,
     ) {
+        // The ledger sees the exchange before its reply reaches the caller.
+        self.log_created(
+            request.method,
+            request.uri,
+            request.body,
+            response.status,
+            response.body,
+        );
+        self.keep_http_interaction(request, response).await;
+    }
+
+    /// Scrub and append one exchange whose created resources the ledger
+    /// already holds.
+    async fn keep_http_interaction(
+        &self,
+        request: DirectHttpRequest<
+            '_,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        >,
+        response: DirectHttpResponse<
+            '_,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+        >,
+    ) {
         let mut scrubber = CassetteScrubber::new(self.policy);
         let mut interaction = CassetteInteraction {
             when: recorded_request(
@@ -371,14 +395,6 @@ impl DirectRecorder {
             ),
             then: recorded_response(response.status, response.headers, response.body),
         };
-        // The ledger sees the exchange before its reply reaches the caller.
-        self.log_created(
-            request.method,
-            request.uri,
-            request.body,
-            response.status,
-            response.body,
-        );
         scrubber.scrub_request(&mut interaction.when);
         scrubber.scrub_response(&mut interaction.then);
         self.interactions.lock().await.push(interaction);

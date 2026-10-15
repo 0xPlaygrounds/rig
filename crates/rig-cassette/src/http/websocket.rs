@@ -41,8 +41,9 @@ use rig_core::ws_client::{
 use tokio::sync::Mutex;
 
 use super::{
-    CassetteServer, CassetteSpec, DirectHttpRequest, DirectHttpResponse, IncomingRequest,
-    PanicPayload, ProviderCassette, RecordVia, ReplayMiss, ReplayState, decode_body,
+    CassetteServer, CassetteSpec, DirectHttpRequest, DirectHttpResponse, DirectRecorder,
+    IncomingRequest, PanicPayload, ProviderCassette, RecordVia, ReplayMiss, ReplayState,
+    decode_body,
 };
 
 /// The status every recorded turn answers with: the connection's upgrade.
@@ -105,7 +106,7 @@ impl WebSocketCassette {
     pub fn backend<B: WebSocketClientExt>(&self, live: B) -> CassetteSocket<B> {
         let mode = match &self.cassette.server {
             CassetteServer::Replay(server) => SocketMode::Replay(Arc::clone(&server.state)),
-            _ => SocketMode::Record(Arc::clone(&self.turns)),
+            _ => SocketMode::Record(Arc::clone(&self.turns), self.cassette.direct_recorder()),
         };
         CassetteSocket { live, mode }
     }
@@ -124,8 +125,8 @@ impl WebSocketCassette {
         self.cassette.finish_after_test(test_result).await;
     }
 
-    /// Hand every recorded turn to the direct recorder, which scrubs it and
-    /// logs what it created.
+    /// Hand every recorded turn to the direct recorder, which scrubs it. The
+    /// ledger logged what each turn created as its replies arrived.
     async fn record_turns(&self) {
         let Some(recorder) = self.cassette.direct_recorder() else {
             return;
@@ -134,7 +135,7 @@ impl WebSocketCassette {
         for turn in turns {
             let body: String = turn.received.iter().map(|message| sse(message)).collect();
             recorder
-                .record_http_interaction(
+                .keep_http_interaction(
                     DirectHttpRequest {
                         method: "GET",
                         uri: &turn.uri,
@@ -191,7 +192,7 @@ pub struct CassetteSocket<B> {
 
 #[derive(Clone)]
 enum SocketMode {
-    Record(Turns),
+    Record(Turns, Option<DirectRecorder>),
     Replay(Arc<Mutex<ReplayState>>),
 }
 
@@ -204,7 +205,7 @@ impl<B: WebSocketClientExt> WebSocketClientExt for CassetteSocket<B> {
         let (live, mode) = (self.live.clone(), self.mode.clone());
         async move {
             match mode {
-                SocketMode::Record(turns) => {
+                SocketMode::Record(turns, recorder) => {
                     let uri = request.uri().to_string();
                     let headers = request
                         .headers()
@@ -219,6 +220,8 @@ impl<B: WebSocketClientExt> WebSocketClientExt for CassetteSocket<B> {
                         uri,
                         headers,
                         turns,
+                        turn: None,
+                        recorder,
                     }) as BoxedWebSocketConnection)
                 }
                 SocketMode::Replay(state) => {
@@ -246,6 +249,9 @@ struct Recording {
     uri: String,
     headers: Vec<(String, String)>,
     turns: Turns,
+    /// This connection's turn in flight, by its index in `turns`.
+    turn: Option<usize>,
+    recorder: Option<DirectRecorder>,
 }
 
 impl WebSocketConnection for Recording {
@@ -259,7 +265,9 @@ impl WebSocketConnection for Recording {
             };
             self.inner.send(frame).await?;
             if let Some(sent) = sent {
-                lock(&self.turns).push(RecordedTurn {
+                let mut turns = lock(&self.turns);
+                self.turn = Some(turns.len());
+                turns.push(RecordedTurn {
                     uri: self.uri.clone(),
                     headers: self.headers.clone(),
                     sent,
@@ -282,8 +290,23 @@ impl WebSocketConnection for Recording {
             // A message before the first send belongs to no turn; the
             // Responses protocol sends none.
             if let Some(text) = text
-                && let Some(turn) = lock(&self.turns).last_mut()
+                && let Some(turn) = self.turn
+                && let Some(turn) = lock(&self.turns).get_mut(turn)
             {
+                // The ledger sees what a turn created before the caller
+                // does: the response the turn's first event names.
+                if let Some(recorder) = &self.recorder
+                    && turn.received.is_empty()
+                {
+                    let body = sse(&text);
+                    recorder.log_created(
+                        "GET",
+                        &turn.uri,
+                        turn.sent.as_bytes(),
+                        SWITCHING_PROTOCOLS,
+                        body.as_bytes(),
+                    );
+                }
                 turn.received.push(text);
             }
             received

@@ -2,7 +2,7 @@
 //! its fixture, a changed message is refused, and a recording that stores a
 //! response is refused as an HTTP one is.
 
-use super::super::{CassetteError, CassetteMode};
+use super::super::{CassetteError, CassetteMode, ledger};
 use super::*;
 use serde_json::json;
 
@@ -157,6 +157,11 @@ async fn a_recorded_turn_that_stores_a_response_is_refused() {
     turn(&recording, create("gpt-5.4", true))
         .await
         .expect("records");
+    // The ledger holds the stored response before the session ends.
+    let ledger =
+        std::fs::read_to_string(scratch.0.path().join("attempts").join(ledger::LEDGER_FILE))
+            .expect("ledger");
+    assert!(ledger.contains("resp_1"), "{ledger}");
     recording.record_turns().await;
     let refused = recording.cassette.try_finish().await;
     assert!(

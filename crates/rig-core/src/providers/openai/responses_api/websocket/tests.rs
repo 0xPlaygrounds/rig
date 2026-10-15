@@ -142,17 +142,25 @@ fn the_lifecycle_reader_ends_skips_and_chains() {
     assert_eq!(frame["response"]["id"], "resp_2");
     assert_eq!(chain.previous.get().as_deref(), Some("resp_2"));
 
-    // An error after the response opened leaves it to be drained.
-    assert!(matches!(chain.read(&created), Lifecycle::Frame));
+    // Before a response opened, an error is the turn's settled end.
     let error = json!({ "type": "error", "error": { "code": "server_error" } }).to_string();
+    assert!(matches!(
+        chain.read(&error),
+        Lifecycle::Last { settled: true, .. }
+    ));
+    // After one opened, it leaves that response to be drained: another
+    // response's events neither end nor reopen it, its own terminal does.
+    assert!(matches!(chain.read(&created), Lifecycle::Frame));
     assert!(matches!(
         chain.read(&error),
         Lifecycle::Last { settled: false, .. }
     ));
     assert_eq!(chain.previous.get(), None);
-    // Before one opened, it is the turn's settled end.
+    let other = event("response.in_progress", "resp_9", "in_progress");
+    assert!(matches!(chain.read(&other), Lifecycle::Corrupt(_)));
+    assert!(matches!(chain.read(&foreign), Lifecycle::Corrupt(_)));
     assert!(matches!(
-        chain.read(&error),
+        chain.read(&completed),
         Lifecycle::Last { settled: true, .. }
     ));
 

@@ -683,8 +683,8 @@ impl Chain {
     fn read(&mut self, text: &str) -> Lifecycle {
         let lifecycle = self.lifecycle(text);
         match &lifecycle {
-            Lifecycle::Frame | Lifecycle::Skip => {}
-            Lifecycle::Last { .. } => self.end_turn(),
+            Lifecycle::Frame | Lifecycle::Skip | Lifecycle::Last { settled: false, .. } => {}
+            Lifecycle::Last { settled: true, .. } => self.end_turn(),
             Lifecycle::Fail(_) => {
                 self.previous.set(None);
                 self.end_turn();
@@ -706,7 +706,8 @@ impl Chain {
         self.current_response_id = None;
     }
 
-    /// Whether `probe` names a response other than the one this turn opened.
+    /// Whether `probe` names a response other than the one this turn opened,
+    /// which never ends or reopens it.
     fn foreign(&self, probe: &Probe) -> bool {
         let id = probe.response_id();
         id.is_some() && self.current_response_id.is_some() && self.current_response_id != id
@@ -720,13 +721,12 @@ impl Chain {
             Err(error) => return Lifecycle::Corrupt(error.into()),
         };
         match probe.kind.as_str() {
-            "response.created" | "response.queued" | "response.in_progress" => {
-                if let Some(id) = probe.response_id() {
-                    self.current_response_id = Some(id);
-                }
-                Lifecycle::Frame
-            }
-            "response.completed" | "response.incomplete" | "response.failed"
+            "response.created"
+            | "response.queued"
+            | "response.in_progress"
+            | "response.completed"
+            | "response.incomplete"
+            | "response.failed"
                 if self.foreign(&probe) =>
             {
                 Lifecycle::Corrupt(ProviderError::Provider(format!(
@@ -735,6 +735,12 @@ impl Chain {
                     probe.kind,
                     probe.response_id().unwrap_or_default()
                 )))
+            }
+            "response.created" | "response.queued" | "response.in_progress" => {
+                if self.current_response_id.is_none() {
+                    self.current_response_id = probe.response_id();
+                }
+                Lifecycle::Frame
             }
             kind @ ("response.completed" | "response.incomplete" | "response.failed") => {
                 self.pending_done_response_id = probe.response_id();
