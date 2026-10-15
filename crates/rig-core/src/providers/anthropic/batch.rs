@@ -23,7 +23,8 @@ use serde_json::{Value, json};
 use super::wire::AnthropicConfig;
 use crate::ProviderResponseError;
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchState, BatchStatus, EncodedItem, ItemReply, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchState, BatchStatus, Document, EncodedItem, ItemReply,
+    json_body, path_id,
 };
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
@@ -267,14 +268,8 @@ impl<'id> Decoder<'id, BatchCall<MessageBatchRequest, MessageBatchReply>>
             &frame.as_str(),
             |data| classify_json_lines(data).map(MessageBatchReply::Results),
             |data| {
-                classify_marker_keyed_frame::<MessageBatch>(data, &["processing_status"]).map(
-                    |batch| {
-                        MessageBatchReply::Batch(
-                            batch,
-                            serde_json::from_str(data).unwrap_or_default(),
-                        )
-                    },
-                )
+                classify_marker_keyed_frame::<Document<MessageBatch>>(data, &["processing_status"])
+                    .map(|Document(batch, raw)| MessageBatchReply::Batch(batch, raw))
             },
         )
     }

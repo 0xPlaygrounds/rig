@@ -23,7 +23,8 @@ use serde_json::{Value, json};
 use super::wire::OpenAIConfig;
 use crate::ProviderResponseError;
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchState, BatchStatus, EncodedItem, ItemReply, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchState, BatchStatus, Document, EncodedItem, ItemReply,
+    json_body, path_id,
 };
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
@@ -319,12 +320,10 @@ impl<'id> Decoder<'id, BatchCall<BatchRequest, BatchReply>> for BatchesDecoder {
             &frame.as_str(),
             |data| classify_json_lines(data).map(BatchReply::Lines),
             |data| {
-                classify_tagged_frame::<Object>(data, "object", |tag| {
+                classify_tagged_frame::<Document<Object>>(data, "object", |tag| {
                     matches!(tag, "batch" | "file")
                 })
-                .map(|object| {
-                    BatchReply::Object(object, serde_json::from_str(data).unwrap_or_default())
-                })
+                .map(|Document(object, raw)| BatchReply::Object(object, raw))
             },
         )
     }

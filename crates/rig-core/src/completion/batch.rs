@@ -409,6 +409,18 @@ pub(crate) fn path_id(id: &str) -> Result<&str, EncodeError> {
     }
 }
 
+/// A reply document decoded as `T`, kept beside the JSON it came in, so a
+/// classifier's one decode yields both.
+pub(crate) struct Document<T>(pub(crate) T, pub(crate) Value);
+
+impl<'de, T: serde::de::DeserializeOwned> Deserialize<'de> for Document<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = Value::deserialize(deserializer)?;
+        let typed = T::deserialize(&value).map_err(serde::de::Error::custom)?;
+        Ok(Self(typed, value))
+    }
+}
+
 /// The JSON body of an item's request.
 pub(crate) fn json_body(request: &http::Request<Body>) -> Result<Value, ProviderError> {
     match request.body() {

@@ -24,7 +24,8 @@ use serde_json::{Value, json};
 use super::GeminiConfig;
 use crate::ProviderResponseError;
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchState, BatchStatus, EncodedItem, ItemReply, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchState, BatchStatus, Document, EncodedItem, ItemReply,
+    json_body, path_id,
 };
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
@@ -239,9 +240,8 @@ impl<'id> Decoder<'id, BatchCall<BatchRequest, BatchReply>> for BatchesDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_or(&frame.as_str(), as_acknowledgement, |data| {
-            classify_marker_keyed_frame::<BatchOperation>(data, &["name"]).map(|operation| {
-                BatchReply::Operation(operation, serde_json::from_str(data).unwrap_or_default())
-            })
+            classify_marker_keyed_frame::<Document<BatchOperation>>(data, &["name"])
+                .map(|Document(operation, raw)| BatchReply::Operation(operation, raw))
         })
     }
 
