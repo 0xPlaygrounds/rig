@@ -54,7 +54,6 @@ impl Plugin for CompactionPlugin {
         app.add_setting::<CompactionDefault>("compaction")
             .init_resource::<CompactionCuts>()
             .register_required_components::<TurnOf, TurnCompactions>()
-            .register_required_components::<Agent, SentTokens>()
             .add_command(
             "compact",
             "Summarize all but the newest reply to free context; /compact <focus> says what to keep",
@@ -530,7 +529,7 @@ fn compact_near_the_window(
         (Entity, &mut ModelRequest, &Adapters, &CallOf, &ForAgent),
         (Added<Admitted>, With<TurnCall>),
     >,
-    mut agents: Query<(Compacting, &mut LastUsage, &mut SentTokens)>,
+    mut agents: Query<(Compacting, &mut LastUsage, Option<&mut SentTokens>)>,
     mut turns: Query<&mut TurnCompactions>,
     starts: ModelStarts,
     (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
@@ -552,7 +551,16 @@ fn compact_near_the_window(
             continue;
         };
         let (policy, spec) = (&policy, &*connection.spec);
-        let sent = tally.0.estimate(&sent.chat_history);
+        let sent = match tally.as_mut() {
+            Some(tally) => tally.0.estimate(&sent.chat_history),
+            None => {
+                // An agent spawned before this plugin was added gets its tally now.
+                let mut tally = SentTokens::default();
+                let tokens = tally.0.estimate(&sent.chat_history);
+                commands.entity(agent).try_insert(tally);
+                tokens
+            }
+        };
         let used = last.context().unwrap_or(0).max(sent);
         if !policy.over_threshold(used, spec) {
             continue;
