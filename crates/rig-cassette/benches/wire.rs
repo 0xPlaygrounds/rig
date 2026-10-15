@@ -8,7 +8,8 @@
 //! - `stream_decode_tool_args_30k`: a Responses function call and a custom
 //!   call whose 30 KB of arguments stream in 3,000 deltas;
 //! - `fold_fragmented_call`: a Chat tool call in 3,000 fragments, with an
-//!   index, without one, and without one but restating the call's id;
+//!   index, with one and a fresh id in every fragment, without one, and
+//!   without one but restating the call's id;
 //! - `prepare_encode`: a request of 200 and 3,000 messages (reasoning, calls
 //!   and text carrying their provider items, 20 KB tool results, five
 //!   500 KB images) and 20 tools, prepared and encoded to its body;
@@ -567,11 +568,15 @@ fn fragmented_reply(how: &str) -> String {
             "model": "gpt-4o", "usage": null,
             "choices": [{"index": 0, "delta": delta, "finish_reason": finish, "logprobs": null}]})
     };
-    let call = |mut call: Value| {
+    let call = |mut call: Value, n: usize| {
         if let Some(fields) = call.as_object_mut() {
             match how {
                 "index" => {
                     fields.insert("index".into(), json!(0));
+                }
+                "index_churn" => {
+                    fields.insert("index".into(), json!(0));
+                    fields.insert("id".into(), json!(format!("call_{n}")));
                 }
                 "noindex_id" => {
                     fields.insert("id".into(), json!("call_1"));
@@ -583,13 +588,22 @@ fn fragmented_reply(how: &str) -> String {
     };
     let mut chunks = vec![
         chunk(json!({"role": "assistant", "content": null}), Value::Null),
-        call(json!({"id": "call_1", "type": "function",
-            "function": {"name": "write", "arguments": ""}})),
+        call(
+            json!({"id": "call_1", "type": "function",
+            "function": {"name": "write", "arguments": ""}}),
+            0,
+        ),
     ];
     chunks.extend(
-        chars.chunks(chars.len().div_ceil(3_000)).map(|piece| {
-            call(json!({"function": {"arguments": piece.iter().collect::<String>()}}))
-        }),
+        chars
+            .chunks(chars.len().div_ceil(3_000))
+            .enumerate()
+            .map(|(n, piece)| {
+                call(
+                    json!({"function": {"arguments": piece.iter().collect::<String>()}}),
+                    n + 1,
+                )
+            }),
     );
     chunks.push(chunk(json!({}), json!("tool_calls")));
     chunks.push(
@@ -606,7 +620,10 @@ fn fragmented_reply(how: &str) -> String {
 }
 
 /// A Chat call in 3,000 fragments, folded into one call.
-#[divan::bench(args = ["index", "noindex", "noindex_id"], sample_count = 20)]
+#[divan::bench(
+    args = ["index", "index_churn", "noindex", "noindex_id"],
+    sample_count = 20
+)]
 fn fold_fragmented_call(bencher: divan::Bencher, how: &str) {
     let model = replaying("chat", chunked(&fragmented_reply(how), 0));
     let request = CompletionRequest::new("Write src/big.rs.");
