@@ -247,8 +247,8 @@ fn a_document_with_images_joins_the_history_around_its_images() {
     let image = crate::message::Image::from_bytes(b"\x89PNG\r\n\x1a\n");
     let request = CompletionRequest::new(Message::user("Which cat?"))
         .document(test_document("cat", "A tabby.").with_image(image.clone()));
-    let history = request.chat_history_with_documents();
-    let parts: Vec<String> = match history.first() {
+    let history = request.messages_for_telemetry();
+    let parts: Vec<String> = match history.first().map(|message| &**message) {
         Some(Message::User { content }) => content
             .iter()
             .map(|part| match part {

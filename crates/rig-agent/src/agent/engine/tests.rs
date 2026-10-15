@@ -3836,7 +3836,7 @@ async fn dynamic_context_attaches_a_stored_document_with_its_images() {
     let sent = requests
         .first()
         .and_then(|request| request.chat_history.first())
-        .map(|message| match message {
+        .map(|message| match &**message {
             Message::User { content } => content.clone(),
             _ => Vec::new(),
         })
