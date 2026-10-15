@@ -356,6 +356,34 @@ pub fn estimate_tokens(messages: &[impl Borrow<Message>]) -> u64 {
         .sum::<usize>() as u64
 }
 
+/// [`estimate_tokens`] of a history that grows between estimates, counting
+/// only the messages after those it counted last that it starts with (the
+/// same `Arc`s, or equal ones).
+#[derive(Debug, Clone, Default)]
+pub struct TokenTally {
+    counted: Vec<Arc<Message>>,
+    /// The estimate of each prefix of `counted`, through that message.
+    sums: Vec<u64>,
+}
+
+impl TokenTally {
+    /// [`estimate_tokens`] of `messages`.
+    pub fn estimate(&mut self, messages: &[Arc<Message>]) -> u64 {
+        let same = (messages.iter().zip(&self.counted))
+            .take_while(|(message, counted)| Arc::ptr_eq(message, counted) || message == counted)
+            .count();
+        self.counted.truncate(same);
+        self.sums.truncate(same);
+        let counter = HeuristicTokenCounter::default();
+        for message in messages.get(same..).unwrap_or_default() {
+            let sum = self.sums.last().copied().unwrap_or_default();
+            self.sums.push(sum + counter.count(message) as u64);
+            self.counted.push(Arc::clone(message));
+        }
+        self.sums.last().copied().unwrap_or_default()
+    }
+}
+
 impl CompactionPolicy {
     /// The value of the knob `knob` ([`CompactionOverrides::KNOBS`]), as
     /// `/compaction` shows it.

@@ -367,3 +367,16 @@ fn every_knob_sets_shows_and_unsets_its_value() {
     refused(own.unset("bogus"), "the knobs are reserve, keep");
     assert!(own.is_empty());
 }
+
+#[test]
+fn a_tally_estimates_a_grown_or_edited_history_as_a_fresh_count_does() {
+    let mut tally = TokenTally::default();
+    let mut history = vec![Arc::new(Message::user("hello"))];
+    assert_eq!(tally.estimate(&history), estimate_tokens(&history));
+    history.push(Arc::new(Message::assistant("hi there")));
+    assert_eq!(tally.estimate(&history), estimate_tokens(&history));
+    history[0] = Arc::new(Message::user("hello again"));
+    assert_eq!(tally.estimate(&history), estimate_tokens(&history));
+    history.pop();
+    assert_eq!(tally.estimate(&history), estimate_tokens(&history));
+}

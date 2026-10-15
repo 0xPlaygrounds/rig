@@ -37,7 +37,8 @@ use rig_harness::settings::AppSettingsExt;
 use rig_harness::{AppKeepsExt, PluginEntity, ProvidedBy};
 use rig_memory::{
     Cleared, CompactReason, CompactionOverrides, CompactionPolicy, Cut, CutRules, Summarizer,
-    SummaryPlan, SummaryState, TrackArgument, apply_summary, estimate_tokens, undo_summary,
+    SummaryPlan, SummaryState, TokenTally, TrackArgument, apply_summary, estimate_tokens,
+    undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -53,6 +54,7 @@ impl Plugin for CompactionPlugin {
         app.add_setting::<CompactionDefault>("compaction")
             .init_resource::<CompactionCuts>()
             .register_required_components::<TurnOf, TurnCompactions>()
+            .register_required_components::<Agent, SentTokens>()
             .add_command(
             "compact",
             "Summarize all but the newest reply to free context; /compact <focus> says what to keep",
@@ -215,6 +217,11 @@ pub struct Uncompact {
     /// The agent.
     pub entity: Entity,
 }
+
+/// The estimate of the last request an agent's turn sent, counting only
+/// what each request adds.
+#[derive(Component, Default)]
+struct SentTokens(TokenTally);
 
 /// What a turn did to fit the window: whether it cleared tool outputs
 /// after an overflow, and how many summaries it asked for.
@@ -523,7 +530,7 @@ fn compact_near_the_window(
         (Entity, &mut ModelRequest, &Adapters, &CallOf, &ForAgent),
         (Added<Admitted>, With<TurnCall>),
     >,
-    mut agents: Query<(Compacting, &mut LastUsage)>,
+    mut agents: Query<(Compacting, &mut LastUsage, &mut SentTokens)>,
     mut turns: Query<&mut TurnCompactions>,
     starts: ModelStarts,
     (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
@@ -534,7 +541,7 @@ fn compact_near_the_window(
         let Ok(mut compactions) = turns.get_mut(turn) else {
             continue;
         };
-        let Ok((mut compacting, mut last)) = agents.get_mut(agent) else {
+        let Ok((mut compacting, mut last, mut tally)) = agents.get_mut(agent) else {
             continue;
         };
         let policy = policy_of(compacting.knobs, &default);
@@ -545,7 +552,7 @@ fn compact_near_the_window(
             continue;
         };
         let (policy, spec) = (&policy, &*connection.spec);
-        let sent = estimate_tokens(&sent.chat_history);
+        let sent = tally.0.estimate(&sent.chat_history);
         let used = last.context().unwrap_or(0).max(sent);
         if !policy.over_threshold(used, spec) {
             continue;
