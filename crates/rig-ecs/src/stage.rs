@@ -1341,11 +1341,8 @@ fn record_nested(world: &mut World, live: &mut QueryState<&Effect, Without<Settl
         return;
     }
     let live: HashSet<EffectId> = live.iter(world).map(Effect::id).collect();
-    for record in buffer.records() {
-        if !live.contains(&record.id) {
-            buffer.remove(record.id);
-            world.write_message(EffectRecorded(record));
-        }
+    for record in buffer.take_resolved_where(|id| !live.contains(&id)) {
+        world.write_message(EffectRecorded(record));
     }
 }
 

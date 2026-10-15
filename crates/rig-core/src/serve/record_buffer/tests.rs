@@ -83,8 +83,10 @@ fn records_keep_dispatch_order_and_origin_whatever_order_they_resolve_in() {
         "still in flight"
     );
 
+    let three = buffer.take_resolved_where(|id| id != EffectId::from_raw(1));
+    assert_eq!(ids(&three), [3], "only the resolved ones it accepts");
     let taken = buffer.take_resolved();
-    assert_eq!(ids(&taken), [1, 3]);
+    assert_eq!(ids(&taken), [1]);
     assert_eq!(
         format!("{buffer:?}"),
         "RecordBuffer { resolved: 0, in_flight: 1 }"
