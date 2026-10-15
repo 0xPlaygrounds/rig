@@ -317,7 +317,7 @@ fn input(
                 }
             }
         }
-        if !matches!(message, Message::System { .. }) {
+        if !matches!(&**message, Message::System { .. }) {
             layout.after.push(items.len());
             layout.parts.push(parts);
         }
