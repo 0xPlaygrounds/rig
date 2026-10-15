@@ -287,13 +287,6 @@ pub(crate) fn save_now(world: &mut World) -> Option<Entity> {
     world.get_resource_mut::<SavedOne>()?.0.take()
 }
 
-/// Saves the conversations changed outside the agent loop, such as by
-/// commands and observers, in `Last` before the frame's records are
-/// written.
-pub(crate) fn save_in_last(world: &mut World) {
-    save_now(world);
-}
-
 /// Saves what a conversation about to be replaced or removed did not save
 /// yet, so neither a value inserted over it nor its agent despawned loses
 /// a change.

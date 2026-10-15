@@ -117,9 +117,7 @@ use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_time::TimePlugin;
 
 use agent::{Agent, Notice};
-use session_log::{
-    SaveConversations, SavedOne, Saving, SessionLog, save_conversations, save_in_last,
-};
+use session_log::{SaveConversations, SavedOne, Saving, SessionLog, save_conversations, save_now};
 use tasks::{PollTasks, Wake, poll_tasks, run_settle_frames};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
@@ -213,7 +211,7 @@ impl Plugin for AgentPlugin {
                     turn::stop_turns_on_exit
                         .in_set(StopTurnsOnExit)
                         .run_if(on_message::<AppExit>),
-                    save_in_last.in_set(Saving),
+                    save_now.map(drop).in_set(Saving),
                     session_log::apply_rewrites
                         .after(Saving)
                         .before(WriteLogs)
