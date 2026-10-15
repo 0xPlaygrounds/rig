@@ -56,18 +56,11 @@ fn a_policy_keeps_the_default_ratio_for_prices_it_cannot_divide() {
 fn digests_and_estimates_are_pinned() {
     let body = br#"{"contents":[{"parts":[{"text":"Hi","thought":false}],"role":"user"},{"parts":[{"thoughtSignature":"c2lnbmF0dXJl","functionCall":{"args":{"b":1.5,"a":[1,2.0]},"name":"read"}}],"role":"model"},{"parts":[{"functionResponse":{"name":"read","response":{"result":"fn main() {}\n"}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"toolConfig":null,"systemInstruction":{"parts":[{"text":"Be brief.","thought":false}],"role":"model"},"tools":[{"functionDeclarations":[{"name":"read","description":"Read a file.","parametersJsonSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}],"codeExecution":null}]}"#;
     let parsed = parse(body).expect("the body parses");
-    let d = digests("gemini-3.8-flash", &parsed);
-    let estimates: Vec<u64> = parsed
-        .contents
-        .iter()
-        .map(|raw| estimate(raw.get()))
-        .collect();
-    let prefix: u64 = parsed
-        .prefix
-        .iter()
-        .flatten()
-        .map(|raw| estimate(raw.get()))
-        .sum();
+    let Digested {
+        d,
+        prefix,
+        contents: estimates,
+    } = digests("gemini-3.8-flash", &parsed);
     assert_eq!(
         d,
         [
