@@ -1,5 +1,5 @@
 //! The default screen, built from the view's public widgets only: a
-//! [`TranscriptPane`] over the agent shown, which takes what the other
+//! [`TranscriptPane`] over the shown agent, which takes what the other
 //! panels leave, a [`StatusLine`] under it, the [`InlineStrip`] of a
 //! question asked beside the work, and the input, an [`Editor`]. An app
 //! that builds its own screen adds [`TuiViewPlugin`](crate::TuiViewPlugin)

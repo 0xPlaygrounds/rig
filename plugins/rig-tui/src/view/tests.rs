@@ -131,7 +131,7 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     say(&mut app, agent, Message::user("question"));
     say(&mut app, agent, Message::assistant("answer"));
-    // About every agent: drawn where the agent shown was.
+    // About every agent: drawn where the shown agent was.
     app.world_mut()
         .write_message(Notice::info(Option::<Entity>::None, "Every agent."));
     app.update();

@@ -647,7 +647,7 @@ impl TranscriptLayout<'_, '_> {
     }
 }
 
-/// Brings `transcript` up to date with the agent shown and returns its
+/// Brings `transcript` up to date with the shown agent and returns its
 /// parts at `width`: each message, with the notices written inside it,
 /// after the notes and notices written before it; then those after the
 /// last message, the reply streaming in with the tool calls it streams,

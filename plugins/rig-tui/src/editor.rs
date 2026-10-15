@@ -25,7 +25,7 @@ const MOST_LINES: usize = 10;
 /// A text being typed: multiline, with a cursor and emacs-style editing
 /// keys. The keys type into the [`MainEditor`], or into the editor of the
 /// panel with the [`KeyFocus`](crate::KeyFocus); Enter sends the main
-/// one's text to the agent shown. A plugin reads and edits a draft as the
+/// one's text to the shown agent. A plugin reads and edits a draft as the
 /// keys do (a template, a dictated message, the text an editor wrote), the
 /// main one through [`MainInput`]; `is_changed` on it says the draft was
 /// edited. Up and Down move between lines and, from the first or last
@@ -57,8 +57,8 @@ pub struct Editor {
 }
 
 /// Marks the editor the keys type into while no panel has the
-/// [`KeyFocus`](crate::KeyFocus), whose text Enter sends to the agent
-/// shown, and which a recalled message or a reload's draft comes back to:
+/// [`KeyFocus`](crate::KeyFocus), whose text Enter sends to the shown
+/// agent, and which a recalled message or a reload's draft comes back to:
 /// the default screen's. An app that builds its own screen marks its own.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct MainEditor;

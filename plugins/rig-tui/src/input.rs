@@ -386,7 +386,7 @@ impl Keymap<'_, '_> {
 
 /// What a built-in key needs besides the view and the input.
 pub(crate) struct Context<'a, 'w, 's> {
-    /// The agent shown.
+    /// The shown agent.
     agent: Option<Entity>,
     busy: bool,
     scratch: Option<&'a Scratch>,

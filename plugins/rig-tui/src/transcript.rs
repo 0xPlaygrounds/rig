@@ -672,7 +672,7 @@ pub(crate) enum Inside<'a> {
     Aside(&'a ShownAside<'a>),
 }
 
-/// An aside a look draws in the conversation of the agent shown: a
+/// An aside a look draws in the conversation of the shown agent: a
 /// plugin's note, or one of a kind with an aside renderer.
 pub(crate) struct ShownAside<'a> {
     /// Its id.

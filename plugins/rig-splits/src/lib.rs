@@ -294,7 +294,9 @@ fn newest(
 fn run(world: &mut World, agent: Entity, asked: Asked) -> Result<String, String> {
     let target = target(world, agent, &asked.place)?;
     match asked.action {
-        Action::Split { new } | Action::Move { new, .. } if new => fork(world, &target, &asked),
+        Action::Split { new } | Action::Move { new, .. } if new => {
+            split_into_new_session(world, &target, &asked)
+        }
         Action::Split { .. } | Action::Move { .. } => {
             let go = matches!(asked.action, Action::Split { .. });
             edit(world, (&target, go), |conversation| {
@@ -402,20 +404,14 @@ fn edit(
 
 /// Splits or moves into a new session: a [`ForkSession`] of the line,
 /// which [`go_to_split`] follows.
-fn fork(world: &mut World, target: &Target, asked: &Asked) -> Result<String, String> {
-    let conversation = match (&target.session, target.entity) {
-        (Some(session), _) => read_session(world, session)?
-            .agent(&target.agent.0)
-            .map(|agent| agent.conversation.clone())
-            .ok_or("the session has no such agent")?,
-        (None, Some(entity)) => world
-            .get::<Conversation>(entity)
-            .map(|conversation| conversation.view())
-            .ok_or("the agent has no conversation")?,
-        (None, None) => return Err("there is no such agent".to_owned()),
-    };
+fn split_into_new_session(
+    world: &mut World,
+    target: &Target,
+    asked: &Asked,
+) -> Result<String, String> {
+    let conversation = conversation_of(world, target)?;
     let line = branch(&conversation, asked.place.line.as_deref())?;
-    let (through, take, title) = match asked.action {
+    let (through, move_from, title) = match asked.action {
         Action::Move { first, last, .. } => (last, Some(first), format!("{first}–{last}")),
         _ => {
             let at = match asked.place.at {
@@ -436,12 +432,12 @@ fn fork(world: &mut World, target: &Target, asked: &Asked) -> Result<String, Str
             agent: target.agent.clone(),
             line,
             through,
-            move_from: take,
+            move_from,
             title: title.clone(),
         },
         asker,
     });
-    Ok(match take {
+    Ok(match move_from {
         Some(first) => format!("Moving {first}–{through} into a new session “{title}”…"),
         None => format!("Splitting after {through} into a new session “{title}”…"),
     })

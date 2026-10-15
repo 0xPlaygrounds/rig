@@ -1,4 +1,4 @@
-//! View state, kept apart from the agent core: the agent shown (the
+//! View state, kept apart from the agent core: the shown agent (the
 //! harness's [`ShownAgent`]), the input's completion, the pickers and questions
 //! waiting to be shown, each transcript pane as plugins read and steer it
 //! ([`TranscriptView`]): what is expanded and selected, the text lit and
@@ -825,7 +825,7 @@ pub(crate) fn load_draft(
     }
 }
 
-/// Shows the agent a [`ShowAgent`] names: the panes of the agent shown follow
+/// Shows the agent a [`ShowAgent`] names: the panes of the shown agent follow
 /// its newest output.
 pub(crate) fn on_focus(
     focus: On<ShowAgent>,

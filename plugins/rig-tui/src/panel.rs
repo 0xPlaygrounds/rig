@@ -210,7 +210,7 @@ pub(super) fn spawn_order(now: Tick, spawns: &PanelSpawns, panel: Entity) -> (Re
 }
 
 /// The smallest transcript a panel may leave.
-pub(super) const MIN_MAIN: (u16, u16) = (20, 3);
+pub(super) const MIN_TRANSCRIPT: (u16, u16) = (20, 3);
 
 /// The rows a panel below the input asks for on a screen `height` rows
 /// high.
@@ -240,14 +240,15 @@ pub(super) fn below_rows(asked: impl IntoIterator<Item = u16>, mut room: u16) ->
 /// placement's size, and its canvas.
 pub(super) type ToLayOut<'a> = (Entity, &'a TuiPanel, Option<u16>, Mut<'a, PanelCanvas>);
 
-/// Lays the panels out on `screen`, in the order given: those below the
-/// input first, stacked at the bottom while what they leave keeps the
-/// rows the others fit their content in and the least a transcript
-/// takes; then each other one takes its side of what is left (one that
-/// fits its content as many rows as that takes), a box goes over the
-/// screen, those that take the rest share what is left, and those within
-/// another take their column of it, or of a box of `boxes` (the picker
-/// shown).
+/// Lays the panels out on `screen`, in the order given, in these steps:
+/// 1. those below the input, stacked at the bottom while what they leave
+///    keeps the rows the others fit their content in and [`MIN_TRANSCRIPT`];
+/// 2. each side panel takes its side of what is left (one that fits its
+///    content as many rows as that takes);
+/// 3. an `Over` box goes over the screen;
+/// 4. those that take the `Rest` share what is left;
+/// 5. those `Within` another take their column of it, or of a box of
+///    `boxes` (the picker shown).
 pub(super) fn lay_out<'a>(
     panels: impl Iterator<Item = ToLayOut<'a>>,
     screen: Rect,
@@ -265,7 +266,7 @@ pub(super) fn lay_out<'a>(
             Placement::BelowInput(size) => Some(fits.unwrap_or(rows_of(size, screen.height))),
             _ => None,
         });
-    let room = (screen.height.saturating_sub(fitted)).saturating_sub(MIN_MAIN.1);
+    let room = (screen.height.saturating_sub(fitted)).saturating_sub(MIN_TRANSCRIPT.1);
     let below_rows = below_rows(asked, room);
     let total: u16 = below_rows.iter().sum();
     let [mut main, mut below] =
@@ -331,7 +332,7 @@ pub(super) fn lay_out<'a>(
 /// `panel` when `rest` is still big enough for the transcript, which it
 /// then becomes; otherwise nothing.
 fn take(main: &mut Rect, panel: Rect, rest: Rect) -> Rect {
-    if rest.width < MIN_MAIN.0 || rest.height < MIN_MAIN.1 {
+    if rest.width < MIN_TRANSCRIPT.0 || rest.height < MIN_TRANSCRIPT.1 {
         return Rect::default();
     }
     *main = rest;

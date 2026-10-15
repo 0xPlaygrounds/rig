@@ -79,7 +79,7 @@ impl TranscriptPane {
 /// What a [`TranscriptPane`] draws.
 #[derive(Clone, Debug)]
 pub enum TranscriptSource {
-    /// The agent shown ([`ShownAgent`]), whichever it is; with none, the
+    /// The shown agent ([`ShownAgent`]), whichever it is; with none, the
     /// notices about every agent.
     Shown,
     /// This agent, live: the reply streaming in, its running calls, its

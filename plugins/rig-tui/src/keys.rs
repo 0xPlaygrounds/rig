@@ -18,7 +18,7 @@
 //! use rig_tui::{AppKeyBindingsExt, KeyBinding, KeyPress, run_command};
 //!
 //! fn build(app: &mut App) {
-//!     // Alt+K compacts the conversation of the agent shown.
+//!     // Alt+K compacts the conversation of the shown agent.
 //!     app.add_key_binding(KeyBinding::new(KeyPress::alt('k'), "Compact"), run_command("compact"));
 //! }
 //! ```
@@ -369,7 +369,7 @@ impl KeyBinding {
 pub struct KeyPressed {
     /// The binding.
     pub entity: Entity,
-    /// The agent shown, if any.
+    /// The shown agent, if any.
     pub agent: Option<Entity>,
     /// Whether the key was let go rather than pressed.
     pub released: bool,
@@ -433,7 +433,7 @@ fn bind(world: &mut World, binding: KeyBinding) -> Option<EntityWorldMut<'_>> {
 }
 
 /// An observer for [`AppKeyBindingsExt::add_key_binding`] that runs the
-/// slash command `line` (without its `/`) for the agent shown.
+/// slash command `line` (without its `/`) for the shown agent.
 pub fn run_command(
     line: impl Into<String>,
 ) -> impl FnMut(On<KeyPressed>, Commands) + Send + Sync + 'static {
@@ -516,7 +516,7 @@ pub enum InputAction {
     /// Completes a partly typed command or path, continues a line ending
     /// in `\`, else sends.
     Send,
-    /// Closes the completion, else interrupts the agent shown.
+    /// Closes the completion, else interrupts the shown agent.
     Stop,
     /// Saves the clipboard's image in the session's
     /// [`Scratch::images`](rig_harness::prelude::Scratch::images) and types
