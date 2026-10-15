@@ -7,6 +7,8 @@ use crate::error::ProviderError;
 use crate::model::ModelList;
 
 use crate::providers::gemini::GeminiConfig;
+#[cfg(feature = "audio")]
+use crate::providers::gemini::audio_generation::Speech;
 use crate::providers::gemini::cached_content::CachedContents;
 use crate::providers::gemini::completion::GenerateContent;
 use crate::providers::gemini::embedding::Embeddings;
@@ -64,6 +66,13 @@ impl Gemini {
     #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub fn image_generation(&self, model: impl Into<String>) -> Model<Images> {
         self.model(self.config.image_generation(model))
+    }
+
+    /// The text-to-speech model for `model`.
+    #[cfg(feature = "audio")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
+    pub fn audio_generation(&self, model: impl Into<String>) -> Model<Speech> {
+        self.model(self.config.audio_generation(model))
     }
 
     /// Gemini's explicit context cache (`cachedContents`).

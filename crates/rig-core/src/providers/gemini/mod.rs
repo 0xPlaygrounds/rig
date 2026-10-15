@@ -13,6 +13,9 @@
 //!
 //! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call it.
 
+#[cfg(feature = "audio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
+pub mod audio_generation;
 pub mod cached_content;
 pub mod caching;
 pub mod completion;
@@ -29,12 +32,18 @@ pub mod transcription;
 
 pub use crate::client::gemini::Gemini;
 pub use crate::client::gemini_caching::Caching;
+#[cfg(feature = "audio")]
+pub use audio_generation::{GEMINI_3_8_FLASH_LITE_TTS, GEMINI_3_8_FLASH_TTS};
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
 pub use caching::{AutoCache, CacheBook, CacheEvent, CacheReport, Clock, CreatedCache, Lease};
 pub use completion::ThoughtReplay;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
-pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
+pub use image_generation::{
+    GEMINI_2_5_FLASH_IMAGE, GEMINI_3_1_FLASH_IMAGE, GEMINI_3_1_FLASH_LITE_IMAGE,
+    GEMINI_3_PRO_IMAGE, GEMINI_NANO_BANANA_2_1,
+};
+pub use interactions_api::{DEEP_RESEARCH_MAX_PREVIEW_04_2026, DEEP_RESEARCH_PREVIEW_04_2026};
 pub use model_listing::*;
 
 use crate::client::env::{self, EnvError};
@@ -109,6 +118,44 @@ impl GeminiConfig {
     /// The Interactions API completion wire.
     pub(crate) fn interactions(&self, model: impl Into<String>) -> interactions_api::Interactions {
         interactions_api::Interactions::new(self.clone(), model)
+    }
+}
+
+/// The size of a generated image. Each model takes some of them; the
+/// API refuses the others.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub enum ImageSize {
+    /// `512`: 512 by 512 pixels at 1:1.
+    #[serde(rename = "512")]
+    FiveTwelve,
+    /// `1K`: 1024 by 1024 pixels at 1:1, the API's default.
+    #[serde(rename = "1K")]
+    OneK,
+    /// `2K`: 2048 by 2048 pixels at 1:1.
+    #[serde(rename = "2K")]
+    TwoK,
+    /// `4K`: 4096 by 4096 pixels at 1:1.
+    #[serde(rename = "4K")]
+    FourK,
+}
+
+/// Merge `source` into `target`: objects key by key, at any depth, and any
+/// other value in place of the one it meets.
+#[cfg(any(feature = "image", feature = "audio"))]
+pub(crate) fn merge_deep(target: &mut serde_json::Value, source: serde_json::Value) {
+    match (target, source) {
+        (serde_json::Value::Object(target), serde_json::Value::Object(source)) => {
+            for (key, value) in source {
+                match target.get_mut(&key) {
+                    Some(existing) => merge_deep(existing, value),
+                    None => {
+                        target.insert(key, value);
+                    }
+                }
+            }
+        }
+        (target, source) => *target = source,
     }
 }
 

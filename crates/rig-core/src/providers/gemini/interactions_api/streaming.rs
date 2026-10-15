@@ -38,6 +38,48 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
 /// resource.
 const INTERACTION_MARKER_KEYS: &[&str] = &["steps", "status", "usage", "object", "id"];
 
+/// The tag of the unknown payload a [`StreamCursor`] travels in.
+const CURSOR_TYPE: &str = "gemini.stream_cursor";
+
+/// Where a resumable stream picks up: an `event_id` the API marked as a
+/// resume point, and the interaction it belongs to. A stream carries one
+/// after each event with an `event_id`, as an
+/// [`Item::Unknown`](crate::streaming::Item::Unknown) that [`Self::of`]
+/// reads. A stream resumed after it with
+/// [`Gemini::interaction_resumed`](crate::providers::gemini::Gemini::interaction_resumed)
+/// continues from the next event, so a step that was open arrives without
+/// its start.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StreamCursor {
+    /// The interaction's id, when the stream named it.
+    pub interaction_id: Option<String>,
+    /// The `event_id` to resume after.
+    pub event_id: String,
+}
+
+impl StreamCursor {
+    /// The cursor `item` carries, if it is one.
+    pub fn of<E>(item: &crate::streaming::Item<E>) -> Option<Self> {
+        let crate::streaming::Item::Unknown(payload) = item else {
+            return None;
+        };
+        let payload = payload.value();
+        if payload.str("type") != Some(CURSOR_TYPE) {
+            return None;
+        }
+        serde_json::from_value(payload.clone()).ok()
+    }
+
+    /// The unknown payload that carries this cursor.
+    fn payload(&self) -> crate::streaming::UnknownPayload {
+        crate::streaming::UnknownPayload::new(json!({
+            "type": CURSOR_TYPE,
+            "interaction_id": self.interaction_id,
+            "event_id": self.event_id,
+        }))
+    }
+}
+
 /// A decoded frame, verbatim: the decoder reads the fields it needs.
 pub enum InteractionsEvent {
     /// One `event_type`-tagged streaming event.
@@ -74,6 +116,8 @@ pub struct InteractionsDecoder {
     model: Option<String>,
     /// The last status a stream reported.
     status: Option<String>,
+    /// The interaction the stream reads, for its cursors.
+    interaction_id: Option<String>,
 }
 
 /// What an open step decodes to.
@@ -150,6 +194,14 @@ fn open_content(
 }
 
 impl InteractionsDecoder {
+    /// The decoder of a stream that reads the interaction `interaction_id`.
+    pub fn resuming(interaction_id: impl Into<String>) -> Self {
+        Self {
+            interaction_id: Some(interaction_id.into()),
+            ..Self::default()
+        }
+    }
+
     /// Open the step at `index` as it starts, writing the content it
     /// already states.
     fn start(
@@ -524,6 +576,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
                 "an Interactions `{event_type}` event carries no `{field}` object"
             ))
         };
+        let event_id = event.str("event_id").map(str::to_owned);
         match event_type.as_str() {
             "step.start" => match event.get("step") {
                 // A start that states no step leaves its deltas to open it.
@@ -545,6 +598,9 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
                 };
                 self.model = field("model").or_else(|| field("agent"));
                 self.status = field("status");
+                if let Some(id) = field("id") {
+                    self.interaction_id = Some(id);
+                }
             }
             "interaction.status_update" => {
                 if let Some(status) = event.str("status") {
@@ -565,6 +621,13 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
                 ));
             }
             _ => {}
+        }
+        if let Some(event_id) = event_id {
+            let cursor = StreamCursor {
+                interaction_id: self.interaction_id.clone(),
+                event_id,
+            };
+            out.unknown(cursor.payload());
         }
         Ok(Flow::More)
     }

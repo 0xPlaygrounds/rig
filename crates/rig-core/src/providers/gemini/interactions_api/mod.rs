@@ -29,8 +29,88 @@ pub mod streaming;
 
 use super::completion::PROVIDER_NAME;
 
+/// `deep-research-preview-04-2026`, the Deep Research agent, built for
+/// speed. Name it with
+/// [`InteractionsOptions::agent`](super::extension::InteractionsOptions::agent).
+pub const DEEP_RESEARCH_PREVIEW_04_2026: &str = "deep-research-preview-04-2026";
+/// `deep-research-max-preview-04-2026`, Deep Research Max, built for
+/// thoroughness.
+pub const DEEP_RESEARCH_MAX_PREVIEW_04_2026: &str = "deep-research-max-preview-04-2026";
+
 /// The wire format both Interactions wires speak.
 const API: crate::message::Api = crate::message::Api::from_static("gemini.interactions");
+
+/// The Interactions `speech_config`: one voice, or a voice per named
+/// speaker.
+#[non_exhaustive]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
+pub enum InteractionSpeechConfig {
+    /// An array of one voice.
+    Voice([InteractionSpeech; 1]),
+    /// `{"speakers": [...]}`: each speaker's voice, matched by the name the
+    /// input's `speech_metadata` gives the speaker.
+    Speakers {
+        /// `speakers`.
+        speakers: Vec<InteractionSpeech>,
+    },
+}
+
+impl InteractionSpeechConfig {
+    /// Speak with `voice`.
+    pub fn voice(voice: InteractionSpeech) -> Self {
+        Self::Voice([voice])
+    }
+
+    /// Speak each `(speaker, voice)` pair's turns in its voice.
+    pub fn speakers<S: Into<String>, V: Into<String>>(
+        speakers: impl IntoIterator<Item = (S, V)>,
+    ) -> Self {
+        Self::Speakers {
+            speakers: speakers
+                .into_iter()
+                .map(|(speaker, voice)| InteractionSpeech::voice(voice).speaker(speaker))
+                .collect(),
+        }
+    }
+}
+
+/// One voice of the Interactions `speech_config`.
+#[non_exhaustive]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct InteractionSpeech {
+    /// `voice`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice: Option<String>,
+    /// `language`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// `speaker`: the name the prompt gives the speaker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
+}
+
+impl InteractionSpeech {
+    /// Speak with `voice`.
+    pub fn voice(voice: impl Into<String>) -> Self {
+        Self {
+            voice: Some(voice.into()),
+            ..Self::default()
+        }
+    }
+
+    /// `language`.
+    pub fn language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
+        self
+    }
+
+    /// `speaker`.
+    pub fn speaker(mut self, speaker: impl Into<String>) -> Self {
+        self.speaker = Some(speaker.into());
+        self
+    }
+}
 
 /// Create interactions with `POST /v1beta/interactions`.
 /// Streaming mode sets `alt=sse` and `stream: true`; unary mode reads a whole resource.
@@ -332,7 +412,7 @@ impl crate::wire::Wire for InteractionResume {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        streaming::InteractionsDecoder::default()
+        streaming::InteractionsDecoder::resuming(self.interaction_id.as_str())
     }
 }
 

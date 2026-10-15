@@ -72,6 +72,11 @@ impl Wire for Images {
         request: ImageGenerationRequest,
         _mode: Mode,
     ) -> Result<InvokeModel, EncodeError> {
+        if !request.images.is_empty() {
+            return Err(EncodeError::request(
+                "Bedrock text-to-image takes no reference images",
+            ));
+        }
         let request = TextToImageGeneration::new(request.prompt)
             .width(request.width)
             .height(request.height);

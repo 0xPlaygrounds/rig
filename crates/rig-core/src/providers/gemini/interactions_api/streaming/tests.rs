@@ -158,6 +158,80 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
     assert!(outcome.is_err());
 }
 
+/// A stream yields a cursor after each event the API marks with an
+/// `event_id`, naming the interaction `interaction.created` named; a stream
+/// that resumes an interaction names it without that event, and joins the
+/// step that was open.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn resume_points_yield_cursors() -> anyhow::Result<()> {
+    use futures::StreamExt;
+
+    let (items, outcome) = drive_frames(&[
+        r#"{"event_type":"interaction.created","interaction":{"id":"int_1","agent":"deep-research-preview-04-2026","status":"in_progress"}}"#,
+        r#"{"event_type":"step.start","index":0,"step":{"type":"model_output"}}"#,
+        r#"{"event_type":"step.delta","event_id":"e2","index":0,"delta":{"type":"text","text":"hi"}}"#,
+        r#"{"event_type":"step.stop","index":0}"#,
+        r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
+    ])
+    .await;
+    let cursors: Vec<_> = items
+        .iter()
+        .filter_map(|item| item.as_ref().ok().and_then(StreamCursor::of))
+        .collect();
+    let cursor = |event_id: &str| StreamCursor {
+        interaction_id: Some("int_1".to_owned()),
+        event_id: event_id.to_owned(),
+    };
+    anyhow::ensure!(cursors == [cursor("e2")], "{cursors:?}");
+    let other = Item::<StreamEvent>::Unknown(crate::streaming::UnknownPayload::new(
+        json!({"type": "other", "event_id": "e9"}),
+    ));
+    anyhow::ensure!(
+        StreamCursor::of(&other).is_none(),
+        "only a cursor reads as one"
+    );
+    anyhow::ensure!(texts_of(&items) == ["hi"]);
+    anyhow::ensure!(outcome.is_ok(), "{outcome:?}");
+
+    let resumed_frames = [
+        r#"{"event_type":"step.delta","event_id":"e5","index":1,"delta":{"type":"text","text":" again"}}"#,
+        r#"{"event_type":"step.stop","index":1}"#,
+        r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
+    ];
+    let sse_bytes = bytes::Bytes::from(
+        resumed_frames
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+    );
+    let resumed = crate::driver::Model::new(
+        super::super::InteractionResume::new(
+            crate::providers::gemini::GeminiConfig::new("test-key"),
+            "int_1",
+        )
+        .after_event("e2"),
+        crate::test_utils::MockStreamingClient { sse_bytes },
+    );
+    let mut stream = resumed.stream(crate::completion::CompletionRequest::new("hello"))?;
+    let mut cursors = Vec::new();
+    while let Some(item) = stream.next().await {
+        cursors.extend(StreamCursor::of(&item?));
+    }
+    anyhow::ensure!(cursors == [cursor("e5")], "{cursors:?}");
+    let response = stream.finish().await?;
+    let text: String = response
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    anyhow::ensure!(text == " again", "the open step continues: {text:?}");
+    Ok(())
+}
+
 /// An in-band error carrying an HTTP status code gets the verdict the Gemini
 /// REST stream gives the same envelope: a 503 or 429 is retryable.
 ///

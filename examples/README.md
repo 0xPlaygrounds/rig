@@ -46,11 +46,12 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `enum_dispatch` | See source. |
 | `extractor` | Demonstrates typed extraction and extraction with usage metadata. |
 | `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so an `AgentHook` gates the patch on `ctx.turn() == 1` to force the tool only up front. |
-| `gemini_deep_research` | See source. |
+| `gemini_deep_research` | Runs Deep Research or Deep Research Max in the background, then streams it with resume or polls it, and prints the report's sources. |
 | `gemini_default_api_recovery` | Demonstrates recovering from Gemini emitting a legacy `default_api` tool name. |
 | `gemini_extractor_with_rag` | See source. |
-| `gemini_nanobanana_image_generation` | See source. |
+| `gemini_nanobanana_image_generation` | Generates a sized image with Nano Banana 2, optionally from a reference image, and writes every image and text part. |
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
+| `gemini_text_to_speech` | Speaks a line in one voice, then a two-host script as PCM joined into one WAV file. |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
 | [`litellm`](litellm/README.md) | Runs an agent through a LiteLLM proxy using its OpenAI-compatible Chat Completions API. Includes local proxy setup. |
 | `manual_tool_calls` | Demonstrates manual tool-call handling with an explicit raw `Model` request. |

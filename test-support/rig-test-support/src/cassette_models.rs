@@ -264,6 +264,14 @@ impl GeminiModels {
         self.client().image_generation(model)
     }
 
+    /// The text-to-speech model for `model`.
+    pub fn audio_generation(
+        &self,
+        model: impl Into<String>,
+    ) -> Model<gemini::audio_generation::Speech> {
+        self.client().audio_generation(model)
+    }
+
     /// The explicit context cache.
     pub fn cached_contents(&self) -> Model<gemini::CachedContents> {
         self.client().cached_contents()

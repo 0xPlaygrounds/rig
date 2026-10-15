@@ -17,6 +17,7 @@
 //! ```
 use crate::completion::Usage;
 use crate::error::ProviderError;
+use crate::message::Image;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -75,6 +76,9 @@ pub struct ImageGenerationRequest {
     pub prompt: String,
     pub width: u32,
     pub height: u32,
+    /// Reference images the model draws from or edits. A provider that
+    /// takes none refuses a request that names one.
+    pub images: Vec<Image>,
     pub additional_params: Option<Value>,
 }
 
@@ -92,6 +96,7 @@ impl ImageGenerationRequestBuilder {
                 prompt: prompt.into(),
                 width: 256,
                 height: 256,
+                images: Vec::new(),
                 additional_params: None,
             },
         }
@@ -106,6 +111,12 @@ impl ImageGenerationRequestBuilder {
     /// The height of the generated image.
     pub fn height(mut self, height: u32) -> Self {
         self.request.height = height;
+        self
+    }
+
+    /// Add a reference image the model draws from or edits.
+    pub fn image(mut self, image: Image) -> Self {
+        self.request.images.push(image);
         self
     }
 

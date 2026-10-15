@@ -93,7 +93,15 @@ struct RecordedRequest {
     path: String,
     method: String,
     #[serde(default)]
+    query_param: Vec<RecordedQuery>,
+    #[serde(default)]
     body: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RecordedQuery {
+    name: String,
+    value: String,
 }
 
 #[derive(Deserialize)]
@@ -184,10 +192,11 @@ fn responses_dialect(provider: &str) -> Option<&'static Dialect> {
 
 fn classify(provider: &str, method: &str, path: &str) -> Endpoint {
     if method != "POST" {
-        // Reads and deletes of stored resources, model listings: nothing
-        // here reads a completion back.
-        return if method == "GET" && path.contains("/interactions/") {
-            Endpoint::Unknown
+        // A read of an interaction is its completion, polled or resumed.
+        // Other reads and deletes of stored resources, and model listings,
+        // read no completion back.
+        return if provider == "gemini" && method == "GET" && path.contains("/interactions/") {
+            Endpoint::Completion(Route::Interactions)
         } else {
             Endpoint::NotCompletion
         };
@@ -623,7 +632,13 @@ async fn take_census() -> Census {
                     .as_deref()
                     .and_then(|body| serde_json::from_str(body).ok())
                     .unwrap_or(Value::Null);
-                let streamed = recorded_streamed(route, path, &request);
+                // A read of an interaction streams when its query asks.
+                let streamed = recorded_streamed(route, path, &request)
+                    || interaction
+                        .when
+                        .query_param
+                        .iter()
+                        .any(|query| query.name == "stream" && query.value == "true");
                 let text = interaction.then.body.unwrap_or_default();
                 let body = if interaction.then.body_encoding.as_deref() == Some("base64") {
                     BASE64_STANDARD

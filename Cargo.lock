@@ -10215,6 +10215,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gemini_text_to_speech"
+version = "0.44.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "gemini_video_understanding"
 version = "0.44.0"
 dependencies = [
