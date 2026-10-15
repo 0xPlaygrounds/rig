@@ -181,8 +181,8 @@ impl Tool for NotebookRead {
         Read::default().description()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<ReadArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<ReadArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {
@@ -246,8 +246,8 @@ impl Tool for NotebookEdit {
             .to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<CellEdit>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<CellEdit>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

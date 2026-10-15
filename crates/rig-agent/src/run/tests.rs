@@ -1438,7 +1438,8 @@ fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
     let tools = vec![ToolDefinition {
         name: rig_core::message::ToolName::new("add").expect("tool name"),
         description: "adds".to_string(),
-        parameters: json!({"type": "object"}),
+        parameters: rig_core::tool::Schema::object(),
+        output_schema: None,
         annotations: Default::default(),
     }];
     let mut run = AgentRun::from_spec(&spec, "go", None);

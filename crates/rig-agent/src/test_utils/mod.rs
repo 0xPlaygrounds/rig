@@ -1,5 +1,9 @@
 //! Test utilities for the classic runtime and its provider-facing acceptance tests.
 
+// Test support: a hand-written schema that is not well formed is a bug in
+// the scenario, so it fails the test that builds it.
+#![allow(clippy::expect_used)]
+
 mod model_conformance;
 mod tools;
 

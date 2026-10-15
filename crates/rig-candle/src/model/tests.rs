@@ -1184,7 +1184,8 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     tools.tools.push(ToolDefinition {
         name: rig_core::message::ToolName::new("tool")?,
         description: "tool".to_string(),
-        parameters: serde_json::json!({}),
+        parameters: rig_core::tool::Schema::new(serde_json::json!({}))?,
+        output_schema: None,
         annotations: Default::default(),
     });
     assert!(
@@ -1511,7 +1512,8 @@ fn another_models_tool_history_renders_for_a_plain_protocol()
     let add = ToolDefinition {
         name: rig_core::message::ToolName::new("add")?,
         description: "add".to_owned(),
-        parameters: serde_json::json!({"type": "object"}),
+        parameters: rig_core::tool::Schema::object(),
+        output_schema: None,
         annotations: Default::default(),
     };
     for protocol in [ConversationProtocol::Llama3, ConversationProtocol::SmolLm2] {

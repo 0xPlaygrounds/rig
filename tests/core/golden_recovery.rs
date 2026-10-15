@@ -34,8 +34,13 @@ impl Tool for Add {
         "adds two integers".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+    fn parameters(&self) -> rig::tool::Schema {
+        rig::tool::Schema::new(json!({
+            "type": "object",
+            "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            "required": ["x", "y"]
+        }))
+        .expect("valid schema")
     }
 
     async fn call(&self, _context: &mut ToolContext, args: AddArgs) -> Result<i64, Self::Error> {

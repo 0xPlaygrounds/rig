@@ -1002,7 +1002,8 @@ fn with_tool(request: CompletionRequest) -> CompletionRequest {
     request.tool(ToolDefinition::new(
         ToolName::new("lookup").expect("a tool name"),
         "Look something up.",
-        json!({"type": "object", "properties": {}}),
+        crate::tool::Schema::new(json!({"type": "object", "properties": {}}))
+            .expect("valid schema"),
     ))
 }
 

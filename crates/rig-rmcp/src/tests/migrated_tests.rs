@@ -147,9 +147,12 @@ fn make_tool(name: &str, description: &str) -> Tool {
 
 fn make_dynamic_tool(name: &str, description: &str) -> DynamicTool {
     DynamicTool::new(
-        rig_core::message::ToolName::new(name).expect("tool name"),
-        description,
-        serde_json::json!({"type": "object", "properties": {}}),
+        rig_core::completion::ToolDefinition::new(
+            rig_core::message::ToolName::new(name).expect("tool name"),
+            description,
+            rig_core::tool::Schema::new(serde_json::json!({"type": "object", "properties": {}}))
+                .expect("valid schema"),
+        ),
         |_args| Box::pin(async { Ok(ToolOutput::text("local")) }),
     )
 }
@@ -664,6 +667,39 @@ async fn mcp_tool_preserves_provider_definition() {
         defs.is_empty(),
         "a disconnected directly registered MCP tool must not remain provider-visible"
     );
+    task.abort();
+}
+
+/// An MCP tool's `outputSchema` becomes its definition's output schema, and
+/// a tool whose schema is not well formed is skipped rather than registered.
+#[tokio::test]
+async fn mcp_output_schema_is_kept_and_malformed_schemas_are_skipped() {
+    let output =
+        serde_json::json!({"type": "object", "properties": {"celsius": {"type": "number"}}});
+    let mut weather = make_tool("weather", "The weather");
+    weather.output_schema = output.as_object().cloned().map(Arc::new);
+    let mut broken = make_tool("broken", "A typo in its schema");
+    broken.input_schema = serde_json::json!({"type": "objekt"})
+        .as_object()
+        .cloned()
+        .map(Arc::new)
+        .expect("an object");
+    let server = DynamicToolServer::new(vec![weather, broken]);
+    let handle = ToolServer::new().run();
+    let (client, task) = connect(server, handler(&handle)).await;
+    let defs = handle.tool_defs(None).await.unwrap();
+    assert_eq!(
+        defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
+        vec!["weather"]
+    );
+    assert_eq!(
+        defs[0]
+            .output_schema
+            .as_ref()
+            .map(|schema| (**schema).clone()),
+        Some(output)
+    );
+    client.close().await;
     task.abort();
 }
 

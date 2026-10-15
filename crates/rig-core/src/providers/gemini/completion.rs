@@ -533,16 +533,60 @@ fn base(
     ]))
 }
 
-/// A tool as its function declaration: its JSON Schema goes as
-/// `parametersJsonSchema`, which reads full JSON Schema, as pi sends it. A
-/// tool with no schema declares none.
+/// A tool as its function declaration: its schemas go as
+/// `parametersJsonSchema` and `responseJsonSchema`, which read full JSON
+/// Schema, as pi sends them.
 fn declaration(tool: &crate::completion::ToolDefinition) -> Value {
-    let parameters = (!tool.parameters.is_null()).then(|| tool.parameters.clone());
     Value::Object(set_fields([
         ("name", Some(Value::from(tool.name.as_str()))),
         ("description", Some(Value::from(tool.description.as_str()))),
-        ("parametersJsonSchema", parameters),
+        (
+            "parametersJsonSchema",
+            Some(tool.parameters.clone().into_value()),
+        ),
+        (
+            "responseJsonSchema",
+            tool.output_schema.clone().map(response_schema),
+        ),
     ]))
+}
+
+/// The schema of the `response` a tool's result goes back in
+/// ([`user_part`]): its output under `result`, with the output's local
+/// references (`#`, `#/$defs/...`) moved there too, so they still resolve.
+fn response_schema(output: crate::tool::Schema) -> Value {
+    let mut output = output.into_value();
+    under_result(&mut output);
+    json!({ "type": "object", "properties": { "result": output } })
+}
+
+/// Points every local `$ref` in `schema` below `/properties/result`. A
+/// subschema with its own `$id` resolves its references within itself, and
+/// literal values (`const`, `enum`, `default`, `examples`) are data, so
+/// neither is rewritten.
+fn under_result(schema: &mut Value) {
+    match schema {
+        Value::Object(map) if map.contains_key("$id") => {}
+        Value::Object(map) => {
+            for (key, value) in map.iter_mut() {
+                if ["const", "enum", "default", "examples"].contains(&key.as_str()) {
+                    continue;
+                }
+                match value {
+                    Value::String(reference) if key == "$ref" => {
+                        if let Some(pointer) = reference.strip_prefix('#')
+                            && (pointer.is_empty() || pointer.starts_with('/'))
+                        {
+                            *reference = format!("#/properties/result{pointer}");
+                        }
+                    }
+                    value => under_result(value),
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(under_result),
+        _ => {}
+    }
 }
 
 /// Proto3 JSON accepts both lowerCamelCase and original proto field names.

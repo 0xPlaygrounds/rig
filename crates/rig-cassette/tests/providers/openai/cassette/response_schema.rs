@@ -77,7 +77,9 @@ fn test_nested_objects() {
     let tool_def = ToolDefinition {
         name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
-        parameters: serde_json::to_value(schema).unwrap(),
+        parameters: rig_core::tool::Schema::new(serde_json::to_value(schema).unwrap())
+            .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     };
     let response = ResponsesToolDefinition::from(tool_def).with_strict();
@@ -94,7 +96,9 @@ fn test_array_items() {
     let tool_def = ToolDefinition {
         name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
-        parameters: serde_json::to_value(schema).unwrap(),
+        parameters: rig_core::tool::Schema::new(serde_json::to_value(schema).unwrap())
+            .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     };
     let response = ResponsesToolDefinition::from(tool_def).with_strict();
@@ -111,7 +115,9 @@ fn test_enum_schemas() {
     let tool_def = ToolDefinition {
         name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
-        parameters: serde_json::to_value(schema).unwrap(),
+        parameters: rig_core::tool::Schema::new(serde_json::to_value(schema).unwrap())
+            .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     };
     let response = ResponsesToolDefinition::from(tool_def).with_strict();

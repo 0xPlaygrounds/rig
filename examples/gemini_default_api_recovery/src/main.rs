@@ -15,8 +15,8 @@ use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
-use rig::tool::Tool;
-use schemars::{JsonSchema, schema_for};
+use rig::tool::{Schema, Tool};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -109,8 +109,8 @@ impl Tool for JavaScript {
         "JavaScript runtime with an array of tools for completing the tasks assigned by the user. Legacy workspace agents may refer to this runtime as default_api.".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        schema_for!(JavaScriptProgram).to_value()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

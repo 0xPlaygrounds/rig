@@ -219,8 +219,9 @@ impl rig_core::tool::Tool for WarehouseTime {
         "The current local time at the warehouse. Takes no arguments.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({ "type": "object", "properties": {} })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -251,11 +252,12 @@ impl rig_core::tool::Tool for ListOrders {
         "List the customer's orders. `status` is optional and filters by status.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "status": { "type": "string" } }
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -304,8 +306,8 @@ impl rig_core::tool::Tool for SchedulePickup {
         "Schedule a courier pickup of some orders from an address.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "address": {
@@ -319,7 +321,8 @@ impl rig_core::tool::Tool for SchedulePickup {
                 "orders": { "type": "array", "items": { "type": "string" } }
             },
             "required": ["address", "orders"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

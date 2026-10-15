@@ -110,14 +110,18 @@ impl Transport<MockScript> for Scripted {
 }
 
 fn add_tool() -> DynamicTool {
+    let parameters = rig_core::tool::Schema::new(serde_json::json!({
+        "type": "object",
+        "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+        "required": ["x", "y"]
+    }))
+    .expect("valid schema");
     DynamicTool::new(
-        ToolName::new("add").expect("tool name"),
-        "Add x and y",
-        serde_json::json!({
-            "type": "object",
-            "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
-            "required": ["x", "y"]
-        }),
+        rig_core::completion::ToolDefinition::new(
+            ToolName::new("add").expect("tool name"),
+            "Add x and y",
+            parameters,
+        ),
         |arguments| {
             Box::pin(async move {
                 let x = arguments["x"].as_i64().unwrap_or_default();

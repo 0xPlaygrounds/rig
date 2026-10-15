@@ -81,7 +81,7 @@ async fn stream_function_call_arguments() {
             .tool(ToolDefinition::new(
                 ToolName::new("lookup").expect("a tool name"),
                 "Looks a sentence up.",
-                json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
+                rig_core::tool::Schema::new(json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]})).expect("valid schema"),
             ))
             .max_tokens(4000)
             .reasoning(Effort::Low)

@@ -190,12 +190,13 @@ impl Tool for LookupTool {
         "Look up a record by name and return its code.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "record": { "type": "string", "description": "alpha or beta" } },
             "required": ["record"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -230,12 +231,13 @@ impl Tool for VerifyTool {
         "Verify a code returned by lookup_record. May fail transiently; retry once.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "code": { "type": "string", "description": "the code to verify" } },
             "required": ["code"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -270,8 +272,9 @@ impl Tool for SnapshotTool {
         "Return the reference snapshot image for the records.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({ "type": "object", "properties": {}, "required": [] })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {}, "required": [] }))
+            .expect("valid schema")
     }
 
     async fn call(

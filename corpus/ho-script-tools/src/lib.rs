@@ -77,6 +77,8 @@ struct Script {
     name: String,
     description: String,
     args: Vec<Arg>,
+    /// The JSON schema of its arguments.
+    parameters: Schema,
     readonly: bool,
     timeout: Duration,
     /// The whole file, which every call of this version runs.
@@ -349,11 +351,14 @@ fn parse(path: &Path, body: Vec<u8>) -> Result<Script, String> {
     let description = description
         .filter(|description| !description.is_empty())
         .ok_or("its header has no `# description: …` line")?;
+    let parameters = Schema::new(parameters(&args))
+        .map_err(|error| format!("its arguments make no tool schema: {error}"))?;
     Ok(Script {
         path: path.to_path_buf(),
         name,
         description,
         args,
+        parameters,
         readonly,
         timeout,
         body,
@@ -392,9 +397,10 @@ fn parse_arg(rest: &str) -> Result<Arg, String> {
 /// The definition and handler of `script`'s tool.
 fn tool(script: &Arc<Script>, runner: &Runner) -> Option<(ToolDefinition, ErasedHandler)> {
     let name = ToolName::new(&script.name).ok()?;
-    let parameters = script.parameters();
+    let definition =
+        ToolDefinition::new(name, script.description.clone(), script.parameters.clone());
     let (runner, called) = (runner.clone(), Arc::clone(script));
-    let tool = DynamicTool::new(name, script.description.clone(), parameters, move |args| {
+    let tool = DynamicTool::new(definition, move |args| {
         let (runner, script) = (runner.clone(), Arc::clone(&called));
         Box::pin(async move { runner.run(script, args).await })
     });
@@ -402,26 +408,24 @@ fn tool(script: &Arc<Script>, runner: &Runner) -> Option<(ToolDefinition, Erased
     Some((definition, handler))
 }
 
-impl Script {
-    /// The JSON schema of its arguments.
-    fn parameters(&self) -> Value {
-        let properties: Map<String, Value> = self
-            .args
-            .iter()
-            .map(|arg| {
-                let schema = json!({ "type": arg.kind.json(), "description": arg.description });
-                (arg.name.clone(), schema)
-            })
-            .collect();
-        let required: Vec<&str> = self
-            .args
-            .iter()
-            .filter(|arg| arg.required)
-            .map(|arg| arg.name.as_str())
-            .collect();
-        json!({ "type": "object", "properties": properties, "required": required })
-    }
+/// The JSON schema of `args`.
+fn parameters(args: &[Arg]) -> Value {
+    let properties: Map<String, Value> = args
+        .iter()
+        .map(|arg| {
+            let schema = json!({ "type": arg.kind.json(), "description": arg.description });
+            (arg.name.clone(), schema)
+        })
+        .collect();
+    let required: Vec<&str> = args
+        .iter()
+        .filter(|arg| arg.required)
+        .map(|arg| arg.name.as_str())
+        .collect();
+    json!({ "type": "object", "properties": properties, "required": required })
+}
 
+impl Script {
     /// The `RIG_ARG_<NAME>` variables of a call's `args`, or why they do
     /// not fit.
     fn env(&self, args: &Value) -> Result<Vec<(String, String)>, ToolExecutionError> {

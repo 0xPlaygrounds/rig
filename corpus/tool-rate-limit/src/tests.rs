@@ -34,8 +34,8 @@ impl PortableTool for EchoTool {
         "Echo.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<Args>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Args>()
     }
 
     async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
@@ -61,8 +61,8 @@ impl PortableTool for GateTool {
         "Wait for the gate.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<Args>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Args>()
     }
 
     async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {

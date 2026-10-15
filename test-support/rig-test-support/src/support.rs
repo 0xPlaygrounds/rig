@@ -222,11 +222,11 @@ impl Tool for Adder {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::from_str(
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::from_str(
                 r#"{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}"#,
             )
-            .expect("adder schema should deserialize")
+            .expect("adder schema should deserialize")).expect("valid schema")
     }
 
     async fn call(
@@ -252,11 +252,11 @@ impl Tool for Subtract {
         "Subtract y from x (i.e.: x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::from_str(
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::from_str(
                 r#"{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"]}"#,
             )
-            .expect("subtract schema should deserialize")
+            .expect("subtract schema should deserialize")).expect("valid schema")
     }
 
     async fn call(
@@ -282,15 +282,16 @@ impl PortableTool for PortableAdder {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "x": {"type": "number", "description": "The first number to add"},
                 "y": {"type": "number", "description": "The second number to add"}
             },
             "required": ["x", "y"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -312,15 +313,16 @@ impl PortableTool for PortableSubtract {
         "Subtract y from x (i.e.: x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "x": {"type": "number", "description": "The number to subtract from"},
                 "y": {"type": "number", "description": "The number to subtract"}
             },
             "required": ["x", "y"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -342,12 +344,13 @@ impl Tool for AlphaSignal {
         "Return the alpha signal marker.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": [],
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -373,12 +376,13 @@ impl Tool for BetaSignal {
         "Return the beta signal marker.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": [],
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -395,11 +399,13 @@ pub fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("A zero-argument tool named {name}."),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": [],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

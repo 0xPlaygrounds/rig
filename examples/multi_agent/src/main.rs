@@ -5,10 +5,9 @@ use rig::providers::openai::{self, OpenAI};
 use rig::{
     agent::{Agent, AgentBuilder},
     completion::Message,
-    tool::Tool,
+    tool::{Schema, Tool},
 };
 use serde::Deserialize;
-use serde_json::json;
 
 // Define a wrapper around an agent so that it can be provided to another agent
 // as a tool
@@ -17,8 +16,9 @@ struct TranslatorTool(Agent);
 const TRANSLATOR_TOOL_NAME: &str = "translator";
 
 // The input that will be sent to the translator agent from the main agent
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct TranslatorArgs {
+    /// The text to translate to English
     prompt: String,
 }
 
@@ -35,17 +35,8 @@ impl Tool for TranslatorTool {
             .to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "The text to translate to English"
-                }
-            },
-            "required": ["prompt"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

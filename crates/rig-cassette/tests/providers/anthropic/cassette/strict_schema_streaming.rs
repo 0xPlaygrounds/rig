@@ -78,7 +78,8 @@ async fn assert_model_streaming_tool_call_with(
         .tool(ToolDefinition {
             name: rig_core::message::ToolName::new(tool_name).expect("tool name"),
             description: "Record the requested values in a streaming strict tool call.".to_string(),
-            parameters,
+            parameters: rig_core::tool::Schema::new(parameters).expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         })
         .output_schema(output_schema);

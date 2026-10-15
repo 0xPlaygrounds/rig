@@ -32,8 +32,8 @@ impl PortableTool for ZzRuntime {
         "A tool registered while the agent runs.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object", "properties": {} })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {

@@ -154,7 +154,7 @@ fn fingerprints_are_pinned() {
         ToolDefinition::new(
             ToolName::new(name).expect("a tool name"),
             format!("{name} things"),
-            parameters,
+            crate::tool::Schema::new(parameters).expect("a valid schema"),
         )
     };
     let tools = [

@@ -69,15 +69,16 @@ mod portable_fixtures {
             format!("{} portable embedding fixture", self.context.prefix)
         }
 
-        fn parameters(&self) -> serde_json::Value {
-            serde_json::json!({
+        fn parameters(&self) -> rig_core::tool::Schema {
+            rig_core::tool::Schema::new(serde_json::json!({
                 "type": "object",
                 "properties": {
                     "value": {"type": "string"},
                     "fail": {"type": "boolean"}
                 },
                 "required": ["value"]
-            })
+            }))
+            .expect("valid schema")
         }
 
         fn map_error(&self, error: Self::Error) -> ToolExecutionError {
@@ -166,9 +167,12 @@ fn deleting_a_middle_tool_preserves_order_of_survivors() {
 fn named_tool(name: &str, description: &str) -> DynamicTool {
     let output = format!("called {description}");
     DynamicTool::new(
-        rig_core::message::ToolName::new(name).expect("tool name"),
-        description,
-        json!({ "type": "object", "properties": {} }),
+        rig_core::completion::ToolDefinition::new(
+            rig_core::message::ToolName::new(name).expect("tool name"),
+            description,
+            rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+                .expect("valid schema"),
+        ),
         move |_args| {
             let output = output.clone();
             Box::pin(async move { Ok(ToolOutput::text(output)) })
@@ -214,8 +218,9 @@ fn retrieved_tool_schemas_use_canonical_name() {
             "dynamic tool".to_string()
         }
 
-        fn parameters(&self) -> serde_json::Value {
-            json!({ "type": "object", "properties": {} })
+        fn parameters(&self) -> rig_core::tool::Schema {
+            rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+                .expect("valid schema")
         }
 
         async fn call(
@@ -363,8 +368,8 @@ async fn json_shaped_string_output_stays_literal_text_through_dispatch() {
             "Returns text that happens to look like a rich-content envelope".into()
         }
 
-        fn parameters(&self) -> serde_json::Value {
-            json!({"type": "object"})
+        fn parameters(&self) -> rig_core::tool::Schema {
+            rig_core::tool::Schema::object()
         }
 
         async fn call(
@@ -430,8 +435,9 @@ async fn null_args_are_normalized_to_empty_object() {
             "Tool with no required arguments".to_string()
         }
 
-        fn parameters(&self) -> serde_json::Value {
-            json!({"type": "object", "properties": {}})
+        fn parameters(&self) -> rig_core::tool::Schema {
+            rig_core::tool::Schema::new(json!({"type": "object", "properties": {}}))
+                .expect("valid schema")
         }
 
         async fn call(

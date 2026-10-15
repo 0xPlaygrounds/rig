@@ -1104,7 +1104,9 @@ fn tool_result_images_reach_gemini_2_in_a_following_user_message() {
             CompletionRequest::new("next").tools(vec![crate::completion::ToolDefinition {
                 name: message::ToolName::new("shot").expect("a tool name"),
                 description: "Take a screenshot".to_owned(),
-                parameters: json!({ "type": "object", "properties": {} }),
+                parameters: crate::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+                    .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             }]);
         request.chat_history = history.into_iter().map(Into::into).collect();
@@ -1185,5 +1187,46 @@ fn a_later_system_message_folds_into_the_instruction() {
     assert!(
         instruction.contains("s0") && instruction.contains("later"),
         "{instruction}"
+    );
+}
+
+/// A tool's schemas go as its declaration's `parametersJsonSchema` and,
+/// when it declares an output, `responseJsonSchema`, which describes the
+/// output under `result` as a result is sent back.
+#[test]
+fn a_tool_declares_its_output_as_response_json_schema() {
+    let parameters = crate::tool::Schema::object();
+    let tool = crate::completion::ToolDefinition::new(
+        crate::message::ToolName::new("forecast").expect("a tool name"),
+        "Forecast the weather",
+        parameters.clone(),
+    );
+    assert_eq!(
+        declaration(&tool),
+        json!({"name": "forecast", "description": "Forecast the weather",
+            "parametersJsonSchema": {"type": "object"}})
+    );
+    let output = crate::tool::Schema::new(json!({
+        "$defs": {"celsius": {"type": "number"}},
+        "properties": {"now": {"$ref": "#/$defs/celsius"}, "next": {"$ref": "#"},
+            "unit": {"const": {"$ref": "#"}}, "own": {"$id": "own", "$ref": "#"},
+            "far": {"anyOf": [{"$ref": "https://example.com/s"}, {"$ref": "#node"}]}},
+    }))
+    .expect("valid schema");
+    assert_eq!(
+        declaration(&tool.with_output_schema(output))["responseJsonSchema"],
+        json!({
+            "type": "object",
+            "properties": {"result": {
+                "$defs": {"celsius": {"type": "number"}},
+                "properties": {
+                    "now": {"$ref": "#/properties/result/$defs/celsius"},
+                    "next": {"$ref": "#/properties/result"},
+                    "unit": {"const": {"$ref": "#"}},
+                    "own": {"$id": "own", "$ref": "#"},
+                    "far": {"anyOf": [{"$ref": "https://example.com/s"}, {"$ref": "#node"}]},
+                },
+            }},
+        })
     );
 }

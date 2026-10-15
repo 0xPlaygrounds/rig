@@ -3,13 +3,14 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use rig_agent::tool::{Tool, ToolContext};
+use rig_agent::tool::{Schema, Tool, ToolContext};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct OperationArgs {
+    /// The first number to add
     x: i32,
+    /// The second number to add
     y: i32,
 }
 
@@ -36,20 +37,8 @@ impl Tool for Adder {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": {
-                    "type": "number",
-                    "description": "The first number to add"
-                },
-                "y": {
-                    "type": "number",
-                    "description": "The second number to add"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

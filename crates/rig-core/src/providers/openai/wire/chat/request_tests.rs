@@ -25,7 +25,8 @@ fn tool(tool: &str) -> ToolDefinition {
     ToolDefinition::new(
         name(tool),
         "a tool",
-        json!({"type": "object", "properties": {}}),
+        crate::tool::Schema::new(json!({"type": "object", "properties": {}}))
+            .expect("valid schema"),
     )
 }
 

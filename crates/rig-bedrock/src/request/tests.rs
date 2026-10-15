@@ -23,7 +23,9 @@ fn tool(tool: &str) -> ToolDefinition {
     ToolDefinition {
         name: name(tool),
         description: format!("The {tool} tool"),
-        parameters: json!({ "type": "object", "properties": {} }),
+        parameters: rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+            .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

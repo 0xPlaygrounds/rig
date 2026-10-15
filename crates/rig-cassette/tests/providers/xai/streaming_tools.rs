@@ -40,12 +40,13 @@ impl Tool for StatusWordTool {
         "Return a harmless status word.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": [],
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

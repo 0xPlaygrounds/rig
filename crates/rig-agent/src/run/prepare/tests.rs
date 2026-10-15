@@ -17,7 +17,9 @@ fn prepared_request_round_trips_through_serde() {
         vec![ToolDefinition {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: "adds".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
+            parameters: rig_core::tool::Schema::new(serde_json::json!({"type": "object"}))
+                .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         }],
         None,

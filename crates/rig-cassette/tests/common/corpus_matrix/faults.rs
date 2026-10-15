@@ -345,12 +345,13 @@ impl rig_core::tool::Tool for FailingOrchard {
         "Return the beta signal marker.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {},
             "required": [],
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

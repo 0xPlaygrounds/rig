@@ -127,12 +127,13 @@ impl Tool for PingEmpty {
         "Return EMPTY-OK. This tool takes no arguments.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": []
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -155,8 +156,8 @@ impl Tool for InspectManifest {
         "Validate a nested deployment manifest.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "project": { "type": "string" },
@@ -182,7 +183,8 @@ impl Tool for InspectManifest {
                 "note": { "type": "string" }
             },
             "required": ["project", "flags", "steps", "note"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -210,8 +212,8 @@ impl Tool for JoinLabels {
         "Join label strings with the requested separator.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "labels": {
@@ -221,7 +223,8 @@ impl Tool for JoinLabels {
                 "separator": { "type": "string" }
             },
             "required": ["labels", "separator"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -244,14 +247,15 @@ impl Tool for EscapeEcho {
         "Echo a string containing escaping-sensitive characters.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "text": { "type": "string" }
             },
             "required": ["text"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

@@ -69,7 +69,11 @@ fn ping_tool() -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new("ping").expect("tool name"),
         description: "Matrix tool ping".to_owned(),
-        parameters: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+        parameters: rig_core::tool::Schema::new(
+            json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+        )
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

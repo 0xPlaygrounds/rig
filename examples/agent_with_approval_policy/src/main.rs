@@ -23,16 +23,16 @@ use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::Tool;
+use rig::tool::{Schema, Tool};
 use serde::Deserialize;
-use serde_json::json;
 
 #[derive(Debug, thiserror::Error)]
 #[error("tool failed: {0}")]
 struct ToolError(String);
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct SearchArgs {
+    /// Search query
     query: String,
 }
 
@@ -48,12 +48,8 @@ impl Tool for SearchWeb {
         "Search the web for a query (read-only).".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": { "query": { "type": "string", "description": "Search query" } },
-            "required": ["query"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -66,9 +62,11 @@ impl Tool for SearchWeb {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct TransferArgs {
+    /// Destination account id
     to: String,
+    /// Amount in whole dollars
     amount: u64,
 }
 
@@ -84,15 +82,8 @@ impl Tool for TransferFunds {
         "Transfer funds to an account.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "to": { "type": "string", "description": "Destination account id" },
-                "amount": { "type": "integer", "description": "Amount in whole dollars" }
-            },
-            "required": ["to", "amount"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

@@ -470,11 +470,13 @@ async fn commentary_before_a_tool_call_replays_with_its_phase() {
                 let tool = ToolDefinition {
                     name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
                     description: "Look up the current weather for a city.".to_owned(),
-                    parameters: serde_json::json!({
+                    parameters: rig_core::tool::Schema::new(serde_json::json!({
                         "type": "object",
                         "properties": { "city": { "type": "string" } },
                         "required": ["city"],
-                    }),
+                    }))
+                    .expect("valid schema"),
+                    output_schema: None,
                     annotations: Default::default(),
                 };
                 let reply = streamed(

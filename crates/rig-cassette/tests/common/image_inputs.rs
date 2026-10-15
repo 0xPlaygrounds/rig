@@ -111,7 +111,11 @@ pub async fn as_tool_result<W, T>(
     let tool = ToolDefinition {
         name: rig_core::message::ToolName::new("render_swatch").expect("tool name"),
         description: "Render the swatch image the user asks about.".to_owned(),
-        parameters: serde_json::json!({ "type": "object", "properties": {}, "required": [] }),
+        parameters: rig_core::tool::Schema::new(
+            serde_json::json!({ "type": "object", "properties": {}, "required": [] }),
+        )
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     };
     let prompt = Message::user(format!("Call render_swatch, then answer: {QUESTION}"));

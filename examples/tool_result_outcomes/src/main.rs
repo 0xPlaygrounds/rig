@@ -40,9 +40,13 @@ use rig::agent::{
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult, tool_name};
+use rig::tool::{
+    Schema, Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult, tool_name,
+};
 
-#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 enum Operation {
     ReadDisk,
@@ -58,7 +62,7 @@ impl Operation {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ProbeArgs {
     operation: Operation,
 }
@@ -93,17 +97,8 @@ impl Tool for SystemProbe {
             .to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "operation": {
-                    "type": "string",
-                    "enum": ["read_disk", "connect_network"]
-                }
-            },
-            "required": ["operation"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {

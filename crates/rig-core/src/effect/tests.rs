@@ -437,7 +437,8 @@ fn a_row_is_checked_against_a_handler_table_and_names_its_first_gap() {
             FamilyDescriptor::Tool {
                 name: "add".into(),
                 description: String::new(),
-                parameters: json!({}),
+                parameters: crate::tool::Schema::object(),
+                output_schema: None,
                 embedding: None,
             },
         ),

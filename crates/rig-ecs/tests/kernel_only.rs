@@ -33,7 +33,7 @@ const DEADLINE: Duration = Duration::from_secs(10);
 /// Adds two numbers, counting its calls.
 struct Add(Arc<AtomicU32>);
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct AddArgs {
     a: i64,
     b: i64,
@@ -49,12 +49,8 @@ impl PortableTool for Add {
         "Adds two integers.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": { "a": { "type": "integer" }, "b": { "type": "integer" } },
-            "required": ["a", "b"],
-        })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::arguments::<AddArgs>()
     }
 
     async fn call(&self, args: AddArgs) -> Result<i64, ToolExecutionError> {

@@ -5,11 +5,10 @@
 use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, Anthropic};
-use rig::tool::Tool;
+use rig::tool::{Schema, Tool};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct OperationArgs {
     x: i32,
     y: i32,
@@ -34,12 +33,8 @@ impl Tool for Add {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
-            "required": ["x", "y"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -64,12 +59,8 @@ impl Tool for Divide {
         "Compute the quotient of x and y.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
-            "required": ["x", "y"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

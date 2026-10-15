@@ -26,9 +26,8 @@ use rig::completion::PromptError;
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::Tool;
+use rig::tool::{Schema, Tool};
 use serde::Deserialize;
-use serde_json::json;
 
 const PREAMBLE: &str =
     "You are a calculator assistant. Use the add tool for arithmetic, then report the result.";
@@ -38,9 +37,11 @@ const PROMPT: &str = "What is 21 + 21? Use the add tool, then tell me the answer
 // A tiny calculator tool the hook can force the model to call.
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct AddArgs {
+    /// The first addend
     x: i64,
+    /// The second addend
     y: i64,
 }
 
@@ -61,15 +62,8 @@ impl Tool for Add {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "number", "description": "The first addend" },
-                "y": { "type": "number", "description": "The second addend" }
-            },
-            "required": ["x", "y"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

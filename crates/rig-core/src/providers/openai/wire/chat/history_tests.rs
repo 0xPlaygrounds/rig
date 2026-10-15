@@ -92,7 +92,8 @@ fn tools_of(history: &[Message]) -> Vec<crate::completion::ToolDefinition> {
             crate::completion::ToolDefinition::new(
                 name,
                 "a tool the history calls",
-                json!({"type": "object", "properties": {}}),
+                crate::tool::Schema::new(json!({"type": "object", "properties": {}}))
+                    .expect("valid schema"),
             )
         })
         .collect()

@@ -3,33 +3,26 @@
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
 use anyhow::Result;
+use rig::completion::ToolDefinition;
 use rig::message::{EmptyToolName, ToolName};
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::{DynamicTool, ToolOutput};
+use rig::tool::{DynamicTool, Schema, ToolOutput};
+use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct OperationArgs {
     x: i32,
     y: i32,
 }
 
 fn runtime_tools() -> Result<Vec<DynamicTool>, EmptyToolName> {
-    let parameters = json!({
-        "type": "object",
-        "properties": {
-            "x": { "type": "integer" },
-            "y": { "type": "integer" }
-        },
-        "required": ["x", "y"]
-    });
+    let parameters = Schema::arguments::<OperationArgs>();
     Ok(vec![
         DynamicTool::new(
-            ToolName::new("add")?,
-            "Add x and y",
-            parameters.clone(),
+            ToolDefinition::new(ToolName::new("add")?, "Add x and y", parameters.clone()),
             |args| {
                 Box::pin(async move {
                     let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
@@ -41,9 +34,7 @@ fn runtime_tools() -> Result<Vec<DynamicTool>, EmptyToolName> {
             },
         ),
         DynamicTool::new(
-            ToolName::new("subtract")?,
-            "Subtract y from x",
-            parameters,
+            ToolDefinition::new(ToolName::new("subtract")?, "Subtract y from x", parameters),
             |args| {
                 Box::pin(async move {
                     let args: OperationArgs = serde_json::from_value(args).map_err(|error| {

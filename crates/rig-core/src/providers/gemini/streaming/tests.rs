@@ -529,7 +529,8 @@ fn replayed(model: &str, response: &crate::completion::CompletionResponse) -> se
         .map(|call| crate::completion::ToolDefinition {
             name: call.function.name.clone(),
             description: "a tool".to_owned(),
-            parameters: json!({"type": "object"}),
+            parameters: crate::tool::Schema::object(),
+            output_schema: None,
             annotations: Default::default(),
         })
         .collect();

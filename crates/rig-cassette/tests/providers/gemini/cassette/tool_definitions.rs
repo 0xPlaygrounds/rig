@@ -40,8 +40,8 @@ impl Tool for PlanTrip {
         "Plan a trip itinerary.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "destination": {
@@ -68,7 +68,8 @@ impl Tool for PlanTrip {
                 }
             },
             "required": ["destination", "travellers", "transport", "waypoints"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -181,6 +182,105 @@ mod derive_macro {
                 assert!(
                     response.output().contains("42"),
                     "final answer should report 42: {response:?}"
+                );
+            },
+        )
+        .await;
+    }
+}
+
+mod output_schema {
+    use rig::completion::Message;
+    use rig::providers::gemini;
+    use rig::tool::{Schema, Tool};
+    use schemars::JsonSchema;
+    use serde::{Deserialize, Serialize};
+
+    use super::super::super::agent_run_support::tool_result_texts;
+    use super::super::super::support::with_gemini_cassette;
+    use super::super::super::tools_support::MathError;
+
+    #[derive(Deserialize, JsonSchema)]
+    struct ForecastArgs {
+        /// The city to forecast.
+        city: String,
+    }
+
+    /// Tomorrow's weather in a city.
+    #[derive(Serialize, JsonSchema)]
+    struct Weather {
+        /// Degrees Celsius.
+        celsius: f64,
+        /// One word for the sky, such as `sunny`.
+        sky: String,
+    }
+
+    struct Forecast;
+
+    impl Tool for Forecast {
+        const NAME: &'static str = "forecast";
+        type Error = MathError;
+        type Args = ForecastArgs;
+        type Output = Weather;
+
+        fn description(&self) -> String {
+            "Forecast tomorrow's weather in a city.".to_string()
+        }
+
+        fn parameters(&self) -> Schema {
+            Schema::arguments::<ForecastArgs>()
+        }
+
+        fn output_schema(&self) -> Option<Schema> {
+            Some(Schema::of::<Weather>())
+        }
+
+        async fn call(
+            &self,
+            _context: &mut rig::tool::ToolContext,
+            args: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
+            let _ = args.city;
+            Ok(Weather {
+                celsius: 21.5,
+                sky: "sunny".to_string(),
+            })
+        }
+    }
+
+    /// A tool's output schema reaches Gemini as its declaration's
+    /// `responseJsonSchema`, beside `parametersJsonSchema`, and the call runs.
+    #[tokio::test]
+    async fn output_schema_reaches_gemini_as_response_json_schema() {
+        with_gemini_cassette(
+            "tool_definitions/output_schema_reaches_gemini_as_response_json_schema",
+            |client| async move {
+                let agent = rig::AgentBuilder::new(
+                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                )
+                .preamble(
+                    "You must use the forecast tool for weather questions, then report its answer.",
+                )
+                .temperature(0.0)
+                .tool(Forecast)
+                .default_max_turns(3)
+                .build();
+
+                let mut history = Vec::<Message>::new();
+                let response = agent
+                    .chat("What will the weather be in Lyon tomorrow?", &mut history)
+                    .await
+                    .expect("a tool with an output schema should be callable");
+
+                let texts: Vec<String> = history.iter().flat_map(tool_result_texts).collect();
+                assert_eq!(
+                    texts,
+                    vec![r#"{"celsius":21.5,"sky":"sunny"}"#.to_string()],
+                    "the forecast tool should run once"
+                );
+                assert!(
+                    response.output().contains("21.5"),
+                    "final answer should report the forecast: {response:?}"
                 );
             },
         )

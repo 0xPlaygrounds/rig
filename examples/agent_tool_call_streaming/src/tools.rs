@@ -6,9 +6,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig::tool::{Tool, ToolContext};
+use rig::tool::{Schema, Tool, ToolContext};
 use serde::Deserialize;
-use serde_json::json;
 
 /// What the tools executed, shared with the example's checks.
 #[derive(Clone, Default)]
@@ -37,9 +36,11 @@ pub enum ToolError {
     EmptyPath,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct WriteFileArgs {
+    /// Relative file path
     path: String,
+    /// The whole file content
     content: String,
 }
 
@@ -60,15 +61,8 @@ impl Tool for WriteFile {
         "Write text content to a file at a relative path, replacing it.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": { "type": "string", "description": "Relative file path" },
-                "content": { "type": "string", "description": "The whole file content" }
-            },
-            "required": ["path", "content"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -90,7 +84,7 @@ impl Tool for WriteFile {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct AddArgs {
     x: i64,
     y: i64,
@@ -112,15 +106,8 @@ impl Tool for Add {
         "Add the integers x and y.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "integer" },
-                "y": { "type": "integer" }
-            },
-            "required": ["x", "y"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

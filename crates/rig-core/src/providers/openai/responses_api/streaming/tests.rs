@@ -962,7 +962,9 @@ fn encoded_input(
             tools.push(crate::completion::ToolDefinition {
                 name: call.function.name.clone(),
                 description: "A tool".to_owned(),
-                parameters: json!({"type": "object"}),
+                parameters: crate::tool::Schema::new(json!({"type": "object"}))
+                    .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             });
         }

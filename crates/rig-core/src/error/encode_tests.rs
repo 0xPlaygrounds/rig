@@ -1,8 +1,6 @@
 //! Every failure to build a provider request reports as a request failure,
 //! whichever wire built it.
 
-use serde_json::json;
-
 use super::*;
 use crate::completion::{CompletionRequest, ToolDefinition};
 use crate::message::ToolChoice;
@@ -103,7 +101,8 @@ fn provider_encode_failures_classify_as_request_building() {
         .tool(ToolDefinition {
             name: crate::message::ToolName::new("f").expect("tool name"),
             description: "d".into(),
-            parameters: json!({"type": "object"}),
+            parameters: crate::tool::Schema::object(),
+            output_schema: None,
             annotations: Default::default(),
         })
         .tool_choice(ToolChoice::Specific {

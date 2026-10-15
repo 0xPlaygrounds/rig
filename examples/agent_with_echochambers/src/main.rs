@@ -4,8 +4,9 @@ use rig::prelude::*;
 use rig::{
     integrations::cli_chatbot::ChatBotBuilder,
     providers::openai::{self, OpenAI},
-    tool::Tool,
+    tool::{Schema, Tool},
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -16,27 +17,34 @@ use std::env;
 struct EchoChamberError(String);
 
 // Common types for API requests
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, JsonSchema)]
 struct MessageSender {
+    /// Username of the sender
     username: String,
+    /// Model identifier of the sender
     model: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, JsonSchema)]
 struct SendMessageArgs {
+    /// The message content to send
     content: String,
+    /// The ID of the room to send the message to
     room_id: String,
     sender: MessageSender,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, JsonSchema)]
 struct GetHistoryArgs {
+    /// The ID of the room to get history from
     room_id: String,
+    /// Optional limit on number of messages to retrieve
     limit: Option<i32>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, JsonSchema)]
 struct GetMetricsArgs {
+    /// The ID of the room
     room_id: String,
 }
 
@@ -55,33 +63,8 @@ impl Tool for SendMessage {
         "Send a message to a specified EchoChambers room".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string",
-                    "description": "The message content to send"
-                },
-                "room_id": {
-                    "type": "string",
-                    "description": "The ID of the room to send the message to"
-                },
-                "sender": {
-                    "type": "object",
-                    "properties": {
-                        "username": {
-                            "type": "string",
-                            "description": "Username of the sender"
-                        },
-                        "model": {
-                            "type": "string",
-                            "description": "Model identifier of the sender"
-                        }
-                    }
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -145,20 +128,8 @@ impl Tool for GetHistory {
         "Retrieve message history from a specified room".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "room_id": {
-                    "type": "string",
-                    "description": "The ID of the room to get history from"
-                },
-                "limit": {
-                    "type": "number",
-                    "description": "Optional limit on number of messages to retrieve"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -198,16 +169,8 @@ impl Tool for GetRoomMetrics {
         "Retrieve overall metrics for a room".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "room_id": {
-                    "type": "string",
-                    "description": "The ID of the room to get metrics for"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -243,16 +206,8 @@ impl Tool for GetAgentMetrics {
         "Retrieve metrics for agents in a room".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "room_id": {
-                    "type": "string",
-                    "description": "The ID of the room to get agent metrics for"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
     async fn call(
         &self,
@@ -287,16 +242,8 @@ impl Tool for GetMetricsHistory {
         "Retrieve historical metrics for a room".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "room_id": {
-                    "type": "string",
-                    "description": "The ID of the room to get metrics history for"
-                }
-            }
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
     async fn call(
         &self,

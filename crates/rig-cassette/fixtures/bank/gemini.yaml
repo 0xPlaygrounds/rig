@@ -893,6 +893,21 @@ then:
 ---
 provider: gemini
 encoder: POST /v1beta/models/{model}:generateContent
+shape: 439985f2b190032b
+calls:
+- forecast
+ends:
+- STOP
+source: gemini/tool_definitions/output_schema_reaches_gemini_as_response_json_schema.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"city":"Lyon"},"name":"forecast"},"thoughtSignature":"Cp8CAWkUfRP9E7LUD06Fi9bnVMwYpRDViJFIUKlc2fw6qevvRRogY7kMFcq1KqbKSDtGlWFZOfcV4jHmQbKO2xKg0O1mb+D5e7mP+gfE1ZU3eHWcYbA/rwNhe3/tkFlbEll5+urQQDVrUPZ7zS98j+PHSD2K7XZHoNnsoT1PUuNAdipvoIY4DCcPhaP9IEHiWymD3UMRbSDZFDpX4jBR+1dAhbndH97v1Uz5dLYP18RGTtZ3ZuN7S+hfU2LfgRuegI/ywVQhCSzCDE5ageVj8KMuh7OapFCfZSZyMFI3LUq/Rp2/AgeKzNcBxLf6/q8Aa9g5CUy0XV6bDOSgR9OjMBEWRNHyyu+fYoHMPvzdk8yIZhERVVOnRjtYKWimk4PfGPw="}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"A8DQaob_KsL7qtsP6dTU8Q8","usageMetadata":{"candidatesTokenCount":13,"promptTokenCount":194,"promptTokensDetails":[{"modality":"TEXT","tokenCount":194}],"serviceTier":"standard","thoughtsTokenCount":62,"totalTokenCount":269}}'
+---
+provider: gemini
+encoder: POST /v1beta/models/{model}:generateContent
 shape: 44d2575284265425
 calls: []
 ends:

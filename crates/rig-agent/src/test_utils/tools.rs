@@ -42,8 +42,8 @@ impl Tool for MockAddTool {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "x": {
@@ -56,7 +56,8 @@ impl Tool for MockAddTool {
                 }
             },
             "required": ["x", "y"],
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -117,8 +118,9 @@ impl Tool for MockContextProbeTool {
         "Records the SessionId observed in its call context".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({"type": "object", "properties": {}}))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -152,8 +154,8 @@ impl Tool for MockSubtractTool {
         "Subtract y from x".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "x": {
@@ -166,7 +168,8 @@ impl Tool for MockSubtractTool {
                 }
             },
             "required": ["x", "y"],
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -200,11 +203,12 @@ impl Tool for MockStringOutputTool {
         "Returns a multiline string".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {}
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -230,11 +234,12 @@ impl Tool for MockImageOutputTool {
         "Returns an image".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {}
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -264,12 +269,13 @@ impl Tool for MockImageGeneratorTool {
         "Generates a small test image (a 1x1 red pixel). Call this tool when asked to generate or show an image.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": []
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -299,11 +305,12 @@ impl Tool for MockObjectOutputTool {
         "Returns an object".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {}
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -331,12 +338,13 @@ impl Tool for MockExampleTool {
         "A tool that returns some example text.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": []
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -372,8 +380,9 @@ impl Tool for MockBarrierTool {
         "Waits at a barrier to test concurrency".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({"type": "object", "properties": {}}))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -415,8 +424,9 @@ impl Tool for MockControlledTool {
         "Test tool".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object", "properties": {}})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({"type": "object", "properties": {}}))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -538,8 +548,9 @@ impl Tool for MockFailingTool {
         "A tool that always fails".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({ "type": "object", "properties": {} })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -574,8 +585,9 @@ impl Tool for MockHandledFailureTool {
         "Looks up a record".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({ "type": "object", "properties": {} })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -608,8 +620,9 @@ impl Tool for MockDeniedTool {
         "A tool with an internal authorization check".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({ "type": "object", "properties": {} })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -651,8 +664,9 @@ impl Tool for MockMetadataTool {
         "Succeeds and attaches request metadata".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({ "type": "object", "properties": {} })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+            .expect("valid schema")
     }
 
     async fn call(

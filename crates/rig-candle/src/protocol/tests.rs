@@ -7,14 +7,16 @@ fn tool(name: &str) -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Call {name}."),
-        parameters: serde_json::json!({
+        parameters: rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 "value": {"type": "integer"},
                 "label": {"type": "string", "enum": ["a", "b"]}
             },
             "required": ["value"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -211,7 +213,8 @@ fn qwen_protocol_rejects_wrong_delimiters_definitions_and_native_schema() {
     ));
 
     let mut invalid_schema = qwen_request.clone();
-    invalid_schema.tools[0].parameters = serde_json::json!({"type": "array"});
+    invalid_schema.tools[0].parameters =
+        rig_core::tool::Schema::new(serde_json::json!({"type": "array"})).expect("valid schema");
     assert!(matches!(
         render_prompt(&invalid_schema, ConversationProtocol::Qwen3),
         Err(CandleError::InvalidToolDefinition { .. })

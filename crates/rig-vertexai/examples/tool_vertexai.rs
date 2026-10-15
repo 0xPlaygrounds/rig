@@ -1,10 +1,9 @@
 use anyhow::Result;
 use rig_agent::prelude::*;
-use rig_agent::tool::ToolContext;
+use rig_agent::tool::{Schema, ToolContext};
 use rig_vertexai::VertexAi;
-use schemars::{JsonSchema, schema_for};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Deserialize, JsonSchema)]
 struct OperationArgs {
@@ -29,8 +28,8 @@ impl Tool for Adder {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!(schema_for!(OperationArgs))
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

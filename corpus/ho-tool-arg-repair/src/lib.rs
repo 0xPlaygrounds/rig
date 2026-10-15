@@ -207,7 +207,7 @@ fn schema<'a>(function: &ToolFunction, tools: &'a Query<&ToolDef>) -> Option<&'a
     tools
         .iter()
         .find(|def| def.0.name == function.name)
-        .map(|def| &def.0.parameters)
+        .map(|def| &*def.0.parameters)
 }
 
 /// The arguments `function` should have and the kinds of repair that took,

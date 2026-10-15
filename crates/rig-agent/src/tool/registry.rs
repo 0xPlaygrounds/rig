@@ -98,6 +98,7 @@ impl RegisteredTool {
             name,
             description,
             parameters,
+            output_schema,
             embedding,
         } = descriptor.family
         else {
@@ -124,6 +125,7 @@ impl RegisteredTool {
                 name,
                 description,
                 parameters,
+                output_schema,
                 annotations: Default::default(),
             },
             embedding,
@@ -185,12 +187,7 @@ impl RegisteredTool {
 
     /// The family-keyed descriptor of this registration.
     pub fn descriptor(&self) -> FamilyDescriptor {
-        FamilyDescriptor::Tool {
-            name: self.definition.name.to_string(),
-            description: self.definition.description.clone(),
-            parameters: self.definition.parameters.clone(),
-            embedding: self.embedding.clone(),
-        }
+        FamilyDescriptor::tool(self.definition.clone(), self.embedding.clone())
     }
 
     /// The embedding context, for retrievable tools.

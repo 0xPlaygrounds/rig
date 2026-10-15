@@ -287,8 +287,8 @@ impl PortableTool for GitLog {
         "List commits, newest first, one line each: short hash, date, author, subject.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<LogArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<LogArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {
@@ -353,8 +353,8 @@ impl PortableTool for GitShow {
         format!("Show a commit: its message and its change, at most {MAX_LINES} lines.")
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<ShowArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<ShowArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {
@@ -404,8 +404,8 @@ impl PortableTool for GitDiff {
         )
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<DiffArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<DiffArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {
@@ -460,8 +460,8 @@ impl PortableTool for GitBlame {
         "Show which commit last changed each line of a range of a file, the lines grouped by commit with each commit's subject.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<BlameArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<BlameArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

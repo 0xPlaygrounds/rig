@@ -84,7 +84,9 @@ fn image_tool_result_contents(images: usize) -> serde_json::Value {
     request.tools = vec![rig_core::completion::ToolDefinition {
         name: ToolName::new("shot").expect("a tool name"),
         description: "a screenshot".to_owned(),
-        parameters: serde_json::json!({"type": "object"}),
+        parameters: rig_core::tool::Schema::new(serde_json::json!({"type": "object"}))
+            .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }];
     request.chat_history = vec![

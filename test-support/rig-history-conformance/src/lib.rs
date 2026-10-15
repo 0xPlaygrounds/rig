@@ -760,7 +760,11 @@ pub fn tools_of(history: &[impl Borrow<Message>]) -> Vec<rig_core::completion::T
         .map(|name| rig_core::completion::ToolDefinition {
             name,
             description: "a tool the history calls".to_owned(),
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            parameters: rig_core::tool::Schema::new(
+                serde_json::json!({"type": "object", "properties": {}}),
+            )
+            .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         })
         .collect()
@@ -2104,7 +2108,11 @@ pub fn h14_model_identity<F: HistoryFixture>(fixture: &F) {
         request.tools = vec![rig_core::completion::ToolDefinition {
             name: name("x_rig_new_tool"),
             description: "a tool added since".to_owned(),
-            parameters: serde_json::json!({"type": "object", "properties": {}}),
+            parameters: rig_core::tool::Schema::new(
+                serde_json::json!({"type": "object", "properties": {}}),
+            )
+            .expect("valid schema"),
+            output_schema: None,
             annotations: Default::default(),
         }];
         request.chat_history = vec![

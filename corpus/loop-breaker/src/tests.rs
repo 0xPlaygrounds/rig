@@ -28,8 +28,9 @@ impl PortableTool for Read {
         "Read a file.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({"type": "object", "properties": {"path": {"type": "string"}}})
+    fn parameters(&self) -> Schema {
+        let schema = json!({"type": "object", "properties": {"path": {"type": "string"}}});
+        Schema::new(schema).unwrap_or_else(|_| Schema::object())
     }
 
     async fn call(&self, _args: Value) -> Result<String, ToolExecutionError> {

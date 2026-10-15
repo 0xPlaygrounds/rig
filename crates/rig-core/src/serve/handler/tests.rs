@@ -262,7 +262,12 @@ fn the_tap_yields_only_its_first_outcome() {
 /// every effect, unary or streamed, `HandlerUnavailable` with its reason.
 #[test]
 fn an_unavailable_handler_answers_every_effect_with_its_reason() {
-    let descriptor = crate::effect::HandlerDescriptor::tool("lookup", "", serde_json::json!({}));
+    let descriptor =
+        crate::effect::HandlerDescriptor::tool(crate::completion::ToolDefinition::new(
+            crate::message::ToolName::new("lookup").expect("a tool name"),
+            "",
+            crate::tool::Schema::object(),
+        ));
     let handler = ErasedHandler::unavailable(descriptor.clone(), "answered from the batch API");
     assert_eq!(handler.descriptor(), descriptor);
     let kinds = [

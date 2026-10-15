@@ -23,6 +23,7 @@ use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::serve::{self, AfterServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Relayed, StreamEvent};
+use rig_harness::rig_core::tool::Schema;
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
 
@@ -85,10 +86,12 @@ impl ModelRule {
                 adapted.description = short;
                 changes.note("shortened description");
             }
-            adapted.parameters = schema::short_descriptions(&adapted.parameters, &mut changes);
+            let short = schema::short_descriptions(&adapted.parameters, &mut changes);
+            adapted.parameters = Schema::new(short).unwrap_or(adapted.parameters);
         }
         if self.has(Profile::StrictSubset) {
-            adapted.parameters = schema::strict_subset(&adapted.parameters, &mut changes);
+            let strict = schema::strict_subset(&adapted.parameters, &mut changes);
+            adapted.parameters = Schema::new(strict).unwrap_or(adapted.parameters);
         }
         (adapted, changes)
     }

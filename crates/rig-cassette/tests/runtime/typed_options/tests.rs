@@ -1229,7 +1229,8 @@ mod precedence {
         ToolDefinition::new(
             ToolName::try_from("lookup").expect("the name is not empty"),
             "Look a word up.",
-            json!({"type": "object", "properties": {}}),
+            rig_core::tool::Schema::new(json!({"type": "object", "properties": {}}))
+                .expect("valid schema"),
         )
     }
 

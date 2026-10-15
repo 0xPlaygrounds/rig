@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
 
+use serde_json::json;
+
 use super::*;
 use crate::vector_store::request::{DynamicSearchFilter, Filter};
 

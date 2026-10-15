@@ -74,14 +74,16 @@ fn weather_tool_definition() -> completion::ToolDefinition {
     completion::ToolDefinition {
         name: crate::message::ToolName::new("get_weather").expect("tool name"),
         description: "Get the weather".to_string(),
-        parameters: json!({
+        parameters: crate::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "location": {"type": "string"},
                 "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
             },
             "required": ["location"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -213,7 +215,7 @@ fn responses_strict_function_tools_sanitize_schema() {
     let tool = ResponsesToolDefinition::strict_function(
         "get_weather",
         "Get the weather",
-        weather_tool_definition().parameters,
+        weather_tool_definition().parameters.into_value(),
     );
 
     assert!(tool.strict);
@@ -309,10 +311,12 @@ fn responses_wire_strict_tools_opt_in_sanitizes_all_function_tools() {
             .with_tool(completion::ToolDefinition {
                 name: crate::message::ToolName::new("lookup").expect("tool name"),
                 description: "Look something up".to_string(),
-                parameters: json!({
+                parameters: crate::tool::Schema::new(json!({
                     "type": "object",
                     "properties": {"q": {"type": "string"}}
-                }),
+                }))
+                .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             });
 
@@ -713,7 +717,8 @@ fn lookup_tool() -> completion::ToolDefinition {
     completion::ToolDefinition {
         name: message::ToolName::new("lookup").expect("tool name"),
         description: "Look something up".to_owned(),
-        parameters: json!({"type": "object"}),
+        parameters: crate::tool::Schema::object(),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -854,4 +859,26 @@ fn an_unprepared_part_with_no_responses_form_is_refused() {
             .is_err_and(|error| error.contains("cannot carry this image")),
         "{image:?}"
     );
+}
+
+/// A function tool's `output_schema` reaches OpenAI's own Responses
+/// endpoint; another server on the same wire gets the tool without it.
+#[test]
+fn a_tool_output_schema_reaches_openai_only() {
+    let mut tool = weather_tool_definition();
+    tool.output_schema = Some(crate::tool::Schema::object());
+    let request = completion::CompletionRequest::new("hi").tools(vec![tool]);
+
+    let openai = wire_request(&openai_wire("gpt-5"), request.clone());
+    assert_eq!(
+        openai["tools"][0]["output_schema"],
+        json!({"type": "object"})
+    );
+
+    let openrouter = crate::providers::openai::OpenAIConfig::new("dummy-key")
+        .with_dialect(&crate::providers::openai::wire::OPENROUTER)
+        .responses("openai/gpt-5");
+    let openrouter = wire_request(&openrouter, request);
+    assert_eq!(openrouter["tools"][0].get("output_schema"), None);
+    assert_eq!(openrouter["tools"][0]["name"], json!("get_weather"));
 }

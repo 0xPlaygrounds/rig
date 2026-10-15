@@ -36,4 +36,4 @@ pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};
 pub use portable::{PortableTool, PortableToolEmbedding};
 pub use result::{ToolErrorKind, ToolExecutionError, ToolResult};
-pub use schema::args_schema;
+pub use schema::{Schema, SchemaError};

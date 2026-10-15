@@ -53,8 +53,9 @@ pub fn derive_context_value(item: TokenStream) -> TokenStream {
 /// Imported context names need `#[rig(context)]`; qualified Rig paths are
 /// recognized directly. The context is excluded from model arguments.
 ///
-/// Accepts `name`, `description`, `params(name = "description")`, and
-/// `required(name, ...)`. Explicit names must start with an ASCII letter or `_`,
+/// Accepts `name`, `description`, `params(name = "description")`,
+/// `required(name, ...)`, and `output_schema`, which declares the schema of the
+/// output type `T` (it must implement `JsonSchema`). Explicit names must start with an ASCII letter or `_`,
 /// contain only ASCII letters, digits, `_`, or `-`, and be at most 64 bytes.
 /// Description attributes override doc comments. Unknown or duplicate options
 /// and parameter names are rejected.

@@ -3,26 +3,28 @@
 //! outcomes or streaming events.
 //!
 //! ```
+//! use rig_core::completion::ToolDefinition;
+//! use rig_core::message::ToolName;
 //! use rig_core::serve::{Serve, adapters::ToolFn};
-//! use rig_core::tool::{ToolContext, ToolOutput};
+//! use rig_core::tool::{Schema, ToolContext, ToolOutput};
 //! use rig_core::wasm_compat::WasmBoxedFuture;
 //!
+//! let definition = ToolDefinition::new(ToolName::new("echo")?, "Echo the arguments", Schema::object());
 //! let handler = ToolFn::new(
-//!     "echo",
-//!     "Echo the arguments",
-//!     serde_json::json!({ "type": "object" }),
+//!     definition,
 //!     |_context: &mut ToolContext, args: serde_json::Value| {
 //!         Box::pin(async move { Ok(ToolOutput::text(args.to_string())) })
 //!             as WasmBoxedFuture<'_, _>
 //!     },
 //! );
 //! assert_eq!(handler.descriptor().key, rig_core::effect::tool_key("echo"));
+//! # Ok::<(), rig_core::message::EmptyToolName>(())
 //! ```
 
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    completion::{CompletionRequest, ModelRef, UnsupportedOption},
+    completion::{CompletionRequest, ModelRef, ToolDefinition, UnsupportedOption},
     driver::{DynModel, Sending, without_messages},
     effect::{
         Answered, EffectFamily, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs,
@@ -364,12 +366,10 @@ where
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: crate::effect::tool_key(T::NAME),
-            family: FamilyDescriptor::Tool {
-                name: T::NAME.to_owned(),
-                description: self.tool.description(),
-                parameters: self.tool.parameters(),
-                embedding: self.embedding.clone(),
-            },
+            family: FamilyDescriptor::tool(
+                crate::tool::tool_definition(&self.tool),
+                self.embedding.clone(),
+            ),
             layers: Vec::new(),
         }
     }
@@ -436,33 +436,24 @@ impl<F> ToolCallback for F where
 {
 }
 
-/// A runtime-defined tool handler with a name, argument schema, and callback.
+/// A runtime-defined tool handler: a definition and a callback.
 pub struct ToolFn<F> {
-    name: String,
-    description: String,
-    parameters: serde_json::Value,
+    definition: ToolDefinition,
     callback: F,
 }
 
 impl<F: ToolCallback> ToolFn<F> {
     /// Build a runtime-defined tool.
-    pub fn new(
-        name: impl Into<String>,
-        description: impl Into<String>,
-        parameters: serde_json::Value,
-        callback: F,
-    ) -> Self {
+    pub fn new(definition: ToolDefinition, callback: F) -> Self {
         Self {
-            name: name.into(),
-            description: description.into(),
-            parameters,
+            definition,
             callback,
         }
     }
 
     /// The tool's name.
     pub fn name(&self) -> &str {
-        &self.name
+        &self.definition.name
     }
 }
 
@@ -473,7 +464,7 @@ where
     type Family = family::Tool;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor::tool(&self.name, &self.description, self.parameters.clone())
+        HandlerDescriptor::tool(self.definition.clone())
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {

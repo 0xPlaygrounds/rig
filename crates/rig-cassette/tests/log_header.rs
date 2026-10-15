@@ -102,8 +102,9 @@ async fn the_header_names_the_program_and_the_agent_refuses_another() {
         fn description(&self) -> String {
             "adds".into()
         }
-        fn parameters(&self) -> serde_json::Value {
-            serde_json::json!({"type": "object"})
+        fn parameters(&self) -> rig_core::tool::Schema {
+            rig_core::tool::Schema::new(serde_json::json!({"type": "object"}))
+                .expect("valid schema")
         }
         async fn call(
             &self,

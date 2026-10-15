@@ -70,8 +70,8 @@ impl PortableTool for Sleep {
         "Sleep.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<SleepArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<SleepArgs>()
     }
 
     async fn call(&self, args: SleepArgs) -> Result<String, ToolExecutionError> {

@@ -18,7 +18,7 @@ fn sent(model: &str, history: Vec<Message>) -> Value {
     let mut request = CompletionRequest::new("next").tool(ToolDefinition::new(
         ToolName::new("shot").expect("a tool name"),
         "takes a screenshot",
-        json!({"type": "object"}),
+        crate::tool::Schema::object(),
     ));
     request.chat_history = history.into_iter().map(Into::into).collect();
     request.chat_history.push(Message::user("next").into());

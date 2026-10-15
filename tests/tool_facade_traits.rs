@@ -12,9 +12,8 @@
 //! these tests use `PortableTool`, and nothing in the workspace references the
 //! removed alias.
 
-use rig::tool::{PortableTool, Tool, ToolContext, ToolExecutionError, ToolSet};
+use rig::tool::{PortableTool, Schema, Tool, ToolContext, ToolExecutionError, ToolSet};
 use serde::Deserialize;
-use serde_json::{Value, json};
 
 #[derive(Deserialize)]
 struct Amount {
@@ -35,8 +34,8 @@ impl Tool for ContextualAdder {
         "adds one".to_string()
     }
 
-    fn parameters(&self) -> Value {
-        json!({ "type": "object" })
+    fn parameters(&self) -> Schema {
+        Schema::object()
     }
 
     async fn call(
@@ -62,8 +61,8 @@ impl PortableTool for PortableAdder {
         "adds two".to_string()
     }
 
-    fn parameters(&self) -> Value {
-        json!({ "type": "object" })
+    fn parameters(&self) -> Schema {
+        Schema::object()
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -164,8 +163,8 @@ mod prelude_regression {
             "prelude".to_string()
         }
 
-        fn parameters(&self) -> serde_json::Value {
-            serde_json::json!({ "type": "object" })
+        fn parameters(&self) -> rig::tool::Schema {
+            rig::tool::Schema::object()
         }
 
         async fn call(

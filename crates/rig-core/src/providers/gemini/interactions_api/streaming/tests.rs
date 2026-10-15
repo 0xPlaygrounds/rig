@@ -50,7 +50,9 @@ fn replayed(response: &crate::completion::CompletionResponse) -> Vec<serde_json:
             .map(|call| crate::completion::ToolDefinition {
                 name: call.function.name.clone(),
                 description: "A tool.".to_owned(),
-                parameters: json!({"type": "object", "properties": {}}),
+                parameters: crate::tool::Schema::new(json!({"type": "object", "properties": {}}))
+                    .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             })
             .collect(),

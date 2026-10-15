@@ -478,12 +478,7 @@ fn describe_required(
             };
             let advertised = advertised_tool(name, log)
                 .ok_or_else(|| gap("no recorded request advertises the tool"))?;
-            Ok(FamilyDescriptor::Tool {
-                name: advertised.name.into(),
-                description: advertised.description,
-                parameters: advertised.parameters,
-                embedding: None,
-            })
+            Ok(FamilyDescriptor::tool(advertised, None))
         }
         EffectFamily::Completion => Ok(FamilyDescriptor::Completion {
             model: ModelRef::new(format!("replay:{key}")),
@@ -516,16 +511,12 @@ fn describe(key: &HandlerKey, kind: &EffectKind, log: &EffectLog) -> FamilyDescr
             capabilities: ProviderCapabilities::default(),
         },
         EffectKind::ToolCall { name, .. } => match advertised_tool(name, log) {
-            Some(tool) => FamilyDescriptor::Tool {
-                name: tool.name.into(),
-                description: tool.description,
-                parameters: tool.parameters,
-                embedding: None,
-            },
+            Some(tool) => FamilyDescriptor::tool(tool, None),
             None => FamilyDescriptor::Tool {
                 name: name.clone(),
                 description: format!("replayed from the effect log under `{key}`"),
-                parameters: serde_json::json!({"type": "object"}),
+                parameters: rig_core::tool::Schema::object(),
+                output_schema: None,
                 embedding: None,
             },
         },

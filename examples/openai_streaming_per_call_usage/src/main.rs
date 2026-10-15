@@ -27,17 +27,17 @@ use rig::prelude::*;
 use rig::providers::openai::OpenAIConfig;
 use rig::providers::openai::{self, Route};
 use rig::streaming::{Item, StreamEvent};
-use rig::tool::Tool;
+use rig::tool::{Schema, Tool};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::io::{self, Write};
 
 #[derive(Debug, thiserror::Error)]
 #[error("project status lookup failed")]
 struct ProjectStatusError;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct ProjectStatusArgs {
+    /// The internal project ticket to look up
     ticket: String,
 }
 
@@ -54,17 +54,8 @@ impl Tool for ProjectStatusTool {
         "Look up the current status for an internal project ticket.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "ticket": {
-                    "type": "string",
-                    "description": "The internal project ticket to look up"
-                }
-            },
-            "required": ["ticket"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

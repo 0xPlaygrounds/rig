@@ -60,7 +60,10 @@ fn tool(name: &str) -> ToolDefinition {
     ToolDefinition::new(
         ToolName::new(name).expect("a tool name"),
         "looks things up",
-        json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+        crate::tool::Schema::new(
+            json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+        )
+        .expect("valid schema"),
     )
 }
 

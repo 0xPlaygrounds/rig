@@ -158,14 +158,16 @@ async fn tool_result_roundtrip() {
             let tool = rig::completion::ToolDefinition {
                 name: rig_core::message::ToolName::new("add").expect("tool name"),
                 description: "Add two numbers together".to_string(),
-                parameters: serde_json::json!({
+                parameters: rig_core::tool::Schema::new(serde_json::json!({
                     "type": "object",
                     "properties": {
                         "x": { "type": "number" },
                         "y": { "type": "number" }
                     },
                     "required": ["x", "y"]
-                }),
+                }))
+                .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             };
 
@@ -389,7 +391,11 @@ fn recorded_interactions_agree_in_both_modes_and_replay_verbatim() {
                 .map(|call| rig_core::completion::ToolDefinition {
                     name: call.function.name.clone(),
                     description: String::new(),
-                    parameters: serde_json::json!({"type": "object", "properties": {}}),
+                    parameters: rig_core::tool::Schema::new(
+                        serde_json::json!({"type": "object", "properties": {}}),
+                    )
+                    .expect("valid schema"),
+                    output_schema: None,
                     annotations: Default::default(),
                 })
                 .collect();

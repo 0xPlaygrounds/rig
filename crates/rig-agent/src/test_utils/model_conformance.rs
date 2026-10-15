@@ -452,15 +452,16 @@ impl Tool for CountingAdd {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 "x": { "type": "number", "description": "The first operand" },
                 "y": { "type": "number", "description": "The second operand" }
             },
             "required": ["x", "y"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -486,7 +487,7 @@ impl Tool for CountingSum {
         "Add x and y together (alias of add)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         CountingAdd(Arc::new(AtomicUsize::new(0))).parameters()
     }
 
@@ -513,15 +514,16 @@ impl Tool for CountingSubtract {
         "Subtract y from x (i.e. x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 "x": { "type": "number", "description": "The first operand" },
                 "y": { "type": "number", "description": "The second operand" }
             },
             "required": ["x", "y"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -649,8 +651,11 @@ impl Tool for PingTool {
         "Return the current ping marker. Takes no arguments.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object", "properties": {}, "required": [] })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::json!({ "type": "object", "properties": {}, "required": [] }),
+        )
+        .expect("valid schema")
     }
 
     async fn call(
@@ -676,8 +681,11 @@ impl Tool for MottoTool {
         "Fetch the two-line workshop motto.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object", "properties": {}, "required": [] })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::json!({ "type": "object", "properties": {}, "required": [] }),
+        )
+        .expect("valid schema")
     }
 
     async fn call(
@@ -709,8 +717,11 @@ impl Tool for ConfigTool {
         "Fetch the service configuration object.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({ "type": "object", "properties": {}, "required": [] })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(
+            serde_json::json!({ "type": "object", "properties": {}, "required": [] }),
+        )
+        .expect("valid schema")
     }
 
     async fn call(
@@ -774,8 +785,9 @@ impl Tool for CaptureComplexTool {
             .to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schemars::schema_for!(ComplexArgs)).unwrap_or_default()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(schemars::schema_for!(ComplexArgs).to_value())
+            .expect("valid schema")
     }
 
     async fn call(
@@ -830,8 +842,9 @@ impl Tool for RepeatTool {
         "Repeat `text`. `times` is optional and defaults to 2.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schemars::schema_for!(RepeatArgs)).unwrap_or_default()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(schemars::schema_for!(RepeatArgs).to_value())
+            .expect("valid schema")
     }
 
     async fn call(
@@ -869,8 +882,9 @@ impl Tool for AddTool {
         "Add two integers a and b.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(schemars::schema_for!(BinOpArgs).to_value())
+            .expect("valid schema")
     }
 
     async fn call(
@@ -896,8 +910,9 @@ impl Tool for MultiplyTool {
         "Multiply two integers a and b.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default()
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(schemars::schema_for!(BinOpArgs).to_value())
+            .expect("valid schema")
     }
 
     async fn call(
@@ -1986,11 +2001,13 @@ where
     let definition = |name: rig_core::message::ToolName| ToolDefinition {
         description: format!("Return the supplied integer using {name}."),
         name,
-        parameters: serde_json::json!({
+        parameters: rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {"value": {"type": "integer"}},
             "required": ["value"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     };
     let tools = vec![

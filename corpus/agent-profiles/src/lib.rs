@@ -258,9 +258,8 @@ fn offer_to_task(profiles: Res<Profiles>, mut tools: Query<(&mut ToolDef, &mut T
         return;
     };
     rules.0.retain(|rule| !rule.starts_with(LISTED));
-    let properties = def
-        .0
-        .parameters
+    let mut parameters = def.0.parameters.clone().into_value();
+    let properties = parameters
         .get_mut("properties")
         .and_then(serde_json::Value::as_object_mut);
     let Some(properties) = properties else {
@@ -268,20 +267,23 @@ fn offer_to_task(profiles: Res<Profiles>, mut tools: Query<(&mut ToolDef, &mut T
     };
     if profiles.0.is_empty() {
         properties.shift_remove(PROFILE);
-        return;
+    } else {
+        let listed: Vec<String> = profiles
+            .0
+            .iter()
+            .map(|(name, profile)| format!("- {name}: {}", profile.description))
+            .collect();
+        rules.0.push(format!("{LISTED}\n{}", listed.join("\n")));
+        let argument = serde_json::json!({
+            "type": "string",
+            "description": "An agent profile the subagent starts as, by name: its prompt, tools, \
+                model and reasoning setting. Your settings when absent."
+        });
+        properties.insert(PROFILE.to_owned(), argument);
     }
-    let listed: Vec<String> = profiles
-        .0
-        .iter()
-        .map(|(name, profile)| format!("- {name}: {}", profile.description))
-        .collect();
-    rules.0.push(format!("{LISTED}\n{}", listed.join("\n")));
-    let argument = serde_json::json!({
-        "type": "string",
-        "description": "An agent profile the subagent starts as, by name: its prompt, tools, \
-            model and reasoning setting. Your settings when absent."
-    });
-    properties.insert(PROFILE.to_owned(), argument);
+    if let Ok(parameters) = Schema::new(parameters) {
+        def.0.parameters = parameters;
+    }
 }
 
 /// The name of the profile a spawn request names in its `extra`, as

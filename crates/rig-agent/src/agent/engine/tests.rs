@@ -1512,8 +1512,9 @@ mod span_safety_net {
             "returns a raw output marker".to_string()
         }
 
-        fn parameters(&self) -> serde_json::Value {
-            serde_json::json!({ "type": "object", "properties": {} })
+        fn parameters(&self) -> rig_core::tool::Schema {
+            rig_core::tool::Schema::new(serde_json::json!({ "type": "object", "properties": {} }))
+                .expect("valid schema")
         }
         async fn call(
             &self,
@@ -1699,7 +1700,7 @@ impl Tool for OutOfOrderTool {
         MockAddTool.description()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         MockAddTool.parameters()
     }
 
@@ -1795,7 +1796,7 @@ impl Tool for FirstCallSettlesLastTool {
         MockAddTool.description()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         MockAddTool.parameters()
     }
 
@@ -1837,6 +1838,7 @@ async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() 
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: MockAddTool.description(),
             parameters: MockAddTool.parameters(),
+            output_schema: None,
             annotations: Default::default(),
         }],
     );
@@ -2477,7 +2479,7 @@ impl Tool for CountingAddTool {
     fn description(&self) -> String {
         MockAddTool.description()
     }
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         MockAddTool.parameters()
     }
     async fn call(
@@ -3099,8 +3101,8 @@ impl<const SAFE: bool> Tool for RenameBoundaryTool<SAFE> {
         "Count dispatches to this target".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object"})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(
@@ -3240,12 +3242,13 @@ impl Tool for FirstGenerationTool {
         "first generation schema".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {"old": {"type": "string"}},
             "required": ["old"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -4042,8 +4045,9 @@ impl Tool for FinalResultTool {
         "A real tool sharing the default output-tool name".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({ "type": "object", "properties": {} })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {} }))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -5962,6 +5966,7 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: MockAddTool.description(),
             parameters: MockAddTool.parameters(),
+            output_schema: None,
             annotations: Default::default(),
         }],
     );

@@ -38,8 +38,8 @@ impl Tool for Double {
         "doubles".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "object"})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::object()
     }
 
     async fn call(&self, _context: &mut ToolContext, args: DoubleArgs) -> Result<i64, Self::Error> {

@@ -126,8 +126,8 @@ impl PortableTool for WebFetch {
             .to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<FetchArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<FetchArgs>()
     }
 
     async fn call(&self, args: FetchArgs) -> Result<String, ToolExecutionError> {

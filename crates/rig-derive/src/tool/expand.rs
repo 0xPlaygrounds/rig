@@ -299,6 +299,14 @@ pub(crate) fn expand_rig_tool(
         quote!(#tool_module::PortableTool)
     };
 
+    let output_schema_impl = args.output_schema.then(|| {
+        quote! {
+            fn output_schema(&self) -> ::std::option::Option<#tool_module::Schema> {
+                ::std::option::Option::Some(#tool_module::Schema::of::<#output_type>())
+            }
+        }
+    });
+
     let context_arg =
         has_context.then(|| quote! { #context_ident: &mut #tool_module::ToolContext, });
     let await_suffix = is_async.then(|| quote!(.await));
@@ -342,22 +350,11 @@ pub(crate) fn expand_rig_tool(
                 #tool_description
             }
 
-            fn parameters(&self) -> #core::serde_json::Value {
-                static SCHEMA: ::std::sync::LazyLock<#core::serde_json::Value> =
-                    ::std::sync::LazyLock::new(|| {
-                        let mut schema =
-                            #core::schemars::schema_for!(#params_struct_name).to_value();
-                        // Providers expect an explicit `required` array even
-                        // when no parameter is required.
-                        if let Some(object) = schema.as_object_mut() {
-                            object
-                                .entry("required")
-                                .or_insert_with(|| #core::serde_json::Value::Array(Vec::new()));
-                        }
-                        schema
-                    });
-                ::std::clone::Clone::clone(&*SCHEMA)
+            fn parameters(&self) -> #tool_module::Schema {
+                #tool_module::Schema::arguments::<#params_struct_name>()
             }
+
+            #output_schema_impl
 
             #call_impl
         }

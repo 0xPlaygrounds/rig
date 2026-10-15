@@ -10021,6 +10021,23 @@ then:
 ---
 provider: openai
 encoder: POST /v1/responses
+shape: 89425206a237d05e
+calls:
+- forecast
+ends:
+- completed
+source: openai/responses_tool_args/output_schema_reaches_responses_function_tool.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_a07a73ca46c248c2a3f09660539481ec
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_015eff1df05d53d6016ad0bb9ac29c87d0a36b3429012d3819","incomplete_details":null,"instructions":"You must use the forecast tool for weather questions, then report its answer.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"arguments":"{\"city\":\"Lyon\"}","call_id":"call_70bmCpSHNVFtTIm0kbJ4ENuK","id":"fc_015eff1df05d53d6016ad0bb9b5a4487d0a14375836be63cec","name":"forecast","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Forecast tomorrow''s weather in a city.","name":"forecast","output_schema":{"description":"Tomorrow''s weather in a city.","properties":{"celsius":{"description":"Degrees Celsius.","format":"double","type":"number"},"sky":{"description":"One word for the sky, such as `sunny`.","type":"string"}},"required":["celsius","sky"],"title":"Weather","type":"object"},"parameters":{"additionalProperties":false,"properties":{"city":{"description":"The city to forecast.","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":104,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":16,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":120},"user":null}'
+---
+provider: openai
+encoder: POST /v1/responses
 shape: 896d9a7501efdcfe
 calls: []
 ends:
@@ -11893,6 +11910,22 @@ then:
     event: response.incomplete
     data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_0c9b9087327a25ba006ab396e6ec6087d0b49c432ea05b55c9","incomplete_details":{"reason":"max_output_tokens"},"instructions":null,"max_output_tokens":16,"max_tool_calls":null,"metadata":{},"model":"gpt-5.6-sol","moderation":null,"object":"response","output":[{"arguments":"{\"x\":48151","call_id":"call_T0C9Gu879up6CnnJ1Dgryjq5","id":"fc_0c9b9087327a25ba006ab396e7b69487d0a93dcb03498bf9b7","name":"add","status":"incomplete","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"incomplete","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Add x and y together","name":"add","output_schema":null,"parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":83,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":16,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":99},"user":null},"sequence_number":10,"type":"response.incomplete"}
 
+---
+provider: openai
+encoder: POST /v1/responses
+shape: c38e9e3c9a378288
+calls: []
+ends:
+- completed
+source: openai/responses_tool_args/output_schema_reaches_responses_function_tool.yaml#1
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_d6e333c2fb4f488c9a901765de078776
+  body: '{"access_programs":null,"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_015eff1df05d53d6016ad0bb9bdf0487d086e49d6d12689c6b","incomplete_details":null,"instructions":"You must use the forecast tool for weather questions, then report its answer.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"The weather in Lyon tomorrow will be sunny with a temperature of 21.5°C.","type":"output_text"}],"id":"msg_015eff1df05d53d6016ad0bb9d14d887d0991ad0e46a8b9d3c","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Forecast tomorrow''s weather in a city.","name":"forecast","output_schema":{"description":"Tomorrow''s weather in a city.","properties":{"celsius":{"description":"Degrees Celsius.","format":"double","type":"number"},"sky":{"description":"One word for the sky, such as `sunny`.","type":"string"}},"required":["celsius","sky"],"title":"Weather","type":"object"},"parameters":{"additionalProperties":false,"properties":{"city":{"description":"The city to forecast.","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":138,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":20,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":158},"user":null}'
 ---
 provider: openai
 encoder: POST /v1/responses

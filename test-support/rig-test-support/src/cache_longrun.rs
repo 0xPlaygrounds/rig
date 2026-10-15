@@ -57,12 +57,13 @@ impl rig_core::tool::Tool for LookupOrder {
         "Status of an order by id.".to_owned()
     }
 
-    fn parameters(&self) -> Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "order_id": { "type": "string" } },
             "required": ["order_id"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(

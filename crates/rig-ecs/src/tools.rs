@@ -18,7 +18,7 @@ use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::feedback::arguments_refusal;
-use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_definition};
+use rig_core::tool::{Schema, Scope, Tool, ToolErrorKind, Touches, tool_definition};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -216,7 +216,7 @@ pub trait AppToolsExt {
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
 
     /// Make the open tool `name` available, its parameters derived from
-    /// `A` ([`args_schema`]): each call whose arguments parse into `A`
+    /// `A` ([`Schema::arguments`]): each call whose arguments parse into `A`
     /// triggers [`ToolCalled<A>`] on the tool's entity, where `observer`
     /// watches, and ends when the call's
     /// [`Decision`] is decided, at once or much
@@ -261,7 +261,7 @@ impl AppToolsExt for App {
             warn!("tool not registered: `{name}` is not a valid tool name");
             return self;
         };
-        let definition = ToolDefinition::new(tool_name, description, args_schema::<A>());
+        let definition = ToolDefinition::new(tool_name, description, Schema::arguments::<A>());
         if let Some(tool) = register_tool(world, definition, Serves::Open(open::<A>), options) {
             world.entity_mut(tool).observe(observer);
         }

@@ -51,7 +51,7 @@ impl Tool for OutOfOrderAlphaSignal {
         AlphaSignal.description()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         AlphaSignal.parameters()
     }
 
@@ -78,7 +78,7 @@ impl Tool for OutOfOrderBetaSignal {
         BetaSignal.description()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         BetaSignal.parameters()
     }
 

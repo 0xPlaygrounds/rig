@@ -24,7 +24,8 @@ fn tool(tool: &str) -> ToolDefinition {
     ToolDefinition {
         name: name(tool),
         description: "A tool".to_owned(),
-        parameters: json!({"type": "object"}),
+        parameters: crate::tool::Schema::object(),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

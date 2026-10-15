@@ -26,11 +26,13 @@ fn lookup_tool() -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new("lookup_code").expect("tool name"),
         description: "Return the code stored for a record.".to_owned(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": { "record": { "type": "string" } },
             "required": ["record"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

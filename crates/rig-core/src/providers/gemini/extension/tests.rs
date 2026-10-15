@@ -422,7 +422,7 @@ where
     let tool = ToolDefinition::new(
         ToolName::new("add").expect("tool name"),
         "Add",
-        json!({"type": "object"}),
+        crate::tool::Schema::object(),
     );
     let options = GenerationOptions::default()
         .reasoning(Reasoning::Budget { tokens: 1024 })

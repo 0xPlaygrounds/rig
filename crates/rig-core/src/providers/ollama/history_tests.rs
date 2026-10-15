@@ -27,7 +27,7 @@ fn sent(history: Vec<Message>) -> Value {
     let mut request = CompletionRequest::new("next").tools(
         ["add", "shot"]
             .into_iter()
-            .map(|tool| ToolDefinition::new(name(tool), "a tool", json!({"type": "object"})))
+            .map(|tool| ToolDefinition::new(name(tool), "a tool", crate::tool::Schema::object()))
             .collect(),
     );
     request.chat_history = history.into_iter().map(Into::into).collect();

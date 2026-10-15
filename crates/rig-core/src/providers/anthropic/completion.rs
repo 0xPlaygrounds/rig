@@ -556,7 +556,7 @@ fn tools(
     eager: bool,
 ) -> Vec<Value> {
     let rig = tools.iter().map(|tool| {
-        let mut schema = tool.parameters.clone();
+        let mut schema = tool.parameters.clone().into_value();
         if strict {
             sanitize_strict_tool_schema(&mut schema);
         }

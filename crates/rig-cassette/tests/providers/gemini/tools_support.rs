@@ -67,14 +67,16 @@ fn operation_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: description.to_string(),
-        parameters: json!({
+        parameters: rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "x": { "type": "number", "description": "The first operand" },
                 "y": { "type": "number", "description": "The second operand" }
             },
             "required": ["x", "y"]
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -95,7 +97,7 @@ impl Tool for CountingAdd {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
@@ -125,7 +127,7 @@ impl Tool for CountingSubtract {
         "Subtract y from x (i.e. x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
@@ -161,12 +163,13 @@ impl Tool for CountingPing {
         "Return the current ping marker. Takes no arguments.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {},
             "required": [],
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -209,14 +212,15 @@ impl Tool for CodewordLookup {
         "Look up the secret codeword for a team.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "team": { "type": "string", "description": "The team name, lowercase" }
             },
             "required": ["team"]
-        })
+        }))
+        .expect("valid schema")
     }
 
     async fn call(
@@ -262,8 +266,8 @@ impl Tool for StrictRegister {
         "Register guests for the event.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({
             "type": "object",
             "properties": {
                 "seats": {
@@ -272,7 +276,7 @@ impl Tool for StrictRegister {
                 }
             },
             "required": ["seats"]
-        })
+        })).expect("valid schema")
     }
 
     async fn call(
@@ -302,8 +306,9 @@ impl Tool for MottoTool {
         "Fetch the two-line workshop motto.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({ "type": "object", "properties": {}, "required": [] })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {}, "required": [] }))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -346,8 +351,9 @@ impl Tool for ConfigTool {
         "Fetch the service configuration object.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({ "type": "object", "properties": {}, "required": [] })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {}, "required": [] }))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -376,8 +382,9 @@ impl Tool for BadgeImageTool {
         "Fetch the attendee badge as an image the assistant must inspect.".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({ "type": "object", "properties": {}, "required": [] })
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(json!({ "type": "object", "properties": {}, "required": [] }))
+            .expect("valid schema")
     }
 
     async fn call(
@@ -539,7 +546,7 @@ macro_rules! embeddable_operation {
                 $description.to_string()
             }
 
-            fn parameters(&self) -> serde_json::Value {
+            fn parameters(&self) -> rig_core::tool::Schema {
                 operation_definition(Self::NAME, $description).parameters
             }
 

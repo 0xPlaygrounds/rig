@@ -26,7 +26,7 @@ fn name(name: &str) -> ToolName {
 }
 
 fn tool(tool: &str) -> ToolDefinition {
-    ToolDefinition::new(name(tool), "a tool", json!({"type": "object"}))
+    ToolDefinition::new(name(tool), "a tool", crate::tool::Schema::object())
 }
 
 /// The body `request` sends in `mode`, prepared as the driver prepares it.

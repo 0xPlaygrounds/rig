@@ -4,9 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
-use rig_core::tool::{
-    FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
-};
+use rig_core::tool::{FilesChanged, Schema, Scope, Tool, ToolContext, ToolExecutionError, Touches};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -71,8 +69,8 @@ impl Tool for Delete {
         "Delete a file. Directories are refused.".to_owned()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<DeleteArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<DeleteArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

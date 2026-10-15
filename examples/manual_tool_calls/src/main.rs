@@ -13,13 +13,14 @@ use anyhow::{Result, bail};
 use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::{Tool, ToolOutput, ToolSet};
+use rig::tool::{Schema, Tool, ToolOutput, ToolSet};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct OperationArgs {
+    /// The first operand
     x: i32,
+    /// The second operand
     y: i32,
 }
 
@@ -40,15 +41,8 @@ impl Tool for Add {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "number", "description": "The first number to add" },
-                "y": { "type": "number", "description": "The second number to add" }
-            },
-            "required": ["x", "y"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(
@@ -73,15 +67,8 @@ impl Tool for Subtract {
         "Subtract y from x (x - y)".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "number", "description": "The number to subtract from" },
-                "y": { "type": "number", "description": "The number to subtract" }
-            },
-            "required": ["x", "y"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

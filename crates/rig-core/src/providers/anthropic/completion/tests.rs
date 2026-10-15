@@ -171,10 +171,12 @@ fn generic_tool(name: &str) -> completion::ToolDefinition {
     completion::ToolDefinition {
         name: crate::message::ToolName::new(name).expect("tool name"),
         description: format!("{name} description"),
-        parameters: json!({
+        parameters: crate::tool::Schema::new(json!({
             "type": "object",
             "properties": {}
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }
@@ -236,7 +238,7 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
 #[test]
 fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
     let mut tool = generic_tool("lookup");
-    tool.parameters = json!({
+    tool.parameters = crate::tool::Schema::new(json!({
         "type": "object",
         "additionalProperties": true,
         "properties": {
@@ -276,7 +278,8 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             }
         },
         "required": ["query"]
-    });
+    }))
+    .expect("valid schema");
     let request = completion_request_with_tools(
         vec![tool],
         Some(json!({
@@ -1948,7 +1951,9 @@ fn adversarial_histories_encode_to_requests_anthropic_takes() {
             request.tools = vec![completion::ToolDefinition {
                 name: ToolName::new("lookup").expect("name"),
                 description: "d".into(),
-                parameters: json!({"type": "object", "properties": {}}),
+                parameters: crate::tool::Schema::new(json!({"type": "object", "properties": {}}))
+                    .expect("valid schema"),
+                output_schema: None,
                 annotations: Default::default(),
             }];
             let body = match request_body(Params {

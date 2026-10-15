@@ -545,7 +545,7 @@ impl Tool for CountedSubtract {
         Subtract.description()
     }
 
-    fn parameters(&self) -> serde_json::Value {
+    fn parameters(&self) -> rig_core::tool::Schema {
         Subtract.parameters()
     }
 

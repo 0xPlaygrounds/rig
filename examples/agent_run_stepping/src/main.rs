@@ -26,13 +26,14 @@ use rig::agent::run::{
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction};
 use rig::completion::CompletionRequest;
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::{Tool, ToolSet};
+use rig::tool::{Schema, Tool, ToolSet};
 use serde::Deserialize;
-use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct OperationArgs {
+    /// The first number to add
     x: i32,
+    /// The second number to add
     y: i32,
 }
 
@@ -52,15 +53,8 @@ impl Tool for Add {
         "Add x and y together".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "number", "description": "The first number to add" },
-                "y": { "type": "number", "description": "The second number to add" }
-            },
-            "required": ["x", "y"]
-        })
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<Self::Args>()
     }
 
     async fn call(

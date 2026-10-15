@@ -20,12 +20,13 @@ impl PortableTool for StablePortableTool {
         "stable portable tool".to_string()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+    fn parameters(&self) -> rig::tool::Schema {
+        rig::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {"value": {"type": "string"}},
             "required": ["value"]
-        })
+        }))
+        .unwrap()
     }
 
     async fn call(&self, arguments: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -98,9 +99,11 @@ fn main() {
     assert_prelude_portable::<StablePortableTool>();
 
     let dynamic = rig::tool::DynamicTool::new(
-        rig::message::ToolName::new("dynamic").unwrap(),
-        "context-free dynamic tool",
-        serde_json::json!({"type": "object"}),
+        rig::completion::ToolDefinition::new(
+            rig::message::ToolName::new("dynamic").unwrap(),
+            "context-free dynamic tool",
+            rig::tool::Schema::object(),
+        ),
         |arguments| Box::pin(async move { Ok(rig::tool::ToolOutput::json(arguments)) }),
     );
     let _ = &dynamic;
@@ -123,8 +126,8 @@ fn main() {
                 "contextual tool".to_string()
             }
 
-            fn parameters(&self) -> serde_json::Value {
-                serde_json::json!({"type": "object"})
+            fn parameters(&self) -> rig::tool::Schema {
+                rig::tool::Schema::object()
             }
 
             async fn call(

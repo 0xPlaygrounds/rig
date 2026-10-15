@@ -6,8 +6,7 @@ use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    ContextValue, KeptEnd, OutputCut, Scope, Tool, ToolContext, ToolExecutionError, Touches,
-    args_schema,
+    ContextValue, KeptEnd, OutputCut, Schema, Scope, Tool, ToolContext, ToolExecutionError, Touches,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -134,8 +133,8 @@ impl Tool for List {
         )
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<ListArgs>()
+    fn parameters(&self) -> Schema {
+        Schema::arguments::<ListArgs>()
     }
 
     fn annotations(&self) -> ToolAnnotations {

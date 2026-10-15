@@ -94,8 +94,8 @@ impl Tool for Add {
         "adds two integers".into()
     }
 
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+    fn parameters(&self) -> rig_core::tool::Schema {
+        rig_core::tool::Schema::new(serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})).expect("valid schema")
     }
 
     async fn call(&self, _context: &mut ToolContext, args: AddArgs) -> Result<i64, Self::Error> {

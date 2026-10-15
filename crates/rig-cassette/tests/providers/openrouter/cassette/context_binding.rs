@@ -29,7 +29,10 @@ fn tool(name: &str) -> ToolDefinition {
     ToolDefinition::new(
         ToolName::new(name).expect("a tool name"),
         "Evaluates an arithmetic expression.",
-        json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
+        rig_core::tool::Schema::new(
+            json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
+        )
+        .expect("valid schema"),
     )
 }
 

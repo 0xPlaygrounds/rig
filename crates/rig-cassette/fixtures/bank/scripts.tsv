@@ -1386,6 +1386,7 @@ gemini/tool_choice/none_streaming_no_tools.yaml	POST /v1beta/models/{model}:stre
 gemini/tool_choice/specific_add_raw_nonstreaming.yaml	POST /v1beta/models/{model}:generateContent;a5556d8fe8cabab0;add
 gemini/tool_choice/specific_add_raw_streaming.yaml	POST /v1beta/models/{model}:streamGenerateContent;e2b0a16529de5fa8;add
 gemini/tool_definitions/duplicate_tool_name_uses_last_registration.yaml	POST /v1beta/models/{model}:generateContent;ba936e4681a546ef;echo	POST /v1beta/models/{model}:generateContent;44d2575284265425;
+gemini/tool_definitions/output_schema_reaches_gemini_as_response_json_schema.yaml	POST /v1beta/models/{model}:generateContent;439985f2b190032b;forecast	POST /v1beta/models/{model}:generateContent;44d2575284265425;
 gemini/tool_definitions/rich_json_schema_reaches_gemini_unchanged.yaml	POST /v1beta/models/{model}:generateContent;0e6d45b07abdc8bd;plan_trip	POST /v1beta/models/{model}:generateContent;44d2575284265425;
 gemini/tool_definitions/rig_tool_macro_schema_round_trips.yaml	POST /v1beta/models/{model}:generateContent;8d543244354d3ba0;macro_calculator	POST /v1beta/models/{model}:generateContent;44d2575284265425;
 gemini/tool_hooks/hooks_observe_every_tool_call_and_result.yaml	POST /v1beta/models/{model}:generateContent;a5556d8fe8cabab0;add	POST /v1beta/models/{model}:generateContent;44d2575284265425;
@@ -2282,6 +2283,7 @@ openai/responses_sessions/sequential_tool_calls_streaming.yaml	POST /v1/response
 openai/responses_sessions/usage_accumulates_across_streaming_multi_turn.yaml	POST /v1/responses;bb83373578685117;lookup_harbor_label	POST /v1/responses;4c16adb7a5c66699;
 openai/responses_tool_args/nested_arguments_roundtrip_nonstreaming.yaml	POST /v1/responses;b2b2fd6932ef562d;plan_trip	POST /v1/responses;59ece7897a84d7ff;
 openai/responses_tool_args/nested_arguments_streaming.yaml	POST /v1/responses;4e8446cab7cb95e4;plan_trip
+openai/responses_tool_args/output_schema_reaches_responses_function_tool.yaml	POST /v1/responses;89425206a237d05e;forecast	POST /v1/responses;c38e9e3c9a378288;
 openai/responses_tool_args/unicode_arguments_streaming.yaml	POST /v1/responses;d3ebceb1db2c6914;echo
 openai/responses_tool_args/zero_argument_tool_call_nonstreaming.yaml	POST /v1/responses;310f866debb0c55a;ping
 openai/responses_tool_args/zero_argument_tool_call_streaming.yaml	POST /v1/responses;bb83373578685117;ping

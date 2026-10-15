@@ -45,7 +45,9 @@ fn tool(name: &str) -> ToolDefinition {
     ToolDefinition {
         name: crate::message::ToolName::new(name).expect("tool name"),
         description: format!("the {name} tool"),
-        parameters: serde_json::json!({"type": "object"}),
+        parameters: crate::tool::Schema::new(serde_json::json!({"type": "object"}))
+            .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     }
 }

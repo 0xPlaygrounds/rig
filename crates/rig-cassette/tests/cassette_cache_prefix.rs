@@ -727,14 +727,16 @@ fn determinism_probe_request() -> CompletionRequest {
     let tool = |name: &str, first: &str, second: &str| ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Deterministic ordering probe tool {name}."),
-        parameters: serde_json::json!({
+        parameters: rig_core::tool::Schema::new(serde_json::json!({
             "type": "object",
             "properties": {
                 first: {"type": "string", "description": "first"},
                 second: {"type": "number", "description": "second"},
             },
             "required": [first, second],
-        }),
+        }))
+        .expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     };
 

@@ -1610,7 +1610,8 @@ impl rig_core::serve::Serve for Lookup {
             family: rig_core::effect::FamilyDescriptor::Tool {
                 name: "lookup".to_owned(),
                 description: "Look a question up".to_owned(),
-                parameters: lookup_parameters(),
+                parameters: rig_core::tool::Schema::new(lookup_parameters()).expect("valid schema"),
+                output_schema: None,
                 embedding: None,
             },
             layers: Vec::new(),

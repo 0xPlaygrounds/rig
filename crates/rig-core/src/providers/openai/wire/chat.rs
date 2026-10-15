@@ -327,7 +327,7 @@ impl Chat {
         let mut tool_choice = None;
         if quirks.supports_tools {
             for tool in &request.tools {
-                let mut parameters = tool.parameters.clone();
+                let mut parameters = tool.parameters.clone().into_value();
                 let mut function = json!({"name": tool.name, "description": tool.description});
                 if self.strict_tools {
                     crate::providers::openai::sanitize_schema(&mut parameters);

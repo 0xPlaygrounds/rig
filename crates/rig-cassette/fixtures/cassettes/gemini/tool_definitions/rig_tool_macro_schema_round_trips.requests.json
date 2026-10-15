@@ -1,0 +1,54 @@
+{
+  "interactions": [
+    {
+      "index": 0,
+      "changes": [
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/$schema",
+          "recorded": "https://json-schema.org/draft/2020-12/schema"
+        },
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/additionalProperties",
+          "sent": false
+        },
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/properties/x/format",
+          "recorded": "int64"
+        },
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/properties/y/format",
+          "recorded": "int64"
+        },
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/title",
+          "recorded": "MacroCalculatorParameters"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "changes": [
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/$schema",
+          "recorded": "https://json-schema.org/draft/2020-12/schema"
+        },
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/additionalProperties",
+          "sent": false
+        },
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/properties/x/format",
+          "recorded": "int64"
+        },
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/properties/y/format",
+          "recorded": "int64"
+        },
+        {
+          "path": "/tools/0/functionDeclarations/0/parametersJsonSchema/title",
+          "recorded": "MacroCalculatorParameters"
+        }
+      ]
+    }
+  ]
+}

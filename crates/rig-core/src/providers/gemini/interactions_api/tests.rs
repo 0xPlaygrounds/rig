@@ -301,7 +301,8 @@ fn encoded_steps(wire: &Interactions, history: Vec<Message>) -> Vec<Value> {
     let add = ToolDefinition {
         name: crate::message::ToolName::new("add").expect("tool name"),
         description: "Add two numbers.".to_owned(),
-        parameters: json!({"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}}),
+        parameters: crate::tool::Schema::new(json!({"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}})).expect("valid schema"),
+        output_schema: None,
         annotations: Default::default(),
     };
     let request = <crate::operation::Completion as crate::wire::Operation>::prepare(

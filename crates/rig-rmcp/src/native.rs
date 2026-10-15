@@ -16,9 +16,11 @@ use rmcp::model::{
 };
 use rmcp::service::{PeerRequestOptions, ServerSink};
 
+use rig_core::completion::ToolDefinition;
 use rig_core::message::{EmptyToolName, ImageMediaType, MimeType, ToolName, ToolResultContent};
 use rig_core::tool::{
-    ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
+    ContextValue, DynamicTool, Schema, SchemaError, ToolContext, ToolContextError,
+    ToolExecutionError, ToolOutput,
 };
 use rig_core::wasm_compat::WasmBoxedFuture;
 
@@ -462,15 +464,19 @@ pub(crate) fn mcp_content_block_to_tool_content(
 /// Build the model presentation without flattening or reparsing MCP blocks.
 pub fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutionError> {
     let structured = result.structured_content.as_ref();
-    let canonical_fallback = structured.map(serde_json::Value::to_string);
     let mut replaced_fallback = false;
     let mut mapped = Vec::with_capacity(result.content.len());
 
     for block in &result.content {
         let fallback_structured = if !replaced_fallback {
-            match (block, canonical_fallback.as_deref(), structured) {
-                (ContentBlock::Text(text), Some(fallback), Some(structured))
-                    if text.text == fallback =>
+            // The compatibility text is the structured value serialized,
+            // however the server spaced it.
+            match (block, structured) {
+                (ContentBlock::Text(text), Some(structured))
+                    if serde_json::from_str::<serde_json::Value>(&text.text)
+                        .ok()
+                        .as_ref()
+                        == Some(structured) =>
                 {
                     Some(structured)
                 }
@@ -511,6 +517,24 @@ pub fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExec
     } else {
         Ok(ToolOutput::text(""))
     }
+}
+
+/// Why an MCP tool cannot become a rig tool.
+#[derive(Debug, thiserror::Error)]
+pub enum McpToolError {
+    /// The server gave the tool no name.
+    #[error(transparent)]
+    EmptyName(#[from] EmptyToolName),
+    /// The server gave the tool an input or output schema that is not well
+    /// formed.
+    #[error("MCP tool `{tool}`: {error}")]
+    InvalidSchema {
+        /// The tool's name.
+        tool: String,
+        /// What is wrong with the schema.
+        #[source]
+        error: SchemaError,
+    },
 }
 
 /// Error type for MCP client operations: connecting, listing, and reading.
@@ -555,12 +579,14 @@ pub fn preserve_mcp_result(
 /// map ([`preserve_mcp_result`]). A tool that declares an output schema
 /// answers the model with its structured content alone; otherwise the model
 /// gets [`mcp_result_output`]. A tool that reports `is_error` becomes a
-/// failed call whose error carries the tool's output. Fails with
-/// [`EmptyToolName`] when the tool has no name.
+/// failed call whose error carries the tool's output. The tool's
+/// `outputSchema` becomes its definition's output schema. Fails with
+/// [`McpToolError`] when the server gave the tool no name, or an input or
+/// output schema that is not well formed.
 impl TryFrom<McpTool> for DynamicTool {
-    type Error = EmptyToolName;
+    type Error = McpToolError;
 
-    fn try_from(tool: McpTool) -> Result<Self, EmptyToolName> {
+    fn try_from(tool: McpTool) -> Result<Self, McpToolError> {
         let name = match &tool.name {
             Some(name) => name.clone(),
             None => ToolName::new(tool.definition.name.to_string())?,
@@ -571,14 +597,28 @@ impl TryFrom<McpTool> for DynamicTool {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        let parameters = tool.definition.schema_as_json_value();
-        let annotations = annotations(&tool.definition);
+        let schema = |object: &rmcp::model::JsonObject| {
+            Schema::new(serde_json::Value::Object(object.clone())).map_err(|error| {
+                McpToolError::InvalidSchema {
+                    tool: name.to_string(),
+                    error,
+                }
+            })
+        };
+        let parameters = schema(&tool.definition.input_schema)?;
+        let output_schema = tool
+            .definition
+            .output_schema
+            .as_deref()
+            .map(schema)
+            .transpose()?;
+        let mut definition = ToolDefinition::new(name, description, parameters)
+            .with_annotations(annotations(&tool.definition));
+        definition.output_schema = output_schema;
         let liveness_peer = tool.peer.clone();
         let tool = Arc::new(tool);
         Ok(DynamicTool::new_with_context(
-            name,
-            description,
-            parameters,
+            definition,
             move |context: &mut ToolContext, args: serde_json::Value| {
                 let tool = Arc::clone(&tool);
                 Box::pin(async move {
@@ -610,7 +650,6 @@ impl TryFrom<McpTool> for DynamicTool {
                 })
             },
         )
-        .with_annotations(annotations)
         .with_liveness(move || !liveness_peer.is_transport_closed()))
     }
 }
