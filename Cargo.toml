@@ -102,6 +102,7 @@ features = [
     "websocket",
     "websocket-native-tls",
     "websocket-rustls",
+    "wstd",
 ]
 rustdoc-args = ["--cfg", "docsrs"]
 
@@ -401,6 +402,9 @@ uuid = "1"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"
 web-time = "1"
+# The WASI HTTP transport (`rig-wstd`) and rig-http's WASI timers.
+# 0.6.2: `http::Client: Clone`.
+wstd = { version = "0.6.2", default-features = false }
 zerocopy = "0.8"
 
 [workspace.metadata.cargo-autoinherit]
@@ -436,6 +440,8 @@ rig-sqlite = { path = "crates/rig-sqlite", version = "0.44.0", optional = true, 
 rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.44.0", optional = true, default-features = false }
 rig-vectorize = { path = "crates/rig-vectorize", version = "0.44.0", optional = true, default-features = false }
 rig-vertexai = { path = "crates/rig-vertexai", version = "0.44.0", optional = true, default-features = false }
+# The WASI HTTP transport; an empty crate on other targets.
+rig-wstd = { path = "crates/rig-wstd", version = "0.44.0", optional = true }
 
 # The bundled websocket backend is native-only (tungstenite needs a tokio
 # reactor and raises a `compile_error!` on wasm), so it is scoped to non-wasm
@@ -585,6 +591,9 @@ native-tls = [
   "rig-milvus?/native-tls",
   "rig-vectorize?/native-tls",
 ]
+# The WASI HTTP transport (`rig::rig_wstd`), for WASI builds, which leave out
+# the default `reqwest`: `OpenAIConfig::from_env()?.connect(WstdClient::default())`.
+wstd = ["dep:rig-wstd"]
 reqwest-middleware = ["reqwest", "rig-reqwest/reqwest-middleware"]
 reqwest-middleware-rustls = ["reqwest", "rig-reqwest/reqwest-middleware-rustls"]
 reqwest-middleware-native-tls = ["reqwest", "rig-reqwest/reqwest-middleware-native-tls"]

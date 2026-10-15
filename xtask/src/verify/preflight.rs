@@ -10,6 +10,7 @@ pub(super) fn version_matches(actual: &str, required: &str) -> bool {
 pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
     let mut probes: BTreeSet<(&str, Vec<&str>)> = BTreeSet::new();
     let mut wasm = false;
+    let mut wasi = false;
     let mut runner = false;
     for check in plan {
         for step in &check.steps {
@@ -28,9 +29,13 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
                 }
             }
             wasm |= step.args.iter().any(|a| a == "wasm32-unknown-unknown");
+            wasi |= step.args.iter().any(|a| a == checks::WASI);
             runner |= step
                 .env
                 .contains_key("CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER");
+            if step.env.contains_key("CARGO_TARGET_WASM32_WASIP2_RUNNER") {
+                probes.insert(("wasmtime", vec!["--version"]));
+            }
         }
         if check.id == "coverage" {
             probes.insert(("cargo", vec!["llvm-cov", "--version"]));
@@ -110,20 +115,18 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
             Err(e) => failures.push(format!("{program} {args:?}: {e}")),
         }
     }
-    if wasm {
+    for (needed, target) in [(wasm, "wasm32-unknown-unknown"), (wasi, checks::WASI)] {
+        if !needed {
+            continue;
+        }
         match output(
             root,
             "rustc",
-            &[
-                "--print",
-                "target-libdir",
-                "--target",
-                "wasm32-unknown-unknown",
-            ],
+            &["--print", "target-libdir", "--target", target],
         ) {
             Ok(dir) if Path::new(dir.trim()).is_dir() => {}
             other => failures.push(format!(
-                "install wasm32-unknown-unknown for the repository toolchain: {other:?}"
+                "install {target} for the repository toolchain: {other:?}"
             )),
         }
     }

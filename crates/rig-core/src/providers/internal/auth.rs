@@ -20,11 +20,11 @@ pub struct DeviceCodePrompt {
     pub user_code: String,
 }
 
-/// Device-code callback with thread-safety bounds outside browser WASM.
-/// Browser WASM authenticators do not invoke it.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+/// Device-code callback with thread-safety bounds outside WASM.
+/// WASM authenticators do not invoke it.
+#[cfg(not(target_family = "wasm"))]
 pub(crate) type DeviceCodeCallback = dyn Fn(DeviceCodePrompt) + Send + Sync;
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 pub(crate) type DeviceCodeCallback = dyn Fn(DeviceCodePrompt);
 
 /// Optional callback invoked when an OAuth device flow needs user action.

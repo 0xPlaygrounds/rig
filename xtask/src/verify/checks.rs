@@ -29,6 +29,8 @@ pub(crate) struct Check {
     pub(crate) reason: String,
 }
 
+/// The WASI target CI builds and tests for.
+pub(super) const WASI: &str = "wasm32-wasip2";
 fn cargo(args: &[&str]) -> Step {
     Step::new("cargo", args)
 }
@@ -491,6 +493,70 @@ pub(super) fn all() -> Vec<Check> {
         }
         checks.push(check(&format!("wasm-{package}"), steps));
     }
+    // WASI: the portable core and agent build for `wasm32-wasip2` (the
+    // bundled reqwest transport does not, so it is left out), the facade and
+    // example build with the `wasi:http` transport, and the transport's
+    // tests run under wasmtime.
+    checks.push(check(
+        "wasi-rig-core",
+        vec![
+            cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "rig-http",
+                "--all-features",
+                "--target",
+                WASI,
+            ]),
+            cargo(&["check", "--locked", "-p", "rig-core", "--target", WASI]),
+            cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "rig-core",
+                "--features",
+                "audio,image,pdf,epub,websocket,test-utils",
+                "--target",
+                WASI,
+            ]),
+            cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "rig-agent",
+                "--all-features",
+                "--target",
+                WASI,
+            ]),
+        ],
+    ));
+    checks.push(check(
+        "wasi-rig-wstd",
+        vec![
+            cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "wasi_completion",
+                "--target",
+                WASI,
+            ]),
+            cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "rig",
+                "--no-default-features",
+                "--features",
+                "agent,derive,wstd",
+                "--target",
+                WASI,
+            ]),
+            cargo(&["test", "--locked", "-p", "rig-wstd", "--target", WASI])
+                .env("CARGO_TARGET_WASM32_WASIP2_RUNNER", "wasmtime run -S http"),
+        ],
+    ));
     // The kernel alone (rig-ecs has no features): it builds natively and
     // for the web, and a headless app of only the kernel and Bevy's task
     // pools runs a turn with a tool call on a scripted model.

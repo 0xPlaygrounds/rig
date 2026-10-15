@@ -75,3 +75,4 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `vector_search_cohere` | Demonstrates vector search with separate Cohere document and query embeddings. |
 | `vector_search_ollama` | Demonstrates vector search against a local Ollama embedding model. |
 | `vector_search` | Demonstrates embedding documents and querying an in-memory vector index with OpenAI. |
+| `wasi_completion` | Streams an agent prompt inside a WASI 0.2 component over `wasi:http`. Build with `--target wasm32-wasip2` and run under `wasmtime run -S http --env OPENAI_API_KEY`. |

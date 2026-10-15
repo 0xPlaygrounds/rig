@@ -267,8 +267,10 @@ jobs:
   # Each package checked on its own for the browser target (cargo unifies
   # features across packages built together, which hides a manifest that
   # forgot a feature), plus the two crates that must fail on wasm with
-  # exactly one diagnostic. One runner, one dependency build; every step runs
-  # even after an earlier one fails so independent breaks stay visible.
+  # exactly one diagnostic, and the WASI (`wasm32-wasip2`) builds with the
+  # `wasi:http` transport's tests under wasmtime. One runner, one dependency
+  # build; every step runs even after an earlier one fails so independent
+  # breaks stay visible.
   wasm-check:
     name: stable / check wasm targets
     runs-on: ubuntu-latest
@@ -276,10 +278,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/rust-setup
         with:
-          target: wasm32-unknown-unknown
+          target: wasm32-unknown-unknown,wasm32-wasip2
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasmtime
       - run: cargo xtask verify --check wasm-rig-core
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-rig-http
@@ -299,6 +304,10 @@ jobs:
         run: cargo xtask verify --check native-only-rig-rmcp
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check native-only-rig-tungstenite
+      - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check wasi-rig-core
+      - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check wasi-rig-wstd
 
   # The executed wasm suites, under wasm-bindgen-test-runner on Node. The
   # CLI must match the lock file's wasm-bindgen version.

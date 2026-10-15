@@ -8,11 +8,11 @@ provider sends through:
 - `ws_client` (feature `websocket`): the websocket connection contract the
   Responses WebSocket session is written against;
 - `wasm_compat`: the `Send`/`Sync` bounds and boxed futures that relax on
-  browser wasm.
+  wasm (browser and WASI), and executor-independent timers.
 
-This crate has no transport of its own. `rig-reqwest` (HTTP) and
-`rig-tungstenite` (websocket) are the bundled transports, and depend only on
-this crate. `rig-core` re-exports these modules at `rig_core::http_client`,
+This crate has no transport of its own. `rig-reqwest` (HTTP),
+`rig-tungstenite` (websocket) and `rig-wstd` (HTTP on WASI) are the bundled
+transports, and depend only on this crate. `rig-core` re-exports these modules at `rig_core::http_client`,
 `rig_core::ws_client` and `rig_core::wasm_compat`, so provider code and
 users reach them there.
 

@@ -10,20 +10,16 @@ use std::pin::Pin;
 
 use futures::Stream;
 
-// Browser markers assume single-threaded execution; atomics would invalidate
+// Wasm markers assume single-threaded execution; atomics would invalidate
 // that assumption. Relaxed bounds do not make non-Send handlers thread-safe.
-#[cfg(all(
-    target_arch = "wasm32",
-    target_os = "unknown",
-    target_feature = "atomics"
-))]
+#[cfg(all(target_family = "wasm", target_feature = "atomics"))]
 compile_error!(
     "rig-http does not support threaded wasm (`+atomics`): its wasm-compat markers assume a \
      single-threaded target"
 );
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// `Send` on native targets, a no-op marker on browser wasm.
+#[cfg(not(target_family = "wasm"))]
+/// `Send` on native targets, a no-op marker on wasm.
 ///
 /// ```compile_fail
 /// use std::rc::Rc;
@@ -35,19 +31,19 @@ compile_error!(
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not `Send`, and Rig needs `Send` natively",
     label = "not `Send`",
-    note = "handlers and transports run inside a driver's task: hold shared state behind an `Arc` (never an `Rc`), or use a `!Send` value only on browser wasm, where this marker is a no-op"
+    note = "handlers and transports run inside a driver's task: hold shared state behind an `Arc` (never an `Rc`), or use a `!Send` value only on wasm, where this marker is a no-op"
 )]
 pub trait WasmCompatSend: Send {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// `Send` on native targets, a no-op marker on browser wasm.
+#[cfg(target_family = "wasm")]
+/// `Send` on native targets, a no-op marker on wasm.
 pub trait WasmCompatSend {}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 impl<T> WasmCompatSend for T where T: Send {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 impl<T> WasmCompatSend for T {}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 /// Streaming response bound that includes `Send` on native targets.
 pub trait WasmCompatSendStream:
     Stream<Item = Result<Bytes, crate::http_client::Error>> + Send
@@ -55,13 +51,13 @@ pub trait WasmCompatSendStream:
     type InnerItem: Send;
 }
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Streaming response bound without `Send` on browser wasm.
+#[cfg(target_family = "wasm")]
+/// Streaming response bound without `Send` on wasm.
 pub trait WasmCompatSendStream: Stream<Item = Result<Bytes, crate::http_client::Error>> {
     type InnerItem;
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 impl<T> WasmCompatSendStream for T
 where
     T: Stream<Item = Result<Bytes, crate::http_client::Error>> + Send,
@@ -69,7 +65,7 @@ where
     type InnerItem = Result<Bytes, crate::http_client::Error>;
 }
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 impl<T> WasmCompatSendStream for T
 where
     T: Stream<Item = Result<Bytes, crate::http_client::Error>>,
@@ -77,8 +73,8 @@ where
     type InnerItem = Result<Bytes, crate::http_client::Error>;
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// `Sync` on native targets, a no-op marker on browser wasm.
+#[cfg(not(target_family = "wasm"))]
+/// `Sync` on native targets, a no-op marker on wasm.
 ///
 /// ```compile_fail
 /// use std::cell::Cell;
@@ -90,32 +86,32 @@ where
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not `Sync`, and Rig needs `Sync` natively",
     label = "not `Sync`",
-    note = "handlers and transports are shared between a driver and its in-flight tasks: use `Mutex`/atomics instead of `Cell`/`RefCell`, or use a `!Sync` value only on browser wasm, where this marker is a no-op"
+    note = "handlers and transports are shared between a driver and its in-flight tasks: use `Mutex`/atomics instead of `Cell`/`RefCell`, or use a `!Sync` value only on wasm, where this marker is a no-op"
 )]
 pub trait WasmCompatSync: Sync {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// `Sync` on native targets, a no-op marker on browser wasm.
+#[cfg(target_family = "wasm")]
+/// `Sync` on native targets, a no-op marker on wasm.
 pub trait WasmCompatSync {}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 impl<T> WasmCompatSync for T where T: Sync {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 impl<T> WasmCompatSync for T {}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 /// Boxed future with `Send` on the same targets as [`WasmCompatSend`].
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Boxed future type without `Send`, on browser wasm.
+#[cfg(target_family = "wasm")]
+/// Boxed future type without `Send`, on wasm.
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 /// Boxed stream with `Send` on the same targets as [`WasmCompatSend`].
 pub type WasmBoxedStream<'a, T> = Pin<Box<dyn Stream<Item = T> + Send + 'a>>;
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Boxed stream type without `Send`, on browser wasm.
+#[cfg(target_family = "wasm")]
+/// Boxed stream type without `Send`, on wasm.
 pub type WasmBoxedStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
 
 /// Error returned by [`timeout`] when the future does not complete in time.
@@ -132,18 +128,20 @@ impl std::error::Error for Elapsed {}
 
 /// Await `future` until `duration` elapses, then drop it and return [`Elapsed`].
 /// The future is polled first, even for zero duration; cancellation runs only
-/// its drop cleanup. Uses a native timer thread or browser `setTimeout`, without
-/// requiring an executor timer or a feature flag.
+/// its drop cleanup. Uses a native timer thread, browser `setTimeout`, or on
+/// WASI a `wasi:clocks` timer, without a feature flag. On WASI the timer needs
+/// the `wstd` runtime (`wstd::main` or `wstd::runtime::block_on`).
 ///
 /// # Panics
-/// May panic if the timer cannot represent the deadline for `duration`.
+/// May panic if the timer cannot represent the deadline for `duration`, or on
+/// WASI when polled outside the `wstd` runtime.
 pub async fn timeout<F>(duration: std::time::Duration, future: F) -> Result<F::Output, Elapsed>
 where
     F: Future,
 {
     use futures::future::{Either, select};
 
-    let delay = futures_timer::Delay::new(duration);
+    let delay = sleep(duration);
     futures::pin_mut!(future);
     futures::pin_mut!(delay);
     match select(future, delay).await {
@@ -152,12 +150,15 @@ where
     }
 }
 
-/// Sleep for `duration` using the native or browser timer backend of [`timeout`].
+/// Sleep for `duration` using the timer backend of [`timeout`].
 ///
 /// # Panics
-/// May panic if the timer cannot represent the deadline for `duration`.
+/// As [`timeout`].
 pub async fn sleep(duration: std::time::Duration) {
+    #[cfg(not(target_os = "wasi"))]
     futures_timer::Delay::new(duration).await;
+    #[cfg(target_os = "wasi")]
+    wstd::task::sleep(duration.into()).await;
 }
 
 #[cfg(test)]

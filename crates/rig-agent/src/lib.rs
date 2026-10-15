@@ -15,7 +15,7 @@
 //!
 //! Portable contracts are available through [`core`]; recording accepts
 //! [`rig_core::serve::Recorder`], with concrete replay adapters in `rig-cassette`.
-//! Native and browser WASM targets are supported; WASI is not. MCP integration
+//! Native, browser WASM and WASI 0.2 targets are supported. MCP integration
 //! is provided by the native-only `rig-rmcp` crate.
 //!
 //! ```

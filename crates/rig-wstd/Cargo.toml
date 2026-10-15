@@ -1,0 +1,25 @@
+[package]
+name = "rig-wstd"
+version.workspace = true
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "The WASI HTTP transport for Rig, over wstd's wasi:http client."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+targets = ["wasm32-wasip2"]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+# The transport exists only on WASI: wasi:http imports cannot link anywhere
+# else, so on other targets the crate is empty and pulls nothing in.
+[target.'cfg(target_os = "wasi")'.dependencies]
+rig-http = { path = "../rig-http", version = "0.44.0" }
+bytes = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+wstd = { workspace = true }
