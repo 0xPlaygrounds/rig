@@ -1,16 +1,6 @@
-//! Conversations: the one model of a conversation in rig, and the rules a
-//! list of messages keeps so a model can read it.
-//!
-//! A [`Conversation`] holds its entries (each a [`Message`] with a
-//! [`MessageId`] that survives edits and, when it is not the user's own or
-//! the model's, an [`Author`]), its [`Aside`]s, which never reach a model,
-//! and why its last user message is unanswered ([`Halt`]); other
-//! continuations from one of its entries are [`Branch`]es and how each
-//! turn went is a [`TurnRecord`], both kept as asides. Every edit is a
-//! [`Change`], applied by the same code whether it is made live or read
-//! back from a log, and kept in the conversation's outbox
-//! ([`unsaved`](Conversation::unsaved)) until whoever saves it takes it.
-//! [`pairing`] pairs each tool call with its result.
+//! One conversation model for all of rig: [`Conversation`], its edits as
+//! [`Change`]s, [`Branch`]es and [`TurnRecord`]s kept as asides, and
+//! [`pairing`] of tool calls with their results.
 //!
 //! ```
 //! use rig_core::conversation::{Author, Conversation, Entry, pairing};
@@ -677,7 +667,7 @@ impl Conversation {
 
     /// Pushes `entry`, after a [`STOPPED`] entry by [`Author::rig`] in the
     /// same change when the user stopped the last request; a halt is
-    /// cleared. A pushed entry always gets a new id. Its id.
+    /// cleared. Returns the new entry's id; a pushed entry never reuses one.
     pub fn push(&mut self, entry: impl Into<Entry>) -> MessageId {
         let entry = entry.into();
         let by = entry.author.clone();
@@ -894,7 +884,8 @@ impl Conversation {
     /// `None` to leave it. The entries it rewrote keep their ids and
     /// authors, and the whole edit is one change: a [`splice`](Self::splice)
     /// of the entries from the first rewritten to the last. Nothing is
-    /// recorded when it rewrote none. The ids of the entries it rewrote.
+    /// recorded when it rewrote none. Returns the ids of the entries it
+    /// rewrote.
     ///
     /// ```
     /// use rig_core::completion::Message;
@@ -949,7 +940,7 @@ impl Conversation {
     /// entries keep the first's id, author and made-time. An aside that
     /// followed an entry merged into another follows that one; one that
     /// followed a dropped entry follows the entry before it (each move
-    /// recorded, by `by`). What it repaired.
+    /// recorded, by `by`). Returns what it repaired.
     pub fn normalize(&mut self, by: Author) -> Normalized {
         let entries = (0..self.messages.len()).filter_map(|at| self.entry(at));
         let normalized = pairing::normalize(entries.collect());
@@ -1055,8 +1046,8 @@ impl Conversation {
         }
     }
 
-    /// Puts `aside` after the asides already put. An unsaved aside is not
-    /// recorded. Its id.
+    /// Puts `aside` after the asides already put and returns its id. An
+    /// unsaved aside is not recorded.
     pub fn add_aside(&mut self, aside: Aside) -> AsideId {
         let id = AsideId(self.next_aside);
         if aside.saved {
@@ -1090,7 +1081,7 @@ impl Conversation {
         true
     }
 
-    /// Removes aside `id`; it, if there was one.
+    /// Removes aside `id` and returns it, or `None` if there was none.
     pub fn remove_aside(&mut self, id: AsideId) -> Option<Aside> {
         let at = self.asides.iter().position(|(known, _)| *known == id)?;
         let (_, aside) = self.asides.remove(at);
@@ -1338,7 +1329,7 @@ impl Conversation {
     /// Checks that each of `entries`, which replace `range`, has an id
     /// that is, at most once, one of `reused` or an earlier id no entry
     /// outside `range` holds (put back), or else new: rising from the next
-    /// id. The next id after them.
+    /// id. Returns the next id after them.
     fn new_ids(
         &self,
         entries: &[Entry],

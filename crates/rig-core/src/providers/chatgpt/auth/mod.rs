@@ -48,12 +48,17 @@ pub enum SignInPrompt {
     BrowserUnavailable(String),
 }
 
+/// Where the ChatGPT credential comes from: a given access token, or a stored OAuth sign-in.
 #[derive(Clone)]
 pub enum AuthSource {
+    /// A token the caller already holds.
     AccessToken {
+        /// The token.
         access_token: String,
+        /// The ChatGPT account it belongs to, when known.
         account_id: Option<String>,
     },
+    /// The OAuth sign-in kept in the auth file, refreshed as needed.
     OAuth,
 }
 
@@ -66,6 +71,7 @@ impl fmt::Debug for AuthSource {
     }
 }
 
+/// Signs in to ChatGPT and keeps the stored credential fresh.
 #[derive(Clone, Debug)]
 #[cfg_attr(target_family = "wasm", allow(dead_code))]
 pub struct Authenticator {
@@ -79,14 +85,19 @@ pub struct Authenticator {
 
 pub use crate::providers::internal::auth::AuthError;
 
+/// The credential a request is sent with.
 #[derive(Debug, Clone)]
 pub struct AuthContext {
     /// Resolved credential. Use [`Secret::expose`] only when raw bytes are required.
     pub access_token: Secret,
+    /// The ChatGPT account the token belongs to, when known.
     pub account_id: Option<String>,
 }
 
 impl Authenticator {
+    /// An authenticator over `source`, keeping an OAuth sign-in in
+    /// `auth_file`; `device_code_handler` shows a device code when the
+    /// device flow is allowed.
     pub fn new(
         source: AuthSource,
         auth_file: Option<PathBuf>,

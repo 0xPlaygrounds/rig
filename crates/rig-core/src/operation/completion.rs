@@ -657,7 +657,7 @@ impl ReplyFold {
 
     /// The id a call closing now takes, and the provider item it keeps:
     /// `id`, or, when the provider sent none or one an earlier call of the
-    /// reply holds, a fresh rig-issued id (as pi issues). A renamed call
+    /// reply holds, a fresh rig-issued id. A renamed call
     /// keeps no item, since the item names the id it lost; a call sent with
     /// no id keeps its item only on a wire whose items have an id slot,
     /// which replay then fills with the id its result gets.

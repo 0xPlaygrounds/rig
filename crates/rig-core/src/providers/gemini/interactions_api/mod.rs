@@ -174,7 +174,7 @@ impl ReplayTarget for Interactions {
     }
 
     /// Gemini takes system text only in `systemInstruction`: later system
-    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    /// messages fold into the leading one.
     fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
         crate::completion::LaterSystem::Leading
     }
@@ -406,7 +406,7 @@ impl ReplayTarget for InteractionResume {
     }
 
     /// Gemini takes system text only in `systemInstruction`: later system
-    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    /// messages fold into the leading one.
     fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
         crate::completion::LaterSystem::Leading
     }

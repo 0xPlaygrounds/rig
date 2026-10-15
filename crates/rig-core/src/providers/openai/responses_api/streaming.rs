@@ -263,7 +263,7 @@ fn provider_message(response: &Value, fallback: &str) -> String {
 }
 
 /// How the turn ended, for every status the API documents. A response
-/// without a status ended as pi reads it, with a stop. A status that is
+/// without a status ended with a stop. A status that is
 /// not a documented end, including one still `queued` or `in_progress`, is
 /// a failed turn.
 pub(crate) fn finish_reason_of(response: &Value) -> (FinishReason, Option<String>) {
@@ -722,8 +722,8 @@ impl ResponsesDecoder {
 
     /// The slot the terminal's item at output `index` restates, among those
     /// no earlier terminal item took: the one with its id; else the one the
-    /// stream gave that index when it is of the item's kind, as pi reads an
-    /// index whatever id it states; else the first of its kind the stream
+    /// stream gave that index when it is of the item's kind, whatever id it
+    /// states; else the first of its kind the stream
     /// gave no index and no other id; else the first of its kind with no
     /// other id that the stream put at an index the terminal holds no item
     /// of that kind at, a stream whose indices are shifted against it.

@@ -123,8 +123,8 @@ pub struct Accepts {
 }
 
 impl Accepts {
-    /// A model that reads every kind of content, and another model's
-    /// reasoning as text.
+    /// Every kind of content. Another model's reasoning is replayed as plain
+    /// text (`foreign_reasoning` is off).
     pub const ALL: Self = Self {
         user_images: true,
         assistant_images: true,
@@ -133,8 +133,8 @@ impl Accepts {
         foreign_reasoning: false,
     };
 
-    /// A model that reads text and tools but no images, and another model's
-    /// reasoning as text.
+    /// Text and tools, no images. Another model's reasoning is replayed as
+    /// plain text.
     pub const TEXT: Self = Self {
         user_images: false,
         assistant_images: false,
@@ -263,7 +263,7 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     }
 
     /// Whether every reply on this wire states why it stopped. A reply that
-    /// then names no reason failed (pi's `supportsFinishReason`); a wire
+    /// then names no reason failed; a wire
     /// with no finish vocabulary, such as a local runtime, says `false`.
     fn states_finish_reason(&self) -> bool {
         true
@@ -370,8 +370,7 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 pub enum LaterSystem {
     /// Where the history has them.
     InPlace,
-    /// Joined with the leading ones into one system message, as pi's
-    /// `collapseSystemMessages` does.
+    /// Joined with the leading ones into one system message.
     Leading,
     /// As user text where the history has them, so adding one never moves
     /// the prefix before it.
@@ -471,8 +470,10 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   and without tools calls and results become text.
 /// - Opaque items marked not to replay are always dropped, and so is a turn
 ///   that ended in an error or was aborted, with the results answering it.
-/// - Calls and results pair by [`crate::conversation::pairing::pair`]: an unanswered
-///   call gets a [`NO_RESULT_PROVIDED`](crate::conversation::pairing::NO_RESULT_PROVIDED) result and an orphan result is dropped.
+/// - Calls and results pair by [`crate::conversation::pairing::pair`]: an
+///   unanswered call gets a
+///   [`NO_RESULT_PROVIDED`](crate::conversation::pairing::NO_RESULT_PROVIDED)
+///   result and an orphan result is dropped.
 /// - Adjacent user messages become one. A turn left empty is dropped, and so
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
@@ -1389,12 +1390,12 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
 }
 
 /// What replaces an empty tool result: models answer a call whose result
-/// says nothing better than one with no content (pi).
+/// says nothing better than one with no content.
 pub const NO_TOOL_OUTPUT: &str = "(no tool output)";
 
 /// `content` of a result that has nothing to say, said plainly, and joined
 /// into one text unless the model reads several `parts`: Gemini 2 rejects a
-/// result of several parts (pi `google-shared.js`).
+/// result of several parts.
 fn result_text_parts(
     content: Vec<ToolResultContent>,
     parts: bool,

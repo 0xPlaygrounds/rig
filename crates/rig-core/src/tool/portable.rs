@@ -1,8 +1,5 @@
-//! Context-free tool authoring contracts.
-//!
-//! Portable tools receive owned, deserialized arguments only. Runtime identity,
-//! authorization, mutable context, capability state, and lifecycle metadata
-//! remain outside the typed portable call boundary.
+//! [`PortableTool`]: a tool that sees only its parsed arguments, with no run context, so it
+//! works under any host.
 //!
 //! ```
 //! use rig_core::tool::{PortableTool, tool_definition};

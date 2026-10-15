@@ -352,6 +352,7 @@ impl Serve for ErasedHandler {
     }
 }
 
+/// What an observer of one dispatch sees: its outcome and, when wanted, each streamed item.
 pub trait Observe: Send + Sync {
     /// Provider witness associated with this dispatch, independently of recording.
     fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {

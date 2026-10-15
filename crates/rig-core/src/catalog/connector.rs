@@ -28,8 +28,9 @@ pub trait SignIn: Send + Sync + 'static {
         spec: &ModelSpec,
         transport: &Transport,
     ) -> Option<Result<ErasedHandler, ConnectError>>;
-    /// The plan a sign-in to which serves `spec`, such as `ChatGPT`, for
-    /// pickers; signed in or not.
+    /// The name of the subscription plan through which this sign-in would
+    /// serve `spec`, such as `"ChatGPT"`, whether or not the user is signed
+    /// in; for model pickers.
     fn plan(&self, spec: &ModelSpec) -> Option<&'static str>;
 }
 
@@ -285,8 +286,8 @@ impl Connector {
     /// it, and that model as an effect handler: from the provider
     /// registered for its vendor, else its provider's client built from the
     /// environment, on the shared HTTP client of the `reqwest` feature, or,
-    /// without a key in either, the handler of a sign-in that serves it. The HTTP client is wrapped by [`Self::wrap_http`]'s
-    /// wrappers.
+    /// without a key in either, the handler of a sign-in that serves it. The
+    /// HTTP client is wrapped by [`Self::wrap_http`]'s wrappers.
     ///
     /// # Errors
     ///
@@ -325,7 +326,8 @@ impl Connector {
         }
     }
 
-    /// The plan a sign-in to which serves `spec`, if any.
+    /// The plan of the first sign-in that would serve `spec`
+    /// ([`SignIn::plan`]).
     pub fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
         self.sign_ins.iter().find_map(|sign_in| sign_in.plan(spec))
     }

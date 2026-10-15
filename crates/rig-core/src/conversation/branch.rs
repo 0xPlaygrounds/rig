@@ -176,15 +176,14 @@ impl Conversation {
         Some(line)
     }
 
-    /// Keeps entries `at..`, maybe none, with the saved asides that follow
-    /// them, the halt and the line values, as a branch titled as the active
-    /// continuation is ([`line_title`](Self::line_title)), following
-    /// entry `at - 1`, and takes them out: the conversation goes on from
-    /// that entry as the branch titled `title`. `at` may be the length: a
-    /// new branch at the end, which starts with a copy of the line values
-    /// (the line's state there is its state now); one at an earlier entry
-    /// starts with none. Each change is made by `by`. The kept branch's
-    /// aside.
+    /// Keeps entries `at..` (with their asides, halt and line values) as a
+    /// branch under the current title ([`line_title`](Self::line_title)),
+    /// and goes on from entry `at - 1` as a new line titled `title`.
+    /// Returns the aside that keeps the old line.
+    ///
+    /// With `at` equal to the length, the new line starts with a copy of
+    /// the line values; otherwise it starts with none. Each change is made
+    /// by `by`.
     ///
     /// # Errors
     ///
@@ -223,8 +222,7 @@ impl Conversation {
     /// with no entries of its own, and the branch's entries come back with
     /// their ids and made-times ([`restore`](Self::restore)), its asides
     /// with theirs, its halt, its title and its line values. Each change is
-    /// made by `by`.
-    /// What changed from the line left.
+    /// made by `by`. Returns what changed in the active line.
     ///
     /// ```
     /// use rig_core::completion::Message;
@@ -370,7 +368,7 @@ impl Conversation {
 
     /// Takes entries `at..` and the saved asides that follow them out, as
     /// a branch titled `title` keeping the line values, which the active
-    /// line loses; its value.
+    /// line loses. Returns the branch.
     fn stash(
         &mut self,
         at: usize,
@@ -468,7 +466,7 @@ impl Conversation {
     /// its saved asides come back with theirs (the branches kept in it
     /// become kept in the active line), and its line values are set over
     /// the active line's. Its aside is removed: its entries are in the
-    /// line. Each change is made by `by`. What changed.
+    /// line. Each change is made by `by`. Returns what changed.
     ///
     /// # Errors
     ///
@@ -506,7 +504,7 @@ impl Conversation {
     /// (but kept branches, whose entries are not this conversation's), and
     /// `line`'s line values are set over the active line's. The past of
     /// the active line is never rewritten. Each change is made by `by`.
-    /// What changed.
+    /// Returns what changed.
     ///
     /// # Errors
     ///

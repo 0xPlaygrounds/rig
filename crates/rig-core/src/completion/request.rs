@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
 
+/// A document sent with a request as context, rendered before the chat history.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Document {
     /// Stable document identifier included in the serialized context block.
@@ -1189,7 +1190,7 @@ impl ProviderCapabilities {
     }
 }
 
-/// Struct representing a general completion request that can be sent to a completion model provider.
+/// A completion request to any provider's model.
 #[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
@@ -1211,7 +1212,7 @@ pub struct CompletionRequest {
     pub temperature: Option<f64>,
     /// The max tokens to be sent to the completion model provider
     pub max_tokens: Option<u64>,
-    /// Whether tools are required to be used by the model provider or not before providing a response.
+    /// Which tools the model may or must call before it answers.
     pub tool_choice: Option<ToolChoice>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
@@ -1237,7 +1238,7 @@ pub struct CompletionRequest {
     pub accept_unknown_finish_reasons: bool,
     /// Send other models' reasoning in the history as reasoning where the
     /// target reads it ([`Accepts::foreign_reasoning`]), instead of as plain
-    /// text, the default (pi's rule). Defaults to `false`.
+    /// text. Defaults to `false`.
     ///
     /// [`Accepts::foreign_reasoning`]: crate::completion::Accepts::foreign_reasoning
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1350,8 +1351,8 @@ impl CompletionRequest {
         Ok(())
     }
 
-    /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
-    /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
+    /// The output schema's `"title"`, else `"response_schema"`: a name for
+    /// providers that need one beside the JSON Schema (such as OpenAI).
     pub fn output_schema_name(&self) -> Option<String> {
         self.output_schema.as_ref().map(|schema| {
             schema
@@ -1565,8 +1566,9 @@ impl CompletionRequest {
     }
 
     /// Merge provider-specific parameters into the request's, key by key;
-    /// `None` clears them, provider tools included. Provider conversion determines precedence over typed fields,
-    /// and a key that overrides a typed field this request sets is logged.
+    /// `None` clears them, provider tools included. Provider conversion
+    /// determines precedence over typed fields, and a key that overrides a
+    /// typed field this request sets is logged.
     pub fn additional_params(
         mut self,
         additional_params: impl Into<Option<serde_json::Value>>,
@@ -1691,9 +1693,10 @@ impl CompletionRequest {
         self
     }
 
-    /// Set whether the model may call several tools in one turn in [`Self::options`](field@Self::options), as
-    /// [`GenerationOptions::parallel_tool_calls`](GenerationOptions::parallel_tool_calls) does,
-    /// keeping its other fields. See
+    /// Set whether the model may call several tools in one turn in
+    /// [`Self::options`](field@Self::options), as
+    /// [`GenerationOptions::parallel_tool_calls`] does, keeping its other
+    /// fields. See
     /// [`Self::options`](method@Self::options) for the order of calls.
     pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
         self.options = std::mem::take(&mut self.options).parallel_tool_calls(parallel);
@@ -1727,9 +1730,9 @@ impl CompletionRequest {
         self
     }
 
-    /// Set what happens to an option the wire or model cannot honour in [`Self::options`](field@Self::options), as
-    /// [`GenerationOptions::on_unsupported`](GenerationOptions::on_unsupported) does,
-    /// keeping its other fields. See
+    /// Set what happens to an option the wire or model cannot honour in
+    /// [`Self::options`](field@Self::options), as
+    /// [`GenerationOptions::on_unsupported`] does, keeping its other fields. See
     /// [`Self::options`](method@Self::options) for the order of calls.
     pub fn on_unsupported(mut self, policy: OnUnsupported) -> Self {
         self.options = std::mem::take(&mut self.options).on_unsupported(policy);

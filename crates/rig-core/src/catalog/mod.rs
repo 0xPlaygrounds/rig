@@ -1,21 +1,39 @@
-//! A catalog of model facts, keyed by provider and model id: context and
-//! output limits, input modalities, the reasoning and caching each model
-//! takes, and its prices.
+//! Model facts by provider and model id: limits, input modalities, reasoning, caching, prices.
 //!
-//! The built-in catalog is data: `cargo xtask catalog sync` generates it from
-//! models.dev, and the main providers' entries are reviewed by hand. A
-//! harness reads a user's override file in the same shape with
-//! [`Catalog::from_overrides`], which reports every mistake with a close
-//! alternative, or a fetched copy of models.dev with the lenient
-//! [`Catalog::from_models_dev`], and lays it over the built-in one with
-//! [`Catalog::with_overrides`] or, for models.dev data,
-//! [`Catalog::with_models_dev`]; [`Catalog::generated_at`] shows the layering,
-//! and says when the built-in data was read. [`ModelSpec::validate`] checks a request's
-//! [`GenerationOptions`](crate::completion::GenerationOptions) against what
-//! the model takes before anything is sent. [`Catalog::connect`] builds a
-//! model from a `vendor/model` reference with the key from the environment;
-//! the model encodes and prices with the [`ModelFacts`] it was connected
-//! with, so the catalog's overrides reach its requests and reported cost.
+//! A catalog is built in layers, each sharing the rows it does not change:
+//! 1. [`Catalog::builtin`]: generated from models.dev by `cargo xtask catalog sync`, its main
+//!    providers reviewed by hand;
+//! 2. a newer models.dev copy ([`Catalog::from_models_dev`], lenient; laid on with
+//!    [`Catalog::with_models_dev`], which keeps the hand-reviewed fields);
+//! 3. the user's overrides ([`Catalog::from_overrides`], strict, with a close alternative for
+//!    every mistake; laid on with [`Catalog::with_overrides`]).
+//!
+//! A model connected earlier keeps the facts it was connected with.
+//!
+//! ```no_run
+//! use std::path::Path;
+//! use rig_core::catalog::Catalog;
+//!
+//! fn catalog(cache: &Path, config: &Path) -> Result<Catalog, Box<dyn std::error::Error>> {
+//!     let mut catalog = Catalog::builtin().clone();
+//!     let fetched = cache.join("models-dev.json");
+//!     if std::fs::metadata(&fetched)
+//!         .and_then(|file| file.modified())
+//!         .is_ok_and(|fetched_at| fetched_at > Catalog::generated_at())
+//!     {
+//!         let (models_dev, _skipped) = Catalog::from_models_dev(&std::fs::read_to_string(&fetched)?)?;
+//!         catalog = catalog.with_models_dev(&models_dev);
+//!     }
+//!     if let Ok(json) = std::fs::read_to_string(config.join("models.json")) {
+//!         catalog = catalog.with_overrides(&Catalog::from_overrides(&json, &catalog)?);
+//!     }
+//!     Ok(catalog)
+//! }
+//! ```
+//!
+//! [`Catalog::connect`] builds a model from `vendor/model` with the key from the environment; it
+//! encodes and prices with the [`ModelFacts`] it was connected with. [`ModelSpec::validate`]
+//! checks a request's options before anything is sent:
 //!
 //! ```
 //! use rig_core::catalog::Catalog;
@@ -127,39 +145,9 @@ impl Catalog {
         })
     }
 
-    /// When the models.dev data [`Self::builtin`] was generated from was
-    /// read. An application that fetches a newer copy of models.dev lays it
-    /// over the built-in catalog only when the copy is newer than this, so
-    /// an old cache never hides what a newer rig shipped.
-    ///
-    /// The layers go from the built-in data, to a fetched copy read with the
-    /// lenient [`Self::from_models_dev`] and laid on with
-    /// [`Self::with_models_dev`], which keeps the facts rig reviewed by
-    /// hand, to the user's file read with the strict
-    /// [`Self::from_overrides`] and laid on with [`Self::with_overrides`].
-    /// Each step shares every row it does not change, and a model connected
-    /// earlier keeps the facts it was connected with.
-    ///
-    /// ```no_run
-    /// use std::path::Path;
-    /// use rig_core::catalog::Catalog;
-    ///
-    /// fn catalog(cache: &Path, config: &Path) -> Result<Catalog, Box<dyn std::error::Error>> {
-    ///     let mut catalog = Catalog::builtin().clone();
-    ///     let fetched = cache.join("models-dev.json");
-    ///     if std::fs::metadata(&fetched)
-    ///         .and_then(|file| file.modified())
-    ///         .is_ok_and(|fetched_at| fetched_at > Catalog::generated_at())
-    ///     {
-    ///         let (models_dev, _skipped) = Catalog::from_models_dev(&std::fs::read_to_string(&fetched)?)?;
-    ///         catalog = catalog.with_models_dev(&models_dev);
-    ///     }
-    ///     if let Ok(json) = std::fs::read_to_string(config.join("models.json")) {
-    ///         catalog = catalog.with_overrides(&Catalog::from_overrides(&json, &catalog)?);
-    ///     }
-    ///     Ok(catalog)
-    /// }
-    /// ```
+    /// When the models.dev data behind [`Self::builtin`] was read. Lay a
+    /// fetched copy on only when it is newer, so an old cache never hides
+    /// what this rig shipped.
     pub fn generated_at() -> SystemTime {
         UNIX_EPOCH + Duration::from_secs(GENERATED_AT)
     }

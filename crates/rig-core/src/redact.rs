@@ -1,13 +1,9 @@
-//! Finding and redacting secrets in text a host logs, shows or shares:
-//! API keys and access tokens by their well-known shapes, private key
-//! blocks, and values assigned to secret-named variables. Bevy or not, every host that writes model traffic, a prompt
-//! history or a shared transcript somewhere needs the same rules.
+//! Finding and redacting secrets in text a host logs, shows or shares: API keys and tokens by
+//! their known shapes, private key blocks, and values assigned to secret-named variables.
 //!
-//! The rules match a secret by its shape or the name it is assigned to,
-//! so a credential with neither (a password in prose, a bare hex key) is
-//! not found. A shape
-//! matches only where a token starts: the same letters inside a word or a
-//! base64 blob are not a key.
+//! A shape matches only where a token starts, so the same letters inside a word or a base64
+//! blob are not a key. A secret with neither a known shape nor a telling name, such as a
+//! password in prose, is not found.
 //!
 //! ```
 //! use rig_core::redact;

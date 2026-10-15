@@ -153,8 +153,8 @@ impl ErrorReport {
     }
 }
 
-/// The ways providers say the context is full, lower case, in the forms pi
-/// knows (`packages/ai/src/utils/overflow.ts`).
+/// The ways providers say the context is full, lower case.
+// The forms pi knows: https://github.com/badlogic/pi-mono, `packages/ai/src/utils/overflow.ts`.
 const OVERFLOW: &[&str] = &[
     "prompt is too long",
     "prompt too long",

@@ -70,7 +70,7 @@ impl Conversation {
     }
 
     /// Records a turn that begins now, numbered after the last record and
-    /// starting at [`turn_start`](Self::turn_start). The record.
+    /// starting at [`turn_start`](Self::turn_start). Returns the new record.
     pub fn open_turn(&mut self) -> TurnRecord {
         let last = self.turns().next_back().map(|(_, record)| record.index);
         let record = TurnRecord {
@@ -84,8 +84,8 @@ impl Conversation {
         record
     }
 
-    /// Ends the last turn record, when it is open, with `end`; whether it
-    /// was open.
+    /// Ends the last turn record, when it is open, with `end`. Returns
+    /// whether it was open.
     pub fn end_turn(&mut self, end: TurnEnd) -> bool {
         let Some((id, record)) = self.turns().next_back() else {
             return false;
