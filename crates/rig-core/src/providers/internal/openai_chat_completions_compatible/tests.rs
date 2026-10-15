@@ -5,7 +5,10 @@ use bytes::Bytes;
 
 #[test]
 fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
-    use super::provider_error_envelope as detect;
+    let detect = |data: &str| {
+        let value = serde_json::from_str(data).expect("test frames are JSON");
+        super::provider_error_envelope(&value, data)
+    };
 
     // An empty `error` (`null` or `""`) with no choices must NOT terminate the
     // stream — some providers send one with the terminal usage event. Each of

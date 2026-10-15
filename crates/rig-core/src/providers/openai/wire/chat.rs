@@ -1776,31 +1776,34 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
             return WireEvent::Known(ChatEvent::Done);
         }
         // The in-band error envelope arrives with a 200 status and is this
-        // wire's own terminal failure.
-        if let Some(error) = provider_error_envelope(&data) {
-            return WireEvent::Known(ChatEvent::Failure(error));
-        }
-        if self.quirks.accepts_bare_string_reply
-            && let Ok(Value::String(text)) = serde_json::from_str::<serde_json::Value>(&data)
-        {
-            return WireEvent::Known(ChatEvent::BareText(text));
-        }
-        classify_chat_completions_frame::<Value>(&data).map(|frame| {
-            // The `object` tag decides when the dialect sends one: stream
-            // chunks may carry whole messages. Several gateways omit it.
-            let whole = match frame.str("object") {
-                Some(object) => object == "chat.completion",
-                None => frame
-                    .arr("choices")
-                    .iter()
-                    .any(|choice| choice.obj("message").is_some()),
-            };
-            if whole {
-                ChatEvent::Whole(frame)
-            } else {
-                ChatEvent::Chunk(frame)
+        // wire's own terminal failure, whatever else the frame is.
+        let envelope = |value: &Value| provider_error_envelope(value, &data);
+        match classify_chat_completions_frame::<Value>(&data) {
+            WireEvent::Known(frame) => WireEvent::Known(match envelope(&frame) {
+                Some(error) => ChatEvent::Failure(error),
+                None => Self::chunk_or_whole(frame),
+            }),
+            WireEvent::Unknown { event_type, value } => {
+                if let Some(error) = envelope(value.value()) {
+                    WireEvent::Known(ChatEvent::Failure(error))
+                } else if let (true, Some(text)) = (
+                    self.quirks.accepts_bare_string_reply,
+                    value.value().as_str(),
+                ) {
+                    WireEvent::Known(ChatEvent::BareText(text.to_owned()))
+                } else {
+                    WireEvent::Unknown { event_type, value }
+                }
             }
-        })
+            // A frame with a duplicate `object` or `choices` is still JSON.
+            WireEvent::Corrupt(error) => match serde_json::from_str::<Value>(&data)
+                .ok()
+                .and_then(|value| envelope(&value))
+            {
+                Some(error) => WireEvent::Known(ChatEvent::Failure(error)),
+                None => WireEvent::Corrupt(error),
+            },
+        }
     }
 
     fn decode(
@@ -1880,6 +1883,24 @@ fn normalized_usage(usage: &Value, quirks: &Quirks) -> crate::completion::Usage 
 }
 
 impl ChatDecoder {
+    /// A classified frame as the chunk or whole reply it is. The `object`
+    /// tag decides when the dialect sends one: stream chunks may carry whole
+    /// messages. Several gateways omit it.
+    fn chunk_or_whole(frame: Value) -> ChatEvent {
+        let whole = match frame.str("object") {
+            Some(object) => object == "chat.completion",
+            None => frame
+                .arr("choices")
+                .iter()
+                .any(|choice| choice.obj("message").is_some()),
+        };
+        if whole {
+            ChatEvent::Whole(frame)
+        } else {
+            ChatEvent::Chunk(frame)
+        }
+    }
+
     /// Verdict, model, response id and error envelope, read off a raw
     /// payload before normalization discards them. The driver calls it for
     /// the unary reply and for every stream frame.

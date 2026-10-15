@@ -24,33 +24,44 @@ use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
-/// The item events this decoder reads, after their `response.` prefix.
-const ITEM_EVENTS: &str = "output_item.added output_item.done content_part.added content_part.done \
-    output_text.delta output_text.done refusal.delta refusal.done function_call_arguments.delta \
-    function_call_arguments.done custom_tool_call_input.delta custom_tool_call_input.done \
-    reasoning_summary_part.added reasoning_summary_part.done reasoning_summary_text.delta \
-    reasoning_summary_text.done reasoning_text.delta reasoning_text.done";
-
 /// Whether `kind` is a Responses event type this decoder reads. A frame of
 /// any other type passes through as unknown. `keepalive` is ChatGPT's idle
 /// heartbeat, read and skipped.
 fn is_known_responses_event_type(kind: &str) -> bool {
-    kind == "error"
-        || kind == "keepalive"
+    matches!(kind, "error" | "keepalive")
         || is_lifecycle_event(kind)
-        || kind
-            .strip_prefix("response.")
-            .is_some_and(|event| ITEM_EVENTS.split_whitespace().any(|known| known == event))
+        || matches!(
+            kind.strip_prefix("response."),
+            Some(
+                "output_item.added"
+                    | "output_item.done"
+                    | "content_part.added"
+                    | "content_part.done"
+                    | "output_text.delta"
+                    | "output_text.done"
+                    | "refusal.delta"
+                    | "refusal.done"
+                    | "function_call_arguments.delta"
+                    | "function_call_arguments.done"
+                    | "custom_tool_call_input.delta"
+                    | "custom_tool_call_input.done"
+                    | "reasoning_summary_part.added"
+                    | "reasoning_summary_part.done"
+                    | "reasoning_summary_text.delta"
+                    | "reasoning_summary_text.done"
+                    | "reasoning_text.delta"
+                    | "reasoning_text.done"
+            )
+        )
 }
 
 /// Whether `kind` is a response lifecycle event, which carries the response
 /// object under `response`.
 pub(crate) fn is_lifecycle_event(kind: &str) -> bool {
-    kind.strip_prefix("response.").is_some_and(|event| {
-        "created queued in_progress completed failed incomplete"
-            .split(' ')
-            .any(|known| known == event)
-    })
+    matches!(
+        kind.strip_prefix("response."),
+        Some("created" | "queued" | "in_progress" | "completed" | "failed" | "incomplete")
+    )
 }
 
 /// A classified Responses payload.
@@ -62,9 +73,9 @@ pub enum ResponsesEvent {
         kind: String,
         /// The event.
         frame: Value,
-        /// The frame's payload, verbatim, for the error a failed reply
-        /// reports.
-        raw: String,
+        /// The payload of a `response.failed` event, verbatim, for the
+        /// error the failed reply reports; `None` for every other event.
+        raw: Option<String>,
     },
     /// The unary reply: the response object itself, which carries no `type`
     /// because it is not an event.
@@ -111,8 +122,8 @@ pub fn classify_responses_payload(data: &str) -> WireEvent<ResponsesEvent> {
                 |Tagged(frame)| match frame.str("type") {
                     Some("error") => ResponsesEvent::Failure(data.to_owned()),
                     kind => ResponsesEvent::Frame {
+                        raw: (kind == Some("response.failed")).then(|| data.to_owned()),
                         kind: kind.unwrap_or_default().to_owned(),
-                        raw: data.to_owned(),
                         frame,
                     },
                 },
@@ -972,7 +983,9 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
                     }
                     self.finish(response, out)
                 }
-                "response.failed" => Err(ProviderError::from_provider_body(raw)),
+                "response.failed" => {
+                    Err(ProviderError::from_provider_body(raw.unwrap_or_default()))
+                }
                 "keepalive" => Ok(Flow::More),
                 kind if is_lifecycle_event(kind) => Ok(Flow::More),
                 kind => {
