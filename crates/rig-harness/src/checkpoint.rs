@@ -59,6 +59,7 @@ use rig_core::tool::{Scope, Touches};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
     AgentPass, CallHandler, CallOf, Footprint, ForAgent, GateSystems, ReadyToStart, ToolCalls,
+    TurnOf,
 };
 use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
@@ -175,6 +176,9 @@ impl Plugin for CheckpointPlugin {
             .get_resource_or_init::<CheckpointAlso>()
             .0
             .extend(also);
+        if let Err(failure) = app.try_register_required_components::<TurnOf, TurnCheckpoint>() {
+            bevy_log::warn!("turns will not share a checkpoint: {failure}");
+        }
         app.add_systems(
             AgentPass,
             checkpoint
@@ -227,25 +231,14 @@ fn checkpoint(
     ),
     mut commands: Commands,
 ) {
-    let mut made: HashMap<Entity, TurnCheckpoint> = HashMap::new();
     for (call, footprint, mut handler, agent, turn) in &mut calls {
         if footprint.0 != Touches::Writes(Scope::Anything) {
             continue;
         }
-        let shared = match turn {
-            Some(&CallOf(turn)) => match turns.get(turn) {
-                Ok(shared) => shared.clone(),
-                Err(_) => made
-                    .entry(turn)
-                    .or_insert_with(|| {
-                        let shared = TurnCheckpoint::default();
-                        commands.entity(turn).try_insert(shared.clone());
-                        shared
-                    })
-                    .clone(),
-            },
-            None => TurnCheckpoint::default(),
-        };
+        let shared = turn
+            .and_then(|&CallOf(turn)| turns.get(turn).ok())
+            .cloned()
+            .unwrap_or_default();
         let (root, _) = base(agent.map(|agent| agent.0), &dirs, &root);
         let checkpoint = CallCheckpoint::default();
         let wrapped = Checkpointed {
