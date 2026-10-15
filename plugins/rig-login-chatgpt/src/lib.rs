@@ -8,7 +8,8 @@
 //! - `/logout` forgets the credential.
 //! - The credential is kept in `RIG_HOME/auth/chatgpt.json`. Every model
 //!   call of the plan reads it before its request, refreshed when it has
-//!   expired.
+//!   expired. Calls and sign-ins share one authenticator, so a refresh
+//!   never overwrites a newer sign-in.
 
 use std::path::PathBuf;
 use std::{fs, io};
@@ -21,7 +22,8 @@ use rig_core::catalog::{ModelSpec, SignIn, Transport};
 use rig_core::providers::chatgpt::{
     self, SignedInModel,
     auth::{
-        AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, SignInMethod, SignInPrompt,
+        AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore, STORE_KEY,
+        SignInMethod, SignInPrompt,
     },
 };
 use rig_core::providers::registry::ConnectError;
@@ -52,17 +54,18 @@ pub struct ChatgptLoginPlugin;
 impl Plugin for ChatgptLoginPlugin {
     fn build(&self, app: &mut App) {
         // One reader of the credential for every request, so concurrent
-        // calls refresh it once. It never starts a sign-in.
+        // calls refresh it once. It never starts a sign-in on its own.
         let session = Authenticator::new(
             AuthSource::OAuth,
-            Some(auth_file()),
+            FileTokenStore::new(Home::from_env().auth()),
             DeviceCodeHandler::default(),
             false,
         );
         app.world_mut()
             .get_resource_or_init::<Models>()
             .0
-            .add_sign_in(ChatGptSignIn(session));
+            .add_sign_in(ChatGptSignIn(session.clone()));
+        app.insert_resource(Session(session));
         app.add_command(
             "login",
             "Sign in with your ChatGPT plan: /login chatgpt opens the browser (--device shows \
@@ -78,8 +81,12 @@ impl Plugin for ChatgptLoginPlugin {
 
 /// Where the credential is kept.
 fn auth_file() -> PathBuf {
-    Home::from_env().auth(PROVIDER)
+    FileTokenStore::new(Home::from_env().auth()).path(STORE_KEY)
 }
+
+/// The authenticator every call and sign-in of the plan goes through.
+#[derive(Resource)]
+struct Session(Authenticator);
 
 /// The plan's models, connected with the signed-in credential while it is
 /// kept.
@@ -141,6 +148,7 @@ fn on_login(
     agents: Query<Has<ActiveTurn>, With<Agent>>,
     pending: Query<(Entity, &PendingLogin)>,
     wake: Res<Wake>,
+    session: Res<Session>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -178,15 +186,26 @@ fn on_login(
         Running::spawn(
             pool,
             &wake,
-            sign_in_flow(SignInMethod::detect(device_asked), sender, wake.clone()),
+            sign_in_flow(
+                session.0.clone(),
+                SignInMethod::detect(device_asked),
+                sender,
+                wake.clone(),
+            ),
         ),
     ));
     notices.write(Notice::info(agent, format!("Signing in to {TITLE}…")));
 }
 
-/// Runs the sign-in by `method`, sending what the user must do through
-/// `prompts`. The credential file is written readable by the owner alone.
-async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake) -> SignInEnded {
+/// Runs the sign-in by `method` on `session`, sending what the user must do
+/// through `prompts`. The credential file is written readable by the owner
+/// alone.
+async fn sign_in_flow(
+    session: Authenticator,
+    method: SignInMethod,
+    prompts: Sender<String>,
+    wake: Wake,
+) -> SignInEnded {
     let say = move |text: String| {
         prompts.send(text).ok();
         wake.wake();
@@ -198,8 +217,8 @@ async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake)
             code.verification_uri, code.user_code,
         ));
     });
-    let auth = Authenticator::new(AuthSource::OAuth, Some(auth_file()), handler, true);
-    let signed_in = auth
+    let signed_in = session
+        .with_device_code_handler(handler)
         .sign_in(&rig_reqwest::shared(), method, |prompt| {
             say(match prompt {
                 SignInPrompt::Browser(page) if page.browser_launched => format!(

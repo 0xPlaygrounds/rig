@@ -19,12 +19,16 @@ mod typed_prompt_tools;
 
 use assert_fs::TempDir;
 use rig::providers::copilot;
-use rig::providers::copilot::auth::{AuthError, AuthSource, Authenticator, DeviceCodeHandler};
+use rig::providers::copilot::auth::{
+    AuthError, AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore, MemoryTokenStore,
+    STORE_KEY, TokenStore,
+};
 use rig::providers::copilot::wire::CopilotConfig;
 use std::borrow::Cow;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 use futures::FutureExt;
@@ -70,31 +74,25 @@ fn cassette_base_url() -> String {
 
 /// Resolve a Copilot credential and hold it in a provider configuration.
 ///
-/// The exchange is a conversation — a device flow, a refresh, a shared file
-/// cache — so it is not a wire and never will be: `Copilot::authenticate`
+/// The exchange is a conversation — a device flow, a refresh, a kept
+/// credential — so it is not a wire and never will be: `Copilot::authenticate`
 /// runs it over the client's own transport, which the wire then uses, and
-/// takes the API base the exchange reported. This is what
-/// `ClientBuilder::{api_key, github_access_token, oauth, token_dir,
-/// allow_device_flow}` plus `Client::authorize` did between them.
+/// takes the API base the exchange reported.
 ///
-/// `token_dir` is `None` when the caller wants no on-disk cache; the cells
-/// that assert caching pass a `TempDir`.
+/// `token_dir` is `None` when the caller wants nothing kept on disk; the
+/// cells that assert keeping pass a `TempDir`.
 pub(crate) async fn authorize(
     source: AuthSource,
     token_dir: Option<&Path>,
     allow_device_flow: bool,
 ) -> Result<CopilotConfig, AuthError> {
-    let (access_token_file, api_key_file) = match token_dir {
-        Some(dir) => (
-            Some(dir.join("access-token")),
-            Some(dir.join("api-key.json")),
-        ),
-        None => (None, None),
+    let store: Arc<dyn TokenStore> = match token_dir {
+        Some(dir) => Arc::new(FileTokenStore::new(dir)),
+        None => Arc::new(MemoryTokenStore::default()),
     };
     let authenticator = Authenticator::new(
         source,
-        access_token_file,
-        api_key_file,
+        store,
         DeviceCodeHandler::default(),
         allow_device_flow,
     );
@@ -163,7 +161,7 @@ async fn copilot_noninteractive_oauth_cassette(
         "expires_at": i64::MAX,
     });
     std::fs::write(
-        temp.path().join("api-key.json"),
+        FileTokenStore::new(temp.path()).path(STORE_KEY),
         serde_json::to_vec_pretty(&api_key_record).expect("api key record should serialize"),
     )
     .expect("api key record should be written");

@@ -1,14 +1,12 @@
 //! Native ChatGPT OAuth and token cache implementation.
 
 use super::{
-    AuthContext, AuthError, Authenticator, BrowserSignInPrompt, DeviceCodePrompt, SignInMethod,
-    SignInPrompt,
+    AuthContext, AuthError, Authenticator, BrowserSignInPrompt, DeviceCodePrompt, STORE_KEY,
+    SignInMethod, SignInPrompt,
 };
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::device::{
-    emit_device_code_prompt, read_json_record, token_expired, write_json_record,
-};
-use crate::providers::internal::auth::{request, send_json};
+use crate::providers::internal::auth::device::{emit_device_code_prompt, token_expired};
+use crate::providers::internal::auth::{load_record, request, save_record, send_json};
 use crate::wasm_compat::WasmCompatSend;
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
@@ -96,7 +94,7 @@ impl Authenticator {
         H: HttpClientExt,
     {
         let _refresh = self.refresh_lock.lock().await;
-        let mut record: AuthRecord = read_json_record(self.auth_file.as_deref())?;
+        let mut record: AuthRecord = load_record(&*self.store, STORE_KEY).await?;
 
         if let Some(access_token) = record.access_token.clone()
             && !token_expired(record.expires_at, TOKEN_EXPIRY_SKEW_SECONDS)
@@ -108,7 +106,7 @@ impl Authenticator {
                 .or_else(|| extract_account_id(Some(&access_token)));
             if account_id != record.account_id {
                 record.account_id.clone_from(&account_id);
-                write_json_record(self.auth_file.as_deref(), &record)?;
+                save_record(&*self.store, STORE_KEY, &record).await?;
             }
             return Ok(AuthContext {
                 access_token: access_token.into(),
@@ -119,7 +117,7 @@ impl Authenticator {
         if let Some(refresh_token) = record.refresh_token.clone() {
             match self.refresh_tokens(http, &refresh_token).await {
                 Ok(refreshed) => {
-                    write_json_record(self.auth_file.as_deref(), &refreshed)?;
+                    save_record(&*self.store, STORE_KEY, &refreshed).await?;
                     return Ok(AuthContext {
                         access_token: refreshed.access_token.unwrap_or_default().into(),
                         account_id: refreshed.account_id,
@@ -138,13 +136,13 @@ impl Authenticator {
         }
 
         let fresh = self.login_device_flow(http).await?;
-        self.store(fresh)
+        self.keep(fresh).await
     }
 
     /// Sign in again by `method`, whatever is cached, telling `prompt` what
     /// the user must do. A browser sign-in whose callback ports are taken
-    /// says so and falls back to the device code. The credential is stored
-    /// in the auth file. Native only.
+    /// says so and falls back to the device code. The credential is kept in
+    /// the token store. Native only.
     pub async fn sign_in<H, F>(
         &self,
         http: &H,
@@ -170,22 +168,22 @@ impl Authenticator {
     }
 
     /// Sign in again with the device-code flow, whatever is cached: the
-    /// handler shows the code to enter, and the credential is stored in the
-    /// auth file. Native only.
+    /// handler shows the code to enter, and the credential is kept in the
+    /// token store. Native only.
     pub async fn sign_in_with_device_code<H>(&self, http: &H) -> Result<AuthContext, AuthError>
     where
         H: HttpClientExt,
     {
         let fresh = self.login_device_flow(http).await?;
         let _refresh = self.refresh_lock.lock().await;
-        self.store(fresh)
+        self.keep(fresh).await
     }
 
     /// Sign in again in the browser, whatever is cached: an authorization
     /// code with PKCE, returned to a one-shot listener on `127.0.0.1` port
     /// 1455, or 1457 when that is taken. The default browser is opened on
     /// the sign-in page and `prompt` receives its URL, for the user to open
-    /// when the browser did not. The credential is stored in the auth file.
+    /// when the browser did not. The credential is kept in the token store.
     /// Native only.
     ///
     /// When both ports are taken, fails with [`AuthError::Io`] of kind
@@ -232,12 +230,12 @@ impl Authenticator {
         );
         let fresh = exchanged?;
         let _refresh = self.refresh_lock.lock().await;
-        self.store(fresh)
+        self.keep(fresh).await
     }
 
-    /// Persist a fresh sign-in and return its context.
-    fn store(&self, fresh: AuthRecord) -> Result<AuthContext, AuthError> {
-        write_json_record(self.auth_file.as_deref(), &fresh)?;
+    /// Keep a fresh sign-in and return its context.
+    async fn keep(&self, fresh: AuthRecord) -> Result<AuthContext, AuthError> {
+        save_record(&*self.store, STORE_KEY, &fresh).await?;
         Ok(AuthContext {
             access_token: fresh.access_token.unwrap_or_default().into(),
             account_id: fresh.account_id,

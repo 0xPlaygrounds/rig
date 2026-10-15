@@ -2,9 +2,15 @@ use super::{
     DeviceCodeResponse, OAuthErrorResponse, OAuthTokenResponse, build_auth_record,
     format_refresh_error, should_reauthenticate_after_refresh,
 };
-use crate::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler};
+use crate::error::BoxError;
+use crate::providers::chatgpt::auth::{
+    AuthError, AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, STORE_KEY,
+    TokenStore,
+};
 use crate::test_utils::RecordingHttpClient;
+use crate::wasm_compat::WasmBoxedFuture;
 use http::StatusCode;
+use std::sync::Arc;
 
 #[test]
 fn device_code_response_accepts_a_numeric_or_string_interval() {
@@ -48,7 +54,12 @@ fn refresh_reauth_only_on_invalid_grant() {
 
 #[tokio::test]
 async fn noninteractive_oauth_requires_sign_in_instead_of_device_flow() {
-    let auth = Authenticator::new(AuthSource::OAuth, None, DeviceCodeHandler::default(), false);
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::default(),
+        false,
+    );
     let err = auth
         .auth_context(&RecordingHttpClient::new(""))
         .await
@@ -88,11 +99,28 @@ fn build_auth_record_preserves_existing_refresh_token_when_refresh_omits_one() {
     );
 }
 
-/// Disk persistence and reuse are local contracts, not provider responses.
+/// The authenticator over `store`, never starting a device flow.
+fn stored(store: &Arc<MemoryTokenStore>) -> Authenticator {
+    Authenticator::new(
+        AuthSource::OAuth,
+        store.clone(),
+        DeviceCodeHandler::default(),
+        false,
+    )
+}
+
+async fn kept(store: &MemoryTokenStore) -> anyhow::Result<serde_json::Value> {
+    let text = store
+        .load(STORE_KEY)
+        .await
+        .map_err(anyhow::Error::from_boxed)?
+        .unwrap_or_default();
+    Ok(serde_json::from_str(&text)?)
+}
+
+/// Reuse of a kept credential is a local contract, not a provider response.
 #[tokio::test]
-async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<()> {
-    let dir = assert_fs::TempDir::new()?;
-    let path = dir.path().join("auth.json");
+async fn kept_credential_is_reused_unchanged() -> anyhow::Result<()> {
     let fixture = serde_json::json!({
         "access_token": "synthetic-cached-chatgpt-token",
         "refresh_token": "synthetic-cached-refresh-token",
@@ -100,28 +128,96 @@ async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<(
         "expires_at": i64::MAX,
         "account_id": "synthetic-cached-account"
     });
-    let record: super::AuthRecord = serde_json::from_value(fixture.clone())?;
-    super::write_json_record(Some(&path), &record)?;
+    let store = Arc::new(MemoryTokenStore::default());
+    store
+        .save(STORE_KEY, &fixture.to_string())
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
     let http = RecordingHttpClient::new("");
-    let auth = Authenticator::new(
-        AuthSource::OAuth,
-        Some(path.clone()),
-        DeviceCodeHandler::default(),
-        false,
+    let context = stored(&store).auth_context(&http).await?;
+    anyhow::ensure!(
+        http.requests().is_empty(),
+        "a fresh credential must not refresh"
     );
-    let context = auth.auth_context(&http).await?;
-    anyhow::ensure!(http.requests().is_empty(), "a fresh cache must not refresh");
     anyhow::ensure!(
         context.access_token.expose() == "synthetic-cached-chatgpt-token",
-        "cached access token changed"
+        "kept access token changed"
     );
     anyhow::ensure!(
         context.account_id.as_deref() == Some("synthetic-cached-account"),
-        "cached account changed"
+        "kept account changed"
     );
-    let persisted: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-    anyhow::ensure!(persisted == fixture, "persisted cache changed");
+    anyhow::ensure!(kept(&store).await? == fixture, "kept credential changed");
     Ok(())
+}
+
+/// A refresh keeps the rotated tokens in the store. The token endpoint's
+/// reply is synthetic: what is under test is where the result goes.
+#[tokio::test]
+async fn refresh_keeps_rotated_tokens_in_the_store() -> anyhow::Result<()> {
+    let store = Arc::new(MemoryTokenStore::default());
+    let expired = serde_json::json!({
+        "access_token": "synthetic-expired-token",
+        "refresh_token": "synthetic-old-refresh",
+        "expires_at": 0
+    });
+    store
+        .save(STORE_KEY, &expired.to_string())
+        .await
+        .map_err(anyhow::Error::from_boxed)?;
+    let http = RecordingHttpClient::new(
+        r#"{"access_token":"synthetic-new-token","refresh_token":"synthetic-new-refresh"}"#,
+    );
+    let context = stored(&store).auth_context(&http).await?;
+    anyhow::ensure!(context.access_token.expose() == "synthetic-new-token");
+    let requests = http.requests();
+    anyhow::ensure!(
+        requests.first().map(|request| request.uri.as_str())
+            == Some("https://auth.openai.com/oauth/token"),
+        "refreshed at {:?}",
+        requests.first().map(|request| request.uri.clone())
+    );
+    let record = kept(&store).await?;
+    anyhow::ensure!(record.get("access_token") == Some(&"synthetic-new-token".into()));
+    anyhow::ensure!(record.get("refresh_token") == Some(&"synthetic-new-refresh".into()));
+    Ok(())
+}
+
+/// A store that cannot answer.
+struct LockedVault;
+
+impl TokenStore for LockedVault {
+    fn load<'a>(&'a self, _: &'a str) -> WasmBoxedFuture<'a, Result<Option<String>, BoxError>> {
+        Box::pin(async { Err("the vault is locked".into()) })
+    }
+
+    fn save<'a>(&'a self, _: &'a str, _: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>> {
+        Box::pin(async { Err("the vault is locked".into()) })
+    }
+
+    fn delete<'a>(&'a self, _: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>> {
+        Box::pin(async { Err("the vault is locked".into()) })
+    }
+}
+
+/// A store failure fails the request, not as a missing sign-in, and sends
+/// nothing.
+#[tokio::test]
+async fn a_failing_store_fails_the_request() {
+    let http = RecordingHttpClient::new("");
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        LockedVault,
+        DeviceCodeHandler::default(),
+        true,
+    );
+    let err = auth
+        .auth_context(&http)
+        .await
+        .expect_err("a locked vault has no credential");
+    assert!(matches!(err, AuthError::Store(_)), "{err}");
+    assert!(err.to_string().contains("the vault is locked"), "{err}");
+    assert!(http.requests().is_empty());
 }
 
 mod browser_sign_in {
@@ -249,28 +345,4 @@ mod browser_sign_in {
             std::thread::sleep(Duration::from_millis(20));
         }
     }
-}
-
-/// The credential file and the directory created for it are the owner's alone.
-#[cfg(unix)]
-#[test]
-fn credential_file_is_written_private() -> anyhow::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let dir = assert_fs::TempDir::new()?;
-    let path = dir.path().join("chatgpt").join("auth.json");
-    let record: super::AuthRecord = serde_json::from_value(serde_json::json!({
-        "access_token": "synthetic-token",
-        "refresh_token": null,
-        "id_token": null,
-        "expires_at": null,
-        "account_id": null
-    }))?;
-    super::write_json_record(Some(&path), &record)?;
-    let file_mode = std::fs::metadata(&path)?.permissions().mode() & 0o777;
-    anyhow::ensure!(file_mode == 0o600, "file mode {file_mode:o}");
-    let parent = path.parent().ok_or_else(|| anyhow::anyhow!("no parent"))?;
-    let dir_mode = std::fs::metadata(parent)?.permissions().mode() & 0o777;
-    anyhow::ensure!(dir_mode == 0o700, "directory mode {dir_mode:o}");
-    Ok(())
 }

@@ -2,9 +2,15 @@ use super::{
     ApiKeyRecord, bootstrap_token_fingerprint, next_poll_interval_seconds,
     normalize_poll_interval_seconds, refresh_api_key, should_retry_with_fresh_access_token_status,
 };
-use crate::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler};
+use crate::error::BoxError;
+use crate::providers::copilot::auth::{
+    AuthError, AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, STORE_KEY,
+    TokenStore,
+};
 use crate::test_utils::RecordingHttpClient;
+use crate::wasm_compat::WasmBoxedFuture;
 use http::StatusCode;
+use std::sync::Arc;
 
 #[test]
 fn api_key_record_parses_dynamic_api_base() {
@@ -29,8 +35,7 @@ fn api_key_record_parses_dynamic_api_base() {
 async fn noninteractive_oauth_requires_sign_in_instead_of_device_flow() {
     let auth = Authenticator::new(
         AuthSource::OAuth,
-        None,
-        None,
+        MemoryTokenStore::default(),
         DeviceCodeHandler::default(),
         false,
     );
@@ -49,6 +54,7 @@ fn api_key_record_reuse_requires_matching_bootstrap_token_for_explicit_auth() {
         token: Some("copilot-token".into()),
         expires_at: Some(i64::MAX),
         endpoints: None,
+        github_token: None,
         bootstrap_token_fingerprint: Some(bootstrap_token_fingerprint("github-token-a")),
     };
 
@@ -62,6 +68,7 @@ fn api_key_record_oauth_reuse_requires_match_when_bootstrap_token_is_available()
         token: Some("copilot-token".into()),
         expires_at: Some(i64::MAX),
         endpoints: None,
+        github_token: None,
         bootstrap_token_fingerprint: Some(bootstrap_token_fingerprint("github-token-a")),
     };
 
@@ -76,6 +83,7 @@ fn api_key_record_without_fingerprint_forces_refresh_when_bootstrap_token_is_kno
         token: Some("copilot-token".into()),
         expires_at: Some(i64::MAX),
         endpoints: None,
+        github_token: None,
         bootstrap_token_fingerprint: None,
     };
 
@@ -123,48 +131,145 @@ fn stale_access_token_retries_only_on_auth_failures() {
     assert!(!should_retry_with_fresh_access_token_status(None));
 }
 
-/// Disk persistence and reuse are local contracts, not provider responses.
+/// The authenticator for `source` over `store`, never starting a device
+/// flow.
+fn stored(source: AuthSource, store: &Arc<MemoryTokenStore>) -> Authenticator {
+    Authenticator::new(source, store.clone(), DeviceCodeHandler::default(), false)
+}
+
+async fn seed(store: &MemoryTokenStore, record: &serde_json::Value) -> anyhow::Result<()> {
+    store
+        .save(STORE_KEY, &record.to_string())
+        .await
+        .map_err(anyhow::Error::from_boxed)
+}
+
+async fn kept(store: &MemoryTokenStore) -> anyhow::Result<serde_json::Value> {
+    let text = store
+        .load(STORE_KEY)
+        .await
+        .map_err(anyhow::Error::from_boxed)?
+        .unwrap_or_default();
+    Ok(serde_json::from_str(&text)?)
+}
+
+/// Reuse of a kept session is a local contract, not a provider response.
 #[tokio::test]
-async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<()> {
-    let dir = assert_fs::TempDir::new()?;
-    let path = dir.path().join("api-key.json");
+async fn kept_session_is_reused_unchanged() -> anyhow::Result<()> {
     let fixture = serde_json::json!({
+        "github_token": "synthetic-bootstrap",
         "token": "synthetic-cached-copilot-key",
         "expires_at": i64::MAX,
         "endpoints": { "api": "https://cached-copilot.example.invalid" },
         "bootstrap_token_fingerprint": bootstrap_token_fingerprint("synthetic-bootstrap")
     });
-    let record: ApiKeyRecord = serde_json::from_value(fixture.clone())?;
-    super::write_json_record(Some(&path), &record)?;
+    let store = Arc::new(MemoryTokenStore::default());
+    seed(&store, &fixture).await?;
     let http = RecordingHttpClient::new("");
-    let auth = Authenticator::new(
-        AuthSource::OAuth,
-        None,
-        Some(path.clone()),
-        DeviceCodeHandler::default(),
-        false,
-    );
+    let auth = stored(AuthSource::OAuth, &store);
     let oauth = auth.auth_context_oauth(&http).await?;
     let explicit = auth
         .auth_context_with_github_access_token(&http, "synthetic-bootstrap")
         .await?;
     anyhow::ensure!(
         http.requests().is_empty(),
-        "a fresh cache must not exchange"
+        "a fresh session must not exchange"
     );
     for context in [oauth, explicit] {
         anyhow::ensure!(
             context.api_key.expose() == "synthetic-cached-copilot-key",
-            "cached API key changed"
+            "kept API key changed"
         );
         anyhow::ensure!(
             context.api_base.as_deref() == Some("https://cached-copilot.example.invalid"),
-            "cached API endpoint changed"
+            "kept API endpoint changed"
         );
     }
-    let persisted: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-    anyhow::ensure!(persisted == fixture, "persisted cache changed");
+    anyhow::ensure!(kept(&store).await? == fixture, "kept record changed");
     Ok(())
+}
+
+/// An expired session is exchanged again with the kept GitHub token, and
+/// the new session is kept with it. The exchange reply is synthetic: what
+/// is under test is where the result goes.
+#[tokio::test]
+async fn exchange_keeps_the_github_token_and_the_new_session() -> anyhow::Result<()> {
+    let store = Arc::new(MemoryTokenStore::default());
+    seed(
+        &store,
+        &serde_json::json!({ "github_token": "gho_synthetic", "token": "old", "expires_at": 0 }),
+    )
+    .await?;
+    let http = RecordingHttpClient::new(r#"{"token":"tid=new","expires_at":4102444800}"#);
+    let context = stored(AuthSource::OAuth, &store)
+        .auth_context_oauth(&http)
+        .await?;
+    anyhow::ensure!(context.api_key.expose() == "tid=new");
+    anyhow::ensure!(http.requests().len() == 1, "one exchange");
+    let record = kept(&store).await?;
+    anyhow::ensure!(record.get("github_token") == Some(&"gho_synthetic".into()));
+    anyhow::ensure!(record.get("token") == Some(&"tid=new".into()));
+    anyhow::ensure!(
+        record.get("bootstrap_token_fingerprint")
+            == Some(&bootstrap_token_fingerprint("gho_synthetic").into())
+    );
+    Ok(())
+}
+
+/// A GitHub token the exchange refuses is forgotten in the store before
+/// the sign-in it then needs.
+#[tokio::test]
+async fn a_refused_github_token_is_forgotten() -> anyhow::Result<()> {
+    let store = Arc::new(MemoryTokenStore::default());
+    seed(
+        &store,
+        &serde_json::json!({ "github_token": "gho_revoked" }),
+    )
+    .await?;
+    let http = RecordingHttpClient::with_error(StatusCode::UNAUTHORIZED, "Bad credentials");
+    let err = stored(AuthSource::OAuth, &store)
+        .auth_context_oauth(&http)
+        .await
+        .err()
+        .map(|err| err.to_string())
+        .unwrap_or_default();
+    anyhow::ensure!(err.contains("GitHub Copilot sign-in required"), "{err}");
+    anyhow::ensure!(kept(&store).await?.get("github_token").is_none());
+    Ok(())
+}
+
+/// A store that loads nothing and saves nothing.
+struct ReadOnlyVault;
+
+impl TokenStore for ReadOnlyVault {
+    fn load<'a>(&'a self, _: &'a str) -> WasmBoxedFuture<'a, Result<Option<String>, BoxError>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn save<'a>(&'a self, _: &'a str, _: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>> {
+        Box::pin(async { Err("the vault is read-only".into()) })
+    }
+
+    fn delete<'a>(&'a self, _: &'a str) -> WasmBoxedFuture<'a, Result<(), BoxError>> {
+        Box::pin(async { Err("the vault is read-only".into()) })
+    }
+}
+
+/// A session the store cannot keep fails the request.
+#[tokio::test]
+async fn a_failed_save_fails_the_request() {
+    let auth = Authenticator::new(
+        AuthSource::GitHubAccessToken("gho_synthetic".into()),
+        ReadOnlyVault,
+        DeviceCodeHandler::default(),
+        false,
+    );
+    let http = RecordingHttpClient::new(r#"{"token":"tid=new","expires_at":4102444800}"#);
+    let err = auth
+        .auth_context(&http)
+        .await
+        .expect_err("the session cannot be kept");
+    assert!(matches!(err, AuthError::Store(_)), "{err}");
 }
 
 #[tokio::test]

@@ -5,21 +5,22 @@ use futures::lock::Mutex;
 use http::Method;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use crate::providers::internal::auth::{DeviceCodeHandler, DeviceCodePrompt};
+#[cfg(not(target_family = "wasm"))]
+pub use crate::providers::internal::auth::FileTokenStore;
+pub use crate::providers::internal::auth::{
+    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, TokenStore,
+};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;
 
 const GITHUB_API_KEY_URL: &str = "https://api.github.com/copilot_internal/v2/token";
 
-/// Return `{config_dir}/github_copilot`, or `None` without a platform config directory.
-/// The directory conventionally contains `access-token` and `api-key.json`.
-pub fn default_token_dir() -> Option<PathBuf> {
-    crate::providers::internal::auth::config_dir().map(|dir| dir.join("github_copilot"))
-}
+/// The key the Copilot sign-in, its GitHub token and its exchanged session,
+/// is kept under in its [`TokenStore`].
+pub const STORE_KEY: &str = "copilot";
 
 /// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment.
 ///
@@ -90,16 +91,28 @@ impl fmt::Debug for AuthSource {
     }
 }
 
-#[derive(Clone, Debug)]
+/// Signs in to GitHub, exchanges the GitHub token for a Copilot session, and
+/// keeps both in its [`TokenStore`]. Clones share the store and the refresh
+/// lock.
+#[derive(Clone)]
 #[cfg_attr(target_family = "wasm", allow(dead_code))]
 pub struct Authenticator {
     source: AuthSource,
-    access_token_file: Option<PathBuf>,
-    api_key_file: Option<PathBuf>,
+    store: Arc<dyn TokenStore>,
     device_code_handler: DeviceCodeHandler,
     allow_device_flow: bool,
     /// Held across a cache refresh to prevent concurrent updates.
     refresh_lock: Arc<Mutex<()>>,
+}
+
+impl fmt::Debug for Authenticator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Authenticator")
+            .field("source", &self.source)
+            .field("device_code_handler", &self.device_code_handler)
+            .field("allow_device_flow", &self.allow_device_flow)
+            .finish_non_exhaustive()
+    }
 }
 
 pub use crate::providers::internal::auth::AuthError;
@@ -112,17 +125,18 @@ pub struct AuthContext {
 }
 
 impl Authenticator {
+    /// An authenticator over `source`, keeping the sign-in in `store` under
+    /// [`STORE_KEY`]; `device_code_handler` shows a device code when the
+    /// device flow is allowed.
     pub fn new(
         source: AuthSource,
-        access_token_file: Option<PathBuf>,
-        api_key_file: Option<PathBuf>,
+        store: impl TokenStore + 'static,
         device_code_handler: DeviceCodeHandler,
         allow_device_flow: bool,
     ) -> Self {
         Self {
             source,
-            access_token_file,
-            api_key_file,
+            store: Arc::new(store),
             device_code_handler,
             allow_device_flow,
             refresh_lock: Arc::default(),
@@ -160,9 +174,13 @@ impl Authenticator {
     }
 }
 
-/// Copilot API key exchanged for a GitHub access token, and its native cache record.
+/// Copilot API key exchanged for a GitHub access token, and the record kept
+/// under [`STORE_KEY`].
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct ApiKeyRecord {
+    /// The GitHub token an OAuth sign-in got, which the exchange takes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    github_token: Option<String>,
     token: Option<String>,
     expires_at: Option<i64>,
     endpoints: Option<ApiKeyEndpoints>,
