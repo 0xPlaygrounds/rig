@@ -139,7 +139,7 @@ async fn a_failed_status_under_http_200_is_a_provider_error() {
     )
     .await
     .expect_err("a failed status fails the call");
-    assert_eq!(error.kind(), ErrorKind::ProviderResponse);
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert!(error.to_string().contains("1026"), "{error}");
 }
 
@@ -365,5 +365,5 @@ async fn voice_cloning_replies_decode() {
         .clone_voice(VoiceClone::new(file.file_id, "MyVoice001"))
         .await
         .expect_err("a failed status fails the clone");
-    assert_eq!(error.kind(), ErrorKind::ProviderResponse);
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
 }
