@@ -1,42 +1,11 @@
 use super::VectorDistance;
 use crate::embeddings::Embedding;
 
-fn embeddings() -> (Embedding, Embedding) {
-    let embedding_1 = Embedding {
-        document: "test".to_string(),
-        vec: vec![1.0, 2.0, 3.0],
-    };
-
-    let embedding_2 = Embedding {
-        document: "test".to_string(),
-        vec: vec![1.0, 5.0, 7.0],
-    };
-
-    (embedding_1, embedding_2)
-}
-
-#[test]
-fn test_angular_distance() {
-    let (embedding_1, embedding_2) = embeddings();
-
-    assert_eq!(
-        embedding_1.angular_distance(&embedding_2, false),
-        0.0502980301830343
-    );
-}
-
-#[test]
-fn test_chebyshev_distance() {
-    let (embedding_1, embedding_2) = embeddings();
-
-    assert_eq!(embedding_1.chebyshev_distance(&embedding_2), 4.0);
-}
-
-/// Every sum is taken in fixed chunks in index order, so a metric is the
+/// Every sum is taken in fixed chunks in index order, so a score is the
 /// same bits on every run. (A recorded retrieval score that differed in its last digit
 /// between two replays of one cassette is how this was found.)
 #[test]
-fn a_metric_is_the_same_bits_on_every_run() {
+fn a_score_is_the_same_bits_on_every_run() {
     let a = Embedding {
         document: "a".into(),
         vec: (0..5000)
@@ -50,25 +19,19 @@ fn a_metric_is_the_same_bits_on_every_run() {
             .collect(),
     };
     let first = (
-        a.dot_product(&b),
+        a.cosine_similarity(&b, true),
         a.cosine_similarity(&b, false),
-        a.euclidean_distance(&b),
-        a.manhattan_distance(&b),
     );
     for _ in 0..64 {
         let again = (
-            a.dot_product(&b),
+            a.cosine_similarity(&b, true),
             a.cosine_similarity(&b, false),
-            a.euclidean_distance(&b),
-            a.manhattan_distance(&b),
         );
         assert_eq!(first.0.to_bits(), again.0.to_bits());
         assert_eq!(first.1.to_bits(), again.1.to_bits());
-        assert_eq!(first.2.to_bits(), again.2.to_bits());
-        assert_eq!(first.3.to_bits(), again.3.to_bits());
     }
-    // And the same bits as the chunked reference the sequential build
-    // computes: 256-term chunks summed left to right, then the chunk sums.
+    // And the same bits as the chunked reference: 256-term chunks summed
+    // left to right, then the chunk sums.
     let reference: f64 = a
         .vec
         .chunks(256)

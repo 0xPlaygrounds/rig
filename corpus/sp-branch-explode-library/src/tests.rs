@@ -170,7 +170,11 @@ fn every_branch_becomes_a_session_of_its_own() {
         assert!(loaded.is_some(), "{}", path.display());
         let Some((agent, store)) = loaded else { return };
         let conversation = &agent.conversation;
-        let texts: Vec<String> = conversation.messages().iter().map(text_of).collect();
+        let texts: Vec<String> = conversation
+            .messages()
+            .iter()
+            .map(|message| text_of(message))
+            .collect();
         assert_eq!(
             conversation.entries().filter(|e| e.is_request()).count(),
             turns
@@ -232,7 +236,11 @@ fn every_branch_becomes_a_session_of_its_own() {
         .requests()
         .first()
         .map(|request| request.chat_history.clone());
-    let sent: Vec<String> = sent.unwrap_or_default().iter().map(text_of).collect();
+    let sent: Vec<String> = sent
+        .unwrap_or_default()
+        .iter()
+        .map(|message| text_of(message))
+        .collect();
     assert_eq!(
         sent,
         ["q s1", "re s1", "q s2", "re s2", "q b1", "re b1", "q b2"].map(String::from)

@@ -97,3 +97,30 @@ fn a_search_from_a_base_names_hits_below_it() {
     assert_eq!(text.ok().as_deref(), Some("src/a.rs:1: todo one"));
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// Whatever line endings a file has, a search finds every line the pattern
+/// matches, as if each line were matched alone: anchors at a later line's
+/// start and end (also before `\r\n`), text anchors and flags the pattern
+/// turns off, and a `.` over a `\r` inside a line.
+#[test]
+fn every_matching_line_is_found_whatever_the_line_ends() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-lines-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let cases = [
+        ("first\nsecond\n", "^second", 2),
+        ("first\r\nsecond\r\nthird\r\n", "second$", 2),
+        ("first\r\nsecond\r\n", r"^second\z", 2),
+        ("first\nsecond\n", r"\Asecond", 2),
+        ("first\nsecond\n", "(?-m)^second$", 2),
+        ("first\na\rb\n", "a.b", 2),
+    ];
+    for (index, (text, pattern, line)) in cases.into_iter().enumerate() {
+        let file = dir.join(format!("{index}.txt"));
+        std::fs::write(&file, text).ok();
+        let args = SearchArgs::new(pattern).in_path(file.to_string_lossy());
+        let found = find(&Local, &args).unwrap_or_default();
+        let lines: Vec<usize> = found.hits.iter().map(|hit| hit.line).collect();
+        assert_eq!(lines, [line], "{pattern:?} in {text:?}");
+    }
+    std::fs::remove_dir_all(dir).ok();
+}

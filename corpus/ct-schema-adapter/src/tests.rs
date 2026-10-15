@@ -102,7 +102,7 @@ impl Intercept for StrictProvider {
         self.0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push(request.clone());
+            .push((**request).clone());
         let refused = request
             .tools
             .iter()
@@ -256,7 +256,7 @@ fn a_strict_model_gets_a_strict_schema_and_its_calls_are_mapped_back() {
     let kept: Vec<Value> = conversation
         .into_iter()
         .flat_map(|it| it.messages())
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::Assistant(assistant) => Some(assistant.tool_calls()),
             _ => None,
         })

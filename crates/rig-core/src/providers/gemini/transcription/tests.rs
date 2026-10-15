@@ -68,3 +68,18 @@ fn the_wire_encodes_the_recorded_generate_content_request() {
         })
     );
 }
+
+/// `additional_params` become the generation config, so anything but an
+/// object (or nothing) is refused before a request is sent.
+#[test]
+fn additional_params_that_are_not_an_object_are_refused() {
+    let request = transcription::TranscriptionRequest {
+        additional_params: Some(serde_json::json!([1])),
+        ..transcription_request()
+    };
+    let error = transcription_body(request).expect_err("an array is no config");
+    assert!(
+        error.to_string().contains("should be an object, got [1]"),
+        "{error}"
+    );
+}

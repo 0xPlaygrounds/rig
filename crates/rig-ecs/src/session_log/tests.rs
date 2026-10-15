@@ -72,7 +72,13 @@ fn agents(app: &mut App) -> Vec<Entity> {
 
 fn messages(app: &App, agent: Entity) -> Vec<Message> {
     let conversation = app.world().get::<Conversation>(agent);
-    conversation.map_or_else(Vec::new, |conversation| conversation.messages().to_vec())
+    conversation.map_or_else(Vec::new, |conversation| {
+        conversation
+            .messages()
+            .iter()
+            .map(|message| (**message).clone())
+            .collect()
+    })
 }
 
 fn id_of(app: &App, agent: Entity) -> String {
@@ -207,7 +213,7 @@ fn edits_keep_ids_and_authors_and_a_restore_makes_the_same_changes() {
         let Some(mut edited) = conversation.entry(2) else {
             return;
         };
-        edited.message = Message::user("question 2, edited");
+        edited.message = Message::user("question 2, edited").into();
         conversation.splice(2..3, [edited], Author::plugin("editor"));
         let summary = Entry::new(Message::user("Summary: question 1."));
         let compaction = Author::plugin("compaction");

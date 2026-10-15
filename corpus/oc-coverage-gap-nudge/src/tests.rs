@@ -127,7 +127,7 @@ fn user_texts(app: &App, agent: Entity) -> Vec<String> {
         parts.collect::<Vec<_>>().join("\n")
     };
     let messages = conversation.messages().iter();
-    let texts = messages.filter_map(|message| match message {
+    let texts = messages.filter_map(|message| match &**message {
         Message::User { content } => Some(text(content)),
         _ => None,
     });

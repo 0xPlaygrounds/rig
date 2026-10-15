@@ -436,7 +436,7 @@ fn result_images(content: &[ToolResultContent]) -> impl Iterator<Item = &Image> 
 /// The images of the result of `call` in `conversation`.
 fn images_of_call<'a>(conversation: &'a Conversation, call: &CallId) -> Vec<&'a Image> {
     let result = conversation.messages().iter().rev().find_map(|message| {
-        let ChatMessage::User { content } = message else {
+        let ChatMessage::User { content } = &**message else {
             return None;
         };
         content.iter().find_map(|content| match content {
@@ -450,7 +450,7 @@ fn images_of_call<'a>(conversation: &'a Conversation, call: &CallId) -> Vec<&'a 
 /// The image that is the `index`-th block of the message `id`.
 fn image_in(conversation: &Conversation, id: MessageId, index: usize) -> Option<&Image> {
     let message = conversation.messages().get(conversation.index_of(id)?)?;
-    match message {
+    match &**message {
         ChatMessage::User { content } => match content.get(index)? {
             UserContent::Image(image) => Some(image),
             _ => None,

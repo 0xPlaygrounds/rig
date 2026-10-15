@@ -197,12 +197,12 @@ pub fn has_headings(text: &str) -> bool {
 /// The cut: before the last user message that answers no tool call, so
 /// the most recent exchange stays whole.
 fn before_last_user(
-    messages: &[Message],
+    messages: &[std::sync::Arc<Message>],
     _: usize,
     _: &CompactReason,
     _: Option<&ModelSpec>,
 ) -> Option<usize> {
-    messages.iter().rposition(|message| match message {
+    messages.iter().rposition(|message| match &**message {
         Message::User { content } => !content
             .iter()
             .any(|item| matches!(item, UserContent::ToolResult(_))),

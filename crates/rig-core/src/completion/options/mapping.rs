@@ -36,7 +36,7 @@ pub struct OptionFields<'a> {
 
 impl OptionFields<'_> {
     /// Which options are set, in [`OptionMap`] field order.
-    pub(super) fn set(&self) -> [bool; 9] {
+    pub(crate) fn set(&self) -> [bool; 9] {
         let OptionFields {
             reasoning,
             cache,

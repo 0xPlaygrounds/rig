@@ -158,6 +158,7 @@ impl Wire for Responses {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = super::streaming::ResponsesEvent;
     type Decoder<'id> = ResponsesDecoder;
     type Reassembler = super::streaming::document::Response;
 

@@ -119,7 +119,7 @@ impl Tool for Delete {
             workspace
                 .remove(&resolved)
                 .map_err(|error| io_error(&path, error))?;
-            Ok(Previous::change(Some(&previous), &path, None))
+            Ok(Previous::change(Some(previous), &path, None))
         })
         .await?;
         context.insert_result(FilesChanged(vec![change]))?;
