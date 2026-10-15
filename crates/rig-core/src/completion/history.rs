@@ -59,6 +59,7 @@
 //! assert_eq!(adapt(&history, &Target), history);
 //! ```
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -590,6 +591,11 @@ pub(crate) fn adapt_for(
         .iter()
         .rposition(|message| matches!(&**message, Message::Assistant(_)));
     let mut ids = Renamed::default();
+    let form = Form {
+        target,
+        model,
+        accepts,
+    };
     // A message adapting leaves as it is goes on as the same `Arc`.
     let mut shaped: Vec<Option<Arc<Message>>> = Vec::with_capacity(history.len());
     for (at, message) in history.iter().enumerate() {
@@ -600,11 +606,6 @@ pub(crate) fn adapt_for(
                 }
             }
             Message::User { content } => {
-                let form = Form {
-                    target,
-                    model,
-                    accepts,
-                };
                 shaped.extend(
                     user(message, content, &mut ids, &form)
                         .into_iter()
@@ -635,34 +636,9 @@ pub(crate) fn adapt_for(
                     .filter(|(message, _)| *message == at)
                     .map(|(_, block)| *block)
                     .collect();
-                let adapted = assistant(turn, target, &same, accepts, &mut ids, &here, last);
-                let adapted = AssistantMessage {
-                    content: adapted
-                        .content
-                        .into_iter()
-                        .map(|block| match block {
-                            AssistantContent::Image(image) if image.native.is_none() => {
-                                let image = sendable_image(image);
-                                if matches!(image.data, DocumentSourceKind::Unknown)
-                                    || !target
-                                        .encodes(model, Media::Image(&image, Place::Assistant))
-                                {
-                                    AssistantContent::Text(Text::new(IMAGE_UNSENDABLE))
-                                } else {
-                                    AssistantContent::Image(image)
-                                }
-                            }
-                            block => block,
-                        })
-                        .collect(),
-                    ..adapted
-                };
-                let emptied = !turn.content.is_empty()
-                    && !adapted
-                        .content
-                        .iter()
-                        .any(|block| target.sends_alone(block));
-                shaped.push((!emptied).then(|| Arc::new(Message::Assistant(adapted))));
+                shaped.push(assistant(
+                    message, turn, &form, &same, &mut ids, &here, last,
+                ));
             }
         }
     }
@@ -712,7 +688,7 @@ fn settled(history: &[Option<Arc<Message>>], starts_with_user: bool, tools: bool
                 if !waiting.is_empty() {
                     return false;
                 }
-                waiting = turn.tool_calls().map(|call| &call.id).collect();
+                waiting.extend(turn.tool_calls().map(|call| &call.id));
                 if !tools && !waiting.is_empty() {
                     return false;
                 }
@@ -1037,13 +1013,14 @@ fn leading_system(history: Vec<Message>) -> Vec<Message> {
 /// so two calls that shared an id are answered by the results that followed
 /// them in turn.
 #[derive(Default)]
-struct Renamed {
-    /// For the latest turn: each source id's ids, in call order.
-    to: HashMap<CallId, std::collections::VecDeque<CallId>>,
-    taken: HashSet<String>,
+struct Renamed<'a> {
+    /// For the latest turn: each call's source id and the id it took, in
+    /// call order.
+    to: Vec<(Cow<'a, CallId>, Cow<'a, CallId>)>,
+    taken: HashSet<Cow<'a, str>>,
 }
 
-impl Renamed {
+impl<'a> Renamed<'a> {
     /// A new turn begins: its results answer only its own calls.
     fn turn(&mut self) {
         self.to.clear();
@@ -1056,39 +1033,39 @@ impl Renamed {
     /// as it is: [`WireIds`] spells it.
     ///
     /// [`WireIds`]: crate::providers::internal::wire_ids::WireIds
-    fn claim(&mut self, source: &CallId, wanted: String) -> CallId {
-        let id = match source {
+    fn claim(&mut self, source: Cow<'a, CallId>, wanted: Cow<'a, str>) -> Cow<'a, CallId> {
+        let id = match &*source {
             CallId::Local(_) => source.clone(),
             CallId::Provider(_) => {
                 let mut id = wanted.clone();
                 let mut attempt: u64 = 1;
                 while self.taken.contains(&id) {
-                    id = with_counter(&wanted, attempt);
+                    id = Cow::Owned(with_counter(&wanted, attempt));
                     attempt += 1;
                 }
                 self.taken.insert(id.clone());
                 if id == source.wire() {
                     source.clone()
                 } else {
-                    CallId::from_wire(id)
+                    Cow::Owned(CallId::from_wire(id))
                 }
             }
         };
-        self.to
-            .entry(source.clone())
-            .or_default()
-            .push_back(id.clone());
+        self.to.push((source, id.clone()));
         id
     }
 
     /// The id a result for `source` answers: the next call of the latest
     /// turn that had it, the last one once each was answered.
-    fn answer(&mut self, source: &CallId) -> Option<CallId> {
-        let ids = self.to.get_mut(source)?;
-        if ids.len() > 1 {
-            ids.pop_front()
+    fn answer(&mut self, source: &CallId) -> Option<Cow<'a, CallId>> {
+        let mut calls = (self.to.iter().enumerate())
+            .filter(|(_, (from, _))| from.as_ref() == source)
+            .map(|(at, _)| at);
+        let first = calls.next()?;
+        if calls.next().is_some() {
+            Some(self.to.remove(first).1)
         } else {
-            ids.front().cloned()
+            self.to.get(first).map(|(_, id)| id.clone())
         }
     }
 }
@@ -1126,32 +1103,38 @@ impl Same<'_> {
     }
 }
 
-/// `turn` shaped for the target named by `same`.
-fn assistant(
-    turn: &AssistantMessage,
-    target: &dyn ReplayTarget,
+/// The turn `message`, holding `turn`, shaped for `form` and the target
+/// named by `same`: `message` itself when nothing in it changes, nothing
+/// when no block it sends alone is left.
+fn assistant<'a>(
+    message: &Arc<Message>,
+    turn: &'a AssistantMessage,
+    form: &Form<'_>,
     same_model: &Same<'_>,
-    accepts: Accepts,
-    ids: &mut Renamed,
+    ids: &mut Renamed<'a>,
     hosted: &HashSet<usize>,
     last: bool,
-) -> AssistantMessage {
-    let model = same_model.model;
+) -> Option<Arc<Message>> {
+    let Form {
+        target,
+        model,
+        accepts,
+    } = *form;
     let same = turn
         .origin
         .as_ref()
         .is_some_and(|origin| same_model.is(origin));
     ids.turn();
-    let content: Vec<Option<AssistantContent>> = turn
+    let content: Vec<Option<Cow<'a, AssistantContent>>> = turn
         .content
         .iter()
         .map(|block| {
             let block = if same {
                 match block {
                     AssistantContent::ToolCall(call) => {
-                        let id = ids.claim(&call.id, call.id.wire().into_owned());
-                        if id == call.id {
-                            block.clone()
+                        let id = ids.claim(Cow::Borrowed(&call.id), call.id.wire());
+                        if *id == call.id {
+                            Cow::Borrowed(block)
                         } else {
                             // A rename is rig's, not an edit: replay spells
                             // the new id into the item's slot, so the item
@@ -1159,23 +1142,24 @@ fn assistant(
                             let item = block
                                 .native_item()
                                 .filter(|_| target.call_id_slot().is_some());
+                            let id = id.into_owned();
                             let renamed = crate::message::ToolCall { id, ..call.clone() };
                             let renamed = AssistantContent::ToolCall(renamed);
-                            match item {
+                            Cow::Owned(match item {
                                 Some(item) if renamed.native_item().is_none() => {
                                     renamed.into_canonical().with_native(item.clone())
                                 }
                                 _ => renamed,
-                            }
+                            })
                         }
                     }
                     // The capability holds for the model's own turns too: an
                     // image it made but does not read back is left out.
                     AssistantContent::Image(_) if !accepts.assistant_images => return None,
-                    block => block.clone(),
+                    block => Cow::Borrowed(block),
                 }
             } else {
-                match block.canonical() {
+                Cow::Owned(match block.canonical() {
                     AssistantContent::Reasoning(reasoning) => {
                         if reasoning.redacted || reasoning.text.trim().is_empty() {
                             return None;
@@ -1196,15 +1180,16 @@ fn assistant(
                             model,
                             turn.origin.as_ref(),
                         );
-                        call.id = ids.claim(&call.id, normalized);
+                        let source = Cow::Owned(call.id);
+                        call.id = ids.claim(source, Cow::Owned(normalized)).into_owned();
                         AssistantContent::ToolCall(call)
                     }
                     block => block,
-                }
+                })
             };
             // Keys sorted, so the text is the same however the provider
             // ordered the arguments.
-            let block = match block {
+            let block = match &*block {
                 AssistantContent::Opaque(opaque)
                     if !accepts.tools
                         && target.hosted_needs_tools()
@@ -1212,21 +1197,52 @@ fn assistant(
                 {
                     return None;
                 }
-                block => block,
+                _ => block,
             };
             (!block.is_blank()).then_some(block)
         })
         .collect();
-    let content = if same {
+    let content: Vec<Cow<'a, AssistantContent>> = if same {
         paired(content, target, accepts.tools, hosted, last)
     } else {
         content.into_iter().flatten().collect()
     };
-    AssistantMessage {
-        content,
+    let content: Vec<Cow<'a, AssistantContent>> = content
+        .into_iter()
+        .map(|block| match &*block {
+            AssistantContent::Image(image) if image.native.is_none() => {
+                if sendable_as_is(image) && form.sends(image, Place::Assistant) {
+                    return block;
+                }
+                let image = sendable_image(image.clone());
+                Cow::Owned(
+                    if matches!(image.data, DocumentSourceKind::Unknown)
+                        || !target.encodes(model, Media::Image(&image, Place::Assistant))
+                    {
+                        AssistantContent::Text(Text::new(IMAGE_UNSENDABLE))
+                    } else {
+                        AssistantContent::Image(image)
+                    },
+                )
+            }
+            _ => block,
+        })
+        .collect();
+    if !turn.content.is_empty() && !content.iter().any(|block| target.sends_alone(block)) {
+        return None;
+    }
+    if content.len() == turn.content.len()
+        && content
+            .iter()
+            .all(|block| matches!(block, Cow::Borrowed(_)))
+    {
+        return Some(message.clone());
+    }
+    Some(Arc::new(Message::Assistant(AssistantMessage {
+        content: content.into_iter().map(Cow::into_owned).collect(),
         origin: turn.origin.clone(),
         stop: turn.stop.clone(),
-    }
+    })))
 }
 
 /// The hosted uses and results that pair, as (message, block) positions in
@@ -1281,19 +1297,19 @@ fn hosted_pairs(
 /// is not in `hosted` ([`ReplayTarget::hosted_pair`]). In the `last` turn,
 /// one that ends the history or awaits a client call, a use followed only by
 /// calls and opaque items is still running and stays.
-fn paired(
-    mut content: Vec<Option<AssistantContent>>,
+fn paired<'a>(
+    mut content: Vec<Option<Cow<'a, AssistantContent>>>,
     target: &dyn ReplayTarget,
     tools: bool,
     hosted: &HashSet<usize>,
     last: bool,
-) -> Vec<AssistantContent> {
+) -> Vec<Cow<'a, AssistantContent>> {
     let pair = |block: &AssistantContent| match block {
         AssistantContent::Opaque(opaque) if opaque.replay => target.hosted_pair(&opaque.item),
         _ => None,
     };
     for at in 0..content.len() {
-        let Some((side, _)) = content.get(at).and_then(Option::as_ref).and_then(pair) else {
+        let Some((side, _)) = content.get(at).and_then(Option::as_deref).and_then(pair) else {
             continue;
         };
         let running = last
@@ -1305,7 +1321,7 @@ fn paired(
                 .flatten()
                 .all(|block| {
                     matches!(
-                        block,
+                        **block,
                         AssistantContent::ToolCall(_) | AssistantContent::Opaque(_)
                     )
                 });
@@ -1323,7 +1339,7 @@ fn paired(
     let (kept, needs): (Vec<bool>, Vec<bool>) = content
         .iter()
         .map(|block| {
-            let item = block.as_ref().and_then(|block| match block {
+            let item = block.as_deref().and_then(|block| match block {
                 AssistantContent::Opaque(opaque) => opaque.replay.then_some(&opaque.item),
                 block => block
                     .native()
@@ -1342,7 +1358,7 @@ fn paired(
         // A request without tools gets a call as text.
         let next_gone = content
             .get(at + 1)
-            .and_then(Option::as_ref)
+            .and_then(Option::as_deref)
             .is_none_or(|next| {
                 !kept.get(at + 1).copied().unwrap_or_default()
                     || (!tools && matches!(next, AssistantContent::ToolCall(_)))
@@ -1381,13 +1397,12 @@ impl Form<'_> {
 /// The user message `message`, holding `content`, shaped for `form`: one
 /// message, or two when tool-result images move to a message of their own,
 /// or `message` itself when nothing in it changes.
-fn user(
+fn user<'a>(
     message: &Arc<Message>,
-    content: &[UserContent],
-    ids: &mut Renamed,
+    content: &'a [UserContent],
+    ids: &mut Renamed<'a>,
     form: &Form<'_>,
 ) -> Vec<Arc<Message>> {
-    use std::borrow::Cow;
     let mut shaped: Vec<Cow<'_, UserContent>> = Vec::with_capacity(content.len());
     let mut attached = Vec::new();
     for part in content {
@@ -1466,7 +1481,7 @@ fn user(
             UserContent::ToolResult(result) => {
                 let answer = ids.answer(&result.call);
                 let parts = form.accepts.tool_result_images || form.target.result_parts(form.model);
-                if answer.as_ref().is_none_or(|id| *id == result.call)
+                if answer.as_ref().is_none_or(|id| **id == result.call)
                     && result_as_is(result, form, parts)
                 {
                     shaped.push(Cow::Borrowed(part));
@@ -1474,7 +1489,7 @@ fn user(
                 }
                 let mut result = result.clone();
                 if let Some(id) = answer {
-                    result.call = id;
+                    result.call = id.into_owned();
                 }
                 result.content = result_images(result.content, form, &mut attached);
                 result.content = result_text_parts(result.content, parts, result.is_error);
