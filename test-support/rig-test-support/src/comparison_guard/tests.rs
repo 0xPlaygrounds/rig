@@ -280,13 +280,28 @@ fn a_rebound_name_no_longer_holds_a_recorded_document() {
             }
             assert_eq!(observation.raw["additional_params"], recorded);
         }
+        fn compared_in_the_rebinding_initializer() {
+            let recorded = recorded_additional_params(&chunks);
+            let recorded = {
+                assert_eq!(observation.raw["additional_params"], recorded);
+                live_params()
+            };
+        }
     "#;
     let found = findings(source);
     let functions: Vec<&str> = found
         .iter()
         .map(|finding| finding.split(':').next().unwrap_or_default())
         .collect();
-    assert_eq!(functions, ["typed", "shadowed_in_a_block"], "{found:?}");
+    assert_eq!(
+        functions,
+        [
+            "typed",
+            "shadowed_in_a_block",
+            "compared_in_the_rebinding_initializer"
+        ],
+        "{found:?}"
+    );
 }
 
 #[test]

@@ -114,4 +114,13 @@ fn a_native_schema_the_provider_drops_marks_the_turn_unenforced() {
     .expect("prepare");
     assert_eq!(with_tool.output_mode, OutputMode::Native);
     assert!(with_tool.policy.unenforced_schema());
+    // So does a raw tool in `additional_params`, which the wire also sends.
+    let raw = RunSpec {
+        additional_params: Some(serde_json::json!({"tools": [{"type": "function"}]})),
+        ..spec.clone()
+    };
+    let with_raw_tool =
+        prepare_request(&raw, &deferring, &[Message::user("hi")], vec![], None, None)
+            .expect("prepare");
+    assert!(with_raw_tool.policy.unenforced_schema());
 }

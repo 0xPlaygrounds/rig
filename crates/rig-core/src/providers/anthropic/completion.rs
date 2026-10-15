@@ -92,13 +92,11 @@ pub(super) fn spec<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSp
 /// list under the `claude-opus-4`, `claude-sonnet-4` or `claude-haiku-4-5`
 /// prefixes takes 64000; any other requires an explicit `max_tokens` value.
 pub(super) fn default_max_tokens_for_model(facts: &ModelFacts, model: &str) -> Option<u64> {
-    let listed = spec(facts, model).or_else(|| {
-        let bare = model
-            .strip_prefix(super::ANTHROPIC.name)?
-            .strip_prefix('/')?;
-        spec(facts, bare)
-    });
-    match listed {
+    let bare = model
+        .strip_prefix(super::ANTHROPIC.name)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .unwrap_or(model);
+    match spec(facts, model).or_else(|| spec(facts, bare)) {
         Some(spec) => spec.max_output_tokens.map(u64::from),
         None => ["claude-opus-4", "claude-sonnet-4", "claude-haiku-4-5"]
             .iter()

@@ -306,7 +306,8 @@ pub fn prepare_request(
     .with_unenforced_schema(
         native_schema.is_some()
             && (capabilities.drops_output_schema
-                || (capabilities.defers_output_schema_with_tools && !tooldefs.is_empty())),
+                || (capabilities.defers_output_schema_with_tools
+                    && (!tooldefs.is_empty() || has_raw_tools(additional_params.as_ref())))),
     );
 
     Ok(PreparedRequest {
@@ -323,6 +324,15 @@ pub fn prepare_request(
         policy,
         accept_unknown_finish_reasons: spec.accept_unknown_finish_reasons,
     })
+}
+
+/// Whether `additional_params` advertises tools of its own, which a wire
+/// sends beside the typed ones.
+fn has_raw_tools(additional_params: Option<&serde_json::Value>) -> bool {
+    additional_params
+        .and_then(|params| params.get("tools"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|tools| !tools.is_empty())
 }
 
 /// Resolve to a non-auto mode. Without a schema, use native output. Auto selects

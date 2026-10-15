@@ -477,13 +477,15 @@ impl<'ast> Visit<'ast> for GuardVisitor<'_> {
         self.recorded_objects = objects;
     }
 
+    /// The initializer still sees the outer bindings; the new ones start
+    /// after it.
     fn visit_local(&mut self, node: &'ast syn::Local) {
+        visit::visit_local(self, node);
         if let Some(init) = &node.init {
             self.bind(&node.pat, &init.expr);
         } else {
             self.shadow(&node.pat);
         }
-        visit::visit_local(self, node);
     }
 
     fn visit_expr_match(&mut self, node: &'ast ExprMatch) {
