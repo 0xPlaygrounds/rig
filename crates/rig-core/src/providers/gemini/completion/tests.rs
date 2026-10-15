@@ -1202,7 +1202,7 @@ fn a_tool_declares_its_output_as_response_json_schema() {
         parameters.clone(),
     );
     assert_eq!(
-        declaration(tool.clone()),
+        declaration(&tool),
         json!({"name": "forecast", "description": "Forecast the weather",
             "parametersJsonSchema": {"type": "object"}})
     );
@@ -1214,7 +1214,7 @@ fn a_tool_declares_its_output_as_response_json_schema() {
     }))
     .expect("valid schema");
     assert_eq!(
-        declaration(tool.with_output_schema(output))["responseJsonSchema"],
+        declaration(&tool.with_output_schema(output))["responseJsonSchema"],
         json!({
             "type": "object",
             "properties": {"result": {
