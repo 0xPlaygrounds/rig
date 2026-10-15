@@ -248,7 +248,9 @@ impl NativeChat {
                             .insert("name".to_owned(), Value::from(call.function.name.as_str()));
                         function.insert(
                             "arguments".to_owned(),
-                            Value::String(call.function.arguments_value().to_string()),
+                            Value::String(
+                                serde_json::to_string(&call.function.arguments).unwrap_or_default(),
+                            ),
                         );
                     }
                     calls.push(Value::Object(item));
@@ -362,7 +364,10 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
                 (Source::Base64(data), Some(mime)) => format!("data:{mime};base64,{data}"),
                 _ => return Err(unsendable("an image")),
             };
-            json!({"type": "image_url", "image_url": {"url": url}})
+            object([
+                ("type", Value::from("image_url")),
+                ("image_url", object([("url", Value::String(url))])),
+            ])
         }
         UserContent::Document(document) => match &document.data {
             DocumentData::Text(text) => json!({"type": "text", "text": text}),
@@ -385,7 +390,18 @@ fn user_message(messages: &mut Vec<Value>, parts: &mut Vec<Value>) {
     if parts.is_empty() {
         return;
     }
-    messages.push(json!({"role": "user", "content": std::mem::take(parts)}));
+    let parts = Value::Array(std::mem::take(parts));
+    messages.push(object([("role", Value::from("user")), ("content", parts)]));
+}
+
+/// An object of `fields`, in order, each moved in.
+fn object<const N: usize>(fields: [(&str, Value); N]) -> Value {
+    Value::Object(
+        fields
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect(),
+    )
 }
 
 /// A result as the `tool` message that answers its call, its parts as text.
@@ -394,13 +410,18 @@ fn tool_message(result: &ToolResult, ids: &WireIds) -> Value {
         .content
         .iter()
         .filter_map(|part| match part {
-            ToolResultContent::Text(text) => Some(text.text.clone()),
-            ToolResultContent::Json { value } => Some(value.to_string()),
+            ToolResultContent::Text(text) => Some(json!({"type": "text", "text": text.text})),
+            ToolResultContent::Json { value } => {
+                Some(json!({"type": "text", "text": value.to_string()}))
+            }
             ToolResultContent::Image(_) => None,
         })
-        .map(|text| json!({"type": "text", "text": text}))
         .collect();
-    json!({"role": "tool", "tool_call_id": ids.spell(&result.call), "content": content})
+    object([
+        ("role", Value::from("tool")),
+        ("tool_call_id", Value::String(ids.spell(&result.call))),
+        ("content", Value::Array(content)),
+    ])
 }
 
 impl Wire for NativeChat {
