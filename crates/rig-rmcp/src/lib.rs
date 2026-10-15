@@ -1,18 +1,24 @@
-//! Native MCP tool adapters and managed tool-list synchronization for Rig.
-//! [`McpTool`] converts to a context-aware
-//! [`DynamicTool`](rig_core::tool::DynamicTool); [`McpClientHandler`] refreshes
-//! registrations when the server reports tool-list changes.
+//! MCP clients for Rig on the rmcp SDK.
 //!
-//! [`McpMeta`] supplies request metadata outside model-visible arguments.
-//! Responses publish raw results, structured content, and response metadata
-//! to the context result map; model output uses ordered presentation content.
+//! [`McpConnection`] owns a connected client: its [`McpTool`]s convert to
+//! context-aware [`DynamicTool`](rig_core::tool::DynamicTool)s and keep it
+//! open, and its resources can be read directly or as agent context.
+//! [`McpClientHandler`] instead keeps a tool registry in sync with the
+//! server's tool list.
+//!
+//! [`McpMeta`] in the call's context supplies request `_meta` outside
+//! model-visible arguments, and [`McpTool::with_call_meta`] derives it from
+//! each call. Responses publish raw results, structured content, and response
+//! metadata to the context result map; model output uses ordered presentation
+//! content.
 //!
 //! ```
 //! use rig_core::tool::ToolContext;
-//! use rig_rmcp::{McpMeta, Meta};
+//! use rig_rmcp::McpMeta;
+//! use rig_rmcp::rmcp::model::RequestMetaObject;
 //!
 //! let mut context = ToolContext::new();
-//! context.insert(McpMeta(Meta::default()))?;
+//! context.insert(McpMeta(RequestMetaObject::new()))?;
 //! # Ok::<(), rig_core::tool::ToolContextError>(())
 //! ```
 
@@ -41,6 +47,11 @@ compile_error!(
 mod native;
 #[cfg(not(target_family = "wasm"))]
 pub use native::*;
+
+#[cfg(not(target_family = "wasm"))]
+mod connection;
+#[cfg(not(target_family = "wasm"))]
+pub use connection::{McpConnection, McpResourceContext};
 
 #[cfg(not(target_family = "wasm"))]
 mod handler;

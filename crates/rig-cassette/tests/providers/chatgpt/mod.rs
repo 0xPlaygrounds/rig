@@ -54,9 +54,13 @@ async fn live_provider(http: &DynHttpClient) -> OpenAIConfig {
             .expect("the ChatGPT environment should describe a provider");
     }
 
+    let store: std::sync::Arc<dyn chatgpt::auth::TokenStore> = match default_auth_dir() {
+        Some(dir) => std::sync::Arc::new(chatgpt::auth::FileTokenStore::new(dir)),
+        None => std::sync::Arc::new(chatgpt::auth::MemoryTokenStore::default()),
+    };
     let authenticator = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
-        default_auth_file(),
+        store,
         chatgpt::auth::DeviceCodeHandler::default(),
         true,
     );
@@ -87,7 +91,9 @@ pub(crate) async fn live_client() -> OpenAiModels {
 }
 
 fn has_usable_oauth_cache() -> bool {
-    let Some(path) = default_auth_file() else {
+    let Some(path) = default_auth_dir()
+        .map(|dir| chatgpt::auth::FileTokenStore::new(dir).path(chatgpt::PROVIDER_NAME))
+    else {
         return false;
     };
 
@@ -120,8 +126,8 @@ fn current_unix_timestamp() -> i64 {
         .as_secs() as i64
 }
 
-fn default_auth_file() -> Option<PathBuf> {
-    config_dir().map(|dir| dir.join("chatgpt").join("auth.json"))
+fn default_auth_dir() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join("chatgpt"))
 }
 
 fn config_dir() -> Option<PathBuf> {

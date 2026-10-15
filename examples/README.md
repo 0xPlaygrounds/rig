@@ -69,7 +69,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `reasoning_loop` | See source. |
 | `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking two `AgentHook`s with `add_hook`. |
 | `reqwest_middleware` | Demonstrates supplying a custom reqwest client with retry middleware. |
-| `rmcp_example` | An example of how you can use `rmcp` with Rig to create an MCP friendly agent. |
+| `rmcp_example` | Connects agents to MCP servers: a local server's tools and resources, and with `--bin remote -- <url>` any hosted streamable HTTP server. |
 | `sentiment_classifier` | Demonstrates the smallest typed extractor for classification. |
 | `transcription` | See source. |
 | `tool_result_outcomes` | Demonstrates structured disk (`Other`/`EIO`) and network (`Network`/`ENETUNREACH`) tool failures, a run-scoped scratchpad ledger, and ordered recorder/policy hooks that terminate fatal failures while returning recoverable feedback to the model. Run `cargo run -p tool_result_outcomes -- --help` for credential-free usage. |

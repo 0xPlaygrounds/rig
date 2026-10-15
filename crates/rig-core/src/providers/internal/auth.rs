@@ -1,4 +1,5 @@
-//! Shared OAuth errors, device-code callbacks, and authentication transport helpers.
+//! Shared OAuth errors, device-code callbacks, token stores, and
+//! authentication transport helpers.
 //!
 //! ```
 //! use rig_core::providers::chatgpt::auth::DeviceCodeHandler;
@@ -64,6 +65,9 @@ pub enum AuthError {
     /// inspectable); response-less failures as [`http_client::Error::Instance`].
     #[error(transparent)]
     Http(#[from] http_client::Error),
+    /// The [`TokenStore`] could not load or save a credential.
+    #[error("token store failed: {0}")]
+    Store(#[source] crate::error::BoxError),
 }
 
 /// Build a request to an absolute authentication URL, independent of the API base.
@@ -99,25 +103,24 @@ where
     Ok(response.into_body().await?)
 }
 
-/// Platform config directory used for on-disk OAuth/token caches
-/// (`APPDATA` on Windows; `XDG_CONFIG_HOME` falling back to `~/.config`
-/// elsewhere).
-pub(crate) fn config_dir() -> Option<std::path::PathBuf> {
-    use std::path::PathBuf;
+/// Returns true when the token is expired (or has no expiry), treating the
+/// token as expired `skew_seconds` before its actual `expires_at`.
+pub(crate) fn token_expired(expires_at: Option<i64>, skew_seconds: i64) -> bool {
+    let now = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or_default();
 
-    #[cfg(target_os = "windows")]
-    {
-        std::env::var_os("APPDATA").map(PathBuf::from)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-    }
+    expires_at.is_none_or(|exp| now >= exp - skew_seconds)
 }
 
 /// Device-flow helpers for the native ChatGPT and Copilot authenticators.
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod device;
+
+mod store;
+
+#[cfg(not(target_family = "wasm"))]
+pub use store::FileTokenStore;
+pub use store::{MemoryTokenStore, TokenStore};
+pub(crate) use store::{load_record, save_record};

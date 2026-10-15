@@ -50,13 +50,13 @@ enum Scenario {
 #[derive(Clone)]
 struct ScenarioServer {
     scenario: Scenario,
-    seen: Arc<RwLock<Option<Meta>>>,
+    seen: Arc<RwLock<Option<RequestMetaObject>>>,
     cancelled: Arc<Notify>,
 }
 
 impl ServerHandler for ScenarioServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_protocol_version(ProtocolVersion::LATEST)
             .with_server_info(Implementation::new("rig-mcp-test", "0.1.0"))
     }
@@ -65,9 +65,9 @@ impl ServerHandler for ScenarioServer {
         &self,
         _request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<CallToolResponse, ErrorData> {
         *self.seen.write().await = Some(context.meta.clone());
-        match self.scenario {
+        let result = match self.scenario {
             Scenario::Success => Ok(CallToolResult::success(vec![ContentBlock::text("ok")])),
             Scenario::StructuredSuccess => {
                 let mut response = CallToolResult::success(vec![
@@ -79,8 +79,8 @@ impl ServerHandler for ScenarioServer {
                     "answer": 42,
                     "source": "fixture"
                 }));
-                let mut meta = Meta::new();
-                meta.0.insert("response-id".into(), json!("response-123"));
+                let mut meta = MetaObject::new();
+                meta.insert("response-id".into(), json!("response-123"));
                 response.meta = Some(meta);
                 Ok(response)
             }
@@ -106,7 +106,8 @@ impl ServerHandler for ScenarioServer {
                     "image/png",
                 )]))
             }
-        }
+        };
+        result.map(Into::into)
     }
 }
 
@@ -115,9 +116,9 @@ struct Fixture {
     /// The adapter itself, for tests that assert MCP argument semantics
     /// directly (the registry path parses JSON in rig-agent first).
     tool: McpTool,
-    seen: Arc<RwLock<Option<Meta>>>,
+    seen: Arc<RwLock<Option<RequestMetaObject>>>,
     cancelled: Arc<Notify>,
-    _client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
+    connection: McpConnection,
     server_task: JoinHandle<()>,
 }
 
@@ -138,16 +139,18 @@ async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
             .expect("server start");
         running.waiting().await.expect("server error");
     });
-    let client = ClientInfo::default()
-        .serve((client_from_server, client_to_server))
-        .await
-        .expect("client connect");
+    let connection = McpConnection::new(
+        ClientConfig::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect"),
+    );
     let definition = Tool::new(
         "fixture_tool".to_string(),
         "fixture".to_string(),
         Arc::new(serde_json::Map::new()),
     );
-    let tool = McpTool::from_mcp_server(definition, client.peer().clone()).with_timeout(timeout);
+    let tool = McpTool::new(definition, &connection).with_timeout(timeout);
     let handle = ToolServer::new()
         .dynamic_tool(tool.clone().try_into().expect("tool name"))
         .run();
@@ -156,7 +159,7 @@ async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
         tool,
         seen,
         cancelled,
-        _client: client,
+        connection,
         server_task,
     }
 }
@@ -347,8 +350,8 @@ fn structured_content_is_kept_alongside_real_rich_blocks() {
 #[tokio::test]
 async fn canonical_dispatch_forwards_context_meta() {
     let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
-    let mut meta = Meta::new();
-    meta.0.insert("authorization".into(), json!("Bearer test"));
+    let mut meta = RequestMetaObject::new();
+    meta.insert("authorization".into(), json!("Bearer test"));
     let mut context = ToolContext::new();
     context.insert(McpMeta(meta)).unwrap();
 
@@ -547,5 +550,30 @@ async fn adapter_rejects_non_object_arguments() {
             .await
             .unwrap_or_else(|error| panic!("{args:?} should remain a no-argument call: {error}"));
     }
+    fixture.server_task.abort();
+}
+
+#[tokio::test]
+async fn a_declared_output_schema_answers_with_structured_content_alone() {
+    let fixture = fixture(Scenario::StructuredSuccess, Some(Duration::from_secs(1))).await;
+    let definition = Tool::new(
+        "fixture_tool".to_string(),
+        "fixture".to_string(),
+        Arc::new(serde_json::Map::new()),
+    )
+    .with_raw_output_schema(Arc::new(
+        json!({"type": "object"})
+            .as_object()
+            .cloned()
+            .unwrap_or_default(),
+    ));
+    let tool = rig_core::tool::DynamicTool::try_from(McpTool::new(definition, &fixture.connection))
+        .expect("tool name");
+
+    let output = tool.execute(json!({})).await.expect("structured result");
+    assert_eq!(
+        output,
+        ToolOutput::json(json!({"answer": 42, "source": "fixture"}))
+    );
     fixture.server_task.abort();
 }
