@@ -602,7 +602,7 @@ impl Compacted {
         let records = conversation.asides();
         let ours =
             records.filter(move |(_, aside)| aside.kind == COMPACTED && aside.author == author);
-        ours.filter_map(|(id, aside)| Some((id, serde_json::from_value(aside.value.clone()).ok()?)))
+        ours.filter_map(|(id, aside)| Some((id, Self::deserialize(&aside.value).ok()?)))
     }
 }
 
@@ -949,13 +949,11 @@ impl Summarizer {
                                 parts.push(format!("[Assistant thinking]: {}", reasoning.text));
                             }
                             AssistantContent::ToolCall(call) => {
-                                let arguments = rig_core::serde_json::Value::Object(
-                                    call.function.arguments.clone(),
-                                );
+                                let arguments = serde_json::to_string(&call.function.arguments);
                                 parts.push(format!(
                                     "[Assistant tool call]: {}({})",
                                     call.function.name.as_str(),
-                                    snippet(&arguments.to_string())
+                                    snippet(&arguments.unwrap_or_default())
                                 ));
                             }
                             _ => {}
