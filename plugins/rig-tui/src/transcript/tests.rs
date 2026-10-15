@@ -105,13 +105,14 @@ fn drawn(
     (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
     renderers: &Renderers<'_>,
 ) -> String {
-    let facts = CallFacts::default();
+    let (facts, theme) = (CallFacts::default(), crate::Theme::default());
     let look = Look {
         renderers,
         calls,
         outputs,
         inside: HashMap::new(),
         facts: &facts,
+        theme: &theme,
         children: &ChildCalls::default(),
         marks: &[],
     };
@@ -805,6 +806,7 @@ fn layout_app() -> (App, Entity) {
     let mut app = App::new();
     app.init_resource::<CallFacts>()
         .init_resource::<crate::Notices>()
+        .init_resource::<crate::Theme>()
         .init_resource::<rig_ecs::effects::Effects>()
         .add_message::<EffectRecorded>()
         .add_message::<PastEffects>()

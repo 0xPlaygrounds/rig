@@ -428,6 +428,7 @@ fn draw_diff(
     mut boxes: Query<(&mut PanelCanvas, &DiffBox), With<TuiPanel>>,
     files: Res<TouchedFiles>,
     root: Res<ProjectRoot>,
+    theme: Res<rig_tui::Theme>,
 ) {
     for (mut canvas, diff) in &mut boxes {
         let text = files
@@ -435,7 +436,7 @@ fn draw_diff(
             .get(&diff.path)
             .map(TouchedFile::session_diff)
             .unwrap_or_default();
-        let lines = rig_tui::diff::unified_lines(&text)
+        let lines = rig_tui::diff::unified_lines(&text, &theme)
             .unwrap_or_else(|| vec![Line::from("No diff for this file.").dim()]);
         let title = format!("{} (Esc closes)", shown(&diff.path, &root.0));
         let area = canvas.area();

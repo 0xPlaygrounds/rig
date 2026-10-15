@@ -35,6 +35,10 @@ rig-tools = { path = "../../crates/rig-tools" }
 # A status item's side read from settings.
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# The changed words of a diff's lines.
+similar = { workspace = true }
+# The terminal's background, which the transcript's colors are mixed from.
+terminal-colorsaurus = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 # The terminal view sends stray stdout and stderr to the session log.

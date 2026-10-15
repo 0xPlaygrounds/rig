@@ -27,6 +27,7 @@ use super::renderers::{
     AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
     MessageView, Renderers, Role, ToolCallView, plugin_name, result_style, result_text, text_rows,
 };
+use super::theme::Theme;
 use super::view::{
     DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, RowWrap, ShownNotice, TextMark,
     TranscriptItem,
@@ -648,6 +649,8 @@ pub(crate) struct Look<'a> {
     pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
+    /// The transcript's colors.
+    pub(crate) theme: &'a Theme,
     /// The calls under each tool call that started any.
     pub(crate) children: &'a ChildCalls,
     /// The labels drawn inside replies' text.
@@ -773,6 +776,7 @@ impl Look<'_> {
         self.calls.hash(&mut hasher);
         self.outputs.hash(&mut hasher);
         self.marks.hash(&mut hasher);
+        self.theme.hash(&mut hasher);
         // The settled calls' facts and children change only with it.
         self.facts.changes.hash(&mut hasher);
         for (call, children) in &self.children.live {
@@ -1382,7 +1386,7 @@ fn message_lines(
                 Inside::Aside(shown) => {
                     let start = lines.len();
                     lines.push(Line::default());
-                    lines.extend(shown.lines(look.renderers));
+                    lines.extend(on_band(shown.lines(look.renderers), look.theme.tool));
                     marks.push((shown.item(), start..lines.len()));
                 }
             }
@@ -1397,12 +1401,17 @@ fn message_lines(
                     UserContent::Text(text) => {
                         if let Some((label, body)) = attached_file(&text.text) {
                             let count = body.lines().count();
-                            lines.push(Line::from(format!("  [{label}, {count} lines]")).dim());
-                            lines.extend(text_rows(body, Style::new().dim()));
+                            let header = Line::from(format!("  [{label}, {count} lines]")).dim();
+                            let body = text_rows(body, Style::new().dim());
+                            lines.extend(on_band(
+                                std::iter::once(header).chain(body),
+                                look.theme.user,
+                            ));
                             continue;
                         }
                         if stopped {
-                            lines.push(Line::from("  [stopped before it was answered]").dim());
+                            let stop = Line::from("  [stopped before it was answered]").dim();
+                            lines.extend(on_band([stop], look.theme.user));
                             continue;
                         }
                         lines.push(Line::default());
@@ -1411,23 +1420,28 @@ fn message_lines(
                             author.kind != AuthorKind::User || author.title.is_some()
                         };
                         match author.filter(other) {
-                            Some(author) => {
-                                lines.extend(delivered_lines(author, &text.text, look));
-                            }
-                            None => lines.extend(look.renderers.message(&MessageView {
-                                role: Role::User,
-                                message: id,
-                                block: item_at,
-                                text: &text.text,
-                                marks: &[],
-                            })),
+                            Some(author) => lines.extend(on_band(
+                                delivered_lines(author, &text.text, look),
+                                look.theme.tool,
+                            )),
+                            None => lines.extend(on_band(
+                                look.renderers.message(&MessageView {
+                                    role: Role::User,
+                                    message: id,
+                                    block: item_at,
+                                    text: &text.text,
+                                    marks: &[],
+                                }),
+                                look.theme.user,
+                            )),
                         }
                     }
                     // Drawn under its call already.
                     UserContent::ToolResult(result) if answers(previous, result) => {}
                     UserContent::ToolResult(result) => {
                         let style = result_style(result.is_error);
-                        lines.extend(text_rows(&result_text(result), style));
+                        let rows = text_rows(&result_text(result), style);
+                        lines.extend(on_band(rows, look.theme.tool));
                     }
                     other => {
                         if let Some(block) = ContentBlock::of_user(other) {
@@ -1471,6 +1485,7 @@ fn message_lines(
                             call,
                             result,
                             state: look.state(&call.id, result),
+                            theme: *look.theme,
                             facts,
                             took,
                             output: look.outputs.get(&call.id).map(String::as_str),
@@ -1478,7 +1493,7 @@ fn message_lines(
                         };
                         let (drawn, decorated) = look.renderers.call_decorated(&view);
                         let start = lines.len();
-                        lines.extend(drawn);
+                        lines.extend(on_band(drawn, look.theme.tool));
                         marks.push((item, start..lines.len()));
                         for (name, rows) in decorated {
                             let decoration = TranscriptItem::Decoration(call.id.clone(), name);
@@ -1571,6 +1586,18 @@ pub(crate) fn notice_lines(
     let start = lines.len();
     lines.extend(plain_lines(&notice.text, style));
     marks.push((TranscriptItem::Notice(at), start..lines.len()));
+}
+
+/// `lines` on the band `band`, each where it has no background of its
+/// own, such as a diff's line: the background of every row it wraps to.
+pub(crate) fn on_band(
+    lines: impl IntoIterator<Item = Line<'static>>,
+    band: Color,
+) -> impl Iterator<Item = Line<'static>> {
+    lines.into_iter().map(move |mut line| {
+        line.style.bg = line.style.bg.or(Some(band));
+        line
+    })
 }
 
 /// `text`'s lines in one style.

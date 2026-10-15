@@ -36,9 +36,10 @@ use super::renderers::{
 };
 use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{Tui, TuiTestScreen};
+use super::theme::Theme;
 use super::transcript::{
     CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, ShownAside, StreamingCalls,
-    Transcript, live_call, notice_lines, plain_lines,
+    Transcript, live_call, notice_lines, on_band, plain_lines,
 };
 use super::view::{
     DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
@@ -441,6 +442,8 @@ pub(crate) struct Sources<'a> {
     pub(crate) renderers: &'a Renderers<'a>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
+    /// The transcript's colors.
+    pub(crate) theme: &'a Theme,
 }
 
 /// Lays out an agent's transcript as the terminal view draws it, without
@@ -493,6 +496,7 @@ pub struct TranscriptLayout<'w, 's> {
     facts: Res<'w, CallFacts>,
     streaming: Query<'w, 's, &'static StreamingCalls>,
     notices: Res<'w, Notices>,
+    theme: Res<'w, Theme>,
 }
 
 impl TranscriptLayout<'_, '_> {
@@ -514,6 +518,7 @@ impl TranscriptLayout<'_, '_> {
             notices: self.notices(),
             renderers: &renderers,
             facts: &self.facts,
+            theme: &self.theme,
         };
         let mut transcript = Transcript::default();
         let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
@@ -541,6 +546,7 @@ impl TranscriptLayout<'_, '_> {
             notices: &notices,
             renderers: &renderers,
             facts: &facts,
+            theme: &self.theme,
         };
         let mut transcript = Transcript::default();
         let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
@@ -622,6 +628,11 @@ impl TranscriptLayout<'_, '_> {
     pub(crate) fn notices(&self) -> &Notices {
         &self.notices
     }
+
+    /// The transcript's colors.
+    pub(crate) fn theme(&self) -> &Theme {
+        &self.theme
+    }
 }
 
 /// Brings `transcript` up to date with the shown agent and returns its
@@ -659,6 +670,7 @@ pub(crate) fn lay_out_transcript(
         outputs: &shown.outputs,
         inside: HashMap::new(),
         facts: sources.facts,
+        theme: sources.theme,
         children: &shown.children,
         marks: &view.marks,
     };
@@ -702,7 +714,7 @@ pub(crate) fn lay_out_transcript(
         let (notices, asides) = after.next().unwrap_or_default();
         for aside in asides {
             let mut lines = vec![Line::default()];
-            lines.extend(aside.lines(sources.renderers));
+            lines.extend(on_band(aside.lines(sources.renderers), sources.theme.tool));
             let marks = [(aside.item(), 0..lines.len())];
             parts.push(Part::rows(&lines, &marks, wrap_width));
         }
@@ -732,10 +744,11 @@ pub(crate) fn lay_out_transcript(
                 }
             }
             for call in &shown.streaming {
-                let view = ToolCallView::new(call, None, CallState::Streaming);
-                extra.extend(sources.renderers.call(&view));
+                let mut view = ToolCallView::new(call, None, CallState::Streaming);
+                view.theme = *sources.theme;
+                extra.extend(on_band(sources.renderers.call(&view), sources.theme.tool));
             }
-            inbox_lines(&shown.inbox, &mut extra);
+            inbox_lines(&shown.inbox, sources.theme, &mut extra);
             parts.push(Part::rows(&extra, &marks, wrap_width));
             break;
         }
@@ -748,19 +761,21 @@ pub(crate) fn lay_out_transcript(
 }
 
 /// `rows`, the first being row `first` of the transcript, with the rows of
-/// the `selected` item marked.
+/// the `selected` item on `theme`'s selected color, over their bands.
 pub(crate) fn decorate(
     rows: Vec<Line<'static>>,
     first: usize,
     marks: &Marks,
-    selected: Option<&TranscriptItem>,
+    (selected, theme): (Option<&TranscriptItem>, &Theme),
 ) -> Vec<Line<'static>> {
     let selected = selected.and_then(|item| marks.iter().find(|(marked, _)| marked == item));
+    let on = Style::new().bg(theme.selected);
     rows.into_iter()
         .enumerate()
         .map(|(index, row)| match selected {
             Some((_, rows)) if rows.contains(&(first + index)) => {
-                row.patch_style(Style::new().on_dark_gray())
+                let spans = row.spans.into_iter().map(|span| span.patch_style(on));
+                Line::from(spans.collect::<Vec<_>>()).style(row.style.patch(on))
             }
             _ => row,
         })
@@ -1347,7 +1362,7 @@ fn draw_choice(
 
 /// The messages the agent accepted and has not sent yet, under the
 /// transcript, in the order they came.
-fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
+fn inbox_lines(inbox: &[&Incoming], theme: &Theme, lines: &mut Vec<Line<'static>>) {
     if inbox.is_empty() {
         return;
     }
@@ -1359,16 +1374,13 @@ fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
             DeliveryMode::Inform => "noted",
         };
         let text = message.text();
-        let first = text.lines().next().unwrap_or_default();
-        let more = if text.lines().nth(1).is_some() {
-            " …"
-        } else {
-            ""
-        };
-        lines.push(Line::from(vec![
+        let mut rows = text.lines();
+        let first = Line::from(vec![
             Span::from(format!("  ⏵ {when}: ")).cyan(),
-            Span::from(format!("{first}{more}")).dim(),
-        ]));
+            Span::from(rows.next().unwrap_or_default().to_owned()).dim(),
+        ]);
+        let rest = rows.map(|row| Line::from(format!("    {row}")).dim());
+        lines.extend(on_band(std::iter::once(first).chain(rest), theme.user));
     }
 }
 

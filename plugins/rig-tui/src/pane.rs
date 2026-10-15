@@ -29,7 +29,7 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Paragraph, Widget};
+use ratatui::widgets::{Block, Clear, Widget};
 use rig_core::conversation::Conversation;
 use rig_ecs::agent::Conversation as AgentConversation;
 use rig_harness::main_agent::ShownAgent;
@@ -256,6 +256,7 @@ pub(crate) fn lay_out_pane(
         notices: from.notices(),
         renderers: &renderers,
         facts: from.facts(),
+        theme: from.theme(),
     };
     let parts = lay_out_transcript(&mut state.transcript, &sources, shown, area.width);
     let height = usize::from(area.height);
@@ -274,7 +275,7 @@ pub(crate) fn lay_out_pane(
         visible.rows,
         visible.first,
         &visible.marks,
-        view.selected.as_ref(),
+        (view.selected.as_ref(), from.theme()),
     );
     state.below = visible.below;
     state.items = selectable(visible.marks);
@@ -312,8 +313,14 @@ pub(crate) fn draw_panes(mut panes: Query<(&TranscriptPane, &mut PaneState, &mut
                 .title(format!(" {title} "))
                 .render(area, buffer);
         }
-        let rows = std::mem::take(&mut state.rows);
-        Paragraph::new(rows).render(state.area, buffer);
+        // Each row's own background fills its width, blank rows too.
+        for (row, area) in std::mem::take(&mut state.rows)
+            .iter()
+            .zip(state.area.rows())
+        {
+            buffer.set_style(area, row.style);
+            row.render(area, buffer);
+        }
         draw_below(buffer, state.below, state.area);
     }
 }

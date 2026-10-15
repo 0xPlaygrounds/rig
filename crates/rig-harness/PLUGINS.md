@@ -2072,7 +2072,13 @@ plugin (such as rig-compaction's summary), with the look
 `add_entry_renderer(plugin, ..)` gives that plugin's author; other asides
 with `add_aside_renderer(kind, ..)` (rig's branch and split pointers:
 `branch_lines`, `split_lines`), a role's messages with
-`add_message_renderer(Role::User, ..)`. The transcript is a
+`add_message_renderer(Role::User, ..)`. The transcript puts each item on
+the band of what it is, from the `Theme` resource (mixed from the
+terminal's background): a user message on `user`, a tool call and what a
+plugin added on `tool`, a reply on none; a look's line with a background
+of its own keeps it, as a diff's `added` and `removed` lines do
+(`rig_tui::diff::unified_lines(text, &theme)`, also `ToolCallView::theme`).
+The transcript is a
 `TranscriptPane` ([another](#what-agents-do-and-say-in-a-terminal-panel)),
 the default screen's marked `MainPane`. Plugins read and set a pane's
 `TranscriptView` component (`MainTranscript` for the main one): the item

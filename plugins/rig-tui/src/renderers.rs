@@ -19,6 +19,7 @@ use rig_harness::rig_core::conversation::Note;
 use rig_harness::rig_memory::SplitPointer;
 
 use super::{diff, markdown};
+use crate::Theme;
 
 /// A tool call and its result, if it has one yet, as a renderer sees them.
 pub struct ToolCallView<'a> {
@@ -29,6 +30,8 @@ pub struct ToolCallView<'a> {
     pub result: Option<&'a ToolResult>,
     /// Where the call stands.
     pub state: CallState,
+    /// The transcript's colors.
+    pub theme: Theme,
     /// What the call published, such as rig-core's `ExitStatus` and
     /// `FilesChanged`, once it settled: in this run, or in an earlier one
     /// of a resumed session whose effect log was kept.
@@ -99,12 +102,13 @@ pub(crate) const UNNAMED_HOLD: &str = "unnamed hold";
 
 impl<'a> ToolCallView<'a> {
     /// `call`, answered by `result` if it was, standing as `state`, with
-    /// no facts or output known.
+    /// no facts or output known, in the default colors.
     pub fn new(call: &'a ToolCall, result: Option<&'a ToolResult>, state: CallState) -> Self {
         Self {
             call,
             result,
             state,
+            theme: Theme::default(),
             facts: None,
             took: None,
             output: None,
@@ -162,7 +166,7 @@ impl<'a> ToolCallView<'a> {
             return self.progress_lines();
         };
         if !self.failed()
-            && let Some(lines) = diff::unified_lines(&text)
+            && let Some(lines) = diff::unified_lines(&text, &self.theme)
         {
             return lines;
         }

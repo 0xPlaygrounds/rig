@@ -27,7 +27,8 @@
 //! - **The terminal:** [`RunInTerminal`], [`TerminalWrite`],
 //!   [`CopyToClipboard`], [`TuiFrame`], [`TerminalFocus`]; a test draws to a
 //!   [`TuiTestScreen`].
-//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`text_rows`].
+//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`text_rows`], and
+//!   the colors of what each thing is, [`Theme`].
 //!
 //! The view shows every plugin's pickers and every agent's questions, one
 //! at a time ([`PickerInput`]). All of this exists in every run, also under
@@ -51,6 +52,7 @@ mod renderers;
 mod screen;
 pub mod status;
 mod terminal;
+mod theme;
 mod transcript;
 mod view;
 pub mod wrap;
@@ -94,6 +96,7 @@ pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSys
 pub use terminal::{
     CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite, TuiTestScreen,
 };
+pub use theme::Theme;
 pub use transcript::PastEffects;
 pub use view::{
     DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, Notices, RowWrap,
@@ -139,6 +142,7 @@ impl Plugin for TuiViewPlugin {
             .init_resource::<Notices>()
             .init_resource::<transcript::CallFacts>()
             .init_resource::<TerminalSize>()
+            .init_resource::<Theme>()
             .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
             .init_resource::<PendingInput>()
