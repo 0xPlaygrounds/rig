@@ -84,28 +84,26 @@ impl Interaction {
     }
 
     /// Apply one delta to the step at `index`.
-    fn delta(&mut self, index: usize, mut delta: Map<String, Value>) {
+    fn delta(&mut self, index: usize, delta: &Map<String, Value>) {
         let kind = delta
             .get("type")
             .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
-        let step = self.step(index, &kind);
+            .unwrap_or_default();
+        let step = self.step(index, kind);
         let own = step.str("type").unwrap_or_default().to_owned();
-        match (own.as_str(), kind.as_str()) {
+        match (own.as_str(), kind) {
             ("model_output", _) => {
                 let Some(content) = list(step, "content") else {
                     return;
                 };
                 match content.last_mut() {
                     Some(item)
-                        if matches!(kind.as_str(), "text" | "text_annotation_delta")
+                        if matches!(kind, "text" | "text_annotation_delta")
                             && item.str("type") == Some("text") =>
                     {
-                        delta.shift_remove("type");
-                        merge(item, &delta);
+                        merge(item, delta);
                     }
-                    _ => content.push(Value::Object(delta)),
+                    _ => content.push(Value::Object(delta.clone())),
                 }
             }
             ("thought", "thought_summary") => {
@@ -124,21 +122,21 @@ impl Interaction {
                 }
             }
             ("function_call", "arguments_delta") => {
-                let fragment = match delta.get("arguments") {
-                    Some(Value::String(fragment)) => fragment.clone(),
-                    Some(Value::Null) | None => String::new(),
-                    Some(other) => other.to_string(),
-                };
-                self.arguments.entry(index).or_default().push_str(&fragment);
+                let arguments = self.arguments.entry(index).or_default();
+                match delta.get("arguments") {
+                    Some(Value::String(fragment)) => arguments.push_str(fragment),
+                    Some(Value::Null) | None => {}
+                    Some(other) => arguments.push_str(&other.to_string()),
+                }
             }
             // A delta that restates its step replaces the fields it names;
             // any other merges.
             (own, kind) if own == kind => {
                 if let Some(step) = step.as_object_mut() {
-                    step.extend(delta);
+                    step.extend(delta.clone());
                 }
             }
-            _ => merge(step, &delta),
+            _ => merge(step, delta),
         }
     }
 
@@ -204,7 +202,7 @@ impl Reassemble<InteractionsEvent> for Interaction {
             }
             ("step.delta", Some(index)) => {
                 if let Some(Value::Object(delta)) = fields.get("delta") {
-                    self.delta(index, delta.clone());
+                    self.delta(index, delta);
                 }
             }
             ("step.stop", Some(index)) => self.stop(index),
