@@ -6,11 +6,10 @@
 use std::io;
 
 use rig_core::conversation::pairing::pending_calls;
-use rig_core::conversation::{AsideId, Conversation, Entry, MessageId};
+use rig_core::conversation::{Aside, AsideId, Author, BranchError, Conversation, Entry, MessageId};
 use serde::{Deserialize, Serialize};
 
-use crate::fork::copy_plugin_files;
-use crate::{NoRewrite, SavedAgent, Session, SessionError, SessionMeta, Store};
+use crate::{NoRewrite, SavedAgent, Session, SessionError, SessionMeta, Store, copy_plugin_files};
 use rig_core::now_ms;
 
 /// The kind of the aside a line keeps after the last entry a split of it
@@ -32,6 +31,78 @@ pub struct SplitPointer {
     /// Whether it was merged back.
     #[serde(default)]
     pub merged: bool,
+}
+
+impl SplitPointer {
+    /// The pointer `aside` holds, when it is one ([`SPLIT`]).
+    pub fn of(aside: &Aside) -> Option<Self> {
+        (aside.kind == SPLIT)
+            .then(|| Self::deserialize(&aside.value).ok())
+            .flatten()
+    }
+
+    /// The unmerged pointer in `conversation`'s active line to `agent`'s
+    /// line kept in session `session`, with its aside's id.
+    pub fn find(
+        conversation: &Conversation,
+        session: &str,
+        agent: &str,
+    ) -> Option<(AsideId, Self)> {
+        conversation.asides().find_map(|(id, aside)| {
+            let pointer = Self::of(aside)?;
+            let to = pointer.session == session && pointer.agent == agent;
+            (to && !pointer.merged).then_some((id, pointer))
+        })
+    }
+
+    /// Leaves this pointer in `conversation`'s `line` (a kept branch's
+    /// aside, the active line with `None`) after `through`. With
+    /// `move_from`, it is a move: the line is made active, `move_from..=
+    /// through` is moved out of it under the pointer's title, and the
+    /// pointer, counting what moved, takes its place.
+    ///
+    /// # Errors
+    ///
+    /// When the line or a message is not there, or the range cannot move.
+    pub fn leave(
+        mut self,
+        conversation: &mut Conversation,
+        line: Option<AsideId>,
+        through: MessageId,
+        move_from: Option<MessageId>,
+    ) -> Result<(), String> {
+        let by = Author::rig();
+        let failed = |failure: BranchError| failure.to_string();
+        let Some(first) = move_from else {
+            let aside = Aside::new(SPLIT, by, self.value()?).after(Some(through));
+            conversation.add_aside_in(line, aside).map_err(failed)?;
+            return Ok(());
+        };
+        if let Some(line) = line {
+            conversation
+                .switch_branch(line, by.clone())
+                .map_err(failed)?;
+        }
+        let at = |id: MessageId| {
+            conversation
+                .index_of(id)
+                .ok_or_else(|| format!("message {id} is not on the line"))
+        };
+        let (start, end) = (at(first)?, at(through)?.saturating_add(1));
+        self.moved = end.saturating_sub(start);
+        let moved = conversation
+            .move_out(start..end, &self.title, by.clone())
+            .map_err(failed)?;
+        let after = conversation.aside(moved).and_then(|aside| aside.after);
+        let aside = Aside::new(SPLIT, by, self.value()?).after(after);
+        conversation.replace_aside(moved, aside);
+        Ok(())
+    }
+
+    /// This pointer as an aside's value.
+    fn value(&self) -> Result<serde_json::Value, String> {
+        serde_json::to_value(self).map_err(|failure| failure.to_string())
+    }
 }
 
 /// What [`split`] copies: one agent's line through message `through` (the
@@ -147,6 +218,20 @@ pub struct Line {
     pub merged: bool,
 }
 
+impl Line {
+    /// The line of `lines` that `name` names: a kept branch by its aside's
+    /// id, a split by its session, else any line by its title.
+    pub fn find<'a>(lines: &'a [Line], name: &str) -> Option<&'a Line> {
+        let by_aside = name.parse::<AsideId>().ok();
+        let found = lines.iter().find(|line| match &line.id {
+            LineId::Branch(id) => Some(*id) == by_aside,
+            LineId::Split { session, .. } => session == name,
+            LineId::Active => false,
+        });
+        found.or_else(|| lines.iter().find(|line| line.title == name))
+    }
+}
+
 /// Which line a [`Line`] is.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LineId {
@@ -203,7 +288,7 @@ pub fn lines(conversation: &Conversation) -> Vec<Line> {
         .asides()
         .map(|(_, aside)| (0, conversation.aside_position(aside), aside));
     let mut found: Vec<(usize, usize, SplitPointer)> = pointers
-        .filter_map(|(node, at, aside)| Some((node, at, pointer(aside)?)))
+        .filter_map(|(node, at, aside)| Some((node, at, SplitPointer::of(aside)?)))
         .collect();
     for (n, kept) in kept.iter().enumerate() {
         let ids: Vec<Option<MessageId>> = conversation
@@ -213,7 +298,7 @@ pub fn lines(conversation: &Conversation) -> Vec<Line> {
             .map(|entry| entry.id)
             .collect();
         for (_, aside) in &kept.branch.asides {
-            let Some(pointer) = pointer(aside) else {
+            let Some(pointer) = SplitPointer::of(aside) else {
                 continue;
             };
             let at = ids.iter().position(|id| *id == aside.after);
@@ -240,13 +325,6 @@ pub fn lines(conversation: &Conversation) -> Vec<Line> {
     let mut placed = vec![None; nodes.len()];
     list_from(0, None, &nodes, &mut placed, &mut listed);
     listed
-}
-
-/// The split pointer `aside` holds, when it is one.
-fn pointer(aside: &rig_core::conversation::Aside) -> Option<SplitPointer> {
-    (aside.kind == SPLIT)
-        .then(|| SplitPointer::deserialize(&aside.value).ok())
-        .flatten()
 }
 
 /// Lists node `node`, kept in the listed line `inside`, then the lines

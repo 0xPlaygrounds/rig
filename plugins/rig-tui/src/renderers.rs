@@ -688,7 +688,7 @@ pub fn branch_lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
 /// (`rig.split`): `⇢`, its title and its session, with what was moved
 /// there and whether it was merged back.
 pub fn split_lines(view: &AsideView<'_>) -> Vec<Line<'static>> {
-    let Ok(split) = serde_json::from_value::<SplitPointer>(view.aside.value.clone()) else {
+    let Some(split) = SplitPointer::of(view.aside) else {
         return Vec::new();
     };
     let mut text = format!("⇢ {} · session {}", split.title, split.session);

@@ -94,5 +94,18 @@ fn main_log(store: &dyn Store, how: Fold) -> Result<Option<Folded>, SessionError
     Ok(None)
 }
 
+/// The first session `id` was forked or split from, through every parent
+/// in `parents` (each session's parent, by id); `id` itself when it has
+/// none.
+pub fn family_root<'a>(parents: &'a [(String, String)], id: &'a str) -> &'a str {
+    let parent = |id: &str| -> Option<&'a str> {
+        let found = parents.iter().find(|(child, _)| child == id);
+        found.map(|(_, parent)| parent.as_str())
+    };
+    // A loop cannot happen, but a bound costs nothing.
+    let up = std::iter::successors(Some(id), |id| parent(id));
+    up.take(parents.len() + 1).last().unwrap_or(id)
+}
+
 #[cfg(test)]
 mod tests;

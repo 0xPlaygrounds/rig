@@ -369,6 +369,19 @@ pub fn estimate_tokens(messages: &[Message]) -> u64 {
 }
 
 impl CompactionPolicy {
+    /// The value of the knob `knob` ([`CompactionOverrides::KNOBS`]), as
+    /// `/compaction` shows it.
+    pub fn knob(&self, knob: &str) -> String {
+        match knob {
+            "reserve" => self.summarizer.limits.reserve.to_string(),
+            "keep" => self.keep_recent.to_string(),
+            "keep-asked" => self.keep_asked.to_string(),
+            "clear" => self.clearing.keep_tokens.to_string(),
+            "per-turn" => self.per_turn.to_string(),
+            _ => String::from(self.cut.clone()),
+        }
+    }
+
     /// Whether a request of `tokens` leaves less than the summarizer's
     /// reserve of `spec`'s window free. Never, when the window is not known.
     pub fn over_threshold(&self, tokens: u64, spec: &ModelSpec) -> bool {
@@ -1197,6 +1210,84 @@ impl CompactionOverrides {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
     }
+
+    /// The knobs set by name, such as by `/compaction keep=20000`.
+    pub const KNOBS: &[&str] = &["reserve", "keep", "keep-asked", "clear", "per-turn", "cut"];
+
+    /// Whether it sets the knob `knob`.
+    pub fn sets(&self, knob: &str) -> bool {
+        match knob {
+            "reserve" => self.limits.is_some(),
+            "keep" => self.keep_recent.is_some(),
+            "keep-asked" => self.keep_asked.is_some(),
+            "clear" => self.clearing.is_some(),
+            "per-turn" => self.per_turn.is_some(),
+            _ => self.cut.is_some(),
+        }
+    }
+
+    /// Sets the knob `knob` to `value` over `policy`, the policy it makes
+    /// now.
+    ///
+    /// # Errors
+    ///
+    /// When there is no such knob, or `value` is not one of its values.
+    pub fn set(
+        &mut self,
+        knob: &str,
+        value: &str,
+        policy: &CompactionPolicy,
+    ) -> Result<(), String> {
+        let number = || {
+            value
+                .parse::<usize>()
+                .map_err(|_| format!("`{knob}` takes a number of tokens, not `{value}`"))
+        };
+        match knob {
+            "reserve" => {
+                let reserve = u64::try_from(number()?).map_err(|failure| failure.to_string())?;
+                let mut limits = self.limits.unwrap_or(policy.summarizer.limits);
+                limits.reserve = reserve;
+                self.limits = Some(limits);
+            }
+            "keep" => self.keep_recent = Some(number()?),
+            "keep-asked" => self.keep_asked = Some(number()?),
+            "clear" => self.clearing = Some(ClearToolOutputs::new(number()?)),
+            "per-turn" => {
+                let count = value
+                    .parse()
+                    .map_err(|_| format!("`per-turn` takes a count, not `{value}`"))?;
+                self.per_turn = Some(count);
+            }
+            "cut" if !value.is_empty() => self.cut = Some(Cut::from(value.to_owned())),
+            _ => return Err(unknown_knob(knob)),
+        }
+        Ok(())
+    }
+
+    /// Unsets the knob `knob`.
+    ///
+    /// # Errors
+    ///
+    /// When there is no such knob.
+    pub fn unset(&mut self, knob: &str) -> Result<(), String> {
+        match knob {
+            "reserve" => self.limits = None,
+            "keep" => self.keep_recent = None,
+            "keep-asked" => self.keep_asked = None,
+            "clear" => self.clearing = None,
+            "per-turn" => self.per_turn = None,
+            "cut" => self.cut = None,
+            _ => return Err(unknown_knob(knob)),
+        }
+        Ok(())
+    }
+}
+
+/// Why `knob` is none of [`CompactionOverrides::KNOBS`].
+fn unknown_knob(knob: &str) -> String {
+    let knobs = CompactionOverrides::KNOBS.join(", ");
+    format!("there is no knob `{knob}`; the knobs are {knobs}")
 }
 
 #[cfg(test)]

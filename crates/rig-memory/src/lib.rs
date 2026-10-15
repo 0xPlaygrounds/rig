@@ -80,6 +80,7 @@ mod blobs;
 mod compaction;
 #[cfg(feature = "fs")]
 mod dir;
+mod follows;
 mod fork;
 mod format;
 mod listing;
@@ -103,10 +104,11 @@ pub use compaction::{
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
-pub use fork::{Forked, fork};
+pub use follows::{FOLLOWS, anchor_line_values, collapse, follow, followed};
+pub use fork::{Forked, copy_plugin_files, fork};
 pub use format::{FORMAT, LogRewrite, OLDEST, Repair, SESSION, SessionError, Stamp, VERSION};
-pub use listing::{Listing, read_line};
-pub use meta::{ForkedFrom, META, PARENT, SessionMeta, title_of};
+pub use listing::{Listing, family_root, read_line};
+pub use meta::{ForkedFrom, META, PARENT, SessionMeta, excerpt, title_of};
 pub use rewrite::{
     Messages, NoRewrite, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
     rewrite_file, rewrite_value,
@@ -114,7 +116,7 @@ pub use rewrite::{
 pub use saved::{MODEL, TITLE, main_order};
 pub use session::{LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, save};
 pub use split::{Line, LineId, SPLIT, SplitOf, SplitPointer, lines, split};
-pub use store::{Files, MemoryStore, Store, check_name};
+pub use store::{Files, MemoryStore, PLUGINS, PluginFiles, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};
 pub use upgrade::{SHELVED, Unread, Upgrade, Upgraded, Upgrades, ValueError, Versioned, upgrade};
 pub use writer::Writer;

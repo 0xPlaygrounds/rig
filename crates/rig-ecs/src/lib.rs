@@ -58,7 +58,7 @@ pub mod prelude {
         NoticeLevel, Partial, Retry, Spawned, SpawnedBy, StopTurn, SystemPrompt, ToolAccess, Turn,
         TurnOf, TurnOutcome,
     };
-    pub use crate::follows::{FOLLOWS, ReflectFollows};
+    pub use crate::follows::ReflectFollows;
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
         Recalled, Unsent,
@@ -102,6 +102,7 @@ pub mod prelude {
     pub use rig_core::tool::{
         PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
     };
+    pub use rig_memory::FOLLOWS;
     pub use rig_memory::{
         Files, NoRewrite, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings,
         Upgrade, Upgrades, Versioned, as_of, fork, history,

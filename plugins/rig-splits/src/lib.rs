@@ -30,7 +30,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message as ChatMessage;
 use rig_harness::rig_core::conversation::{self, BranchError, MergeAt, Spliced, shared_prefix};
 use rig_harness::rig_core::message::UserContent;
-use rig_harness::rig_memory::{self, LineId, SPLIT, SplitPointer, lines};
+use rig_harness::rig_memory::{self, LineId, SplitPointer, lines};
 
 #[cfg(test)]
 mod tests;
@@ -262,16 +262,8 @@ fn find_line(
     name: &str,
 ) -> Result<rig_memory::Line, String> {
     let listed = lines(conversation);
-    let by_aside = name.parse::<AsideId>().ok();
-    let found = listed.iter().find(|line| match &line.id {
-        LineId::Branch(id) => Some(*id) == by_aside,
-        LineId::Split { session, .. } => session == name,
-        LineId::Active => false,
-    });
-    let found = found.or_else(|| listed.iter().find(|line| line.title == name));
-    found
-        .cloned()
-        .ok_or_else(|| format!("there is no line `{name}`"))
+    let found = rig_memory::Line::find(&listed, name).cloned();
+    found.ok_or_else(|| format!("there is no line `{name}`"))
 }
 
 /// The kept branch `name` names in `conversation`; `None` for the active
@@ -549,13 +541,9 @@ fn merge(world: &mut World, target: &Target, name: &str) -> Result<String, Strin
             Ok(merged(&spliced))
         }),
         LineId::Split { session, agent } => {
-            let pointer = conversation.asides().find_map(|(id, aside)| {
-                let pointer: SplitPointer = (aside.kind == SPLIT)
-                    .then(|| serde_json::from_value(aside.value.clone()).ok())
-                    .flatten()?;
-                (pointer.session == session && pointer.agent == agent && !pointer.merged)
-                    .then_some((id, pointer, aside.clone()))
-            });
+            let pointer = SplitPointer::find(&conversation, &session, &agent);
+            let pointer = pointer
+                .and_then(|(id, pointer)| Some((id, pointer, conversation.aside(id)?.clone())));
             let (id, mut pointer, aside) = pointer.ok_or_else(|| {
                 format!(
                     "the split in session {session} is merged already, or not in the active line"

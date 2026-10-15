@@ -278,90 +278,6 @@ struct Compacting {
     connection: Option<&'static Connection>,
 }
 
-/// The knobs `/compaction` names, each with how it reads from a policy,
-/// whether overrides set it, and how it is set and unset there.
-const KNOBS: &[&str] = &["reserve", "keep", "keep-asked", "clear", "per-turn", "cut"];
-
-/// The value of the knob `knob` in `policy`, as `/compaction` shows it.
-fn knob(policy: &CompactionPolicy, knob: &str) -> String {
-    match knob {
-        "reserve" => policy.summarizer.limits.reserve.to_string(),
-        "keep" => policy.keep_recent.to_string(),
-        "keep-asked" => policy.keep_asked.to_string(),
-        "clear" => policy.clearing.keep_tokens.to_string(),
-        "per-turn" => policy.per_turn.to_string(),
-        _ => String::from(policy.cut.clone()),
-    }
-}
-
-/// Whether `own` sets the knob `knob`.
-fn sets(own: &CompactionOverrides, knob: &str) -> bool {
-    match knob {
-        "reserve" => own.limits.is_some(),
-        "keep" => own.keep_recent.is_some(),
-        "keep-asked" => own.keep_asked.is_some(),
-        "clear" => own.clearing.is_some(),
-        "per-turn" => own.per_turn.is_some(),
-        _ => own.cut.is_some(),
-    }
-}
-
-/// `own` with the knob `knob` set to `value` over `policy`, the agent's
-/// policy now, or why not.
-fn set_knob(
-    own: &mut CompactionOverrides,
-    policy: &CompactionPolicy,
-    knob: &str,
-    value: &str,
-) -> Result<(), String> {
-    let number = || {
-        value
-            .parse::<usize>()
-            .map_err(|_| format!("`{knob}` takes a number of tokens, not `{value}`"))
-    };
-    match knob {
-        "reserve" => {
-            let reserve = u64::try_from(number()?).map_err(|failure| failure.to_string())?;
-            let mut limits = own.limits.unwrap_or(policy.summarizer.limits);
-            limits.reserve = reserve;
-            own.limits = Some(limits);
-        }
-        "keep" => own.keep_recent = Some(number()?),
-        "keep-asked" => own.keep_asked = Some(number()?),
-        "clear" => own.clearing = Some(rig_memory::ClearToolOutputs::new(number()?)),
-        "per-turn" => {
-            let count = value
-                .parse()
-                .map_err(|_| format!("`per-turn` takes a count, not `{value}`"))?;
-            own.per_turn = Some(count);
-        }
-        "cut" if !value.is_empty() => own.cut = Some(Cut::from(value.to_owned())),
-        _ => return Err(unknown_knob(knob)),
-    }
-    Ok(())
-}
-
-/// Unsets the knob `knob` of `own`, or says it has none such.
-fn unset_knob(own: &mut CompactionOverrides, knob: &str) -> Result<(), String> {
-    match knob {
-        "reserve" => own.limits = None,
-        "keep" => own.keep_recent = None,
-        "keep-asked" => own.keep_asked = None,
-        "clear" => own.clearing = None,
-        "per-turn" => own.per_turn = None,
-        "cut" => own.cut = None,
-        _ => return Err(unknown_knob(knob)),
-    }
-    Ok(())
-}
-
-fn unknown_knob(knob: &str) -> String {
-    format!(
-        "there is no knob `{knob}`; the knobs are {}",
-        KNOBS.join(", ")
-    )
-}
-
 /// What `/compaction <args>` makes of `own`, the agent's knobs, whose policy
 /// is `policy`: the knobs to keep (`None` to show them only), or why not.
 fn edit_knobs(
@@ -379,7 +295,7 @@ fn edit_knobs(
             return Ok(Some(CompactionOverrides::default()));
         }
         for knob in words {
-            unset_knob(&mut edited, knob)?;
+            edited.unset(knob)?;
         }
         return Ok(Some(edited));
     }
@@ -387,7 +303,7 @@ fn edit_knobs(
         let (knob, value) = word
             .split_once('=')
             .ok_or_else(|| format!("`{word}` is not knob=value"))?;
-        set_knob(&mut edited, policy, knob, value)?;
+        edited.set(knob, value, policy)?;
     }
     Ok(Some(edited))
 }
@@ -410,11 +326,11 @@ fn set_compaction(
     let own = own.map_or(&none, |own| &own.0);
     match edit_knobs(own, &policy, &args.args) {
         Ok(None) => {
-            let lines: Vec<String> = KNOBS
+            let lines: Vec<String> = CompactionOverrides::KNOBS
                 .iter()
                 .map(|name| {
-                    let whose = if sets(own, name) { "own" } else { "settings" };
-                    format!("{name} = {} ({whose})", knob(&policy, name))
+                    let whose = if own.sets(name) { "own" } else { "settings" };
+                    format!("{name} = {} ({whose})", policy.knob(name))
                 })
                 .collect();
             let text = format!("Compaction policy:\n{}", lines.join("\n"));

@@ -7,7 +7,7 @@ use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::RunCommand;
 use rig_harness::pick::PickPlugin;
-use rig_harness::rig_memory::{CompactionOverrides, DirStore, load, save};
+use rig_harness::rig_memory::{CompactionOverrides, DirStore, SPLIT, load, save};
 use rig_harness::sessions::SessionPickerPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, commit_message, connect, first_agent, log_ended, reply,

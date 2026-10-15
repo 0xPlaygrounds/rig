@@ -13,7 +13,7 @@ use rig_core::conversation::{
 use crate::format::{LogLines, Meta, SESSION, write_change, write_meta};
 use crate::rewrite::{Place, Rewrite, map_aside, map_log};
 use crate::session::{Fold, Folded, fold_lines, log_lines};
-use crate::{MemoryStore, SessionError, Stamp, Store};
+use crate::{MemoryStore, PLUGINS, SessionError, Stamp, Store};
 
 /// What [`fork`] copied beyond the records before the cut.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -194,15 +194,15 @@ pub fn fork(
     Ok(forked)
 }
 
-/// Copies every plugin file of `from` (`plugins/` of its store) into `to`,
-/// each mapped through `with`.
-pub(crate) fn copy_plugin_files(
-    from: &dyn Store,
-    to: &dyn Store,
-    with: &dyn Rewrite,
-) -> io::Result<()> {
+/// Copies every plugin file of `from` ([`PLUGINS`] of its store) into
+/// `to`, each mapped through `with`.
+///
+/// # Errors
+///
+/// When a file cannot be read or written.
+pub fn copy_plugin_files(from: &dyn Store, to: &dyn Store, with: &dyn Rewrite) -> io::Result<()> {
     for name in from.files()? {
-        if name.starts_with("plugins/") {
+        if name.starts_with(PLUGINS) {
             let mut bytes = from.read_file(&name)?;
             with.file(&name, &mut bytes);
             to.write_file(&name, &bytes)?;

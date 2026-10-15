@@ -15,14 +15,13 @@
 //! }
 //! ```
 
-use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, SessionDir};
 use rig_core::tool::content_hash;
-use rig_memory::{DirFiles, Files, MemoryStore, SessionError};
+use rig_memory::{DirFiles, Files, MemoryStore, PluginFiles, SessionError};
 
 use crate::host::session::StoreOpener;
 
@@ -56,7 +55,7 @@ impl PluginData {
     ) -> Self {
         let session = session.unwrap_or_else(|| Arc::new(MemoryStore::default()));
         Self {
-            session: Arc::new(Within(session)),
+            session: Arc::new(PluginFiles(session)),
             project: Arc::new(DirFiles::new(project_dir(home, root, host))),
             user: Arc::new(DirFiles::new(home.data())),
         }
@@ -73,7 +72,7 @@ impl PluginData {
     /// When its store does not open.
     pub fn of(stores: &StoreOpener, dir: &SessionDir) -> Result<Arc<dyn Files>, SessionError> {
         let store: Arc<dyn Files> = stores.open(dir)?;
-        Ok(Arc::new(Within(store)))
+        Ok(Arc::new(PluginFiles(store)))
     }
 }
 
@@ -94,36 +93,6 @@ fn project_dir(home: &Home, root: &Path, host: Option<&str>) -> PathBuf {
         .unwrap_or_default();
     let key = hash.get(..8).unwrap_or(&hash);
     home.projects().join(format!("{name}-{key}"))
-}
-
-/// The files of a session's store under `plugins/`.
-struct Within(Arc<dyn Files>);
-
-/// Where plugins' files are in a session's store.
-const PLUGINS: &str = "plugins/";
-
-impl Files for Within {
-    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.0.write_file(&format!("{PLUGINS}{name}"), bytes)
-    }
-
-    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.0.append_file(&format!("{PLUGINS}{name}"), bytes)
-    }
-
-    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.0.read_file(&format!("{PLUGINS}{name}"))
-    }
-
-    fn remove_file(&self, name: &str) -> io::Result<()> {
-        self.0.remove_file(&format!("{PLUGINS}{name}"))
-    }
-
-    fn files(&self) -> io::Result<Vec<String>> {
-        let files = self.0.files()?.into_iter();
-        let within = files.filter_map(|name| Some(name.strip_prefix(PLUGINS)?.to_owned()));
-        Ok(within.collect())
-    }
 }
 
 #[cfg(test)]

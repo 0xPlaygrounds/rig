@@ -303,7 +303,7 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
     let mut reader = SavedReader::new(world);
-    let followed = super::follows::followed(world);
+    let followed = super::follows::followed_types(world);
     for (key, value) in &state {
         let restored = reader.read(&registry, SESSION, None, &state, key, value);
         let restored = restored.and_then(|read| {

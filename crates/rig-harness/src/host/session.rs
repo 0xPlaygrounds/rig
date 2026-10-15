@@ -36,14 +36,14 @@ use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
-use rig_core::conversation::{Aside, AsideId, Author, BranchError, Conversation, MessageId};
+use rig_core::conversation::{AsideId, Author, Conversation, MessageId};
 use rig_ecs::WriteLogs;
 use rig_ecs::agent::{self, ActiveTurn, AgentId, Notice, NoticeLevel};
 use rig_ecs::restore::SavedKeys;
 use rig_ecs::session_log::{SessionRewritten, SessionStore, open_session};
 use rig_memory::{
-    DirStore, Files, ForkedFrom, NoRewrite, Rewrite, Rewritten, SPLIT, Session, SessionError,
-    SessionMeta, SplitOf, SplitPointer, Store, fork, load, rewrite, split,
+    DirFiles, DirStore, Files, ForkedFrom, NoRewrite, Rewrite, Rewritten, Session, SessionError,
+    SessionMeta, SplitOf, SplitPointer, Store, fork, load, rewrite, rewrite_file, split,
 };
 use rig_tools::Spill;
 use rig_tools::attach::typed;
@@ -695,14 +695,10 @@ pub fn rewrite_stopped(
     let _held = hold_stopped(running, dir, "a RewriteSession rewrites it")?;
     let store = stores.open(dir).map_err(|failure| failure.to_string())?;
     let rewritten = rewrite(&*store, by, with).map_err(|failure| failure.to_string())?;
-    let scratch = Scratch(Some(dir.path().to_owned()));
+    let scratch = DirFiles::new(dir.path());
     map_spill(&scratch, with)
         .and_then(|()| map_name(dir, with))
-        .and_then(|_| {
-            scratch
-                .log()
-                .map_or(Ok(false), |log| map_file(&log, LOG, with))
-        })
+        .and_then(|_| rewrite_file(&scratch, LOG, with))
         .map_err(|failure| format!("rewriting its scratch files failed: {failure}"))?;
     match Session::read(&*store) {
         Ok(session) => relist(stores, &*store, &session),
@@ -713,25 +709,6 @@ pub fn rewrite_stopped(
 
 /// The text log's name to a [`Rewrite`].
 const LOG: &str = "agent.log";
-
-/// Maps the file at `path`, named `name` to `with`, through it: written
-/// beside and renamed over, so it is the old file or the new, whole;
-/// whether it changed. A file that is not there is left.
-fn map_file(path: &Path, name: &str, with: &dyn Rewrite) -> io::Result<bool> {
-    let mut bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(false),
-        Err(failure) => return Err(failure),
-    };
-    if !with.file(name, &mut bytes) {
-        return Ok(false);
-    }
-    let mut part = path.as_os_str().to_owned();
-    part.push(".part");
-    fs::write(&part, &bytes)?;
-    fs::rename(&part, path)?;
-    Ok(true)
-}
 
 /// Maps the session's name in `dir` ([`SessionDir::name`]) through
 /// `with`, as the text file `name`; whether it changed. A name mapped to
@@ -748,22 +725,12 @@ fn map_name(dir: &SessionDir, with: &dyn Rewrite) -> io::Result<bool> {
     Ok(true)
 }
 
-/// Maps every file of `scratch`'s spilled tool output through `with`,
-/// each named `spill/<file>`.
-fn map_spill(scratch: &Scratch, with: &dyn Rewrite) -> io::Result<()> {
-    let Some(spill) = scratch.spill() else {
-        return Ok(());
-    };
-    let entries = match fs::read_dir(&spill.0) {
-        Ok(entries) => entries,
-        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(failure) => return Err(failure),
-    };
-    for entry in entries {
-        let entry = entry?;
-        if entry.file_type()?.is_file() {
-            let name = format!("spill/{}", entry.file_name().to_string_lossy());
-            map_file(&entry.path(), &name, with)?;
+/// Maps every file of the spilled tool output in `scratch`, a session's
+/// scratch directory, through `with`, each named `spill/<file>`.
+fn map_spill(scratch: &DirFiles, with: &dyn Rewrite) -> io::Result<()> {
+    for name in scratch.files()? {
+        if name.starts_with("spill/") {
+            rewrite_file(scratch, &name, with)?;
         }
     }
     Ok(())
@@ -785,8 +752,9 @@ fn rewrite_scratch(
     {
         let with = &*rewritten.with;
         let spilled = scratch
-            .as_deref()
-            .map_or(Ok(()), |scratch| map_spill(scratch, with));
+            .as_ref()
+            .and_then(|scratch| scratch.0.as_deref())
+            .map_or(Ok(()), |dir| map_spill(&DirFiles::new(dir), with));
         let named = paths
             .as_deref()
             .map_or(Ok(false), |paths| map_name(paths, with));
@@ -1018,12 +986,6 @@ fn copy_cut(
         moved: 0,
         merged: false,
     };
-    let point = Point {
-        line,
-        through,
-        take,
-        title,
-    };
     let mut written = None;
     let note = match stopped {
         None => {
@@ -1032,9 +994,12 @@ fn copy_cut(
                 return Err(format!("this session has no agent {}", agent.0));
             };
             // Tried on a copy first: a move that cannot be made copies nothing.
-            point.leave(&mut conversation.view(), pointer.clone())?;
+            let leave = |pointer: SplitPointer, conversation: &mut Conversation| {
+                pointer.leave(conversation, line, through, take)
+            };
+            leave(pointer.clone(), &mut conversation.view())?;
             written = Some(split(source, copy, &of).map_err(failed)?);
-            point.leave(&mut conversation, pointer)?;
+            leave(pointer, &mut conversation)?;
             None
         }
         Some(dir) => {
@@ -1043,7 +1008,7 @@ fn copy_cut(
                     .agent_mut(&agent.0)
                     .map(|agent| &mut agent.conversation)
                     .ok_or_else(|| format!("the session has no agent {}", agent.0))?;
-                point.leave(conversation, pointer.clone())?;
+                pointer.clone().leave(conversation, line, through, take)?;
                 written = Some(split(source, copy, &of).map_err(failed)?);
                 Ok(())
             });
@@ -1065,60 +1030,6 @@ fn copy_cut(
         ..ForkedFrom::default()
     };
     Ok((parent, note))
-}
-
-/// Where a line is split from: its line, the last message copied, for a
-/// move the first message taken out, and the split's title.
-struct Point<'a> {
-    line: Option<AsideId>,
-    through: MessageId,
-    take: Option<MessageId>,
-    title: &'a str,
-}
-
-impl Point<'_> {
-    /// Leaves `pointer` in `conversation`: after the last message copied,
-    /// in its line; for a move, in place of the range taken out of the
-    /// line, made active first.
-    fn leave(
-        &self,
-        conversation: &mut Conversation,
-        mut pointer: SplitPointer,
-    ) -> Result<(), String> {
-        let by = Author::rig();
-        let failed = |failure: BranchError| failure.to_string();
-        let Some(first) = self.take else {
-            let aside = Aside::new(SPLIT, by, pointer_value(&pointer)?).after(Some(self.through));
-            conversation
-                .add_aside_in(self.line, aside)
-                .map_err(failed)?;
-            return Ok(());
-        };
-        if let Some(line) = self.line {
-            conversation
-                .switch_branch(line, by.clone())
-                .map_err(failed)?;
-        }
-        let at = |id: MessageId| {
-            conversation
-                .index_of(id)
-                .ok_or_else(|| format!("message {id} is not on the line"))
-        };
-        let (start, end) = (at(first)?, at(self.through)?.saturating_add(1));
-        pointer.moved = end.saturating_sub(start);
-        let moved = conversation
-            .move_out(start..end, self.title, by.clone())
-            .map_err(failed)?;
-        let after = conversation.aside(moved).and_then(|aside| aside.after);
-        let aside = Aside::new(SPLIT, by, pointer_value(&pointer)?).after(after);
-        conversation.replace_aside(moved, aside);
-        Ok(())
-    }
-}
-
-/// `pointer` as an aside's value.
-fn pointer_value(pointer: &SplitPointer) -> Result<serde_json::Value, String> {
-    serde_json::to_value(pointer).map_err(|failure| failure.to_string())
 }
 
 fn delete_session(
@@ -1250,11 +1161,11 @@ impl TextLog {
     /// Maps the text log through `with` under its lock, so no line is
     /// written meanwhile, and logs to the new file.
     fn rewrite(&self, with: &dyn Rewrite) -> io::Result<()> {
-        let Some(at) = &self.at else {
+        let Some((at, dir)) = self.at.as_deref().and_then(|at| Some((at, at.parent()?))) else {
             return Ok(());
         };
         let mut file = self.file.lock().unwrap_or_else(PoisonError::into_inner);
-        if map_file(at, LOG, with)? {
+        if rewrite_file(&DirFiles::new(dir), LOG, with)? {
             *file = OpenOptions::new().append(true).open(at).ok();
         }
         Ok(())

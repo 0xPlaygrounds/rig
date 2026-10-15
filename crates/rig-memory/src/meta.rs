@@ -10,7 +10,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
-use rig_core::conversation::MessageId;
+use rig_core::completion::Message;
+use rig_core::conversation::{EntryRef, MessageId};
+use rig_core::message::{AssistantContent, UserContent};
 use serde::{Deserialize, Serialize};
 
 use crate::{Files, Session, Versioned, main_order};
@@ -160,6 +162,43 @@ pub fn title_of(text: &str) -> String {
             kept.chain(['…']).collect()
         }
     }
+}
+
+/// One line of `entry`: who wrote it, then the start of its text, or the
+/// tools it called.
+pub fn excerpt(entry: &EntryRef<'_>) -> String {
+    let (who, text) = match entry.message {
+        Message::System { content } => ("system", content.clone()),
+        Message::User { content } => {
+            let text: Vec<&str> = content
+                .iter()
+                .filter_map(|part| match part {
+                    UserContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            match text.is_empty() {
+                true => ("tool results", String::new()),
+                false => ("user", text.join(" ")),
+            }
+        }
+        Message::Assistant(turn) => {
+            let text = turn.text();
+            let calls: Vec<&str> = turn
+                .content
+                .iter()
+                .filter_map(|part| match part {
+                    AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            match (text.trim().is_empty(), calls.is_empty()) {
+                (true, false) => ("calls", calls.join(", ")),
+                _ => ("assistant", text),
+            }
+        }
+    };
+    format!("{who}: {}", title_of(&text)).trim_end().to_owned()
 }
 
 #[cfg(test)]

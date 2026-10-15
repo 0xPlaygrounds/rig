@@ -33,17 +33,12 @@ use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath, TypeRegistry};
-use rig_core::conversation::{Aside, AsideId, Author, BRANCH, Change, LINE_VALUES, MessageId};
-use rig_memory::{SHELVED, Versioned};
-use serde_json::{Map, Value};
+use rig_core::conversation::{BRANCH, Change, LINE_VALUES, MessageId};
+use rig_memory::{FOLLOWS, SHELVED, Versioned, anchor_line_values, collapse, follow, followed};
 
 use super::agent::{Agent, AgentId, Conversation};
 use super::restore::{SavedKeys, SavedReader, SavedUpgrades};
 use super::session_log::{ConversationChanged, SaveConversations, SessionLog, save_conversation};
-
-/// The kind of the asides holding followed values:
-/// `{"key": <key>, "v": n, "value": …}`, by rig.
-pub const FOLLOWS: &str = "rig.follows";
 
 /// Keeps an agent component with the line of the agent's conversation it was
 /// set on: derive `Reflect` and add `Follows` (`#[reflect(Component,
@@ -123,216 +118,17 @@ fn held(
         Some(Unreadable::Newer) => true,
         Some(Unreadable::Shelved) => {
             unread.0.remove(&at);
-            if let Some(old) = current(conversation, key)
-                && let Some(saved) = versioned(&old)
-            {
-                set(conversation, &format!("{SHELVED}{key}/v{}", saved.v), old);
+            if let Some(saved) = followed(conversation, key) {
+                follow(
+                    conversation,
+                    &format!("{SHELVED}{key}/v{}", saved.v),
+                    Some(&saved),
+                );
             }
             false
         }
         None => false,
     }
-}
-
-/// A followed value as kept: `{"v": n, "value": …}`, or `null` when the
-/// component was removed.
-fn envelope(saved: Option<&Versioned>) -> Value {
-    let Some(saved) = saved else {
-        return Value::Null;
-    };
-    let mut envelope = Map::new();
-    envelope.insert("v".to_owned(), Value::from(saved.v));
-    envelope.insert("value".to_owned(), saved.value.clone());
-    Value::Object(envelope)
-}
-
-/// A kept value read back: `None` for `null` (removed) or no value.
-fn versioned(envelope: &Value) -> Option<Versioned> {
-    let value = envelope.get("value").filter(|value| !value.is_null())?;
-    let v = envelope.get("v").and_then(Value::as_u64);
-    let v = v.and_then(|v| u32::try_from(v).ok()).unwrap_or(1);
-    Some(Versioned {
-        v,
-        value: value.clone(),
-    })
-}
-
-/// The followed value of `key` an aside holds, as an envelope.
-fn of_aside(aside: &Aside, key: &str) -> Option<Value> {
-    if aside.kind != FOLLOWS || aside.value.get("key").and_then(Value::as_str) != Some(key) {
-        return None;
-    }
-    let mut envelope = aside.value.as_object()?.clone();
-    envelope.shift_remove("key");
-    let removed = envelope.get("value").is_none_or(Value::is_null);
-    Some(if removed {
-        Value::Null
-    } else {
-        Value::Object(envelope)
-    })
-}
-
-/// An aside holding `envelope` as the value of `key`, after `after`.
-fn follows_aside(key: &str, envelope: &Value, after: Option<MessageId>) -> Aside {
-    let mut value = match envelope {
-        Value::Object(envelope) => envelope.clone(),
-        _ => Map::new(),
-    };
-    value.insert("key".to_owned(), Value::String(key.to_owned()));
-    value.entry("value").or_insert(Value::Null);
-    Aside::new(FOLLOWS, Author::rig(), Value::Object(value)).after(after)
-}
-
-/// The asides holding values of `key`, each with its id and position.
-fn asides_of(
-    conversation: &rig_core::conversation::Conversation,
-    key: &str,
-) -> Vec<(AsideId, usize, Value)> {
-    conversation
-        .asides()
-        .filter_map(|(id, aside)| {
-            let value = of_aside(aside, key)?;
-            Some((id, conversation.aside_position(aside), value))
-        })
-        .collect()
-}
-
-/// The value of `key` the active line of `conversation` has: its line value,
-/// else the newest of its asides (the one drawn last); `None` when it has
-/// none.
-pub(crate) fn current(
-    conversation: &rig_core::conversation::Conversation,
-    key: &str,
-) -> Option<Value> {
-    if let Some(value) = conversation
-        .line_values()
-        .and_then(|values| values.get(key))
-    {
-        return Some(value.clone());
-    }
-    let asides = asides_of(conversation, key).into_iter().enumerate();
-    let newest = asides.max_by_key(|(order, (_, position, _))| (*position, *order));
-    newest.map(|(_, (_, _, value))| value)
-}
-
-/// Whether a value set now belongs to the line itself: it has no entry, or
-/// a kept branch parts at its end.
-fn at_shared_end(conversation: &rig_core::conversation::Conversation) -> bool {
-    conversation.messages().is_empty() || conversation.parts_at_end()
-}
-
-/// Puts `envelope` as the value of `key` after `after`: in place of the
-/// aside of `key` that follows exactly that entry, else a new one. Unless
-/// `over`, an aside there is kept as it is.
-fn anchor(
-    conversation: &mut rig_core::conversation::Conversation,
-    key: &str,
-    envelope: &Value,
-    after: Option<MessageId>,
-    over: bool,
-) {
-    let there = conversation
-        .asides()
-        .find(|(_, aside)| aside.after == after && of_aside(aside, key).is_some())
-        .map(|(id, aside)| (id, of_aside(aside, key)));
-    let aside = follows_aside(key, envelope, after);
-    match there {
-        Some((_, Some(value))) if value == *envelope => {}
-        Some((id, _)) if over => drop(conversation.replace_aside(id, aside)),
-        Some(_) => {}
-        None => drop(conversation.add_aside(aside)),
-    }
-}
-
-/// Sets the value of `key` on the active line to `envelope`, unless it has
-/// it: a line value at a shared end, else after the last entry.
-pub(crate) fn set(
-    conversation: &mut rig_core::conversation::Conversation,
-    key: &str,
-    envelope: Value,
-) {
-    if current(conversation, key).as_ref() == Some(&envelope) {
-        return;
-    }
-    if at_shared_end(conversation) {
-        conversation.set_line_value(key, Some(envelope), Author::rig());
-        return;
-    }
-    if conversation
-        .line_values()
-        .is_some_and(|values| values.contains_key(key))
-    {
-        conversation.set_line_value(key, None, Author::rig());
-    }
-    let last = conversation.entries().next_back().map(|entry| entry.id);
-    anchor(conversation, key, &envelope, last, true);
-}
-
-/// Anchors each of `keys` the line values hold after the last entry, once
-/// the line has an entry of its own; whether it changed anything.
-fn anchor_line_values(
-    conversation: &mut rig_core::conversation::Conversation,
-    keys: &[String],
-) -> bool {
-    if at_shared_end(conversation) {
-        return false;
-    }
-    let Some(values) = conversation.line_values().cloned() else {
-        return false;
-    };
-    let last = conversation.entries().next_back().map(|entry| entry.id);
-    let mut changed = false;
-    for key in keys {
-        if let Some(envelope) = values.get(key) {
-            conversation.set_line_value(key, None, Author::rig());
-            anchor(conversation, key, envelope, last, true);
-            changed = true;
-        }
-    }
-    changed
-}
-
-/// After a splice took out `removed` and put in `with`: each of `keys`
-/// whose asides followed a removed entry gets one, the value of the one
-/// that followed the latest removed entry, after the entry drawn before
-/// them now (the line value when that entry is the line's shared end).
-/// One already there that follows an entry the splice put in is newer and
-/// kept. Whether it changed anything.
-fn collapse(
-    conversation: &mut rig_core::conversation::Conversation,
-    keys: &[String],
-    removed: &[MessageId],
-    with: &[MessageId],
-) -> bool {
-    let mut changed = false;
-    for key in keys {
-        let gone: Vec<(AsideId, usize, Value, usize)> = conversation
-            .asides()
-            .filter_map(|(id, aside)| {
-                let order = removed.iter().position(|id| Some(*id) == aside.after)?;
-                let value = of_aside(aside, key)?;
-                Some((id, conversation.aside_position(aside), value, order))
-            })
-            .collect();
-        let Some((_, position, value, _)) = gone.iter().max_by_key(|gone| gone.3).cloned() else {
-            continue;
-        };
-        for (id, ..) in &gone {
-            conversation.remove_aside(*id);
-            changed = true;
-        }
-        let target = position.checked_sub(1).and_then(|at| conversation.id(at));
-        let last = conversation.entries().next_back().map(|entry| entry.id);
-        if target.is_some() && target == last && conversation.parts_at_end() {
-            if current(conversation, key).as_ref() != Some(&value) {
-                conversation.set_line_value(key, Some(value), Author::rig());
-            }
-            continue;
-        }
-        let newer = target.is_some_and(|target| with.contains(&target));
-        anchor(conversation, key, &value, target, !newer);
-    }
-    changed
 }
 
 /// Mirrors each change of the followed component `T` on an agent, and its
@@ -360,10 +156,7 @@ fn mirror<T: Component + Reflect + TypePath>(
         match serde_json::to_value(value) {
             Ok(value) => {
                 let saved = (!value.is_null()).then_some(Versioned { v, value });
-                let envelope = envelope(saved.as_ref());
-                if current(&conversation, key).as_ref() != Some(&envelope) {
-                    set(&mut conversation, key, envelope);
-                }
+                follow(&mut conversation, key, saved.as_ref());
             }
             Err(failure) => warn!("not keeping {path} with the conversation: {failure}"),
         }
@@ -375,9 +168,9 @@ fn mirror<T: Component + Reflect + TypePath>(
         }
         if let Ok(mut conversation) = agents.get_mut(entity)
             && !held(unread.as_deref_mut(), entity, key, &mut conversation)
-            && current(&conversation, key).is_some_and(|value| !value.is_null())
+            && followed(&conversation, key).is_some()
         {
-            set(&mut conversation, key, Value::Null);
+            follow(&mut conversation, key, None);
         }
     }
 }
@@ -394,7 +187,7 @@ struct Work {
 }
 
 /// The followed types, each with its key.
-pub(crate) fn followed(world: &World) -> Vec<(String, String)> {
+pub(crate) fn followed_types(world: &World) -> Vec<(String, String)> {
     let Some(followed) = world.get_resource::<Followed>() else {
         return Vec::new();
     };
@@ -434,7 +227,7 @@ pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Conversati
             _ => {}
         }
     }
-    let followed = followed(world);
+    let followed = followed_types(world);
     if followed.is_empty() || work.is_empty() {
         return;
     }
@@ -501,7 +294,7 @@ pub(crate) fn give_line_values(
     let lines: Vec<(String, String, Option<Versioned>)> = followed
         .iter()
         .map(|(key, path)| {
-            let value = current(conversation, key).and_then(|value| versioned(&value));
+            let value = rig_memory::followed(conversation, key);
             (key.clone(), path.clone(), value)
         })
         .collect();

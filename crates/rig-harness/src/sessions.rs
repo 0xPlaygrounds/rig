@@ -29,12 +29,10 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
-use rig_core::completion::{AssistantContent, Message};
 use rig_core::conversation::{AsideId, Conversation, EntryRef, MessageId};
-use rig_core::message::UserContent;
 use rig_ecs::prelude::{PollTasks, Running, Wake};
 use rig_ecs::session_log::SessionStore;
-use rig_memory::{Line, LineId, Listing, Store, lines, read_line, title_of};
+use rig_memory::{Line, LineId, Listing, Store, excerpt, family_root, lines, read_line, title_of};
 use rig_tools::ago;
 
 use crate::host::session::{SessionPaths, StoreOpener};
@@ -252,40 +250,23 @@ pub struct SessionPicked {
 }
 
 impl SessionFilter {
-    /// Whether `session`, shown as `shown`, passes, `roots` giving the
-    /// first session of each one's family.
+    /// Whether `session`, shown as `shown`, passes, `parents` (each
+    /// session's parent, by id) giving the first session of each one's
+    /// family.
     fn passes(
         &self,
         session: &SessionEntry,
         shown: &(String, Option<String>),
-        roots: &Roots,
+        parents: &[(String, String)],
     ) -> bool {
         let text = self.text.to_lowercase();
         let holds = |part: &str| part.to_lowercase().contains(&text);
         (self.running || !session.running)
             && (self.project.is_none() || session.directory == self.project)
-            && self
-                .family
-                .as_ref()
-                .is_none_or(|family| roots.root(session.id.as_str()) == roots.root(family.as_str()))
+            && self.family.as_ref().is_none_or(|family| {
+                family_root(parents, session.id.as_str()) == family_root(parents, family.as_str())
+            })
             && (text.is_empty() || holds(&shown.0) || shown.1.as_deref().is_some_and(holds))
-    }
-}
-
-/// Each session's parent, by id, to find the first of its family.
-struct Roots(Vec<(String, String)>);
-
-impl Roots {
-    /// The first session `id` was forked or split from, through every
-    /// parent known; `id` itself when it has none.
-    fn root<'a>(&'a self, id: &'a str) -> &'a str {
-        let parent = |id: &str| -> Option<&str> {
-            let found = self.0.iter().find(|(child, _)| child == id);
-            found.map(|(_, parent)| parent.as_str())
-        };
-        // A loop cannot happen, but a bound costs nothing.
-        let up = std::iter::successors(Some(id), |id| parent(id));
-        up.take(self.0.len() + 1).last().unwrap_or(id)
     }
 }
 
@@ -311,43 +292,6 @@ fn default_show(item: &SessionItem<'_>) -> (String, Option<String>) {
         }
         SessionItem::Entry { entry, .. } => (excerpt(entry), Some(entry.id.to_string())),
     }
-}
-
-/// One line of `entry`: who wrote it, then the start of its text, or the
-/// tools it called.
-fn excerpt(entry: &EntryRef<'_>) -> String {
-    let (who, text) = match entry.message {
-        Message::System { content } => ("system", content.clone()),
-        Message::User { content } => {
-            let text: Vec<&str> = content
-                .iter()
-                .filter_map(|part| match part {
-                    UserContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect();
-            match text.is_empty() {
-                true => ("tool results", String::new()),
-                false => ("user", text.join(" ")),
-            }
-        }
-        Message::Assistant(turn) => {
-            let text = turn.text();
-            let calls: Vec<&str> = turn
-                .content
-                .iter()
-                .filter_map(|part| match part {
-                    AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
-                    _ => None,
-                })
-                .collect();
-            match (text.trim().is_empty(), calls.is_empty()) {
-                (true, false) => ("calls", calls.join(", ")),
-                _ => ("assistant", text),
-            }
-        }
-    };
-    format!("{who}: {}", title_of(&text)).trim_end().to_owned()
 }
 
 /// What a [`SessionPicker`] read so far, on its entity, and what each of
@@ -714,20 +658,19 @@ fn fill(
             }
         }
         _ => {
-            let roots = Roots(
-                view.sessions
-                    .iter()
-                    .filter_map(|session| {
-                        let parent = &session.listing.parent.as_ref()?.session;
-                        Some((session.id.to_string(), parent.clone()))
-                    })
-                    .collect(),
-            );
+            let parents: Vec<(String, String)> = view
+                .sessions
+                .iter()
+                .filter_map(|session| {
+                    let parent = &session.listing.parent.as_ref()?.session;
+                    Some((session.id.to_string(), parent.clone()))
+                })
+                .collect();
             for session in &view.sessions {
                 let mut session = session.clone();
                 session.running |= this(&session);
                 let item = SessionItem::Session(&session);
-                if !picker.filter.passes(&session, &show(&item), &roots) {
+                if !picker.filter.passes(&session, &show(&item), &parents) {
                     continue;
                 }
                 let picked = SessionPicked {
