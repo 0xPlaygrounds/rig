@@ -23,8 +23,8 @@ use crate::providers::openai::embedding::{
 };
 use crate::transcription::TranscriptionRequest;
 use crate::wire::{
-    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent,
-    WireFrame,
+    Body, Capabilities, Decoder, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Out, Wire,
+    WireEvent, WireFrame,
 };
 
 use super::OpenAIConfig;
@@ -45,6 +45,11 @@ pub enum ImageBody {
     /// `{inputs, parameters: {width, height}}`, answered with raw image bytes.
     /// The model is addressed through the URL path.
     HuggingFace,
+    /// MiniMax: `{model, prompt, response_format: "base64"}`, with `image-01`'s
+    /// size as `width` and `height` unless an `aspect_ratio` replaces it, answered
+    /// with `data.image_base64[]` beside a `base_resp` status that can report
+    /// a failure under HTTP 200.
+    MiniMax,
 }
 
 /// Which body a speech endpoint takes.
@@ -61,6 +66,10 @@ pub enum SpeechBody {
     /// It addresses this endpoint by *language*, so the identifier a caller
     /// passes as the model is the language tag (`"EN"`).
     Hyperbolic,
+    /// MiniMax: `{model, text, stream, output_format, voice_setting: {voice_id,
+    /// speed}}`, answered with hex-encoded audio under `data.audio` beside a
+    /// `base_resp` status that can report a failure under HTTP 200.
+    MiniMax,
 }
 
 /// Which body a transcription endpoint takes.
@@ -352,7 +361,7 @@ pub(super) const DOUBLEWORD_EMBEDDING_WIDTHS: &[ModelWidth] = &[ModelWidth {
 }];
 
 /// Encode an authenticated JSON POST with whole-response framing.
-fn json_post(
+pub(crate) fn json_post(
     provider: &OpenAIConfig,
     path: &str,
     deployment: Option<&str>,
@@ -386,7 +395,7 @@ fn get(provider: &OpenAIConfig, path: &str) -> Result<Encoded, EncodeError> {
 /// Authenticate and build a request, then apply its modality envelope hook.
 /// Return construction or hook errors. Use whole-response framing and the
 /// dialect's request-ID header.
-fn encoded(
+pub(crate) fn encoded(
     provider: &OpenAIConfig,
     builder: http::request::Builder,
     body: Body,
@@ -572,13 +581,7 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
             .as_ref()
             .map(Usage::to_normalized)
             .unwrap_or_default();
-        let vectors = event.data.into_iter().map(|datum| {
-            datum
-                .embedding
-                .into_iter()
-                .filter_map(|number| number.as_f64())
-                .collect()
-        });
+        let vectors = event.data.into_iter().map(|datum| datum.embedding);
         let model = if event.model.is_empty() {
             self.model.clone()
         } else {
@@ -596,6 +599,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = CompatibleEmbeddingResponse;
     type Decoder<'id> = EmbeddingsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -713,12 +717,17 @@ impl Transcriptions {
         }
         if let Some(additional_params) = request.additional_params {
             for (name, value) in additional_params_object(&additional_params)? {
-                // Form strings must not acquire JSON quotation marks.
-                let value = match value {
-                    serde_json::Value::String(value) => value.clone(),
-                    other => other.to_string(),
-                };
-                form = form.text(name.clone(), value);
+                match value {
+                    // Arrays go as one `name[]` field per item, the form
+                    // encoding these endpoints read for lists such as
+                    // `timestamp_granularities`.
+                    serde_json::Value::Array(items) => {
+                        for item in items {
+                            form = form.text(format!("{name}[]"), form_text(item));
+                        }
+                    }
+                    other => form = form.text(name.clone(), form_text(other)),
+                }
             }
         }
         Ok(Body::Multipart(form))
@@ -764,6 +773,15 @@ impl Transcriptions {
     }
 }
 
+/// A form field's text: strings as they are, without JSON quotation marks,
+/// and other values as JSON.
+fn form_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => value.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// A transcription request's `additional_params`, as an object.
 fn additional_params_object(
     params: &serde_json::Value,
@@ -794,31 +812,12 @@ fn audio_format_of(filename: &str) -> &'static str {
     }
 }
 
-/// The transcription decoder.
-#[derive(Default)]
-pub struct TranscriptionsDecoder;
-
-impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
-    type Event = crate::providers::openai::transcription::TranscriptionResponse;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, Transcription>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(event.normalize()?))
-    }
-}
-
 impl Wire for Transcriptions {
     type Op = Transcription;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = TranscriptionsDecoder;
+    type Event = crate::providers::openai::transcription::TranscriptionResponse;
+    type Decoder<'id> = DocumentDecoder<Transcription, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -846,7 +845,10 @@ impl Wire for Transcriptions {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        TranscriptionsDecoder
+        DocumentDecoder::new(
+            |body| classify_untyped_line(body.as_bytes()),
+            |event| event.normalize(),
+        )
     }
 }
 
@@ -953,6 +955,8 @@ pub enum ImagesEvent {
     Json(ImagesReply),
     /// The image bytes themselves, with no envelope at all.
     Raw(Vec<u8>),
+    /// A MiniMax reply body, decoded once its status envelope is checked.
+    MiniMax(Vec<u8>),
 }
 
 #[cfg(feature = "image")]
@@ -963,6 +967,10 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
         match self.body {
             // Preserve raw image bytes even when framing recognized valid UTF-8.
             ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(match frame {
+                WireFrame::Text(text) => text.into_bytes(),
+                WireFrame::Bytes(bytes) => bytes,
+            })),
+            ImageBody::MiniMax => WireEvent::Known(ImagesEvent::MiniMax(match frame {
                 WireFrame::Text(text) => text.into_bytes(),
                 WireFrame::Bytes(bytes) => bytes,
             })),
@@ -986,6 +994,12 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
             ImagesEvent::Raw(image) => {
                 return Ok(out.end(ImageGenerationResponse::new(image)));
             }
+            ImagesEvent::MiniMax(body) => {
+                let reply = crate::providers::minimax::decode_reply::<
+                    crate::providers::minimax::image_generation::ImageGenerationReply,
+                >(&body)?;
+                return Ok(out.end(reply.into_response()?));
+            }
             ImagesEvent::Json(reply) => reply,
         };
         let Some(encoded) = reply.first_base64() else {
@@ -1006,6 +1020,7 @@ impl Wire for Images {
     type Op = crate::operation::ImageGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ImagesEvent;
     type Decoder<'id> = ImagesDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1053,6 +1068,9 @@ impl Wire for Images {
                 "width": request.width,
                 "height": request.height,
             }),
+            ImageBody::MiniMax => {
+                crate::providers::minimax::image_generation::request_body(&self.model, &request)?
+            }
             // The model is addressed through the URL, not the body.
             ImageBody::HuggingFace => serde_json::json!({
                 "inputs": request.prompt,
@@ -1146,6 +1164,12 @@ impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
         let audio = match self.body {
             // OpenAI and xAI answer with the audio itself.
             SpeechBody::OpenAi | SpeechBody::Xai => event,
+            SpeechBody::MiniMax => {
+                let reply = crate::providers::minimax::decode_reply::<
+                    crate::providers::minimax::audio_generation::SpeechReply,
+                >(&event)?;
+                return Ok(out.end(reply.into_response()?));
+            }
             // Hyperbolic wraps it, base64-encoded, in a JSON envelope.
             SpeechBody::Hyperbolic => {
                 let reply = match serde_json::from_slice::<SpeechReply>(&event) {
@@ -1171,6 +1195,7 @@ impl Wire for Speech {
     type Op = crate::operation::AudioGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = Vec<u8>;
     type Decoder<'id> = SpeechDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
@@ -1183,6 +1208,7 @@ impl Wire for Speech {
         request: crate::audio_generation::AudioGenerationRequest,
         _mode: Mode,
     ) -> Result<Encoded, EncodeError> {
+        let mut additional_params = request.additional_params;
         let mut body = match self.provider.dialect.quirks.speech_body {
             SpeechBody::OpenAi => serde_json::json!({
                 "model": self.model,
@@ -1204,9 +1230,33 @@ impl Wire for Speech {
                 "text": request.text,
                 "speed": request.speed,
             }),
+            // Only the non-streaming reply's hex audio is decoded.
+            SpeechBody::MiniMax => serde_json::json!({
+                "model": self.model,
+                "text": request.text,
+                "stream": false,
+                "output_format": "hex",
+                "voice_setting": {
+                    "voice_id": request.voice,
+                    "speed": request.speed,
+                },
+            }),
         };
+        // A caller's `voice_setting` adds to the derived one, so setting the
+        // volume keeps the voice.
+        if let Some(derived) = body
+            .get_mut("voice_setting")
+            .and_then(serde_json::Value::as_object_mut)
+            && let Some(params) = additional_params
+                .as_mut()
+                .and_then(serde_json::Value::as_object_mut)
+            && let Some(serde_json::Value::Object(caller)) = params.get("voice_setting")
+        {
+            derived.extend(caller.clone());
+            params.shift_remove("voice_setting");
+        }
         // Caller parameters take precedence, including response format and instructions.
-        if let Some(additional_params) = request.additional_params {
+        if let Some(additional_params) = additional_params {
             crate::json_utils::merge_inplace(&mut body, additional_params);
         }
 
@@ -1306,35 +1356,12 @@ pub struct ModelsReply {
     pub data: Vec<ModelEntry>,
 }
 
-/// Decode a complete model catalogue without pagination.
-#[derive(Default)]
-pub struct ModelsDecoder;
-
-impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    type Event = ModelsReply;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        let models = event.data.into_iter().map(ModelInfo::from).collect();
-        Ok(out.end(ModelPage {
-            models: ModelList::new(models),
-            next: None,
-        }))
-    }
-}
-
 impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ModelsDecoder;
+    type Event = ModelsReply;
+    type Decoder<'id> = DocumentDecoder<ModelListing, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -1346,8 +1373,18 @@ impl Wire for Models {
         get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
+    /// Decode a complete model catalogue without pagination.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
+        DocumentDecoder::new(
+            |body| classify_untyped_line(body.as_bytes()),
+            |event| {
+                let models = event.data.into_iter().map(ModelInfo::from).collect();
+                Ok(ModelPage {
+                    models: ModelList::new(models),
+                    next: None,
+                })
+            },
+        )
     }
 }
 
@@ -1419,52 +1456,12 @@ pub struct RerankReply {
     pub usage: Option<RerankUsage>,
 }
 
-/// The rerank decoder.
-#[derive(Default)]
-pub struct RerankDecoder;
-
-impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
-    type Event = RerankReply;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, RerankOp>,
-    ) -> Result<Flow, ProviderError> {
-        let usage = event
-            .usage
-            .map(|usage| crate::completion::Usage {
-                input_tokens: Some(usage.prompt_tokens),
-                total_tokens: Some(usage.total_tokens),
-                ..Default::default()
-            })
-            .unwrap_or_default();
-        let results = event
-            .results
-            .into_iter()
-            .map(|result| crate::rerank::RerankResult {
-                index: result.index,
-                document: result.document,
-                relevance_score: result.relevance_score,
-            })
-            .collect();
-        Ok(out.end(crate::rerank::RerankResponse {
-            model: event.model,
-            usage,
-            ..crate::rerank::RerankResponse::new(results)
-        }))
-    }
-}
-
 impl Wire for Rerank {
     type Op = RerankOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = RerankDecoder;
+    type Event = RerankReply;
+    type Decoder<'id> = DocumentDecoder<RerankOp, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -1513,7 +1510,33 @@ impl Wire for Rerank {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        RerankDecoder
+        DocumentDecoder::new(
+            |body| classify_untyped_line(body.as_bytes()),
+            |event| {
+                let usage = event
+                    .usage
+                    .map(|usage| crate::completion::Usage {
+                        input_tokens: Some(usage.prompt_tokens),
+                        total_tokens: Some(usage.total_tokens),
+                        ..Default::default()
+                    })
+                    .unwrap_or_default();
+                let results = event
+                    .results
+                    .into_iter()
+                    .map(|result| crate::rerank::RerankResult {
+                        index: result.index,
+                        document: result.document,
+                        relevance_score: result.relevance_score,
+                    })
+                    .collect();
+                Ok(crate::rerank::RerankResponse {
+                    model: event.model,
+                    usage,
+                    ..crate::rerank::RerankResponse::new(results)
+                })
+            },
+        )
     }
 }
 
@@ -1537,6 +1560,7 @@ impl Wire for Verify {
     type Op = VerifyOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = ();
     type Decoder<'id> = VerifyDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

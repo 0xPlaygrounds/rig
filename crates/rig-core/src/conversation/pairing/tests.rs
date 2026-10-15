@@ -333,7 +333,7 @@ fn a_window_starts_past_results_whose_calls_it_cuts_off() {
 #[test]
 fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
     let entry = |id: u64, message: Message| Entry {
-        message,
+        message: message.into(),
         author: None,
         id: Some(MessageId(id)),
         made: Some(id * 10),
@@ -364,14 +364,14 @@ fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
     assert_eq!(ids, [id(0), id(1), id(2), id(5), id(6), None]);
     let merged = normalized.entries.get(2).expect("the merged turn");
     assert_eq!((merged.author.clone(), merged.made), (None, Some(20)));
-    let Message::Assistant(turn) = &merged.message else {
+    let Message::Assistant(turn) = &*merged.message else {
         panic!("a turn: {merged:?}");
     };
     assert_eq!(
         (turn.content.len(), turn.stop.clone()),
         (3, Some(StopReason::ToolUse))
     );
-    let next = normalized.entries.get(3).map(|entry| &entry.message);
+    let next = normalized.entries.get(3).map(|entry| &*entry.message);
     let made_up = close_pending([&tool_call("c1")]);
     let Some(Message::User { content }) = next else {
         panic!("a user entry: {next:?}");
@@ -386,7 +386,7 @@ fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
     );
     let last = normalized.entries.last().expect("an entry");
     assert_eq!(last.author, Some(Author::rig()));
-    assert_eq!(last.message, close_pending([&tool_call("c2")]));
+    assert_eq!(last.message, close_pending([&tool_call("c2")]).into());
 
     let again = normalize(normalized.entries.clone());
     assert_eq!(again.entries, normalized.entries);
@@ -398,7 +398,7 @@ fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
 #[test]
 fn normalize_puts_a_system_entry_after_the_results_it_waited_for() {
     let entry = |id: u64, message: Message| Entry {
-        message,
+        message: message.into(),
         author: None,
         id: Some(MessageId(id)),
         made: None,
@@ -411,7 +411,7 @@ fn normalize_puts_a_system_entry_after_the_results_it_waited_for() {
     let order: Vec<(Option<MessageId>, &Message)> = normalized
         .entries
         .iter()
-        .map(|entry| (entry.id, &entry.message))
+        .map(|entry| (entry.id, &*entry.message))
         .collect();
     let note = Message::system("note");
     let answer = results(&["c1"]);

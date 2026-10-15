@@ -24,7 +24,7 @@ pub(crate) fn replay(
 ) -> Result<vertexai::model::Content, rig_core::error::EncodeError> {
     use rig_core::wire::{Mode, Wire};
     let mut request = CompletionRequest::new("next");
-    request.chat_history = vec![rig_core::message::Message::from(choice)];
+    request.chat_history = vec![rig_core::message::Message::from(choice).into()];
     let request = crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH)
         .encode(request, Mode::Unary)?;
     request

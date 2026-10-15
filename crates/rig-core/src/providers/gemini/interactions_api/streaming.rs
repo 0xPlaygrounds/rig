@@ -8,6 +8,7 @@
 //! # let _ = decoder;
 //! ```
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
@@ -226,14 +227,16 @@ impl InteractionsDecoder {
                 Open::Thought
             }
             Some("model_output") => {
-                let items = step.arr("content").iter();
-                let items = items.map(|content| open_content(content.clone(), out));
-                let items = items.collect::<Result<_, _>>()?;
                 let mut step = step;
-                if let Some(step) = step.as_object_mut() {
-                    step.insert("content".to_owned(), json!([]));
-                }
-                Open::Output(step, items)
+                let content = step
+                    .as_object_mut()
+                    .and_then(|step| step.insert("content".to_owned(), Value::Array(Vec::new())));
+                let items = match content {
+                    Some(Value::Array(items)) => items,
+                    _ => Vec::new(),
+                };
+                let items = items.into_iter().map(|content| open_content(content, out));
+                Open::Output(step, items.collect::<Result<_, _>>()?)
             }
             Some("function_call") => {
                 call_fields(index, &step, out)?;
@@ -258,16 +261,15 @@ impl InteractionsDecoder {
     fn delta(
         &mut self,
         index: usize,
-        delta: Map<String, Value>,
+        mut delta: Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         let kind = delta
             .get("type")
             .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
+            .unwrap_or_default();
         if !self.steps.contains_key(&index) {
-            let step = match kind.as_str() {
+            let step = match kind {
                 "text" | "text_annotation_delta" | "image" | "audio" | "document" | "video" => {
                     "model_output"
                 }
@@ -280,12 +282,12 @@ impl InteractionsDecoder {
         let Some(open) = self.steps.get_mut(&index) else {
             return Ok(());
         };
-        match (open, kind.as_str()) {
+        match (open, kind) {
             // Text and its annotations extend the last text item and its
             // block; any other delta is a content item of its own.
             (Open::Output(_, items), _) => match items.last_mut() {
                 Some((block, item))
-                    if matches!(kind.as_str(), "text" | "text_annotation_delta")
+                    if matches!(kind, "text" | "text_annotation_delta")
                         && item.str("type") == Some("text") =>
                 {
                     if let Some(fragment) = delta.get("text").and_then(Value::as_str)
@@ -293,8 +295,6 @@ impl InteractionsDecoder {
                     {
                         out.push(*block, fragment)?;
                     }
-                    let mut delta = delta;
-                    delta.shift_remove("type");
                     merge(item, &delta);
                     Ok(())
                 }
@@ -304,25 +304,23 @@ impl InteractionsDecoder {
                 }
             },
             (Open::Thought, "thought_summary") => {
-                let content = delta.get("content").cloned().unwrap_or_default();
+                let content = delta.shift_remove("content").unwrap_or_default();
                 if let Some(text) = content
                     .str("text")
                     .filter(|_| content.str("type") == Some("text"))
                 {
                     out.push(index, text)?;
                 }
+                let summary = Value::Array(vec![content]);
                 out.edit(index, |item| {
-                    merge(
-                        item,
-                        &Map::from_iter([("summary".to_owned(), json!([content]))]),
-                    )
+                    merge(item, &Map::from_iter([("summary".to_owned(), summary)]))
                 })
             }
             (Open::Call(arguments), "arguments_delta") => {
                 let fragment = match delta.get("arguments") {
-                    Some(Value::String(fragment)) => fragment.clone(),
-                    Some(Value::Null) | None => String::new(),
-                    Some(other) => other.to_string(),
+                    Some(Value::String(fragment)) => Cow::Borrowed(fragment.as_str()),
+                    Some(Value::Null) | None => Cow::Borrowed(""),
+                    Some(other) => Cow::Owned(other.to_string()),
                 };
                 arguments.push_str(&fragment);
                 let fragment = CallFragment {
@@ -381,7 +379,7 @@ impl InteractionsDecoder {
                     }
                     let mut step = step.clone();
                     if let Some(step) = step.as_object_mut() {
-                        step.insert("content".to_owned(), json!([item]));
+                        step.insert("content".to_owned(), Value::Array(vec![item]));
                     }
                     out.edit(block, |slot| *slot = step)?;
                     out.finish(block)?;
@@ -402,9 +400,8 @@ impl InteractionsDecoder {
             .or_else(|| self.model.take());
         let status = field("status").or_else(|| self.status.take());
         let (reason, error) = ending(status.as_deref(), interaction.arr("errors"));
-        let usage = interaction.get("usage").cloned().unwrap_or(Value::Null);
         let finish = Finish {
-            usage: usage_of(&usage),
+            usage: usage_of(interaction.get("usage").unwrap_or(&Value::Null)),
             reason,
             response_id: field("id"),
             model,
@@ -552,17 +549,20 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
             fields: event,
         } = match event {
             InteractionsEvent::Sse(event) => event,
-            InteractionsEvent::Whole(interaction) => {
-                let steps = Value::Object(interaction.clone());
-                for (index, step) in steps.arr("steps").iter().enumerate() {
-                    self.start(index, step.clone(), &mut out)?;
+            InteractionsEvent::Whole(mut interaction) => {
+                let steps = match interaction.shift_remove("steps") {
+                    Some(Value::Array(steps)) => steps,
+                    _ => Vec::new(),
+                };
+                for (index, step) in steps.into_iter().enumerate() {
+                    self.start(index, step, &mut out)?;
                     self.stop(index, &mut out)?;
                 }
                 return Ok(self.complete(interaction, out));
             }
         };
-        let event = Value::Object(event);
-        let index = || {
+        let mut event = Value::Object(event);
+        let index = |event: &Value| {
             event
                 .u64("index")
                 .and_then(|index| usize::try_from(index).ok())
@@ -580,17 +580,17 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
         let event_id = event.str("event_id").map(str::to_owned);
         let resumable = event_id.is_some() || event_type == "interaction.created";
         match event_type.as_str() {
-            "step.start" => match event.get("step") {
+            "step.start" => match event.get_mut("step").map(Value::take) {
                 // A start that states no step leaves its deltas to open it.
                 None => {}
-                Some(step @ Value::Object(_)) => self.start(index()?, step.clone(), &mut out)?,
+                Some(step @ Value::Object(_)) => self.start(index(&event)?, step, &mut out)?,
                 Some(_) => return Err(malformed("step")),
             },
-            "step.delta" => match event.get("delta") {
-                Some(Value::Object(delta)) => self.delta(index()?, delta.clone(), &mut out)?,
+            "step.delta" => match event.get_mut("delta").map(Value::take) {
+                Some(Value::Object(delta)) => self.delta(index(&event)?, delta, &mut out)?,
                 _ => return Err(malformed("delta")),
             },
-            "step.stop" => self.stop(index()?, &mut out)?,
+            "step.stop" => self.stop(index(&event)?, &mut out)?,
             "interaction.created" => {
                 let field = |key: &str| {
                     event
@@ -610,7 +610,10 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
                 }
             }
             "interaction.completed" => {
-                let interaction = event.obj("interaction").cloned().unwrap_or_default();
+                let interaction = match event.get_mut("interaction").map(Value::take) {
+                    Some(Value::Object(interaction)) => interaction,
+                    _ => Map::new(),
+                };
                 return Ok(self.complete(interaction, out));
             }
             "error" => {

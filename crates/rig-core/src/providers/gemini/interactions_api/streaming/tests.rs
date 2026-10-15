@@ -460,3 +460,28 @@ fn annotations_cite_their_text_item_in_both_modes() {
     );
     assert_eq!(replayed(&response), [output]);
 }
+
+/// An arguments delta may carry the arguments as JSON rather than text, or
+/// none at all; the call reads them either way.
+#[test]
+fn a_call_reads_arguments_a_delta_sends_as_json_or_omits() {
+    let frames = [
+        start(
+            0,
+            json!({"type": "function_call", "id": "c1", "name": "add", "arguments": {}}),
+        ),
+        delta(0, json!({"type": "arguments_delta", "arguments": null})),
+        delta(
+            0,
+            json!({"type": "arguments_delta", "arguments": {"x": 17}}),
+        ),
+        stop(0),
+        completed(),
+    ];
+    let response = decode(&wire(), Mode::Streaming, frames).expect("the stream decodes");
+    let arguments: Vec<_> = response
+        .tool_calls()
+        .map(|call| serde_json::Value::Object(call.function.arguments.clone()))
+        .collect();
+    assert_eq!(arguments, [json!({"x": 17})]);
+}

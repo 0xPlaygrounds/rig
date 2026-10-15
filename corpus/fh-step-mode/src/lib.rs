@@ -481,9 +481,12 @@ fn record(conversation: &mut Conversation, call: &ToolCall) -> Option<MessageId>
         matches!(message, Message::Assistant(reply)
             if reply.tool_calls().any(|asked| asked.id == call.id))
     };
-    let at = conversation.messages().iter().rposition(asked)?;
+    let at = conversation
+        .messages()
+        .iter()
+        .rposition(|message| asked(message))?;
     let mut entry = conversation.entry(at)?;
-    if let Message::Assistant(reply) = &mut entry.message {
+    if let Message::Assistant(reply) = std::sync::Arc::make_mut(&mut entry.message) {
         for content in &mut reply.content {
             if let AssistantContent::ToolCall(asked) = content
                 && asked.id == call.id

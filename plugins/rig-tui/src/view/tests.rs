@@ -35,7 +35,7 @@ fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {
     // A plugin's edit adds a second text to the message, which keeps its id.
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent)
         && let Some(mut entry) = conversation.entry(0)
-        && let Message::User { content } = &mut entry.message
+        && let Message::User { content } = std::sync::Arc::make_mut(&mut entry.message)
     {
         content.push(UserContent::text("second"));
         conversation.splice(..1, [entry], Author::plugin("test"));

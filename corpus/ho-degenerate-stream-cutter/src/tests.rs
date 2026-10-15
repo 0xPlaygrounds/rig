@@ -66,7 +66,7 @@ fn answers(world: &World, agent: Entity) -> Vec<String> {
     let assistant = messages
         .unwrap_or_default()
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             message::Message::Assistant(answer) => Some(answer),
             _ => None,
         });

@@ -7,18 +7,21 @@ use serde_json::{Value, json};
 
 use super::Response;
 use crate::providers::chatgpt::DIALECT as CHATGPT;
+use crate::providers::openai::responses_api::streaming::ResponsesDecoder;
 use crate::providers::openai::wire::OpenAIConfig;
 use crate::test_utils::raw_parity::raw_pair;
 use crate::wire::WireFrame;
-use crate::wire::document::Reassemble;
+use crate::wire::document::rebuild;
 
 /// The document `events` rebuild, each sent as one frame.
 fn rebuilt(events: &[Value]) -> Value {
-    let mut document = Response::default();
-    for event in events {
-        document.absorb(&WireFrame::Text(event.to_string()));
-    }
-    document.finish()
+    rebuild(
+        &ResponsesDecoder::default(),
+        Response::default(),
+        events
+            .iter()
+            .map(|event| WireFrame::Text(event.to_string())),
+    )
 }
 
 /// `events` as the event stream a provider sends.

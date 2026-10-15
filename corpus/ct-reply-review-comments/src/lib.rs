@@ -219,7 +219,8 @@ impl Reply {
 /// something.
 fn reply_text(conversation: &Thread, id: MessageId) -> Option<String> {
     let at = conversation.index_of(id)?;
-    let Some(Message::Assistant(reply)) = conversation.messages().get(at) else {
+    let Some(Message::Assistant(reply)) = conversation.messages().get(at).map(|message| &**message)
+    else {
         return None;
     };
     let text = reply.text();

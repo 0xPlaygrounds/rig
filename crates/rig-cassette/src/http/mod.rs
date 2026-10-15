@@ -158,12 +158,7 @@ impl From<&'static str> for CassetteSpec {
 
 #[derive(Clone, Copy, Debug)]
 struct CassettePolicy {
-    recorded_request_headers: &'static [&'static str],
     required_request_headers: &'static [&'static str],
-    sensitive_headers: &'static [&'static str],
-    sensitive_query_params: &'static [&'static str],
-    response_header_allowlist: &'static [&'static str],
-    forbidden_patterns: &'static [&'static str],
     replay_matching: ReplayMatching,
     body_matching: BodyMatching,
 }
@@ -185,36 +180,14 @@ impl CassettePolicy {
             required_request_headers,
             replay_matching: spec.replay_matching,
             body_matching: spec.body_matching.unwrap_or(BodyMatching::Exact),
-            ..Self::default()
         }
-    }
-
-    fn is_sensitive_header(self, name: &str) -> bool {
-        contains_case_insensitive(self.sensitive_headers, name)
-    }
-
-    fn required_request_headers(self) -> &'static [&'static str] {
-        self.required_request_headers
-    }
-
-    fn is_sensitive_query_param(self, name: &str) -> bool {
-        contains_case_insensitive(self.sensitive_query_params, name)
-    }
-
-    fn is_allowed_response_header(self, name: &str) -> bool {
-        contains_case_insensitive(self.response_header_allowlist, name)
     }
 }
 
 impl Default for CassettePolicy {
     fn default() -> Self {
         Self {
-            recorded_request_headers: RECORDED_REQUEST_HEADERS,
             required_request_headers: NO_REQUIRED_REQUEST_HEADERS,
-            sensitive_headers: SENSITIVE_HEADER_NAMES,
-            sensitive_query_params: SENSITIVE_QUERY_PARAMS,
-            response_header_allowlist: RESPONSE_HEADER_ALLOWLIST,
-            forbidden_patterns: FORBIDDEN_CASSETTE_PATTERNS,
             replay_matching: ReplayMatching::Ordered,
             body_matching: BodyMatching::Exact,
         }
@@ -282,7 +255,6 @@ fn skips_recording(mode: CassetteMode, reason: &str) -> bool {
 #[derive(Clone, Debug)]
 pub struct DirectRecorder {
     interactions: Arc<Mutex<Vec<CassetteInteraction>>>,
-    policy: CassettePolicy,
     ledger: Arc<relay::LedgerTarget>,
 }
 
@@ -319,32 +291,17 @@ impl DirectRecorder {
         status: u16,
         response_body: &[u8],
     ) {
-        if !(200..300).contains(&status) {
-            return;
-        }
         let path = url::Url::parse(uri)
             .map(|url| url.path().to_owned())
             .unwrap_or_else(|_| uri.to_owned());
-        let created = ledger::created_resources(
-            &self.ledger.provider,
-            &self.ledger.origin,
-            method,
-            &path,
-            request_body,
-            response_body,
-        );
-        ledger::append(
-            &self.ledger.path,
-            &created
-                .into_iter()
-                .map(|resource| {
-                    ledger::LedgerEntry::Created(ledger::CreatedResource {
-                        scenario: self.ledger.scenario.clone(),
-                        ..resource
-                    })
-                })
-                .collect::<Vec<_>>(),
-        );
+        let creation = relay::TappedCreation {
+            status,
+            method: method.to_owned(),
+            path,
+            request_body: request_body.to_vec(),
+            response_body: response_body.to_vec(),
+        };
+        relay::record(&self.ledger, vec![creation]);
     }
 
     /// Scrub and append one complete direct request/response exchange.
@@ -359,15 +316,9 @@ impl DirectRecorder {
             impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
         >,
     ) {
-        let mut scrubber = CassetteScrubber::new(self.policy);
+        let mut scrubber = CassetteScrubber::default();
         let mut interaction = CassetteInteraction {
-            when: recorded_request(
-                self.policy,
-                request.method,
-                request.uri,
-                request.headers,
-                request.body,
-            ),
+            when: recorded_request(request.method, request.uri, request.headers, request.body),
             then: recorded_response(response.status, response.headers, response.body),
         };
         // The ledger sees the exchange before its reply reaches the caller.
@@ -403,7 +354,6 @@ pub struct ProviderCassette {
     cassette_path: PathBuf,
     base_path: String,
     mode: CassetteMode,
-    policy: CassettePolicy,
     provider: &'static str,
     scenario: &'static str,
     expected_failures: Arc<AtomicU8>,
@@ -525,16 +475,16 @@ impl ProviderCassette {
         mode: CassetteMode,
         cassette_path: PathBuf,
     ) -> Self {
-        Self::start_with_attempts(
+        Self::try_start_at(
             transport,
             provider,
             spec,
             real_base_url,
             mode,
             cassette_path,
-            attempt_root(),
         )
         .await
+        .unwrap_or_else(|error| panic!("{error}"))
     }
 
     /// [`Self::start_at`] without panicking. Returns an error for an invalid
@@ -577,30 +527,8 @@ impl ProviderCassette {
         .await
     }
 
-    /// [`Self::start_at`] with failed recordings and the ledger under
+    /// [`Self::try_start_at`] with failed recordings and the ledger under
     /// `attempt_root` instead of the ambient [`attempt_root`].
-    pub(crate) async fn start_with_attempts(
-        transport: RecordVia,
-        provider: &'static str,
-        spec: CassetteSpec,
-        real_base_url: &str,
-        mode: CassetteMode,
-        cassette_path: PathBuf,
-        attempt_root: PathBuf,
-    ) -> Self {
-        Self::try_start_with_attempts(
-            transport,
-            provider,
-            spec,
-            real_base_url,
-            mode,
-            cassette_path,
-            attempt_root,
-        )
-        .await
-        .unwrap_or_else(|error| panic!("{error}"))
-    }
-
     async fn try_start_with_attempts(
         transport: RecordVia,
         provider: &'static str,
@@ -669,7 +597,7 @@ impl ProviderCassette {
             let interactions = load_replay_interactions(&cassette_path).await?;
             let recorded: Vec<Value> = interactions
                 .iter()
-                .map(|interaction| recorded_body_view(policy, &interaction.when))
+                .map(|interaction| recorded_body_view(&interaction.when))
                 .collect();
             let shapes = (policy.body_matching == BodyMatching::Shape).then(|| ReplayShapes {
                 keys: recorded.iter().map(shape::shape_key).collect(),
@@ -706,10 +634,9 @@ impl ProviderCassette {
                         })
                         .await;
 
-                    let recorded_request_headers = policy.recorded_request_headers.to_vec();
                     let recording = server
-                        .record_async(move |rule| {
-                            rule.record_request_headers(recorded_request_headers)
+                        .record_async(|rule| {
+                            rule.record_request_headers(RECORDED_REQUEST_HEADERS.to_vec())
                                 .filter(|when| {
                                     when.any_request();
                                 });
@@ -746,7 +673,6 @@ impl ProviderCassette {
             cassette_path,
             base_path: upstream.path,
             mode,
-            policy,
             provider,
             scenario,
             expected_failures: Arc::new(AtomicU8::new(spec.expected_failures)),
@@ -772,50 +698,14 @@ impl ProviderCassette {
     /// Return `false` for replay, empty recordings, export or parsing failures,
     /// failed safety checks, or write errors. Empty snapshots never replace a file.
     pub async fn checkpoint_recording(&self, path: &Path) -> bool {
-        if !self.mode.records() {
-            return false;
-        }
-        let yaml = match &self.server {
-            CassetteServer::Recording {
-                server,
-                recording_id,
-                ..
-            } => {
-                let recording = httpmock::Recording::new(*recording_id, server);
-                let Ok(Some(bytes)) = recording.export_async().await else {
-                    return false;
-                };
-                let Ok(yaml) = String::from_utf8(bytes.to_vec()) else {
-                    return false;
-                };
-                yaml
-            }
-            CassetteServer::DirectRecording(server) => {
-                let interactions = server.interactions.lock().await;
-                if interactions.is_empty() {
-                    return false;
-                }
-                serialize_cassette_interactions(&interactions)
-            }
-            CassetteServer::Replay(_) => return false,
-        };
-        // httpmock can export an empty YAML document before the first response.
-        let parsed = serde_yaml::Deserializer::from_str(&yaml)
-            .map(CassetteInteraction::deserialize)
-            .collect::<Result<Vec<_>, _>>();
-        let Ok(interactions) = parsed else {
+        let Some(yaml) = self.server.recorded_yaml().await else {
             return false;
         };
-        if interactions.is_empty() {
-            return false;
-        }
-        let redacted = scrub_cassette_contents_with_policy(self.policy, &yaml);
-        if !cassette_safety_failures_with_policy(self.policy, path, &redacted).is_empty() {
-            return false;
-        }
-        write_cassette_atomically(path, redacted.as_bytes())
-            .await
-            .is_ok()
+        let redacted = scrub_cassette_contents(&yaml);
+        cassette_safety_failures(path, &redacted).is_empty()
+            && write_cassette_atomically(path, redacted.as_bytes())
+                .await
+                .is_ok()
     }
 
     /// Return the direct recorder only for an active direct-recording session.
@@ -823,7 +713,6 @@ impl ProviderCassette {
         match &self.server {
             CassetteServer::DirectRecording(server) => Some(DirectRecorder {
                 interactions: server.interactions.clone(),
-                policy: self.policy,
                 ledger: server.ledger.clone(),
             }),
             _ => None,
@@ -889,7 +778,6 @@ impl ProviderCassette {
         let Self {
             server,
             cassette_path,
-            policy,
             provider,
             scenario,
             attempt_root,
@@ -916,14 +804,14 @@ impl ProviderCassette {
 
         let refusals = recording_refusals(provider, &yaml, expected);
         if !refusals.is_empty() {
-            let kept_at = write_attempt(&attempt_root, provider, scenario, policy, &yaml).await;
+            let kept_at = write_attempt(&attempt_root, provider, scenario, &yaml).await;
             return Err(CassetteError::RecordingRefused {
                 path: cassette_path,
                 refusals,
                 kept_at,
             });
         }
-        write_scrubbed_cassette(&cassette_path, policy, &yaml).await?;
+        write_scrubbed_cassette(&cassette_path, &yaml).await?;
         clock.finish(&cassette_path).await
     }
 
@@ -972,15 +860,13 @@ impl ProviderCassette {
         }
         let Self {
             server,
-            policy,
             provider,
             scenario,
             attempt_root,
             ..
         } = self;
         if let Some(yaml) = server.recorded_yaml().await
-            && let Some(path) =
-                write_attempt(&attempt_root, provider, scenario, policy, &yaml).await
+            && let Some(path) = write_attempt(&attempt_root, provider, scenario, &yaml).await
         {
             eprintln!("failed recording kept at {}", path.display());
         }
@@ -1178,7 +1064,7 @@ impl BodyEncoding {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct NameValue {
     name: String,
     value: String,
@@ -1342,8 +1228,8 @@ async fn replay_request(
         body,
     };
     let policy = state.policy;
-    let sent = (state.snapshots.is_some() || state.shapes.is_some())
-        .then(|| incoming_body_view(policy, &request));
+    let sent =
+        (state.snapshots.is_some() || state.shapes.is_some()).then(|| incoming_body_view(&request));
     let sent_shape = state
         .shapes
         .as_ref()
@@ -1444,7 +1330,7 @@ fn miss_candidate_index(
 }
 
 /// A recorded request's body as request snapshots compare it.
-fn recorded_body_view(policy: CassettePolicy, request: &CassetteRequest) -> Value {
+fn recorded_body_view(request: &CassetteRequest) -> Value {
     let content_type = request
         .header
         .iter()
@@ -1456,16 +1342,16 @@ fn recorded_body_view(policy: CassettePolicy, request: &CassetteRequest) -> Valu
         .as_deref()
         .and_then(|body| decode_body(body, request.body_encoding).ok())
         .unwrap_or_default();
-    snapshot::body_view(policy, content_type, &body)
+    snapshot::body_view(content_type, &body)
 }
 
 /// An incoming request's body as request snapshots compare it.
-fn incoming_body_view(policy: CassettePolicy, request: &IncomingRequest) -> Value {
+fn incoming_body_view(request: &IncomingRequest) -> Value {
     let content_type = request
         .headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok());
-    snapshot::body_view(policy, content_type, &request.body)
+    snapshot::body_view(content_type, &request.body)
 }
 
 /// Under shape matching, the coarse shape key of every interaction's
@@ -1534,7 +1420,6 @@ fn replay_miss_message(
             let headers_match = headers_match(&request.headers, &interaction.when.header);
             let required_headers_match = required_headers_present(policy, &request.headers);
             let body_matches = body_matches(
-                policy,
                 &request.headers,
                 &interaction.when.header,
                 &request.body,
@@ -1550,14 +1435,14 @@ fn replay_miss_message(
                 "method_matches": method_matches,
                 "path_matches": path_matches,
                 "query_matches": query_matches,
-                "expected_query_params": scrub_name_values_for_diagnostics(policy, &interaction.when.query_param),
+                "expected_query_params": scrub_name_values_for_diagnostics(interaction.when.query_param.clone()),
                 "headers_match": headers_match,
                 "required_headers_match": required_headers_match,
                 "body_matches": body_matches,
                 "shape_matches": shape_matches,
                 "expected_method": interaction.when.method,
                 "expected_path": interaction.when.path,
-                "expected_body_preview": interaction.when.body.as_deref().map(|body| body_preview_for_diagnostics(policy, body)),
+                "expected_body_preview": interaction.when.body.as_deref().map(body_preview_for_diagnostics),
             })
         })
         .collect::<Vec<_>>();
@@ -1566,11 +1451,11 @@ fn replay_miss_message(
         "message": "Request did not match any route or mock",
         "actual_method": request.method.as_str(),
         "actual_path": request.uri.path(),
-        "actual_query": request.uri.query().map(|query| scrub_text_for_diagnostics(policy, query)),
-        "actual_query_params": scrub_query_pairs_for_diagnostics(policy, request.uri.query()),
-        "required_headers": policy.required_request_headers(),
+        "actual_query": request.uri.query().map(scrub_text_for_diagnostics),
+        "actual_query_params": scrub_query_pairs_for_diagnostics(request.uri.query()),
+        "required_headers": policy.required_request_headers,
         "missing_required_headers": missing_required_headers(policy, &request.headers),
-        "actual_body_preview": body_preview_bytes_for_diagnostics(policy, &request.body),
+        "actual_body_preview": body_preview_bytes_for_diagnostics(&request.body),
         "candidates": candidates,
     });
     if let (Some(difference), Value::Object(fields)) = (snapshot_diff, &mut message) {
@@ -1638,7 +1523,6 @@ fn request_matches(
 ) -> bool {
     request_line_matches(policy, request, expected)
         && body_matches(
-            policy,
             &request.headers,
             &expected.header,
             &request.body,
@@ -1648,7 +1532,6 @@ fn request_matches(
 }
 
 fn recorded_request<N, V>(
-    policy: CassettePolicy,
     method: &str,
     uri: &str,
     headers: impl IntoIterator<Item = (N, V)>,
@@ -1668,7 +1551,7 @@ where
             .into_owned()
             .map(|(name, value)| NameValue { name, value })
             .collect(),
-        header: recorded_request_headers(policy, headers),
+        header: recorded_request_headers(headers),
         body: recorded_body.body,
         body_encoding: recorded_body.encoding,
     }
@@ -1705,10 +1588,7 @@ fn parse_recorded_uri(uri: &str) -> url::Url {
     })
 }
 
-fn recorded_request_headers<N, V>(
-    policy: CassettePolicy,
-    headers: impl IntoIterator<Item = (N, V)>,
-) -> Vec<NameValue>
+fn recorded_request_headers<N, V>(headers: impl IntoIterator<Item = (N, V)>) -> Vec<NameValue>
 where
     N: AsRef<str>,
     V: AsRef<str>,
@@ -1717,7 +1597,7 @@ where
         .into_iter()
         .filter_map(|(name, value)| {
             let name = name.as_ref();
-            contains_case_insensitive(policy.recorded_request_headers, name).then(|| NameValue {
+            contains_case_insensitive(RECORDED_REQUEST_HEADERS, name).then(|| NameValue {
                 name: name.to_ascii_lowercase(),
                 value: value.as_ref().to_string(),
             })
@@ -1806,7 +1686,7 @@ fn missing_required_headers(
     actual: &axum::http::HeaderMap,
 ) -> Vec<&'static str> {
     policy
-        .required_request_headers()
+        .required_request_headers
         .iter()
         .copied()
         .filter(|required| !has_nonempty_header(actual, required))
@@ -1825,7 +1705,6 @@ fn has_nonempty_header(actual: &axum::http::HeaderMap, name: &str) -> bool {
 }
 
 fn body_matches(
-    policy: CassettePolicy,
     actual_headers: &axum::http::HeaderMap,
     expected_headers: &[NameValue],
     actual: &[u8],
@@ -1853,8 +1732,8 @@ fn body_matches(
     let Ok(expected) = std::str::from_utf8(&expected_bytes) else {
         return false;
     };
-    let actual = CassetteScrubber::new(policy).scrub_body(actual);
-    let expected = CassetteScrubber::new(policy).scrub_body(expected);
+    let actual = CassetteScrubber::default().scrub_body(actual);
+    let expected = CassetteScrubber::default().scrub_body(expected);
 
     if let (Some(actual_json), Some(expected_json)) =
         (canonical_json(&actual), canonical_json(&expected))
@@ -1935,12 +1814,12 @@ fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPar
     let mut parts = Vec::new();
 
     for raw_part in split_bytes(body, &marker).into_iter().skip(1) {
-        let raw_part = strip_prefix_bytes(raw_part, b"\r\n");
+        let raw_part = raw_part.strip_prefix(b"\r\n").unwrap_or(raw_part);
         if raw_part.starts_with(b"--") {
             break;
         }
 
-        let raw_part = strip_suffix_bytes(raw_part, b"\r\n");
+        let raw_part = raw_part.strip_suffix(b"\r\n").unwrap_or(raw_part);
         if raw_part.iter().all(u8::is_ascii_whitespace) {
             continue;
         }
@@ -1984,21 +1863,10 @@ fn split_bytes<'a>(body: &'a [u8], marker: &[u8]) -> Vec<&'a [u8]> {
     parts
 }
 
+/// Where `needle`, which is not empty, first occurs in `body`.
 fn find_bytes(body: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() {
-        return Some(0);
-    }
-
     body.windows(needle.len())
         .position(|window| window == needle)
-}
-
-fn strip_prefix_bytes<'a>(body: &'a [u8], prefix: &[u8]) -> &'a [u8] {
-    body.strip_prefix(prefix).unwrap_or(body)
-}
-
-fn strip_suffix_bytes<'a>(body: &'a [u8], suffix: &[u8]) -> &'a [u8] {
-    body.strip_suffix(suffix).unwrap_or(body)
 }
 
 fn normalize_multipart_header_value(value: &str) -> String {
@@ -2038,19 +1906,15 @@ fn body_preview(body: &str) -> String {
     preview
 }
 
-fn body_preview_for_diagnostics(policy: CassettePolicy, body: &str) -> String {
-    body_preview(&scrub_body_for_diagnostics(policy, body))
+fn body_preview_for_diagnostics(body: &str) -> String {
+    body_preview(&CassetteScrubber::default().scrub_body(body))
 }
 
-fn body_preview_bytes_for_diagnostics(policy: CassettePolicy, body: &[u8]) -> String {
+fn body_preview_bytes_for_diagnostics(body: &[u8]) -> String {
     match std::str::from_utf8(body) {
-        Ok(body) => body_preview_for_diagnostics(policy, body),
+        Ok(body) => body_preview_for_diagnostics(body),
         Err(_) => format!("<{} bytes of non-UTF-8 body>", body.len()),
     }
-}
-
-fn scrub_body_for_diagnostics(policy: CassettePolicy, body: &str) -> String {
-    CassetteScrubber::new(policy).scrub_body(body)
 }
 
 /// Redact directories of home paths beginning at the input start or after a
@@ -2105,39 +1969,21 @@ fn scrub_local_filesystem_paths(text: &str) -> String {
     output
 }
 
-fn scrub_text_for_diagnostics(policy: CassettePolicy, text: &str) -> String {
-    CassetteScrubber::new(policy).scrub_text(text)
+fn scrub_text_for_diagnostics(text: &str) -> String {
+    CassetteScrubber::default().scrub_text(text)
 }
 
-fn scrub_query_pairs_for_diagnostics(
-    policy: CassettePolicy,
-    query: Option<&str>,
-) -> Vec<NameValue> {
-    let mut pairs = parsed_query_pairs(query)
+fn scrub_query_pairs_for_diagnostics(query: Option<&str>) -> Vec<NameValue> {
+    let pairs = parsed_query_pairs(query)
         .into_iter()
-        .map(|(name, value)| NameValue { name, value })
-        .collect::<Vec<_>>();
-    scrub_query_params(policy, &mut pairs);
-    for pair in &mut pairs {
-        pair.value = scrub_text_for_diagnostics(policy, &pair.value);
-    }
-    pairs
+        .map(|(name, value)| NameValue { name, value });
+    scrub_name_values_for_diagnostics(pairs.collect())
 }
 
-fn scrub_name_values_for_diagnostics(
-    policy: CassettePolicy,
-    values: &[NameValue],
-) -> Vec<NameValue> {
-    let mut values = values
-        .iter()
-        .map(|value| NameValue {
-            name: value.name.clone(),
-            value: value.value.clone(),
-        })
-        .collect::<Vec<_>>();
-    scrub_query_params(policy, &mut values);
+fn scrub_name_values_for_diagnostics(mut values: Vec<NameValue>) -> Vec<NameValue> {
+    scrub_query_params(&mut values);
     for value in &mut values {
-        value.value = scrub_text_for_diagnostics(policy, &value.value);
+        value.value = scrub_text_for_diagnostics(&value.value);
     }
     values
 }
@@ -2199,13 +2045,6 @@ fn is_sse_response(headers: &[NameValue]) -> bool {
 }
 
 fn sse_body_chunks(body: &str) -> Vec<Bytes> {
-    fragmented_sse_body_chunks(body)
-        .into_iter()
-        .map(Bytes::from)
-        .collect()
-}
-
-fn fragmented_sse_body_chunks(body: &str) -> Vec<String> {
     const CHUNK_SIZES: [usize; 7] = [1, 5, 2, 13, 3, 8, 21];
 
     let mut chunks = Vec::new();
@@ -2221,7 +2060,7 @@ fn fragmented_sse_body_chunks(body: &str) -> Vec<String> {
             end += 1;
         }
 
-        chunks.push(body[start..end].to_string());
+        chunks.push(Bytes::copy_from_slice(&body.as_bytes()[start..end]));
         start = end;
     }
 
@@ -2335,15 +2174,27 @@ pub fn recorded_json_turns(
         .into_iter()
         .map(|(request, response)| {
             (
-                serde_json::from_str(&request).unwrap_or_else(|error| {
-                    panic!("cassette {provider}/{scenario} request should be JSON: {error}")
-                }),
-                serde_json::from_str(&response).unwrap_or_else(|error| {
-                    panic!("cassette {provider}/{scenario} response should be JSON: {error}")
-                }),
+                json_body(&request, provider, scenario, "request"),
+                json_body(&response, provider, scenario, "response"),
             )
         })
         .collect()
+}
+
+/// The first recorded request and response bodies, as
+/// [`recorded_interaction_bodies`] reads them.
+fn first_bodies(cassette_root: &Path, provider: &str, scenario: &str) -> (String, String) {
+    recorded_interaction_bodies(cassette_root, provider, scenario)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("cassette {provider}/{scenario} should contain an interaction"))
+}
+
+/// `body`, the recorded `what` of `provider/scenario`, as JSON.
+fn json_body(body: &str, provider: &str, scenario: &str, what: &str) -> Value {
+    serde_json::from_str(body).unwrap_or_else(|error| {
+        panic!("cassette {provider}/{scenario} {what} should be JSON: {error}")
+    })
 }
 
 /// Return a single recorded request and response as JSON.
@@ -2361,25 +2212,15 @@ pub fn recorded_json_turn(cassette_root: &Path, provider: &str, scenario: &str) 
 /// Return the first recorded request body as JSON.
 /// Panics for an unreadable, malformed, or empty fixture or invalid JSON body.
 pub fn recorded_json_request(cassette_root: &Path, provider: &str, scenario: &str) -> Value {
-    let (request, _) = recorded_interaction_bodies(cassette_root, provider, scenario)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| panic!("cassette {provider}/{scenario} should contain an interaction"));
-    serde_json::from_str(&request).unwrap_or_else(|error| {
-        panic!("cassette {provider}/{scenario} request should be JSON: {error}")
-    })
+    let (request, _) = first_bodies(cassette_root, provider, scenario);
+    json_body(&request, provider, scenario, "request")
 }
 
 /// Return the first recorded response body as JSON.
 /// Panics for an unreadable, malformed, or empty fixture or invalid JSON body.
 pub fn recorded_json_response(cassette_root: &Path, provider: &str, scenario: &str) -> Value {
-    let (_, response) = recorded_interaction_bodies(cassette_root, provider, scenario)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| panic!("cassette {provider}/{scenario} should contain an interaction"));
-    serde_json::from_str(&response).unwrap_or_else(|error| {
-        panic!("cassette {provider}/{scenario} response should be JSON: {error}")
-    })
+    let (_, response) = first_bodies(cassette_root, provider, scenario);
+    json_body(&response, provider, scenario, "response")
 }
 
 /// Return recorded request headers in wire order with lowercased names,
@@ -2462,21 +2303,13 @@ pub fn recorded_sse_json_frames(
     provider: &str,
     scenario: &str,
 ) -> Vec<Value> {
-    let (_, response) = recorded_interaction_bodies(cassette_root, provider, scenario)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| panic!("cassette {provider}/{scenario} should contain an interaction"));
-
+    let (_, response) = first_bodies(cassette_root, provider, scenario);
     response
         .lines()
         .filter_map(|line| line.trim().strip_prefix("data:"))
         .map(str::trim)
         .filter(|payload| *payload != "[DONE]")
-        .map(|payload| {
-            serde_json::from_str(payload).unwrap_or_else(|error| {
-                panic!("cassette {provider}/{scenario} SSE frame should be JSON: {error}")
-            })
-        })
+        .map(|payload| json_body(payload, provider, scenario, "SSE frame"))
         .collect()
 }
 
@@ -2499,12 +2332,8 @@ fn sanitize_path_segment(segment: &str) -> String {
 /// function is the identity on every committed cassette.
 /// Panics if the cassette cannot be parsed.
 pub fn scrub_cassette_contents(yaml: &str) -> String {
-    scrub_cassette_contents_with_policy(CassettePolicy::default(), yaml)
-}
-
-fn scrub_cassette_contents_with_policy(policy: CassettePolicy, yaml: &str) -> String {
     let mut interactions = parse_cassette_interactions(Path::new("<cassette>"), yaml);
-    let mut scrubber = CassetteScrubber::new(policy);
+    let mut scrubber = CassetteScrubber::default();
 
     for interaction in &mut interactions {
         scrubber.scrub_request(&mut interaction.when);
@@ -2517,16 +2346,8 @@ fn scrub_cassette_contents_with_policy(policy: CassettePolicy, yaml: &str) -> St
 /// Return diagnostics for unsanitized or unsafe material in a YAML cassette.
 /// Panics if the cassette cannot be parsed.
 pub fn cassette_safety_failures(cassette_path: &Path, contents: &str) -> Vec<String> {
-    cassette_safety_failures_with_policy(CassettePolicy::default(), cassette_path, contents)
-}
-
-fn cassette_safety_failures_with_policy(
-    policy: CassettePolicy,
-    cassette_path: &Path,
-    contents: &str,
-) -> Vec<String> {
     let mut failures = Vec::new();
-    let scrubbed = scrub_cassette_contents_with_policy(policy, contents);
+    let scrubbed = scrub_cassette_contents(contents);
 
     if scrubbed != contents {
         failures.push(format!(
@@ -2537,37 +2358,17 @@ fn cassette_safety_failures_with_policy(
 
     let decoded = decoded_base64_body_texts(contents);
     let with_decoded = format!("{}\n{}", contents, decoded.join("\n"));
-    failures.extend(artifact_safety_failures_with_policy(
-        policy,
-        cassette_path,
-        &with_decoded,
-    ));
+    failures.extend(artifact_safety_failures(cassette_path, &with_decoded));
     failures
 }
 
 /// The cassette engine's secret/provider-token checks for JSON sidecars and
 /// failure reports. Unlike the cassette validator this does not parse YAML.
-pub fn artifact_safety_failures(path: &Path, contents: &str) -> Vec<String> {
-    artifact_safety_failures_with_policy(CassettePolicy::default(), path, contents)
-}
-
-/// Scrub live diagnostics with the same credential rules as provider
-/// traffic. This is separate evidence, never a canonical effect log.
-pub fn scrub_artifact(value: &Value) -> Value {
-    let mut value = value.clone();
-    CassetteScrubber::new(CassettePolicy::default()).scrub_json_value(None, &mut value);
-    value
-}
-
-fn artifact_safety_failures_with_policy(
-    policy: CassettePolicy,
-    cassette_path: &Path,
-    contents: &str,
-) -> Vec<String> {
+pub fn artifact_safety_failures(cassette_path: &Path, contents: &str) -> Vec<String> {
     let mut failures = Vec::new();
 
     let lower = contents.to_ascii_lowercase();
-    for pattern in policy.forbidden_patterns {
+    for pattern in FORBIDDEN_CASSETTE_PATTERNS {
         if lower.contains(pattern) {
             failures.push(format!("{} contains {pattern:?}", cassette_path.display()));
         }
@@ -2593,6 +2394,14 @@ fn artifact_safety_failures_with_policy(
     }
 
     failures
+}
+
+/// Scrub live diagnostics with the same credential rules as provider
+/// traffic. This is separate evidence, never a canonical effect log.
+pub fn scrub_artifact(value: &Value) -> Value {
+    let mut value = value.clone();
+    CassetteScrubber::default().scrub_json_value(None, &mut value);
+    value
 }
 
 /// One reply in a cassette that [`reply_account_failure`] classifies.
@@ -2756,14 +2565,8 @@ pub(crate) fn target_dir_of(exe: &Path) -> Option<PathBuf> {
 /// Scrub `yaml` and write it to a fresh file under `root`:
 /// `<provider>/<scenario>.<unix seconds>-<pid>-<n>.yaml`. Returns the path,
 /// or `None` when the write failed.
-async fn write_attempt(
-    root: &Path,
-    provider: &str,
-    scenario: &str,
-    policy: CassettePolicy,
-    yaml: &str,
-) -> Option<PathBuf> {
-    let redacted = scrub_cassette_contents_with_policy(policy, yaml);
+async fn write_attempt(root: &Path, provider: &str, scenario: &str, yaml: &str) -> Option<PathBuf> {
+    let redacted = scrub_cassette_contents(yaml);
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs());
@@ -2783,13 +2586,9 @@ async fn write_attempt(
         .map(|()| path)
 }
 
-async fn write_scrubbed_cassette(
-    cassette_path: &Path,
-    policy: CassettePolicy,
-    yaml: &str,
-) -> Result<(), CassetteError> {
-    let redacted = scrub_cassette_contents_with_policy(policy, yaml);
-    let failures = cassette_safety_failures_with_policy(policy, cassette_path, &redacted);
+async fn write_scrubbed_cassette(cassette_path: &Path, yaml: &str) -> Result<(), CassetteError> {
+    let redacted = scrub_cassette_contents(yaml);
+    let failures = cassette_safety_failures(cassette_path, &redacted);
     if !failures.is_empty() {
         return Err(CassetteError::UnsafeRecording {
             path: cassette_path.to_path_buf(),
@@ -2810,26 +2609,14 @@ fn decoded_base64_body_texts(contents: &str) -> Vec<String> {
         .into_iter()
         .flat_map(|interaction| {
             [
-                interaction.when,
-                cassette_request_from_response(interaction.then),
+                (interaction.when.body, interaction.when.body_encoding),
+                (interaction.then.body, interaction.then.body_encoding),
             ]
         })
-        .filter(|request| request.body_encoding == BodyEncoding::Base64)
-        .filter_map(|request| request.body)
-        .filter_map(|body| decode_body(&body, BodyEncoding::Base64).ok())
+        .filter(|(_, encoding)| *encoding == BodyEncoding::Base64)
+        .filter_map(|(body, _)| decode_body(&body?, BodyEncoding::Base64).ok())
         .map(|body| String::from_utf8_lossy(&body).into_owned())
         .collect()
-}
-
-fn cassette_request_from_response(response: CassetteResponse) -> CassetteRequest {
-    CassetteRequest {
-        path: String::new(),
-        method: String::new(),
-        query_param: Vec::new(),
-        header: response.header,
-        body: response.body,
-        body_encoding: response.body_encoding,
-    }
 }
 
 fn serialize_cassette_interactions(interactions: &[CassetteInteraction]) -> String {
@@ -2995,25 +2782,17 @@ const OAUTH_TOKEN_KEYS: &[&str] = &["access_token", "id_token", "refresh_token"]
 /// paths from a recording and normalizes its volatile fields. Everything else the provider
 /// sent is kept verbatim, so a fixture can seed a live call and a replay
 /// decodes the provider's own bytes.
+#[derive(Default)]
 struct CassetteScrubber {
-    policy: CassettePolicy,
     placeholders: BTreeMap<String, String>,
     counters: BTreeMap<&'static str, usize>,
 }
 
 impl CassetteScrubber {
-    fn new(policy: CassettePolicy) -> Self {
-        Self {
-            policy,
-            placeholders: BTreeMap::new(),
-            counters: BTreeMap::new(),
-        }
-    }
-
     fn scrub_request(&mut self, request: &mut CassetteRequest) {
         request.path = self.scrub_text(&request.path);
-        scrub_headers(self.policy, &mut request.header, HeaderMode::Request);
-        scrub_query_params(self.policy, &mut request.query_param);
+        scrub_headers(&mut request.header, HeaderMode::Request);
+        scrub_query_params(&mut request.query_param);
 
         for query_param in &mut request.query_param {
             query_param.value = self.scrub_text(&query_param.value);
@@ -3025,7 +2804,7 @@ impl CassetteScrubber {
     }
 
     fn scrub_response(&mut self, response: &mut CassetteResponse) {
-        scrub_headers(self.policy, &mut response.header, HeaderMode::Response);
+        scrub_headers(&mut response.header, HeaderMode::Response);
 
         // A retry hint is protocol data, not an arbitrary diagnostic string.
         // Canonicalize valid values and discard malformed/credential-bearing text.
@@ -3203,7 +2982,7 @@ impl CassetteScrubber {
 
     fn scrub_text(&mut self, text: &str) -> String {
         let mut scrubbed = redact::text(text).into_owned();
-        for key in self.policy.sensitive_query_params {
+        for key in SENSITIVE_QUERY_PARAMS {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
@@ -3275,17 +3054,19 @@ enum HeaderMode {
     Response,
 }
 
-fn scrub_headers(policy: CassettePolicy, headers: &mut Vec<NameValue>, mode: HeaderMode) {
+fn scrub_headers(headers: &mut Vec<NameValue>, mode: HeaderMode) {
     match mode {
         HeaderMode::Request => {
             for header in headers.iter_mut() {
-                if policy.is_sensitive_header(&header.name) {
+                if contains_case_insensitive(SENSITIVE_HEADER_NAMES, &header.name) {
                     header.value = REDACTED.to_string();
                 }
             }
         }
         HeaderMode::Response => {
-            headers.retain(|header| policy.is_allowed_response_header(&header.name));
+            headers.retain(|header| {
+                contains_case_insensitive(RESPONSE_HEADER_ALLOWLIST, &header.name)
+            });
         }
     }
     // A key-shaped token in any header that stays is a secret too.
@@ -3296,9 +3077,9 @@ fn scrub_headers(policy: CassettePolicy, headers: &mut Vec<NameValue>, mode: Hea
     }
 }
 
-fn scrub_query_params(policy: CassettePolicy, query_params: &mut [NameValue]) {
+fn scrub_query_params(query_params: &mut [NameValue]) {
     for query_param in query_params {
-        if policy.is_sensitive_query_param(&query_param.name) {
+        if contains_case_insensitive(SENSITIVE_QUERY_PARAMS, &query_param.name) {
             query_param.value = REDACTED.to_string();
         }
     }

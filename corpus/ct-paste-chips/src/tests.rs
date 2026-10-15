@@ -63,7 +63,7 @@ fn last_user(request: Option<&CompletionRequest>) -> Vec<UserContent> {
         .unwrap_or_default()
         .iter()
         .rev()
-        .find_map(|message| match message {
+        .find_map(|message| match &**message {
             Message::User { content } => Some(content.to_vec()),
             _ => None,
         });

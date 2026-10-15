@@ -16,7 +16,7 @@ use aws_smithy_types::Blob;
 use rig_core::Model;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
+use rig_core::image_generation::ImageGenerationRequest;
 use rig_core::operation::ImageGeneration;
 use rig_core::wire::{Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
 
@@ -60,6 +60,7 @@ impl Wire for Images {
     type Op = ImageGeneration;
     type Payload = InvokeModel;
     type Frame = Vec<u8>;
+    type Event = Vec<u8>;
     type Decoder<'id> = ImagesDecoder;
     type Reassembler = rig_core::wire::document::Unreassembled;
 

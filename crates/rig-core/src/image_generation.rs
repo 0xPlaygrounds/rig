@@ -16,7 +16,6 @@
 //! # }
 //! ```
 use crate::completion::Usage;
-use crate::error::ProviderError;
 use crate::message::Image;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -63,13 +62,6 @@ impl ImageGenerationResponse {
             raw: serde_json::Value::Null,
         }
     }
-}
-
-/// Normalizes provider image payloads. The driver writes the provider, request
-/// id and `raw` afterwards.
-pub trait NormalizeImageGenerationResponse {
-    /// Normalize this payload.
-    fn normalize(self) -> Result<ImageGenerationResponse, ProviderError>;
 }
 
 pub struct ImageGenerationRequest {

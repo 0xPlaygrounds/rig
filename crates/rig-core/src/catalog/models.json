@@ -645,12 +645,19 @@
 "minimax": {"models": {
   "MiniMax-M2": {"name":"MiniMax-M2","reasoning":true,"reasoning_options":[],"tool_call":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":204800,"output":131072},"cost":{"input":0.3,"output":1.2}},
   "MiniMax-M2.1": {"name":"MiniMax-M2.1","reasoning":true,"reasoning_options":[],"tool_call":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":204800,"output":131072},"cost":{"input":0.3,"output":1.2,"cache_read":0.03,"cache_write":0.375}},
-  "MiniMax-M2.1-highspeed": {"name":"MiniMax-M2.1-highspeed","reasoning":true,"reasoning_options":[],"tool_call":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":204800,"output":131072},"cost":{"input":0.3,"output":1.2,"cache_read":0.03,"cache_write":0.375},"rig":{"pinned":["name","reasoning","reasoning_options","tool_call","temperature","modalities","limit.context","limit.output","cost.input","cost.output","cost.cache_read","cost.cache_write"]}},
   "MiniMax-M2.5": {"name":"MiniMax-M2.5","reasoning":true,"reasoning_options":[],"tool_call":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":204800,"output":131072},"cost":{"input":0.3,"output":1.2,"cache_read":0.03,"cache_write":0.375}},
   "MiniMax-M2.5-highspeed": {"name":"MiniMax-M2.5-highspeed","reasoning":true,"reasoning_options":[],"tool_call":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":204800,"output":131072},"cost":{"input":0.6,"output":2.4,"cache_read":0.06,"cache_write":0.375}},
   "MiniMax-M2.7": {"name":"MiniMax-M2.7","reasoning":true,"reasoning_options":[],"tool_call":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":204800,"output":131072},"cost":{"input":0.3,"output":1.2,"cache_read":0.06,"cache_write":0.375}},
   "MiniMax-M2.7-highspeed": {"name":"MiniMax-M2.7-highspeed","reasoning":true,"reasoning_options":[],"tool_call":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":204800,"output":131072},"cost":{"input":0.6,"output":2.4,"cache_read":0.06,"cache_write":0.375}},
-  "MiniMax-M3": {"name":"MiniMax-M3","reasoning":true,"reasoning_options":[{"type":"toggle"}],"tool_call":true,"temperature":true,"modalities":{"input":["text","image","video"]},"limit":{"context":1000000,"output":512000},"cost":{"input":0.3,"output":1.2,"cache_read":0.06}}
+  "MiniMax-M3": {"name":"MiniMax-M3","reasoning":true,"reasoning_options":[{"type":"toggle"}],"tool_call":true,"temperature":true,"modalities":{"input":["text","image","video"]},"limit":{"context":1000000,"output":512000},"cost":{"input":0.3,"output":1.2,"cache_read":0.06}},
+  "image-01": {"name":"image-01","modalities":{"input":["text","image"]},"rig":{"pinned":["name","modalities"]}},
+  "image-01-live": {"name":"image-01-live","modalities":{"input":["text","image"]},"rig":{"pinned":["name","modalities"]}},
+  "speech-02-hd": {"name":"speech-02-hd","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
+  "speech-02-turbo": {"name":"speech-02-turbo","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
+  "speech-2.6-hd": {"name":"speech-2.6-hd","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
+  "speech-2.6-turbo": {"name":"speech-2.6-turbo","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
+  "speech-2.8-hd": {"name":"speech-2.8-hd","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
+  "speech-2.8-turbo": {"name":"speech-2.8-turbo","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}}
 }},
 "mistral": {"models": {
   "codestral-embed": {"name":"Codestral Embed","modalities":{"input":["text"]},"limit":{"context":8192},"rig":{"pinned":["name","modalities","limit.context"]}},

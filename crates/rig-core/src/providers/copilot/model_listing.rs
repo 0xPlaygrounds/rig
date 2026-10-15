@@ -21,9 +21,7 @@ use crate::json_utils::Lenient;
 use crate::model::{ModelInfo, ModelList};
 use crate::operation::{ModelListing, ModelPage};
 use crate::providers::internal::wire::classify_untyped_line;
-use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 
 /// Catalogue endpoint returning all models without pagination.
 pub(crate) const MODEL_LISTING_PATH: &str = "/models";
@@ -47,45 +45,34 @@ pub struct Models {
     pub provider: CopilotConfig,
 }
 
-/// The model-listing decoder: the catalogue's `data`, each entry naming
-/// its id, its name, its vendor and its modality under `capabilities.type`.
-#[derive(Default)]
-pub struct ModelsDecoder;
-
-impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    type Event = Value;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(&mut self, event: Value, out: Out<'id, ModelListing>) -> Result<Flow, ProviderError> {
-        let text = |entry: &Value, pointer: &str| {
-            entry.at(pointer).and_then(Value::as_str).map(str::to_owned)
-        };
-        let models = event
-            .arr("data")
-            .iter()
-            .filter_map(|entry| {
-                let mut model = ModelInfo::from_id(entry.str("id")?);
-                model.name = text(entry, "/name");
-                model.owned_by = text(entry, "/vendor");
-                model.r#type = text(entry, "/capabilities/type");
-                Some(model)
-            })
-            .collect();
-        Ok(out.end(ModelPage {
-            models: ModelList::new(models),
-            next: None,
-        }))
-    }
+/// The catalogue's `data`, each entry naming its id, its name, its vendor
+/// and its modality under `capabilities.type`.
+fn page(event: Value) -> Result<ModelPage, ProviderError> {
+    let text =
+        |entry: &Value, pointer: &str| entry.at(pointer).and_then(Value::as_str).map(str::to_owned);
+    let models = event
+        .arr("data")
+        .iter()
+        .filter_map(|entry| {
+            let mut model = ModelInfo::from_id(entry.str("id")?);
+            model.name = text(entry, "/name");
+            model.owned_by = text(entry, "/vendor");
+            model.r#type = text(entry, "/capabilities/type");
+            Some(model)
+        })
+        .collect();
+    Ok(ModelPage {
+        models: ModelList::new(models),
+        next: None,
+    })
 }
 
 impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ModelsDecoder;
+    type Event = Value;
+    type Decoder<'id> = DocumentDecoder<ModelListing, Value>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -107,6 +94,6 @@ impl Wire for Models {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
+        DocumentDecoder::new(|body| classify_untyped_line(body.as_bytes()), page)
     }
 }

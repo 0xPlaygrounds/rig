@@ -262,7 +262,7 @@ pub fn outline(conversation: &Conversation) -> Vec<ChapterLine> {
         }
     }
     let counter = HeuristicTokenCounter::default();
-    let count = |messages: &[Message]| -> u64 {
+    let count = |messages: &[std::sync::Arc<Message>]| -> u64 {
         messages
             .iter()
             .map(|message| counter.count(message))
@@ -281,7 +281,7 @@ pub fn outline(conversation: &Conversation) -> Vec<ChapterLine> {
             messages: messages.clone(),
         };
         line.tokens = match line.fold_message() {
-            Some(message) => count(&[message]),
+            Some(message) => count(&[message.into()]),
             None => count(conversation.messages().get(messages).unwrap_or_default()),
         };
         lines.push(line);
@@ -445,7 +445,10 @@ fn ask_for_boundary(
     let asked = request.message.rag_text().unwrap_or_default();
     let range = at..current.messages.end;
     let answer = conversation.messages().get(range).unwrap_or_default();
-    let answer = answer.iter().rev().find_map(Message::final_answer);
+    let answer = answer
+        .iter()
+        .rev()
+        .find_map(|message| Message::final_answer(message));
     let mut prompt = String::new();
     if !starts_here {
         let earlier: Vec<String> = conversation

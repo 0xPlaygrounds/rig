@@ -528,7 +528,7 @@ async fn prior_history_effect_log_is_the_golden_fixture() {
             let turns = request
                 .chat_history
                 .iter()
-                .filter(|message| !matches!(message, rig::message::Message::System { .. }))
+                .filter(|message| !matches!(&***message, rig::message::Message::System { .. }))
                 .count();
             assert_eq!(
                 turns, 3,

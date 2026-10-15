@@ -3,9 +3,8 @@
 
 use serde_json::{Map, Value};
 
-use super::{ChatDecoder, ChatRecord};
+use super::ChatRecord;
 use crate::wire::document::Reassemble;
-use crate::wire::{Decoder, WireEvent, WireFrame};
 
 /// The `/api/chat` reply a stream of records adds up to.
 ///
@@ -17,8 +16,6 @@ use crate::wire::{Decoder, WireEvent, WireFrame};
 /// beside what arrived before it.
 #[derive(Debug, Default)]
 pub struct ChatResponse {
-    /// The decoder's classifier.
-    classifier: ChatDecoder,
     document: Map<String, Value>,
 }
 
@@ -31,22 +28,26 @@ const COLLECTED: &[&str] = &["tool_calls", "images", "logprobs"];
 /// Fold `fields` into `into`: text in `appended` joins, lists in
 /// [`COLLECTED`] extend, any other non-null value replaces, and `null`
 /// only fills an absent key.
-fn fold(into: &mut Map<String, Value>, fields: Map<String, Value>, appended: &[&str]) {
+fn fold<'a>(
+    into: &mut Map<String, Value>,
+    fields: impl IntoIterator<Item = (&'a String, &'a Value)>,
+    appended: &[&str],
+) {
     for (key, value) in fields {
-        match (into.get_mut(&key), value) {
+        match (into.get_mut(key), value) {
             (Some(Value::String(text)), Value::String(more))
                 if appended.contains(&key.as_str()) =>
             {
-                text.push_str(&more);
+                text.push_str(more);
             }
             (Some(Value::Array(items)), Value::Array(more))
                 if COLLECTED.contains(&key.as_str()) =>
             {
-                items.extend(more);
+                items.extend(more.iter().cloned());
             }
             (Some(_), Value::Null) => {}
             (_, value) => {
-                into.insert(key, value);
+                into.insert(key.clone(), value.clone());
             }
         }
     }
@@ -54,23 +55,19 @@ fn fold(into: &mut Map<String, Value>, fields: Map<String, Value>, appended: &[&
 
 impl crate::wire::document::Serves<crate::operation::Completion> for ChatResponse {}
 
-impl Reassemble<WireFrame> for ChatResponse {
-    fn absorb(&mut self, frame: &WireFrame) {
-        // The driver reports what does not classify.
-        let WireEvent::Known(ChatRecord(mut fields)) = self.classifier.classify(frame.clone())
-        else {
-            return;
-        };
-        if let Some(Value::Object(message)) = fields.shift_remove("message") {
+impl Reassemble<ChatRecord> for ChatResponse {
+    fn absorb(&mut self, ChatRecord(fields): &ChatRecord) {
+        if let Some(Value::Object(message)) = fields.get("message") {
             match self.document.get_mut("message") {
                 Some(Value::Object(into)) => fold(into, message, APPENDED),
                 _ => {
-                    self.document
-                        .insert("message".to_owned(), Value::Object(message));
+                    let message = Value::Object(message.clone());
+                    self.document.insert("message".to_owned(), message);
                 }
             }
         }
-        fold(&mut self.document, fields, &[]);
+        let rest = fields.iter().filter(|(key, _)| *key != "message");
+        fold(&mut self.document, rest, &[]);
     }
 
     fn finish(self) -> Value {

@@ -2207,9 +2207,79 @@
   },
   "minimax": {
     "models": {
-      "MiniMax-M2.1-highspeed": {
-        "from": "minimax/MiniMax-M2.1",
-        "name": "MiniMax-M2.1-highspeed"
+      "image-01": {
+        "source": "https://platform.minimax.io/docs/api-reference/image-generation-t2i https://platform.minimax.io/docs/api-reference/image-generation-i2i https://platform.minimax.io/docs/faq/models",
+        "name": "image-01",
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      },
+      "image-01-live": {
+        "source": "https://platform.minimax.io/docs/api-reference/image-generation-t2i https://platform.minimax.io/docs/api-reference/image-generation-i2i https://platform.minimax.io/docs/faq/models",
+        "name": "image-01-live",
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      },
+      "speech-02-hd": {
+        "source": "https://platform.minimax.io/docs/api-reference/speech-t2a-http https://platform.minimax.io/docs/faq/models",
+        "name": "speech-02-hd",
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "speech-02-turbo": {
+        "source": "https://platform.minimax.io/docs/api-reference/speech-t2a-http https://platform.minimax.io/docs/faq/models",
+        "name": "speech-02-turbo",
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "speech-2.6-hd": {
+        "source": "https://platform.minimax.io/docs/api-reference/speech-t2a-http https://platform.minimax.io/docs/faq/models",
+        "name": "speech-2.6-hd",
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "speech-2.6-turbo": {
+        "source": "https://platform.minimax.io/docs/api-reference/speech-t2a-http https://platform.minimax.io/docs/faq/models",
+        "name": "speech-2.6-turbo",
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "speech-2.8-hd": {
+        "source": "https://platform.minimax.io/docs/api-reference/speech-t2a-http https://platform.minimax.io/docs/faq/models",
+        "name": "speech-2.8-hd",
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "speech-2.8-turbo": {
+        "source": "https://platform.minimax.io/docs/api-reference/speech-t2a-http https://platform.minimax.io/docs/faq/models",
+        "name": "speech-2.8-turbo",
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
       }
     }
   },

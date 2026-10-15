@@ -30,10 +30,7 @@ use crate::image_generation::ImageGenerationRequest;
 use crate::json_utils::Lenient;
 use crate::message::{DocumentSourceKind, Image};
 use crate::operation::ImageGeneration;
-use crate::providers::internal::wire::classify_marker_keyed_frame;
-use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::{Value, json};
@@ -214,8 +211,12 @@ fn create_request_body(request: ImageGenerationRequest) -> Result<Value, EncodeE
         "safetySettings": null,
         "systemInstruction": null,
     });
-    if let Some(additional_params) = request.additional_params {
-        super::merge_deep(&mut body, additional_params);
+    match (&mut body, request.additional_params) {
+        (Value::Object(body), Some(Value::Object(params))) => {
+            crate::completion::options::deep_merge(body, params);
+        }
+        (body, Some(params)) => *body = params,
+        (_, None) => {}
     }
     Ok(body)
 }
@@ -226,7 +227,7 @@ fn reference(image: Image) -> Result<Value, EncodeError> {
         DocumentSourceKind::Raw(bytes) => DocumentSourceKind::Base64(BASE64_STANDARD.encode(bytes)),
         source => source,
     };
-    super::completion::media(super::completion::mime(image.media_type), source, false)
+    super::completion::media(super::completion::mime(image.media_type), &source, false)
 }
 
 /// The aspect ratio the API takes that `width` by `height` has; `None` for
@@ -265,7 +266,8 @@ impl Wire for Images {
     type Op = ImageGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ImagesDecoder;
+    type Event = Value;
+    type Decoder<'id> = DocumentDecoder<ImageGeneration, Value>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -286,32 +288,10 @@ impl Wire for Images {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    /// The first non-thought image; missing image data and invalid base64
+    /// are response errors.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ImagesDecoder
-    }
-}
-
-/// Decode the first image in a `generateContent` reply. Missing image data
-/// and invalid base64 produce response errors.
-#[derive(Default)]
-pub struct ImagesDecoder;
-
-impl<'id> Decoder<'id, ImageGeneration> for ImagesDecoder {
-    type Event = Value;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_marker_keyed_frame(
-            &frame.as_str(),
-            &["candidates", "promptFeedback", "usageMetadata"],
-        )
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, ImageGeneration>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(image_of(&event)?))
+        DocumentDecoder::new(super::completion::classify_reply, |reply| image_of(&reply))
     }
 }
 

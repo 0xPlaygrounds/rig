@@ -524,15 +524,17 @@ fn differences(was: &CompletionRequest, now: &CompletionRequest) -> Vec<String> 
 }
 
 /// A request's history split into its system prompt and the rest.
-fn split_system(history: &[message::Message]) -> (String, &[message::Message]) {
+fn split_system(
+    history: &[std::sync::Arc<message::Message>],
+) -> (String, &[std::sync::Arc<message::Message>]) {
     let count = history
         .iter()
-        .take_while(|message| matches!(message, message::Message::System { .. }))
+        .take_while(|message| matches!(&***message, message::Message::System { .. }))
         .count();
     let (system, rest) = history.split_at(count);
     let prompt = system
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             message::Message::System { content } => Some(content.as_str()),
             _ => None,
         })

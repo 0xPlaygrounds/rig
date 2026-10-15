@@ -122,7 +122,7 @@ fn converts_a_transcript_and_loads_it_back() {
     assert_eq!(author, Some(&Author::plugin(IMPORTER).kind));
     let roles: Vec<&str> = messages
         .iter()
-        .map(|message| match message {
+        .map(|message| match &**message {
             Message::System { .. } => "system",
             Message::User { .. } => "user",
             Message::Assistant(_) => "assistant",
@@ -138,7 +138,7 @@ fn converts_a_transcript_and_loads_it_back() {
         "assistant",
     ];
     assert_eq!(roles, expected);
-    let texts: Vec<String> = messages.iter().map(text_of).collect();
+    let texts: Vec<String> = messages.iter().map(|message| text_of(message)).collect();
     assert_eq!(
         texts.first().map(String::as_str),
         Some("Exported from a web chat about the cache.")
@@ -198,7 +198,7 @@ fn converts_a_transcript_and_loads_it_back() {
     assert!(conversation.validate().is_ok());
     let messages = conversation.messages();
     assert_eq!(messages.len(), 9);
-    let shown = match messages.get(4) {
+    let shown = match messages.get(4).map(|message| &**message) {
         Some(Message::Assistant(shown)) => Some(shown),
         _ => None,
     };
@@ -216,12 +216,12 @@ fn converts_a_transcript_and_loads_it_back() {
         if text.text == "Watch the files. Here is what the tree looks like:")
     );
     assert!(
-        matches!(messages.get(5), Some(Message::User { content }) if matches!(content.as_slice(), [UserContent::ToolResult(result)]
+        matches!(messages.get(5).map(|message| &**message), Some(Message::User { content }) if matches!(content.as_slice(), [UserContent::ToolResult(result)]
         if result.call == call.id
             && result.content.first().and_then(|item| item.as_text()) == Some("a.toml\nb.toml")))
     );
     assert_eq!(
-        messages.get(6).map(text_of).as_deref(),
+        messages.get(6).map(|message| text_of(message)).as_deref(),
         Some("Both are watched.")
     );
 
@@ -310,7 +310,7 @@ fn the_harness_resumes_it_with_the_whole_history() {
         .unwrap_or_default();
     assert_eq!(messages.len(), 11);
     assert_eq!(
-        messages.last().map(text_of).as_deref(),
+        messages.last().map(|message| text_of(message)).as_deref(),
         Some("Implementing the LRU.")
     );
 }

@@ -41,6 +41,20 @@ fn non_equality_documents_support_default_and_constructors() {
     assert_eq!(explicit.embeddings["sale"].0.price, 4.5);
 }
 
+/// A store built empty with LSH indexes the documents added to it later,
+/// rather than scanning every document on every query.
+#[test]
+fn an_lsh_store_built_empty_indexes_documents_added_later() {
+    let mut store = InMemoryVectorStore::builder()
+        .index_strategy(IndexStrategy::LSH {
+            num_tables: 5,
+            num_hyperplanes: 10,
+        })
+        .build();
+    store.add_documents([product(1.5)]);
+    assert!(store.lsh_index.is_some(), "the LSH index was never made");
+}
+
 #[test]
 fn custom_ids_accept_captured_mutable_state() {
     let namespace = String::from("catalog");

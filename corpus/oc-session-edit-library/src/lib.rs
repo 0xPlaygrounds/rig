@@ -25,6 +25,7 @@ use std::fmt;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rig::harness_protocol::{Home, SessionDir};
 use rig_core::conversation::{Author, Conversation, Entry, pairing};
@@ -388,7 +389,7 @@ fn shrink_report(session: &Session, over: usize) -> Vec<String> {
             .conversation
             .messages()
             .iter()
-            .map(|message| shrink(&mut message.clone(), over))
+            .map(|message| shrink(&mut Message::clone(message), over))
             .fold((0, 0), |(results, lines), (r, l)| (results + r, lines + l));
         if results > 0 {
             let whose = match agent.parent {
@@ -535,7 +536,10 @@ fn drop_range(
         )));
     }
     let dropped = messages.get(from..=to).unwrap_or_default();
-    let calls: HashSet<CallId> = dropped.iter().flat_map(call_ids).collect();
+    let calls: HashSet<CallId> = dropped
+        .iter()
+        .flat_map(|message| call_ids(message))
+        .collect();
     let mut report = Vec::new();
     let mut kept = Vec::with_capacity(len);
     for (at, entry) in (0..len).filter_map(|at| Some((at, conversation.entry(at)?))) {
@@ -558,7 +562,7 @@ fn drop_range(
                 report.push(format!("removed message {at}, which held nothing else"));
             } else {
                 kept.push(Entry {
-                    message: stripped,
+                    message: stripped.into(),
                     ..entry
                 });
             }
@@ -566,7 +570,7 @@ fn drop_range(
             kept.push(entry);
         }
     }
-    let rest: Vec<Message> = kept.iter().map(|entry| entry.message.clone()).collect();
+    let rest: Vec<&Message> = kept.iter().map(|entry| &*entry.message).collect();
     pairing::validate(&rest).map_err(|why| {
         format!(
             "dropping {from}..{to} would leave the conversation broken ({why}); drop a wider range"
@@ -725,8 +729,8 @@ fn markdown_of(opened: &Opened) -> String {
 }
 
 /// Appends `messages` to `text`, a heading each.
-fn conversation_markdown(text: &mut String, messages: &[Message]) {
-    for (at, message) in messages.iter().enumerate() {
+fn conversation_markdown(text: &mut String, messages: &[Arc<Message>]) {
+    for (at, message) in messages.iter().map(Arc::as_ref).enumerate() {
         let role = role_of(message);
         let mut role_title = role.to_owned();
         if let Some(first) = role_title.get_mut(..1) {

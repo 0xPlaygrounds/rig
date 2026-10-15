@@ -77,6 +77,10 @@ const NOT_COMPLETIONS: &[(&str, &str)] = &[
     ("/audio/", "speech and transcription"),
     ("/files", "file upload"),
     (
+        "/systemone",
+        "TypeSafe Jev evaluation: answers, not a completion; its usage is checked by its own cassette",
+    ),
+    (
         "/cachedContents",
         "Gemini cache resources: creation reports the tokens stored, not a completion",
     ),

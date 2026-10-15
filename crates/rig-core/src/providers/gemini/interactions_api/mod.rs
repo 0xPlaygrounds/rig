@@ -147,6 +147,7 @@ impl crate::wire::Wire for Interactions {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = streaming::InteractionsEvent;
     type Decoder<'id> = streaming::InteractionsDecoder;
     type Reassembler = streaming::document::Interaction;
 
@@ -339,6 +340,7 @@ impl crate::wire::Wire for InteractionResume {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = streaming::InteractionsEvent;
     type Decoder<'id> = streaming::InteractionsDecoder;
     type Reassembler = streaming::document::Interaction;
 
@@ -424,36 +426,11 @@ impl ReplayTarget for InteractionResume {
         _request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        use crate::completion::options::{Mapping, OptionFields, OptionMap};
-        let OptionFields {
-            reasoning,
-            cache,
-            service_tier,
-            verbosity,
-            parallel_tool_calls,
-            top_p,
-            seed,
-            stop,
-            cache_key,
-        } = fields;
-        let refuse = |set: bool| match set {
-            true => Mapping::unsupported(
-                "a resumed interaction is read, not created; its options were fixed when it was \
-                 created",
-            ),
-            false => Mapping::Nothing,
-        };
-        OptionMap {
-            reasoning: refuse(reasoning.is_some()),
-            cache: refuse(cache.is_some()),
-            service_tier: refuse(service_tier.is_some()),
-            verbosity: refuse(verbosity.is_some()),
-            parallel_tool_calls: refuse(parallel_tool_calls.is_some()),
-            top_p: refuse(top_p.is_some()),
-            seed: refuse(seed.is_some()),
-            stop: refuse(!stop.is_empty()),
-            cache_key: Mapping::unrouted(cache_key),
-        }
+        crate::providers::internal::refuse_all(
+            fields,
+            "a resumed interaction is read, not created; its options were fixed when it was \
+             created",
+        )
     }
 
     fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
@@ -550,14 +527,11 @@ fn create_base(
             json!({ "allowed_tools": { "mode": "validated", "tools": function_names } })
         }
     });
-    let config: Map<String, Value> = [
+    let config = crate::providers::internal::set_fields([
         ("temperature", request.temperature.map(Value::from)),
         ("max_output_tokens", request.max_tokens.map(Value::from)),
         ("tool_choice", choice),
-    ]
-    .into_iter()
-    .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-    .collect();
+    ]);
     let mut tools: Vec<Value> = request
         .tools
         .iter()
@@ -566,9 +540,9 @@ fn create_base(
     tools.extend(input.raw_tools()?);
     let (mut system, mut history) = (Vec::new(), Vec::new());
     for message in &request.chat_history {
-        match message {
-            Message::System { content } => system.push(content.clone()),
-            message => history.push(message.clone()),
+        match &**message {
+            Message::System { content } => system.push(content.as_str()),
+            message => history.push(message),
         }
     }
     let mut body = Map::new();
@@ -586,7 +560,7 @@ fn create_base(
     }
     body.insert(
         "input".to_owned(),
-        Value::Array(steps(history, wire, &model)?),
+        Value::Array(steps(&history, wire, &model)?),
     );
     Ok(body)
 }
@@ -595,11 +569,11 @@ fn create_base(
 /// `user_input` steps around its function results, each a step of its own,
 /// and one step per assistant block.
 fn steps(
-    history: Vec<Message>,
+    history: &[&Message],
     target: &dyn ReplayTarget,
     model: &str,
 ) -> Result<Vec<Value>, EncodeError> {
-    let ids = WireIds::for_target(&history, target, model);
+    let ids = WireIds::for_target(history, target, model);
     let mut steps = Vec::new();
     for message in history {
         match message {
@@ -614,46 +588,39 @@ fn steps(
                         continue;
                     };
                     if !run.is_empty() {
-                        steps.push(
-                            json!({ "type": "user_input", "content": std::mem::take(&mut run) }),
-                        );
+                        steps.push(user_input(std::mem::take(&mut run)));
                     }
-                    let mut contents = result.content;
-                    let value = match (contents.len(), contents.pop()) {
-                        (1, Some(ToolResultContent::Text(text))) => Value::String(text.text),
+                    let value = match result.content.as_slice() {
+                        [ToolResultContent::Text(text)] => Value::from(text.text.as_str()),
                         // A scalar or array JSON result is wrapped as the
                         // generate wire wraps it: sent as a text block it is a
                         // multimodal response, which the models refuse.
-                        (
-                            1,
-                            Some(ToolResultContent::Json {
+                        [
+                            ToolResultContent::Json {
                                 value: value @ (Value::String(_) | Value::Object(_)),
-                            }),
-                        ) => value,
-                        (1, Some(ToolResultContent::Json { value })) => json!({ "result": value }),
-                        (_, last) => {
-                            contents.extend(last);
-                            Value::Array(
-                                contents
-                                    .into_iter()
-                                    .map(result_content)
-                                    .collect::<Result<_, _>>()?,
-                            )
-                        }
+                            },
+                        ] => value.clone(),
+                        [ToolResultContent::Json { value }] => json!({ "result": value }),
+                        contents => Value::Array(
+                            contents
+                                .iter()
+                                .map(result_content)
+                                .collect::<Result<_, _>>()?,
+                        ),
                     };
-                    let mut step = json!({
-                        "type": "function_result",
-                        "name": result.name,
-                        "call_id": ids.of(&result.call),
-                        "result": value,
-                    });
-                    if let (true, Some(step)) = (result.is_error, step.as_object_mut()) {
+                    let mut step = Map::from_iter([
+                        ("type".to_owned(), Value::from("function_result")),
+                        ("name".to_owned(), Value::from(result.name.as_str())),
+                        ("call_id".to_owned(), Value::from(ids.of(&result.call))),
+                        ("result".to_owned(), value),
+                    ]);
+                    if result.is_error {
                         step.insert("is_error".to_owned(), Value::Bool(true));
                     }
-                    steps.push(step);
+                    steps.push(Value::Object(step));
                 }
                 if !run.is_empty() {
-                    steps.push(json!({ "type": "user_input", "content": run }));
+                    steps.push(user_input(run));
                 }
             }
             Message::Assistant(turn) => {
@@ -666,26 +633,34 @@ fn steps(
     Ok(steps)
 }
 
+/// A `user_input` step of `content`.
+fn user_input(content: Vec<Value>) -> Value {
+    Value::Object(Map::from_iter([
+        ("type".to_owned(), Value::from("user_input")),
+        ("content".to_owned(), Value::Array(content)),
+    ]))
+}
+
 /// A block of a tool result as a content item.
-fn result_content(content: ToolResultContent) -> Result<Value, EncodeError> {
+fn result_content(content: &ToolResultContent) -> Result<Value, EncodeError> {
     Ok(match content {
         ToolResultContent::Text(text) => json!({ "type": "text", "text": text.text }),
         ToolResultContent::Json { value } => json!({ "type": "text", "text": value.to_string() }),
-        ToolResultContent::Image(image) => media("image", image.media_type, image.data)?,
+        ToolResultContent::Image(image) => media("image", image.media_type.clone(), &image.data)?,
     })
 }
 
 /// A user part as a content item. A text document goes as text, so that RAG
 /// context reads as prose.
-fn user_content(part: UserContent) -> Result<Value, EncodeError> {
+fn user_content(part: &UserContent) -> Result<Value, EncodeError> {
     match part {
         UserContent::Text(text) => Ok(json!({ "type": "text", "text": text.text })),
-        UserContent::Image(image) => media("image", image.media_type, image.data),
-        UserContent::Audio(audio) => media("audio", audio.media_type, audio.data),
-        UserContent::Video(video) => media("video", video.media_type, video.data),
-        UserContent::Document(document) => match document.data {
+        UserContent::Image(image) => media("image", image.media_type.clone(), &image.data),
+        UserContent::Audio(audio) => media("audio", audio.media_type.clone(), &audio.data),
+        UserContent::Video(video) => media("video", video.media_type.clone(), &video.data),
+        UserContent::Document(document) => match &document.data {
             DocumentData::Text(text) => Ok(json!({ "type": "text", "text": text })),
-            DocumentData::File(data) => media("document", document.media_type, data),
+            DocumentData::File(data) => media("document", document.media_type.clone(), data),
         },
         UserContent::ToolResult(_) => {
             Err(EncodeError::request("a tool result is a step of its own"))
@@ -698,7 +673,7 @@ fn user_content(part: UserContent) -> Result<Value, EncodeError> {
 fn media<M: MimeType>(
     kind: &str,
     media_type: Option<M>,
-    source: Source,
+    source: &Source,
 ) -> Result<Value, EncodeError> {
     let unsendable = || {
         EncodeError::request(format!(
@@ -726,7 +701,12 @@ fn assistant_step(
         Replay::Identity(identity) => identity,
         Replay::Rebuild => Map::new(),
     };
-    let output = |content: Value| json!({ "type": "model_output", "content": [content] });
+    let output = |content: Value| {
+        Value::Object(Map::from_iter([
+            ("type".to_owned(), Value::from("model_output")),
+            ("content".to_owned(), Value::Array(vec![content])),
+        ]))
+    };
     let mut step = match block {
         AssistantContent::Text(text) => output(json!({ "type": "text", "text": text.text })),
         AssistantContent::Reasoning(reasoning)
@@ -740,13 +720,11 @@ fn assistant_step(
         AssistantContent::ToolCall(call) => json!({
             "type": "function_call",
             "name": call.function.name,
-            "arguments": call.function.arguments_value(),
+            "arguments": call.function.arguments,
         }),
-        AssistantContent::Image(image) => output(media(
-            "image",
-            image.media_type.clone(),
-            image.data.clone(),
-        )?),
+        AssistantContent::Image(image) => {
+            output(media("image", image.media_type.clone(), &image.data)?)
+        }
         AssistantContent::Opaque(opaque) => return Ok(Some(opaque.item.clone())),
     };
     if let Some(fields) = step.as_object_mut() {

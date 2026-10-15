@@ -63,7 +63,7 @@ fn a_fork_carries_the_asides_of_the_copied_messages_as_they_are_now() {
     let copy = load(&to, "main").expect("loaded");
     assert_eq!(
         copy.messages(),
-        [Message::user("one"), Message::assistant("two [R]")]
+        [Message::user("one"), Message::assistant("two [R]")].map(std::sync::Arc::new)
     );
     assert_eq!(
         values(&copy),

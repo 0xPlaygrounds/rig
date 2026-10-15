@@ -271,7 +271,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
             .agents
             .iter()
             .map(|agent| agent.conversation.messages().to_vec())
-            .collect::<Vec<Vec<Message>>>(),
+            .collect::<Vec<Vec<std::sync::Arc<Message>>>>(),
     )
     .unwrap_or_default();
     assert!(

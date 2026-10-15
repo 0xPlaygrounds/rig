@@ -179,6 +179,17 @@ async fn verbose_json_still_reports_duration_usage() {
                 "a richer response format must not cost or reshape the usage: {:?}",
                 raw(&response).usage
             );
+            // The richer payload's timings reach the normalized response.
+            assert!(response.language.is_some() && response.duration.is_some());
+            assert!(
+                !response.segments.is_empty()
+                    && response
+                        .segments
+                        .iter()
+                        .all(|segment| segment.start <= segment.end),
+                "{:?}",
+                response.segments
+            );
         },
     )
     .await;
