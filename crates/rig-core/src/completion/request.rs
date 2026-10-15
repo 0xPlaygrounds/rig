@@ -866,16 +866,26 @@ impl Cost {
         }
     }
 
-    /// This cost with every part and the total multiplied by `factor`, as a
-    /// discounted price charges it.
-    pub fn scaled(self, factor: f64) -> Self {
-        let scale = |part: Option<f64>| part.map(|part| part * factor);
+    /// This cost at `price`, a share of the price of each kind of token, as
+    /// a discounted tier charges it. A cost known only as its total takes
+    /// the input share.
+    pub fn at(self, price: crate::completion::batch::BatchPrice) -> Self {
+        let scale = |part: Option<f64>, share: f64| part.map(|part| part * share);
+        let input = scale(self.input, price.input);
+        let output = scale(self.output, price.output);
+        let cache_read = scale(self.cache_read, price.cache_read);
+        let cache_write = scale(self.cache_write, price.cache_write);
+        let parts = [input, output, cache_read, cache_write];
+        let total = match parts.iter().any(Option::is_some) {
+            true => parts.iter().flatten().sum(),
+            false => self.total * price.input,
+        };
         Self {
-            input: scale(self.input),
-            output: scale(self.output),
-            cache_read: scale(self.cache_read),
-            cache_write: scale(self.cache_write),
-            total: self.total * factor,
+            input,
+            output,
+            cache_read,
+            cache_write,
+            total,
             incomplete: self.incomplete,
         }
     }

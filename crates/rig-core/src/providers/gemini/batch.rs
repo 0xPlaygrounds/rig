@@ -24,7 +24,8 @@ use super::GeminiConfig;
 use super::completion::GenerateContent;
 use crate::ProviderResponseError;
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchState, BatchStatus, Batching, EncodedItem, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
+    json_body, path_id,
 };
 use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
@@ -301,7 +302,13 @@ fn create_request(items: Vec<EncodedItem>) -> Result<BatchRequest, ProviderError
 impl Batching for GenerateContent {
     type Batches = Batches;
 
-    const PRICE: f64 = 0.5;
+    /// Cached tokens keep their standard price.
+    const PRICE: BatchPrice = BatchPrice {
+        input: 0.5,
+        output: 0.5,
+        cache_read: 1.0,
+        cache_write: 1.0,
+    };
 
     fn batches(&self) -> Result<Batches, ProviderError> {
         Ok(Batches {

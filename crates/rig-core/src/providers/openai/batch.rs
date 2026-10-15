@@ -24,7 +24,8 @@ use super::responses_api::wire::Responses;
 use super::wire::{Chat, OpenAIConfig, OpenAiWire};
 use crate::ProviderResponseError;
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchState, BatchStatus, Batching, EncodedItem, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
+    json_body, path_id,
 };
 use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
@@ -495,7 +496,7 @@ macro_rules! openai_batching {
         impl Batching for $wire {
             type Batches = Batches;
 
-            const PRICE: f64 = 0.5;
+            const PRICE: BatchPrice = BatchPrice::HALF;
 
             fn batches(&self) -> Result<Batches, ProviderError> {
                 batches(self.config())

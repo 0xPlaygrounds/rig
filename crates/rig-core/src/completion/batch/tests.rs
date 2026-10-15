@@ -41,3 +41,22 @@ fn a_finished_batch_stops_changing() {
     .to_vec();
     assert_eq!(finished, [false, false, false, true, true, true, true]);
 }
+
+/// A tier that discounts some kinds of token and not others prices each
+/// part at its own share.
+#[test]
+fn a_batch_price_applies_per_kind_of_token() {
+    use crate::completion::Cost;
+    let price = BatchPrice {
+        input: 0.5,
+        output: 0.5,
+        cache_read: 1.0,
+        cache_write: 1.0,
+    };
+    let cost = Cost::from_parts(2.0, 4.0, 1.0, 0.0).at(price);
+    assert_eq!(
+        (cost.input, cost.output, cost.cache_read, cost.total),
+        (Some(1.0), Some(2.0), Some(1.0), 4.0)
+    );
+    assert_eq!(Cost::from_total(3.0).at(BatchPrice::HALF).total, 1.5);
+}

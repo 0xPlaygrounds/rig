@@ -21,7 +21,8 @@ use serde_json::{Value, json};
 
 use super::wire::{AnthropicConfig, Messages};
 use crate::completion::batch::{
-    BatchCounts, BatchOutcome, BatchState, BatchStatus, Batching, EncodedItem, json_body, path_id,
+    BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
+    json_body, path_id,
 };
 use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
@@ -299,7 +300,8 @@ impl<'id> Decoder<'id, BatchCall<MessageBatchRequest, MessageBatchReply>>
 impl Batching for Messages {
     type Batches = MessageBatches;
 
-    const PRICE: f64 = 0.5;
+    /// Batch pricing stacks with prompt-caching pricing.
+    const PRICE: BatchPrice = BatchPrice::HALF;
 
     fn batches(&self) -> Result<MessageBatches, ProviderError> {
         if self.provider.dialect.name != super::PROVIDER_NAME {

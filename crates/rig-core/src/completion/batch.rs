@@ -150,6 +150,30 @@ pub enum BatchOutcome<R = CompletionResponse> {
     Expired,
 }
 
+/// What batched tokens cost, as a share of their price in a request sent
+/// alone, by kind of token.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BatchPrice {
+    /// Uncached input tokens.
+    pub input: f64,
+    /// Output tokens.
+    pub output: f64,
+    /// Input tokens read from a cache.
+    pub cache_read: f64,
+    /// Input tokens written to a cache.
+    pub cache_write: f64,
+}
+
+impl BatchPrice {
+    /// Every kind of token at half price.
+    pub const HALF: Self = Self {
+        input: 0.5,
+        output: 0.5,
+        cache_read: 0.5,
+        cache_write: 0.5,
+    };
+}
+
 /// One item of a batch, encoded as a live unary call would send it: what a
 /// [`Batching`] wire builds its batch from.
 #[derive(Debug)]
@@ -167,9 +191,9 @@ pub trait Batching: Wire<Op = Completion, Payload = Encoded, Frame = WireFrame> 
     /// The wire of the provider's batch API.
     type Batches: Wire<Payload = Encoded, Frame = WireFrame>;
 
-    /// What a batched request costs, as a share of the same request sent
-    /// alone. Batch replies are priced by it.
-    const PRICE: f64;
+    /// What a batched request's tokens cost, as a share of the same
+    /// request's sent alone. Batch replies are priced by it.
+    const PRICE: BatchPrice;
 
     /// The batch wire for this wire's provider.
     ///
@@ -311,7 +335,7 @@ where
                 let frame = WireFrame::Text(reply.to_string());
                 match decode_reply(&self.wire, request, Mode::Unary, [frame]) {
                     Ok(mut response) => {
-                        response.usage.cost = response.usage.cost.map(|cost| cost.scaled(W::PRICE));
+                        response.usage.cost = response.usage.cost.map(|cost| cost.at(W::PRICE));
                         BatchOutcome::Succeeded(response)
                     }
                     Err(error) => BatchOutcome::Failed(error),
