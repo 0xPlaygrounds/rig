@@ -72,19 +72,19 @@ impl Plugin for GitHistoryToolsPlugin {
             footprint: None,
         };
         let per = repo.clone();
-        app.add_tool_per_call(GitLog(repo.clone()), options(), false, move |place| {
+        app.add_tool_per_call(GitLog(repo.clone()), options(), move |place| {
             GitLog(per.at(place))
         });
         let per = repo.clone();
-        app.add_tool_per_call(GitShow(repo.clone()), options(), false, move |place| {
+        app.add_tool_per_call(GitShow(repo.clone()), options(), move |place| {
             GitShow(per.at(place))
         });
         let per = repo.clone();
-        app.add_tool_per_call(GitBlame(repo.clone()), options(), false, move |place| {
+        app.add_tool_per_call(GitBlame(repo.clone()), options(), move |place| {
             GitBlame(per.at(place))
         });
         let per = repo.clone();
-        app.add_tool_per_call(GitDiff(repo), options(), false, move |place| {
+        app.add_tool_per_call(GitDiff(repo), options(), move |place| {
             GitDiff(per.at(place))
         });
     }

@@ -51,7 +51,7 @@ pub struct ReadTool;
 
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Read::default(), options(Read::RULES), false, |place| Read {
+        app.add_tool_per_call(Read::default(), options(Read::RULES), |place| Read {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
@@ -67,12 +67,10 @@ pub struct SearchTool;
 
 impl Plugin for SearchTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Search::default(), options(Search::RULES), false, |place| {
-            Search {
-                workspace: place.workspace,
-                base: Some(place.base),
-                confine: place.confine,
-            }
+        app.add_tool_per_call(Search::default(), options(Search::RULES), |place| Search {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Search::NAME, looks::search);
@@ -85,7 +83,7 @@ pub struct EditTool;
 
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Edit::default(), options(Edit::RULES), false, |place| Edit {
+        app.add_tool_per_call(Edit::default(), options(Edit::RULES), |place| Edit {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
@@ -101,12 +99,10 @@ pub struct WriteTool;
 
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Write::default(), options(Write::RULES), false, |place| {
-            Write {
-                workspace: place.workspace,
-                base: Some(place.base),
-                confine: place.confine,
-            }
+        app.add_tool_per_call(Write::default(), options(Write::RULES), |place| Write {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);
@@ -120,12 +116,10 @@ pub struct DeleteTool;
 
 impl Plugin for DeleteTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Delete::default(), options(Delete::RULES), false, |place| {
-            Delete {
-                workspace: place.workspace,
-                base: Some(place.base),
-                confine: place.confine,
-            }
+        app.add_tool_per_call(Delete::default(), options(Delete::RULES), |place| Delete {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Delete::NAME, looks::delete);
@@ -140,7 +134,7 @@ pub struct MoveTool;
 
 impl Plugin for MoveTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(Move::default(), options(Move::RULES), false, |place| Move {
+        app.add_tool_per_call(Move::default(), options(Move::RULES), |place| Move {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
@@ -159,7 +153,7 @@ pub struct ListTool;
 
 impl Plugin for ListTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(List::default(), options(List::RULES), false, |place| List {
+        app.add_tool_per_call(List::default(), options(List::RULES), |place| List {
             workspace: place.workspace,
             base: Some(place.base),
             confine: place.confine,
@@ -221,18 +215,16 @@ impl Plugin for ShellTool {
             dir: None,
         };
         let per = shell.clone();
-        app.add_tool_per_call(shell, options(Shell::RULES), true, move |place| {
-            SharedShell {
-                shell: Shell {
-                    workspace: place.workspace,
-                    live: place.live,
-                    confine: place.confine,
-                    spill: place.spill,
-                    ..per.shell.clone()
-                },
-                dir: Some(place.base),
-                ..per.clone()
-            }
+        app.add_live_tool_per_call(shell, options(Shell::RULES), move |place| SharedShell {
+            shell: Shell {
+                workspace: place.workspace,
+                live: place.live,
+                confine: place.confine,
+                spill: place.spill,
+                ..per.shell.clone()
+            },
+            dir: Some(place.base),
+            ..per.clone()
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Shell::NAME, looks::shell);

@@ -271,11 +271,12 @@ doc comments describe them, and a call whose arguments do not fit is
 refused with where and why (rig-core's `tool::validate`); a schema that
 declares no `properties` takes any arguments.
 
-A tool registered with `app.add_tool_per_call(tool, options, live, make)`
+A tool registered with `app.add_tool_per_call(tool, options, make)`
 is built for each call's `CallPlace`: the app's workspace (an overlay of it
 for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
 `WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
-for a `live` tool the `Live` its output goes to, as the coding tools and
+for a tool registered with `add_live_tool_per_call` the `Live` its output
+goes to, as the coding tools and
 rig-coding-tools' `ListTool` (`list`, off by default) are.
 
 ```rust,no_run
@@ -293,7 +294,7 @@ fn build(app: &mut App) {
         footprint: Some(Touches::Reads(Scope::Anything)),
     };
     let here = WordCount { workspace: Arc::new(Local), base: None, confine: false };
-    app.add_tool_per_call(here, options, false, |at| {
+    app.add_tool_per_call(here, options, |at| {
         WordCount { workspace: at.workspace, base: Some(at.base), confine: at.confine }
     });
 }

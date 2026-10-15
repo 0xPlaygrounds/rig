@@ -8,7 +8,7 @@
 //! use rig_harness::rig_tools::Write;
 //!
 //! let mut app = App::new();
-//! app.add_tool_per_call(Write::default(), ToolOptions::default(), false, |place| Write {
+//! app.add_tool_per_call(Write::default(), ToolOptions::default(), |place| Write {
 //!     workspace: place.workspace,
 //!     base: Some(place.base),
 //!     confine: place.confine,
@@ -47,7 +47,8 @@ pub struct CallPlace {
     /// Whether `base` is a `WorkDir`, outside which the call refuses paths.
     pub confine: bool,
     /// Where the call reports its output as it comes, for a tool
-    /// registered `live`; read by the front as the call's [`CallOutput`].
+    /// registered with [`add_live_tool_per_call`](AppPerCallExt::add_live_tool_per_call);
+    /// read by the front as the call's [`CallOutput`].
     pub live: Option<Live>,
     /// Where output cut short is kept whole, if anywhere
     /// ([`Scratch::spill`]).
@@ -60,16 +61,23 @@ pub trait AppPerCallExt {
     /// [`add_tool_with`](AppToolsExt::add_tool_with) does, and gives each of
     /// its calls the handler of `make(place)` in
     /// [`PrepareSystems::Compose`], so a plugin that wraps or replaces a
-    /// call's [`CallHandler`] in [`PrepareSystems::Edit`] gets that one. With
-    /// `live`, each call gets a [`CallOutput`] and its place the [`Live`]
-    /// that fills it. A call of the tool can be previewed
-    /// ([`Preview`](crate::preview::Preview)), as `make` builds it on an
-    /// overlay of the workspace.
+    /// call's [`CallHandler`] in [`PrepareSystems::Edit`] gets that one. A
+    /// call of the tool can be previewed ([`Preview`](crate::preview::Preview)),
+    /// as `make` builds it on an overlay of the workspace.
     fn add_tool_per_call<T: Tool + 'static>(
         &mut self,
         tool: T,
         options: ToolOptions<'_>,
-        live: bool,
+        make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
+    ) -> &mut Self;
+
+    /// As [`add_tool_per_call`](Self::add_tool_per_call), for a tool that
+    /// reports its output as it runs: each call gets a [`CallOutput`], and
+    /// its place the [`Live`] that fills it.
+    fn add_live_tool_per_call<T: Tool + 'static>(
+        &mut self,
+        tool: T,
+        options: ToolOptions<'_>,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self;
 }
@@ -79,26 +87,43 @@ impl AppPerCallExt for App {
         &mut self,
         tool: T,
         options: ToolOptions<'_>,
-        live: bool,
         make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
     ) -> &mut Self {
-        if !self.world().contains_resource::<PerCall>() {
-            self.init_resource::<PerCall>()
-                .init_resource::<ProjectRoot>()
-                .init_resource::<ProjectWorkspace>()
-                .add_systems(AgentPass, give_place.in_set(PrepareSystems::Compose));
-        }
-        let make =
-            move |place: CallPlace| Handler(ErasedHandler::new(ToolAdapter::new(make(place))));
-        if let Some(mut tools) = self.world_mut().get_resource_mut::<PerCall>() {
-            tools.0.push(Made {
-                name: T::NAME,
-                live,
-                make: Box::new(make),
-            });
-        }
-        self.add_tool_with(tool, options)
+        add_per_call(self, tool, options, false, make)
     }
+
+    fn add_live_tool_per_call<T: Tool + 'static>(
+        &mut self,
+        tool: T,
+        options: ToolOptions<'_>,
+        make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
+    ) -> &mut Self {
+        add_per_call(self, tool, options, true, make)
+    }
+}
+
+fn add_per_call<'a, T: Tool + 'static>(
+    app: &'a mut App,
+    tool: T,
+    options: ToolOptions<'_>,
+    live: bool,
+    make: impl Fn(CallPlace) -> T + Send + Sync + 'static,
+) -> &'a mut App {
+    if !app.world().contains_resource::<PerCall>() {
+        app.init_resource::<PerCall>()
+            .init_resource::<ProjectRoot>()
+            .init_resource::<ProjectWorkspace>()
+            .add_systems(AgentPass, give_place.in_set(PrepareSystems::Compose));
+    }
+    let make = move |place: CallPlace| Handler(ErasedHandler::new(ToolAdapter::new(make(place))));
+    if let Some(mut tools) = app.world_mut().get_resource_mut::<PerCall>() {
+        tools.0.push(Made {
+            name: T::NAME,
+            live,
+            make: Box::new(make),
+        });
+    }
+    app.add_tool_with(tool, options)
 }
 
 /// How a call of one tool is built for its [`CallPlace`].

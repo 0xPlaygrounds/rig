@@ -540,20 +540,12 @@ impl Plugin for StructuredConfigEditPlugin {
             rules: RULES,
             ..ToolOptions::default()
         };
-        app.add_tool_per_call(ConfigGet::default(), rules, false, |place| {
-            ConfigGet(place.into())
-        })
-        .add_tool_per_call(
-            ConfigSet::default(),
-            ToolOptions::default(),
-            false,
-            |place| ConfigSet(place.into()),
-        )
-        .add_tool_per_call(
-            ConfigDelete::default(),
-            ToolOptions::default(),
-            false,
-            |place| ConfigDelete(place.into()),
-        );
+        app.add_tool_per_call(ConfigGet::default(), rules, |place| ConfigGet(place.into()))
+            .add_tool_per_call(ConfigSet::default(), ToolOptions::default(), |place| {
+                ConfigSet(place.into())
+            })
+            .add_tool_per_call(ConfigDelete::default(), ToolOptions::default(), |place| {
+                ConfigDelete(place.into())
+            });
     }
 }

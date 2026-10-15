@@ -73,12 +73,10 @@ impl Plugin for ProjectReplacePlugin {
             footprint: None,
         };
         app.init_resource::<ProjectWorkspace>()
-            .add_tool_per_call(ReplaceInFiles::default(), options, false, |at| {
-                ReplaceInFiles {
-                    workspace: at.workspace,
-                    base: Some(at.base),
-                    confine: at.confine,
-                }
+            .add_tool_per_call(ReplaceInFiles::default(), options, |at| ReplaceInFiles {
+                workspace: at.workspace,
+                base: Some(at.base),
+                confine: at.confine,
             })
             .configure_sets(
                 AgentPass,

@@ -99,20 +99,16 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(dir.clone()))
         .add_plugins((AgentPlugin, CheckpointPlugin))
-        .add_tool_per_call(Shell::default(), ToolOptions::default(), false, |place| {
-            Shell {
-                launcher: Launcher::default().in_dir(&place.base),
-                workspace: place.workspace,
-                confine: place.confine,
-                ..Shell::default()
-            }
+        .add_tool_per_call(Shell::default(), ToolOptions::default(), |place| Shell {
+            launcher: Launcher::default().in_dir(&place.base),
+            workspace: place.workspace,
+            confine: place.confine,
+            ..Shell::default()
         })
-        .add_tool_per_call(Write::default(), ToolOptions::default(), false, |place| {
-            Write {
-                workspace: place.workspace,
-                base: Some(place.base),
-                confine: place.confine,
-            }
+        .add_tool_per_call(Write::default(), ToolOptions::default(), |place| Write {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
         })
         .init_resource::<Changed>()
         .insert_resource(UserSaves(dir.clone()))
