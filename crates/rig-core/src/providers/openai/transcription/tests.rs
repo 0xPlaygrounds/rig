@@ -128,13 +128,14 @@ fn verbose_shapes_normalize_to_segments_words_and_speakers() {
 
     let openrouter = normalize(
         r#"{"text":"Hello there! It was great.","usage":{"seconds":7,"cost":0.0002},
-            "language":"en","duration":6.55,
+            "language":"en","duration":6.55,"confidence":0.93,
             "segments":[{"id":0,"start":0.12,"end":2,"text":"Hello there!","speaker":0},
                         {"id":1,"start":2.88,"end":5.96,"text":"It was great.","speaker":1}],
             "words":[{"word":"Hello","start":0.12,"end":0.32,"speaker":0,"confidence":0.9}]}"#,
     );
     assert_eq!(openrouter.language.as_deref(), Some("en"));
     assert_eq!(openrouter.duration, Some(6.55));
+    assert_eq!(openrouter.confidence, Some(0.93));
     assert_eq!(
         openrouter.segments,
         vec![

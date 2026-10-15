@@ -54,6 +54,9 @@ pub struct TranscriptionResponse {
     /// Length of the audio in seconds, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// The provider's confidence in the whole transcript, from 0 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
     /// Timed stretches of the transcript, in the provider's order. Empty when
     /// the provider returned none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -81,6 +84,7 @@ impl TranscriptionResponse {
             provider_request_id: None,
             language: None,
             duration: None,
+            confidence: None,
             segments: Vec::new(),
             words: Vec::new(),
             raw: serde_json::Value::Null,

@@ -27,6 +27,10 @@ pub struct TranscriptionResponse {
     /// formats.
     #[serde(default)]
     pub duration: Option<f64>,
+    /// Confidence in the whole transcript, from 0 to 1, reported by some
+    /// verbose formats.
+    #[serde(default)]
+    pub confidence: Option<f64>,
     /// Timed segments, reported by verbose and diarized formats.
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub segments: Vec<TranscriptionSegment>,
@@ -39,10 +43,10 @@ pub struct TranscriptionResponse {
 /// log probabilities, stay on the raw document.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TranscriptionSegment {
-    /// Start, in seconds. Mistral may report no time.
+    /// Start, in seconds. Mistral's schema allows no time.
     #[serde(default)]
     pub start: Option<f64>,
-    /// End, in seconds. Mistral may report no time.
+    /// End, in seconds. Mistral's schema allows no time.
     #[serde(default)]
     pub end: Option<f64>,
     /// The segment's text.
@@ -198,6 +202,7 @@ impl TranscriptionResponse {
             usage,
             language: self.language,
             duration: self.duration,
+            confidence: self.confidence,
             segments,
             words,
             ..transcription::TranscriptionResponse::new(self.text)

@@ -1,10 +1,10 @@
 //! Mistral's transcription model identifiers.
 //!
-//! `timestamp_granularities` (`["segment"]` or `["word"]`) and `diarize: true`
-//! in `additional_params` fill
+//! `timestamp_granularities` (`["segment"]` or `["word"]`) in
+//! `additional_params` fills
 //! [`TranscriptionResponse::segments`](crate::transcription::TranscriptionResponse::segments),
-//! one per word at word granularity, with speaker labels such as
-//! `"speaker_1"`. Audio-second usage remains in
+//! one per word at word granularity. `diarize: true` with `["segment"]` adds
+//! speaker labels such as `"speaker_1"`. Audio-second usage remains in
 //! [`TranscriptionResponse::raw`](crate::transcription::TranscriptionResponse::raw).
 //!
 //! ```no_run
