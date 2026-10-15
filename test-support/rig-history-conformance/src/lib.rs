@@ -773,7 +773,7 @@ fn adapted<F: HistoryFixture>(fixture: &F, model: &str, history: &[Message]) -> 
     let wire = fixture.wire(model);
     let mut request = CompletionRequest::new("next").model(model);
     request.tools = tools_of(history);
-    request.chat_history = history.to_vec().into_iter().map(Into::into).collect();
+    request.chat_history = history.iter().cloned().map(Into::into).collect();
     Completion::prepare(request, &wire.describe())
         .unwrap_or_else(|error| panic!("the history prepares for {model}: {error}"))
         .chat_history
@@ -1361,7 +1361,7 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
     for mode in MODES {
         let wire = fixture.wire(fixture.model());
         let mut request = CompletionRequest::new("next");
-        request.chat_history = history[1..].to_vec().into_iter().map(Into::into).collect();
+        request.chat_history = history.iter().skip(1).cloned().map(Into::into).collect();
         request.chat_history.push(Message::user("next").into());
         let prepared = Completion::prepare(request, &wire.describe())
             .unwrap_or_else(|error| panic!("{mode:?}: the history prepares: {error}"));
@@ -1390,7 +1390,7 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
     for mode in MODES {
         let wire = fixture.wire(fixture.model());
         let mut request = CompletionRequest::new("next");
-        request.chat_history = history[1..].to_vec().into_iter().map(Into::into).collect();
+        request.chat_history = history.iter().skip(1).cloned().map(Into::into).collect();
         request.tools = tools_of(&request.chat_history);
         request.tool_choice = Some(rig_core::message::ToolChoice::None);
         let prepared = Completion::prepare(request, &wire.describe())
