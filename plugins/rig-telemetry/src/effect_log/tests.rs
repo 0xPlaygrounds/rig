@@ -71,11 +71,14 @@ fn a_tool_registered_while_running_is_described_in_the_header() {
     app.add_plugins((AgentPlugin, EffectLogPlugin));
     app.finish();
     app.update();
-    let Ok(name) = ToolName::new("late") else {
-        panic!("`late` is a tool name");
-    };
-    let definition = ToolDefinition::new(name, "registered late", rig_core::serde_json::json!({}));
-    app.world_mut().spawn(ToolDef(definition));
+    let late = ToolName::new("late").into_iter().map(|name| {
+        ToolDef(ToolDefinition::new(
+            name,
+            "registered late",
+            rig_core::serde_json::json!({}),
+        ))
+    });
+    app.world_mut().spawn_batch(late);
     app.world_mut()
         .write_message(EffectRecorded(record(1, "a", "note", 0)));
     app.update();
