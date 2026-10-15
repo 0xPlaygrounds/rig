@@ -42,7 +42,7 @@ fn said(request: &CompletionRequest) -> Vec<String> {
     let user = request
         .chat_history
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::User { content } => Some(content.iter()),
             _ => None,
         });

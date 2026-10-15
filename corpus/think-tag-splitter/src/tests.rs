@@ -82,7 +82,10 @@ fn think_tags_stream_as_reasoning_and_stay_out_of_the_answer() {
         .get::<Conversation>(agent)
         .map(|conversation| conversation.messages());
     let answer = match conversation {
-        Some([_, message::Message::Assistant(answer)]) => Some(&answer.content),
+        Some([_, last]) => match &**last {
+            message::Message::Assistant(answer) => Some(&answer.content),
+            _ => None,
+        },
         _ => None,
     };
     assert_eq!(

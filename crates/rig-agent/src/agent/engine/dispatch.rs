@@ -115,7 +115,7 @@ pub(crate) fn model_step<'a, S: TurnSource>(
     agent_span: &'a tracing::Span,
 ) -> DriveStream<'a> {
     Box::pin(async_stream::stream! {
-        let kind = EffectKind::Completion { request, stream: S::STREAMS };
+        let kind = EffectKind::Completion { request: request.into(), stream: S::STREAMS };
         let opened = DispatchScope::open(runner, hook_ctx, kind, None)
             .instrument(chat_span.clone())
             .await;

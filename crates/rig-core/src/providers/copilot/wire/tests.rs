@@ -164,11 +164,13 @@ async fn registry_request(
             crate::catalog::ModelFacts::default(),
         );
     let mut request = prompt();
-    request.chat_history.insert(0, Message::system("be brief"));
+    request
+        .chat_history
+        .insert(0, Message::system("be brief").into());
     handler
         .handle(
             EffectKind::Completion {
-                request,
+                request: request.into(),
                 stream: false,
             },
             Dispatch::new(EffectId::from_raw(1), false),
@@ -545,13 +547,14 @@ fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
     use crate::message::{DocumentSourceKind, Image, UserContent};
     let mut request = prompt();
     request.chat_history = vec![
-        Message::assistant("send an image"),
+        Message::assistant("send an image").into(),
         Message::User {
             content: vec![UserContent::Image(Image {
                 data: DocumentSourceKind::Url("https://image.invalid/example.png".into()),
                 ..Image::default()
             })],
-        },
+        }
+        .into(),
     ];
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         let direct = copilot().completion(model).with_edits_intent();

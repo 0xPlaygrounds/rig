@@ -238,7 +238,7 @@ impl Conversation {
     /// conversation.push(Message::assistant("Blue."));
     /// assert_eq!(conversation.line_title(), "blue");
     /// conversation.switch_branch(first, by)?;
-    /// assert_eq!(conversation.messages().get(1), Some(&Message::assistant("Red.")));
+    /// assert_eq!(conversation.messages().get(1).map(|message| &**message), Some(&Message::assistant("Red.")));
     /// assert_eq!(conversation.id(1), red);
     /// assert_eq!(conversation.line_title(), "main");
     /// let kept = conversation.branches();

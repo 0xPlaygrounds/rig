@@ -212,11 +212,18 @@ fn shape(
             Some(conversation) => conversation.messages(),
             None => &request.chat_history,
         };
-        let lead = usize::from(matches!(messages.first(), Some(Message::System { .. })));
+        let lead = usize::from(matches!(
+            messages.first().map(|message| &**message),
+            Some(Message::System { .. })
+        ));
         let now = Prefix {
             tools: request.tools.clone(),
             prompt,
-            messages: messages.iter().skip(lead).cloned().collect(),
+            messages: messages
+                .iter()
+                .skip(lead)
+                .map(|message| (**message).clone())
+                .collect(),
         };
 
         request
@@ -271,8 +278,10 @@ fn shape(
                     let by = Author::plugin("prompt-cache-shaping");
                     let last = conversation.messages().len().saturating_sub(1);
                     match conversation.entry(last) {
-                        Some(mut entry) if matches!(entry.message, Message::User { .. }) => {
-                            if let Message::User { content } = &mut entry.message {
+                        Some(mut entry) if matches!(*entry.message, Message::User { .. }) => {
+                            if let Message::User { content } =
+                                std::sync::Arc::make_mut(&mut entry.message)
+                            {
                                 content.push(UserContent::text(text));
                             }
                             conversation.splice(last.., [entry], by);
@@ -282,9 +291,13 @@ fn shape(
                         }
                     }
                 }
-                None => match request.chat_history.last_mut() {
+                None => match request
+                    .chat_history
+                    .last_mut()
+                    .map(std::sync::Arc::make_mut)
+                {
                     Some(Message::User { content }) => content.push(UserContent::text(text)),
-                    _ => request.chat_history.push(Message::user(text)),
+                    _ => request.chat_history.push(Message::user(text).into()),
                 },
             }
         }

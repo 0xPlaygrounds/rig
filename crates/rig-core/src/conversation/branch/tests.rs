@@ -45,7 +45,10 @@ fn a_branch_switched_away_and_back_keeps_ids_made_times_and_asides() {
     let first = conversation.branch_off(1, "blue", by.clone());
     assert!(first.is_ok(), "{first:?}");
     let first = first.unwrap_or_default();
-    assert_eq!(conversation.messages(), [Message::user("Name a colour.")]);
+    assert_eq!(
+        conversation.messages(),
+        [Message::user("Name a colour.")].map(std::sync::Arc::new)
+    );
     assert_eq!(conversation.aside(rated), None, "the rating went with it");
     conversation.push(Message::assistant("Blue."));
     let blue = keys(&conversation);
@@ -237,7 +240,10 @@ fn a_nested_branch_is_listed_and_reached_in_one_switch() {
     let main = kept.get(1).map(|kept| kept.id).unwrap_or_default();
     let line = conversation.line(Some(main));
     let texts = |entries: &[crate::conversation::Entry]| -> Vec<Message> {
-        entries.iter().map(|entry| entry.message.clone()).collect()
+        entries
+            .iter()
+            .map(|entry| Message::clone(&entry.message))
+            .collect()
     };
     assert_eq!(
         line.as_deref().map(texts),
@@ -368,7 +374,8 @@ fn a_range_moved_out_and_merged_back_is_where_it_was() {
         Message::user("one"),
         Message::assistant("two"),
         Message::assistant("five"),
-    ];
+    ]
+    .map(std::sync::Arc::new);
     assert_eq!(conversation.messages(), messages);
     let kept = conversation.branches();
     let listed: Vec<_> = kept
@@ -534,7 +541,12 @@ fn a_line_copied_out_merges_back_by_appending_or_where_it_was_moved_from() {
     let mut log = conversation.take_unsaved();
     let merged = conversation.merge_line(&copy, MergeAt::End, by.clone());
     assert!(merged.is_ok(), "{merged:?}");
-    let tail: Vec<Message> = conversation.messages().iter().skip(6).cloned().collect();
+    let tail: Vec<Message> = conversation
+        .messages()
+        .iter()
+        .skip(6)
+        .map(|m| Message::clone(m))
+        .collect();
     assert_eq!(tail, [Message::assistant("six"), Message::user("seven")]);
     let last = conversation.id(7);
     assert!(last.is_some());

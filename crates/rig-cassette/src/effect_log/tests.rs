@@ -20,7 +20,7 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
     let mut log = two_records();
     for record in &mut log.records {
         record.kind = EffectKind::Completion {
-            request: request(),
+            request: request().into(),
             stream: false,
         };
         record.outcome = Ok(Answered::Completion(CompletionResponse::new(
@@ -131,7 +131,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
         stream,
         HandlerKey::from("stream"),
         EffectKind::Completion {
-            request: request(),
+            request: request().into(),
             stream: true,
         },
         DispatchContext::default(),
@@ -225,7 +225,7 @@ fn stream_error_metadata_is_validated_and_released_with_its_records() {
             id,
             "stream".into(),
             EffectKind::Completion {
-                request: request(),
+                request: request().into(),
                 stream: true,
             },
             DispatchContext::default(),
@@ -281,7 +281,7 @@ fn effect_record_and_log_round_trip() {
             id: EffectId::from_raw(1),
             key: HandlerKey::from("model"),
             kind: EffectKind::Completion {
-                request: request(),
+                request: request().into(),
                 stream: false,
             },
             outcome: Ok(Answered::Completion(CompletionResponse::new(
@@ -747,25 +747,27 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     ))
     .expect("a transcript");
     let mut next = request();
-    next.chat_history.push(Message::Assistant(
-        rig_core::message::AssistantMessage::new(choice.clone()),
-    ));
-    next.chat_history.push(Message::User {
-        content: calls
-            .iter()
-            .rev()
-            .map(|call| {
-                UserContent::tool_result(
-                    call.id.clone(),
-                    rig_core::message::ToolName::new("add").expect("tool name"),
-                    vec![ToolResultContent::text("ok")],
-                )
-            })
-            .collect::<Vec<_>>(),
-    });
+    next.chat_history
+        .push(Message::Assistant(rig_core::message::AssistantMessage::new(choice.clone())).into());
+    next.chat_history.push(
+        Message::User {
+            content: calls
+                .iter()
+                .rev()
+                .map(|call| {
+                    UserContent::tool_result(
+                        call.id.clone(),
+                        rig_core::message::ToolName::new("add").expect("tool name"),
+                        vec![ToolResultContent::text("ok")],
+                    )
+                })
+                .collect::<Vec<_>>(),
+        }
+        .into(),
+    );
     let mut records = two_records().records;
     records[0].kind = EffectKind::Completion {
-        request: request(),
+        request: request().into(),
         stream: false,
     };
     records[0].outcome = Ok(Answered::Completion(CompletionResponse::new(
@@ -776,7 +778,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     )));
     records[0].events = Some(events);
     records[1].kind = EffectKind::Completion {
-        request: next,
+        request: next.into(),
         stream: false,
     };
     records[1].outcome = Ok(Answered::Completion(CompletionResponse::new(
@@ -815,7 +817,11 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         let EffectKind::Completion { request, .. } = &mut changed else {
             unreachable!()
         };
-        let Some(Message::User { content }) = request.chat_history.last_mut() else {
+        let Some(Message::User { content }) = std::sync::Arc::make_mut(request)
+            .chat_history
+            .last_mut()
+            .map(std::sync::Arc::make_mut)
+        else {
             unreachable!()
         };
         let Some(UserContent::ToolResult(result)) = content.last_mut() else {

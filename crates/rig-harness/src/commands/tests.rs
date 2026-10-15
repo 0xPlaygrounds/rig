@@ -36,7 +36,7 @@ fn sent(app: &App, agent: Entity) -> Vec<String> {
         .unwrap_or_default();
     messages
         .iter()
-        .flat_map(|message| match message {
+        .flat_map(|message| match &**message {
             Message::User { content } => content.to_vec(),
             _ => Vec::new(),
         })

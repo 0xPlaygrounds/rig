@@ -168,7 +168,6 @@ default-members = [
     "examples/frozen_api",
 ]
 exclude = [
-    "archived",
     # Data/infra dirs under examples/ that are not Cargo packages.
     "examples/documents",
     "examples/otel",
@@ -264,7 +263,7 @@ axum = "0.8"
 aws-config = { version = "1", default-features = false }
 # 1.124: `OutputConfig`/`ServiceTier`/citations types rig-bedrock maps.
 aws-sdk-bedrockruntime = { version = "1.124", default-features = false }
-aws-smithy-eventstream = "0.60"
+aws-smithy-eventstream = "0.61"
 aws-smithy-http-client = { version = "1", default-features = false }
 aws-smithy-runtime-api = "1"
 aws-smithy-types = "1"
@@ -294,10 +293,12 @@ chrono = "0.4"
 convert_case = "0.11"
 crossbeam-channel = "0.5.15"
 crossterm = "0.29"
+# Benchmarks (`benches/`, compiled in CI, never run there). 0.1.15: timings
+# net of the allocation counter (`AllocProfiler`).
+divan = "0.1.15"
 ctrlc = "3.4.4"
 dotenvy = "0.15"
 epub = "2"
-ethers = "2"
 # 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
@@ -322,11 +323,11 @@ ignore = "0.4.25"
 # Decodes the JPEG frames of rig-candle's pose test and example.
 image = { version = "0.25.10", default-features = false }
 indexmap = "2"
-indoc = "2"
 lancedb = { version = "0.30", default-features = false }
 libc = "0.2.186"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
+memchr = "2"
 mime = "0.3"
 mime_guess = "2"
 # 3.2: 3.0/3.1 no longer build against their own `^3` macro crate.
@@ -340,7 +341,6 @@ opentelemetry_sdk = "0.32"
 ordered-float = "5"
 # 0.4.2: the first release whose `sqlx` feature accepts sqlx 0.9.
 pgvector = "0.4.2"
-pin-project-lite = "0.2"
 proc-macro2 = "1"
 pulldown-cmark = { version = "0.13", default-features = false }
 # 1.10: the `Qdrant` client, `Payload`, and the query/upsert builders.
@@ -372,8 +372,9 @@ sqlite-vec = "0.1"
 sqlx = "0.9"
 # 0.8.3: `Engine::new_sandboxed` and the thread state controller rig-steel uses.
 steel-core = "0.8.3"
-# 3.2: 3.0/3.1 no longer build against `surrealdb-core ^3` as published.
-surrealdb = "3.2"
+# 3.2.5: earlier releases no longer build against the newest
+# `surrealdb-core` their requirement accepts.
+surrealdb = "3.2.5"
 syn = "2"
 term_size = "0.3"
 testcontainers = "0.27"
@@ -382,7 +383,6 @@ thiserror = "2"
 tokio = "1"
 tokio-rusqlite = { version = "0.6", default-features = false }
 tokio-test = "0.4"
-tokio-stream = "0.1"
 tokio-tungstenite = { version = "0.29", default-features = false }
 tokenizers = { version = "0.22", default-features = false }
 tonic = "0.14"
@@ -402,7 +402,6 @@ uuid = "1"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"
 web-time = "1"
-zerocopy = "0.8"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
@@ -487,18 +486,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
 serde_yaml = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
-rmcp = { workspace = true, features = [
-  "client",
-  "macros",
-  "reqwest",
-  "transport-streamable-http-client",
-  "transport-streamable-http-client-reqwest",
-  "transport-streamable-http-server-session",
-  "transport-streamable-http-server",
-  "transport-worker",
-] }
 tracing = { workspace = true }
-tracing-opentelemetry = { workspace = true }
 [features]
 typesafeai = ["dep:rig-typesafeai"]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]

@@ -39,7 +39,8 @@ fn a_view_never_keeps_a_result_without_its_call() {
         results(&["1"]),
         Message::assistant("done"),
         Message::user("next"),
-    ];
+    ]
+    .map(std::sync::Arc::new);
     // The newest four start at the system message, before a result whose
     // call they cut off: the view moves past it.
     let kept = view(&history, &LastMessages(4));

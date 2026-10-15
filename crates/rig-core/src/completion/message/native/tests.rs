@@ -141,3 +141,71 @@ fn a_reasoning_blob_is_read_where_its_wire_keeps_it() {
         None
     );
 }
+
+/// Stored native items carry these values, so a change to the projection or
+/// to how it is hashed would stale every saved item.
+#[test]
+fn fingerprints_are_pinned() {
+    use crate::completion::ToolDefinition;
+    use crate::message::{
+        DocumentSourceKind, Image, ImageDetail, ImageMediaType, Reasoning, ToolCall, ToolFunction,
+    };
+    let tool = |name: &str, parameters| {
+        ToolDefinition::new(
+            ToolName::new(name).expect("a tool name"),
+            format!("{name} things"),
+            parameters,
+        )
+    };
+    let tools = [
+        tool(
+            "search",
+            json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+        ),
+        tool(
+            "add",
+            json!({"properties": {"b": {"maximum": 1.0}}, "type": "object"}),
+        ),
+    ];
+    let arguments = json!({"b": {"z": 1, "a": 20.0}, "a": [1.5, 2.0, -0.0, 1e20]});
+    let local = AssistantContent::ToolCall(ToolCall::new(
+        CallId::from_wire(""),
+        ToolFunction::new(ToolName::new("lookup").expect("a tool name"), json!({})),
+    ));
+    let image = AssistantContent::Image(Image {
+        data: DocumentSourceKind::base64("aGk="),
+        media_type: Some(ImageMediaType::PNG),
+        detail: Some(ImageDetail::High),
+        native: None,
+    });
+    let opaque = AssistantContent::Opaque(Opaque {
+        item: json!({"type": "web_search_call"}),
+        replay: true,
+    });
+    let reasoning = AssistantContent::Reasoning(Reasoning {
+        redacted: true,
+        ..Reasoning::new("plan")
+    });
+    let hex = |fingerprint: Fingerprint| format!("{:016x}", fingerprint.0);
+    let pinned = [
+        hex(AssistantContent::text("hello").fingerprint()),
+        hex(reasoning.fingerprint()),
+        hex(call(arguments).fingerprint()),
+        hex(local.fingerprint()),
+        hex(image.fingerprint()),
+        hex(opaque.fingerprint()),
+        hex(Fingerprint::of(&json!(tools))),
+    ];
+    assert_eq!(
+        pinned,
+        [
+            "be5cdb8169d835fd", // text
+            "c2dc7b0f4e836ea1", // reasoning
+            "3df7dcbe7a89ecc8", // call with a provider id
+            "7e2d775ebdb398fc", // call with a local id
+            "37e9c9a0147c5070", // image
+            "9604486c7b29d4c5", // opaque
+            "2fc10d4b16d1b11c", // tools, as a request's context hashes them
+        ]
+    );
+}

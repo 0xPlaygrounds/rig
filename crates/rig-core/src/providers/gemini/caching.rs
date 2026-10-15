@@ -503,22 +503,48 @@ pub(crate) struct Parsed {
     pub(crate) has_cached_content: bool,
 }
 
+/// A JSON object's members in their order, each as its exact bytes. A
+/// repeated key keeps its first place and its last value, as a map does.
+struct Members(Vec<(String, Box<RawValue>)>);
+
+impl<'de> Deserialize<'de> for Members {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = Members;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a JSON object")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Members, A::Error> {
+                let mut members: Vec<(String, Box<RawValue>)> = Vec::new();
+                while let Some((key, value)) = map.next_entry::<String, Box<RawValue>>()? {
+                    match members.iter_mut().find(|(held, _)| *held == key) {
+                        Some((_, held)) => *held = value,
+                        None => members.push((key, value)),
+                    }
+                }
+                Ok(Members(members))
+            }
+        }
+        deserializer.deserialize_map(Visitor)
+    }
+}
+
 pub(crate) fn parse(bytes: &[u8]) -> Option<Parsed> {
-    let fields: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(bytes).ok()?;
-    // Parse again as raw values so every part keeps its bytes; the first
-    // pass only fixes the key order, which `RawValue` maps do not keep.
-    let raw: HashMap<String, Box<RawValue>> = serde_json::from_slice(bytes).ok()?;
+    let Members(members) = serde_json::from_slice(bytes).ok()?;
     let mut parsed = Parsed {
         rest: Vec::new(),
         prefix: [None, None, None],
         contents: Vec::new(),
         has_cached_content: false,
     };
-    for key in fields.keys() {
-        let value = raw.get(key)?.clone();
+    for (key, value) in members {
         if key == "contents" {
             parsed.contents = serde_json::from_str(value.get()).ok()?;
-        } else if let Some(slot) = PREFIX_KEYS.iter().position(|prefix| prefix == key) {
+        } else if let Some(slot) = PREFIX_KEYS.iter().position(|prefix| *prefix == key) {
             if value.get() != "null"
                 && let Some(field) = parsed.prefix.get_mut(slot)
             {
@@ -528,7 +554,7 @@ pub(crate) fn parse(bytes: &[u8]) -> Option<Parsed> {
             if key == "cachedContent" && value.get() != "null" {
                 parsed.has_cached_content = true;
             }
-            parsed.rest.push((key.clone(), value));
+            parsed.rest.push((key, value));
         }
     }
     Some(parsed)
@@ -542,45 +568,54 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// `fragment` with its keys sorted: a history replays a provider part with
-/// the key order it arrived in, which a recording does not keep, so the
-/// digests read the content, not its spelling.
-fn canonical(fragment: &str) -> std::borrow::Cow<'_, str> {
-    serde_json::from_str::<serde_json::Value>(fragment)
-        .map_or(std::borrow::Cow::Borrowed(fragment), |value| {
-            std::borrow::Cow::Owned(crate::json_utils::to_canonical_string(&value))
-        })
+/// What the book reads off a body, before it takes its lock.
+pub(crate) struct Digested {
+    /// `d[k]`: the digest of the model, the prefix and `contents[..k]`.
+    pub(crate) d: Vec<String>,
+    /// The token estimate of the prefix.
+    pub(crate) prefix: u64,
+    /// The token estimate of each content.
+    pub(crate) contents: Vec<u64>,
 }
 
-/// `d[k]`: the digest of the model, the prefix and `contents[..k]`.
-pub(crate) fn digests(model: &str, parsed: &Parsed) -> Vec<String> {
+pub(crate) fn digests(model: &str, parsed: &Parsed) -> Digested {
     let mut hasher = Sha256::new();
     hasher.update(model.as_bytes());
+    let mut prefix = 0;
     for field in &parsed.prefix {
         hasher.update([0u8]);
         if let Some(raw) = field {
-            hasher.update(canonical(raw.get()).as_bytes());
+            prefix += digest(&mut hasher, raw.get());
         }
     }
     let mut state = hasher.finalize().to_vec();
-    let mut out = vec![hex(&state)];
+    let mut d = vec![hex(&state)];
+    let mut contents = Vec::with_capacity(parsed.contents.len());
     for content in &parsed.contents {
         let mut hasher = Sha256::new();
         hasher.update(&state);
-        hasher.update(canonical(content.get()).as_bytes());
+        contents.push(digest(&mut hasher, content.get()));
         state = hasher.finalize().to_vec();
-        out.push(hex(&state));
+        d.push(hex(&state));
     }
-    out
+    Digested {
+        d,
+        prefix,
+        contents,
+    }
 }
 
-/// A rough token count of a JSON fragment: its bytes over four, without
-/// thought signatures, which Gemini expands into restored thoughts that no
-/// explicit cache holds.
-fn estimate(json: &str) -> u64 {
-    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(json) else {
-        return (json.len() / 4) as u64;
+/// Hash `fragment` with its keys sorted (a history replays a provider part
+/// with the key order it arrived in, which a recording does not keep, so
+/// the digests read the content, not its spelling), and return a rough
+/// token count of it: its bytes over four, without thought signatures,
+/// which Gemini expands into restored thoughts that no explicit cache holds.
+fn digest(hasher: &mut Sha256, fragment: &str) -> u64 {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(fragment) else {
+        hasher.update(fragment.as_bytes());
+        return (fragment.len() / 4) as u64;
     };
+    hasher.update(crate::json_utils::to_canonical_string(&value).as_bytes());
     fn scrub(value: &mut serde_json::Value) {
         match value {
             serde_json::Value::Object(map) => {
@@ -699,41 +734,26 @@ pub(crate) struct Create {
 }
 
 impl CacheBook {
-    pub(crate) fn plan(
-        &self,
-        model: &str,
-        d: &[String],
-        parsed: &Parsed,
-        roll_allowed: bool,
-    ) -> Plan {
+    pub(crate) fn plan(&self, model: &str, digested: &Digested, roll_allowed: bool) -> Plan {
         let p = self.policy;
         let now = self.now();
-        let n = parsed.contents.len();
+        let n = digested.contents.len();
         // `d` holds one digest per content boundary, `0..=n`.
-        let at = |k: usize| d.get(k).cloned().unwrap_or_default();
+        let at = |k: usize| digested.d.get(k).map_or("", String::as_str);
+        let (prefix_estimate, content_estimates) = (digested.prefix, &digested.contents);
         let mut book = self.book();
         let calibration = book.calibration.unwrap_or(1.0);
-        let prefix_estimate: u64 = parsed
-            .prefix
-            .iter()
-            .flatten()
-            .map(|raw| estimate(raw.get()))
-            .sum();
-        let content_estimates: Vec<u64> = parsed
-            .contents
-            .iter()
-            .map(|raw| estimate(raw.get()))
-            .collect();
 
         // Who shares this prefix: a second conversation on it (sub-agents,
         // concurrent users, or the conversation a compaction started).
         if n >= 1 {
-            book.lineages.entry(at(0)).or_default().insert(at(1));
+            let first = at(1).to_owned();
+            book.lineages
+                .entry(at(0).to_owned())
+                .or_default()
+                .insert(first);
         }
-        let shared = book
-            .lineages
-            .get(&at(0))
-            .is_some_and(|seen| seen.len() >= 2);
+        let shared = book.lineages.get(at(0)).is_some_and(|seen| seen.len() >= 2);
 
         // Retire conversation caches nobody reads any more.
         let idle: Vec<Lease> = book
@@ -754,7 +774,7 @@ impl CacheBook {
             .rev()
             .find_map(|k| {
                 book.leases
-                    .get(&at(k))
+                    .get(at(k))
                     .filter(|lease| lease.model == model)
                     .filter(|lease| lease.expires_at > now + EXPIRY_MARGIN_SECS)
                     .cloned()
@@ -775,8 +795,8 @@ impl CacheBook {
         let line_key = read
             .as_ref()
             .filter(|lease| lease.covers > 0)
-            .map_or_else(|| at(1.min(n)), |lease| lease.digest.clone());
-        let prefix_leased = book.leases.contains_key(&at(0));
+            .map_or_else(|| at(1.min(n)).to_owned(), |lease| lease.digest.clone());
+        let prefix_leased = book.leases.contains_key(at(0));
         let line = book.lines.entry(line_key.clone()).or_insert_with(|| Line {
             rolled_at: now,
             ..Line::default()
@@ -817,7 +837,7 @@ impl CacheBook {
         {
             plan.create = Some(Create {
                 covers: 0,
-                digest: at(0),
+                digest: at(0).to_owned(),
                 ttl_secs,
                 estimate: prefix_estimate,
                 expected: (prefix_estimate as f64 * calibration) as u64,
@@ -831,7 +851,7 @@ impl CacheBook {
             if gain >= p.min_gain && coverable >= p.min_tokens && line.premium >= cost {
                 plan.create = Some(Create {
                     covers: n - 1,
-                    digest: at(n - 1),
+                    digest: at(n - 1).to_owned(),
                     ttl_secs,
                     estimate: prefix_estimate
                         + content_estimates

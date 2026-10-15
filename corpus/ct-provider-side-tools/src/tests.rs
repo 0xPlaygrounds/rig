@@ -314,7 +314,7 @@ fn provider_run_search_is_kept_replayed_natively_and_sent_as_text_elsewhere() {
     let replies: Vec<&AssistantMessage> = conversation
         .messages()
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             ChatMessage::Assistant(reply) => Some(reply),
             _ => None,
         })
@@ -388,7 +388,7 @@ fn provider_run_search_is_kept_replayed_natively_and_sent_as_text_elsewhere() {
         .unwrap_or_default();
     let blocks: Vec<&AssistantContent> = history
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             ChatMessage::Assistant(reply) => Some(&reply.content),
             _ => None,
         })

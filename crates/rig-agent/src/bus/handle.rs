@@ -360,7 +360,7 @@ impl ModelHandle {
             self.dispatcher.dispatch_with(
                 &self.descriptor.key,
                 EffectKind::Completion {
-                    request,
+                    request: request.into(),
                     stream: false,
                 },
                 options,
@@ -398,7 +398,7 @@ impl ModelHandle {
         let stream: EffectStream = self.dispatcher.dispatch_stream_with(
             &self.descriptor.key,
             EffectKind::Completion {
-                request,
+                request: request.into(),
                 stream: true,
             },
             options,

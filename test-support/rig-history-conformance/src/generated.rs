@@ -399,11 +399,12 @@ fn window(rng: &mut Rng, history: Vec<Message>) -> Vec<Message> {
     use rig_memory::recent::{LastMessages, view};
     let keep = rng.range(1, history.len());
     if rng.chance(50) {
-        let window = view(&history, &LastMessages(keep));
+        let shared: Vec<_> = history.iter().cloned().map(std::sync::Arc::new).collect();
+        let window = view(&shared, &LastMessages(keep));
         if window.is_empty() {
             history
         } else {
-            window.to_vec()
+            window.iter().map(|message| (**message).clone()).collect()
         }
     } else {
         let from = history.len() - keep;

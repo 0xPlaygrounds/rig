@@ -5,17 +5,20 @@
 
 use serde_json::{Value, json};
 
+use super::super::InteractionsDecoder;
 use super::Interaction;
 use crate::wire::WireFrame;
-use crate::wire::document::Reassemble;
+use crate::wire::document::rebuild;
 
 /// The document `events` add up to.
 fn folded(events: impl IntoIterator<Item = Value>) -> Value {
-    let mut document = Interaction::default();
-    for event in events {
-        document.absorb(&WireFrame::Text(event.to_string()));
-    }
-    document.finish()
+    rebuild(
+        &InteractionsDecoder::default(),
+        Interaction::default(),
+        events
+            .into_iter()
+            .map(|event| WireFrame::Text(event.to_string())),
+    )
 }
 
 fn created() -> Value {
