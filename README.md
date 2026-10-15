@@ -70,6 +70,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 - 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
+- Batch completions through the OpenAI, Anthropic and Gemini batch APIs, each request encoded and each reply decoded as a live call's
 - Integrate LLMs in your app with minimal boilerplate
 - Browser-WASM (`wasm32-unknown-unknown`) support for the portable core and
   classic runtime — see [target support](crates/rig-agent/README.md#target-support)

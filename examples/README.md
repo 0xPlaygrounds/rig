@@ -37,6 +37,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_with_tools_otel` | Agent multi-turn with tools, but with a tracing subscriber that sends all logs/traces to an OTel collector. |
 | `agent_with_tools` | Demonstrates registering runtime-defined tools on an agent. |
 | `agent` | Demonstrates the smallest useful agent setup with OpenAI. |
+| `batch_completions` | Submits two requests as one batch through a provider's batch API, polls it and prints each result. Takes a provider argument. |
 | `calculator_chatbot` | See source. |
 | `chain` | Demonstrates a retrieval-augmented pipeline with `parallel!` and `lookup`. |
 | `complex_agentic_loop_claude` | See source. |

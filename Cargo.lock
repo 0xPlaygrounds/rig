@@ -1846,6 +1846,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "batch_completions"
+version = "0.44.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "bcrypt"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

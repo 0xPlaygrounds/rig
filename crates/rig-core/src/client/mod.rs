@@ -12,6 +12,7 @@
 //! ```
 
 pub(crate) mod anthropic;
+mod batch;
 mod cached_content;
 pub(crate) mod chatgpt;
 pub(crate) mod cohere;

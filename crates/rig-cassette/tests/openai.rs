@@ -7,6 +7,8 @@
 )]
 
 use rig_test_support::cache_conformance;
+#[path = "common/batch.rs"]
+mod batch;
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;
 use rig_test_support::cassettes;

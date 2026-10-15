@@ -1,0 +1,170 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:batchGenerateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"batch":{"displayName":"rig","inputConfig":{"requests":{"requests":[{"metadata":{"key":"capital"},"request":{"contents":[{"parts":[{"text":"The capital of France, in one word?","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512},"safetySettings":null,"systemInstruction":null,"toolConfig":null}},{"metadata":{"key":"sum"},"request":{"contents":[{"parts":[{"text":"What is 2 + 3? Answer with the number only.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512},"safetySettings":null,"systemInstruction":null,"toolConfig":null}}]}}}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"pendingRequestCount":"2","requestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","state":"BATCH_STATE_PENDING","updateTime":"2026-10-15T15:07:30.070778288Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji"}'
+---
+when:
+  path: /v1beta/batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji
+  method: GET
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"pendingRequestCount":"2","requestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","state":"BATCH_STATE_RUNNING","updateTime":"2026-10-15T15:07:30.070778288Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji"}'
+---
+when:
+  path: /v1beta/batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji
+  method: GET
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"pendingRequestCount":"2","requestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","state":"BATCH_STATE_RUNNING","updateTime":"2026-10-15T15:07:30.070778288Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji"}'
+---
+when:
+  path: /v1beta/batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji
+  method: GET
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"pendingRequestCount":"2","requestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","state":"BATCH_STATE_RUNNING","updateTime":"2026-10-15T15:07:30.070778288Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji"}'
+---
+when:
+  path: /v1beta/batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji
+  method: GET
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"pendingRequestCount":"2","requestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","state":"BATCH_STATE_RUNNING","updateTime":"2026-10-15T15:07:30.070778288Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji"}'
+---
+when:
+  path: /v1beta/batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji
+  method: GET
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"pendingRequestCount":"2","requestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","state":"BATCH_STATE_RUNNING","updateTime":"2026-10-15T15:07:30.070778288Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji"}'
+---
+when:
+  path: /v1beta/batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji
+  method: GET
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"pendingRequestCount":"2","requestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","state":"BATCH_STATE_RUNNING","updateTime":"2026-10-15T15:07:30.070778288Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji"}'
+---
+when:
+  path: /v1beta/batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji
+  method: GET
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"done":true,"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"requestCount":"2","successfulRequestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","endTime":"2026-10-15T15:10:11.078309642Z","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","output":{"inlinedResponses":{"inlinedResponses":[{"metadata":{"key":"capital"},"response":{"candidates":[{"content":{"parts":[{"text":"Paris"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zOzQarjtDea3_PUPz5fp4QQ","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":10,"promptTokensDetails":[{"modality":"TEXT","tokenCount":10}],"serviceTier":"standard","thoughtsTokenCount":71,"totalTokenCount":82}}},{"metadata":{"key":"sum"},"response":{"candidates":[{"content":{"parts":[{"text":"5"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zOzQatKZC7Tqz7IP8K2tyQY","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":15,"promptTokensDetails":[{"modality":"TEXT","tokenCount":15}],"serviceTier":"standard","thoughtsTokenCount":37,"totalTokenCount":53}}}]}},"state":"BATCH_STATE_SUCCEEDED","updateTime":"2026-10-15T15:10:11.078309672Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","response":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatchOutput","inlinedResponses":{"inlinedResponses":[{"metadata":{"key":"capital"},"response":{"candidates":[{"content":{"parts":[{"text":"Paris"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zOzQarjtDea3_PUPz5fp4QQ","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":10,"promptTokensDetails":[{"modality":"TEXT","tokenCount":10}],"serviceTier":"standard","thoughtsTokenCount":71,"totalTokenCount":82}}},{"metadata":{"key":"sum"},"response":{"candidates":[{"content":{"parts":[{"text":"5"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zOzQatKZC7Tqz7IP8K2tyQY","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":15,"promptTokensDetails":[{"modality":"TEXT","tokenCount":15}],"serviceTier":"standard","thoughtsTokenCount":37,"totalTokenCount":53}}}]}}}'
+---
+when:
+  path: /v1beta/batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji
+  method: GET
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"done":true,"metadata":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch","batchStats":{"requestCount":"2","successfulRequestCount":"2"},"createTime":"2026-10-15T15:07:30.070778288Z","displayName":"rig","endTime":"2026-10-15T15:10:11.078309642Z","model":"models/gemini-2.5-flash","name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","output":{"inlinedResponses":{"inlinedResponses":[{"metadata":{"key":"capital"},"response":{"candidates":[{"content":{"parts":[{"text":"Paris"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zOzQarjtDea3_PUPz5fp4QQ","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":10,"promptTokensDetails":[{"modality":"TEXT","tokenCount":10}],"serviceTier":"standard","thoughtsTokenCount":71,"totalTokenCount":82}}},{"metadata":{"key":"sum"},"response":{"candidates":[{"content":{"parts":[{"text":"5"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zOzQatKZC7Tqz7IP8K2tyQY","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":15,"promptTokensDetails":[{"modality":"TEXT","tokenCount":15}],"serviceTier":"standard","thoughtsTokenCount":37,"totalTokenCount":53}}}]}},"state":"BATCH_STATE_SUCCEEDED","updateTime":"2026-10-15T15:10:11.078309672Z"},"name":"batches/qlr43m388vf8gs3k68iyetwj2do16ch526ji","response":{"@type":"type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatchOutput","inlinedResponses":{"inlinedResponses":[{"metadata":{"key":"capital"},"response":{"candidates":[{"content":{"parts":[{"text":"Paris"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zOzQarjtDea3_PUPz5fp4QQ","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":10,"promptTokensDetails":[{"modality":"TEXT","tokenCount":10}],"serviceTier":"standard","thoughtsTokenCount":71,"totalTokenCount":82}}},{"metadata":{"key":"sum"},"response":{"candidates":[{"content":{"parts":[{"text":"5"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"zOzQatKZC7Tqz7IP8K2tyQY","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":15,"promptTokensDetails":[{"modality":"TEXT","tokenCount":15}],"serviceTier":"standard","thoughtsTokenCount":37,"totalTokenCount":53}}}]}}}'

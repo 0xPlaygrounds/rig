@@ -23,6 +23,7 @@
 /// the typed provider-options key.
 pub const PROVIDER_NAME: &str = "openai";
 
+pub mod batch;
 pub mod completion;
 pub mod embedding;
 pub mod extension;

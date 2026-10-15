@@ -867,6 +867,32 @@ impl Cost {
         }
     }
 
+    /// This cost at `price`, a share of the price of each kind of token, as
+    /// a discounted tier charges it. The part of the total no known part
+    /// accounts for takes the input share.
+    pub fn at(self, price: crate::completion::batch::BatchPrice) -> Self {
+        let known = [self.input, self.output, self.cache_read, self.cache_write];
+        let rest = self.total - known.iter().flatten().sum::<f64>();
+        let scale = |part: Option<f64>, share: f64| part.map(|part| part * share);
+        let input = scale(self.input, price.input);
+        let output = scale(self.output, price.output);
+        let cache_read = scale(self.cache_read, price.cache_read);
+        let cache_write = scale(self.cache_write, price.cache_write);
+        let total = [input, output, cache_read, cache_write]
+            .iter()
+            .flatten()
+            .sum::<f64>()
+            + rest * price.input;
+        Self {
+            input,
+            output,
+            cache_read,
+            cache_write,
+            total,
+            incomplete: self.incomplete,
+        }
+    }
+
     /// A cost known only as its total; every part is `None`.
     pub fn from_total(total: f64) -> Self {
         Self {

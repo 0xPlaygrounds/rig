@@ -13,6 +13,7 @@
 //!
 //! Pair a wire with a transport in a [`Model`](crate::Model) to send it.
 
+pub mod batch;
 pub mod completion;
 pub mod extension;
 pub mod modality;

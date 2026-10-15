@@ -9,6 +9,7 @@ mod cassette {
     mod adversarial_matrix;
     mod agent;
     mod audio_params_matrix;
+    mod batch;
     mod chat_history;
     mod chat_history_roundtrip_matrix;
     mod chat_streaming_logprobs_matrix;
