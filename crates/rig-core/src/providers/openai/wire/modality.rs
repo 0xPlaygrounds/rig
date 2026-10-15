@@ -297,8 +297,9 @@ impl OpenAIConfig {
 ///
 /// `mistral-embed` is fixed at 1024 and reads no width field: Mistral
 /// answers any other value with an error rather than truncating, so a
-/// request naming one is refused before it is built. Codestral Embed is
-/// configurable up to 3072 and takes its width as `output_dimension`.
+/// request naming one is refused before it is built. Codestral Embed
+/// returns 1536 unasked, and takes any width up to 3072 as
+/// `output_dimension`.
 ///
 /// The dated aliases are listed beside their rolling names because a caller
 /// pinning `mistral-embed-2312` gets the same model, and a model absent from
@@ -316,9 +317,7 @@ pub(super) const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
     },
     ModelWidth {
         model: crate::providers::mistral::embedding::CODESTRAL_EMBED,
-        // Configurable with no documented native width, so a handle that
-        // names none reports 0 rather than inventing one.
-        default: None,
+        default: Some(1_536),
         accepted: AcceptedWidths::Range {
             // Mistral documents only a ceiling. The floor is rig's own
             // "unknown" sentinel, which never reaches the wire.
@@ -329,7 +328,7 @@ pub(super) const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
     },
     ModelWidth {
         model: "codestral-embed-2505",
-        default: None,
+        default: Some(1_536),
         accepted: AcceptedWidths::Range {
             min: 0,
             max: 3_072,

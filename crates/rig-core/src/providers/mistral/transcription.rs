@@ -9,7 +9,5 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-/// Voxtral Mini model (latest version)
+/// Voxtral Mini, Mistral's transcription model (latest version).
 pub const VOXTRAL_MINI: &str = "voxtral-mini-latest";
-/// Voxtral Small model (latest version)
-pub const VOXTRAL_SMALL: &str = "voxtral-small-latest";

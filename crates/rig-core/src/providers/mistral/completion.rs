@@ -17,3 +17,8 @@ pub const MINISTRAL_8B: &str = "ministral-8b-latest";
 
 /// The latest version of the `mistral-small` Mistral completions model
 pub const MISTRAL_SMALL: &str = "mistral-small-latest";
+
+/// Voxtral Small (latest version): a chat model that takes audio input. It
+/// is not a transcription model; transcribe with
+/// [`VOXTRAL_MINI`](super::VOXTRAL_MINI).
+pub const VOXTRAL_SMALL: &str = "voxtral-small-latest";
