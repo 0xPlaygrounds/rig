@@ -18,7 +18,9 @@ use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
     completion::{Document, ModelRef},
     effect::{HandlerKey, Key, family},
-    vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
+    vector_store::{
+        VectorSearchRequest, VectorSearchResult, VectorStoreIndex, request::DynamicSearchFilter,
+    },
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use schemars::{JsonSchema, Schema, schema_for};
@@ -78,20 +80,39 @@ impl AgentHook for DynamicContext {
             .samples(self.samples as u64)
             .build();
         match index.top_n::<serde_json::Value>(request).await {
-            Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                results.into_iter().map(|result| {
-                    Document {
-                        text: serde_json::to_string_pretty(&result.document)
-                            .unwrap_or_else(|_| result.document.to_string()),
-                        id: result.id,
-                        additional_props: Default::default(),
-                    }
-                }),
-            )),
+            Ok(results) => CompletionCallAction::patch(
+                RequestPatch::new().extra_context(results.into_iter().map(context_document)),
+            ),
             Err(error) => {
                 CompletionCallAction::stop(format!("failed to retrieve dynamic context: {error}"))
             }
         }
+    }
+}
+
+/// A retrieved result as a context document. A stored [`Document`] comes
+/// back as itself, images included, under the result's id when it has
+/// none. It may sit under a `document` key, as stores that keep a record
+/// around it (MongoDB, S3 Vectors) return it. Any other value is sent as its
+/// pretty-printed JSON.
+fn context_document(result: VectorSearchResult<serde_json::Value>) -> Document {
+    let stored = <Document as serde::Deserialize>::deserialize(&result.document).or_else(|error| {
+        result
+            .document
+            .get("document")
+            .map_or(Err(error), <Document as serde::Deserialize>::deserialize)
+    });
+    match stored {
+        Ok(document) if document.id.is_empty() => Document {
+            id: result.id,
+            ..document
+        },
+        Ok(document) => document,
+        Err(_) => Document::new(
+            result.id,
+            serde_json::to_string_pretty(&result.document)
+                .unwrap_or_else(|_| result.document.to_string()),
+        ),
     }
 }
 
@@ -184,11 +205,8 @@ impl<ToolState> AgentBuilder<ToolState> {
 
     /// Add a static context document.
     pub fn context(mut self, doc: impl Into<String>) -> Self {
-        self.config.static_context.push(Document {
-            id: format!("static_doc_{}", self.config.static_context.len()),
-            text: doc.into(),
-            additional_props: Default::default(),
-        });
+        let id = format!("static_doc_{}", self.config.static_context.len());
+        self.config.static_context.push(Document::new(id, doc));
         self
     }
 

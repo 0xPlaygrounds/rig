@@ -12,7 +12,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::conversation::Branch;
-use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
+use rig_core::message::{Audio, DocumentContent, Image, ToolCall, ToolResult, UserContent, Video};
 use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_harness::rig_core::conversation::Note;
@@ -322,7 +322,7 @@ pub enum ContentBlock<'a> {
     /// A video.
     Video(&'a Video),
     /// A document.
-    Document(&'a Document),
+    Document(&'a DocumentContent),
 }
 
 impl<'a> ContentBlock<'a> {

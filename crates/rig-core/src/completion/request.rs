@@ -10,7 +10,8 @@
 //! ```
 
 use super::message::{
-    AssistantContent, AssistantMessage, CallId, DocumentMediaType, Origin, StopReason, ToolCall,
+    AssistantContent, AssistantMessage, CallId, DocumentMediaType, Image, Origin, StopReason,
+    ToolCall,
 };
 use super::options::{
     CacheRetention, GenerationOptions, OnUnsupported, Reasoning, ServiceTier, Verbosity,
@@ -28,37 +29,112 @@ use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
 use std::sync::Arc;
 
-/// A document sent with a request as context, rendered before the chat history.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+/// A document sent with a request as context, such as a retrieval result:
+/// its text and images under an id and metadata. A provider that takes no
+/// documents gets each as a text part holding the id, metadata and text,
+/// with the images inside the same `<file>` block.
+///
+/// ```
+/// use rig_core::completion::Document;
+/// use rig_core::message::{Image, ImageMediaType};
+///
+/// let png = b"\x89PNG\r\n\x1a\n...";
+/// let photo = Document::new("cat", "A cat on a windowsill.").with_image(Image::from_bytes(png));
+/// assert_eq!(photo.images.first().and_then(|image| image.media_type.clone()), Some(ImageMediaType::PNG));
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct Document {
     /// Stable document identifier included in the serialized context block.
     pub id: String,
     /// Text content passed to the model as retrieval or static context.
     pub text: String,
+    /// Images sent with the text, in order. Raw bytes serialize as base64.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "images_as_base64"
+    )]
+    pub images: Vec<Image>,
     /// Additional string metadata rendered before the document text.
     #[serde(flatten)]
     pub additional_props: HashMap<String, String>,
 }
 
+impl Document {
+    /// A text document with no images or metadata.
+    pub fn new(id: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            text: text.into(),
+            ..Self::default()
+        }
+    }
+
+    /// The same document with `image` appended to its images.
+    pub fn with_image(mut self, image: Image) -> Self {
+        self.images.push(image);
+        self
+    }
+
+    /// The `<file>` block up to its closing tag: the id, any metadata and
+    /// the text.
+    fn opening(&self) -> String {
+        let mut opening = format!("<file id: {}>\n", self.id);
+        if !self.additional_props.is_empty() {
+            let mut sorted_props = self.additional_props.iter().collect::<Vec<_>>();
+            sorted_props.sort_by(|a, b| a.0.cmp(b.0));
+            let metadata = sorted_props
+                .iter()
+                .map(|(k, v)| format!("{k}: {v:?}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            opening.push_str(&format!("<metadata {metadata} />\n"));
+        }
+        opening.push_str(&self.text);
+        opening.push('\n');
+        opening
+    }
+
+    /// The user content this document is sent as when it joins the
+    /// history: one text part, or the block's opening, its images and its
+    /// closing tag.
+    fn parts(&self) -> Vec<UserContent> {
+        let text = |text: String| UserContent::document_text(text, Some(DocumentMediaType::TXT));
+        if self.images.is_empty() {
+            return vec![text(self.to_string())];
+        }
+        let mut parts = vec![text(self.opening())];
+        parts.extend(self.images.iter().cloned().map(UserContent::Image));
+        parts.push(text(CLOSING.to_owned()));
+        parts
+    }
+}
+
+/// Serialize `images` with raw bytes as base64, so a stored document keeps
+/// them compact and whole (a vector store's results drop long arrays).
+fn images_as_base64<S: serde::Serializer>(
+    images: &[Image],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use super::message::DocumentSourceKind;
+    use base64::Engine as _;
+    serializer.collect_seq(images.iter().map(|image| match &image.data {
+        DocumentSourceKind::Raw(bytes) => std::borrow::Cow::Owned(Image {
+            data: DocumentSourceKind::Base64(
+                base64::engine::general_purpose::STANDARD.encode(bytes),
+            ),
+            ..image.clone()
+        }),
+        _ => std::borrow::Cow::Borrowed(image),
+    }))
+}
+
+/// The closing tag of a document's `<file>` block.
+const CLOSING: &str = "</file>\n";
+
 impl std::fmt::Display for Document {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            concat!("<file id: {}>\n", "{}\n", "</file>\n"),
-            self.id,
-            if self.additional_props.is_empty() {
-                self.text.clone()
-            } else {
-                let mut sorted_props = self.additional_props.iter().collect::<Vec<_>>();
-                sorted_props.sort_by(|a, b| a.0.cmp(b.0));
-                let metadata = sorted_props
-                    .iter()
-                    .map(|(k, v)| format!("{k}: {v:?}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                format!("<metadata {} />\n{}", metadata, self.text)
-            }
-        )
+        write!(f, "{}{CLOSING}", self.opening())
     }
 }
 
@@ -1380,10 +1456,7 @@ impl CompletionRequest {
             return None;
         }
 
-        let content = documents
-            .iter()
-            .map(|doc| UserContent::document_text(doc.to_string(), Some(DocumentMediaType::TXT)))
-            .collect();
+        let content = documents.iter().flat_map(Document::parts).collect();
 
         Some(Message::User { content })
     }

@@ -564,8 +564,13 @@ impl crate::completion::ReplayTarget for NativeChat {
         Some("/id")
     }
 
-    fn takes_documents(&self) -> bool {
-        true
+    /// Cohere documents are text, so documents with images join the
+    /// history instead.
+    fn takes_documents(&self, request: &CompletionRequest) -> bool {
+        request
+            .documents
+            .iter()
+            .all(|document| document.images.is_empty())
     }
 
     /// Text and thinking with text are content parts, an opaque item with

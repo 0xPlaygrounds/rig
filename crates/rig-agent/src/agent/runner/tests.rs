@@ -95,16 +95,8 @@ async fn runner_applies_per_run_request_overrides() {
         .build()
         .prompt("go")
         .preamble("run preamble")
-        .document(Document {
-            id: "run-one".into(),
-            text: "first run document".into(),
-            additional_props: Default::default(),
-        })
-        .documents([Document {
-            id: "run-two".into(),
-            text: "second run document".into(),
-            additional_props: Default::default(),
-        }])
+        .document(Document::new("run-one", "first run document"))
+        .documents([Document::new("run-two", "second run document")])
         .temperature(0.7)
         .max_tokens(42)
         .replace_additional_params(json!({"override": true}))

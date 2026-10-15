@@ -1,9 +1,9 @@
-use rig_core::embeddings::{EmbedError, TextEmbedder, to_texts};
+use rig_core::embeddings::{EmbedError, Embedder, to_texts};
 
 #[derive(rig_derive::Embed)]
 struct BasicTuple(u8, #[embed] String, bool, #[embed] String);
 
-fn embed_count(embedder: &mut TextEmbedder, value: usize) -> Result<(), EmbedError> {
+fn embed_count(embedder: &mut Embedder, value: usize) -> Result<(), EmbedError> {
     embedder.embed(format!("count:{value}"));
     Ok(())
 }

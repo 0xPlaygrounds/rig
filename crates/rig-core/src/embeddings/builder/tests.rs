@@ -1,6 +1,8 @@
-use crate::embeddings::embed::{EmbedError, TextEmbedder};
-use crate::embeddings::{Embed, Embedding};
+use crate::completion::Document;
+use crate::embeddings::embed::{EmbedError, Embedder};
+use crate::embeddings::{Embed, Embedding, EmbeddingResponse, image_document};
 use crate::error::ProviderError;
+use crate::message::{DocumentSourceKind, Image};
 
 use super::EmbeddingsBuilder;
 use crate::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
@@ -38,7 +40,7 @@ impl NTexts {
 }
 
 impl Embed for NTexts {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+    fn embed(&self, embedder: &mut Embedder) -> Result<(), EmbedError> {
         for i in 0..self.n {
             embedder.embed(format!("d{}t{i}", self.doc));
         }
@@ -77,7 +79,9 @@ async fn test_build_rejects_a_document_that_embeds_no_text() {
         "unexpected error variant: {error:?}"
     );
     assert!(
-        error.to_string().contains("document 0 produced no text"),
+        error
+            .to_string()
+            .contains("document 0 produced nothing to embed"),
         "error should name the offending document: {error}"
     );
 }
@@ -98,7 +102,9 @@ async fn test_build_names_the_document_that_embeds_no_text() {
         .expect_err("a document with no texts has no embeddings");
 
     assert!(
-        error.to_string().contains("document 2 produced no text"),
+        error
+            .to_string()
+            .contains("document 2 produced nothing to embed"),
         "error should name document 2: {error}"
     );
 }
@@ -157,4 +163,100 @@ async fn test_build_order_survives_one_text_per_batch_finishing_backwards() {
 
     assert_eq!(result.len(), 1);
     assert_eq!(returned(&result[0].1), expected);
+}
+
+/// The image mock: each image embeds to a one-dimension vector of its byte
+/// length, one image to a request.
+#[derive(Clone)]
+struct ImageLengths;
+
+impl Transport<Local<crate::operation::ImageEmbedding>> for ImageLengths {
+    fn send(
+        &self,
+        images: Vec<Vec<u8>>,
+        _exchange: Exchange,
+    ) -> Opening<Step<crate::operation::ImageEmbedding>> {
+        let response = EmbeddingResponse::new(
+            images
+                .iter()
+                .map(|bytes| Embedding {
+                    document: String::new(),
+                    vec: vec![bytes.len() as f64],
+                })
+                .collect(),
+        );
+        Opening::ready(Opened::new(futures::stream::iter([Ok(Step::End(
+            response,
+        ))])))
+    }
+}
+
+/// PNG bytes `len` long.
+fn png(len: usize) -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.resize(len, 0);
+    bytes
+}
+
+/// A document's text goes to the text model and its images to the image
+/// model, and its embeddings come back in the order it embedded them.
+#[tokio::test]
+async fn a_document_embeds_its_text_and_images_with_their_own_models_in_order() {
+    let (small, large) = (png(12), png(20));
+    let document = Document::new("cat", "a cat")
+        .with_image(Image::from_bytes(&small))
+        .with_image(Image::from_bytes(&large));
+    let image_model = Model::new(
+        Local::new("mock-images").with_capabilities(Capabilities::embedding(1, 1)),
+        ImageLengths,
+    );
+
+    let built = EmbeddingsBuilder::new(MockEmbeddings::model())
+        .image_model(image_model)
+        .document(document)
+        .expect("inline images embed")
+        .build()
+        .await
+        .expect("both models answer");
+
+    let embeddings = built.first().map(|(_, embeddings)| embeddings.clone());
+    let embeddings = embeddings.unwrap_or_default();
+    assert_eq!(
+        returned(&embeddings),
+        vec![
+            "a cat".to_owned(),
+            image_document(&small),
+            image_document(&large)
+        ]
+    );
+    let widths: Vec<Option<f64>> = embeddings
+        .iter()
+        .skip(1)
+        .map(|embedding| embedding.vec.first().copied())
+        .collect();
+    assert_eq!(widths, vec![Some(12.0), Some(20.0)]);
+}
+
+/// An image needs an image model, and a referenced image has no bytes to
+/// embed; both are refused before any request.
+#[tokio::test]
+async fn images_without_an_image_model_or_inline_bytes_are_refused() {
+    let photo = Document::new("cat", "").with_image(Image::from_bytes(&png(12)));
+    let error = EmbeddingsBuilder::new(MockEmbeddings::model())
+        .document(photo)
+        .expect("inline images embed")
+        .build()
+        .await
+        .expect_err("no image model");
+    assert!(
+        error.to_string().contains("document 0 embeds an image"),
+        "{error}"
+    );
+
+    let linked = Document::new("cat", "").with_image(Image {
+        data: DocumentSourceKind::url("https://example.com/cat.png"),
+        ..Image::default()
+    });
+    let refused = EmbeddingsBuilder::new(MockEmbeddings::model()).document(linked);
+    assert!(refused.is_err(), "a linked image has no bytes to embed");
 }

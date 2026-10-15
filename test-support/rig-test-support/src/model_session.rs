@@ -32,7 +32,7 @@ use rig_core::completion::{
     ProviderOptions, ProviderToolDefinition, Reasoning,
 };
 use rig_core::message::{
-    AssistantContent, Document, DocumentData, DocumentMediaType, DocumentSourceKind, Image,
+    AssistantContent, DocumentContent, DocumentData, DocumentMediaType, DocumentSourceKind, Image,
     ImageMediaType, ToolChoice, UserContent,
 };
 use rig_core::providers::anthropic;
@@ -735,7 +735,7 @@ pub async fn anthropic(
         // conversation carries a citations document from its first request
         // (a later first one would miss the whole cache), and Anthropic
         // requires citations on every document or none, so the PDF has them.
-        let rust_goals = UserContent::Document(Document {
+        let rust_goals = UserContent::Document(DocumentContent {
             data: DocumentData::Text(
                 "Rust is a systems programming language focused on three goals: \
                  safety, speed, and concurrency."
@@ -747,7 +747,7 @@ pub async fn anthropic(
                 "citations": { "enabled": true }
             })),
         });
-        let pdf = UserContent::Document(Document {
+        let pdf = UserContent::Document(DocumentContent {
             data: DocumentSourceKind::Url(PDF_URL.to_owned()).into(),
             media_type: None,
             additional_params: Some(json!({
@@ -1033,7 +1033,7 @@ pub async fn anthropic(
             .build();
         let answer = agent
             .prompt(user(vec![
-                UserContent::Document(Document {
+                UserContent::Document(DocumentContent {
                     data: DocumentSourceKind::FileId(file_id).into(),
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: None,

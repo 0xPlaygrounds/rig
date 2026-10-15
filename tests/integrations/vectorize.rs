@@ -17,7 +17,7 @@
 //!
 
 use rig::Embed;
-use rig::embeddings::{EmbedError, Embedding, TextEmbedder};
+use rig::embeddings::{EmbedError, Embedder, Embedding};
 use rig::vector_store::VectorSearchResult;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
@@ -496,7 +496,7 @@ struct TestDocument {
 }
 
 impl Embed for TestDocument {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+    fn embed(&self, embedder: &mut Embedder) -> Result<(), EmbedError> {
         embedder.embed(self.content.clone());
         Ok(())
     }

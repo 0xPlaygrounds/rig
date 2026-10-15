@@ -401,7 +401,7 @@ fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeE
 
 /// A document block: its source, and the `title`, `context` and
 /// `citations` its `additional_params` name.
-fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
+fn document_part(document: &message::DocumentContent) -> Result<Value, EncodeError> {
     let params = document.additional_params.as_ref();
     let param = |key: &str| params.and_then(|params| params.get(key));
     let text = |key: &str| param(key).filter(|value| value.is_string()).cloned();
@@ -500,7 +500,7 @@ pub(super) fn image_source(image: &message::Image) -> Option<Value> {
 /// A document's source on the wire: a Files API id, a PDF as data or by
 /// URL, or any other document as the text it holds. `None` for any other
 /// form.
-pub(super) fn document_source(document: &message::Document) -> Option<Value> {
+pub(super) fn document_source(document: &message::DocumentContent) -> Option<Value> {
     let text = |data: &str| json!({ "type": "text", "media_type": "text/plain", "data": data });
     let source = match &document.data {
         DocumentData::Text(data) => return Some(text(data)),

@@ -6,7 +6,7 @@
 //! let message = Message::user("Hello");
 //! ```
 
-pub use crate::completion::Message;
+pub use crate::completion::{Document, Message};
 pub use crate::driver::{DynModel, Model};
 pub use crate::error::ProviderError;
 

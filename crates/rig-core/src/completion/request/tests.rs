@@ -215,11 +215,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
 }
 
 fn test_document(id: &str, text: &str) -> Document {
-    Document {
-        id: id.to_string(),
-        text: text.to_string(),
-        additional_props: HashMap::new(),
-    }
+    Document::new(id, text)
 }
 
 #[test]
@@ -231,6 +227,7 @@ fn test_document_display_with_metadata() {
     let doc = Document {
         id: "123".to_string(),
         text: "This is a test document.".to_string(),
+        images: Vec::new(),
         additional_props,
     };
 
@@ -241,6 +238,63 @@ fn test_document_display_with_metadata() {
         "</file>\n"
     );
     assert_eq!(format!("{doc}"), expected);
+}
+
+/// A document's images go inside its `<file>` block, between the text and
+/// the closing tag.
+#[test]
+fn a_document_with_images_joins_the_history_around_its_images() {
+    let image = crate::message::Image::from_bytes(b"\x89PNG\r\n\x1a\n");
+    let request = CompletionRequest::new(Message::user("Which cat?"))
+        .document(test_document("cat", "A tabby.").with_image(image.clone()));
+    let history = request.messages_for_telemetry();
+    let parts: Vec<String> = match history.first().map(|message| &**message) {
+        Some(Message::User { content }) => content
+            .iter()
+            .map(|part| match part {
+                UserContent::Document(document) => match &document.data {
+                    crate::message::DocumentData::Text(text) => text.clone(),
+                    other => format!("{other:?}"),
+                },
+                UserContent::Image(sent) if *sent == image => "<image>".to_owned(),
+                UserContent::Text(text) => text.text.clone(),
+                other => format!("{other:?}"),
+            })
+            .collect(),
+        other => vec![format!("{other:?}")],
+    };
+    assert_eq!(
+        parts,
+        [
+            "<file id: cat>\nA tabby.\n",
+            "<image>",
+            "</file>\n",
+            "Which cat?"
+        ]
+    );
+}
+
+/// Raw image bytes are stored as base64, which survives a vector store's
+/// results; those drop long arrays.
+#[test]
+fn a_raw_image_is_stored_as_base64() {
+    use crate::message::{DocumentSourceKind, Image};
+    let bytes = vec![7u8; 500];
+    let raw = Image {
+        data: DocumentSourceKind::Raw(bytes.clone()),
+        ..Image::default()
+    };
+    let stored = serde_json::to_value(test_document("raw", "").with_image(raw))
+        .expect("a document serializes");
+    let restored: Document = serde_json::from_value(stored).expect("and reads back");
+    let expected = Image {
+        data: DocumentSourceKind::Base64(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            bytes,
+        )),
+        ..Image::default()
+    };
+    assert_eq!(restored.images, vec![expected]);
 }
 
 #[test]

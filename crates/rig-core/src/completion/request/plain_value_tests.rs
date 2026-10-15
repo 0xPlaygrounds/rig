@@ -51,11 +51,7 @@ fn tool(name: &str) -> ToolDefinition {
 }
 
 fn document(id: &str) -> Document {
-    Document {
-        id: id.to_owned(),
-        text: format!("text of {id}"),
-        additional_props: HashMap::new(),
-    }
+    Document::new(id.to_owned(), format!("text of {id}"))
 }
 
 #[test]

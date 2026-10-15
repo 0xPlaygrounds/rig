@@ -585,7 +585,7 @@ fn a_string_source_is_the_same_inline_data_on_both_gemini_wires() -> anyhow::Res
                     media_type: Some(message::ImageMediaType::PNG),
                     ..message::Image::default()
                 }),
-                message::UserContent::Document(message::Document {
+                message::UserContent::Document(message::DocumentContent {
                     data: message::DocumentSourceKind::base64(pdf).into(),
                     media_type: Some(message::DocumentMediaType::PDF),
                     additional_params: None,

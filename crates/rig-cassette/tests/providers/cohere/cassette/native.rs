@@ -25,13 +25,13 @@ fn documents() -> Vec<Document> {
         Document {
             id: "harbor-record-1".to_owned(),
             text: "Beacon code amber-73 is assigned to Dock Seven.".to_owned(),
+            images: Vec::new(),
             additional_props: HashMap::from([("source".to_owned(), "harbor-registry".to_owned())]),
         },
-        Document {
-            id: "harbor-record-2".to_owned(),
-            text: "Dock Seven closes for repairs every Tuesday.".to_owned(),
-            additional_props: HashMap::new(),
-        },
+        Document::new(
+            "harbor-record-2",
+            "Dock Seven closes for repairs every Tuesday.",
+        ),
     ]
 }
 

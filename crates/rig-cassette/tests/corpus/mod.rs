@@ -558,11 +558,7 @@ impl Program {
         self.context
             .iter()
             .enumerate()
-            .map(|(n, text)| Document {
-                id: format!("static_doc_{n}"),
-                text: (*text).to_owned(),
-                additional_props: Default::default(),
-            })
+            .map(|(n, text)| Document::new(format!("static_doc_{n}"), (*text).to_owned()))
             .collect()
     }
 }
@@ -1768,11 +1764,7 @@ pub const SHAPING_CONTEXT: &str =
 pub const LATE_ROUTE: &str = "late";
 
 fn shaping_document() -> Document {
-    Document {
-        id: SHAPING_CONTEXT_ID.to_owned(),
-        text: SHAPING_CONTEXT.to_owned(),
-        additional_props: Default::default(),
-    }
+    Document::new(SHAPING_CONTEXT_ID.to_owned(), SHAPING_CONTEXT.to_owned())
 }
 
 /// The patch one of the corpus's hooks makes on `turn`, as the hook makes it.
@@ -3430,6 +3422,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         text: serde_json::to_string_pretty(&result.document)
                             .unwrap_or_else(|_| result.document.to_string()),
                         id: result.id,
+                        images: Vec::new(),
                         additional_props: Default::default(),
                     });
                     turn_patch = Some(turn_patch.unwrap_or_default().extra_context(docs));

@@ -25,7 +25,7 @@ pub struct ToolSchema {
 }
 
 impl Embed for ToolSchema {
-    fn embed(&self, embedder: &mut super::embed::TextEmbedder) -> Result<(), EmbedError> {
+    fn embed(&self, embedder: &mut super::embed::Embedder) -> Result<(), EmbedError> {
         for doc in &self.embedding_docs {
             embedder.embed(doc.clone());
         }

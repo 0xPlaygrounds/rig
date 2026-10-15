@@ -13,7 +13,7 @@ pub use crate::agent::{
     Agent, AgentBuilder, AgentHook, HookContext, ModelHandle, ModelRef, ModelSelection,
     ModelSelectionAction, MultiTurnStreamItem, RunEvents, StreamingResult,
 };
-pub use crate::completion::{Message, PromptError, StructuredOutputError};
+pub use crate::completion::{Document, Message, PromptError, StructuredOutputError};
 pub use crate::tool::{Tool, ToolSet};
 pub use rig_core::driver::{DynModel, Model};
 pub use rig_core::error::ProviderError;

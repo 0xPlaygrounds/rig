@@ -194,7 +194,7 @@ pub enum UserContent {
     /// Video content.
     Video(Video),
     /// Document content.
-    Document(Document),
+    Document(DocumentContent),
 }
 
 /// One block of an assistant turn: one provider output item.
@@ -747,6 +747,21 @@ pub struct Image {
     pub native: Option<Native>,
 }
 
+impl Image {
+    /// An image from its encoded file bytes, carried inline as base64, with
+    /// the media type its magic bytes name ([`ImageMediaType::sniff`]).
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        use base64::Engine as _;
+        Self {
+            data: DocumentSourceKind::Base64(
+                base64::engine::general_purpose::STANDARD.encode(bytes),
+            ),
+            media_type: ImageMediaType::sniff(bytes),
+            ..Self::default()
+        }
+    }
+}
+
 /// Where a file's bytes are; never the content as text.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
@@ -850,9 +865,10 @@ impl From<DocumentSourceKind> for DocumentData {
     }
 }
 
-/// Document content containing document data and metadata about it.
+/// A file or text document in a message, with its media type. A document
+/// sent as retrieval context is a [`Document`](crate::completion::Document).
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct Document {
+pub struct DocumentContent {
     /// Document content.
     pub data: DocumentData,
     /// Document media type, if known.
@@ -1149,12 +1165,12 @@ macro_rules! media_ctors {
         media_ctors! { $($rest)* }
     };
     (
-        $(#[$meta:meta])* $name:ident => $variant:ident(params $mt:ty, $kind:path: $data:ty);
+        $(#[$meta:meta])* $name:ident => $variant:ident($content:ident, params $mt:ty, $kind:path: $data:ty);
         $($rest:tt)*
     ) => {
         $(#[$meta])*
         pub fn $name(data: impl Into<$data>, media_type: Option<$mt>) -> Self {
-            Self::$variant($variant {
+            Self::$variant($content {
                 data: $kind(data.into()).into(),
                 media_type,
                 additional_params: None,
@@ -1197,21 +1213,21 @@ impl UserContent {
         /// Creates user audio content referencing a URL.
         audio_url => Audio(AudioMediaType, Url: String);
         /// Creates user video content from base64-encoded data.
-        video_base64 => Video(params VideoMediaType, DocumentSourceKind::Base64: String);
+        video_base64 => Video(Video, params VideoMediaType, DocumentSourceKind::Base64: String);
         /// Creates user video content from unencoded bytes.
-        video_raw => Video(params VideoMediaType, DocumentSourceKind::Raw: Vec<u8>);
+        video_raw => Video(Video, params VideoMediaType, DocumentSourceKind::Raw: Vec<u8>);
         /// Creates user video content referencing a URL.
-        video_url => Video(params VideoMediaType, DocumentSourceKind::Url: String);
+        video_url => Video(Video, params VideoMediaType, DocumentSourceKind::Url: String);
         /// Creates user document content from base64-encoded data.
-        document_base64 => Document(params DocumentMediaType, DocumentSourceKind::Base64: String);
+        document_base64 => Document(DocumentContent, params DocumentMediaType, DocumentSourceKind::Base64: String);
         /// Creates user document content from unencoded bytes.
-        document_raw => Document(params DocumentMediaType, DocumentSourceKind::Raw: Vec<u8>);
+        document_raw => Document(DocumentContent, params DocumentMediaType, DocumentSourceKind::Raw: Vec<u8>);
         /// Creates user document content referencing a URL.
-        document_url => Document(params DocumentMediaType, DocumentSourceKind::Url: String);
+        document_url => Document(DocumentContent, params DocumentMediaType, DocumentSourceKind::Url: String);
         /// Creates user document content from literal text, such as a plain
         /// text or Markdown file. Binary formats belong in
         /// [`Self::document_base64`] or [`Self::document_raw`].
-        document_text => Document(params DocumentMediaType, DocumentData::Text: String);
+        document_text => Document(DocumentContent, params DocumentMediaType, DocumentData::Text: String);
     }
 
     /// Creates a tool result answering the call `call` to the tool `name`.
@@ -1431,7 +1447,7 @@ single_content_message_from!(User {
     Text => Text,
     Image => Image,
     Audio => Audio,
-    Document => Document,
+    DocumentContent => Document,
     ToolResult => ToolResult,
 });
 

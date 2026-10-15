@@ -138,7 +138,7 @@ impl Operation for Completion {
             )
         });
         let written = written.then(|| {
-            let documents = (!target.takes_documents())
+            let documents = (!target.takes_documents(&request))
                 .then(|| request.normalized_documents())
                 .flatten();
             (request.chat_history.clone(), documents)
@@ -160,7 +160,7 @@ impl Operation for Completion {
         // the adapter's rules apply to them, unless the encoder sends them
         // itself.
         let mut history = std::mem::take(&mut request.chat_history);
-        if !target.takes_documents() {
+        if !target.takes_documents(&request) {
             if let Some(documents) = request.normalized_documents() {
                 crate::completion::request::insert_after_leading_system(&mut history, documents);
             }

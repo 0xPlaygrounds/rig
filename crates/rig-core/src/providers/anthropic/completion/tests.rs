@@ -429,11 +429,7 @@ fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
         ],
         None,
     );
-    request.documents = vec![completion::Document {
-        id: "doc".to_string(),
-        text: "Document context.".to_string(),
-        additional_props: Default::default(),
-    }];
+    request.documents = vec![completion::Document::new("doc", "Document context.")];
 
     let request = request_body(Params {
         model: CLAUDE_OPUS_4_8,
@@ -1041,7 +1037,7 @@ fn blocks_without_a_current_item_rebuild_as_pi_does() {
 
 #[test]
 fn document_serializes_citations_and_metadata() {
-    let value = user_wire(message::UserContent::Document(message::Document {
+    let value = user_wire(message::UserContent::Document(message::DocumentContent {
         data: message::DocumentData::Text("hello".into()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: Some(json!({"title": "My Doc", "citations": {"enabled": true}})),
@@ -1110,8 +1106,8 @@ fn an_assistant_image_is_sent_as_its_placeholder() {
 fn encodes_states_exactly_the_media_the_encoder_carries() {
     use crate::completion::{Media, Place, ReplayTarget};
     use message::{
-        Audio, AudioMediaType, Document, DocumentMediaType as Doc, DocumentSourceKind as Source,
-        Image, ImageMediaType, Video, VideoMediaType,
+        Audio, AudioMediaType, DocumentContent, DocumentMediaType as Doc,
+        DocumentSourceKind as Source, Image, ImageMediaType, Video, VideoMediaType,
     };
 
     let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
@@ -1120,12 +1116,12 @@ fn encodes_states_exactly_the_media_the_encoder_carries() {
         media_type,
         ..Image::default()
     };
-    let document = |data: Source, media_type: Option<Doc>| Document {
+    let document = |data: Source, media_type: Option<Doc>| DocumentContent {
         data: data.into(),
         media_type,
         additional_params: None,
     };
-    let text = |text: &str, media_type: Option<Doc>| Document {
+    let text = |text: &str, media_type: Option<Doc>| DocumentContent {
         data: message::DocumentData::Text(text.into()),
         media_type,
         additional_params: None,
@@ -1245,7 +1241,7 @@ fn a_text_family_document_is_sent_as_its_text() {
             "untyped",
         ),
     ] {
-        let converted = user_wire(message::UserContent::Document(message::Document {
+        let converted = user_wire(message::UserContent::Document(message::DocumentContent {
             data,
             media_type,
             additional_params: None,

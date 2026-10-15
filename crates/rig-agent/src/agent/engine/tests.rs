@@ -3494,11 +3494,7 @@ async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
 // --- Hook system v2: extra_context, history view, ModelTurnFinished, chained rewrites ---
 
 fn hook_doc(id: &str, text: &str) -> crate::completion::Document {
-    crate::completion::Document {
-        id: id.to_string(),
-        text: text.to_string(),
-        additional_props: Default::default(),
-    }
+    crate::completion::Document::new(id.to_string(), text.to_string())
 }
 
 /// Injects one extra context document on every completion call.
@@ -3805,6 +3801,52 @@ async fn dynamic_context_and_application_hooks_follow_registration_order() {
         .expect_err("an earlier stop hook should terminate before retrieval");
     assert!(matches!(error, PromptError::Cancelled { .. }));
     assert!(skipped_queries.lock().expect("skipped queries").is_empty());
+}
+
+/// A `Document` a vector store holds comes back from retrieval as itself,
+/// so its images reach the model inside its `<file>` block.
+#[tokio::test]
+async fn dynamic_context_attaches_a_stored_document_with_its_images() {
+    use rig_core::completion::Document;
+    use rig_core::embeddings::Embedding;
+    use rig_core::message::Image;
+    use rig_core::test_utils::MockEmbeddings;
+    use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
+
+    let image = Image::from_bytes(b"\x89PNG\r\n\x1a\n");
+    let photo = Document::new("cat", "A tabby.").with_image(image.clone());
+    let vector = Embedding {
+        document: "A tabby.".to_owned(),
+        vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    };
+    let index =
+        InMemoryVectorStore::from_documents([(photo, vec![vector])]).index(MockEmbeddings::model());
+
+    let model = MockCompletionModel::from_turns([MockTurn::text("a tabby")]);
+    let probe = model.clone();
+    AgentBuilder::new(model)
+        .dynamic_context(1, index)
+        .build()
+        .prompt("Which cat?")
+        .run()
+        .await
+        .expect("retrieval and the turn succeed");
+
+    let requests = probe.requests();
+    let sent = requests
+        .first()
+        .and_then(|request| request.chat_history.first())
+        .map(|message| match &**message {
+            Message::User { content } => content.clone(),
+            _ => Vec::new(),
+        })
+        .unwrap_or_default();
+    let opening = UserContent::document_text(
+        "<file id: cat>\nA tabby.\n",
+        Some(rig_core::message::DocumentMediaType::TXT),
+    );
+    assert_eq!(sent.first(), Some(&opening));
+    assert_eq!(sent.get(1), Some(&UserContent::Image(image)));
 }
 
 #[tokio::test]
