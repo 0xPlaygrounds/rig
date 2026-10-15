@@ -167,6 +167,7 @@ fn parts_of_reads_text_and_images_in_order() {
         {"text": "Step one."},
         {"inlineData": {"mimeType": "image/jpeg", "data": "AQ=="}},
         {"inlineData": {"mimeType": "audio/wav", "data": "Ag=="}},
+        {"inlineData": {"mimeType": "image/png"}},
         {"text": "Step two."},
         {"inlineData": {"mimeType": "image/png", "data": "Aw=="}}
     ]}}]});

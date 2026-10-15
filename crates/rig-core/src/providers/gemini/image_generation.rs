@@ -134,7 +134,8 @@ pub enum ImagePart {
 }
 
 /// Every text and image part of the first candidate in `reply`, in reply
-/// order. Thoughts, interim images included, are left out.
+/// order. Thoughts, interim images included, and images without data are
+/// left out.
 ///
 /// # Errors
 ///
@@ -158,14 +159,12 @@ pub fn parts_of(reply: &Value) -> Result<Vec<ImagePart>, ProviderError> {
             continue;
         };
         let mime_type = blob.str("mimeType").unwrap_or_default();
-        if !mime_type.starts_with("image/") {
+        let Some(data) = blob.str("data").filter(|_| mime_type.starts_with("image/")) else {
             continue;
-        }
-        let data = BASE64_STANDARD
-            .decode(blob.str("data").unwrap_or_default())
-            .map_err(|err| {
-                ProviderError::Response(format!("Gemini image data was not valid base64: {err}"))
-            })?;
+        };
+        let data = BASE64_STANDARD.decode(data).map_err(|err| {
+            ProviderError::Response(format!("Gemini image data was not valid base64: {err}"))
+        })?;
         out.push(ImagePart::Image {
             mime_type: mime_type.to_owned(),
             data,
