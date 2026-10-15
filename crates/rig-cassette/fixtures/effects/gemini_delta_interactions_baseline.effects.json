@@ -215,6 +215,14 @@
       },
       "events": [
         {
+          "item": "unknown",
+          "value": {
+            "type": "gemini.stream_cursor",
+            "interaction_id": "v1_ChdMYXl5YXV5aEhaaVA2ZGtQd1l1VWlBURIXTGF5eWF1eWhIWmlQNmRrUHdZdVVpQVE",
+            "event_id": null
+          }
+        },
+        {
           "item": "event",
           "value": {
             "event": "start",
@@ -538,6 +546,14 @@
         }
       },
       "events": [
+        {
+          "item": "unknown",
+          "value": {
+            "type": "gemini.stream_cursor",
+            "interaction_id": "v1_ChdMNnl5YXNHQUJ0aXBtdGtQX2RtNWtRdxIXTDZ5eWFzR0FCdGlwbXRrUF9kbTVrUXc",
+            "event_id": null
+          }
+        },
         {
           "item": "event",
           "value": {

@@ -268,6 +268,7 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
         prompt: "a cat".to_owned(),
         width: 1024,
         height: 1024,
+        images: Vec::new(),
         additional_params: None,
     };
     let encoded = OpenAIConfig::with_key(&XAI, "xai-key")
@@ -484,6 +485,7 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
         prompt: "a cat".to_owned(),
         width: 1024,
         height: 768,
+        images: Vec::new(),
         additional_params: None,
     };
     let encoded = OpenAIConfig::with_key(&HYPERBOLIC, "hb")
@@ -532,6 +534,7 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
                 prompt: "a cat".to_owned(),
                 width: 1024,
                 height: 768,
+                images: Vec::new(),
                 additional_params: None,
             },
             Mode::Unary,
@@ -559,6 +562,20 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
     );
 }
 
+/// No wire of this family sends reference images, so a request with one is
+/// refused before anything is sent.
+#[cfg(feature = "image")]
+#[test]
+fn reference_images_are_refused() {
+    let request = crate::image_generation::ImageGenerationRequestBuilder::new("a cat")
+        .image(crate::message::Image::default())
+        .build();
+    let refused = OpenAIConfig::with_key(&crate::providers::openai::wire::OPENAI, "key")
+        .image_generation("gpt-image-1")
+        .encode(request, Mode::Unary);
+    assert!(refused.is_err(), "a reference image is refused");
+}
+
 /// The router answers with the image bytes and no JSON envelope at all, so
 /// the reply neither classifies nor decodes as JSON: the frame is the image.
 #[cfg(feature = "image")]
@@ -576,6 +593,7 @@ async fn the_huggingface_image_reply_is_the_image_bytes() {
         prompt: "a cat".to_owned(),
         width: 1024,
         height: 768,
+        images: Vec::new(),
         additional_params: None,
     })
     .await

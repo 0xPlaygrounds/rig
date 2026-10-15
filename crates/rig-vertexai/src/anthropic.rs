@@ -23,7 +23,7 @@ use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
-use rig_core::providers::anthropic::streaming::{MessagesDecoder, MessagesDocument};
+use rig_core::providers::anthropic::streaming::{MessagesDecoder, MessagesDocument, MessagesEvent};
 use rig_core::providers::anthropic::{ANTHROPIC, Addressing, AnthropicConfig, Messages, Prepared};
 use rig_core::providers::registry::ProviderId;
 use rig_core::wire::{Descriptor, Encoded, Mode, Secret, Wire, WireFrame};
@@ -115,6 +115,7 @@ impl Wire for RawPredict {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = WireFrame;
+    type Event = MessagesEvent;
     type Decoder<'id> = MessagesDecoder;
     type Reassembler = MessagesDocument;
 

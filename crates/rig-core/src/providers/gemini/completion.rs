@@ -30,10 +30,6 @@ pub const GEMINI_2_5_FLASH_PREVIEW_04_17: &str = "gemini-2.5-flash-preview-04-17
 pub const GEMINI_2_5_PRO_EXP_03_25: &str = "gemini-2.5-pro-exp-03-25";
 /// `gemini-2.5-flash` completion model
 pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
-/// `gemini-2.5-flash-image` image generation model, commonly referred to as Nano Banana.
-#[cfg(feature = "image")]
-#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
-pub const GEMINI_2_5_FLASH_IMAGE: &str = "gemini-2.5-flash-image";
 /// `gemini-2.0-flash-lite` completion model
 pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
@@ -643,7 +639,7 @@ fn text_part(text: &str) -> Value {
     json!({ "text": text, "thought": false })
 }
 
-fn mime<M: MimeType>(media_type: Option<M>) -> Option<String> {
+pub(super) fn mime<M: MimeType>(media_type: Option<M>) -> Option<String> {
     media_type.map(|media_type| media_type.to_mime_type().to_owned())
 }
 
@@ -663,7 +659,11 @@ pub(super) fn carried(source: &Source) -> Result<(bool, &str), EncodeError> {
 /// `source` of `mime_type` as GenerateContent part data, file data by URI
 /// or inline data, which needs a media type; a whole `part` is marked as no
 /// thought.
-fn media(mime_type: Option<String>, source: &Source, part: bool) -> Result<Value, EncodeError> {
+pub(super) fn media(
+    mime_type: Option<String>,
+    source: &Source,
+    part: bool,
+) -> Result<Value, EncodeError> {
     let (uri, data) = carried(source)?;
     let data = match (uri, mime_type) {
         (true, mime) => ("fileData", json!({ "mimeType": mime, "fileUri": data })),

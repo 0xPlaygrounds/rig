@@ -25,6 +25,9 @@ use serde_json::Value;
 use crate::completion::provider_options::{ExtensionOptions, ProviderExtension, ReplyExtras};
 use crate::message::Api;
 
+use super::ImageSize;
+use super::interactions_api::InteractionSpeechConfig;
+
 /// The API name of the GenerateContent route.
 const GENERATE_CONTENT: &str = "gemini.generate_content";
 
@@ -429,9 +432,9 @@ pub struct ImageConfig {
     /// `aspectRatio`, such as `"16:9"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aspect_ratio: Option<String>,
-    /// `imageSize`, such as `"2K"`.
+    /// `imageSize`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_size: Option<String>,
+    pub image_size: Option<ImageSize>,
 }
 
 impl ImageConfig {
@@ -447,8 +450,8 @@ impl ImageConfig {
     }
 
     /// `imageSize`.
-    pub fn image_size(mut self, size: impl Into<String>) -> Self {
-        self.image_size = Some(size.into());
+    pub fn image_size(mut self, size: ImageSize) -> Self {
+        self.image_size = Some(size);
         self
     }
 }
@@ -758,9 +761,9 @@ impl InteractionsOptions {
         self
     }
 
-    /// Add a voice to `generation_config.speech_config`.
-    pub fn speech(mut self, speech: InteractionSpeech) -> Self {
-        self.generation_config.speech_config.push(speech);
+    /// `generation_config.speech_config`.
+    pub fn speech_config(mut self, config: InteractionSpeechConfig) -> Self {
+        self.generation_config.speech_config = Some(config);
         self
     }
 }
@@ -773,8 +776,8 @@ pub struct InteractionsGenerationConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking_summaries: Option<ThinkingSummaries>,
     /// `speech_config`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub speech_config: Vec<InteractionSpeech>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speech_config: Option<InteractionSpeechConfig>,
 }
 
 /// Whether the reply carries summaries of the model's thoughts.
@@ -796,48 +799,66 @@ pub enum AgentConfig {
     /// `dynamic`.
     Dynamic,
     /// `deep-research`.
-    DeepResearch {
-        /// `thinking_summaries`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        thinking_summaries: Option<ThinkingSummaries>,
-    },
+    DeepResearch(DeepResearchConfig),
 }
 
-/// One voice of the Interactions `speech_config`.
+/// The Deep Research agent's `agent_config` fields. A field left unset
+/// takes the API's default.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
-pub struct InteractionSpeech {
-    /// `voice`.
+pub struct DeepResearchConfig {
+    /// `thinking_summaries`: stream the agent's intermediate thoughts.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub voice: Option<String>,
-    /// `language`.
+    pub thinking_summaries: Option<ThinkingSummaries>,
+    /// `visualization`: whether the agent may draw charts and images.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
-    /// `speaker`: the name the prompt gives the speaker.
+    pub visualization: Option<Visualization>,
+    /// `collaborative_planning`: answer with a research plan to review
+    /// instead of the report. Send `false` on a later turn to approve it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub speaker: Option<String>,
+    pub collaborative_planning: Option<bool>,
 }
 
-impl InteractionSpeech {
-    /// Speak with `voice`.
-    pub fn voice(voice: impl Into<String>) -> Self {
-        Self {
-            voice: Some(voice.into()),
-            ..Self::default()
-        }
+impl DeepResearchConfig {
+    /// No field set.
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// `language`.
-    pub fn language(mut self, language: impl Into<String>) -> Self {
-        self.language = Some(language.into());
+    /// `thinking_summaries`.
+    pub fn thinking_summaries(mut self, summaries: ThinkingSummaries) -> Self {
+        self.thinking_summaries = Some(summaries);
         self
     }
 
-    /// `speaker`.
-    pub fn speaker(mut self, speaker: impl Into<String>) -> Self {
-        self.speaker = Some(speaker.into());
+    /// `visualization`.
+    pub fn visualization(mut self, visualization: Visualization) -> Self {
+        self.visualization = Some(visualization);
         self
     }
+
+    /// `collaborative_planning`.
+    pub fn collaborative_planning(mut self, plan: bool) -> Self {
+        self.collaborative_planning = Some(plan);
+        self
+    }
+}
+
+impl From<DeepResearchConfig> for AgentConfig {
+    fn from(config: DeepResearchConfig) -> Self {
+        Self::DeepResearch(config)
+    }
+}
+
+/// Whether an agent may generate charts and images.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Visualization {
+    /// `auto`: when the prompt asks for visuals.
+    Auto,
+    /// `off`.
+    Off,
 }
 
 /// The Gemini API's reply fields rig does not normalize, from the reply
@@ -1226,6 +1247,8 @@ pub enum InteractionStatus {
     Failed,
     /// `cancelled`.
     Cancelled,
+    /// `queued`: waiting for capacity, such as the flex tier's.
+    Queued,
     /// A status this crate does not know yet, as the API spelled it.
     #[serde(untagged)]
     Unknown(String),

@@ -4,6 +4,7 @@
 
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionRequest;
+use rig_core::providers::gemini::ImageSize;
 use rig_core::providers::gemini::extension::{
     CandidateCount, ImageConfig, MediaResolution, ResponseModality, SpeechConfig,
 };
@@ -170,8 +171,11 @@ fn response_modalities_reach_generation_config() {
 #[test]
 fn image_config_reaches_generation_config() {
     let config = config(
-        GenerationConfig::new()
-            .image_config(ImageConfig::new().aspect_ratio("16:9").image_size("2K")),
+        GenerationConfig::new().image_config(
+            ImageConfig::new()
+                .aspect_ratio("16:9")
+                .image_size(ImageSize::TwoK),
+        ),
     );
     let image = config.image_config.expect("an image config");
     assert_eq!(image.aspect_ratio.as_deref(), Some("16:9"));
