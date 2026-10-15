@@ -129,6 +129,9 @@ fn entries_record_each_origin_and_the_provider_hosted_tools() {
 
     handle.remove_provider_tool("web_search");
     handle.add_provider_tool(ProviderToolDefinition::new("code_interpreter"));
+    let mut set = ToolSet::default();
+    set.add_provider_tool(ProviderToolDefinition::new("file_search"));
+    handle.add_tools(set);
     let kinds = |catalog: &ToolCatalog| {
         catalog
             .provider_tools()
@@ -136,6 +139,9 @@ fn entries_record_each_origin_and_the_provider_hosted_tools() {
             .map(|tool| tool.kind.clone())
             .collect::<Vec<_>>()
     };
-    assert_eq!(kinds(&handle.snapshot()), ["code_interpreter"]);
+    assert_eq!(
+        kinds(&handle.snapshot()),
+        ["code_interpreter", "file_search"]
+    );
     assert_eq!(kinds(&catalog), ["web_search"]);
 }
