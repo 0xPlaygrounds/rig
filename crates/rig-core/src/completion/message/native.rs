@@ -199,7 +199,7 @@ pub(crate) struct Canonical<'a, T: ?Sized>(pub(crate) &'a T);
 impl Serialize for Canonical<'_, serde_json::Map<String, serde_json::Value>> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut fields: Vec<_> = self.0.iter().collect();
-        fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+        fields.sort_by_key(|(left, _)| *left);
         serializer.collect_map(
             fields
                 .into_iter()
