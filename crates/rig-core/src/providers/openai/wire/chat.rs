@@ -406,6 +406,7 @@ impl Chat {
         custom: &[String],
     ) -> Result<Vec<Value>, EncodeError> {
         let ids = WireIds::for_target(history, self, model);
+        let reasoning_field = self.reasoning_field(model);
         let mut messages = Vec::new();
         for message in history {
             match &**message {
@@ -425,7 +426,7 @@ impl Chat {
                     user_message(&mut messages, &mut parts);
                 }
                 Message::Assistant(turn) => {
-                    messages.extend(self.assistant(turn, &ids, custom, model));
+                    messages.extend(self.assistant(turn, &ids, custom, reasoning_field));
                 }
             }
         }
@@ -449,9 +450,8 @@ impl Chat {
         turn: &AssistantMessage,
         ids: &WireIds,
         custom: &[String],
-        model: &str,
+        reasoning_field: Option<&str>,
     ) -> Option<Value> {
-        let reasoning_field = self.reasoning_field(model);
         let (mut text, mut parts, mut has_parts) = (String::new(), Vec::new(), false);
         let mut reasoning: Vec<(String, String)> = Vec::new();
         let (mut fields, mut calls) = (Map::new(), Vec::new());
