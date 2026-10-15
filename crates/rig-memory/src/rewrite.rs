@@ -118,7 +118,7 @@ pub trait Rewrite: Send + Sync {
 /// let rewritten = rewrite(&store, Author::plugin("redact"), &redact)?;
 /// assert_eq!(rewritten.logs.len(), 1);
 /// let main = Session::read(&store)?.agents.remove(0);
-/// assert_eq!(main.conversation.messages(), [Message::user("my key is [REDACTED]")]);
+/// assert_eq!(main.conversation.messages(), [Message::user("my key is [REDACTED]").into()]);
 /// # Ok::<(), rig_memory::SessionError>(())
 /// ```
 pub struct Strings<F: Fn(&mut String) -> bool + Send + Sync>(pub F);
