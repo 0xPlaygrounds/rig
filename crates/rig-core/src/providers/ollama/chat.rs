@@ -401,22 +401,11 @@ impl ReplayTarget for Chat {
         _request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        use crate::completion::options::{Mapping, OptionFields, OptionMap};
+        use crate::completion::options::{Mapping, OptionMap};
         use crate::completion::{CacheRetention, Effort, Reasoning};
-        let OptionFields {
-            reasoning,
-            cache,
-            service_tier,
-            verbosity,
-            parallel_tool_calls,
-            top_p,
-            seed,
-            stop,
-            cache_key,
-        } = fields;
         const NO_FIELD: &str = "Ollama's `/api/chat` has no such field";
         OptionMap {
-            reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+            reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
                 Reasoning::Off => Mapping::Send(json!({"think": false})),
                 Reasoning::Effort(
                     effort @ (Effort::Low | Effort::Medium | Effort::High | Effort::Max),
@@ -429,27 +418,27 @@ impl ReplayTarget for Chat {
                     Mapping::unsupported("Ollama takes a thinking level, not a budget")
                 }
             }),
-            cache: Mapping::of(cache, |cache| match cache {
+            cache: Mapping::of(fields.cache, |cache| match cache {
                 CacheRetention::None => Mapping::Omit("Ollama keeps no prompt cache to stop"),
                 CacheRetention::Short | CacheRetention::Long => Mapping::unsupported(
                     "Ollama has no prompt cache retention; `keep_alive` keeps the model loaded",
                 ),
             }),
-            service_tier: Mapping::of(service_tier, |_| Mapping::unsupported(NO_FIELD)),
-            verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(NO_FIELD)),
-            parallel_tool_calls: Mapping::of(parallel_tool_calls, |_| {
+            service_tier: Mapping::of(fields.service_tier, |_| Mapping::unsupported(NO_FIELD)),
+            verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(NO_FIELD)),
+            parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |_| {
                 Mapping::unsupported(NO_FIELD)
             }),
-            top_p: Mapping::of(top_p, |top_p| {
+            top_p: Mapping::of(fields.top_p, |top_p| {
                 Mapping::Send(json!({"options": {"top_p": top_p}}))
             }),
-            seed: Mapping::of(seed, |seed| {
+            seed: Mapping::of(fields.seed, |seed| {
                 Mapping::Send(json!({"options": {"seed": seed}}))
             }),
-            stop: Mapping::of_stop(stop, |stop| {
+            stop: Mapping::of_stop(fields.stop, |stop| {
                 Mapping::Send(json!({"options": {"stop": stop}}))
             }),
-            cache_key: Mapping::unrouted(cache_key),
+            cache_key: Mapping::unrouted(fields.cache_key),
         }
     }
 

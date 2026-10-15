@@ -475,19 +475,8 @@ impl crate::completion::ReplayTarget for NativeChat {
         request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        use crate::completion::options::{Mapping, OptionFields, OptionMap};
+        use crate::completion::options::{Mapping, OptionMap};
         use crate::completion::{CacheRetention, Effort, Reasoning};
-        let OptionFields {
-            reasoning,
-            cache,
-            service_tier,
-            verbosity,
-            parallel_tool_calls,
-            top_p,
-            seed,
-            stop,
-            cache_key,
-        } = fields;
         let model = request.model.as_deref().unwrap_or(&self.model);
         // A model that thinks does so by default. An id the catalog does
         // not list thinks when its name says `reasoning`.
@@ -495,7 +484,7 @@ impl crate::completion::ReplayTarget for NativeChat {
         let reasons = thinks.unwrap_or_else(|| model.contains("reasoning"));
         const NO_FIELD: &str = "Cohere's chat API has no such field";
         OptionMap {
-            reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+            reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
                 Reasoning::Off if reasons => {
                     Mapping::Send(json!({"thinking": {"type": "disabled"}}))
                 }
@@ -514,32 +503,32 @@ impl crate::completion::ReplayTarget for NativeChat {
                     "thinking": {"type": "enabled", "token_budget": tokens},
                 })),
             }),
-            cache: Mapping::of(cache, |cache| match cache {
+            cache: Mapping::of(fields.cache, |cache| match cache {
                 CacheRetention::None => Mapping::Omit("Cohere does not cache prompts"),
                 CacheRetention::Short | CacheRetention::Long => {
                     Mapping::unsupported("Cohere has no prompt cache")
                 }
             }),
-            service_tier: Mapping::of(service_tier, |_| {
+            service_tier: Mapping::of(fields.service_tier, |_| {
                 Mapping::unsupported("Cohere's `priority` is a queue position, not a tier")
             }),
-            verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(NO_FIELD)),
-            parallel_tool_calls: Mapping::of(parallel_tool_calls, |_| {
+            verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(NO_FIELD)),
+            parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |_| {
                 Mapping::unsupported(NO_FIELD)
             }),
-            top_p: Mapping::of(top_p, |top_p| {
+            top_p: Mapping::of(fields.top_p, |top_p| {
                 if (0.01..=0.99).contains(&top_p) {
                     Mapping::Send(json!({ "p": top_p }))
                 } else {
                     Mapping::unsupported("Cohere takes `p` from 0.01 to 0.99")
                 }
             }),
-            seed: Mapping::of(seed, |seed| Mapping::Send(json!({ "seed": seed }))),
-            stop: Mapping::of_stop(stop, |stop| match stop.len() {
+            seed: Mapping::of(fields.seed, |seed| Mapping::Send(json!({ "seed": seed }))),
+            stop: Mapping::of_stop(fields.stop, |stop| match stop.len() {
                 0..=5 => Mapping::Send(json!({ "stop_sequences": stop })),
                 _ => Mapping::unsupported("Cohere takes at most 5 stop sequences"),
             }),
-            cache_key: Mapping::unrouted(cache_key),
+            cache_key: Mapping::unrouted(fields.cache_key),
         }
     }
 

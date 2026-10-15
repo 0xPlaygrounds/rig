@@ -346,36 +346,11 @@ impl ReplayTarget for InteractionResume {
         _request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        use crate::completion::options::{Mapping, OptionFields, OptionMap};
-        let OptionFields {
-            reasoning,
-            cache,
-            service_tier,
-            verbosity,
-            parallel_tool_calls,
-            top_p,
-            seed,
-            stop,
-            cache_key,
-        } = fields;
-        let refuse = |set: bool| match set {
-            true => Mapping::unsupported(
-                "a resumed interaction is read, not created; its options were fixed when it was \
-                 created",
-            ),
-            false => Mapping::Nothing,
-        };
-        OptionMap {
-            reasoning: refuse(reasoning.is_some()),
-            cache: refuse(cache.is_some()),
-            service_tier: refuse(service_tier.is_some()),
-            verbosity: refuse(verbosity.is_some()),
-            parallel_tool_calls: refuse(parallel_tool_calls.is_some()),
-            top_p: refuse(top_p.is_some()),
-            seed: refuse(seed.is_some()),
-            stop: refuse(!stop.is_empty()),
-            cache_key: Mapping::unrouted(cache_key),
-        }
+        crate::providers::internal::refuse_all(
+            fields,
+            "a resumed interaction is read, not created; its options were fixed when it was \
+             created",
+        )
     }
 
     fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
