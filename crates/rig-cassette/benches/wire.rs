@@ -13,6 +13,8 @@
 //!   and text carrying their provider items, 20 KB tool results, five
 //!   500 KB images) and 20 tools, prepared and encoded to its body;
 //! - `check`: `check` of that request with 3,000 messages;
+//! - `check_next_call`: a model handler's `check` of that request with one
+//!   more message, after it checked the request, as on every model call;
 //! - `fingerprint`: a 4 KB text, a call with 20 KB of arguments and a 1 MB
 //!   image;
 //! - `effect_log_append`: appending the completion record of a request of
@@ -44,6 +46,7 @@ use rig_core::operation::Completion;
 use rig_core::providers::anthropic::AnthropicConfig;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::openai::OpenAIConfig;
+use rig_core::serve::{Serve, adapters::ModelAdapter};
 use rig_core::wasm_compat::WasmCompatSend;
 use serde_json::{Value, json};
 
@@ -660,6 +663,28 @@ fn check(bencher: divan::Bencher, family: &str) {
     let model = model(family, Replay::default());
     or_exit(model.check(&request), "the check");
     bencher.bench_local(|| model.check(&request));
+}
+
+/// A model handler's `check` of the 3,000-message request with 20 tools
+/// and one more message, after it checked the request: what an agent asks
+/// on every model call.
+#[divan::bench(args = FAMILIES, sample_count = 30)]
+fn check_next_call(bencher: divan::Bencher, family: &str) {
+    let request = Arc::new(request(&history(750, &Native::of_none(), true)));
+    let handler = ModelAdapter::new("bench/model", model(family, Replay::default()));
+    let kind = |request: Arc<CompletionRequest>| EffectKind::Completion {
+        request,
+        stream: true,
+    };
+    let refused = handler.check(&kind(request.clone()));
+    ensure(refused.is_empty(), || format!("{family}: {refused:?}"));
+    bencher
+        .with_inputs(|| {
+            let mut next = CompletionRequest::clone(&request);
+            next.chat_history.push(Arc::new(Message::user("And then?")));
+            kind(Arc::new(next))
+        })
+        .bench_local_refs(|kind| handler.check(kind));
 }
 
 impl Native {
