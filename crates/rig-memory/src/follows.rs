@@ -54,9 +54,14 @@ fn versioned(envelope: &Value) -> Option<Versioned> {
     })
 }
 
+/// Whether `aside` holds a followed value of `key`.
+fn holds(aside: &Aside, key: &str) -> bool {
+    aside.kind == FOLLOWS && aside.value.get("key").and_then(Value::as_str) == Some(key)
+}
+
 /// The followed value of `key` an aside holds, as an envelope.
 fn of_aside(aside: &Aside, key: &str) -> Option<Value> {
-    if aside.kind != FOLLOWS || aside.value.get("key").and_then(Value::as_str) != Some(key) {
+    if !holds(aside, key) {
         return None;
     }
     let mut envelope = aside.value.as_object()?.clone();
@@ -80,17 +85,6 @@ fn follows_aside(key: &str, envelope: &Value, after: Option<MessageId>) -> Aside
     Aside::new(FOLLOWS, Author::rig(), Value::Object(value)).after(after)
 }
 
-/// The asides holding values of `key`, each with its id and position.
-fn asides_of(conversation: &Conversation, key: &str) -> Vec<(AsideId, usize, Value)> {
-    conversation
-        .asides()
-        .filter_map(|(id, aside)| {
-            let value = of_aside(aside, key)?;
-            Some((id, conversation.aside_position(aside), value))
-        })
-        .collect()
-}
-
 /// The value of `key` the active line of `conversation` has: its line value,
 /// else the newest of its asides (the latest in the line); `None` when it has
 /// none.
@@ -101,9 +95,11 @@ fn current(conversation: &Conversation, key: &str) -> Option<Value> {
     {
         return Some(value.clone());
     }
-    let asides = asides_of(conversation, key).into_iter().enumerate();
-    let newest = asides.max_by_key(|(order, (_, position, _))| (*position, *order));
-    newest.map(|(_, (_, _, value))| value)
+    let held = conversation.asides().filter(|(_, aside)| holds(aside, key));
+    let newest = held
+        .enumerate()
+        .max_by_key(|(order, (_, aside))| (conversation.aside_position(aside), *order));
+    newest.and_then(|(_, (_, aside))| of_aside(aside, key))
 }
 
 /// Whether a value set now belongs to the line itself: it has no entry, or

@@ -11,7 +11,7 @@ use crate::message::{Reasoning, ToolChoice};
 fn bare(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history,
+        chat_history: chat_history.into_iter().map(Into::into).collect(),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,

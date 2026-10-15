@@ -2,7 +2,6 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use rig_core::error::ProviderError;
 use rig_core::image_generation;
-use rig_core::image_generation::NormalizeImageGenerationResponse;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -97,8 +96,10 @@ pub struct TextToImageResponse {
     pub error: Option<String>,
 }
 
-impl NormalizeImageGenerationResponse for TextToImageResponse {
-    fn normalize(self) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
+impl TextToImageResponse {
+    /// The image response this payload states. The driver writes the
+    /// provider, request id and `raw` afterwards.
+    pub fn normalize(self) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
         if let Some(error) = self.error {
             return Err(ProviderError::Response(error));
         }

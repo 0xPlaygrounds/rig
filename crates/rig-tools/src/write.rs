@@ -108,7 +108,7 @@ impl Tool for Write {
             workspace
                 .write(&resolved, args.content.as_bytes())
                 .map_err(|error| io_error(&path, error))?;
-            let change = Previous::change(before.as_ref(), &path, Some(args.content.as_bytes()));
+            let change = Previous::change(before, &path, Some(args.content.as_bytes()));
             let output = format!("Wrote {} bytes to {}.", args.content.len(), args.path);
             Ok::<_, ToolExecutionError>((output, change))
         })

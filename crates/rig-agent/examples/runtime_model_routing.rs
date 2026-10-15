@@ -85,7 +85,7 @@ fn fast_research(_request: &CompletionRequest) -> Result<AssistantContent, Provi
 /// Answers from the committed search result.
 fn strong_synthesis(request: &CompletionRequest) -> Result<AssistantContent, ProviderError> {
     let saw_tool_result = request.chat_history.iter().any(|message| {
-        matches!(message, rig_core::message::Message::User { content }
+        matches!(&**message, rig_core::message::Message::User { content }
             if content.iter().any(|item| matches!(item, rig_core::message::UserContent::ToolResult(_))))
     });
     Ok(AssistantContent::text(if saw_tool_result {

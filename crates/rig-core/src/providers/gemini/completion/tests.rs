@@ -18,7 +18,7 @@ fn to_content_for(model: &str, message: impl Into<message::Message>) -> Result<V
 
 /// The contents the REST wire sends `model` for `history`.
 fn contents_for(history: Vec<message::Message>, model: &str) -> Result<Vec<Value>, EncodeError> {
-    contents(history, &wire(model), model)
+    contents(&history.iter().collect::<Vec<_>>(), &wire(model), model)
 }
 
 /// The request body the REST wire builds for `request` to `model`.
@@ -1109,7 +1109,7 @@ fn tool_result_images_reach_gemini_2_in_a_following_user_message() {
                 output_schema: None,
                 annotations: Default::default(),
             }]);
-        request.chat_history = history;
+        request.chat_history = history.into_iter().map(Into::into).collect();
         request
     };
 

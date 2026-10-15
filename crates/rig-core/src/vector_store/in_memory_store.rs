@@ -65,24 +65,14 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         embeddings: HashMap<String, (D, Vec<Embedding>)>,
         index_strategy: IndexStrategy,
     ) -> Self {
-        let lsh_params = match &index_strategy {
-            IndexStrategy::LSH {
-                num_tables,
-                num_hyperplanes,
-            } => Some((*num_tables, *num_hyperplanes)),
-            IndexStrategy::BruteForce => None,
-        };
-
         let mut vector_store = Self {
-            embeddings,
+            embeddings: HashMap::with_capacity(embeddings.len()),
             index_strategy,
             lsh_index: None,
         };
-
-        if let Some((num_tables, num_hyperplanes)) = lsh_params {
-            vector_store.initialize_lsh_index(num_tables, num_hyperplanes);
+        for (id, (doc, embeddings)) in embeddings {
+            vector_store.insert_document(id, doc, embeddings);
         }
-
         vector_store
     }
 
@@ -119,8 +109,19 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         store
     }
 
-    /// Inserts or replaces a document and adds its embeddings to any existing LSH index.
+    /// Inserts or replaces a document and adds its embeddings to the LSH
+    /// index, made for the first embedding's width when there is none yet.
     fn insert_document(&mut self, id: String, doc: D, embeddings: Vec<Embedding>) {
+        if let IndexStrategy::LSH {
+            num_tables,
+            num_hyperplanes,
+        } = self.index_strategy
+            && self.lsh_index.is_none()
+            && let Some(width) = embeddings.first().map(|embedding| embedding.vec.len())
+            && width > 0
+        {
+            self.lsh_index = Some(LSHIndex::new(width, num_tables, num_hyperplanes));
+        }
         if let Some(ref mut lsh_index) = self.lsh_index {
             for embedding in embeddings.iter() {
                 lsh_index.insert(&id, &embedding.vec);
@@ -273,34 +274,6 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         }
 
         Ok(docs)
-    }
-
-    /// Initialize LSH index from existing embeddings
-    fn initialize_lsh_index(&mut self, num_tables: usize, num_hyperplanes: usize) {
-        if self.embeddings.is_empty() {
-            return;
-        }
-
-        let first_embedding = self
-            .embeddings
-            .values()
-            .next()
-            .and_then(|(_, embeddings)| embeddings.iter().next())
-            .map_or(0, |e| e.vec.len());
-
-        if first_embedding == 0 {
-            return;
-        }
-
-        let mut lsh_index = LSHIndex::new(first_embedding, num_tables, num_hyperplanes);
-
-        for (id, (_, embeddings)) in self.embeddings.iter() {
-            for embedding in embeddings.iter() {
-                lsh_index.insert(id, &embedding.vec);
-            }
-        }
-
-        self.lsh_index = Some(lsh_index);
     }
 
     /// Add documents and their corresponding embeddings to the store.

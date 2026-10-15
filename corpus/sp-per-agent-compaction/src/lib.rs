@@ -318,9 +318,9 @@ fn cut_name(turns: usize) -> String {
 
 /// Where the newest `turns` turns of `messages` start: the `turns`-th
 /// newest model reply, after the first `from`.
-fn turns_start(messages: &[Message], from: usize, turns: usize) -> Option<usize> {
+fn turns_start(messages: &[std::sync::Arc<Message>], from: usize, turns: usize) -> Option<usize> {
     let replies = messages.iter().enumerate().skip(from);
-    let mut replies = replies.filter(|(_, message)| matches!(message, Message::Assistant(_)));
+    let mut replies = replies.filter(|(_, message)| matches!(&***message, Message::Assistant(_)));
     let starts: Vec<usize> = replies.by_ref().map(|(at, _)| at).collect();
     let at = *starts.iter().rev().nth(turns.saturating_sub(1))?;
     (at > from).then_some(at)
@@ -328,14 +328,18 @@ fn turns_start(messages: &[Message], from: usize, turns: usize) -> Option<usize>
 
 /// The messages of `messages` before its newest `turns` turns whose tool
 /// results are not `stub` yet, each with its results as `stub`.
-fn stubbed(messages: &[Message], turns: usize, stub: &str) -> Vec<(usize, Message)> {
+fn stubbed(
+    messages: &[std::sync::Arc<Message>],
+    turns: usize,
+    stub: &str,
+) -> Vec<(usize, Message)> {
     let Some(cut) = turns_start(messages, 0, turns) else {
         return Vec::new();
     };
     let older = messages.iter().take(cut).enumerate();
     older
         .filter_map(|(at, message)| {
-            let Message::User { content } = message else {
+            let Message::User { content } = &**message else {
                 return None;
             };
             let mut content = content.clone();
@@ -477,7 +481,7 @@ fn fit_by_rule(
                     None => {
                         for (at, message) in stubbed(&model.request.chat_history, turns, stub) {
                             if let Some(old) = model.request.chat_history.get_mut(at) {
-                                *old = message;
+                                *old = message.into();
                             }
                         }
                     }

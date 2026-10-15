@@ -152,7 +152,13 @@ fn ask(app: &mut App, agent: Entity) {
 fn messages(app: &App, agent: Entity) -> Vec<Message> {
     app.world()
         .get::<Conversation>(agent)
-        .map(|conversation| conversation.messages().to_vec())
+        .map(|conversation| {
+            conversation
+                .messages()
+                .iter()
+                .map(|message| (**message).clone())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -622,7 +628,8 @@ fn a_prepare_edit_of_a_request_is_attributed_and_never_saved() {
                 UserContent::text("What is 2 + 3?"),
             ],
         },
-    ];
+    ]
+    .map(std::sync::Arc::new);
     assert_eq!(sent, Some(asked.as_slice()));
     // Neither the conversation nor its log has the plugin's entry.
     let by_x = |conversation: &rig_core::conversation::Conversation| {

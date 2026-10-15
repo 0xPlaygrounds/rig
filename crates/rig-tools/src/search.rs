@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
     ContextValue, FileRead, FilesRead, Schema, Scope, Tool, ToolContext, ToolExecutionError,
@@ -245,6 +245,7 @@ pub fn render(found: &Found) -> String {
 pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolExecutionError> {
     let pattern = Regex::new(&args.pattern)
         .map_err(|error| ToolExecutionError::invalid_args(format!("bad pattern: {error}")))?;
+    let whole = whole_text(&args.pattern);
     let root = args.path.as_deref().unwrap_or(".");
     let files = listed(
         workspace,
@@ -265,6 +266,12 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         let Some(text) = text else {
             continue;
         };
+        if let Some(whole) = &whole
+            && !lone_cr(&text)
+            && !whole.is_match(&text)
+        {
+            continue;
+        }
         let path = walked(&file);
         for (number, line) in text.lines().enumerate() {
             if pattern.is_match(line) {
@@ -287,6 +294,30 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         }
     }
     Ok(found)
+}
+
+/// `pattern` over a whole text, matching it wherever it matches one of its
+/// lines, so a file it does not match has no line to search: `^` and `$`
+/// match at each line end, `\n` or `\r\n`. `None` when the pattern anchors
+/// to the ends of the text (`\A`, `\z`) or may turn a flag off, such as
+/// `(?-m)`, so its lines' ends would not count.
+fn whole_text(pattern: &str) -> Option<Regex> {
+    let groups = pattern.split("(?").skip(1);
+    let mut flags = groups.filter_map(|group| group.split([')', ':']).next());
+    if pattern.contains("\\A") || pattern.contains("\\z") || flags.any(|it| it.contains('-')) {
+        return None;
+    }
+    RegexBuilder::new(pattern)
+        .multi_line(true)
+        .crlf(true)
+        .build()
+        .ok()
+}
+
+/// Whether `text` has a `\r` that does not end a line: [`whole_text`]'s
+/// `.` does not match it, though a line's does.
+fn lone_cr(text: &str) -> bool {
+    text.contains('\r') && text.matches('\r').count() != text.matches("\r\n").count()
 }
 
 /// `path` as the walk reached it, without a leading `./`.

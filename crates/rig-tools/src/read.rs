@@ -1,5 +1,6 @@
 //! The `read` tool.
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -201,9 +202,9 @@ fn number(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, 
         if out.len() + shown.len() > max_bytes {
             break;
         }
-        out.push_str(&format!("{:>6}\t{shown}", number + 1));
+        let _ = write!(out, "{:>6}\t{shown}", number + 1);
         if shown.len() < line.len() {
-            out.push_str(&format!(" [line cut at {MAX_LINE_CHARS} characters]"));
+            let _ = write!(out, " [line cut at {MAX_LINE_CHARS} characters]");
         }
         out.push('\n');
         last = number + 1;

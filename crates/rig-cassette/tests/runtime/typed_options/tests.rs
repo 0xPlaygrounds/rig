@@ -1794,7 +1794,9 @@ mod citations_and_cost {
             [
                 Message::user(QUESTION),
                 reply.message().expect("the reply is an assistant turn"),
-            ],
+            ]
+            .into_iter()
+            .map(Into::into),
         );
         let body = encode(&wire, next).expect("the continuation encodes");
         let turns = crate::cassettes::recorded_json_turns("cohere", COHERE_CITATIONS);

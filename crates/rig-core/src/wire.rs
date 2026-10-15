@@ -13,6 +13,8 @@
 //! assert_eq!(frame.as_str(), "response");
 //! ```
 
+use std::sync::{Arc, Mutex};
+
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -217,6 +219,20 @@ pub trait Operation: Sized + 'static {
     }
 }
 
+/// What a model keeps from preparing one request for the next
+/// ([`Descriptor::prepared`]): a completion's history as it was last
+/// adapted, so a history that grew is adapted only from its last turn on. A
+/// model's clones share it.
+#[derive(Clone, Debug, Default)]
+pub struct Prepared(pub(crate) Arc<Mutex<crate::completion::history::Memo>>);
+
+/// What a model kept never makes two models differ.
+impl PartialEq for Prepared {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
 /// Events a decoder builds and writes with [`Out::event`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Free {}
@@ -356,18 +372,11 @@ pub(crate) mod reply {
 
         /// What the driver learned about the reply so far, from `provider`.
         pub(crate) fn reply(&self, provider: &str) -> Reply {
-            Reply {
-                provider: provider.to_owned(),
-                // A whole body is the reply's document; a stream's is what
-                // the wire's reassembler rebuilt, or what the decoder of an
-                // operation with free events recorded.
-                raw: self
-                    .document
-                    .clone()
-                    .or_else(|| self.raw.clone())
-                    .unwrap_or(serde_json::Value::Null),
-                provider_request_id: self.request_id.clone(),
-            }
+            reply(
+                provider,
+                self.document.clone().or_else(|| self.raw.clone()),
+                self.request_id.clone(),
+            )
         }
 
         /// Fold the absorbed reply with the provider's end into the
@@ -377,9 +386,20 @@ pub(crate) mod reply {
             if let Some(response) = self.response {
                 return Ok(response);
             }
-            let reply = self.reply(provider);
+            let reply = reply(provider, self.document.or(self.raw), self.request_id);
             let end = self.end.ok_or(ProviderError::Truncated)?;
             self.fold.finish(end, reply)
+        }
+    }
+
+    /// The reply from `provider` whose document is `raw`: a whole body, or
+    /// what the wire's reassembler rebuilt of a stream, or what the decoder
+    /// of an operation with free events recorded.
+    fn reply(provider: &str, raw: Option<serde_json::Value>, request_id: Option<String>) -> Reply {
+        Reply {
+            provider: provider.to_owned(),
+            raw: raw.unwrap_or(serde_json::Value::Null),
+            provider_request_id: request_id,
         }
     }
 
@@ -479,6 +499,9 @@ pub struct Descriptor<'a> {
     /// The model facts a completion wire encodes with, which its replies are
     /// priced by. `None` answers from the built-in catalog.
     pub facts: Option<&'a crate::catalog::ModelFacts>,
+    /// What the model kept from preparing its last request, which the
+    /// driver lends [`Operation::prepare`]; `None` from the wire itself.
+    pub prepared: Option<&'a Prepared>,
 }
 
 impl<'a> Descriptor<'a> {
@@ -491,6 +514,7 @@ impl<'a> Descriptor<'a> {
             capabilities: Capabilities::default(),
             telemetry: None,
             facts: None,
+            prepared: None,
         }
     }
 
@@ -738,15 +762,18 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     type Payload: WasmCompatSend + 'static;
     /// One unit of a reply, as the transport delivers it.
     type Frame: WasmCompatSend + 'static;
+    /// The decoder's classified event, which the reassembler reads too.
+    type Event: WasmCompatSend + 'static;
     /// The decoder for one of its replies, branded with that reply.
-    type Decoder<'id>: Decoder<'id, Self::Op, Self::Frame> + WasmCompatSend;
-    /// What rebuilds a reply's provider document from its frames when the
+    type Decoder<'id>: Decoder<'id, Self::Op, Self::Frame, Event = Self::Event> + WasmCompatSend;
+    /// What rebuilds a reply's provider document from its events when the
     /// transport reports no whole document, as for a stream. The driver
-    /// feeds it every frame and records what it finishes with as `raw`.
-    /// A wire whose operation's decoders record `raw` themselves names
-    /// [`document::Unreassembled`]; a completion wire cannot, because it
-    /// does not [`Serve`](document::Serves) completions.
-    type Reassembler: document::Reassemble<Self::Frame> + document::Serves<Self::Op>;
+    /// hands it every known event before the decoder decodes it, and
+    /// records what it finishes with as `raw`. A wire whose operation's
+    /// decoders record `raw` themselves names [`document::Unreassembled`];
+    /// a completion wire cannot, because it does not
+    /// [`Serve`](document::Serves) completions.
+    type Reassembler: document::Reassemble<Self::Event> + document::Serves<Self::Op>;
 
     /// What the wire says about itself.
     fn describe(&self) -> Descriptor<'_>;
@@ -817,13 +844,11 @@ where
     type Event = (Op::End, serde_json::Value);
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        // Read from the text, so an end holding raw JSON can borrow it.
-        let text = frame.as_str();
-        let document = match serde_json::from_str::<serde_json::Value>(&text) {
+        let document = match serde_json::from_str::<serde_json::Value>(&frame.as_str()) {
             Ok(document) => document,
             Err(error) => return WireEvent::Corrupt(error),
         };
-        match serde_json::from_str::<Op::End>(&text) {
+        match <Op::End as serde::Deserialize>::deserialize(&document) {
             Ok(end) => WireEvent::Known((end, document)),
             Err(error) => WireEvent::Corrupt(error),
         }
@@ -836,6 +861,35 @@ where
     ) -> Result<Flow, ProviderError> {
         out.raw(document);
         Ok(out.end(end))
+    }
+}
+
+/// The decoder of a reply that is one document: `classify` reads the
+/// document, and `end` makes it the operation's end.
+pub struct DocumentDecoder<Op: Operation, Event> {
+    classify: fn(&str) -> WireEvent<Event>,
+    end: fn(Event) -> Result<Op::End, ProviderError>,
+}
+
+impl<Op: Operation, Event> DocumentDecoder<Op, Event> {
+    /// The decoder that reads a reply with `classify` and ends it with `end`.
+    pub fn new(
+        classify: fn(&str) -> WireEvent<Event>,
+        end: fn(Event) -> Result<Op::End, ProviderError>,
+    ) -> Self {
+        Self { classify, end }
+    }
+}
+
+impl<'id, Op: Operation, Event> Decoder<'id, Op> for DocumentDecoder<Op, Event> {
+    type Event = Event;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Event> {
+        (self.classify)(&frame.as_str())
+    }
+
+    fn decode(&mut self, event: Event, out: Out<'id, Op>) -> Result<Flow, ProviderError> {
+        Ok(out.end((self.end)(event)?))
     }
 }
 

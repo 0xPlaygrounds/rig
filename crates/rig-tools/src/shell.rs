@@ -7,7 +7,6 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use rig_core::completion::ToolAnnotations;
@@ -253,7 +252,9 @@ impl Shell {
                     Ok(line) => tail.push(line.text()),
                     Err(RecvTimeoutError::Timeout) => {}
                     // The command closed its output but still runs.
-                    Err(RecvTimeoutError::Disconnected) => thread::sleep(POLL),
+                    Err(RecvTimeoutError::Disconnected) => {
+                        process.wait_for(POLL).ok();
+                    }
                 },
                 Err(error) => {
                     return Err(ToolExecutionError::other(format!(

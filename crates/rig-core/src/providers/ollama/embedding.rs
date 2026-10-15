@@ -6,12 +6,9 @@
 //! assert_eq!(model.wire.ndims, 384);
 //! ```
 
-use crate::error::{EncodeError, ProviderError};
+use crate::error::EncodeError;
 use crate::operation::Embedding;
-use crate::wire::{
-    Body, Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent,
-    WireFrame,
-};
+use crate::wire::{Body, Capabilities, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 use serde::{Deserialize, Serialize};
 
 use super::{OllamaConfig, PROVIDER_NAME};
@@ -87,7 +84,8 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = EmbeddingsDecoder;
+    type Event = EmbeddingResponse;
+    type Decoder<'id> = DocumentDecoder<Embedding, Self::Event>;
     type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
@@ -105,41 +103,27 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    /// Decodes one `/api/embed` reply.
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        EmbeddingsDecoder
-    }
-}
-
-/// Decodes one `/api/embed` reply.
-pub struct EmbeddingsDecoder;
-
-impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
-    type Event = EmbeddingResponse;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_marker_keyed_frame(
-            &frame.as_str(),
-            &["embeddings"],
+        DocumentDecoder::new(
+            |body| {
+                crate::providers::internal::wire::classify_marker_keyed_frame(body, &["embeddings"])
+            },
+            |reply| {
+                // Ollama counts the prompt it embedded and nothing else: every token
+                // of an embedding is input.
+                let usage = crate::completion::Usage {
+                    input_tokens: reply.prompt_eval_count,
+                    total_tokens: reply.prompt_eval_count,
+                    ..Default::default()
+                };
+                Ok(crate::embeddings::EmbeddingResponse {
+                    model: Some(reply.model),
+                    usage,
+                    ..crate::embeddings::EmbeddingResponse::from_vectors(reply.embeddings)
+                })
+            },
         )
-    }
-
-    fn decode(
-        &mut self,
-        reply: Self::Event,
-        out: Out<'id, Embedding>,
-    ) -> Result<Flow, ProviderError> {
-        // Ollama counts the prompt it embedded and nothing else: every token
-        // of an embedding is input.
-        let usage = crate::completion::Usage {
-            input_tokens: reply.prompt_eval_count,
-            total_tokens: reply.prompt_eval_count,
-            ..Default::default()
-        };
-        Ok(out.end(crate::embeddings::EmbeddingResponse {
-            model: Some(reply.model),
-            usage,
-            ..crate::embeddings::EmbeddingResponse::from_vectors(reply.embeddings)
-        }))
     }
 }
 

@@ -105,16 +105,6 @@ impl Parse for MacroArgs {
         let mut required = None;
         let mut output_schema = false;
 
-        if input.is_empty() {
-            return Ok(MacroArgs {
-                name,
-                description,
-                param_descriptions: Vec::new(),
-                required,
-                output_schema,
-            });
-        }
-
         let meta_list: Punctuated<Meta, Token![,]> = Punctuated::parse_terminated(input)?;
 
         for meta in meta_list {

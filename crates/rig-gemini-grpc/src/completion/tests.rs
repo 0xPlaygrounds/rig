@@ -97,7 +97,10 @@ fn a_url_tool_result_image_follows_the_results_on_gemini_3() {
         },
     ];
     let mut request = CompletionRequest::new("next");
-    request.chat_history = rig_core::completion::adapt(&history, &GenerateContent::new(model));
+    request.chat_history = rig_core::completion::adapt(&history, &GenerateContent::new(model))
+        .into_iter()
+        .map(Into::into)
+        .collect();
     let request = create_grpc_request(model, request).expect("the history encodes");
     let data: Vec<_> = request
         .contents

@@ -55,7 +55,8 @@ impl fmt::Display for EffectId {
 }
 
 /// String identifier for a registered handler, serializable without a live handle.
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct HandlerKey(Arc<str>);
 
 impl HandlerKey {
@@ -190,65 +191,6 @@ impl From<String> for HandlerKey {
 impl AsRef<str> for HandlerKey {
     fn as_ref(&self) -> &str {
         &self.0
-    }
-}
-
-// Serialize as a string without requiring serde's rc feature.
-impl Serialize for HandlerKey {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.0)
-    }
-}
-
-impl<'de> Deserialize<'de> for HandlerKey {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let key = <std::borrow::Cow<'de, str>>::deserialize(deserializer)?;
-        Ok(Self(Arc::from(&*key)))
-    }
-}
-
-/// Serde for a bare `Arc<str>` field (the `Custom` kind label).
-mod arc_str {
-    use std::sync::Arc;
-
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub(super) fn serialize<S: Serializer>(
-        value: &Arc<str>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(value)
-    }
-
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Arc<str>, D::Error> {
-        let value = <std::borrow::Cow<'de, str>>::deserialize(deserializer)?;
-        Ok(Arc::from(&*value))
-    }
-}
-
-/// `Option<Arc<str>>` as an optional string on the wire.
-mod opt_arc_str {
-    use std::sync::Arc;
-
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub(super) fn serialize<S: Serializer>(
-        value: &Option<Arc<str>>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        match value {
-            Some(value) => serializer.serialize_some(&**value),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Option<Arc<str>>, D::Error> {
-        let value = <Option<std::borrow::Cow<'de, str>>>::deserialize(deserializer)?;
-        Ok(value.map(|value| Arc::from(&*value)))
     }
 }
 
@@ -444,7 +386,7 @@ pub mod family {
         /// The completion family: a unary completion (a streaming dispatch is
         /// `ModelHandle::stream`, not a typed request).
         Completion => Completion, CompletionRequest, CompletionResponse,
-            |request| EffectKind::Completion { request, stream: false },
+            |request| EffectKind::Completion { request: std::sync::Arc::new(request), stream: false },
             |outcome| match outcome {
                 Answered::Completion(response) => Ok(response),
                 other => Err(Completion::mismatch(&other)),
@@ -706,8 +648,8 @@ pub enum EmbedModality {
 pub enum EffectKind {
     /// A completion request.
     Completion {
-        /// The prepared request.
-        request: CompletionRequest,
+        /// The prepared request, shared with the recorder and the log.
+        request: Arc<CompletionRequest>,
         /// Whether the response streams (`dispatch_stream`) or is unary.
         stream: bool,
     },
@@ -737,7 +679,6 @@ pub enum EffectKind {
     /// An out-of-tree effect.
     Custom {
         /// The host-defined kind label.
-        #[serde(with = "arc_str")]
         kind: Arc<str>,
         /// The host-defined payload.
         payload: serde_json::Value,
@@ -961,7 +902,7 @@ pub struct EffectRecord {
     pub parent: Option<EffectId>,
     /// Stable identifier of the dispatching program or run, not a runtime handle.
     /// `None` when the dispatcher supplied no scope.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_arc_str")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<std::sync::Arc<str>>,
     /// What the dispatcher made the effect for, such as `"turn"` or
     /// `"compaction"`, from its [`DispatchContext`](crate::serve::DispatchContext). `None` when

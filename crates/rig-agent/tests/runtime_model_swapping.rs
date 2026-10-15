@@ -613,7 +613,7 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
         .expect("beta request");
     assert!(!beta_request.chat_history.iter().any(|message| {
         matches!(
-            message,
+            &**message,
             Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,

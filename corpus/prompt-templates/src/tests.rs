@@ -16,7 +16,12 @@ use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_unt
 /// the user's.
 fn last_user_text(model: &MockCompletionModel) -> Option<String> {
     let requests = model.requests();
-    let Some(Message::User { content }) = requests.last()?.chat_history.last().cloned() else {
+    let Some(Message::User { content }) = requests
+        .last()?
+        .chat_history
+        .last()
+        .map(|message| (**message).clone())
+    else {
         return None;
     };
     let texts: Vec<String> = content

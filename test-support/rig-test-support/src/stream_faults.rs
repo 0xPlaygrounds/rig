@@ -559,18 +559,6 @@ impl Tool for CountedSubtract {
     }
 }
 
-/// Every program ending the witness saw, by code.
-pub fn endings(log: &ObservationLog) -> Vec<String> {
-    log.trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::Ended { ending } => Some(ending.code.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
 /// Every provider-boundary fact, in order.
 pub fn adapter_events(log: &ObservationLog) -> Vec<AdapterEvent> {
     log.trace()
@@ -578,20 +566,6 @@ pub fn adapter_events(log: &ObservationLog) -> Vec<AdapterEvent> {
         .iter()
         .filter_map(|observation| match &observation.action {
             Action::Adapter { observation } => Some(observation.event.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Every truncation the bus witnessed: items delivered and error items.
-pub fn truncations(log: &ObservationLog) -> Vec<(usize, usize)> {
-    log.trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::StreamTruncated {
-                delivered, errors, ..
-            } => Some((*delivered, errors.len())),
             _ => None,
         })
         .collect()

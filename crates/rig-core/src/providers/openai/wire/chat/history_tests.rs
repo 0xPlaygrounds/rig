@@ -55,8 +55,8 @@ fn sent(wire: &Chat, history: Vec<Message>) -> Value {
 /// [`sent`] for `request`, whose other fields stand.
 fn sent_with(wire: &Chat, mut request: CompletionRequest, history: Vec<Message>) -> Value {
     request.tools.extend(tools_of(&history));
-    request.chat_history = history;
-    request.chat_history.push(Message::user("next"));
+    request.chat_history = history.into_iter().map(Into::into).collect();
+    request.chat_history.push(Message::user("next").into());
     let request = crate::operation::Completion::prepare(request, &wire.describe())
         .expect("the request prepares");
     json_body(&wire.encode(request, Mode::Unary).expect("encodes").request)

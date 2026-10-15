@@ -116,7 +116,7 @@ fn every_kind_round_trips_and_names_itself() {
     let kinds = vec![
         (
             EffectKind::Completion {
-                request: request(),
+                request: request().into(),
                 stream: true,
             },
             "completion",

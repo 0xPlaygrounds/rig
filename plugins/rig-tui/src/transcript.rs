@@ -860,7 +860,7 @@ fn level_code(level: NoticeLevel) -> u8 {
 /// lines wrapped to the width, and the items drawn cut, when noted.
 struct Cached {
     /// The message as it was laid out.
-    message: Message,
+    message: Arc<Message>,
     /// [`Look::hash_message`] of it then.
     look: u64,
     lines: Vec<Line<'static>>,
@@ -968,7 +968,10 @@ impl Transcript {
         self.messages.truncate(messages.len());
         for (index, message) in messages.iter().enumerate() {
             let previous = index.checked_sub(1).and_then(|before| messages.get(before));
-            let next = messages.get(index + 1);
+            let (previous, next) = (
+                previous.map(|m| &**m),
+                messages.get(index + 1).map(|m| &**m),
+            );
             let look_hash = look.hash_message((index, conversation.id(index)), message);
             if self
                 .messages

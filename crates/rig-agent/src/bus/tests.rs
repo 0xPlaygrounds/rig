@@ -46,7 +46,7 @@ fn custom(payload: serde_json::Value) -> EffectKind {
 
 fn completion_kind(stream: bool) -> EffectKind {
     EffectKind::Completion {
-        request: CompletionRequest::new("hi"),
+        request: CompletionRequest::new("hi").into(),
         stream,
     }
 }
@@ -1618,7 +1618,7 @@ fn retained_lineage_cancels_parked_unary_and_stream_sends() {
     let mut stream = retained.dispatch_stream(
         &HandlerKey::from("missing"),
         EffectKind::Completion {
-            request: CompletionRequest::new("hi"),
+            request: CompletionRequest::new("hi").into(),
             stream: true,
         },
     );

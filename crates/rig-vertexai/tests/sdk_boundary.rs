@@ -78,7 +78,8 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
         0,
         Message::System {
             content: "you are terse".into(),
-        },
+        }
+        .into(),
     );
     request.temperature = Some(0.25);
     request.max_tokens = Some(64);

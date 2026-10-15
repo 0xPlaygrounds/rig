@@ -115,7 +115,7 @@ where
         handler
             .handle(
                 rig_core::effect::EffectKind::Completion {
-                    request,
+                    request: request.into(),
                     stream: true,
                 },
                 rig_core::serve::Dispatch::new(rig_core::effect::EffectId::from_raw(0), true),

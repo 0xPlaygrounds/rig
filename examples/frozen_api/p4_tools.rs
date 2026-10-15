@@ -43,8 +43,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match response.message() {
         Some(turn) if !results.is_empty() => {
             let mut next = request;
-            next.chat_history.push(turn);
-            next.chat_history.push(Message::tool_results(results));
+            next.chat_history.push(turn.into());
+            next.chat_history
+                .push(Message::tool_results(results).into());
             println!("{}", model.call(next).await?.text());
         }
         _ => println!("{}", response.text()),

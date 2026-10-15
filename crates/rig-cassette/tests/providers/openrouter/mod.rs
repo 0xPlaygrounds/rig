@@ -8,6 +8,7 @@ mod cassette {
     mod document_ordering;
     mod embedding_matrix;
     mod history_roundtrip_matrix;
+    mod jev;
     mod models;
     mod multi_extract;
     mod multimodal;

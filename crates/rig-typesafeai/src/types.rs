@@ -1,5 +1,7 @@
 //! TypeSafe's JSON protocol. Prefer the typed question constructors for application code.
-use serde::{Deserialize, Serialize};
+use rig_core::completion::Cost;
+use rig_core::json_utils::Lenient;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -57,14 +59,14 @@ pub enum Answer {
 pub use rig_core::completion::Usage;
 
 /// Raw response, including the transport's request identifier.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Response {
     /// The model identifier returned by the provider.
     pub model: String,
     /// Answer object kept intact for validation and typed Serde decoding.
     pub answers: Box<serde_json::value::RawValue>,
-    #[serde(default)]
     /// Token accounting when reported by the provider.
+    #[serde(default, deserialize_with = "reported_usage")]
     pub usage: Option<Usage>,
     #[serde(skip)]
     /// Transport request identifier for diagnostics.
@@ -72,4 +74,22 @@ pub struct Response {
     #[serde(skip)]
     /// The whole reply document, including fields this type does not model.
     pub raw: Value,
+}
+
+/// Jev's `usage`: its token counters and, through OpenRouter, a `cost` in
+/// USD. A counter or cost of another shape is unreported rather than failing
+/// the reply, whose answers do not depend on it.
+fn reported_usage<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Usage>, D::Error> {
+    let usage = Option::<Value>::deserialize(deserializer)?;
+    Ok(usage.filter(Value::is_object).map(|usage| {
+        Usage::new()
+            .input_tokens(usage.u64("input_tokens"))
+            .output_tokens(usage.u64("output_tokens"))
+            .cost(
+                usage
+                    .f64("cost")
+                    .filter(|cost| cost.is_finite())
+                    .map(Cost::from_total),
+            )
+    }))
 }

@@ -1130,7 +1130,13 @@ fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
 
 fn conversation(app: &App, agent: Entity) -> Vec<Message> {
     let conversation = app.world().get::<Conversation>(agent);
-    conversation.map_or_else(Vec::new, |conversation| conversation.messages().to_vec())
+    conversation.map_or_else(Vec::new, |conversation| {
+        conversation
+            .messages()
+            .iter()
+            .map(|message| (**message).clone())
+            .collect()
+    })
 }
 
 /// The calls named by id, with the call ids as the model sent them.
@@ -3145,7 +3151,7 @@ fn offered(request: Option<&rig_core::completion::CompletionRequest>) -> (Vec<St
         return (Vec::new(), false);
     };
     let tools = request.tools.iter().map(|tool| tool.name.to_string());
-    let rules = match request.chat_history.first() {
+    let rules = match request.chat_history.first().map(|message| &**message) {
         Some(Message::System { content }) => content.contains("<tool_rules>"),
         _ => false,
     };
@@ -3318,6 +3324,7 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     let system: Vec<&Message> = requests
         .iter()
         .flat_map(|request| &request.chat_history)
+        .map(|message| &**message)
         .filter(|message| matches!(message, Message::System { .. }))
         .collect();
     assert_eq!(

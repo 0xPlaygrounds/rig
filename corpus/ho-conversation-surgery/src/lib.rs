@@ -68,7 +68,7 @@ fn call_ids(message: &Message) -> Vec<CallId> {
 /// `entry` without the calls and results of `ids`; `None` when nothing
 /// worth sending is left.
 fn without(mut entry: Entry, ids: &HashSet<CallId>) -> Option<Entry> {
-    let left = match &mut entry.message {
+    let left = match std::sync::Arc::make_mut(&mut entry.message) {
         Message::User { content } => {
             content.retain(
                 |item| !matches!(item, UserContent::ToolResult(result) if ids.contains(&result.call)),
@@ -280,7 +280,10 @@ fn stub(In(args): In<CommandArgs>, mut surgery: Surgery) {
     surgery.edit(args.agent, "stub", |conversation, _| {
         let at = number(&args.args, conversation.messages().len())?;
         let mut entry = conversation.entry(at);
-        let Some(Message::User { content }) = entry.as_mut().map(|entry| &mut entry.message) else {
+        let Some(Message::User { content }) = entry
+            .as_mut()
+            .map(|entry| std::sync::Arc::make_mut(&mut entry.message))
+        else {
             return Err(format!("message {} holds no tool result", at + 1));
         };
         let mut stubbed = Vec::new();
@@ -353,7 +356,7 @@ fn plan_drop(conversation: &Conversation, chosen: Range<usize>) -> Plan {
         .get(chosen.clone())
         .unwrap_or_default()
         .iter()
-        .flat_map(call_ids)
+        .flat_map(|message| call_ids(message))
         .collect();
     let paired = messages
         .iter()
@@ -392,7 +395,10 @@ fn plan_drop(conversation: &Conversation, chosen: Range<usize>) -> Plan {
             kept.push((at, entry));
             continue;
         };
-        match (&mut last.message, &mut entry.message) {
+        match (
+            std::sync::Arc::make_mut(&mut last.message),
+            std::sync::Arc::make_mut(&mut entry.message),
+        ) {
             (Message::User { content }, Message::User { content: more })
                 if last.author == entry.author =>
             {

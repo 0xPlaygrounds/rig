@@ -513,7 +513,11 @@ fn hello(
     for (id, _, conversation) in &agents {
         client.send(&ToEditor::Transcript {
             agent: id.0.clone(),
-            messages: conversation.messages().to_vec(),
+            messages: conversation
+                .messages()
+                .iter()
+                .map(|message| (**message).clone())
+                .collect(),
         });
     }
 }
@@ -1066,7 +1070,7 @@ fn forward(
             && let Some(agent) = id_of(&ids, committed.agent)
         {
             for entry in entries {
-                let (agent, message) = (agent.clone(), entry.message.clone());
+                let (agent, message) = (agent.clone(), Message::clone(&entry.message));
                 broadcast(&clients, &ToEditor::Message { agent, message });
             }
         }

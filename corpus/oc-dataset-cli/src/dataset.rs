@@ -302,7 +302,7 @@ fn agent_line(
     let system: Vec<&str> = last
         .into_iter()
         .flat_map(|(_, request)| &request.chat_history)
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::System { content } => Some(content.as_str()),
             _ => None,
         })

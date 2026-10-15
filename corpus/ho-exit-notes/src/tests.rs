@@ -82,7 +82,13 @@ fn session(root: &Path, model: &MockCompletionModel, say: &[&str]) -> Vec<Messag
         "the app exits"
     );
     let conversation = app.world().get::<Conversation>(agent);
-    conversation.map_or_else(Vec::new, |conversation| conversation.messages().to_vec())
+    conversation.map_or_else(Vec::new, |conversation| {
+        conversation
+            .messages()
+            .iter()
+            .map(|message| (**message).clone())
+            .collect()
+    })
 }
 
 /// The first turn writes `a.txt` in `root`.

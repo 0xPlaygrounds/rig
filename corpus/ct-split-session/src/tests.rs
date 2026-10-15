@@ -126,7 +126,7 @@ fn conversation(app: &App, agent: Entity) -> Conversation {
 }
 
 /// Every message as text: what it says and the tools it calls or answers.
-fn texts(messages: &[Message]) -> Vec<String> {
+fn texts(messages: &[std::sync::Arc<Message>]) -> Vec<String> {
     messages
         .iter()
         .map(|message| format!("{message:?}"))

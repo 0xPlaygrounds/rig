@@ -38,7 +38,7 @@ fn probe(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decisi
 /// A compaction keeps the last two turns: it cuts at the second-to-last
 /// request.
 fn keep_two_turns(
-    messages: &[message::Message],
+    messages: &[std::sync::Arc<message::Message>],
     _: usize,
     _: &CompactReason,
     _: Option<&ModelSpec>,
@@ -48,7 +48,7 @@ fn keep_two_turns(
             if content.iter().any(|item| !matches!(item, UserContent::ToolResult(_))))
     };
     let requests: Vec<usize> = (0..messages.len())
-        .filter(|at| messages.get(*at).is_some_and(asks))
+        .filter(|at| messages.get(*at).is_some_and(|message| asks(message)))
         .collect();
     let second_last = requests.len().checked_sub(2)?;
     requests.get(second_last).copied()

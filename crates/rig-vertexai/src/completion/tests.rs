@@ -90,15 +90,17 @@ fn image_tool_result_contents(images: usize) -> serde_json::Value {
         annotations: Default::default(),
     }];
     request.chat_history = vec![
-        Message::user("shoot"),
+        Message::user("shoot").into(),
         Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
             call.clone(),
-        )])),
+        )]))
+        .into(),
         Message::User {
             content: vec![UserContent::ToolResult(
                 call.result(vec![ToolResultContent::Image(image); images]),
             )],
-        },
+        }
+        .into(),
     ];
     let wire = GenerateContent::new("gemini-3-flash-preview");
     let request = rig_core::operation::Completion::prepare(request, &wire.describe())

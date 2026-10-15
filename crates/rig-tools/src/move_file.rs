@@ -178,17 +178,16 @@ fn move_file(
         .then(|| workspace.read(from, MAX_FILE_BYTES).ok())
         .flatten()
         .map(|contents| contents.bytes);
-    let text = String::from_utf8_lossy(moved.as_deref().unwrap_or_default()).into_owned();
     let before = workspace.previous(to);
     workspace
         .rename(from, to)
         .map_err(|error| io_error(&shown_from, error))?;
     // The moved file's content is in the created half's diff, so the
     // deleted half has none.
-    let state = moved
-        .as_deref()
-        .map_or_else(|| FileState::unread(size), FileState::of);
-    let mut created = Previous::change(before.as_ref(), &shown_to, Some(text.as_bytes()));
+    let bytes = moved.as_deref().unwrap_or_default();
+    let mut created = Previous::change(before, &shown_to, Some(bytes));
+    let read = created.after.take().filter(|_| moved.is_some());
+    let state = read.unwrap_or_else(|| FileState::unread(size));
     created.after = Some(state.clone());
     let deleted =
         FileChange::deleted(shown_from, state.lines.unwrap_or_default()).with_before(state);

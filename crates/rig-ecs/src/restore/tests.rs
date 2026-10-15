@@ -177,6 +177,7 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
             Message::user("question 3"),
             Message::assistant("answer 3")
         ]
+        .map(std::sync::Arc::new)
     );
 }
 
@@ -272,7 +273,13 @@ fn session(store: &MemoryStore, act: impl FnOnce(&mut World, Entity)) -> Vec<Mes
     act(world, agent);
     world.resource::<SessionLog>().flush();
     let conversation = world.get::<Conversation>(agent);
-    conversation.map_or_else(Vec::new, |conversation| conversation.messages().to_vec())
+    conversation.map_or_else(Vec::new, |conversation| {
+        conversation
+            .messages()
+            .iter()
+            .map(|message| (**message).clone())
+            .collect()
+    })
 }
 
 #[test]

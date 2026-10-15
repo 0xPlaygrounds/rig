@@ -196,7 +196,7 @@ impl Intercept for AdaptRequest {
         let EffectKind::Completion { request, stream } = kind else {
             return serve::BeforeServe::Proceed;
         };
-        let mut request = request.clone();
+        let mut request = (**request).clone();
         if self.rule.has(Profile::FewTools) {
             let sent = few_tools(&self.rule, &request.tools, &request.chat_history);
             let (kept, left): (Vec<_>, Vec<_>) = std::mem::take(&mut request.tools)
@@ -204,7 +204,10 @@ impl Intercept for AdaptRequest {
                 .partition(|tool| sent.contains(&tool.name.as_str().to_owned()));
             request.tools = kept;
             if !left.is_empty()
-                && let Some(Message::System { content }) = request.chat_history.first_mut()
+                && let Some(Message::System { content }) = request
+                    .chat_history
+                    .first_mut()
+                    .map(std::sync::Arc::make_mut)
             {
                 let names: Vec<&str> = left.iter().map(|tool| tool.name.as_str()).collect();
                 content.push_str(&format!(
@@ -223,7 +226,7 @@ impl Intercept for AdaptRequest {
         }
         *self.declared.lock().unwrap_or_else(PoisonError::into_inner) = changed;
         serve::BeforeServe::Patch(EffectKind::Completion {
-            request,
+            request: request.into(),
             stream: *stream,
         })
     }
@@ -241,9 +244,13 @@ impl Intercept for AdaptRequest {
 /// The names of the tools `few-tools` sends of `tools`: those `always`
 /// names, then the most recently called in `history`, then the others in
 /// order, up to `max_tools`.
-pub fn few_tools(rule: &ModelRule, tools: &[ToolDefinition], history: &[Message]) -> Vec<String> {
+pub fn few_tools(
+    rule: &ModelRule,
+    tools: &[ToolDefinition],
+    history: &[std::sync::Arc<Message>],
+) -> Vec<String> {
     let offered = |name: &str| tools.iter().any(|tool| tool.name.as_str() == name);
-    let recent = history.iter().rev().flat_map(|message| match message {
+    let recent = history.iter().rev().flat_map(|message| match &**message {
         Message::Assistant(assistant) => {
             let names = assistant
                 .tool_calls()

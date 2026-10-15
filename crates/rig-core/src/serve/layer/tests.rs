@@ -140,11 +140,8 @@ struct Tapped {
 
 impl super::super::Observe for Arc<Tapped> {
     fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
-        self.outcomes
-            .lock()
-            .expect("outcomes")
-            .push(outcome.clone());
+    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
+        self.outcomes.lock().expect("outcomes").push(outcome);
     }
 
     fn keep_events(&self) -> bool {

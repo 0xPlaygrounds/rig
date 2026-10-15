@@ -78,7 +78,7 @@ fn shell_messages(app: &App, agent: Entity) -> Vec<String> {
     conversation
         .messages()
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             message::Message::User { content } => content.iter().find_map(|part| match part {
                 UserContent::Text(text) if text.text.contains("[from my shell]") => {
                     Some(text.text.clone())

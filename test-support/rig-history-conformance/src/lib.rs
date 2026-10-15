@@ -23,6 +23,7 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 use serde_json::Value;
+use std::borrow::Borrow;
 
 use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::error::EncodeError;
@@ -721,8 +722,8 @@ fn sent_as<F: HistoryFixture>(
             }
         }
     }
-    request.chat_history = history;
-    request.chat_history.push(Message::user("next"));
+    request.chat_history = history.into_iter().map(Into::into).collect();
+    request.chat_history.push(Message::user("next").into());
     let prepared = Completion::prepare(request, &wire.describe()).map_err(|e| e.to_string())?;
     fixture
         .body(&wire, prepared, mode)
@@ -731,10 +732,10 @@ fn sent_as<F: HistoryFixture>(
 
 /// A definition for every tool `history` calls or answers, as a request
 /// that continues a tool loop declares them.
-pub fn tools_of(history: &[Message]) -> Vec<rig_core::completion::ToolDefinition> {
+pub fn tools_of(history: &[impl Borrow<Message>]) -> Vec<rig_core::completion::ToolDefinition> {
     let mut names: Vec<ToolName> = Vec::new();
     for message in history {
-        let found: Vec<ToolName> = match message {
+        let found: Vec<ToolName> = match message.borrow() {
             Message::Assistant(turn) => turn
                 .tool_calls()
                 .map(|call| call.function.name.clone())
@@ -776,10 +777,13 @@ fn adapted<F: HistoryFixture>(fixture: &F, model: &str, history: &[Message]) -> 
     let wire = fixture.wire(model);
     let mut request = CompletionRequest::new("next").model(model);
     request.tools = tools_of(history);
-    request.chat_history = history.to_vec();
+    request.chat_history = history.iter().cloned().map(Into::into).collect();
     Completion::prepare(request, &wire.describe())
         .unwrap_or_else(|error| panic!("the history prepares for {model}: {error}"))
         .chat_history
+        .into_iter()
+        .map(std::sync::Arc::unwrap_or_clone)
+        .collect()
 }
 
 /// The turn `shape` decodes to in `mode`.
@@ -1361,18 +1365,21 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
     for mode in MODES {
         let wire = fixture.wire(fixture.model());
         let mut request = CompletionRequest::new("next");
-        request.chat_history = history[1..].to_vec();
-        request.chat_history.push(Message::user("next"));
+        request.chat_history = history.iter().skip(1).cloned().map(Into::into).collect();
+        request.chat_history.push(Message::user("next").into());
         let prepared = Completion::prepare(request, &wire.describe())
             .unwrap_or_else(|error| panic!("{mode:?}: the history prepares: {error}"));
         assert!(
-            prepared.chat_history.iter().all(|message| match message {
-                Message::Assistant(turn) => turn.tool_calls().next().is_none(),
-                Message::User { content } => content
-                    .iter()
-                    .all(|part| !matches!(part, UserContent::ToolResult(_))),
-                Message::System { .. } => true,
-            }),
+            prepared
+                .chat_history
+                .iter()
+                .all(|message| match &**message {
+                    Message::Assistant(turn) => turn.tool_calls().next().is_none(),
+                    Message::User { content } => content
+                        .iter()
+                        .all(|part| !matches!(part, UserContent::ToolResult(_))),
+                    Message::System { .. } => true,
+                }),
             "{mode:?}: no tools, so no calls: {:?}",
             prepared.chat_history
         );
@@ -1387,7 +1394,7 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
     for mode in MODES {
         let wire = fixture.wire(fixture.model());
         let mut request = CompletionRequest::new("next");
-        request.chat_history = history[1..].to_vec();
+        request.chat_history = history.iter().skip(1).cloned().map(Into::into).collect();
         request.tools = tools_of(&request.chat_history);
         request.tool_choice = Some(rig_core::message::ToolChoice::None);
         let prepared = Completion::prepare(request, &wire.describe())
@@ -1395,7 +1402,7 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
         let calls = prepared
             .chat_history
             .iter()
-            .filter_map(|message| match message {
+            .filter_map(|message| match &**message {
                 Message::Assistant(turn) => Some(turn.tool_calls().count()),
                 _ => None,
             })
@@ -1403,7 +1410,7 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
         let results = prepared
             .chat_history
             .iter()
-            .filter_map(|message| match message {
+            .filter_map(|message| match &**message {
                 Message::User { content } => Some(
                     content
                         .iter()
@@ -2089,7 +2096,7 @@ pub fn h14_model_identity<F: HistoryFixture>(fixture: &F) {
             return;
         };
         let mut made = CompletionRequest::new("restate");
-        made.tools = tools_of(&[]);
+        made.tools = tools_of(&[] as &[Message]);
         let turn = match decode(&wire, &made, Mode::Unary, frames)
             .unwrap_or_else(|error| panic!("the reply decodes: {error}"))
             .message()
@@ -2109,9 +2116,9 @@ pub fn h14_model_identity<F: HistoryFixture>(fixture: &F) {
             annotations: Default::default(),
         }];
         request.chat_history = vec![
-            Message::user("q"),
-            Message::Assistant(turn.clone()),
-            Message::user("next"),
+            Message::user("q").into(),
+            Message::Assistant(turn.clone()).into(),
+            Message::user("next").into(),
         ];
         let prepared = Completion::prepare(request, &wire.describe())
             .unwrap_or_else(|error| panic!("the request prepares: {error}"));

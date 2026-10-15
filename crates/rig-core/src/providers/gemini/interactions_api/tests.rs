@@ -243,7 +243,7 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
 #[test]
 fn a_rebuilt_thought_tags_its_summary() {
     let wire = interactions_wire();
-    let ids = WireIds::for_target(&[], &wire, &wire.model);
+    let ids = WireIds::for_target(&[] as &[Message], &wire, &wire.model);
     let step = assistant_step(
         &message::AssistantContent::reasoning("add them"),
         &wire,

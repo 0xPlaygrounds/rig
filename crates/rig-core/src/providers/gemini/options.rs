@@ -159,20 +159,9 @@ pub fn generate_content_options(
     route: Route,
     fields: OptionFields<'_>,
 ) -> OptionMap {
-    let OptionFields {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls,
-        top_p,
-        seed,
-        stop,
-        cache_key,
-    } = fields;
     let thinking = thinking(facts, model);
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| match (reasoning, &thinking) {
+        reasoning: Mapping::of(fields.reasoning, |reasoning| match (reasoning, &thinking) {
             (
                 Reasoning::Off,
                 Thinking::Budget {
@@ -232,7 +221,7 @@ pub fn generate_content_options(
                 config(json!({"thinkingConfig": {"thinkingBudget": tokens}}))
             }
         }),
-        cache: Mapping::of(cache, |cache| match cache {
+        cache: Mapping::of(fields.cache, |cache| match cache {
             CacheRetention::Short => Mapping::Omit("Gemini caches prompts implicitly"),
             CacheRetention::None => {
                 Mapping::unsupported("implicit caching cannot be turned off per request")
@@ -241,7 +230,7 @@ pub fn generate_content_options(
                 "explicit caching is a `cachedContents` resource, not a request field",
             ),
         }),
-        service_tier: Mapping::of(service_tier, |tier| match (tier, route) {
+        service_tier: Mapping::of(fields.service_tier, |tier| match (tier, route) {
             (ServiceTier::Auto, _) => Mapping::Omit("the standard tier is the default"),
             (_, Route::Grpc) => Mapping::unsupported("the gRPC request has no service tier"),
             (ServiceTier::Default, Route::Vertex) => {
@@ -258,23 +247,23 @@ pub fn generate_content_options(
                 Mapping::Send(json!({"serviceTier": "priority"}))
             }
         }),
-        verbosity: Mapping::of(verbosity, |_| {
+        verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("Gemini has no verbosity setting")
         }),
-        parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| match parallel {
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| match parallel {
             true => Mapping::Omit("parallel function calls are the default"),
             false => Mapping::unsupported("Gemini cannot turn parallel function calls off"),
         }),
-        top_p: Mapping::of(top_p, |top_p| config(json!({"topP": top_p}))),
-        seed: Mapping::of(seed, |seed| match i32::try_from(seed) {
+        top_p: Mapping::of(fields.top_p, |top_p| config(json!({"topP": top_p}))),
+        seed: Mapping::of(fields.seed, |seed| match i32::try_from(seed) {
             Ok(seed) => config(json!({"seed": seed})),
             Err(_) => Mapping::unsupported("Gemini's seed is a 32-bit integer"),
         }),
-        stop: Mapping::of_stop(stop, |stop| match stop.len() {
+        stop: Mapping::of_stop(fields.stop, |stop| match stop.len() {
             0..=5 => config(json!({"stopSequences": stop})),
             _ => Mapping::unsupported("Gemini takes at most 5 stop sequences"),
         }),
-        cache_key: Mapping::unrouted(cache_key),
+        cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
 
@@ -285,21 +274,10 @@ fn generation_config(value: serde_json::Value) -> Mapping {
 
 /// How the Interactions wire answers `fields` for `model`.
 pub(super) fn interactions(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
-    let OptionFields {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls,
-        top_p,
-        seed,
-        stop,
-        cache_key,
-    } = fields;
     const NO_FIELD: &str = "the Interactions API has no such field";
     let thinking = thinking(facts, model);
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+        reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
             Reasoning::Off | Reasoning::Budget { .. } => Mapping::unsupported(
                 "the Interactions API takes a thinking level: no budget, no off",
             ),
@@ -321,35 +299,35 @@ pub(super) fn interactions(facts: &ModelFacts, model: &str, fields: OptionFields
                 }
             },
         }),
-        cache: Mapping::of(cache, |cache| match cache {
+        cache: Mapping::of(fields.cache, |cache| match cache {
             CacheRetention::Short => Mapping::Omit("Gemini caches prompts implicitly"),
             CacheRetention::None | CacheRetention::Long => {
                 Mapping::unsupported("the Interactions API has no cache control")
             }
         }),
-        service_tier: Mapping::of(service_tier, |tier| match tier {
+        service_tier: Mapping::of(fields.service_tier, |tier| match tier {
             ServiceTier::Auto => Mapping::Omit("the standard tier is the default"),
             ServiceTier::Default => Mapping::Send(json!({"service_tier": "standard"})),
             ServiceTier::Flex => Mapping::Send(json!({"service_tier": "flex"})),
             ServiceTier::Priority => Mapping::Send(json!({"service_tier": "priority"})),
         }),
-        verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(NO_FIELD)),
-        parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| match parallel {
+        verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(NO_FIELD)),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| match parallel {
             true => Mapping::Omit("parallel function calls are the default"),
             false => Mapping::unsupported(NO_FIELD),
         }),
-        top_p: Mapping::of(top_p, |_| {
+        top_p: Mapping::of(fields.top_p, |_| {
             Mapping::unsupported("unverified for the Interactions API, which no longer lists it")
         }),
-        seed: Mapping::of(seed, |seed| match i32::try_from(seed) {
+        seed: Mapping::of(fields.seed, |seed| match i32::try_from(seed) {
             Ok(seed) => generation_config(json!({"seed": seed})),
             Err(_) => Mapping::unsupported("Gemini's seed is a 32-bit integer"),
         }),
-        stop: Mapping::of_stop(stop, |stop| match stop.len() {
+        stop: Mapping::of_stop(fields.stop, |stop| match stop.len() {
             0..=5 => generation_config(json!({"stop_sequences": stop})),
             _ => Mapping::unsupported("Gemini takes at most 5 stop sequences"),
         }),
-        cache_key: Mapping::unrouted(cache_key),
+        cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
 
