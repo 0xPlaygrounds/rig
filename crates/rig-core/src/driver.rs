@@ -573,7 +573,7 @@ fn read<W: Wire>(
 /// A reply decoded from frames already in hand: its items, then its
 /// response or the error that ended it.
 pub(crate) struct Decoded<Op: Operation> {
-    /// Read only by relays and tests; a websocket session needs the outcome.
+    /// Read only by relays and tests; `decode_reply` needs only the outcome.
     #[cfg(any(test, feature = "test-utils"))]
     pub(crate) items: Vec<Result<crate::streaming::Item<Op::Event>, ProviderError>>,
     pub(crate) outcome: Result<Op::Response, ProviderError>,

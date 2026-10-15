@@ -73,6 +73,7 @@ mod cassette {
     mod typed_prompt_tools;
     mod web_search_citations;
     mod websocket_error_identity_matrix;
+    mod websocket_turns;
 }
 
 mod live {
@@ -82,5 +83,4 @@ mod live {
     mod image_generation;
     mod streaming_tools_reasoning;
     mod transcription;
-    mod websocket;
 }

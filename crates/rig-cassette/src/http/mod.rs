@@ -60,6 +60,7 @@ use tokio::task::JoinHandle;
 
 mod account;
 mod clock;
+pub mod websocket;
 pub use clock::{CassetteClock, MAX_PAUSE, clock_sidecar};
 pub use snapshot::request_snapshot;
 use snapshot::{RequestSnapshots, SnapshotMode};
@@ -319,7 +320,7 @@ impl DirectRecorder {
         status: u16,
         response_body: &[u8],
     ) {
-        if !(200..300).contains(&status) {
+        if !accepted(status) {
             return;
         }
         let path = url::Url::parse(uri)
@@ -1341,80 +1342,90 @@ async fn replay_request(
         headers,
         body,
     };
-    let policy = state.policy;
-    let sent = (state.snapshots.is_some() || state.shapes.is_some())
-        .then(|| incoming_body_view(policy, &request));
-    let sent_shape = state
-        .shapes
-        .as_ref()
-        .zip(sent.as_ref())
-        .map(|(_, sent)| shape::shape_key(sent));
-    let shapes = state
-        .shapes
-        .as_ref()
-        .zip(sent_shape.as_ref())
-        .map(|(shapes, sent)| ShapeKeys {
-            recorded: &shapes.keys,
-            sent,
-        });
-    // Unordered shape matching serves the interaction the request is
-    // closest to: its snapshot's expected body when snapshots check, else
-    // the recording.
-    let distance = |index: usize| match (&state.snapshots, &state.shapes, &sent) {
-        (Some(snapshots), _, Some(sent)) => snapshots.distance(index, sent),
-        (None, Some(shapes), Some(sent)) => shapes
-            .views
-            .get(index)
-            .map_or(usize::MAX, |view| snapshot::diff(view, sent).len()),
-        _ => usize::MAX,
-    };
-
-    let Some(index) =
-        matching_interaction_index(policy, &state.interactions, &request, shapes, distance)
-    else {
-        // The interaction the request was most likely meant for, compared
-        // with what its snapshot expects.
-        let snapshot_diff =
-            state
-                .snapshots
-                .as_ref()
-                .zip(sent.as_ref())
-                .and_then(|(snapshots, sent)| {
-                    let candidate = miss_candidate_index(policy, &state.interactions, &request)?;
-                    snapshots.difference(candidate, sent)
-                });
-        if let Some(difference) = &snapshot_diff {
-            eprintln!(
-                "replay of {} refused a request that differs from its snapshot at {difference}",
-                state.cassette_path.display()
-            );
-        }
-        let message = replay_miss_message(
-            policy,
-            &request,
-            &state.interactions,
-            shapes,
-            snapshot_diff.as_deref(),
-        );
-        let diagnostic = match &snapshot_diff {
-            Some(difference) => format!("{message}\nsnapshot difference at {difference}"),
-            None => message.clone(),
-        };
-        state.misses.push(ReplayMiss { diagnostic });
-        return Response::builder()
+    match state.serve(&request) {
+        Ok(index) => cassette_response(&state.interactions[index].then, &state.cassette_path),
+        Err(message) => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("content-type", "application/json")
             .body(Body::from(message))
-            .expect("replay miss response should build");
-    };
-
-    if let (Some(snapshots), Some(sent)) = (state.snapshots.as_mut(), sent) {
-        snapshots.observe(index, sent);
+            .expect("replay miss response should build"),
     }
-    let cassette_path = state.cassette_path.clone();
-    let interaction = &mut state.interactions[index];
-    interaction.consumed = true;
-    cassette_response(&interaction.then, &cassette_path)
+}
+
+impl ReplayState {
+    /// Play the interaction `request` matches and return its index, or
+    /// record the miss and return its message.
+    fn serve(&mut self, request: &IncomingRequest) -> Result<usize, String> {
+        let state = self;
+        let policy = state.policy;
+        let sent = (state.snapshots.is_some() || state.shapes.is_some())
+            .then(|| incoming_body_view(policy, request));
+        let sent_shape = state
+            .shapes
+            .as_ref()
+            .zip(sent.as_ref())
+            .map(|(_, sent)| shape::shape_key(sent));
+        let shapes = state
+            .shapes
+            .as_ref()
+            .zip(sent_shape.as_ref())
+            .map(|(shapes, sent)| ShapeKeys {
+                recorded: &shapes.keys,
+                sent,
+            });
+        // Unordered shape matching serves the interaction the request is
+        // closest to: its snapshot's expected body when snapshots check, else
+        // the recording.
+        let distance = |index: usize| match (&state.snapshots, &state.shapes, &sent) {
+            (Some(snapshots), _, Some(sent)) => snapshots.distance(index, sent),
+            (None, Some(shapes), Some(sent)) => shapes
+                .views
+                .get(index)
+                .map_or(usize::MAX, |view| snapshot::diff(view, sent).len()),
+            _ => usize::MAX,
+        };
+
+        let Some(index) =
+            matching_interaction_index(policy, &state.interactions, request, shapes, distance)
+        else {
+            // The interaction the request was most likely meant for, compared
+            // with what its snapshot expects.
+            let snapshot_diff =
+                state
+                    .snapshots
+                    .as_ref()
+                    .zip(sent.as_ref())
+                    .and_then(|(snapshots, sent)| {
+                        let candidate = miss_candidate_index(policy, &state.interactions, request)?;
+                        snapshots.difference(candidate, sent)
+                    });
+            if let Some(difference) = &snapshot_diff {
+                eprintln!(
+                    "replay of {} refused a request that differs from its snapshot at {difference}",
+                    state.cassette_path.display()
+                );
+            }
+            let message = replay_miss_message(
+                policy,
+                request,
+                &state.interactions,
+                shapes,
+                snapshot_diff.as_deref(),
+            );
+            let diagnostic = match &snapshot_diff {
+                Some(difference) => format!("{message}\nsnapshot difference at {difference}"),
+                None => message.clone(),
+            };
+            state.misses.push(ReplayMiss { diagnostic });
+            return Err(message);
+        };
+
+        if let (Some(snapshots), Some(sent)) = (state.snapshots.as_mut(), sent) {
+            snapshots.observe(index, sent);
+        }
+        state.interactions[index].consumed = true;
+        Ok(index)
+    }
 }
 
 /// The unplayed interaction a refused request was most likely meant for:
@@ -2636,6 +2647,12 @@ pub fn cassette_account_failures(contents: &str) -> Vec<CassetteAccountFailure> 
 /// `store: false`.
 pub(crate) const STORING_RESPONSES_PROVIDERS: &[&str] = &["openai", "xai"];
 
+/// Whether the provider accepted a request: a 2xx reply, or the `101` a
+/// recorded WebSocket turn answers with.
+fn accepted(status: u16) -> bool {
+    (200..300).contains(&status) || status == 101
+}
+
 /// The stored responses a cassette for `provider` creates and never deletes:
 /// each successful Responses request without `store: false` whose response
 /// id no successful `DELETE` in the same cassette removes. Only `openai` and
@@ -2659,7 +2676,7 @@ pub fn cassette_stored_state(provider: &str, contents: &str) -> Vec<String> {
         .collect();
     let mut stored = Vec::new();
     for interaction in &interactions {
-        if !(200..300).contains(&interaction.then.status) {
+        if !accepted(interaction.then.status) {
             continue;
         }
         let created = ledger::created_resources(

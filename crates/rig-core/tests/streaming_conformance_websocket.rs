@@ -2,29 +2,24 @@
 //!
 //! End-to-end over the REAL tungstenite backend and a local websocket server:
 //! this is the suite that proves the bundled backend delivers the wire
-//! faithfully. The protocol itself is tested against an in-memory connection in
-//! rig-core.
+//! faithfully. The protocol itself is tested against an in-memory connection
+//! in `openai_responses_websocket`.
 //!
 //! The frames are the shared OpenAI Responses fixture's, re-wrapped as one
-//! JSON websocket message per SSE `data:` line — the wire events are identical
-//! across the two transports, only the framing differs. The driver runs the
-//! REAL session pipeline (`ResponsesWebSocketSession::next_event` over a local
-//! ws server) and replays the observed events through the Responses wire's
-//! decoder via `drain_openai_responses_websocket_events`.
-//!
-//! A corrupt frame fails the websocket session (`fail_session`) and ends the
-//! turn, as a corrupt frame ends every reply.
+//! JSON websocket message per SSE `data:` line: the wire events are identical
+//! across the two transports, only the framing differs. The driver streams
+//! the turn through the websocket model itself, so the items are what a
+//! caller of `stream` sees.
 
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
 use rig_core::completion::CompletionRequest;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAIConfig;
-use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
+use rig_core::test_utils::RecordingHttpClient;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance, fixtures::openai_responses,
 };
-use rig_core::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
 
 use rig_tungstenite::tokio_tungstenite::{accept_async, tungstenite::Message};
 use tokio::net::TcpListener;
@@ -70,7 +65,7 @@ fn spawn_server(listener: TcpListener, messages: Vec<String>, abort: bool) {
         let Ok(mut socket) = accept_async(stream).await else {
             return;
         };
-        // The session always sends `response.create` before reading events.
+        // The transport always sends `response.create` before reading events.
         let _ = socket.next().await;
         for message in messages {
             if socket.send(Message::text(message)).await.is_err() {
@@ -85,44 +80,6 @@ fn spawn_server(listener: TcpListener, messages: Vec<String>, abort: bool) {
     });
 }
 
-/// Drain one OpenAI Responses *websocket* turn's server events into
-/// everything a streaming consumer would observe: each event the session
-/// read, re-serialized as the frame it arrived as, through the SAME
-/// Responses decoder and fold the session's `completion` runs. A session
-/// failure ends the frames, as a transport failure ends a stream.
-async fn drain_openai_responses_websocket_events(
-    events: Vec<Result<ResponsesWebSocketEvent, ProviderError>>,
-) -> Result<conformance::DrainedStream, ProviderError> {
-    let mut body = String::new();
-    let mut failed = false;
-    for event in events {
-        let frame = match event {
-            Ok(ResponsesWebSocketEvent::Item(chunk)) => serde_json::to_string(&chunk)?,
-            Ok(ResponsesWebSocketEvent::Response { kind, response }) => {
-                serde_json::json!({ "type": kind, "response": response }).to_string()
-            }
-            Ok(ResponsesWebSocketEvent::Unknown(value)) => value.value().to_string(),
-            // `response.done` is a websocket-only trailer the fixtures never
-            // script.
-            Ok(ResponsesWebSocketEvent::Done(_)) => continue,
-            Ok(ResponsesWebSocketEvent::Error(_)) | Err(_) => {
-                failed = true;
-                break;
-            }
-        };
-        body.push_str(&format!("data: {frame}\n\n"));
-    }
-    let mut chunks = vec![Ok(bytes::Bytes::from(body))];
-    if failed {
-        chunks.push(Err(rig_core::http_client::Error::StreamEnded));
-    }
-    let model = OpenAIConfig::new("test-key")
-        .connect(SequencedStreamingHttpClient::new(chunks))
-        .responses("gpt-5.4");
-    let stream = model.stream(CompletionRequest::new("hello"))?;
-    Ok(conformance::fixtures::drain(stream).await)
-}
-
 fn driver() -> conformance::WireDriver {
     conformance::WireDriver::new("openai-responses-websocket", |chunks| {
         Box::pin(async move {
@@ -135,35 +92,14 @@ fn driver() -> conformance::WireDriver {
             })?;
             spawn_server(listener, messages, abort);
 
-            // The HTTP transport is never used: a websocket session only
-            // borrows the wire for its request mapping.
+            // The HTTP transport is never used: the websocket model only
+            // wraps the wire for its request mapping.
             let bound = OpenAIConfig::new("test-key")
                 .with_base_url(format!("http://{address}/v1"))
                 .connect(RecordingHttpClient::new("{}"))
                 .responses("gpt-5.4");
-            let mut session = bound.responses_websocket().connect().await?;
-            session.send(CompletionRequest::new("hello")).await?;
-
-            // Collect the turn exactly as the production session loop does:
-            // stop at the first terminal event or session error.
-            let mut events = Vec::new();
-            loop {
-                match session.next_event().await {
-                    Ok(event) => {
-                        let terminal = event.is_terminal();
-                        events.push(Ok(event));
-                        if terminal {
-                            break;
-                        }
-                    }
-                    Err(error) => {
-                        events.push(Err(error));
-                        break;
-                    }
-                }
-            }
-
-            drain_openai_responses_websocket_events(events).await
+            let socket = bound.responses_websocket().connect().await?;
+            Ok(conformance::fixtures::drain(socket.stream(CompletionRequest::new("hello"))?).await)
         })
     })
 }

@@ -393,6 +393,16 @@ transcription scenario stays on the proxy path, where the same limitation drops
 the *request's* multipart body. A cassette that recorded no body still matches
 a multipart request; its request snapshot pins the parts Rig sends.
 
+OpenAI Responses WebSocket turns record through
+`rig_cassette::http::websocket::WebSocketCassette`, which wraps the live
+backend when recording and serves the fixture when replaying. Each turn is
+one interaction: the upgrade's `GET` with the client's `response.create` as
+its body, answered by `101` with the provider's messages as `data:` lines.
+Replay matches each message as it matches an HTTP request, so snapshots,
+shape matching and the stored-state rule apply, and a message sent before
+the previous turn was read is refused. Every WebSocket cell sends
+`store: false`.
+
 Run one cassette test by passing a test-name substring after the test target;
 the filter is a substring match, so use the full module path only when the
 shorter name is ambiguous:
