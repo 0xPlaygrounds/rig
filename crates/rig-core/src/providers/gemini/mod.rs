@@ -140,24 +140,5 @@ pub enum ImageSize {
     FourK,
 }
 
-/// Merge `source` into `target`: objects key by key, at any depth, and any
-/// other value in place of the one it meets.
-#[cfg(any(feature = "image", feature = "audio"))]
-pub(crate) fn merge_deep(target: &mut serde_json::Value, source: serde_json::Value) {
-    match (target, source) {
-        (serde_json::Value::Object(target), serde_json::Value::Object(source)) => {
-            for (key, value) in source {
-                match target.get_mut(&key) {
-                    Some(existing) => merge_deep(existing, value),
-                    None => {
-                        target.insert(key, value);
-                    }
-                }
-            }
-        }
-        (target, source) => *target = source,
-    }
-}
-
 #[cfg(test)]
 mod tests;

@@ -349,8 +349,12 @@ fn create_request_body(model: &str, request: AudioGenerationRequest) -> Value {
             json!({ "speech_config": speech }),
         );
     }
-    if let Some(params) = request.additional_params {
-        super::merge_deep(&mut body, params);
+    match (&mut body, request.additional_params) {
+        (Value::Object(body), Some(Value::Object(params))) => {
+            crate::completion::options::deep_merge(body, params);
+        }
+        (body, Some(params)) => *body = params,
+        (_, None) => {}
     }
     body
 }
@@ -359,6 +363,7 @@ impl Wire for Speech {
     type Op = AudioGeneration;
     type Payload = Encoded;
     type Frame = WireFrame;
+    type Event = Value;
     type Decoder<'id> = SpeechDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
