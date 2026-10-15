@@ -1804,7 +1804,7 @@ fn each_turn_is_recorded_with_how_it_ended() {
         why: "not now".to_owned(),
     };
     let answered = TurnEnd::Answered {
-        by: hello.map(|entry| entry.id),
+        answer: hello.map(|entry| entry.id),
     };
     assert_eq!(records, [(0, Some(answered)), (1, Some(failed))]);
     assert_eq!(conversation.halted(), Some(Halt::Kept));
@@ -2001,8 +2001,7 @@ fn a_reviewer_carries_a_turn_on_with_a_queued_nudge() {
                     return;
                 };
                 let conversation = agents.get(agent.0).ok();
-                let first =
-                    conversation.map(|conversation| conversation.start_of(turn.first_message));
+                let first = conversation.map(|conversation| conversation.start_of(turn.start));
                 log.0.extend(first.map(|first| (turn.index, first)));
             },
         )

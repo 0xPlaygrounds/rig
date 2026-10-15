@@ -230,7 +230,16 @@ fn recover(
     mut commands: Commands,
 ) {
     let mut found: HashMap<Entity, Recovering> = HashMap::new();
-    for (turn, &TurnOf(agent), &Turn { first_message, .. }, of) in &turns {
+    for (
+        turn,
+        &TurnOf(agent),
+        &Turn {
+            start: first_message,
+            ..
+        },
+        of,
+    ) in &turns
+    {
         let Ok((id, conversation, ..)) = agents.get(agent) else {
             continue;
         };

@@ -785,7 +785,7 @@ fn a_turn_a_crash_cut_short_carries_on_where_it_began() {
                     mut began: ResMut<Began>| {
             began
                 .0
-                .extend(turns.iter().map(|turn| (turn.index, turn.first_message)));
+                .extend(turns.iter().map(|turn| (turn.index, turn.start)));
         };
         app.init_resource::<Began>()
             .add_systems(AgentPass, note.in_set(Stage::Gate));

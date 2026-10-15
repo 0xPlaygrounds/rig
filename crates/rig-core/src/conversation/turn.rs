@@ -30,12 +30,12 @@ pub struct TurnRecord {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "how", rename_all = "snake_case")]
 pub enum TurnEnd {
-    /// The model answered, with the entry `by`, when it ends the
-    /// conversation.
+    /// The model answered.
     Answered {
-        /// The answer.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        by: Option<MessageId>,
+        /// The reply entry the turn ended on; `None` when the last entry was
+        /// no reply.
+        #[serde(default, rename = "by", skip_serializing_if = "Option::is_none")]
+        answer: Option<MessageId>,
     },
     /// The turn failed, for `why`.
     Failed {

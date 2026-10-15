@@ -400,11 +400,10 @@ fn recall(
         let Ok((state, recollection)) = turns.get(turn) else {
             continue;
         };
-        let asked = agents.get(agent).ok().and_then(|conversation| {
-            conversation
-                .request(state.first_message)
-                .map(|entry| entry.message)
-        });
+        let asked = agents
+            .get(agent)
+            .ok()
+            .and_then(|conversation| conversation.request(state.start).map(|entry| entry.message));
         let Some(asked @ message::Message::User { content }) = asked else {
             continue;
         };

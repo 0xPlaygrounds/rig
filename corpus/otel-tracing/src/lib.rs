@@ -345,11 +345,10 @@ fn end_turn(
         return;
     };
     let span = context.span();
-    let asked = conversations.get(agent).ok().and_then(|conversation| {
-        conversation
-            .request(turn.first_message)
-            .map(|entry| entry.message)
-    });
+    let asked = conversations
+        .get(agent)
+        .ok()
+        .and_then(|conversation| conversation.request(turn.start).map(|entry| entry.message));
     if let Some(message::Message::User { content }) = asked {
         let len: usize = content
             .iter()

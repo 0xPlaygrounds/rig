@@ -28,9 +28,8 @@ use crate::{
 
 /// The identity of one dispatch, minted by the dispatcher.
 ///
-/// It is the correlation key between a bus-tap [`EffectRecord`], a hook
-/// observation, and a host's own bookkeeping (a host driver maps it to its
-/// own handle). Ids are unique per dispatcher and strictly increasing.
+/// It links an [`EffectRecord`] to a host's own bookkeeping (a host driver
+/// maps it to its own handle). Ids are unique per dispatcher and strictly increasing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EffectId(u64);
@@ -888,8 +887,8 @@ pub enum RetrievedDocuments {
 /// visibility, independently of dispatch ids and handler completion order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Delivery {
-    /// The schedule pass in which the consumer observed this delivery.
-    /// Pass numbers group deliveries; they are not wall-clock timestamps.
+    /// The consumer pass in which it saw this delivery, not the harness's
+    /// pass. Pass numbers group deliveries; they are not wall-clock timestamps.
     pub batch: u64,
     /// The effect whose state became visible.
     pub id: EffectId,
@@ -921,9 +920,8 @@ pub struct EffectRecord {
     /// tool's, or the facts any layer of the dispatch published
     /// ([`PublishedContext`](crate::tool::PublishedContext)). Never
     /// inbound authentication values or runtime scopes. `None` means nothing
-    /// was published before resolving. The wire field is required:
-    /// `null` explicitly records no publication; omission cannot establish
-    /// whether an older recorder lost output and is rejected when decoding.
+    /// was published before resolving; the wire field is required, and
+    /// `null` records that nothing was published.
     #[serde(rename = "tool_output", deserialize_with = "Option::deserialize")]
     pub published: Option<crate::tool::ToolResultContext>,
     /// The dispatch's id.
@@ -954,7 +952,7 @@ pub struct EffectRecord {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_arc_str")]
     pub scope: Option<std::sync::Arc<str>>,
     /// What the dispatcher made the effect for, such as `"turn"` or
-    /// `"summary"`, from its [`DispatchContext`](crate::serve::DispatchContext). `None` when
+    /// `"compaction"`, from its [`DispatchContext`](crate::serve::DispatchContext). `None` when
     /// it named no purpose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub purpose: Option<std::borrow::Cow<'static, str>>,

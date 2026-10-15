@@ -325,12 +325,7 @@ fn commit_turn(
         return;
     }
     let subject = subject.map_or_else(
-        || {
-            clip(&format!(
-                "rig: {}",
-                request(conversation, turn.first_message)
-            ))
-        },
+        || clip(&format!("rig: {}", request(conversation, turn.start))),
         |subject| subject.0.clone(),
     );
     let session = session

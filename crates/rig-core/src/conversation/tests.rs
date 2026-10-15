@@ -543,7 +543,9 @@ fn turn_records_open_numbered_and_end_once() {
     let first = conversation.open_turn();
     assert_eq!((first.index, first.start, first.end), (0, asked, None));
     let answer = conversation.push(Message::assistant("hello"));
-    assert!(conversation.end_turn(TurnEnd::Answered { by: Some(answer) }));
+    assert!(conversation.end_turn(TurnEnd::Answered {
+        answer: Some(answer)
+    }));
     assert!(!conversation.end_turn(TurnEnd::Failed { why: "late".into() }));
     conversation.push(Message::user("and?"));
     assert_eq!(conversation.open_turn().index, 1);
@@ -554,7 +556,12 @@ fn turn_records_open_numbered_and_end_once() {
     let stopped = Some(TurnEnd::Stopped { why: None });
     assert_eq!(
         ends,
-        [Some(TurnEnd::Answered { by: Some(answer) }), stopped]
+        [
+            Some(TurnEnd::Answered {
+                answer: Some(answer)
+            }),
+            stopped
+        ]
     );
     let second = records
         .get(1)

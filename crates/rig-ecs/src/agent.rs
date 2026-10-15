@@ -241,7 +241,7 @@ pub struct Turn {
     /// [`conversation::Conversation::request`].
     /// Not reflected: rig-core's types are not `Reflect`.
     #[reflect(ignore)]
-    pub first_message: MessageId,
+    pub start: MessageId,
     /// The model call whose reply's tool calls run now, their effects'
     /// parent, until their results are committed. Other calls of the turn
     /// keep it open but are never committed as tool results.

@@ -390,7 +390,7 @@ fn a_boundary_inside_a_tool_exchange_moves_to_a_whole_turn() {
                 let record = TurnRecord {
                     index: at as u64 / 2,
                     start: id,
-                    end: Some(TurnEnd::Answered { by: None }),
+                    end: Some(TurnEnd::Answered { answer: None }),
                 };
                 let value = serde_json::to_value(record).unwrap_or_default();
                 conversation.add_aside(

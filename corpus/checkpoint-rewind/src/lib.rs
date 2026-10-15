@@ -203,7 +203,7 @@ fn snapshot(
             continue;
         };
         commands.entity(turn_entity).insert(Snapshotted);
-        let Some((message, text)) = user_text(conversation, turn.first_message) else {
+        let Some((message, text)) = user_text(conversation, turn.start) else {
             continue;
         };
         // A retried or restored turn answers a message that has one.

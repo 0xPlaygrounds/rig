@@ -393,7 +393,7 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
     };
     if let Some(mut turn) = world.get_mut::<Turn>(context.entity) {
         turn.index = record.index;
-        turn.first_message = record.start;
+        turn.start = record.start;
     }
 }
 
@@ -405,7 +405,7 @@ fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
             let last = conversation.entries().next_back();
             let answer = last.filter(|entry| matches!(entry.message, Message::Assistant(_)));
             TurnEnd::Answered {
-                by: answer.map(|entry| entry.id),
+                answer: answer.map(|entry| entry.id),
             }
         }
         TurnOutcome::Failed(why) => TurnEnd::Failed { why: why.clone() },
@@ -641,7 +641,7 @@ pub(crate) struct Parts<'w, 's> {
 /// sections, its conversation, the tools,
 /// sorted by name so the prompt cache keeps them, and its model's options
 /// with its reasoning setting. A turn's call first delivers the steering
-/// messages and notes its agent accepted meanwhile. A call the kernel
+/// and Inform messages its agent accepted meanwhile. A call the kernel
 /// cannot build is answered with why.
 pub(crate) fn build_requests(
     mut unbuilt: Query<
@@ -1265,8 +1265,8 @@ fn commit_reply(
     if !tool_calls.is_empty() {
         return Next::Run(tool_calls);
     }
-    // What was sent meanwhile carries the turn on. Notes go along but carry
-    // nothing on.
+    // What was sent meanwhile carries the turn on. Inform messages go along
+    // but carry nothing on.
     if let Some(next) = carry_on(inboxes.of(agent)) {
         let spec = answered.connection.map(|connection| &*connection.spec);
         let conversation = &mut *answered.conversation;

@@ -280,7 +280,7 @@ fn draft(
         }
     };
     let asked = conversation
-        .request(turn.first_message)
+        .request(turn.start)
         .and_then(|entry| typed(conversation, entry.index))
         .unwrap_or_default();
     let diff: String = diff.chars().take(DIFF_CHARS).collect();
