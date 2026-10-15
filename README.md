@@ -320,7 +320,9 @@ every diff and every note, nothing cut or folded. Each kind of item has its
 own background, mixed from the terminal's: what you wrote one, tool calls and
 what plugins add another, the model's replies the terminal's own, and a diff's
 removed and added lines red and green, with line numbers and the changed words
-on a stronger shade. A plugin can draw its own tools' calls with
+on a stronger shade. Code (in replies, read and written files, diffs and shell
+commands) is highlighted in the terminal's own palette, so it follows the
+terminal's theme. A plugin can draw its own tools' calls with
 `app.add_tool_renderer` (`rig_tui::AppToolRenderersExt`). PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
 

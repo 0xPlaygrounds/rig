@@ -2078,6 +2078,10 @@ terminal's background): a user message on `user`, a tool call and what a
 plugin added on `tool`, a reply on none; a look's line with a background
 of its own keeps it, as a diff's `added` and `removed` lines do
 (`rig_tui::diff::unified_lines(text, &theme)`, also `ToolCallView::theme`).
+A look draws code in the terminal's palette with
+`rig_tui::highlight::code_rows(code, Language::File(path))` (or
+`highlight` for the spans of each line; `Language::Named("rust")` for a
+language by name).
 The transcript is a
 `TranscriptPane` ([another](#what-agents-do-and-say-in-a-terminal-panel)),
 the default screen's marked `MainPane`. Plugins read and set a pane's
