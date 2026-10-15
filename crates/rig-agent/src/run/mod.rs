@@ -997,7 +997,7 @@ impl AgentRun {
                     } else if policy.unenforced_schema() {
                         self.output_schema.as_ref().map(|schema| {
                             structured_output::reprompt_unstructured_answer(
-                                &json_utils::to_canonical_string(schema),
+                                &rig_core::json_utils::to_canonical_string(schema),
                             )
                         })
                     } else {
