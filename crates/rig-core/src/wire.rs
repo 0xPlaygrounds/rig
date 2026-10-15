@@ -820,13 +820,11 @@ where
     type Event = (Op::End, serde_json::Value);
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        // Read from the text, so an end holding raw JSON can borrow it.
-        let text = frame.as_str();
-        let document = match serde_json::from_str::<serde_json::Value>(&text) {
+        let document = match serde_json::from_str::<serde_json::Value>(&frame.as_str()) {
             Ok(document) => document,
             Err(error) => return WireEvent::Corrupt(error),
         };
-        match serde_json::from_str::<Op::End>(&text) {
+        match <Op::End as serde::Deserialize>::deserialize(&document) {
             Ok(end) => WireEvent::Known((end, document)),
             Err(error) => WireEvent::Corrupt(error),
         }
