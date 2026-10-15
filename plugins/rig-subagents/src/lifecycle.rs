@@ -1,0 +1,435 @@
+//! Who waits on whom, the reports, and the steps of a [`Lifecycle`].
+
+use bevy_ecs::query::QueryData;
+use bevy_ecs::system::SystemParam;
+use rig_core::completion::Message;
+
+use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
+use super::{
+    AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Report, Request, SubagentSystems, Subtask,
+    answered,
+};
+use rig_harness::prelude::*;
+use rig_harness::rig_memory::{Place, rewrite_value};
+
+/// The report on a request a restart cut short.
+const INTERRUPTED: &str = "Interrupted: the session restarted before the subagent answered.";
+
+/// Why a restored subagent's turn is stopped.
+const RESTARTED: &str = "restart";
+
+/// What every report that holds no answer ends with.
+const NO_ANSWER: &str = "No answer will come for this request; send a `message` to carry it on.";
+
+pub(super) fn add(app: &mut App) {
+    app.add_observer(name_subagent)
+        .add_observer(brief_subagent)
+        .add_observer(brief_peer)
+        .add_observer(work_on_turn_start)
+        .add_observer(step_on_turn_end)
+        .add_observer(report_when_finished)
+        .add_observer(end_waits)
+        .configure_sets(
+            AgentPass,
+            SubagentSystems::StopRestored
+                .after(GateSystems::After)
+                .before(ApprovalSystems)
+                .before(GateSystems::Fallback),
+        )
+        .add_systems(
+            AgentPass,
+            stop_restored.in_set(SubagentSystems::StopRestored),
+        )
+        .add_systems(
+            Update,
+            follow_rewrites.run_if(on_message::<SessionRewritten>),
+        );
+}
+
+/// Maps each finished subagent's answer through the rewrites of the
+/// session, as its conversation was, and inserts it again when they
+/// changed it: it reports nothing more, as it owes no request.
+fn follow_rewrites(
+    mut rewritten: MessageReader<SessionRewritten>,
+    agents: Query<(Entity, &AgentId, &Lifecycle)>,
+    mut commands: Commands,
+) {
+    let done = rewritten.read().filter(|done| done.result.is_ok());
+    let maps: Vec<_> = done.map(|done| done.with.clone()).collect();
+    for (agent, id, lifecycle) in &agents {
+        let Lifecycle::Finished(text) = lifecycle else {
+            continue;
+        };
+        let (mut text, mut changed) = (text.clone(), false);
+        let at = Place::Unsaved { log: &id.0 };
+        for with in &maps {
+            changed |= matches!(rewrite_value(&**with, &at, "report", &mut text), Ok(true));
+        }
+        if changed {
+            commands.entity(agent).insert(Lifecycle::Finished(text));
+        }
+    }
+}
+
+/// An agent as the subagent tools see it.
+#[derive(QueryData)]
+pub(super) struct AgentData {
+    pub(super) entity: Entity,
+    pub(super) id: &'static AgentId,
+    pub(super) subtask: Has<Subtask>,
+    pub(super) title: Option<&'static AgentTitle>,
+    pub(super) peers: Has<Peers>,
+    pub(super) busy: Has<ActiveTurn>,
+    pub(super) lifecycle: Option<&'static Lifecycle>,
+    pub(super) children: Option<&'static Spawned>,
+    pub(super) parent: Option<&'static SpawnedBy>,
+    effect_parent: Option<&'static EffectParent>,
+}
+
+/// The agents, their open requests and the open `wait` calls: who waits on
+/// whom, and the reports.
+#[derive(SystemParam)]
+pub(super) struct Agents<'w, 's> {
+    pub(super) agents: Query<'w, 's, AgentData>,
+    pub(super) open: Query<'w, 's, &'static mut OpenRequests>,
+    /// The messages to each agent its model has not read yet: accepted
+    /// (`true`), or on their way.
+    pub(super) inboxes:
+        Query<'w, 's, (&'static mut Incoming, &'static ForAgent, Has<Started>), Without<Outcome>>,
+    waits: Query<'w, 's, (Entity, &'static Awaits, &'static CallOf)>,
+    awaited_by: Query<'w, 's, &'static AwaitedBy>,
+    turns: Query<'w, 's, &'static TurnOf>,
+    /// The open tool calls' answers.
+    calls: Query<'w, 's, &'static mut Decision, ToolCalls>,
+    wake: Res<'w, Wake>,
+    pub(super) commands: Commands<'w, 's>,
+}
+
+impl Agents<'_, '_> {
+    /// Decides the open tool call `call` with `outcome`.
+    pub(super) fn answer(&mut self, call: Entity, outcome: impl Into<Outcome>) {
+        if let Ok(mut decision) = self.calls.get_mut(call) {
+            decision.decide(Decider::plugin("rig-subagents"), outcome);
+        }
+    }
+
+    /// The agent with the id `id`.
+    pub(super) fn find(&self, id: &AgentId) -> Option<Entity> {
+        id.find_in(self.agents.iter().map(|agent| (agent.entity, agent.id)))
+    }
+
+    /// Output of `agent`, titled with its task when it has one.
+    pub(super) fn author(&self, agent: Entity) -> Option<Author> {
+        let agent = self.agents.get(agent).ok()?;
+        let author = Author::agent(agent.id.clone(), None);
+        Some(match agent.title.filter(|_| agent.subtask) {
+            Some(title) => author.titled(title.0.clone()),
+            None => author,
+        })
+    }
+
+    /// The agent the open `wait` call `call` belongs to.
+    fn waiter(&self, call: Entity) -> Option<Entity> {
+        let (_, _, of) = self.waits.get(call).ok()?;
+        self.turns.get(of.0).ok().map(|turn| turn.0)
+    }
+
+    /// The open `wait` calls of `waiter` for a message from `awaited`.
+    pub(super) fn wait_calls(&self, waiter: Entity, awaited: Entity) -> Vec<Entity> {
+        let calls = self
+            .awaited_by
+            .get(awaited)
+            .into_iter()
+            .flat_map(|by| by.iter());
+        calls
+            .filter(|&call| self.waiter(call) == Some(waiter))
+            .collect()
+    }
+
+    /// The agents `agent` waits on: those that owe it a report, then those
+    /// its open `wait` calls wait for.
+    fn awaited(&self, agent: Entity) -> Vec<Entity> {
+        let Ok(id) = self.agents.get(agent).map(|agent| agent.id) else {
+            return Vec::new();
+        };
+        let asked = |open: &OpenRequests| open.0.iter().any(|request| request.asker == *id);
+        let owing = self.agents.iter().map(|agent| agent.entity);
+        let mut awaited: Vec<Entity> = owing
+            .filter(|&owing| self.open.get(owing).is_ok_and(asked))
+            .collect();
+        let calls = self
+            .waits
+            .iter()
+            .filter(|&(call, ..)| self.waiter(call) == Some(agent));
+        awaited.extend(calls.map(|(_, awaits, _)| awaits.0));
+        awaited
+    }
+
+    /// Whether `from` waits on `to`, directly or through other agents.
+    pub(super) fn reaches(&self, from: Entity, to: Entity) -> bool {
+        let (mut seen, mut stack) = (vec![from], vec![from]);
+        while let Some(agent) = stack.pop() {
+            for next in self.awaited(agent) {
+                if next == to {
+                    return true;
+                }
+                if !seen.contains(&next) {
+                    seen.push(next);
+                    stack.push(next);
+                }
+            }
+        }
+        false
+    }
+
+    /// Reports `text` from `agent` on `requests`: one message per asker, in
+    /// the order of each asker's first request, naming its last one, and
+    /// marked [`Report`]. It goes with the asker's next model call when the
+    /// asker waits for `agent`; it is a note while another task of its
+    /// batch is open, and otherwise carries the asker on. Returns the
+    /// askers reported to.
+    pub(super) fn report(
+        &mut self,
+        agent: Entity,
+        mut requests: Vec<Request>,
+        text: &str,
+    ) -> Vec<Entity> {
+        let from = self.author(agent).unwrap_or_default();
+        let mut reported = Vec::new();
+        while let Some(asker) = requests.first().map(|first| first.asker.clone()) {
+            let asked: Vec<Request> = requests.extract_if(.., |r| r.asker == asker).collect();
+            let (Some(last), Some(asker)) = (asked.last(), self.find(&asker)) else {
+                continue;
+            };
+            let mut open = self.open.iter().flat_map(|open| &open.0);
+            let batched = asked.iter().filter_map(|r| r.batch);
+            let batched = batched.collect::<Vec<_>>();
+            let mode = if !self.wait_calls(asker, agent).is_empty() {
+                DeliveryMode::Steer
+            } else if open.any(|r| r.batch.is_some_and(|batch| batched.contains(&batch))) {
+                DeliveryMode::Inform
+            } else {
+                DeliveryMode::Queue
+            };
+            let mut author = from.clone();
+            author.request = Some(last.id.clone());
+            let parent = self.agents.get(asker).ok().and_then(|a| a.effect_parent);
+            self.commands.spawn((
+                Incoming::new(text, mode).with_author(author),
+                ForAgent(asker),
+                Effect::with_parent_id(parent.map(|parent| parent.0)),
+                Report,
+            ));
+            self.wake.wake();
+            reported.push(asker);
+        }
+        reported
+    }
+}
+
+/// Names an agent by its title, such as a subagent or a helper when it is
+/// spawned or restored.
+fn name_subagent(
+    inserted: On<Insert<AgentTitle>>,
+    titles: Query<&AgentTitle>,
+    mut commands: Commands,
+) {
+    if let Ok(AgentTitle(title)) = titles.get(inserted.entity) {
+        let name = Name::new(title.clone());
+        commands.entity(inserted.entity).insert(name);
+    }
+}
+
+/// Gives a subagent its role as a prompt section of its own when it is
+/// spawned or restored, so the text follows the build: it is not saved.
+fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
+    commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
+}
+
+/// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does.
+fn brief_peer(added: On<Add<Peers>>, mut commands: Commands) {
+    commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+}
+
+/// The prompt section of `agent`'s role `tag`, `after` other roles.
+fn role(agent: Entity, after: i32, tag: &'static str, text: &str) -> impl Bundle {
+    let section = PromptSection::new(PromptSection::ORDER_ROLE + after, tag, text);
+    (Name::new(tag), section, SectionOf(agent))
+}
+
+/// A subagent whose turn starts is [`Lifecycle::Working`].
+fn work_on_turn_start(
+    started: On<Add<ActiveTurn>>,
+    spawned: Query<(), With<Subtask>>,
+    mut commands: Commands,
+) {
+    if spawned.contains(started.entity) {
+        commands.entity(started.entity).insert(Lifecycle::Working);
+    }
+}
+
+/// A subagent whose turn ended, and that has not started another, is
+/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless a
+/// restart stopped it, else [`Lifecycle::Finished`] with its answer, or
+/// why there is none and what it said last: a turn a plugin stops, such as
+/// for a budget, reports `Stopped: <reason>`.
+fn step_on_turn_end(
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    idle: Query<&Conversation, (With<Subtask>, Without<ActiveTurn>)>,
+    mut agents: Agents,
+) {
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+        return;
+    };
+    let Ok(conversation) = idle.get(agent) else {
+        return;
+    };
+    let said = last_words(conversation).map(|said| format!("\n\nIt had said: {said}\n\n"));
+    let said = said.unwrap_or_else(|| " ".to_owned());
+    let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
+    // A restart stopped it for good: it waits on no one.
+    let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
+    let step = match agents.awaited(agent).first().filter(|_| !restarted) {
+        Some(&owing) => Lifecycle::WaitingOn(owing),
+        None => Lifecycle::Finished(match outcome {
+            TurnOutcome::Answered(message) => message
+                .final_answer()
+                .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
+            TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
+            TurnOutcome::Stopped(None) => failed("Interrupted: the subagent was stopped first."),
+            TurnOutcome::Stopped(Some(why)) if why == RESTARTED => failed(INTERRUPTED),
+            TurnOutcome::Stopped(Some(why)) => failed(&format!("Stopped: {why}.")),
+        }),
+    };
+    agents.commands.entity(agent).insert(step);
+}
+
+/// Reports a [`Lifecycle::Finished`] agent's answer on every request it
+/// owes, and ends the `wait` calls for it of agents it did not report to.
+fn report_when_finished(
+    inserted: On<Insert<Lifecycle>>,
+    awaited: Query<&AwaitedBy>,
+    mut agents: Agents,
+) {
+    let agent = inserted.entity;
+    let Ok(Some(Lifecycle::Finished(text))) = agents.agents.get(agent).map(|a| a.lifecycle) else {
+        return;
+    };
+    let (text, id) = (text.clone(), agents.agents.get(agent).map(|a| a.id.clone()));
+    let requests = match agents.open.get_mut(agent) {
+        Ok(mut open) => std::mem::take(&mut open.0),
+        Err(_) => Vec::new(),
+    };
+    let reported = agents.report(agent, requests, &text);
+    let (Ok(id), Ok(awaited)) = (id, awaited.get(agent)) else {
+        return;
+    };
+    for call in awaited.iter() {
+        if agents
+            .waiter(call)
+            .is_some_and(|waiter| !reported.contains(&waiter))
+        {
+            let output = answered(format!(
+                "`{}` finished without a message for you.",
+                id.short()
+            ));
+            agents.answer(call, output);
+        }
+    }
+}
+
+/// Ends the `wait` calls of the agent that accepted a message that wait
+/// for its sender. The message goes with the model call after them, even
+/// one sent to read after the agent's turn.
+fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
+    let Ok((message, &ForAgent(to), _)) = agents.inboxes.get(accepted.entity) else {
+        return;
+    };
+    let Some(from) = message.author.from.clone().map(AgentId) else {
+        return;
+    };
+    let from = &from;
+    let Some(sender) = agents.find(from) else {
+        return;
+    };
+    let waits = agents.wait_calls(to, sender);
+    if !waits.is_empty()
+        && let Ok((mut message, ..)) = agents.inboxes.get_mut(accepted.entity)
+        && message.mode == DeliveryMode::Queue
+    {
+        message.mode = DeliveryMode::Steer;
+    }
+    for call in waits {
+        let output = answered(format!(
+            "`{}` sent you a message; it follows.",
+            from.short()
+        ));
+        agents.commands.entity(call).remove::<Awaits>();
+        agents.answer(call, output);
+    }
+}
+
+/// On a restored turn [`stop_restored`] looked at.
+#[derive(Component)]
+pub(super) struct Considered;
+
+/// After a restart, a restored agent that owed reports stays idle: its
+/// restored turn is stopped before anything of it starts, and its end
+/// reports each request as interrupted, unless a plugin claimed any of the
+/// turn's restored work in Gate: held, decided or superseded one of its
+/// calls, or ended the turn. It looks at each restored turn once, after
+/// every gate of the pass its calls are admitted in, before the user is
+/// asked to approve any of them and the kernel's own answers.
+pub(super) fn stop_restored(
+    turns: Query<
+        (Entity, &TurnOf, &Calls),
+        (With<Restored>, Without<TurnOutcome>, Without<Considered>),
+    >,
+    calls: Query<(Has<Admitted>, Has<Holds>, Has<SupersededBy>, &Decision)>,
+    open: Query<&OpenRequests>,
+    mut commands: Commands,
+) {
+    for (turn, &TurnOf(agent), of) in &turns {
+        let calls: Vec<_> = calls.iter_many(of.iter()).flatten().collect();
+        if !calls.iter().any(|&(admitted, ..)| admitted) {
+            continue;
+        }
+        commands.entity(turn).insert(Considered);
+        let claimed = calls
+            .iter()
+            .any(|&(_, held, superseded, decision)| held || superseded || decision.is_decided());
+        if !claimed && open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
+            let stopped = TurnOutcome::Stopped(Some(RESTARTED.to_owned()));
+            commands.entity(turn).insert(stopped);
+        }
+    }
+}
+
+/// What the model said last in the conversation's last request: the text
+/// of its last message with text since the last message that was not a
+/// tool's result.
+fn last_words(conversation: &Conversation) -> Option<String> {
+    for message in conversation.messages().iter().rev() {
+        match message {
+            Message::Assistant(reply) => {
+                let parts = reply.content.iter().filter_map(|part| match part {
+                    AssistantContent::Text(text) => Some(text.text.trim()),
+                    _ => None,
+                });
+                let text: Vec<&str> = parts.filter(|text| !text.is_empty()).collect();
+                if !text.is_empty() {
+                    return Some(text.join("\n\n"));
+                }
+            }
+            Message::User { content } => {
+                let results = |part: &UserContent| matches!(part, UserContent::ToolResult(_));
+                if !content.iter().all(results) {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    None
+}

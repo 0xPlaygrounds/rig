@@ -1,0 +1,34 @@
+[package]
+name = "rig-coding-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "rig-harness plugins: the coding tools of rig-tools (read, edit, write, search, shell), and the files the user names as @path sent with the message."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# How the terminal view draws the tools' calls. An app without the terminal
+# view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+# The pool attachments are read on in a workspace that is not this machine.
+bevy_tasks = { workspace = true }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tools = { path = "../../crates/rig-tools" }
+rig-tui = { path = "../rig-tui", optional = true }
+
+[dev-dependencies]
+# Calls of an agent's tools, started as its model's reply would.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

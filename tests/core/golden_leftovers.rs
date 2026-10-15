@@ -1,7 +1,6 @@
 //! Matrix T's cells: a layer's denial under every consumer mapping — on a
 //! tool (the model sees the skipped result), on a completion (the run
-//! fails), on a memory `Load` (the run fails at the record), on a custom
-//! effect from a hook (the hook sees `Denied`) — and the leftovers of the
+//! fails), on a custom effect from a hook (the hook sees `Denied`) — and the leftovers of the
 //! #2443 review: a host effect that does not serialize dispatched from a
 //! hook (L3), required host keys of the embed, rerank and custom families
 //! described from the handler table on replay (L4), and the recorder
@@ -21,9 +20,8 @@ use serde_json::json;
 
 use super::tool_result_texts;
 use crate::goldens::{
-    CONVERSATION, DenyAllLayer, HOST_DENY_REASON, MockRerank, NOTE_KEY, NeverAsked,
-    NoteDeniedAtStart, NoteTaker, NoteUnserializableAtStart, NotesAtStart, UNSERIALIZABLE_KEY,
-    add_tool_under, families,
+    DenyAllLayer, HOST_DENY_REASON, MockRerank, NOTE_KEY, NeverAsked, NoteDeniedAtStart, NoteTaker,
+    NoteUnserializableAtStart, NotesAtStart, UNSERIALIZABLE_KEY, add_tool_under, families,
 };
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
@@ -102,39 +100,6 @@ async fn denied_completion_effect_log_is_the_golden_fixture() {
     assert!(log.records.is_empty(), "no record for a denied completion");
     assert_eq!(log.header.hooks, ["DenyAllLayer"]);
     crate::goldens::golden_effects("mock_leftovers_denied_completion", &log);
-}
-
-#[tokio::test]
-async fn denied_memory_load_effect_log_is_the_golden_fixture() {
-    let memory = ErasedHandler::new(rig::serve::adapters::MemoryAdapter::new(
-        rig::memory::InMemoryConversationMemory::new(),
-    ))
-    .layered(DenyAllLayer);
-    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-    let agent = AgentBuilder::new(MockCompletionModel::text("never asked"))
-        .name("golden")
-        .preamble(BASIC_PREAMBLE)
-        .temperature(0.0)
-        .memory_handler(memory)
-        .conversation(CONVERSATION)
-        .record_to(recorder.clone())
-        .build();
-    let error = agent
-        .prompt(PROMPT)
-        .await
-        .expect_err("the denied load fails the run");
-    assert!(
-        matches!(
-            &error,
-            rig::completion::PromptError::Memory(rig::memory::MemoryError::Policy(reason))
-                if reason == HOST_DENY_REASON
-        ),
-        "{error:?}"
-    );
-    let log = agent.stamp(recorder.take());
-    assert!(log.records.is_empty(), "no record for a denied load");
-    assert_eq!(log.header.hooks, ["DenyAllLayer"]);
-    crate::goldens::golden_effects("mock_leftovers_denied_memory_load", &log);
 }
 
 #[tokio::test]

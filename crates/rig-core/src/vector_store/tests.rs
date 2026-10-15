@@ -153,7 +153,7 @@ async fn dynamic_native_filter_preserves_backend_documents() {
     )
     .await
     .expect("dynamic vector search should succeed");
-    let crate::effect::Outcome::Documents(crate::effect::RetrievedDocuments::Scored(results)) =
+    let crate::effect::Answered::Documents(crate::effect::RetrievedDocuments::Scored(results)) =
         outcome
     else {
         panic!("expected scored documents");

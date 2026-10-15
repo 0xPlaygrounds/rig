@@ -34,6 +34,7 @@ fn build(system: bool, tools: bool, tool_choice: bool) -> Map<String, Value> {
                     name: crate::message::ToolName::new("probe").expect("tool name"),
                     description: "probe".to_owned(),
                     parameters: serde_json::json!({"type": "object", "properties": {}}),
+                    annotations: Default::default(),
                 }]
             } else {
                 vec![]

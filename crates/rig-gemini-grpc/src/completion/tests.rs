@@ -240,7 +240,7 @@ fn the_rest_request_transcodes_in_full() {
     let mut request = CompletionRequest::new("hi").tools(vec![rig_core::completion::ToolDefinition {
         name: message::ToolName::new("add").expect("a tool name"),
         description: "add".to_owned(),
-        parameters: serde_json::json!({"type": "object", "properties": {"x": {"type": "number"}}}),
+        parameters: serde_json::json!({"type": "object", "properties": {"x": {"type": "number"}}}), annotations: Default::default() 
     }]);
     request.tool_choice = Some(message::ToolChoice::Specific {
         function_names: vec![message::ToolName::new("add").expect("a tool name")],

@@ -136,3 +136,19 @@ fn a_descriptor_without_facts_reads_the_builtin_catalog() {
             .is_none()
     );
 }
+
+/// Facts made from a spec under a declared vendor answer for its model on
+/// the wire that carries them, which asks under its own name: a batch twin
+/// of an Anthropic model, reached over Anthropic's wire, is priced by the
+/// twin's pricing.
+#[test]
+fn a_declared_vendor_spec_prices_the_wire_it_is_bound_to() {
+    let batch = ProviderId::declare("facts-test-batch").expect("a valid name");
+    let twin = ModelSpec::new(batch, "claude-sonnet-4-6").with_pricing(Pricing::new(0.25, 0.5));
+    let facts = ModelFacts::new(twin);
+    let spec = crate::wire::Descriptor::new("anthropic")
+        .model("claude-sonnet-4-6")
+        .facts(&facts)
+        .spec();
+    assert_eq!(input_price(spec), Some(0.25));
+}

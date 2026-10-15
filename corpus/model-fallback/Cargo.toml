@@ -1,0 +1,32 @@
+[package]
+name = "corpus-model-fallback"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 15. Model fallback chain"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the ECS derives.
+bevy_ecs = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The `[model-fallback]` settings.
+serde = { workspace = true, features = ["derive"] }
+# The router picks a call's model first; a cooling one is routed to the chain after it.
+corpus-model-router = { path = "../model-router" }
+
+[dev-dependencies]
+# Model plugins meant to be used with this one, for the group check.
+corpus-local-models = { path = "../local-models" }
+corpus-ho-api-key-pool = { path = "../ho-api-key-pool" }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+# The app on a session store and the scripted models the test runs on.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+# The manual clock the cooldown is advanced on.
+bevy_time = { workspace = true }
+# The 529 status of the scripted failure.
+http = { workspace = true }
+rig-compaction = { path = "../../plugins/rig-compaction" }

@@ -744,3 +744,136 @@ mod generation_option_shortcuts {
         assert!(GenerationOptions::new().is_default());
     }
 }
+
+mod usage_totals {
+    use crate::completion::{ContextUse, Cost, Usage, UsageTotals, dollars_label, tokens_label};
+
+    #[test]
+    fn calls_and_tokens_are_summed() {
+        let mut totals = UsageTotals::default();
+        let first = Usage::new()
+            .input_tokens(100)
+            .output_tokens(20)
+            .cached_input_tokens(30)
+            .cache_creation_input_tokens(10);
+        assert_eq!(first.context_tokens(), Some(120));
+        totals.record(&first);
+        totals.record(&Usage::new().input_tokens(50).output_tokens(5));
+        assert_eq!((totals.calls, totals.unpriced), (2, 2));
+        assert_eq!(totals.tokens.input_tokens, Some(150));
+        assert_eq!(totals.uncached_input(), 110);
+
+        let mut sum = UsageTotals::default();
+        sum.add(&totals);
+        sum.add(&totals);
+        assert_eq!((sum.calls, sum.unpriced), (4, 4));
+        assert_eq!(sum.tokens.output_tokens, Some(50));
+        assert_eq!(Usage::new().total_tokens(40).context_tokens(), Some(40));
+        assert_eq!(Usage::new().context_tokens(), None);
+        assert_eq!(
+            totals.to_string(),
+            "2 model calls: 110 in, 30 cache read, 10 cache written, 25 out; cost unknown"
+        );
+    }
+
+    #[test]
+    fn labels_round_tokens_dollars_and_context() {
+        for (count, label) in [
+            (999, "999"),
+            (1_234, "1.2k"),
+            (45_000, "45k"),
+            (1_234_567, "1.2M"),
+            (12_000_000, "12M"),
+        ] {
+            assert_eq!(tokens_label(count), label);
+        }
+        assert_eq!(dollars_label(0.1234), "$0.123");
+        for (window, label) in [
+            (Some(200_000), "45k/200k (22%)"),
+            (Some(0), "45k"),
+            (None, "45k"),
+        ] {
+            assert_eq!(
+                ContextUse {
+                    tokens: 45_000,
+                    window
+                }
+                .to_string(),
+                label
+            );
+        }
+    }
+
+    #[test]
+    fn a_priced_total_shows_its_cost_and_an_unpriced_one_its_tokens() {
+        let mut totals = UsageTotals::default();
+        assert_eq!(totals.cost_or_tokens(), "0 tokens");
+        let usage = Usage::new()
+            .input_tokens(1_500)
+            .output_tokens(500)
+            .reasoning_tokens(200);
+        totals.record(&usage.cost(Cost::from_parts(0.5, 0.75, 0.0, 0.0)));
+        assert_eq!(totals.total_tokens(), 2_000);
+        assert_eq!(
+            totals.to_string(),
+            "1 model call: 1.5k in, 500 out (200 reasoning); $1.25"
+        );
+        totals.record(&usage);
+        assert_eq!(totals.cost_or_tokens(), "$1.25+");
+    }
+}
+
+/// A tool's annotations ride on its definition, from the typed tool, are
+/// written only when something is stated, and read back as written.
+#[test]
+fn tool_annotations_ride_on_the_definition_and_are_written_only_when_stated() {
+    use crate::tool::{PortableTool, tool_definition};
+
+    struct Look;
+
+    impl PortableTool for Look {
+        const NAME: &'static str = "look";
+        type Args = serde_json::Value;
+        type Output = String;
+        type Error = std::convert::Infallible;
+
+        fn description(&self) -> String {
+            "Look".to_owned()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        fn annotations(&self) -> ToolAnnotations {
+            ToolAnnotations::default()
+                .with_read_only(true)
+                .with_title("Look around")
+        }
+
+        async fn call(&self, _arguments: Self::Args) -> Result<String, Self::Error> {
+            Ok(String::new())
+        }
+    }
+
+    let definition = tool_definition(&Look);
+    assert!(definition.annotations.read_only());
+    let json = serde_json::to_value(&definition).expect("serializes");
+    assert_eq!(
+        json.get("annotations"),
+        Some(&serde_json::json!({"title": "Look around", "readOnlyHint": true}))
+    );
+    assert_eq!(
+        serde_json::from_value::<ToolDefinition>(json).ok(),
+        Some(definition.clone())
+    );
+    let plain = ToolDefinition::new(definition.name, "Look", serde_json::json!({}));
+    let json = serde_json::to_value(&plain).expect("serializes");
+    assert!(json.get("annotations").is_none());
+    let stated = ToolAnnotations::default()
+        .with_destructive(false)
+        .with_idempotent(true)
+        .with_open_world(false);
+    assert!(!stated.read_only() && !stated.destructive() && stated.idempotent());
+    assert!(!stated.open_world());
+}

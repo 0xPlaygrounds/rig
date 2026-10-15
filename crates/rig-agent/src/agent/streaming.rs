@@ -14,8 +14,7 @@ use rig_core::{
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, Surfaced, drive_agent},
-    agent::hook::{AgentHook, RunSettled, SettledOutcome, StepEventKind},
-    agent::runner::{AgentRunner, RunOrigin},
+    agent::runner::AgentRunner,
     streaming::{Item, StreamEvent},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
@@ -35,7 +34,7 @@ pub type StreamingResult = WasmBoxedStream<'static, Result<MultiTurnStreamItem, 
 /// One item of a streamed run: a provider stream event, a committed tool
 /// call, a lifecycle marker, or the run's final response. An item reads back
 /// from its serialized form on its own, without checking its order against
-/// the items around it; [`Transcript::parse`](rig_core::streaming::Transcript::parse)
+/// the items around it; [`StreamRecord::parse`](rig_core::streaming::StreamRecord::parse)
 /// checks a run's provider stream items.
 #[non_exhaustive]
 pub enum MultiTurnStreamItem {
@@ -158,10 +157,9 @@ impl AgentRunner {
     /// Hooks fire at every observable point, including streamed text and
     /// tool-call deltas.
     ///
-    /// Like [`run`](AgentRunner::run), this is lazy: memory loading and agent
-    /// span creation begin only when the stream is first polled,
-    /// and a stream that is dropped unpolled has done nothing. A memory-load
-    /// failure is the stream's first (and only) item. The stream is `Send` on
+    /// Like [`run`](AgentRunner::run), this is lazy: agent span creation
+    /// begins only when the stream is first polled, and a stream that is
+    /// dropped unpolled has done nothing. The stream is `Send` on
     /// native targets, so it can be built in synchronous code and handed to
     /// whatever polls it; it runs under the span it was built in (a caller's
     /// enabled span is adopted, otherwise a root `invoke_agent` is created),
@@ -191,7 +189,7 @@ impl AgentRunner {
     fn stream_under(self, ambient: tracing::Span) -> StreamingResult {
         let run_under = ambient.clone();
         let stream = async_stream::stream! {
-            let mut inner = self.start_stream(run_under).await;
+            let mut inner = self.start_stream(run_under);
             while let Some(item) = inner.next().await {
                 yield item;
             }
@@ -199,53 +197,16 @@ impl AgentRunner {
         Box::pin(stream.instrument(ambient))
     }
 
-    /// The eager half of [`stream`](Self::stream): resolve memory, build the
-    /// run and return the driver as a stream. Called on the first poll,
-    /// under `ambient`, the span the stream was built in.
-    async fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
+    /// The eager half of [`stream`](Self::stream): build the run and return
+    /// the driver as a stream. Called on the first poll, under `ambient`, the
+    /// span the stream was built in.
+    fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
         let (agent_span, created_agent_span) = self.open_agent_span(ambient);
 
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(true);
-        // A resumed run loads nothing and appends what it adds (see `run`).
-        let resolved = match &self.origin {
-            RunOrigin::Resume(_) => self.resumed_memory(),
-            RunOrigin::Prompt(_) => {
-                let resolve = self.resolve_history_and_memory(&hook_ctx);
-                futures::pin_mut!(resolve);
-                let mut driven = bus.drive(futures::stream::once(resolve));
-                driven.next().await.unwrap_or(Ok((None, None)))
-            }
-        };
-        let (history_override, memory_handle) = match resolved {
-            Ok(resolved) => resolved,
-            Err(err) => {
-                // Notify settlement before yielding the error so consumers stopping
-                // at the first failure cannot suppress the lifecycle notification.
-                let hooks = self.config.hooks.clone();
-                let stream = async_stream::stream! {
-                    let err = PromptError::from(err);
-                    if hooks.observes(StepEventKind::RunSettled) {
-                        let reason = err.to_string();
-                        hooks
-                            .on_run_settled(
-                                &hook_ctx,
-                                RunSettled {
-                                    outcome: SettledOutcome::Error(&reason),
-                                    messages: None,
-                                },
-                            )
-                            .await;
-                    }
-                    yield Err(err);
-                };
-                // Instrument under the agent span like the success path so
-                // a load failure stays tied to invoke_agent.
-                return Box::pin(stream.instrument(agent_span));
-            }
-        };
-
-        let run = self.build_run(history_override);
+        bus.settle();
+        let run = self.build_run();
         let source = StreamingTurnSource::new(
             &self.config.hooks,
             self.agent_name_or_default().to_string(),
@@ -259,7 +220,6 @@ impl AgentRunner {
             run,
             agent_span.clone(),
             created_agent_span,
-            memory_handle,
             hook_ctx,
         )
         .flat_map(|item| {

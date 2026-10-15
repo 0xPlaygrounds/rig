@@ -139,6 +139,7 @@ fn lookup_tool() -> ToolDefinition {
         name: ToolName::new("lookup").expect("a tool name"),
         description: "Look something up.".into(),
         parameters: json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+        annotations: Default::default(),
     }
 }
 

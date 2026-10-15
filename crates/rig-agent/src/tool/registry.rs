@@ -14,7 +14,7 @@ use rig_core::serve::{ErasedHandler, Serve};
 use rig_core::{
     completion::{Document, ToolDefinition},
     effect::{
-        EffectKind, FamilyDescriptor, Key, Outcome, ToolEmbeddingDescriptor, family, tool_key,
+        Answered, EffectKind, FamilyDescriptor, Key, ToolEmbeddingDescriptor, family, tool_key,
     },
     embeddings::{embed::EmbedError, tool::ToolSchema},
     error::{ErrorKind, ErrorReport},
@@ -124,6 +124,7 @@ impl RegisteredTool {
                 name,
                 description,
                 parameters,
+                annotations: Default::default(),
             },
             embedding,
             key: Key::new_unchecked(descriptor.key),
@@ -224,7 +225,7 @@ impl RegisteredTool {
         // that published nothing (or never ran) leaves an empty result map.
         context.accept_dispatch_result(published.take().unwrap_or_default());
         match outcome {
-            Ok(Outcome::ToolResult { result }) => result,
+            Ok(Answered::ToolResult { result }) => result,
             Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
                 "tool handler answered with a {} outcome",
                 other.family()

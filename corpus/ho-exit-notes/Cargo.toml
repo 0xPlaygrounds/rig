@@ -1,0 +1,33 @@
+[package]
+name = "corpus-ho-exit-notes"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H14: Session notes written on exit"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# The note's date, in local time.
+chrono = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The session's name.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+# Ctrl-D.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# Checked together with it: both edit model requests in Prepare.
+corpus-permission-modes = { path = "../permission-modes" }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }

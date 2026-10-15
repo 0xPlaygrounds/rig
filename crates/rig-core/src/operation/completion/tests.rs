@@ -1,20 +1,20 @@
 use serde_json::{Value, json};
 
-use super::{Block, CallFragment, Completion, Finish, Turn, events_of};
+use super::{Block, CallFragment, Completion, Finish, ReplyFold, events_of};
 use crate::completion::{CompletionResponse, Cost, Usage};
 use crate::driver::{Decoded, decode_with};
 use crate::error::ProviderError;
 use crate::message::{
     AssistantContent, CallId, Reasoning, Source, SourceLocation, ToolCall, ToolName,
 };
-use crate::streaming::{Item, StreamEvent, Transcript};
+use crate::streaming::{Item, StreamEvent, StreamRecord};
 use crate::wire::{Out, SpanUnit, WireCitation, WireSpan};
 
 /// One reply written by `write`, then ended.
 fn write(
     write: impl for<'id> FnOnce(&mut Out<'id, Completion>) -> Result<(), ProviderError>,
 ) -> Decoded<Completion> {
-    decode_with(Turn::relayed("test"), "test", |reply| {
+    decode_with(ReplyFold::relayed("test"), "test", |reply| {
         let mut out = reply.out();
         write(&mut out)?;
         let _ = out.end(Finish::default());
@@ -194,7 +194,7 @@ fn a_restated_response_streams_the_same_blocks() {
     });
     let original = response(decoded);
     let events = events_of(&original).expect("restates");
-    let transcript = Transcript::from_items(events.clone()).expect("a valid sequence");
+    let transcript = StreamRecord::from_items(events.clone()).expect("a valid sequence");
     let ended: Vec<_> = transcript
         .events()
         .filter_map(|event| match event {
@@ -213,10 +213,10 @@ fn write_on_wire(
     finish: Finish,
     write: impl for<'id> FnOnce(&mut Out<'id, Completion>) -> Result<(), ProviderError>,
 ) -> Decoded<Completion> {
-    let turn = Turn {
+    let turn = ReplyFold {
         wire: true,
         call_id_slot: slot,
-        ..Turn::relayed("test")
+        ..ReplyFold::relayed("test")
     };
     decode_with(turn, "test", |reply| {
         let mut out = reply.out();
@@ -261,6 +261,41 @@ fn blocks_from_the_first_unfinished_item_on_replay_canonically() {
         .map(|block| block.native_item().is_some())
         .collect();
     assert_eq!(natives, [true, false, false], "{choice:?}");
+}
+
+/// A call still open when the provider ends the reply is reported as
+/// unfinished, with the arguments that came; a finished call beside it is
+/// not, and the report survives a round trip through JSON.
+#[test]
+fn a_call_the_reply_ends_in_the_middle_of_is_unfinished() {
+    use crate::completion::FinishReason;
+    let fragment = |id: Option<&'static str>, arguments: &'static str| CallFragment {
+        id,
+        name: id.map(|_| "write"),
+        arguments: Some(arguments),
+    };
+    let decoded = write_on_wire(None, stop(FinishReason::Length), |out| {
+        out.fragment(Some(0), fragment(Some("done"), r#"{"path":"a"}"#))?;
+        out.finish(0)?;
+        out.fragment(Some(1), fragment(Some("cut"), r#"{"path":"b","text":"hal"#))
+    });
+    let cut = response(decoded);
+    let unfinished: Vec<String> = cut
+        .unfinished_calls()
+        .map(|call| call.id.wire().into_owned())
+        .collect();
+    assert_eq!(unfinished, ["cut"]);
+    let again: CompletionResponse =
+        serde_json::from_value(serde_json::to_value(&cut).expect("serializes"))
+            .expect("deserializes");
+    assert_eq!(again.unfinished_calls().count(), 1);
+    assert_eq!(again, cut);
+
+    let whole = write_on_wire(None, stop(FinishReason::ToolCalls), |out| {
+        out.fragment(Some(0), fragment(Some("done"), r#"{"path":"a"}"#))?;
+        out.finish(0)
+    });
+    assert_eq!(response(whole).unfinished_calls().count(), 0);
 }
 
 #[test]
@@ -392,7 +427,7 @@ fn events(decoded: &Decoded<Completion>) -> Vec<StreamEvent> {
         .iter()
         .filter_map(|item| item.as_ref().ok().cloned())
         .collect();
-    let transcript = Transcript::from_items(items).expect("a valid sequence");
+    let transcript = StreamRecord::from_items(items).expect("a valid sequence");
     transcript.events().cloned().collect()
 }
 
@@ -622,7 +657,7 @@ fn a_placeholder_null_waits_for_the_real_arguments() {
 
 #[test]
 fn a_reply_that_fails_mid_call_never_ends_the_call() {
-    let decoded = decode_with(Turn::relayed("test"), "test", |reply| {
+    let decoded = decode_with(ReplyFold::relayed("test"), "test", |reply| {
         let mut out = reply.out();
         out.fragment(
             Some(0),
@@ -651,7 +686,7 @@ fn a_restated_call_starts_with_its_name() {
         Value::Null,
     );
     let items = events_of(&response).expect("restates");
-    let transcript = Transcript::from_items(items).expect("a valid sequence");
+    let transcript = StreamRecord::from_items(items).expect("a valid sequence");
     let events: Vec<StreamEvent> = transcript.events().cloned().collect();
     assert_eq!(
         shape(&events),
@@ -768,7 +803,7 @@ fn every_item_the_writer_emits_reads_back_on_its_own() {
         .collect();
     assert_eq!(
         shape(
-            &Transcript::from_items(items.clone())
+            &StreamRecord::from_items(items.clone())
                 .expect("a valid sequence")
                 .events()
                 .cloned()
@@ -805,7 +840,7 @@ fn write_from(
     end: Finish,
     write: impl for<'id> FnOnce(&mut Out<'id, Completion>) -> Result<(), ProviderError>,
 ) -> CompletionResponse {
-    response(decode_with(Turn::new(origin), "test", |reply| {
+    response(decode_with(ReplyFold::new(origin), "test", |reply| {
         let mut out = reply.out();
         write(&mut out)?;
         let _ = out.end(end);
@@ -938,7 +973,7 @@ fn late_citations_land_on_the_closed_text() {
     );
 
     // The consumer took the block before the provider cited it.
-    let mut turn = Turn::relayed("test");
+    let mut turn = ReplyFold::relayed("test");
     let mut items = super::Items::new();
     turn.open_item(&mut items, 0, Block::Text, Value::Null)
         .expect("opens");

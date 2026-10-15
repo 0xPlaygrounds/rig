@@ -41,7 +41,7 @@ pub(super) fn reasoning_blocks(log: &rig::cassette::effect_log::EffectLog) -> us
     log.records
         .iter()
         .filter_map(|record| match record.outcome.as_ref() {
-            Ok(rig::effect::Outcome::Completion(response)) => Some(response),
+            Ok(rig::effect::Answered::Completion(response)) => Some(response),
             _ => None,
         })
         .flat_map(|response| response.choice.iter())
@@ -55,7 +55,7 @@ pub(super) fn last_text(log: &rig::cassette::effect_log::EffectLog) -> String {
         .iter()
         .rev()
         .find_map(|record| match record.outcome.as_ref() {
-            Ok(rig::effect::Outcome::Completion(response)) => Some(
+            Ok(rig::effect::Answered::Completion(response)) => Some(
                 response
                     .choice
                     .iter()

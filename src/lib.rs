@@ -3,9 +3,9 @@
 //!
 //! Re-exports `rig_core` at `rig::...` paths and, under the default `agent`
 //! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
-//! carries the contextual tool API alongside the portable contracts, which are
-//! always available. `use rig::prelude::*;` brings in [`Model`], [`DynModel`]
-//! and the common agent types.
+//! carries the agent's tool registry alongside the contextual and portable
+//! contracts, which are always available. `use rig::prelude::*;` brings in
+//! [`Model`], [`DynModel`] and, with `agent`, the common agent types.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
 //! after their features wherever module naming allows:
@@ -35,6 +35,8 @@ pub use rig_reqwest;
 #[cfg(all(feature = "websocket", not(target_family = "wasm")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
+
+pub mod harness_protocol;
 
 /// Provider clients, their configurations, and the models they build.
 pub mod providers {
@@ -76,7 +78,7 @@ pub use rig_cassette as cassette;
 /// step/turn types, the run's spec, request preparation, output policy and
 /// per-turn patch, its response and error types, the invalid-call decision
 /// data, the streamed-turn assembler and the loop-side transcript helpers.
-/// rig-core keeps only the message-model invariants (`rig::core::transcript`).
+/// rig-core keeps only the message-model invariants (`rig::core::conversation::pairing`).
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod run {
@@ -143,7 +145,7 @@ pub mod streaming {
 ///
 /// The contextual and portable contracts come from `rig-core` and need no
 /// feature. The registry, tool set, and catalog belong to the agent runtime and
-/// need the `agent` feature; they also live at [`crate::agent::tool`].
+/// need the `agent` feature; they also live at `rig::agent::tool`.
 pub mod tool {
     /// Derive a stable serialized key for a tool-context value.
     #[cfg(feature = "derive")]
@@ -182,6 +184,7 @@ pub mod tool {
     }
 }
 
+/// rig-agent's helpers for tests of code built on it.
 #[cfg(all(feature = "agent", any(test, feature = "test-utils")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils {
@@ -192,15 +195,15 @@ pub mod test_utils {
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::rig_tool;
 
-/// Conversation memory traits and the in-process backend, plus the `rig-memory`
-/// policy types when the `memory` feature is enabled.
-pub mod memory {
-    pub use rig_core::memory::*;
+/// One conversation: its entries with stable ids and authors, its asides,
+/// its halt, and the changes made to it that nobody has saved yet.
+pub use rig_core::conversation;
 
-    #[cfg(feature = "memory")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "memory")))]
-    pub use rig_memory::*;
-}
+/// Conversations over time (`rig-memory`): windows, compaction, and saving
+/// and resuming them in the `rig-session` format.
+#[cfg(feature = "memory")]
+#[cfg_attr(docsrs, doc(cfg(feature = "memory")))]
+pub use rig_memory as memory;
 
 /// Declares one feature-gated facade module per companion crate, each row giving
 /// the module, its crate, and the features enabling it.

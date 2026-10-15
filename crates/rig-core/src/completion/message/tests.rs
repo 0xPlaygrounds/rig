@@ -338,3 +338,60 @@ fn a_call_answers_with_its_own_id_and_name_as_a_success_or_an_error() {
     );
     assert_eq!(failed.content, vec![ToolResultContent::text("boom")]);
 }
+
+mod image_media_type_sniff {
+    use crate::message::ImageMediaType;
+
+    #[test]
+    fn known_signatures_are_recognised_and_name_their_extension() {
+        let cases: [(&[u8], ImageMediaType, &str); 5] = [
+            (b"\x89PNG\r\n\x1a\nrest", ImageMediaType::PNG, "png"),
+            (b"\xff\xd8\xff\xe0", ImageMediaType::JPEG, "jpg"),
+            (b"GIF87a..", ImageMediaType::GIF, "gif"),
+            (b"GIF89a..", ImageMediaType::GIF, "gif"),
+            (b"RIFF\0\0\0\0WEBPVP8 ", ImageMediaType::WEBP, "webp"),
+        ];
+        for (bytes, media_type, extension) in cases {
+            assert_eq!(ImageMediaType::sniff(bytes), Some(media_type.clone()));
+            assert_eq!(media_type.extension(), extension);
+        }
+    }
+
+    #[test]
+    fn unknown_or_truncated_bytes_are_not_guessed() {
+        let inputs: [&[u8]; 5] = [b"", b"\x89PNG", b"GIF88a", b"RIFF\0\0\0\0WAVE", b"<svg"];
+        for bytes in inputs {
+            assert_eq!(ImageMediaType::sniff(bytes), None);
+        }
+        let others = [
+            ImageMediaType::HEIC,
+            ImageMediaType::HEIF,
+            ImageMediaType::SVG,
+        ];
+        let extensions: Vec<&str> = others.iter().map(ImageMediaType::extension).collect();
+        assert_eq!(extensions, ["heic", "heif", "svg"]);
+    }
+}
+
+#[test]
+fn a_final_answer_is_a_text_reply_without_calls() {
+    use super::{AssistantContent, AssistantMessage, ToolName};
+    let text = AssistantContent::text;
+    let call = AssistantContent::tool_call(
+        "c1",
+        ToolName::new("add").expect("tool name"),
+        serde_json::json!({}),
+    );
+    for (content, answer) in [
+        (
+            vec![AssistantContent::reasoning("hm"), text(" A"), text("B ")],
+            Some("A\n\nB"),
+        ),
+        (vec![text("A"), call], None),
+        (vec![text("  ")], None),
+    ] {
+        let reply = Message::Assistant(AssistantMessage::new(content));
+        assert_eq!(reply.final_answer().as_deref(), answer);
+    }
+    assert_eq!(Message::user("A").final_answer(), None);
+}

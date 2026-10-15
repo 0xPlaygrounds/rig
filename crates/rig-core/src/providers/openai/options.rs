@@ -400,6 +400,12 @@ fn catalog_refusal(
         .map(Mapping::unsupported)
 }
 
+/// `cache_key` as `prompt_cache_key`, the key the provider routes cached
+/// prompts by.
+fn prompt_cache_key(cache_key: Option<&str>) -> Mapping {
+    Mapping::of(cache_key, |key| send("prompt_cache_key", key))
+}
+
 /// `reasoning_effort` for `reasoning` on a dialect whose catalog rows
 /// decide the levels a model takes and whether it can turn reasoning off,
 /// `none` for `Off`; a model the catalog does not list takes every value.
@@ -450,6 +456,7 @@ fn refuse_all(fields: OptionFields<'_>, reason: &str) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     let refuse = |set: bool| match set {
         true => Mapping::unsupported(reason),
@@ -464,6 +471,7 @@ fn refuse_all(fields: OptionFields<'_>, reason: &str) -> OptionMap {
         top_p: refuse(top_p.is_some()),
         seed: refuse(seed.is_some()),
         stop: refuse(!stop.is_empty()),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -565,6 +573,7 @@ fn openai_chat(
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     // rig's default Azure `api-version` predates these fields.
     let dated = azure
@@ -634,6 +643,10 @@ fn openai_chat(
         top_p: Mapping::of(top_p, |top_p| openai_top_p(facts, model, top_p, reasoning)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
         stop: Mapping::of_stop(stop, |stop| openai_stop(facts, model, stop)),
+        cache_key: match azure {
+            None => prompt_cache_key(cache_key),
+            Some(_) => Mapping::unrouted(cache_key),
+        },
     }
 }
 
@@ -709,6 +722,7 @@ fn openrouter(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> Opti
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
@@ -723,6 +737,7 @@ fn openrouter(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> Opti
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, Some(4), "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -736,6 +751,7 @@ fn deepseek(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNDOCUMENTED: &str = "DeepSeek does not document this parameter";
     OptionMap {
@@ -769,6 +785,7 @@ fn deepseek(fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |_| Mapping::unsupported(UNDOCUMENTED)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, Some(16), "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -782,6 +799,7 @@ fn mistral(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionM
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
@@ -810,6 +828,7 @@ fn mistral(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionM
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |seed| send("random_seed", seed)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, None, "stop")),
+        cache_key: prompt_cache_key(cache_key),
     }
 }
 
@@ -823,6 +842,7 @@ fn groq(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap 
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
@@ -857,6 +877,7 @@ fn groq(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap 
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, Some(4), "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -925,6 +946,7 @@ fn xai(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
@@ -946,6 +968,7 @@ fn xai(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
             true => Mapping::unsupported("a reasoning Grok model takes no stop sequences"),
             false => stop_list(stop, None, "stop"),
         }),
+        cache_key: prompt_cache_key(cache_key),
     }
 }
 
@@ -959,6 +982,7 @@ fn together(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
@@ -990,6 +1014,7 @@ fn together(fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, None, "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1003,6 +1028,7 @@ fn venice(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMa
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
@@ -1033,6 +1059,7 @@ fn venice(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMa
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, Some(4), "stop")),
+        cache_key: prompt_cache_key(cache_key),
     }
 }
 
@@ -1046,6 +1073,7 @@ fn moonshot(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNVERIFIED: &str = "unverified for moonshot";
     let name = model.rsplit('/').next().unwrap_or(model);
@@ -1088,6 +1116,7 @@ fn moonshot(model: &str, fields: OptionFields<'_>) -> OptionMap {
                 stop_list(stop, Some(5), "stop")
             }
         }),
+        cache_key: prompt_cache_key(cache_key),
     }
 }
 
@@ -1101,6 +1130,7 @@ fn zai(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNSUPPORTED: &str = "Z.AI has no such parameter";
     // GLM 4 models switch thinking on and off and take no level.
@@ -1136,6 +1166,7 @@ fn zai(model: &str, fields: OptionFields<'_>) -> OptionMap {
         }),
         seed: Mapping::of(seed, |_| Mapping::unsupported(UNSUPPORTED)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, Some(4), "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1149,6 +1180,7 @@ fn llamacpp(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
@@ -1175,6 +1207,7 @@ fn llamacpp(fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, None, "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1188,6 +1221,7 @@ fn ollama(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNSUPPORTED: &str = "Ollama's OpenAI-compatible API does not support it";
     OptionMap {
@@ -1210,6 +1244,7 @@ fn ollama(fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, None, "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1223,6 +1258,7 @@ fn cohere(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMa
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNSUPPORTED: &str = "Cohere's Compatibility API does not support it";
     OptionMap {
@@ -1252,6 +1288,7 @@ fn cohere(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMa
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, None, "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1265,6 +1302,7 @@ fn perplexity(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNSUPPORTED: &str = "Perplexity does not support it";
     let deep_research = model.starts_with("sonar-deep-research");
@@ -1288,6 +1326,7 @@ fn perplexity(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |_| Mapping::unsupported("unverified for perplexity")),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, None, "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1301,6 +1340,7 @@ fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNSUPPORTED: &str = "MiniMax does not support it";
     let model = model.to_ascii_lowercase();
@@ -1332,6 +1372,7 @@ fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |_| Mapping::unsupported("unverified for minimax")),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, None, "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1345,6 +1386,7 @@ fn xiaomimimo(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNSUPPORTED: &str = "MiMo does not support it";
     let thinking_off = matches!(reasoning, Some(Reasoning::Off));
@@ -1370,6 +1412,7 @@ fn xiaomimimo(fields: OptionFields<'_>) -> OptionMap {
             Mapping::unsupported("MiMo has no `seed` parameter")
         }),
         stop: Mapping::of_stop(stop, |stop| stop_list(stop, Some(4), "stop")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1428,6 +1471,7 @@ fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     let spec = openai_spec(facts, model);
     OptionMap {
@@ -1478,6 +1522,7 @@ fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -
         stop: Mapping::of_stop(stop, |_| {
             Mapping::unsupported("Responses has no stop parameter")
         }),
+        cache_key: prompt_cache_key(cache_key),
     }
 }
 
@@ -1491,6 +1536,7 @@ fn xai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> O
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNSUPPORTED: &str = "xAI's Responses API does not support it";
     OptionMap {
@@ -1506,6 +1552,7 @@ fn xai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> O
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |_| Mapping::unsupported(UNSUPPORTED)),
         stop: Mapping::of_stop(stop, |_| Mapping::unsupported(UNSUPPORTED)),
+        cache_key: prompt_cache_key(cache_key),
     }
 }
 
@@ -1519,6 +1566,7 @@ fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
@@ -1544,6 +1592,7 @@ fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_
         stop: Mapping::of_stop(stop, |_| {
             Mapping::unsupported("Responses has no stop parameter")
         }),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -1559,6 +1608,7 @@ fn codex(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNSUPPORTED: &str = "the ChatGPT backend does not take it";
     OptionMap {
@@ -1587,6 +1637,7 @@ fn codex(fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |_| Mapping::unsupported(UNSUPPORTED)),
         seed: Mapping::of(seed, |_| Mapping::unsupported(UNSUPPORTED)),
         stop: Mapping::of_stop(stop, |_| Mapping::unsupported(UNSUPPORTED)),
+        cache_key: prompt_cache_key(cache_key),
     }
 }
 
@@ -1602,6 +1653,7 @@ fn copilot_responses(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNVERIFIED: &str = "unverified for copilot";
     OptionMap {
@@ -1633,6 +1685,7 @@ fn copilot_responses(fields: OptionFields<'_>) -> OptionMap {
         stop: Mapping::of_stop(stop, |_| {
             Mapping::unsupported("Responses has no stop parameter")
         }),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 

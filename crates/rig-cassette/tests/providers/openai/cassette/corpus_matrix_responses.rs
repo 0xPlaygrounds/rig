@@ -28,8 +28,10 @@ crate::matrix::golden_matrix! {
     wrapper: with_openai_cassette, wire: wire, run: run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
     serving_concurrent_concurrency_one: ("corpus_matrix_responses/serving_concurrent_concurrency_one", cells::SERVING_CONCURRENT_CONCURRENCY_ONE, "openai_responses_serving_concurrent_concurrency_one");
+    // Recorded as the memory matrix's failing-append cell; the memory
+    // carried no request bytes, so the recording serves the cell without it.
     #[tokio::test]
-    memory_failing_append_streamed: ("corpus_matrix_responses/memory_failing_append_streamed", cells::MEMORY_FAILING_APPEND_STREAMED, "openai_responses_memory_failing_append_streamed");
+    serving_ready_streamed: ("corpus_matrix_responses/memory_failing_append_streamed", cells::SERVING_READY_STREAMED, "openai_responses_memory_failing_append_streamed");
     #[tokio::test]
     output_tool_choice_specific_output: ("corpus_matrix_responses/output_tool_choice_specific_output", cells::OUTPUT_TOOL_CHOICE_SPECIFIC_OUTPUT, "openai_responses_output_tool_choice_specific_output");
     #[tokio::test]

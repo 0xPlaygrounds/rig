@@ -22,9 +22,9 @@
 //! | verdict | `Keep` · `Replace(Ok)` · `Replace(Err(Cancelled))` |
 //! | medium | unary · streamed with events |
 //! | who | a hand-written `Intercept` standing in for a corpus hook · the host's own policy · both stacked · beneath the agent's hooks |
-//! | key | the agent's tool · the model · memory |
+//! | key | the agent's tool · the model |
 //!
-//! Full cross-product: 4 × 7 × 3 × 2 × 4 × 3 = 2016. Recorded: the 12
+//! Full cross-product: 4 × 7 × 3 × 2 × 4 × 2 = 1344. Recorded: the 11
 //! cells below. Pruned: `Deny(Cancelled)` from a layer (a hook's stop is
 //! Matrix D's; a layer that stops a run is the same report on the same
 //! path); `Replace(Ok)` over a stream (an `Internal` by construction, pinned
@@ -32,7 +32,7 @@
 //! model-key replacement (the medium changes the run's completions, not
 //! where a layer's decision lands); the middle of three layers (two show
 //! the order; a third adds a name); positions and verdicts crossed with
-//! the memory and model keys beyond the one cell each shows.
+//! the model key beyond the one cell it shows.
 //!
 //! # Cells
 //!
@@ -44,7 +44,6 @@
 //! | `anthropic_layers_two_layers` | `two_layers_…` | records = `anthropic_hooks_two_hooks`; `hooks` = `[PatchAddArgsLayer, ReplaceAddResultLayer]` |
 //! | `anthropic_layers_host_deny_over_host_bus` | `host_deny_over_host_bus_…` | the denial over a host bus (`bus: None`) |
 //! | `anthropic_layers_patch_beneath_hook_patch` | `patch_beneath_hook_patch_…` | the hook patches, the layer beneath patches again: the record holds the layer's |
-//! | `anthropic_layers_memory_load_replaced` | `memory_load_replaced_…` (recorded: `corpus_layers/memory_load_replaced`) | `[Memory, Completion, Memory]`: the record holds the store's empty answer, the run's history is the replacement |
 //! | `mock_layers_suspend_approve` | `tests/core/golden_layers.rs` `suspend_approve_…` | `[Completion, Tool, Completion]` |
 //! | `mock_layers_suspend_deny` | `suspend_deny_…` | `[Completion, Completion]`: no record for the denial |
 //! | `mock_layers_suspend_cancelled` | `suspend_cancelled_…` | `[Completion, Tool✗]`: cancelled mid-suspend by the consumer's drop |
@@ -74,7 +73,6 @@ use rig_core::error::ErrorKind;
 const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
-const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
 const PROMPT: &str = "Reply with the single word: ready.";
 
 const fn at_tool(layer: LayerKind) -> LayerSpec {
@@ -126,19 +124,6 @@ const PATCH_BENEATH_HOOK_PATCH: Program = Program {
     layers: &[at_tool(LayerKind::PatchAgain)],
     ..TOOLS
 };
-const MEMORY_LOAD_REPLACED: Program = Program {
-    fixture: "anthropic_layers_memory_load_replaced",
-    preamble: Some(BASIC_PREAMBLE),
-    prompt: NAME_PROMPT,
-    temperature: Some(0.0),
-    conversation: Some(corpus::CONVERSATION),
-    hooks: &[Hook::HistoryIsReplaced],
-    layers: &[LayerSpec {
-        at: LayerAt::Memory,
-        layer: LayerKind::ReplaceLoad,
-    }],
-    ..Program::DEFAULT
-};
 const SUSPEND_APPROVE: Program = Program {
     fixture: "mock_layers_suspend_approve",
     layers: &[at_tool(LayerKind::Approval(Answer::Approve))],
@@ -181,7 +166,6 @@ both_interpreters! {
     two_layers: TWO_LAYERS,
     host_deny_over_host_bus: HOST_DENY_OVER_HOST_BUS,
     patch_beneath_hook_patch: PATCH_BENEATH_HOOK_PATCH,
-    memory_load_replaced: MEMORY_LOAD_REPLACED,
     suspend_approve: SUSPEND_APPROVE,
     suspend_deny: SUSPEND_DENY,
     suspend_cancelled: SUSPEND_CANCELLED,
@@ -270,7 +254,7 @@ async fn a_replay_under_another_layer_stack_is_refused() {
 #[test]
 fn the_record_is_the_handlers_answer() {
     let replaced = corpus::golden(REPLACE_TOOL_RESULT.fixture);
-    let Ok(rig_core::effect::Outcome::ToolResult { result, .. }) = &replaced[1].outcome else {
+    let Ok(rig_core::effect::Answered::ToolResult { result, .. }) = &replaced[1].outcome else {
         panic!("a tool result: {:?}", replaced[1].outcome);
     };
     assert_eq!(
@@ -308,12 +292,4 @@ fn the_record_is_the_handlers_answer() {
     );
     let streamed = corpus::golden(REPLACE_STREAMED_CANCELLED.fixture);
     assert!(streamed[0].outcome.is_ok() && streamed[0].events.is_some());
-    let memory = corpus::golden(MEMORY_LOAD_REPLACED.fixture);
-    assert!(
-        matches!(
-            &memory[0].outcome,
-            Ok(rig_core::effect::Outcome::Memory(rig_core::effect::MemoryOutcome::Loaded { messages })) if messages.is_empty()
-        ),
-        "the store's answer, not the layer's"
-    );
 }

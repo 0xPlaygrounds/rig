@@ -1,0 +1,24 @@
+[package]
+name = "corpus-text-tool-calls"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 59. Tool calls for models without native tool calling"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The `[text_tools]` settings table.
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+schemars = { workspace = true }
+serde_json = { workspace = true }

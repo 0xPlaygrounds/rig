@@ -112,6 +112,7 @@ fn tool_definition() -> rig::completion::ToolDefinition {
             "properties": { "summary": { "type": "string" } },
             "required": ["summary"]
         }),
+        annotations: Default::default(),
     }
 }
 

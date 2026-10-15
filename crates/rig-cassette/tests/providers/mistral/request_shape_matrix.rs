@@ -106,6 +106,7 @@ fn tool_definition() -> rig::completion::ToolDefinition {
             },
             "required": ["x", "y"]
         }),
+        annotations: Default::default(),
     }
 }
 

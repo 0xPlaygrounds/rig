@@ -19,9 +19,12 @@ use std::path::{Path, PathBuf};
 
 use syn::{Item, ItemMod, Meta, Token, punctuated::Punctuated};
 
-/// Run the check over every `crates/*/src` tree under `workspace`.
+/// Run the check over every `crates/*/src`, `plugins/*/src` and
+/// `corpus/*/src` tree under `workspace`.
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {
-    let files = source_files(&workspace.join("crates"))?;
+    let mut files = source_files(&workspace.join("crates"))?;
+    files.extend(source_files(&workspace.join("plugins"))?);
+    files.extend(source_files(&workspace.join("corpus"))?);
     if files.len() < 100 {
         return Err(format!(
             "the source walk found only {} files under crates/; refusing to pass vacuously",
@@ -69,7 +72,7 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     Err(message)
 }
 
-/// Every `.rs` file under `crates/*/src`, sorted for stable output.
+/// Every `.rs` file under `<folder>/*/src`, sorted for stable output.
 fn source_files(crates: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     let entries = std::fs::read_dir(crates)
@@ -87,7 +90,7 @@ fn source_files(crates: &Path) -> Result<Vec<PathBuf>, String> {
 
 /// The set of files reachable only through a test-gated `mod x;` declaration,
 /// closed under "declared by a test-only file".
-fn test_only_files(parsed: &[(PathBuf, syn::File)]) -> BTreeSet<PathBuf> {
+pub(crate) fn test_only_files(parsed: &[(PathBuf, syn::File)]) -> BTreeSet<PathBuf> {
     let mut test_only = BTreeSet::new();
     loop {
         let before = test_only.len();

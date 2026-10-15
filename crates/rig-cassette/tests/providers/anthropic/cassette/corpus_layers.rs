@@ -2,8 +2,7 @@
 //! equivalence row — hand-written layers standing in for the corpus's
 //! hooks, over the hooks cells' own cassettes, so the records can be
 //! asserted byte-equal to the hook goldens' — a host's denial and a
-//! host's patch beneath the agent's, and a memory `Load` replaced by a
-//! layer. The layers are in `test-support/rig-test-support/src/goldens.rs`; the enumeration and
+//! host's patch beneath the agent's. The layers are in `test-support/rig-test-support/src/goldens.rs`; the enumeration and
 //! the replays live in `crates/rig-cassette/tests/corpus_layers.rs`.
 
 use rig::agent::AgentBuilder;
@@ -14,19 +13,15 @@ use rig::serve::ErasedHandler;
 use rig_cassette::agent::AgentReplayExt;
 use rig_test_support::cassette_models::AnthropicModels;
 
-use super::super::support::{
-    with_anthropic_corpus_hooks_cassette, with_anthropic_corpus_layers_cassette,
-};
+use super::super::support::with_anthropic_corpus_hooks_cassette;
 use crate::goldens::{
-    CONVERSATION, DENY_REASON, DenyAddLayer, HistoryIsReplaced, PATCHED_AGAIN_ARGS, PatchAddArgs,
-    PatchAddArgsLayer, PatchAgainLayer, REPLACED_RESULT, ReplaceAddResultLayer, ReplaceLoadLayer,
-    add_tool_under, families,
+    DENY_REASON, DenyAddLayer, PATCHED_AGAIN_ARGS, PatchAddArgs, PatchAddArgsLayer,
+    PatchAgainLayer, ReplaceAddResultLayer, add_tool_under, families,
 };
-use crate::support::{BASIC_PREAMBLE, TOOLS_PREAMBLE};
+use crate::support::TOOLS_PREAMBLE;
 
 pub(super) const ADD_PROMPT: &str =
     "Use the add tool to add 17 and 25, then reply with just the number.";
-pub(super) const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
 
 pub(super) fn tool_record_args(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     log.records
@@ -42,7 +37,7 @@ pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) ->
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(rig::effect::Outcome::ToolResult { result, .. }) => Some(result.output().render()),
+            Ok(rig::effect::Answered::ToolResult { result, .. }) => Some(result.output().render()),
             _ => None,
         })
         .collect()
@@ -203,50 +198,5 @@ async fn patch_beneath_hook_patch_effect_log_is_the_golden_fixture() {
         assert_eq!(log.header.hooks, ["PatchAddArgs", "PatchAgainLayer"]);
         crate::goldens::golden_effects("anthropic_layers_patch_beneath_hook_patch", &log);
     })
-    .await;
-}
-
-#[tokio::test]
-async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_layers_cassette(
-        "corpus_layers/memory_load_replaced",
-        |client| async move {
-            let memory = ErasedHandler::new(rig::serve::adapters::MemoryAdapter::new(
-                rig::memory::InMemoryConversationMemory::new(),
-            ))
-            .layered(ReplaceLoadLayer);
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .memory_handler(memory)
-                .conversation(CONVERSATION)
-                .add_hook(HistoryIsReplaced).record_to(recorder.clone()).build();
-            let response = agent.prompt(NAME_PROMPT).await.expect("the agent answers");
-            assert!(response.output().contains("Ada"), "{}", response.output());
-            let log = agent.stamp(recorder.take());
-            assert_eq!(
-                families(&log),
-                [
-                    EffectFamily::Memory,
-                    EffectFamily::Completion,
-                    EffectFamily::Memory
-                ]
-            );
-            // The record holds the store's answer: an empty conversation.
-            assert!(
-                matches!(
-                    &log.records[0].outcome,
-                    Ok(rig::effect::Outcome::Memory(rig::effect::MemoryOutcome::Loaded { messages })) if messages.is_empty()
-                ),
-                "{:?}",
-                log.records[0].outcome
-            );
-            assert_eq!(log.header.hooks, ["HistoryIsReplaced", "ReplaceLoadLayer"]);
-            let _ = REPLACED_RESULT;
-            crate::goldens::golden_effects("anthropic_layers_memory_load_replaced", &log);
-        },
-    )
     .await;
 }

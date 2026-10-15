@@ -2,6 +2,7 @@
 //! suggestions a miss carries.
 
 use std::fmt;
+use std::sync::Arc;
 
 use super::ModelSpec;
 
@@ -25,6 +26,16 @@ pub struct Resolved<'a> {
     pub spec: &'a ModelSpec,
     /// How the requested id matched [`Self::spec`].
     pub matched: Matched,
+    /// The entry as the catalog keeps it.
+    pub(super) shared: &'a Arc<ModelSpec>,
+}
+
+impl Resolved<'_> {
+    /// The catalog entry as the catalog keeps it, to hold beyond the
+    /// lookup without copying it.
+    pub fn shared(&self) -> Arc<ModelSpec> {
+        Arc::clone(self.shared)
+    }
 }
 
 /// A reference the catalog does not list, with up to five listed models

@@ -112,6 +112,7 @@ pub async fn as_tool_result<W, T>(
         name: rig_core::message::ToolName::new("render_swatch").expect("tool name"),
         description: "Render the swatch image the user asks about.".to_owned(),
         parameters: serde_json::json!({ "type": "object", "properties": {}, "required": [] }),
+        annotations: Default::default(),
     };
     let prompt = Message::user(format!("Call render_swatch, then answer: {QUESTION}"));
     let first = model

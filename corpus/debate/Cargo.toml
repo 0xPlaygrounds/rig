@@ -1,0 +1,27 @@
+[package]
+name = "corpus-debate"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 36. Debate"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# Each debater's spend, as a column of its line in `/agents`.
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
+# The debaters are helper agents spawned through `SpawnSubagent`.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+# The `[debate]` settings table.
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }

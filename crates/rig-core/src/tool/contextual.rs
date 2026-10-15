@@ -16,14 +16,15 @@ use std::{future::Future, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    completion::{ToolDefinition, message::ToolName},
-    effect::{EffectKind, Outcome},
+    completion::{ToolAnnotations, ToolDefinition, message::ToolName},
+    effect::{Answered, EffectKind},
     serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use super::{
     IntoToolOutput, PublishedContext, ToolContext, ToolExecutionError, ToolOutput, ToolResult,
+    Touches,
 };
 
 /// A typed LLM tool.
@@ -59,6 +60,23 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// JSON Schema for arguments.
     fn parameters(&self) -> serde_json::Value;
 
+    /// What calling the tool does to the world, for the host's policies
+    /// (approval, plan mode, which calls run side by side). Nothing is
+    /// stated by default, which reads as the protocol's defaults
+    /// ([`ToolAnnotations`]).
+    fn annotations(&self) -> ToolAnnotations {
+        ToolAnnotations::default()
+    }
+
+    /// What a call with `args` may read and change, so a host runs the
+    /// calls of one reply that touch different things side by side. The
+    /// default reads it from the [annotations](Self::annotations): a
+    /// read-only tool reads anything, any other writes anything.
+    fn footprint(&self, args: &Self::Args) -> Touches {
+        let _ = args;
+        Touches::from_annotations(&self.annotations())
+    }
+
     /// Normalize a typed author-facing error for runtime policy and telemetry.
     ///
     /// The default preserves concrete sources for operators and exposes safe
@@ -91,6 +109,14 @@ where
 
     fn parameters(&self) -> serde_json::Value {
         super::PortableTool::parameters(self)
+    }
+
+    fn annotations(&self) -> ToolAnnotations {
+        super::PortableTool::annotations(self)
+    }
+
+    fn footprint(&self, args: &Self::Args) -> Touches {
+        super::PortableTool::footprint(self, args)
     }
 
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {
@@ -144,7 +170,7 @@ where
     }
 }
 
-fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
+pub(crate) fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
 where
     A: serde::de::DeserializeOwned,
 {
@@ -307,14 +333,16 @@ impl DynamicTool {
             callback,
         ));
         Self {
-            definition: ToolDefinition {
-                name,
-                description,
-                parameters,
-            },
+            definition: ToolDefinition::new(name, description, parameters),
             handler,
             liveness: None,
         }
+    }
+
+    /// The same tool, stating what calling it does to the world.
+    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
+        self.definition.annotations = annotations;
+        self
     }
 
     /// Attach a liveness probe.
@@ -383,7 +411,7 @@ impl DynamicTool {
         )
         .await;
         match outcome {
-            Ok(Outcome::ToolResult { result }) => {
+            Ok(Answered::ToolResult { result }) => {
                 context.accept_dispatch_result(published.take().unwrap_or_default());
                 result.into_result()
             }
@@ -445,11 +473,8 @@ pub fn tool_name<T: Tool>() -> ToolName {
     ToolName::new_unchecked(T::NAME)
 }
 
-/// A tool's [`ToolDefinition`] from a typed tool.
+/// A tool's [`ToolDefinition`] from a typed tool, with its annotations.
 pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
-    ToolDefinition {
-        name: tool_name::<T>(),
-        description: tool.description(),
-        parameters: tool.parameters(),
-    }
+    ToolDefinition::new(tool_name::<T>(), tool.description(), tool.parameters())
+        .with_annotations(tool.annotations())
 }

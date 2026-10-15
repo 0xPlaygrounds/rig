@@ -182,6 +182,7 @@ fn anthropic(
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     let spec = super::completion::spec(&wire.facts, model);
     let places = wire.prompt_caching || wire.static_prefix_cache_ttl.is_some();
@@ -222,6 +223,7 @@ fn anthropic(
             Mapping::unsupported("Anthropic has no seed parameter")
         }),
         stop: Mapping::of_stop(stop, stop_sequences),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -237,6 +239,7 @@ fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     let model = model.to_ascii_lowercase();
     let flash = model.starts_with("minimax-m3.1");
@@ -282,6 +285,7 @@ fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
         stop: Mapping::of_stop(stop, |_| {
             Mapping::unsupported("MiniMax documents `stop_sequences` as ignored")
         }),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -296,6 +300,7 @@ fn xiaomimimo(request: &CompletionRequest, has_tools: bool, fields: OptionFields
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
@@ -321,6 +326,7 @@ fn xiaomimimo(request: &CompletionRequest, has_tools: bool, fields: OptionFields
         }),
         seed: Mapping::of(seed, |_| Mapping::unsupported("unverified for xiaomimimo")),
         stop: Mapping::of_stop(stop, stop_sequences),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -347,6 +353,7 @@ fn implicit_cache_gateway(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const UNVERIFIED: &str = "unverified for this Messages-format provider";
     OptionMap {
@@ -361,6 +368,7 @@ fn implicit_cache_gateway(fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |_| Mapping::unsupported(UNVERIFIED)),
         seed: Mapping::of(seed, |_| Mapping::unsupported(UNVERIFIED)),
         stop: Mapping::of_stop(stop, |_| Mapping::unsupported(UNVERIFIED)),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -376,6 +384,7 @@ fn unknown(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     let reason = "no option mapping is known for this Messages-format provider";
     let refuse = |set: bool| match set {
@@ -391,6 +400,7 @@ fn unknown(fields: OptionFields<'_>) -> OptionMap {
         top_p: refuse(top_p.is_some()),
         seed: refuse(seed.is_some()),
         stop: refuse(!stop.is_empty()),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 

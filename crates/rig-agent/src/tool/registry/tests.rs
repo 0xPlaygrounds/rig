@@ -87,7 +87,7 @@ impl rig_core::serve::Serve for Silent {
         _kind: EffectKind,
         _dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
+        rig_core::serve::Reply::Outcome(Ok(Answered::ToolResult {
             result: ToolResult::success(ToolOutput::text("silent")),
         }))
     }

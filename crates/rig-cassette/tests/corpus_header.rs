@@ -133,12 +133,12 @@ async fn the_agent_names_a_required_key_served_as_another_family() {
             .iter_mut()
             .find(|handler| handler.key.as_str() == ADD)
             .expect("the tool's entry");
-        entry.family = FamilyDescriptor::Memory {};
+        entry.family = FamilyDescriptor::Retrieve {};
     })
     .await;
     assert_eq!(
         refusal,
-        format!("replay refused: conflicting families for `{ADD}`: tool_call and memory")
+        format!("replay refused: conflicting families for `{ADD}`: tool_call and retrieve")
     );
 }
 

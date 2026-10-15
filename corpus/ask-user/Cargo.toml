@@ -1,0 +1,28 @@
+[package]
+name = "corpus-ask-user"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 20. Ask the user"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# How the terminal view draws a call.
+tui = ["dep:rig-tui"]
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }

@@ -70,7 +70,7 @@ fn a_key_is_read_by_its_grammar_and_written_back() {
         ("host/note", Some("host"), None, "note", None),
         ("model:fast", None, Some("model"), "fast", None),
         ("tool:lookup#7", None, Some("tool"), "lookup", Some(7)),
-        ("memory", None, None, "memory", None),
+        ("retrieve", None, None, "retrieve", None),
         ("not-a-model", None, None, "not-a-model", None),
     ] {
         let parts = HandlerKey::from(key).parts();
@@ -108,7 +108,6 @@ fn family_markers_name_their_family() {
     assert_eq!(family::Completion::FAMILY, EffectFamily::Completion);
     assert_eq!(family::Tool::FAMILY, EffectFamily::Tool);
     assert_eq!(family::Embed::FAMILY, EffectFamily::Embed);
-    assert_eq!(family::Memory::FAMILY, EffectFamily::Memory);
     assert_eq!(family::Retrieve::FAMILY, EffectFamily::Retrieve);
 }
 
@@ -147,37 +146,6 @@ fn every_kind_round_trips_and_names_itself() {
             },
             "embed",
             EffectFamily::Embed,
-            false,
-        ),
-        (
-            EffectKind::Memory {
-                op: MemoryOp::Append {
-                    conversation: ConversationId::from("c1"),
-                    messages: vec![Message::user("hello")],
-                },
-            },
-            "memory",
-            EffectFamily::Memory,
-            false,
-        ),
-        (
-            EffectKind::Memory {
-                op: MemoryOp::Load {
-                    conversation: ConversationId::from("c1"),
-                },
-            },
-            "memory",
-            EffectFamily::Memory,
-            false,
-        ),
-        (
-            EffectKind::Memory {
-                op: MemoryOp::Clear {
-                    conversation: ConversationId::from("c1"),
-                },
-            },
-            "memory",
-            EffectFamily::Memory,
             false,
         ),
         (
@@ -234,7 +202,7 @@ fn every_outcome_round_trips() {
         .with_model_feedback("try again");
     let outcomes = vec![
         (
-            Outcome::Completion(CompletionResponse::new(
+            Answered::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("hi")],
                 Usage::default(),
                 crate::message::Origin::new("test.api", "mock", ""),
@@ -243,31 +211,31 @@ fn every_outcome_round_trips() {
             EffectFamily::Completion,
         ),
         (
-            Outcome::ToolResult {
+            Answered::ToolResult {
                 result: ToolResult::success(ToolOutput::json(json!({"sum": 3}))),
             },
             EffectFamily::Tool,
         ),
         (
-            Outcome::ToolResult {
+            Answered::ToolResult {
                 result: ToolResult::failed(tool_error),
             },
             EffectFamily::Tool,
         ),
         (
-            Outcome::ToolResult {
+            Answered::ToolResult {
                 result: ToolResult::failed(ToolExecutionError::refused("no")),
             },
             EffectFamily::Tool,
         ),
         (
-            Outcome::ToolResult {
+            Answered::ToolResult {
                 result: ToolResult::skipped("policy"),
             },
             EffectFamily::Tool,
         ),
         (
-            Outcome::Embeddings(EmbedOutputs::Texts(EmbeddingResponse {
+            Answered::Embeddings(EmbedOutputs::Texts(EmbeddingResponse {
                 provider: "mock".into(),
                 ..EmbeddingResponse::new(vec![Embedding {
                     document: "a".into(),
@@ -277,21 +245,7 @@ fn every_outcome_round_trips() {
             EffectFamily::Embed,
         ),
         (
-            Outcome::Memory(MemoryOutcome::Loaded {
-                messages: vec![Message::user("hi")],
-            }),
-            EffectFamily::Memory,
-        ),
-        (
-            Outcome::Memory(MemoryOutcome::Appended),
-            EffectFamily::Memory,
-        ),
-        (
-            Outcome::Memory(MemoryOutcome::Cleared),
-            EffectFamily::Memory,
-        ),
-        (
-            Outcome::Documents(RetrievedDocuments::Scored(vec![(
+            Answered::Documents(RetrievedDocuments::Scored(vec![(
                 0.9,
                 "d1".into(),
                 json!({"text": "cat"}),
@@ -299,11 +253,11 @@ fn every_outcome_round_trips() {
             EffectFamily::Retrieve,
         ),
         (
-            Outcome::Documents(RetrievedDocuments::Ids(vec![(0.9, "d1".into())])),
+            Answered::Documents(RetrievedDocuments::Ids(vec![(0.9, "d1".into())])),
             EffectFamily::Retrieve,
         ),
         (
-            Outcome::Custom {
+            Answered::Custom {
                 payload: json!({"ok": true}),
             },
             EffectFamily::Custom,
@@ -312,7 +266,7 @@ fn every_outcome_round_trips() {
     for (outcome, family) in outcomes {
         assert_eq!(outcome.family(), family);
         let json = serde_json::to_value(&outcome).expect("serializes");
-        let back: Outcome = serde_json::from_value(json.clone()).expect("deserializes");
+        let back: Answered = serde_json::from_value(json.clone()).expect("deserializes");
         assert_eq!(
             serde_json::to_value(&back).expect("serializes"),
             json,
@@ -349,12 +303,13 @@ fn tool_output_rejects_an_empty_wire_list() {
 
 #[test]
 fn a_family_reports_another_familys_outcome_as_a_mismatch() {
-    let report = family::Completion::unwrap(Outcome::Memory(MemoryOutcome::Cleared))
-        .expect_err("not a completion");
+    let report =
+        family::Completion::unwrap(Answered::Documents(RetrievedDocuments::Ids(Vec::new())))
+            .expect_err("not a completion");
     assert_eq!(report.kind, ErrorKind::Internal);
     assert!(
         report.message.contains("expected a completion outcome")
-            && report.message.contains("memory"),
+            && report.message.contains("retrieve"),
         "{}",
         report.message
     );
@@ -388,21 +343,22 @@ fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
         }
         other => panic!("expected a custom kind, got {other:?}"),
     }
-    let answer = family::Custom::<AskUser>::unwrap(Outcome::Custom {
+    let answer = family::Custom::<AskUser>::unwrap(Answered::Custom {
         payload: json!({"text": "Ada"}),
     })
     .expect("the declared answer");
     assert_eq!(answer, Reply { text: "Ada".into() });
 
-    let report = family::Custom::<AskUser>::unwrap(Outcome::Custom {
+    let report = family::Custom::<AskUser>::unwrap(Answered::Custom {
         payload: json!({"nope": 1}),
     })
     .expect_err("not a Reply");
     assert_eq!(report.kind, ErrorKind::Internal);
     assert!(report.message.contains(AskUser::KIND), "{}", report.message);
 
-    let report = family::Custom::<AskUser>::unwrap(Outcome::Memory(MemoryOutcome::Cleared))
-        .expect_err("another family");
+    let report =
+        family::Custom::<AskUser>::unwrap(Answered::Documents(RetrievedDocuments::Ids(Vec::new())))
+            .expect_err("another family");
     assert!(
         report.message.contains("expected a custom outcome"),
         "{}",
@@ -495,14 +451,14 @@ fn a_row_is_checked_against_a_handler_table_and_names_its_first_gap() {
     assert_eq!(gap.needed, EffectFamily::Tool);
     assert_eq!(gap.served, None);
     assert_eq!(gap.to_string(), "`a/tool:add#0` (tool_call) is not served");
-    let wrong = vec![descriptor("a/model:default", FamilyDescriptor::Memory {})];
+    let wrong = vec![descriptor("a/model:default", FamilyDescriptor::Retrieve {})];
     let gap = row
         .is_subset_of(&wrong)
         .expect_err("served as another family");
-    assert_eq!(gap.served, Some(EffectFamily::Memory));
+    assert_eq!(gap.served, Some(EffectFamily::Retrieve));
     assert_eq!(
         gap.to_string(),
-        "`a/model:default` is needed as completion but served as memory"
+        "`a/model:default` is needed as completion but served as retrieve"
     );
 }
 
@@ -517,7 +473,7 @@ fn a_row_diff_names_every_difference() {
     .into_iter()
     .collect();
     let other: EffectRow = [
-        (HandlerKey::from("b"), EffectFamily::Memory),
+        (HandlerKey::from("b"), EffectFamily::Retrieve),
         (HandlerKey::from("c"), EffectFamily::Retrieve),
     ]
     .into_iter()
@@ -527,11 +483,63 @@ fn a_row_diff_names_every_difference() {
         diffs,
         [
             "`a` (completion) is missing",
-            "`b` is tool_call here and memory there",
+            "`b` is tool_call here and retrieve there",
             "`c` (retrieve) is extra",
         ]
     );
     assert!(this.diff(&this).is_empty());
     let wire = serde_json::to_value(&this).expect("serializes");
     assert_eq!(wire, json!({ "a": "completion", "b": "tool" }));
+}
+
+/// A record leaves out what it does not know, so one from before the times,
+/// purpose, turn, review, disposition and decider reads back as a plain
+/// handler run; set, they travel.
+#[test]
+fn a_record_carries_its_purpose_turn_times_review_disposition_and_decider_when_set() {
+    let outcome = Ok(Answered::ToolResult {
+        result: ToolResult::success(ToolOutput::text("raw")),
+    });
+    let mut record = EffectRecord::new(
+        EffectId::from_raw(1),
+        tool_key("add"),
+        EffectKind::ToolCall {
+            name: "add".into(),
+            args: "{}".into(),
+        },
+        outcome,
+    );
+    let plain = serde_json::to_value(&record).expect("serializes");
+    for left_out in [
+        "purpose",
+        "turn",
+        "started_ms",
+        "finished_ms",
+        "reviewed",
+        "disposition",
+        "decided_by",
+    ] {
+        assert!(plain.get(left_out).is_none(), "{left_out} in {plain}");
+    }
+    let read: EffectRecord = serde_json::from_value(plain).expect("reads back");
+    assert_eq!(read.disposition, Disposition::Ran);
+    assert_eq!(read.decided_by, None);
+
+    record.purpose = Some("summary".into());
+    record.turn = Some(3);
+    (record.started_ms, record.finished_ms) = (Some(1), Some(2));
+    record.reviewed = Some(Err(ErrorReport::new(ErrorKind::Internal, "redacted")));
+    record.disposition = Disposition::AnsweredWhileRunning;
+    record.decided_by = Some(Decider::plugin("protected-paths"));
+    let wire = serde_json::to_value(&record).expect("serializes");
+    let disposition = wire.get("disposition");
+    assert_eq!(disposition, Some(&json!("answered_while_running")));
+    let read: EffectRecord = serde_json::from_value(wire.clone()).expect("reads back");
+    assert_eq!(serde_json::to_value(&read).expect("serializes"), wire);
+    assert_eq!(read.purpose.as_deref(), Some("summary"));
+    assert_eq!((wire.get("turn"), read.turn), (Some(&json!(3)), Some(3)));
+    let decider = wire.get("decided_by");
+    assert_eq!(decider, Some(&json!({ "plugin": "protected-paths" })));
+    let person = serde_json::to_value(Decider::Person).expect("serializes");
+    assert_eq!(person, json!("person"));
 }

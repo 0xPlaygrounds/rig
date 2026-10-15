@@ -1,0 +1,24 @@
+[package]
+name = "corpus-retry-with-model"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 17. Retry with another model"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The completions of /retry-with's argument.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

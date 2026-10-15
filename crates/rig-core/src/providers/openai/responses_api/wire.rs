@@ -225,7 +225,7 @@ impl crate::completion::ReplayTarget for Responses {
 
     /// An edited block keeps its item's `id` and `type`, a message its
     /// `phase`, and reasoning its ciphertext, so the items after it stay
-    /// paired (pi's text signature is `{id, phase}`).
+    /// paired.
     fn identity(&self, item: &Value) -> Map<String, Value> {
         let keys: &[&str] = match item.str("type") {
             Some("message") => &["type", "id", "phase"],
@@ -258,6 +258,8 @@ impl crate::completion::ReplayTarget for Responses {
             assistant_images: false,
             tool_result_images: images,
             tools: !(model.starts_with("o1-mini") || model.starts_with("o1-preview")),
+            // A reasoning item replays only as the provider made it.
+            foreign_reasoning: false,
         }
     }
 
@@ -294,8 +296,8 @@ impl crate::completion::ReplayTarget for Responses {
         })
     }
 
-    /// pi's `normalizeIdPart`: characters outside `[a-zA-Z0-9_-]` become
-    /// `_`, the id is cut to 64 characters and loses its trailing `_`.
+    /// Characters outside `[a-zA-Z0-9_-]` become `_`, and the id is cut to
+    /// 64 characters and loses its trailing `_`.
     fn normalize_tool_call_id(
         &self,
         id: &str,

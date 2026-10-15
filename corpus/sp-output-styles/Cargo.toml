@@ -1,0 +1,34 @@
+[package]
+name = "corpus-sp-output-styles"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (splits fresh held-out): SP-02: 02. Output styles"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# The `style: <name>` status item.
+tui = ["dep:rig-tui"]
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# Reading a remote project's styles off the main thread.
+bevy_tasks = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+serde = { workspace = true, features = ["derive"] }
+# The styles' front matter.
+serde_yaml = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-subagents = { path = "../../plugins/rig-subagents" }
+rig-tui = { path = "../../plugins/rig-tui" }
+serde_json = { workspace = true }

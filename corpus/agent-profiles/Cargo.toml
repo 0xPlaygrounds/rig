@@ -1,0 +1,28 @@
+[package]
+name = "corpus-agent-profiles"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 12. Agent profiles"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# `task`'s spawn requests, which a profile shapes.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+# `task`'s parameters, which get a `profile`.
+serde_json = { workspace = true }
+# A profile's frontmatter (already in Cargo.lock, through rig-cassette).
+serde_yaml = { workspace = true }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+schemars = { workspace = true }

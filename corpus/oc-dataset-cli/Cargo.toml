@@ -1,0 +1,24 @@
+[package]
+name = "corpus-oc-dataset-cli"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (one-conversation fresh held-out): OC-24: 24. `rig dataset`: export sessions as training data"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the SystemParam derive.
+bevy_ecs = { workspace = true }
+# The session's effect log: the system prompt and tools each request sent.
+rig-cassette = { workspace = true, features = ["jsonl"] }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

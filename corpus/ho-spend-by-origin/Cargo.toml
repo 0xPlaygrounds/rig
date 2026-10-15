@@ -1,0 +1,23 @@
+[package]
+name = "corpus-ho-spend-by-origin"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H27: Spend by origin"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+serde_json = { workspace = true }

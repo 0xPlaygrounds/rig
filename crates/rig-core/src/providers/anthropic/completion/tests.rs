@@ -175,6 +175,7 @@ fn generic_tool(name: &str) -> completion::ToolDefinition {
             "type": "object",
             "properties": {}
         }),
+        annotations: Default::default(),
     }
 }
 
@@ -1948,6 +1949,7 @@ fn adversarial_histories_encode_to_requests_anthropic_takes() {
                 name: ToolName::new("lookup").expect("name"),
                 description: "d".into(),
                 parameters: json!({"type": "object", "properties": {}}),
+                annotations: Default::default(),
             }];
             let body = match request_body(Params {
                 model,
@@ -2158,5 +2160,293 @@ fn a_forced_choice_names_one_tool() {
             function_names: vec![name("get_weather"), name("get_time")],
         })
         .is_err()
+    );
+}
+
+/// A request's cache points mark the blocks they end: the final tool, the
+/// system prompt, the last block of the n-th turn; beside the markers manual
+/// caching places, and within the budget, keeping the points furthest into
+/// the request.
+#[test]
+fn cache_points_mark_tools_system_and_messages() {
+    use completion::CachePoint::{Messages, System, Tools};
+
+    let history = |points: Vec<completion::CachePoint>| {
+        let mut request = completion_request_with_history(
+            vec![
+                message::Message::from("a"),
+                message::Message::assistant("b"),
+                message::Message::from("c"),
+            ],
+            Some("System prompt".to_owned()),
+        )
+        .tools(vec![generic_tool("first"), generic_tool("last")]);
+        request.cache_points = points;
+        request
+    };
+    let marked = |value: &Value, list: &str| -> Vec<bool> {
+        value[list]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| match item.get("content") {
+                Some(content) => content
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|block| block.get("cache_control").is_some()),
+                None => item.get("cache_control").is_some(),
+            })
+            .collect()
+    };
+    let body = |request: CompletionRequest, prompt_caching: bool| {
+        request_body(Params {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching,
+            cache: None,
+            static_prefix_cache_ttl: None,
+        })
+        .unwrap()
+    };
+
+    let value = body(history(vec![Tools, System, Messages(2)]), false);
+    assert_eq!(marked(&value, "tools"), [false, true]);
+    assert!(system_has_cache_control(&value));
+    assert_eq!(marked(&value, "messages"), [false, true, false]);
+
+    // A fifth point is one too many: the first in the request goes.
+    let five = vec![Messages(3), Tools, System, Messages(1), Messages(2)];
+    let value = body(history(five), false);
+    assert_eq!(marked(&value, "tools"), [false, false]);
+    assert!(system_has_cache_control(&value));
+    assert_eq!(marked(&value, "messages"), [true, true, true]);
+
+    // Beside manual caching: the tool, the system prompt, the point, the
+    // tail.
+    let value = body(history(vec![Messages(1)]), true);
+    assert_eq!(marked(&value, "tools"), [false, true]);
+    assert!(system_has_cache_control(&value));
+    assert_eq!(marked(&value, "messages"), [true, false, true]);
+
+    // No points, no markers of their own.
+    let value = body(history(Vec::new()), false);
+    assert_eq!(marked(&value, "tools"), [false, false]);
+    assert!(!system_has_cache_control(&value));
+    assert_eq!(marked(&value, "messages"), [false, false, false]);
+}
+
+/// A cache point never marks a block twice, skips a turn of thinking
+/// alone, and places nothing once explicit tool markers spend the budget.
+#[test]
+fn a_cache_point_respects_markers_thinking_and_the_budget() {
+    let markers = |value: &Value| value.to_string().matches("cache_control").count();
+    let body = |request: CompletionRequest, prompt_caching: bool| {
+        request_body(Params {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching,
+            cache: None,
+            static_prefix_cache_ttl: None,
+        })
+        .unwrap()
+    };
+
+    // Manual caching already marked the system prompt the point ends at.
+    let mut request = completion_request_with_history(
+        vec![message::Message::from("a")],
+        Some("System prompt".to_owned()),
+    );
+    request.cache_points = vec![completion::CachePoint::System];
+    let value = body(request, true);
+    assert!(system_has_cache_control(&value) && last_message_has_cache_control(&value));
+    assert_eq!(markers(&value), 2);
+
+    // The point's last turn is thinking alone, which takes no marker.
+    let thinking = json!({"type": "thinking", "thinking": "hm", "signature": "sig-1"});
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let reply =
+        json!({"model": CLAUDE_SONNET_4_6, "stop_reason": "end_turn", "content": [thinking]});
+    let thought = folded_turn(&wire, &hello_request(), reply);
+    let mut request = completion_request_with_history(
+        vec![
+            message::Message::from("a"),
+            message::Message::Assistant(thought),
+            message::Message::from("c"),
+        ],
+        None,
+    );
+    request.cache_points = vec![completion::CachePoint::Messages(2)];
+    let value = body(request, false);
+    assert_eq!(value["messages"][1]["content"][0]["type"], "thinking");
+    assert_eq!(markers(&value), 0);
+
+    // Four explicit tool markers leave none for the point.
+    let tool = |name: &str| {
+        json!({"name": name, "description": "d", "input_schema": {"type": "object"},
+            "cache_control": {"type": "ephemeral"}})
+    };
+    let tools = ["t1", "t2", "t3", "t4"].map(tool);
+    let mut request = completion_request_with_tools(Vec::new(), Some(json!({"tools": tools})));
+    request.cache_points = vec![completion::CachePoint::Messages(1)];
+    let value = body(request, false);
+    assert!(!system_has_cache_control(&value) && !last_message_has_cache_control(&value));
+    assert_eq!(markers(&value), 4);
+}
+
+/// A repeated cache point marks its block once, a point past the history
+/// marks nothing, and a tools point with only deferred tools has no tool
+/// to mark.
+#[test]
+fn repeated_missing_and_deferred_cache_points_mark_nothing_more() {
+    use completion::CachePoint::{Messages, Tools};
+
+    let deferred = json!({"name": "later", "description": "d",
+        "input_schema": {"type": "object"}, "defer_loading": true});
+    let mut request = completion_request_with_tools(Vec::new(), Some(json!({"tools": [deferred]})));
+    request.cache_points = vec![Messages(1), Tools, Messages(9), Messages(1)];
+    let value = request_body(Params {
+        model: CLAUDE_SONNET_4_6,
+        request,
+        prompt_caching: false,
+        cache: None,
+        static_prefix_cache_ttl: None,
+    })
+    .unwrap();
+    assert_eq!(value["tools"][0]["defer_loading"], true);
+    assert!(value["tools"][0].get("cache_control").is_none());
+    assert!(last_message_has_cache_control(&value));
+    assert_eq!(value.to_string().matches("cache_control").count(), 1);
+}
+
+/// A message cache point ends the same messages after the history is
+/// adapted: a point after a reply's results marks the last result, not the
+/// steering text the wire joins it with, and a turn dropped before the
+/// point does not push it past the end.
+#[test]
+fn a_message_cache_point_follows_its_messages_through_adapting() {
+    let lookup = || message::ToolName::new("lookup").expect("tool name");
+    let body = |chat_history: Vec<message::Message>, turns: usize| {
+        let mut request =
+            completion_request_with_history(chat_history, None).tools(vec![generic_tool("lookup")]);
+        request.cache_points = vec![completion::CachePoint::Messages(turns)];
+        request_body(Params {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            cache: None,
+            static_prefix_cache_ttl: None,
+        })
+        .unwrap()
+    };
+    let marks = |value: &Value| -> Vec<Vec<bool>> {
+        value["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| {
+                message["content"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|block| block.get("cache_control").is_some())
+                    .collect()
+            })
+            .collect()
+    };
+
+    let value = body(
+        vec![
+            message::Message::user("Look it up."),
+            message::Message::Assistant(message::AssistantMessage::new(vec![
+                message::AssistantContent::tool_call("toolu_1", lookup(), json!({})),
+            ])),
+            message::Message::tool_result(message::CallId::from_wire("toolu_1"), lookup(), "ok"),
+            message::Message::user("Also check the docs."),
+        ],
+        3,
+    );
+    assert_eq!(
+        marks(&value),
+        [vec![false], vec![false], vec![true, false]],
+        "{value:#}"
+    );
+
+    let failed = message::AssistantMessage {
+        stop: Some(message::StopReason::Error("refused".into())),
+        ..message::AssistantMessage::new(vec![message::AssistantContent::text("x")])
+    };
+    let value = body(
+        vec![
+            message::Message::user("a"),
+            message::Message::Assistant(failed),
+            message::Message::user("b"),
+            message::Message::assistant("c"),
+            message::Message::user("d"),
+        ],
+        4,
+    );
+    assert_eq!(
+        marks(&value),
+        [vec![false, false], vec![true], vec![false]],
+        "{value:#}"
+    );
+}
+
+/// A point within a message marks the last block of its items, in an
+/// assistant turn as in a user message; items that send no block end the
+/// point at the turn before, and a point past the last turn marks nothing.
+#[test]
+fn a_cache_point_within_a_message_marks_the_last_block_of_its_items() {
+    use completion::CachePoint::Within;
+    use message::{AssistantContent, AssistantMessage, Message, UserContent};
+
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let marks = |message: usize, items: usize| -> Vec<Vec<bool>> {
+        let mut request = completion_request_with_history(
+            vec![
+                Message::user("a"),
+                Message::Assistant(AssistantMessage::new(vec![
+                    AssistantContent::text("b1"),
+                    AssistantContent::text("b2"),
+                ])),
+                Message::User {
+                    content: vec![UserContent::text("c1"), UserContent::text("c2")],
+                },
+            ],
+            None,
+        );
+        request.cache_points = vec![Within { message, items }];
+        let value = serde_json::to_value(body(&wire, &request, Mode::Unary).unwrap()).unwrap();
+        value["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| {
+                message["content"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|block| block.get("cache_control").is_some())
+                    .collect()
+            })
+            .collect()
+    };
+
+    assert_eq!(
+        marks(1, 1),
+        [vec![false], vec![true, false], vec![false, false]]
+    );
+    assert_eq!(
+        marks(2, 1),
+        [vec![false], vec![false, false], vec![true, false]]
+    );
+    assert_eq!(
+        marks(2, 0),
+        [vec![false], vec![false, true], vec![false, false]]
+    );
+    assert_eq!(
+        marks(3, 1),
+        [vec![false], vec![false, false], vec![false, false]]
     );
 }

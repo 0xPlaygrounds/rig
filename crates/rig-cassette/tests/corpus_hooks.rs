@@ -38,7 +38,7 @@
 //!
 //! | golden | producer | shape | decision lands in |
 //! |---|---|---|---|
-//! | `anthropic_hooks_observe_everything` | `corpus_hooks.rs` `observe_everything_…` | `[Memory, Completion, Tool, Completion, Memory]` | nowhere; the header names the hook |
+//! | `anthropic_hooks_observe_everything` | `corpus_hooks.rs` `observe_everything_…` | `[Completion, Tool, Completion]` | nowhere; the header names the hook |
 //! | `anthropic_hooks_patch_tool_args` | `patch_tool_args_…` | `[Completion, Tool, Completion]` | the record: `add` runs with `{"x":40,"y":2}`; history keeps `{17, 25}` |
 //! | `anthropic_hooks_patch_tool_args_streamed` | `patch_tool_args_streamed_…` | the same, events kept | the record |
 //! | `anthropic_hooks_deny_tool` | `deny_tool_…` | `[Completion, Completion]` | the transcript: the reason as the tool's result; no tool record |
@@ -80,7 +80,6 @@ const BASIC: Program = Program {
 
 const OBSERVE_EVERYTHING: Program = Program {
     fixture: "anthropic_hooks_observe_everything",
-    conversation: Some("golden-conversation"),
     hooks: &[Hook::ObserveEverything],
     ..TOOLS
 };

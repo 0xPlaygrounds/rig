@@ -1,0 +1,41 @@
+[package]
+name = "rig-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "A rig-harness plugin: the terminal view, with panels and tool renderers other plugins add to."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+# A copy to the clipboard through the terminal (OSC 52).
+base64 = { workspace = true }
+crossbeam-channel = { workspace = true }
+crossterm = { workspace = true }
+# Markdown in replies and the width of wrapped text.
+pulldown-cmark = { workspace = true }
+unicode-width = { workspace = true }
+ratatui = { workspace = true }
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tools = { path = "../../crates/rig-tools" }
+# A status item's side read from settings.
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+# The terminal view sends stray stdout and stderr to the session log.
+libc = { workspace = true }

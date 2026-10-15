@@ -1,5 +1,5 @@
 //! Serializable request settings, turn budgets, and output policies for runs.
-//! Live models, tools, hooks, and memory remain owned by the driver.
+//! Live models, tools, and hooks remain owned by the driver.
 //!
 //! ```
 //! use rig_agent::run::spec::RunSpec;

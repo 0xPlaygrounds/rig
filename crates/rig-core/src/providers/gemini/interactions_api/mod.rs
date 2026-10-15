@@ -174,7 +174,7 @@ impl ReplayTarget for Interactions {
     }
 
     /// Gemini takes system text only in `systemInstruction`: later system
-    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    /// messages fold into the leading one.
     fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
         crate::completion::LaterSystem::Leading
     }
@@ -354,6 +354,7 @@ impl ReplayTarget for InteractionResume {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         let refuse = |set: bool| match set {
             true => Mapping::unsupported(
@@ -371,6 +372,7 @@ impl ReplayTarget for InteractionResume {
             top_p: refuse(top_p.is_some()),
             seed: refuse(seed.is_some()),
             stop: refuse(!stop.is_empty()),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 
@@ -404,7 +406,7 @@ impl ReplayTarget for InteractionResume {
     }
 
     /// Gemini takes system text only in `systemInstruction`: later system
-    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    /// messages fold into the leading one.
     fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
         crate::completion::LaterSystem::Leading
     }

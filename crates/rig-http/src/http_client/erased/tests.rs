@@ -47,10 +47,10 @@ fn debug_never_prints_the_inner_transport() {
 
 mod middleware {
     use super::*;
-    use crate::http_client::middleware::HttpMiddleware;
+    use crate::http_client::middleware::{Exchange, HttpMiddleware};
     use crate::test_utils::MockStreamingClient;
     use crate::wasm_compat::WasmBoxedFuture;
-    use http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
+    use http::{HeaderMap, HeaderValue, StatusCode};
     use std::sync::{Arc, Mutex};
 
     /// Appends its tag to a header, to the body, and to a shared log —
@@ -72,8 +72,7 @@ mod middleware {
     impl HttpMiddleware for Tagger {
         fn before_request_headers<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             headers: &'a mut HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
             Box::pin(async move {
@@ -85,8 +84,7 @@ mod middleware {
 
         fn before_request_body<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             headers: &'a HeaderMap,
             body: Bytes,
         ) -> WasmBoxedFuture<'a, Result<Bytes>> {
@@ -109,8 +107,7 @@ mod middleware {
 
         fn after_response<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             status: StatusCode,
             _headers: &'a HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
@@ -169,8 +166,7 @@ mod middleware {
     impl HttpMiddleware for FailAt {
         fn before_request_headers<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             _headers: &'a mut HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
             let fail = self.0 == "headers";
@@ -188,8 +184,7 @@ mod middleware {
 
         fn after_response<'a>(
             &'a self,
-            _method: &'a Method,
-            _uri: &'a Uri,
+            _exchange: Exchange<'a>,
             _status: StatusCode,
             _headers: &'a HeaderMap,
         ) -> WasmBoxedFuture<'a, Result<()>> {
@@ -241,8 +236,7 @@ mod middleware {
         impl HttpMiddleware for CaptureContentType {
             fn after_response<'a>(
                 &'a self,
-                _method: &'a Method,
-                _uri: &'a Uri,
+                _exchange: Exchange<'a>,
                 status: StatusCode,
                 headers: &'a HeaderMap,
             ) -> WasmBoxedFuture<'a, Result<()>> {
@@ -273,6 +267,139 @@ mod middleware {
             Some("200:text/event-stream")
         );
         drop(response);
+    }
+
+    /// Records each reply's status and `retry-after` header.
+    struct SeeReplies(Arc<Mutex<Vec<String>>>);
+
+    impl HttpMiddleware for SeeReplies {
+        fn after_response<'a>(
+            &'a self,
+            _exchange: Exchange<'a>,
+            status: StatusCode,
+            headers: &'a HeaderMap,
+        ) -> WasmBoxedFuture<'a, Result<()>> {
+            Box::pin(async move {
+                let wait = headers
+                    .get(http::header::RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("-");
+                self.0
+                    .lock()
+                    .expect("seen")
+                    .push(format!("{}:{wait}", status.as_u16()));
+                Ok(())
+            })
+        }
+    }
+
+    #[test]
+    fn an_error_reply_reaches_the_response_hooks_and_still_fails_the_request() {
+        let mut headers = HeaderMap::new();
+        headers.insert(http::header::RETRY_AFTER, HeaderValue::from_static("7"));
+        let inner =
+            RecordingHttpClient::with_error_headers(StatusCode::TOO_MANY_REQUESTS, "slow", headers);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let erased = DynHttpClient::new(inner)
+            .with_middleware(SeeReplies(seen.clone()))
+            .with_middleware(FailAt("response"));
+        let Err(err) = block_on(erased.send::<_, Bytes>(request("hello"))) else {
+            panic!("an error reply fails the request")
+        };
+        assert_eq!(seen.lock().expect("seen").as_slice(), ["429:7"]);
+        assert_eq!(
+            err.non_success_body(),
+            Some("slow"),
+            "the reply's own error"
+        );
+    }
+
+    /// A transport error that kept no reply, such as a reset connection, has
+    /// nothing to show a response hook, so none runs and the request fails
+    /// with that error.
+    #[test]
+    fn a_transport_error_without_a_reply_runs_no_response_hook() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let erased = DynHttpClient::new(RecordingHttpClient::new(""))
+            .with_middleware(SeeReplies(seen.clone()));
+        let (parts, body) = request("hello").into_parts();
+        let failed = block_on(erased.observe(parts, body, |_| async {
+            Err::<Response<Bytes>, _>(crate::http_client::Error::instance(std::io::Error::other(
+                "connection reset",
+            )))
+        }));
+        let err = failed.err().map(|err| err.to_string());
+        assert!(
+            err.is_some_and(|err| err.contains("connection reset")),
+            "the transport's error"
+        );
+        assert!(seen.lock().expect("seen").is_empty());
+    }
+
+    /// What a caller attached to a request, such as the call it serves.
+    #[derive(Clone, Debug, PartialEq)]
+    struct Serves(u64);
+
+    /// Records the [`Serves`] each phase's exchange carries.
+    struct SeeServes(Arc<Mutex<Vec<String>>>);
+
+    impl SeeServes {
+        fn note(&self, phase: &str, exchange: Exchange<'_>) {
+            let serves = exchange.extensions.get::<Serves>().map(|serves| serves.0);
+            self.0
+                .lock()
+                .expect("seen")
+                .push(format!("{phase}:{} {serves:?}", exchange.method));
+        }
+    }
+
+    impl HttpMiddleware for SeeServes {
+        fn before_request_headers<'a>(
+            &'a self,
+            exchange: Exchange<'a>,
+            _headers: &'a mut HeaderMap,
+        ) -> WasmBoxedFuture<'a, Result<()>> {
+            self.note("headers", exchange);
+            Box::pin(async { Ok(()) })
+        }
+
+        fn before_request_body<'a>(
+            &'a self,
+            exchange: Exchange<'a>,
+            _headers: &'a HeaderMap,
+            body: Bytes,
+        ) -> WasmBoxedFuture<'a, Result<Bytes>> {
+            self.note("body", exchange);
+            Box::pin(async move { Ok(body) })
+        }
+
+        fn after_response<'a>(
+            &'a self,
+            exchange: Exchange<'a>,
+            _status: StatusCode,
+            _headers: &'a HeaderMap,
+        ) -> WasmBoxedFuture<'a, Result<()>> {
+            self.note("response", exchange);
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[test]
+    fn every_hook_reads_what_the_request_carries() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let inner = RecordingHttpClient::with_error(StatusCode::TOO_MANY_REQUESTS, "slow");
+        let erased = DynHttpClient::new(inner).with_middleware(SeeServes(seen.clone()));
+        let mut marked = request("hello");
+        marked.extensions_mut().insert(Serves(7));
+        let _ = block_on(erased.send::<_, Bytes>(marked));
+        assert_eq!(
+            seen.lock().expect("seen").as_slice(),
+            [
+                "headers:POST Some(7)",
+                "body:POST Some(7)",
+                "response:POST Some(7)"
+            ]
+        );
     }
 
     #[test]

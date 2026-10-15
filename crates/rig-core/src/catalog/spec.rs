@@ -263,6 +263,11 @@ pub struct Compat {
     /// OpenAI: Chat Completions takes the model's tools only while its
     /// reasoning is off.
     pub chat_tools_need_reasoning_off: bool,
+    /// The model continues a request that ends in an assistant message (a
+    /// prefill) from where that message stops, instead of refusing it, as
+    /// Anthropic's models before Claude 4.6 do while their reasoning is
+    /// off. Unknown is `false`.
+    pub prefill: bool,
 }
 
 impl Compat {
@@ -314,6 +319,12 @@ impl Compat {
         self.chat_tools_need_reasoning_off = on;
         self
     }
+
+    /// These facts with prefill continuation set to `on`.
+    pub fn with_prefill(mut self, on: bool) -> Self {
+        self.prefill = on;
+        self
+    }
 }
 
 impl CacheSupport {
@@ -361,6 +372,28 @@ impl ModelSpec {
     /// [`ConnectOptions::format`](crate::providers::registry::ConnectOptions::format).
     pub fn format(&self) -> Option<Format> {
         self.provider.format()
+    }
+
+    /// The `vendor/model` reference [`Catalog::resolve`](super::Catalog::resolve)
+    /// reads back to this model.
+    pub fn reference(&self) -> String {
+        format!("{}/{}", self.provider.vendor(), self.id)
+    }
+
+    /// The options of a request to this model with `reasoning` (`None`
+    /// for the provider's default): that reasoning, and the short prompt
+    /// cache when [`Self::caching`] lists it. A model whose caching the
+    /// catalog does not know gets no cache option, which it could refuse.
+    pub fn default_options(&self, reasoning: Option<Reasoning>) -> GenerationOptions {
+        let options = GenerationOptions {
+            reasoning,
+            ..GenerationOptions::default()
+        };
+        if self.caching.retention.contains(&CacheRetention::Short) {
+            options.cache(CacheRetention::Short)
+        } else {
+            options
+        }
     }
 
     /// This spec named `name`.
@@ -484,6 +517,45 @@ impl ModelSpec {
             .collect()
     }
 
+    /// Fits `request` to this model: takes out each option it would refuse
+    /// ([`Self::refusals`]) and leaves everything else as it is, so a request
+    /// built or edited for another model keeps what this one takes. A refused
+    /// reasoning setting becomes the provider default (`None`) first, since
+    /// whether the model reasons decides whether it takes `temperature` and
+    /// `top_p`. Returns what was taken out, in that order; afterwards
+    /// [`Self::refusals`] of the request is empty.
+    ///
+    /// ```
+    /// use rig_core::catalog::{ModelSpec, ReasoningSupport};
+    /// use rig_core::completion::{CompletionRequest, Effort, GenerationOptions, Reasoning};
+    /// use rig_core::providers::registry::ProviderId;
+    ///
+    /// let vendor = ProviderId::catalog("ollama").ok_or("a known vendor")?;
+    /// let plain = ModelSpec::new(vendor, "plain").with_reasoning(ReasoningSupport::None);
+    /// let options = GenerationOptions::default().reasoning(Reasoning::Effort(Effort::High));
+    /// let mut request = CompletionRequest::new("hi").options(options.seed(7));
+    /// let dropped = plain.fit(&mut request);
+    /// assert_eq!(dropped.len(), 1);
+    /// assert_eq!((request.options.reasoning, request.options.seed), (None, Some(7)));
+    /// # Ok::<(), &str>(())
+    /// ```
+    pub fn fit(&self, request: &mut CompletionRequest) -> Vec<UnsupportedOption> {
+        let mut dropped = Vec::new();
+        // Only a set option is refused, and each pass unsets one, so this ends.
+        while let Some(refusal) = self.request_rules(request).into_iter().next() {
+            let options = &mut request.options;
+            match refusal.field {
+                "reasoning" => options.reasoning = None,
+                "cache" => options.cache = None,
+                "top_p" => options.top_p = None,
+                "temperature" => request.temperature = None,
+                _ => break,
+            }
+            dropped.push(self.unsupported(refusal));
+        }
+        dropped
+    }
+
     /// [`Self::refusals`] as the options and reasons the wires report under
     /// their own provider name.
     pub(crate) fn request_rules(&self, request: &CompletionRequest) -> Vec<CatalogRefusal> {
@@ -579,7 +651,102 @@ impl ModelSpec {
     }
 }
 
+/// A reasoning setting a model takes, by the name a picker shows: the
+/// provider default (`default`, no setting), `off`, an effort level, or a
+/// named budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReasoningChoice {
+    /// `default`, `off`, the level's word, or the budget's name.
+    pub name: &'static str,
+    /// The setting a request carries; `None` for the provider default.
+    pub reasoning: Option<Reasoning>,
+}
+
+impl ReasoningChoice {
+    /// The name, with a budget's tokens.
+    pub fn label(&self) -> String {
+        match self.reasoning {
+            Some(Reasoning::Budget { tokens }) => format!("{} ({tokens} tokens)", self.name),
+            _ => self.name.to_owned(),
+        }
+    }
+}
+
+/// A reasoning setting a model does not take, and the ones it does.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("the reasoning settings are {}, not `{name}`", choices.join(", "))]
+pub struct UnknownReasoning {
+    /// The name asked for.
+    pub name: String,
+    /// The names of the model's [`ReasoningSupport::choices`].
+    pub choices: Vec<&'static str>,
+}
+
+/// Token budgets for the named levels on a model that takes a budget
+/// instead of levels, clamped into its range.
+const NAMED_BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 16384)];
+
 impl ReasoningSupport {
+    /// The reasoning settings the model takes: the provider default first,
+    /// then `off` when reasoning can be turned off, then each effort level,
+    /// or `low`, `medium` and `high` budgets on a model that takes a budget
+    /// and no levels. A model whose controls the catalog does not list
+    /// offers only the default.
+    pub fn choices(&self) -> Vec<ReasoningChoice> {
+        let mut choices = vec![ReasoningChoice {
+            name: "default",
+            reasoning: None,
+        }];
+        let Self::Listed {
+            levels,
+            budget,
+            can_disable,
+            ..
+        } = self
+        else {
+            return choices;
+        };
+        if *can_disable {
+            choices.push(ReasoningChoice {
+                name: "off",
+                reasoning: Some(Reasoning::Off),
+            });
+        }
+        choices.extend(levels.iter().map(|level| ReasoningChoice {
+            name: level.as_str(),
+            reasoning: Some(Reasoning::Effort(*level)),
+        }));
+        if levels.is_empty()
+            && let Some(range) = budget
+        {
+            choices.extend(NAMED_BUDGETS.iter().map(|&(name, tokens)| ReasoningChoice {
+                name,
+                // Not `clamp`, which panics on an inverted range.
+                reasoning: Some(Reasoning::Budget {
+                    tokens: tokens.max(*range.start()).min(*range.end()),
+                }),
+            }));
+        }
+        choices
+    }
+
+    /// The choice of [`Self::choices`] named `name`.
+    ///
+    /// # Errors
+    ///
+    /// [`UnknownReasoning`] with the names there are, when none is `name`.
+    pub fn named(&self, name: &str) -> Result<ReasoningChoice, UnknownReasoning> {
+        let choices = self.choices();
+        choices
+            .iter()
+            .find(|choice| choice.name == name)
+            .copied()
+            .ok_or_else(|| UnknownReasoning {
+                name: name.to_owned(),
+                choices: choices.iter().map(|choice| choice.name).collect(),
+            })
+    }
+
     /// Whether the model reasons at all.
     pub fn supported(&self) -> bool {
         !matches!(self, Self::None)

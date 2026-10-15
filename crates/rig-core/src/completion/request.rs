@@ -10,7 +10,7 @@
 //! ```
 
 use super::message::{
-    AssistantContent, AssistantMessage, DocumentMediaType, Origin, StopReason, ToolCall,
+    AssistantContent, AssistantMessage, CallId, DocumentMediaType, Origin, StopReason, ToolCall,
 };
 use super::options::{
     CacheRetention, GenerationOptions, OnUnsupported, Reasoning, ServiceTier, Verbosity,
@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
 
+/// A document sent with a request as context, rendered before the chat history.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Document {
     /// Stable document identifier included in the serialized context block.
@@ -60,6 +61,9 @@ impl std::fmt::Display for Document {
     }
 }
 
+/// A tool the model may call: its name, description and argument schema,
+/// sent to the model, and what the tool does to the world
+/// ([`ToolAnnotations`]), which stays with the host.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolDefinition {
     /// Tool name exposed to the model. It must match the registered tool name.
@@ -68,11 +72,16 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema describing tool arguments.
     pub parameters: serde_json::Value,
+    /// What calling the tool does to the world, for the host's policies
+    /// (approval, plan mode, running calls side by side). Never sent to
+    /// the model; written only when something is stated.
+    #[serde(default, skip_serializing_if = "ToolAnnotations::is_empty")]
+    pub annotations: ToolAnnotations,
 }
 
 impl ToolDefinition {
     /// A tool the model may call by `name`, with arguments matching the
-    /// JSON Schema `parameters`.
+    /// JSON Schema `parameters`, and no annotations.
     pub fn new(
         name: ToolName,
         description: impl Into<String>,
@@ -82,7 +91,118 @@ impl ToolDefinition {
             name,
             description: description.into(),
             parameters,
+            annotations: ToolAnnotations::default(),
         }
+    }
+
+    /// The same definition with `annotations`.
+    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
+        self.annotations = annotations;
+        self
+    }
+}
+
+/// What calling a tool does to the world, as the Model Context Protocol's
+/// tool annotations state it, and spelled as they are on its wire
+/// (`readOnlyHint`, …), so an MCP tool's annotations read straight into
+/// one. Each is a hint a tool's author gives: a host's policies read them
+/// (approval, plan mode, which calls run side by side), never trusting a
+/// tool it does not trust for them. A hint left unset takes the protocol's
+/// default, which the accessors apply: not read-only, destructive, not
+/// idempotent, open world.
+///
+/// ```
+/// use rig_core::completion::ToolAnnotations;
+///
+/// let read = ToolAnnotations::default().with_read_only(true).with_open_world(false);
+/// assert!(read.read_only() && !read.destructive() && !read.open_world());
+/// let unknown = ToolAnnotations::default();
+/// assert!(!unknown.read_only() && unknown.destructive() && unknown.open_world());
+/// let mcp: ToolAnnotations = serde_json::from_value(serde_json::json!({"readOnlyHint": true}))?;
+/// assert!(mcp.read_only());
+/// # Ok::<(), serde_json::Error>(())
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolAnnotations {
+    /// A human-readable title for the tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Whether the tool changes nothing in its environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only_hint: Option<bool>,
+    /// Whether a tool that changes things may also destroy or overwrite
+    /// what was there (rather than only add). Meaningless for a read-only
+    /// tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destructive_hint: Option<bool>,
+    /// Whether calling the tool again with the same arguments has no
+    /// further effect. Meaningless for a read-only tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotent_hint: Option<bool>,
+    /// Whether the tool reaches beyond a closed set of things, such as the
+    /// web or a shell; `false` for one that works on a known store, such
+    /// as the project's files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_world_hint: Option<bool>,
+}
+
+impl ToolAnnotations {
+    /// Whether nothing is stated.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Whether the tool changes nothing: the hint, else `false`.
+    pub fn read_only(&self) -> bool {
+        self.read_only_hint.unwrap_or(false)
+    }
+
+    /// Whether the tool may destroy or overwrite something: never for a
+    /// read-only tool, else the hint, else `true`.
+    pub fn destructive(&self) -> bool {
+        !self.read_only() && self.destructive_hint.unwrap_or(true)
+    }
+
+    /// Whether repeating a call has no further effect: always for a
+    /// read-only tool, else the hint, else `false`.
+    pub fn idempotent(&self) -> bool {
+        self.read_only() || self.idempotent_hint.unwrap_or(false)
+    }
+
+    /// Whether the tool reaches an open world: the hint, else `true`.
+    pub fn open_world(&self) -> bool {
+        self.open_world_hint.unwrap_or(true)
+    }
+
+    /// The same annotations with a title.
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// The same annotations stating whether the tool is read-only.
+    pub fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only_hint = Some(read_only);
+        self
+    }
+
+    /// The same annotations stating whether the tool is destructive.
+    pub fn with_destructive(mut self, destructive: bool) -> Self {
+        self.destructive_hint = Some(destructive);
+        self
+    }
+
+    /// The same annotations stating whether the tool is idempotent.
+    pub fn with_idempotent(mut self, idempotent: bool) -> Self {
+        self.idempotent_hint = Some(idempotent);
+        self
+    }
+
+    /// The same annotations stating whether the tool reaches an open world.
+    pub fn with_open_world(mut self, open_world: bool) -> Self {
+        self.open_world_hint = Some(open_world);
+        self
     }
 }
 
@@ -216,6 +336,10 @@ pub struct CompletionResponse {
     /// through [`Self::accepts_unknown_finish_reasons`].
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     accepts_unknown_finish_reasons: bool,
+    /// The calls the provider ended the reply in the middle of. Read
+    /// through [`Self::unfinished_calls`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    unfinished_calls: Vec<CallId>,
     /// Provider response document for typed inspection through deserialization.
     /// Parsed wire types may omit unmodeled fields. This data does not override
     /// normalized fields; callers constructing responses must supply it.
@@ -253,6 +377,7 @@ impl CompletionResponse {
             provider_request_id: None,
             finish_reason: None,
             accepts_unknown_finish_reasons: false,
+            unfinished_calls: Vec::new(),
             raw,
         }
     }
@@ -318,6 +443,22 @@ impl CompletionResponse {
     /// [`CompletionRequest::accept_unknown_finish_reasons`]: field@CompletionRequest::accept_unknown_finish_reasons
     pub fn accepts_unknown_finish_reasons(&self) -> bool {
         self.accepts_unknown_finish_reasons
+    }
+
+    /// The tool calls the provider ended the reply in the middle of (their
+    /// arguments as far as they came), in the order they opened, such as a
+    /// call cut by [`FinishReason::Length`]. Empty when every call in
+    /// [`Self::choice`] was finished.
+    pub fn unfinished_calls(&self) -> impl Iterator<Item = &ToolCall> {
+        self.tool_calls()
+            .filter(|call| self.unfinished_calls.contains(&call.id))
+    }
+
+    /// The same response, `calls` (ids of calls in [`Self::choice`]) being
+    /// the ones the provider ended the reply in the middle of.
+    pub fn with_unfinished_calls(mut self, calls: impl IntoIterator<Item = CallId>) -> Self {
+        self.unfinished_calls = calls.into_iter().collect();
+        self
     }
 
     /// Accept, or refuse, [`FinishReason::Other`] as a normal stop in
@@ -477,6 +618,8 @@ struct CompletionResponseRepr {
     finish_reason: Option<FinishReason>,
     #[serde(default)]
     accepts_unknown_finish_reasons: bool,
+    #[serde(default)]
+    unfinished_calls: Vec<CallId>,
     raw: serde_json::Value,
 }
 
@@ -491,6 +634,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             provider_request_id,
             finish_reason,
             accepts_unknown_finish_reasons,
+            unfinished_calls,
             raw,
         } = repr;
         use crate::provider_response::reported;
@@ -502,6 +646,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
         response.aborted = aborted;
         response.provider_request_id = reported(provider_request_id);
         response.accepts_unknown_finish_reasons = accepts_unknown_finish_reasons;
+        response.unfinished_calls = unfinished_calls;
         response
     }
 }
@@ -584,6 +729,14 @@ impl Usage {
     /// Whether the provider reported any counter or a cost.
     pub fn is_reported(&self) -> bool {
         *self != Self::default()
+    }
+
+    /// The tokens the call read and wrote, what a conversation's next
+    /// request sends again: [`Self::total_tokens`](field@Self::total_tokens),
+    /// else the input and output tokens. `None` without input tokens.
+    pub fn context_tokens(&self) -> Option<u64> {
+        self.total_tokens
+            .or_else(|| Some(self.input_tokens? + self.output_tokens.unwrap_or(0)))
     }
 
     /// Set, or with `None` clear, [`Self::input_tokens`](field@Self::input_tokens).
@@ -828,6 +981,179 @@ impl AddAssign for Usage {
     }
 }
 
+/// Many calls' [`Usage`] summed for a running account: the token counters,
+/// the known cost, and how many calls the sum holds and how many of them
+/// were not fully priced.
+///
+/// ```
+/// use rig_core::completion::{Usage, UsageTotals};
+///
+/// let mut totals = UsageTotals::default();
+/// totals.record(&Usage::new().input_tokens(100).output_tokens(20).total_tokens(120));
+/// assert_eq!((totals.calls, totals.unpriced, totals.uncached_input()), (1, 1, 100));
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UsageTotals {
+    /// The token counters summed, with no cost: a call that did not
+    /// report a counter adds nothing to it.
+    pub tokens: Usage,
+    /// The known costs summed, in USD.
+    pub cost: f64,
+    /// The calls whose cost is not known, or known only in part, so
+    /// [`Self::cost`](field@Self::cost) is a lower bound when any.
+    pub unpriced: u64,
+    /// The calls summed.
+    pub calls: u64,
+}
+
+impl UsageTotals {
+    /// Adds a finished call's `usage`.
+    pub fn record(&mut self, usage: &Usage) {
+        self.calls += 1;
+        match usage.cost {
+            Some(cost) => {
+                self.cost += cost.total;
+                if !cost.is_complete() {
+                    self.unpriced += 1;
+                }
+            }
+            None => self.unpriced += 1,
+        }
+        self.tokens += usage.cost(None);
+    }
+
+    /// Adds what `other` summed.
+    pub fn add(&mut self, other: &UsageTotals) {
+        self.tokens += other.tokens;
+        self.cost += other.cost;
+        self.unpriced += other.unpriced;
+        self.calls += other.calls;
+    }
+
+    /// Input tokens neither read from nor written to a cache.
+    pub fn uncached_input(&self) -> u64 {
+        self.tokens
+            .input_tokens
+            .unwrap_or(0)
+            .saturating_sub(self.tokens.cached_input_tokens.unwrap_or(0))
+            .saturating_sub(self.tokens.cache_creation_input_tokens.unwrap_or(0))
+    }
+
+    /// The tokens read and written, cached input included.
+    pub fn total_tokens(&self) -> u64 {
+        self.tokens
+            .input_tokens
+            .unwrap_or(0)
+            .saturating_add(self.tokens.output_tokens.unwrap_or(0))
+    }
+
+    /// The cost as `$0.123`, ending in `+` when some calls were not priced,
+    /// or `None` when no call was.
+    pub fn cost_label(&self) -> Option<String> {
+        if self.unpriced >= self.calls {
+            return None;
+        }
+        let more = if self.unpriced > 0 { "+" } else { "" };
+        Some(format!("{}{more}", dollars_label(self.cost)))
+    }
+
+    /// The [cost](Self::cost_label), or as `1.2M tokens` when no call was
+    /// priced, such as a local or subscription model's.
+    pub fn cost_or_tokens(&self) -> String {
+        self.cost_label()
+            .unwrap_or_else(|| format!("{} tokens", tokens_label(self.total_tokens())))
+    }
+}
+
+/// One line for a person or a log: the calls, the tokens by kind and the
+/// cost.
+impl std::fmt::Display for UsageTotals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.calls {
+            1 => f.write_str("1 model call")?,
+            calls => write!(f, "{calls} model calls")?,
+        }
+        write!(f, ": {} in", tokens_label(self.uncached_input()))?;
+        if let Some(read) = self.tokens.cached_input_tokens.filter(|read| *read > 0) {
+            write!(f, ", {} cache read", tokens_label(read))?;
+        }
+        if let Some(written) = self
+            .tokens
+            .cache_creation_input_tokens
+            .filter(|written| *written > 0)
+        {
+            write!(f, ", {} cache written", tokens_label(written))?;
+        }
+        write!(
+            f,
+            ", {} out",
+            tokens_label(self.tokens.output_tokens.unwrap_or(0))
+        )?;
+        if let Some(thought) = self.tokens.reasoning_tokens.filter(|thought| *thought > 0) {
+            write!(f, " ({} reasoning)", tokens_label(thought))?;
+        }
+        let cost = self.cost_label();
+        write!(f, "; {}", cost.as_deref().unwrap_or("cost unknown"))
+    }
+}
+
+/// The context a conversation's next request sends, against the model's
+/// window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ContextUse {
+    /// Tokens in use.
+    pub tokens: u64,
+    /// The model's window, when known.
+    pub window: Option<u32>,
+}
+
+impl ContextUse {
+    /// The share of the window in use, in percent, when the window is known.
+    pub fn percent(&self) -> Option<u64> {
+        self.window
+            .filter(|window| *window > 0)
+            .map(|window| self.tokens.saturating_mul(100) / u64::from(window))
+    }
+}
+
+/// `45k/200k (22%)`, or `45k` when the window is not known.
+impl std::fmt::Display for ContextUse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (self.window, self.percent()) {
+            (Some(window), Some(percent)) => write!(
+                f,
+                "{}/{} ({percent}%)",
+                tokens_label(self.tokens),
+                tokens_label(u64::from(window))
+            ),
+            _ => f.write_str(&tokens_label(self.tokens)),
+        }
+    }
+}
+
+/// A token count in at most four characters plus a unit: `999`, `1.2k`,
+/// `45k`, `1.2M`.
+pub fn tokens_label(count: u64) -> String {
+    // Shown rounded, so the float conversion's precision does not matter.
+    let scaled = |unit: f64| count as f64 / unit;
+    match count {
+        0..1_000 => count.to_string(),
+        1_000..10_000 => format!("{:.1}k", scaled(1e3)),
+        10_000..1_000_000 => format!("{:.0}k", scaled(1e3)),
+        1_000_000..10_000_000 => format!("{:.1}M", scaled(1e6)),
+        _ => format!("{:.0}M", scaled(1e6)),
+    }
+}
+
+/// A cost in USD: tenths of a cent below a dollar, cents above.
+pub fn dollars_label(cost: f64) -> String {
+    if cost < 1.0 {
+        format!("${cost:.3}")
+    } else {
+        format!("${cost:.2}")
+    }
+}
+
 /// Model capabilities used by runtimes when preparing requests.
 /// Defaults are conservative; construct through [`Self::new`] and setters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -864,7 +1190,7 @@ impl ProviderCapabilities {
     }
 }
 
-/// Struct representing a general completion request that can be sent to a completion model provider.
+/// A completion request to any provider's model.
 #[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
@@ -886,7 +1212,7 @@ pub struct CompletionRequest {
     pub temperature: Option<f64>,
     /// The max tokens to be sent to the completion model provider
     pub max_tokens: Option<u64>,
-    /// Whether tools are required to be used by the model provider or not before providing a response.
+    /// Which tools the model may or must call before it answers.
     pub tool_choice: Option<ToolChoice>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
@@ -910,6 +1236,13 @@ pub struct CompletionRequest {
     /// [`FinishReason::ContentFilter`] still fails the turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub accept_unknown_finish_reasons: bool,
+    /// Send other models' reasoning in the history as reasoning where the
+    /// target reads it ([`Accepts::foreign_reasoning`]), instead of as plain
+    /// text. Defaults to `false`.
+    ///
+    /// [`Accepts::foreign_reasoning`]: crate::completion::Accepts::foreign_reasoning
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub foreign_reasoning: bool,
     /// Portable generation options. Precedence, lowest first: the mapped
     /// options, then [`Self::provider_options`], then `additional_params`.
     #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
@@ -918,6 +1251,41 @@ pub struct CompletionRequest {
     /// provider, above the mapped options and below `additional_params`.
     #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
     pub provider_options: ProviderOptions,
+    /// Where a provider that caches prompts by marker (Anthropic's Messages
+    /// family) may mark the end of a stable prefix that later requests
+    /// repeat, beside its own markers, so content after it (per-turn
+    /// memory, a reminder) does not cost the cached prefix. A provider that
+    /// takes fewer markers keeps the points furthest into the request; one
+    /// that caches prefixes without markers ignores them. Empty marks
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_points: Vec<CachePoint>,
+}
+
+/// A point in a [`CompletionRequest`] that ends a stable prefix, for
+/// [`CompletionRequest::cache_points`]. Prefixes run in the order a request
+/// is sent: tools, then the system prompt, then the messages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CachePoint {
+    /// After the tool definitions.
+    Tools,
+    /// After the system prompt.
+    System,
+    /// After the first `n` user and assistant messages. System messages
+    /// are not counted, wherever they sit; `Messages(0)` is [`Self::System`].
+    /// The point names the request's messages as written: adapting them
+    /// for a wire, which drops some and joins adjacent user messages, moves
+    /// the point with them, inside a joined message when it ends there.
+    Messages(usize),
+    /// After the first `items` content items of the user or assistant
+    /// message at `message`, counted as [`Self::Messages`] counts them.
+    Within {
+        /// The message, from 0, system messages not counted.
+        message: usize,
+        /// How many of its content items the prefix holds.
+        items: usize,
+    },
 }
 
 impl CompletionRequest {
@@ -983,8 +1351,8 @@ impl CompletionRequest {
         Ok(())
     }
 
-    /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
-    /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
+    /// The output schema's `"title"`, else `"response_schema"`: a name for
+    /// providers that need one beside the JSON Schema (such as OpenAI).
     pub fn output_schema_name(&self) -> Option<String> {
         self.output_schema.as_ref().map(|schema| {
             schema
@@ -1030,7 +1398,7 @@ impl CompletionRequest {
 /// message already there takes the documents at its front instead, so the
 /// history keeps alternating roles. Telemetry and the sent request must
 /// agree on this placement.
-fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
+pub(crate) fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
     let insert_at = chat_history
         .iter()
         .position(|message| !matches!(message, Message::System { .. }))
@@ -1120,8 +1488,10 @@ impl CompletionRequest {
             output_schema: None,
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
+            foreign_reasoning: false,
             options: GenerationOptions::default(),
             provider_options: ProviderOptions::default(),
+            cache_points: Vec::new(),
         }
     }
 
@@ -1196,8 +1566,9 @@ impl CompletionRequest {
     }
 
     /// Merge provider-specific parameters into the request's, key by key;
-    /// `None` clears them, provider tools included. Provider conversion determines precedence over typed fields,
-    /// and a key that overrides a typed field this request sets is logged.
+    /// `None` clears them, provider tools included. Provider conversion
+    /// determines precedence over typed fields, and a key that overrides a
+    /// typed field this request sets is logged.
     pub fn additional_params(
         mut self,
         additional_params: impl Into<Option<serde_json::Value>>,
@@ -1322,9 +1693,10 @@ impl CompletionRequest {
         self
     }
 
-    /// Set whether the model may call several tools in one turn in [`Self::options`](field@Self::options), as
-    /// [`GenerationOptions::parallel_tool_calls`](GenerationOptions::parallel_tool_calls) does,
-    /// keeping its other fields. See
+    /// Set whether the model may call several tools in one turn in
+    /// [`Self::options`](field@Self::options), as
+    /// [`GenerationOptions::parallel_tool_calls`] does, keeping its other
+    /// fields. See
     /// [`Self::options`](method@Self::options) for the order of calls.
     pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
         self.options = std::mem::take(&mut self.options).parallel_tool_calls(parallel);
@@ -1358,9 +1730,9 @@ impl CompletionRequest {
         self
     }
 
-    /// Set what happens to an option the wire or model cannot honour in [`Self::options`](field@Self::options), as
-    /// [`GenerationOptions::on_unsupported`](GenerationOptions::on_unsupported) does,
-    /// keeping its other fields. See
+    /// Set what happens to an option the wire or model cannot honour in
+    /// [`Self::options`](field@Self::options), as
+    /// [`GenerationOptions::on_unsupported`] does, keeping its other fields. See
     /// [`Self::options`](method@Self::options) for the order of calls.
     pub fn on_unsupported(mut self, policy: OnUnsupported) -> Self {
         self.options = std::mem::take(&mut self.options).on_unsupported(policy);

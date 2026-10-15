@@ -21,8 +21,10 @@ fn bare(chat_history: Vec<Message>) -> CompletionRequest {
         output_schema: None,
         record_telemetry_content: false,
         accept_unknown_finish_reasons: false,
+        foreign_reasoning: false,
         options: GenerationOptions::default(),
         provider_options: crate::completion::ProviderOptions::default(),
+        cache_points: Vec::new(),
     }
 }
 
@@ -44,6 +46,7 @@ fn tool(name: &str) -> ToolDefinition {
         name: crate::message::ToolName::new(name).expect("tool name"),
         description: format!("the {name} tool"),
         parameters: serde_json::json!({"type": "object"}),
+        annotations: Default::default(),
     }
 }
 

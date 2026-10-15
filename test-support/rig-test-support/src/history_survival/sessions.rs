@@ -43,6 +43,7 @@ fn tool() -> ToolDefinition {
             "properties": { "record": { "type": "string" } },
             "required": ["record"]
         }),
+        annotations: Default::default(),
     }
 }
 
@@ -163,95 +164,6 @@ fn assert_answer(cell: Cell, choice: &[AssistantContent]) {
         "[{}] the answer uses the result: {text:?}",
         cell.provider
     );
-}
-
-/// An agent with conversation memory answers a tool-using prompt, then a
-/// second prompt in the same conversation, streamed or not. The second
-/// prompt's request is built from what the agent wrote to memory.
-pub async fn run_memory(
-    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    cell: Cell,
-    streamed: bool,
-) {
-    use futures::StreamExt;
-    use rig_agent::agent::{AgentBuilder, MultiTurnStreamItem};
-
-    let mut builder = AgentBuilder::new(model)
-        .preamble("Use tools when asked. Answer briefly.")
-        .max_tokens(cell.max_tokens)
-        .memory(rig_core::memory::InMemoryConversationMemory::new())
-        .conversation("session");
-    if let Some(params) = (cell.params)() {
-        builder = builder.additional_params(params);
-    }
-    let agent = builder.tool(crate::support::AlphaSignal).build();
-    for prompt in [
-        "Think it through, then call lookup_harbor_label and report the label it returns.",
-        "What label did the tool return? Reply with just the label.",
-    ] {
-        let output = if streamed {
-            let mut stream = agent.prompt(prompt).max_turns(3).stream();
-            let mut output = None;
-            while let Some(item) = stream.next().await {
-                if let MultiTurnStreamItem::FinalResponse(response) =
-                    item.unwrap_or_else(|error| panic!("[{}] stream: {error}", cell.provider))
-                {
-                    output = Some(response.output());
-                }
-            }
-            output.expect("a final response")
-        } else {
-            agent
-                .prompt(prompt)
-                .max_turns(3)
-                .await
-                .unwrap_or_else(|error| panic!("[{}] prompt: {error}", cell.provider))
-                .output()
-        };
-        assert!(
-            output.contains(crate::support::ALPHA_SIGNAL_OUTPUT),
-            "[{}] the answer uses the tool result: {output:?}",
-            cell.provider
-        );
-    }
-}
-
-/// Every reasoning value and id the first conversation turn's replies
-/// delivered reaches the second prompt's request in its slot.
-pub fn assert_memory_recorded(cell: Cell, scenario: &str) {
-    let paths = crate::cassettes::recorded_request_paths(cell.provider, scenario);
-    let bodies = crate::cassettes::recorded_interaction_bodies(cell.provider, scenario);
-    assert!(
-        bodies.len() >= 3,
-        "[{}] a tool turn, its answer, and the second prompt",
-        cell.provider
-    );
-    let dialect = Dialect::from_path(&paths[0]);
-    let Some((last, earlier)) = bodies.split_last() else {
-        return;
-    };
-    let next: Value = serde_json::from_str(&last.0).expect("the second prompt's request is JSON");
-    for (index, (_, reply)) in earlier.iter().enumerate() {
-        let lost = lost_tokens(dialect, reply, &next);
-        assert!(
-            lost.is_empty(),
-            "[{}] reply {index} lost from memory: {lost:?}",
-            cell.provider
-        );
-    }
-    let delivered: Vec<_> = earlier
-        .iter()
-        .flat_map(|(_, reply)| response_tokens(dialect, reply))
-        .collect();
-    for kind in cell.expect {
-        assert!(
-            delivered
-                .iter()
-                .any(|token| token.kind == *kind && !token.value.contains("REDACTED")),
-            "[{}] the first prompt delivered a verbatim {kind}: {delivered:?}",
-            cell.provider
-        );
-    }
 }
 
 /// The first reply's reasoning state reaches a continuation on the same

@@ -1,0 +1,26 @@
+[package]
+name = "corpus-ct-paste-chips"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (conversation-over-time fresh held-out): CT-20: 20. Paste chips"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# An image chip's size; already in the workspace's lock with these features.
+image = { workspace = true, features = ["png", "jpeg", "gif", "webp"] }
+rig-harness = { path = "../../crates/rig-harness" }
+# The chips live in the terminal view's input.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

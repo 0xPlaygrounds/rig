@@ -8,16 +8,21 @@
 //! ```
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     task::Poll,
 };
 
 use futures::{StreamExt, channel::oneshot};
 
 use crate::{
-    effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
+    completion::UnsupportedOption,
+    effect::{Answered, EffectId, EffectKind, HandlerDescriptor},
     error::{ErrorKind, ErrorReport},
     streaming::{Item, Relayed, StreamEvent, StreamEvents},
+    tool::Touches,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -30,8 +35,8 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 /// A registered effect handler returning an outcome or an owned stream.
 ///
 /// Provider and tool authors do not implement this directly: the adapters
-/// in [`crate::serve::adapters`] wrap models, tools, memories and indexes
-/// (`Model`, `Tool`, `ConversationMemory`, `VectorStoreIndex`). A
+/// in [`crate::serve::adapters`] wrap models, tools and indexes
+/// (`Model`, `Tool`, `VectorStoreIndex`). A
 /// host implements it for out-of-tree kinds ([`EffectKind::Custom`], typed
 /// through [`crate::effect::CustomEffect`]) or for a replayer.
 ///
@@ -84,12 +89,31 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
         kind: EffectKind,
         dispatch: Dispatch,
     ) -> impl Future<Output = Reply> + WasmCompatSend + use<'_, Self>;
+
+    /// What dispatching `kind` may read and change, for a tool's handler
+    /// ([`Tool::footprint`](crate::tool::Tool::footprint)); `None` when it
+    /// cannot say, such as for arguments that do not parse.
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        let _ = kind;
+        None
+    }
+
+    /// The options of `kind` this handler would leave out when it serves
+    /// it, with nothing sent: for a model's handler, what its wire or model
+    /// cannot honour ([`DynModel::check`](crate::driver::DynModel::check)).
+    /// Empty when it leaves nothing out or cannot say, as by default.
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        let _ = kind;
+        Vec::new()
+    }
 }
 
 /// Object-safe handler interface implemented for every [`Serve`].
 pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
     fn descriptor(&self) -> HandlerDescriptor;
     fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_>;
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches>;
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption>;
 }
 
 // A type that is not a `Serve` should be told to implement `Serve`, never
@@ -104,11 +128,27 @@ impl<T: Serve> Handler for T {
         let observer = dispatch.observer.clone();
         let folded = dispatch.folded.clone();
         let streaming = dispatch.is_stream();
+        let level = Level::enter(&dispatch.serving);
         Box::pin(async move {
             let reply = self.serve(kind, dispatch).await;
+            // A handler that serves the dispatch inside another one, such
+            // as a wrapper's inner handler, leaves the observer to the
+            // outermost: what the wrapper publishes once its inner handler
+            // answered is part of the record.
+            if !level.outermost() {
+                return reply.observed(streaming, None, None);
+            }
             let seen = observer.and_then(|slot| lock(&slot).take());
             reply.observed(streaming, seen, folded)
         })
+    }
+
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        Serve::footprint(self, kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        Serve::check(self, kind)
     }
 }
 
@@ -123,6 +163,37 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         (**self).serve(kind, dispatch).await
+    }
+
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        (**self).footprint(kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        (**self).check(kind)
+    }
+}
+
+/// One handler serving a dispatch, counted in the dispatch's handlers that
+/// serve it one inside another until it answers or is dropped.
+struct Level(Arc<AtomicUsize>);
+
+impl Level {
+    fn enter(serving: &Arc<AtomicUsize>) -> Self {
+        serving.fetch_add(1, Ordering::AcqRel);
+        Self(serving.clone())
+    }
+
+    /// Whether no handler serves the dispatch around this one: the inner
+    /// ones answered or were dropped by now.
+    fn outermost(&self) -> bool {
+        self.0.load(Ordering::Acquire) == 1
+    }
+}
+
+impl Drop for Level {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -142,11 +213,65 @@ impl ErasedHandler {
         Self(Arc::new(handler))
     }
 
+    /// A handler that serves nothing: it is `descriptor`, and every effect
+    /// it gets is answered [`ErrorKind::HandlerUnavailable`] with `why`. For
+    /// a model whose calls a plugin answers itself, such as from a batch,
+    /// so a call that reaches the handler by mistake fails plainly while
+    /// records still name the model.
+    ///
+    /// ```
+    /// use rig_core::completion::ModelRef;
+    /// use rig_core::effect::{FamilyDescriptor, HandlerDescriptor, model_key};
+    /// use rig_core::serve::ErasedHandler;
+    ///
+    /// let descriptor = HandlerDescriptor {
+    ///     key: model_key("batch/claude"),
+    ///     family: FamilyDescriptor::Completion {
+    ///         model: ModelRef::from("batch/claude"),
+    ///         capabilities: Default::default(),
+    ///     },
+    ///     layers: Vec::new(),
+    /// };
+    /// let handler = ErasedHandler::unavailable(descriptor, "answered from the batch API");
+    /// assert_eq!(handler.descriptor().key, model_key("batch/claude"));
+    /// ```
+    pub fn unavailable(descriptor: HandlerDescriptor, why: impl Into<String>) -> Self {
+        Self::new(Unavailable {
+            descriptor,
+            why: why.into(),
+        })
+    }
+
     /// Wrap this handler in a [`Layer`](super::Layer): `intercept` sees
     /// every dispatch before this handler does and every answer after.
     /// `handler.layered(a).layered(b)` calls `b.before` first and `a.after` first.
     pub fn layered(self, intercept: impl super::Intercept) -> Self {
         Self::new(super::Layer::new(self, intercept))
+    }
+
+    /// Rewrite this handler's completion streams: every item of each reply
+    /// passes through a fresh `make(published)` in order, and the items it
+    /// returns go on in its place. It sees the [`Relayed::Done`](crate::streaming::Relayed::Done)
+    /// too, so a rewrite of the events also rewrites the response the reply
+    /// ends with. A unary completion is rewritten as its events, so both
+    /// delivery modes answer alike; other outcomes and errors pass as they
+    /// are. `name` joins the descriptor's layers.
+    ///
+    /// `published` is the dispatch's
+    /// [`PublishedContext`](crate::tool::PublishedContext): a fact the
+    /// rewrite inserts there before it passes the `Done` on, such as that
+    /// it split reasoning out of this reply, comes back to the driver beside
+    /// the reply and is recorded with it.
+    ///
+    /// Unlike a [`Layer`](super::Layer), the rewrite is recorded: the
+    /// record of a dispatch is the reply the consumer receives, so a replay
+    /// of it does not rewrite twice.
+    pub fn map_stream<M, F>(self, name: impl Into<String>, make: M) -> Self
+    where
+        M: Fn(Arc<crate::tool::PublishedContext>) -> F + WasmCompatSend + WasmCompatSync + 'static,
+        F: FnMut(Relayed) -> Vec<Relayed> + WasmCompatSend + 'static,
+    {
+        Self::new(super::map::MapStream::new(self, name.into(), make))
     }
 
     /// What the erased handler is.
@@ -157,6 +282,17 @@ impl ErasedHandler {
     /// Serve one effect: the driver's call, straight to the boxed handler.
     pub fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_> {
         self.0.handle(kind, dispatch)
+    }
+
+    /// What dispatching `kind` to this handler may read and change
+    /// ([`Serve::footprint`]).
+    pub fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        self.0.footprint(kind)
+    }
+
+    /// The options of `kind` this handler would leave out ([`Serve::check`]).
+    pub fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        self.0.check(kind)
     }
 
     /// Whether two erased handlers are the same allocation.
@@ -173,6 +309,28 @@ impl std::fmt::Debug for ErasedHandler {
     }
 }
 
+/// What [`ErasedHandler::unavailable`] erases: it answers every effect
+/// `HandlerUnavailable` with `why`.
+struct Unavailable {
+    descriptor: HandlerDescriptor,
+    why: String,
+}
+
+impl Serve for Unavailable {
+    type Family = crate::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.descriptor.clone()
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::Outcome(Err(ErrorReport::new(
+            ErrorKind::HandlerUnavailable,
+            self.why.clone(),
+        )))
+    }
+}
+
 /// Forwards serving to the wrapped handler; re-erasure adds another boxed future.
 impl Serve for ErasedHandler {
     type Family = crate::effect::family::Dynamic;
@@ -184,8 +342,17 @@ impl Serve for ErasedHandler {
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         self.handle(kind, dispatch).await
     }
+
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        self.0.footprint(kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        self.0.check(kind)
+    }
 }
 
+/// What an observer of one dispatch sees: its outcome and, when wanted, each streamed item.
 pub trait Observe: Send + Sync {
     /// Provider witness associated with this dispatch, independently of recording.
     fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
@@ -195,7 +362,7 @@ pub trait Observe: Send + Sync {
     /// The completed handler response, or the fold of a streaming handler's
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>);
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>);
     /// Whether streamed items are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
     /// One item pulled from the original handler stream. This is recording
@@ -213,7 +380,7 @@ pub trait Observe: Send + Sync {
     fn stream_item(
         &mut self,
         item: &Result<Relayed, ErrorReport>,
-        outcome: Option<&Result<Outcome, ErrorReport>>,
+        outcome: Option<&Result<Answered, ErrorReport>>,
     ) {
         if self.keep_events() {
             match item {
@@ -256,13 +423,13 @@ impl StreamTap {
     pub fn observe(
         &mut self,
         item: &Result<Relayed, ErrorReport>,
-    ) -> Option<Result<Outcome, ErrorReport>> {
+    ) -> Option<Result<Answered, ErrorReport>> {
         if self.finished {
             return None;
         }
         let outcome = match item {
             Ok(Relayed::Origin(_) | Relayed::Item(_)) => None,
-            Ok(Relayed::Done(response)) => Some(Ok(Outcome::Completion((**response).clone()))),
+            Ok(Relayed::Done(response)) => Some(Ok(Answered::Completion((**response).clone()))),
             Err(report) => Some(Err(report.clone())),
         };
         self.finished = outcome.is_some();
@@ -280,21 +447,21 @@ pub fn stream_truncated() -> ErrorReport {
 /// An answer, or an owned stream whose execution belongs to the driver.
 pub enum Reply {
     /// The completed unary answer or a setup error.
-    Outcome(Result<Outcome, ErrorReport>),
+    Outcome(Result<Answered, ErrorReport>),
     /// Events, including any frames after the first terminal record.
     Stream(StreamEvents),
 }
 
 impl Reply {
     /// Fold a stream to its first outcome, or return the unary answer.
-    pub async fn into_outcome(self) -> Result<Outcome, ErrorReport> {
+    pub async fn into_outcome(self) -> Result<Answered, ErrorReport> {
         self.folded_outcome(None).await
     }
 
     pub(crate) async fn folded_outcome(
         self,
         folded: Option<Folded>,
-    ) -> Result<Outcome, ErrorReport> {
+    ) -> Result<Answered, ErrorReport> {
         match self {
             Self::Outcome(outcome) => outcome,
             Self::Stream(mut stream) => {
@@ -319,7 +486,7 @@ impl Reply {
         match self {
             Self::Stream(stream) => stream,
             Self::Outcome(outcome) => Box::pin(futures::stream::iter(match outcome {
-                Ok(Outcome::Completion(response)) => {
+                Ok(Answered::Completion(response)) => {
                     match crate::operation::completion::events_of(&response) {
                         Ok(items) => std::iter::once(Ok(Relayed::Origin(response.origin.clone())))
                             .chain(items.into_iter().map(|item| Ok(Relayed::Item(item))))
@@ -349,8 +516,8 @@ impl Reply {
             };
         }
         let original = match &self {
-            Self::Outcome(Ok(Outcome::Completion(response))) => {
-                Some(Ok(Outcome::Completion(response.clone())))
+            Self::Outcome(Ok(Answered::Completion(response))) => {
+                Some(Ok(Answered::Completion(response.clone())))
             }
             _ => None,
         };
@@ -401,7 +568,7 @@ impl Reply {
 
 // A layer and the recorder at its immediate inner boundary use the same fold.
 // Each outer boundary gets its own slot: a verdict can change that view.
-pub(crate) type Folded = Arc<Mutex<Option<Result<Outcome, ErrorReport>>>>;
+pub(crate) type Folded = Arc<Mutex<Option<Result<Answered, ErrorReport>>>>;
 
 fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     value
@@ -418,6 +585,9 @@ pub struct Dispatch {
     streaming: bool,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
     observer: Option<Arc<Mutex<Option<Observed>>>>,
+    /// How many handlers serve it now, one inside another: only the
+    /// outermost tells the observer and the fold, once it answered.
+    serving: Arc<AtomicUsize>,
     /// The layer whose verdict replaced the answer the consumer receives,
     /// once one did. Shared down the layer chain; a driver reads it after
     /// the reply ([`Dispatch::replaced_by`]).
@@ -448,6 +618,7 @@ impl Dispatch {
             adapter_context_explicit: false,
             scopes: Vec::new(),
             observer: None,
+            serving: Arc::default(),
             replaced_by: Arc::new(Mutex::new(None)),
             folded: None,
         }
@@ -491,6 +662,9 @@ impl Dispatch {
     }
 
     /// Observe the original handler answer independently of layer verdicts.
+    /// A handler that serves the dispatch through an inner one, passing it
+    /// on, is observed once it answered, with what it published by then;
+    /// a [`Layer`](super::Layer) hands the observer to the handler it wraps.
     pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
         if !self.adapter_context_explicit {
             self.adapter_context = observer.adapter_context();
@@ -500,6 +674,20 @@ impl Dispatch {
             told: false,
         }))));
         self
+    }
+
+    /// This dispatch observed by `recorder` under its id, as a recording
+    /// driver installs it after [`begin`](super::Recorder::begin): its
+    /// outcome, stream, origin and layer decisions, and the tool output its
+    /// handler publishes into a [`PublishedContext`](crate::tool::PublishedContext)
+    /// scope. Add the scopes first.
+    pub fn recorded_by(self, recorder: Arc<dyn super::Recorder + Send + Sync>) -> Self {
+        let observer = super::recorder::RecordingObserver {
+            recorder,
+            id: self.id,
+            published: self.scope::<crate::tool::PublishedContext>(),
+        };
+        self.with_observer(Box::new(observer))
     }
 
     /// Supply provider context for this invocation independently of request data.
@@ -551,6 +739,7 @@ impl Dispatch {
             adapter_context_explicit: self.adapter_context_explicit,
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
+            serving: Arc::default(),
             replaced_by: self.replaced_by.clone(),
             folded,
         }
@@ -563,7 +752,7 @@ struct Observed {
 }
 
 impl Observed {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
         if !self.told {
             self.told = true;
             self.observer.outcome(outcome);
@@ -573,7 +762,7 @@ impl Observed {
     fn item(
         &mut self,
         item: &Result<Relayed, ErrorReport>,
-        outcome: Option<&Result<Outcome, ErrorReport>>,
+        outcome: Option<&Result<Answered, ErrorReport>>,
     ) {
         let outcome = outcome.filter(|_| !self.told);
         self.told |= outcome.is_some();
@@ -587,7 +776,7 @@ impl Drop for Observed {
     }
 }
 
-fn wrong_stream_answer(other: &Outcome) -> ErrorReport {
+fn wrong_stream_answer(other: &Answered) -> ErrorReport {
     ErrorReport::new(
         ErrorKind::Internal,
         format!(
@@ -612,14 +801,14 @@ pub fn cancelled() -> ErrorReport {
 pub struct SinkClosed;
 
 /// A single-use answer owned by an external responder.
-pub struct Resolver(oneshot::Sender<Result<Outcome, ErrorReport>>);
+pub struct Resolver(oneshot::Sender<Result<Answered, ErrorReport>>);
 
 /// Return a resolver and the answer future a handler must await.
 /// Dropping the resolver without answering reports the established
 /// unanswered-handler error; dropping the future closes the resolver.
 pub fn deferred() -> (
     Resolver,
-    impl Future<Output = Result<Outcome, ErrorReport>> + Send + 'static,
+    impl Future<Output = Result<Answered, ErrorReport>> + Send + 'static,
 ) {
     let (sender, receiver) = oneshot::channel();
     (Resolver(sender), async move {
@@ -634,7 +823,7 @@ pub fn deferred() -> (
 
 impl Resolver {
     /// Answer once. A late answer is discarded and reports closure.
-    pub fn resolve(self, outcome: Result<Outcome, ErrorReport>) -> Result<(), SinkClosed> {
+    pub fn resolve(self, outcome: Result<Answered, ErrorReport>) -> Result<(), SinkClosed> {
         self.0.send(outcome).map_err(|_| SinkClosed)
     }
 
@@ -648,7 +837,7 @@ impl Resolver {
 pub async fn serve_inline(
     handler: &ErasedHandler,
     kind: EffectKind,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Answered, ErrorReport> {
     serve_inline_with(handler, kind, Vec::new()).await
 }
 
@@ -657,7 +846,7 @@ pub async fn serve_inline_with(
     handler: &ErasedHandler,
     kind: EffectKind,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Answered, ErrorReport> {
     let mut dispatch = Dispatch::new(EffectId::from_raw(0), false);
     for scope in scopes {
         dispatch = dispatch.with_scope(scope);

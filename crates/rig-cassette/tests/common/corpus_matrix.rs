@@ -43,7 +43,7 @@ use cells::Cell;
 use corpus::Program;
 
 /// The owner every producer names itself: the golden's keys are
-/// `golden/model:default`, `golden/tool:<name>#<n>`, `golden/memory`.
+/// `golden/model:default`, `golden/tool:<name>#<n>`.
 pub(crate) const OWNER: &str = "golden";
 
 /// A wire: the models a cell is served by, and what the wire cannot take.

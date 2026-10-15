@@ -91,3 +91,53 @@ fn a_stored_item_that_cannot_be_read_loads_as_no_item() {
         current
     );
 }
+
+/// Each wire's reasoning blob is found where that wire keeps it, and only
+/// for that wire; removing it leaves the rest of the item.
+#[test]
+fn a_reasoning_blob_is_read_where_its_wire_keeps_it() {
+    use crate::message::{Api, Native};
+    let native = |item| Native {
+        item,
+        fingerprint: Fingerprint::of(&"x"),
+    };
+    let cases = [
+        (
+            "anthropic.messages",
+            json!({"type": "redacted_thinking", "data": "r"}),
+            "/data",
+        ),
+        (
+            "openai.responses",
+            json!({"type": "reasoning", "id": "rs_1", "encrypted_content": "e"}),
+            "/encrypted_content",
+        ),
+        (
+            "bedrock.converse",
+            json!({"reasoningContent": {"reasoningText": {"text": "t", "signature": "s"}}}),
+            "/reasoningContent/reasoningText/signature",
+        ),
+        (
+            "gemini.generate_content",
+            json!({"functionCall": {"name": "f"}, "thoughtSignature": "g"}),
+            "/thoughtSignature",
+        ),
+    ];
+    for (api, item, key) in cases {
+        let api = Api::from(api);
+        let native = native(item);
+        assert_eq!(native.reasoning_blob(&api).map(|blob| blob.key), Some(key));
+        let without = native.without_reasoning_blob(&api).expect("had a blob");
+        assert_eq!(without.pointer(key), None);
+        assert_eq!(
+            native.reasoning_blob(&Api::from("openai.chat")),
+            None,
+            "another wire's keys are not blobs"
+        );
+    }
+    let unsigned = native(json!({"type": "thinking", "thinking": "t", "signature": ""}));
+    assert_eq!(
+        unsigned.reasoning_blob(&Api::from("anthropic.messages")),
+        None
+    );
+}

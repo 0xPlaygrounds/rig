@@ -1,0 +1,304 @@
+use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, Tool, ToolContext};
+
+use super::{Shell, ShellArgs, split_status};
+use crate::OutputLimit;
+use crate::process::Launcher;
+
+fn shell(command: &str, spill: Option<crate::Spill>) -> String {
+    let shell = Shell {
+        spill,
+        ..Shell::default()
+    };
+    futures::executor::block_on(shell.run(ShellArgs::new(command)))
+        .map(|ran| ran.output)
+        .unwrap_or_default()
+}
+
+/// The command runs as the launcher starts it (under its wrapper, with its
+/// variables) in the directory the call names, and the call publishes how
+/// it ended beside its output.
+#[cfg(unix)]
+#[test]
+fn a_call_runs_as_its_launcher_says_and_publishes_how_it_ended() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-launch-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("sub")).ok();
+    let shell = Shell {
+        launcher: Launcher::default()
+            .wrapped(["env", "WRAPPED=yes"])
+            .in_dir(&dir)
+            .with_env("SET", "set")
+            .without_env(["HOME"]),
+        ..Shell::default()
+    };
+    let mut context = ToolContext::new();
+    let args = ShellArgs::new("echo \"$WRAPPED $SET ${HOME:-gone} $(basename \"$PWD\")\"; exit 3")
+        .in_dir("sub")
+        .timeout_secs(5);
+    let output = futures::executor::block_on(Tool::call(&shell, &mut context, args));
+    assert_eq!(
+        output.as_deref().ok(),
+        Some("yes set gone sub\n[exit code 3]")
+    );
+    let status = context.result::<ExitStatus>().ok().flatten();
+    assert_eq!(status, Some(ExitStatus::Exited(3)));
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// Without a cut, the whole output comes back, for a host that cuts it.
+#[cfg(unix)]
+#[test]
+fn without_a_cut_the_whole_output_comes_back() {
+    let shell = Shell {
+        cut: None,
+        ..Shell::default()
+    };
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("seq 1 5000")));
+    let ran = ran.ok();
+    assert!(ran.as_ref().is_some_and(
+        |ran| ran.output.starts_with("1\n2\n") && ran.output.ends_with("5000\n[exit code 0]")
+    ));
+    assert_eq!(ran.map(|ran| ran.status), Some(ExitStatus::Exited(0)));
+}
+
+/// A process that leaves the command's process group keeps the output pipe
+/// open after the kill; the call must still return.
+#[cfg(target_os = "linux")]
+#[test]
+fn returns_when_a_process_outside_the_group_holds_the_pipe() {
+    use std::time::{Duration, Instant};
+
+    let started = Instant::now();
+    let output = shell("setsid sleep 5 & echo started", None);
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert!(output.contains("started"), "{output}");
+    assert!(output.ends_with("[exit code 0]"), "{output}");
+}
+
+/// Output cut by lines or by bytes is kept whole, and `read` reads it back
+/// by the path the cut output names.
+#[cfg(unix)]
+#[test]
+fn cut_output_is_read_back_by_its_handle() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-spill-{}", std::process::id()));
+    let spill = Some(crate::Spill(dir.clone()));
+    for (command, lines) in [("seq 1 3000", 3000), ("seq 1 300000", 300000)] {
+        let output = shell(command, spill.clone());
+        let handle = output
+            .lines()
+            .next()
+            .and_then(|line| line.split_once(" is in "))
+            .and_then(|(_, rest)| rest.split_once(':'))
+            .map(|(path, _)| path.to_owned())
+            .unwrap_or_default();
+        let args = crate::ReadArgs::new(handle).lines(lines / 2, 1);
+        let read = futures::executor::block_on(Tool::call(
+            &crate::Read::default(),
+            &mut ToolContext::new(),
+            args,
+        ));
+        let wanted = format!("{}\t{}\n[", lines / 2, lines / 2);
+        assert!(
+            matches!(&read, Ok(text) if text.contains(&wanted)),
+            "{output:.200} {read:?}"
+        );
+    }
+    assert!(shell("seq 1 3", spill).starts_with("1\n2\n3\n"));
+    assert_eq!(std::fs::read_dir(&dir).map(Iterator::count).ok(), Some(2));
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// Each piece of output reaches the shell's `Live` while the command still
+/// runs: here the command waits for a file the sink makes on its first line.
+#[cfg(unix)]
+#[test]
+fn live_output_arrives_before_the_command_ends() {
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use crate::Live;
+
+    let flag = std::env::temp_dir().join(format!("rig-tools-live-{}", std::process::id()));
+    std::fs::remove_file(&flag).ok();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let live = Live::new({
+        let (seen, flag) = (seen.clone(), flag.clone());
+        move |text| {
+            std::fs::write(&flag, "").ok();
+            seen.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(text.to_owned());
+        }
+    });
+    let shell = Shell {
+        live: Some(live),
+        ..Shell::default()
+    };
+    let command = format!(
+        "echo one; while [ ! -e '{}' ]; do sleep 0.05; done; echo two",
+        flag.display()
+    );
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new(command).timeout_secs(5)));
+    assert_eq!(ran.map(|ran| ran.status).ok(), Some(ExitStatus::Exited(0)));
+    assert_eq!(
+        *seen.lock().unwrap_or_else(PoisonError::into_inner),
+        ["one\n", "two\n"]
+    );
+    std::fs::remove_file(flag).ok();
+}
+
+/// The command starts through the shell's workspace, in the directory the
+/// call names below the launcher's.
+#[cfg(unix)]
+#[test]
+fn the_command_starts_through_the_workspace_in_the_calls_directory() {
+    use std::ffi::{OsStr, OsString};
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use crate::process::{Process, Spawn};
+    use crate::workspace::{Contents, Local, Stat, Workspace};
+
+    /// This machine, noting the directory of every command it starts.
+    #[derive(Debug, Default)]
+    struct Recording(Mutex<Vec<Option<PathBuf>>>);
+
+    impl Workspace for Recording {
+        fn stat(&self, path: &Path) -> std::io::Result<Stat> {
+            Local.stat(path)
+        }
+        fn read(&self, path: &Path, limit: u64) -> std::io::Result<Contents> {
+            Local.read(path, limit)
+        }
+        fn write(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+            Local.write(path, bytes)
+        }
+        fn remove(&self, path: &Path) -> std::io::Result<()> {
+            Local.remove(path)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+            Local.rename(from, to)
+        }
+        fn canonical(&self, path: &Path) -> PathBuf {
+            Local.canonical(path)
+        }
+        fn files(
+            &self,
+            root: &Path,
+            glob: Option<&str>,
+            listing: crate::workspace::Listing,
+        ) -> std::io::Result<Vec<PathBuf>> {
+            Local.files(root, glob, listing)
+        }
+        fn spawn(
+            &self,
+            launcher: &Launcher,
+            dir: Option<&Path>,
+            program: &OsStr,
+            args: &[OsString],
+            how: Spawn,
+        ) -> std::io::Result<Process> {
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(dir.map(Path::to_path_buf));
+            Local.spawn(launcher, dir, program, args, how)
+        }
+    }
+
+    let dir = std::env::temp_dir().join(format!("rig-tools-spawn-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("sub")).ok();
+    let recording = Arc::new(Recording::default());
+    let shell = Shell {
+        workspace: recording.clone(),
+        launcher: Launcher::default().in_dir(&dir),
+        confine: true,
+        ..Shell::default()
+    };
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("pwd").in_dir("sub")));
+    assert!(ran.is_ok_and(|ran| ran.output.contains("sub\n")));
+    let refused = futures::executor::block_on(shell.run(ShellArgs::new("pwd").in_dir("..")));
+    assert!(refused.is_err());
+    assert_eq!(
+        *recording.0.lock().unwrap_or_else(PoisonError::into_inner),
+        [Some(dir.join("sub"))]
+    );
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// The status line splits off a run's output, also after a line the
+/// command printed that reads like one.
+#[cfg(unix)]
+#[test]
+fn the_status_line_splits_off_what_the_command_printed() {
+    let output = shell("echo one; echo '[exit code 0]'; exit 4", None);
+    assert_eq!(
+        split_status(&output),
+        ("one\n[exit code 0]\n", Some("[exit code 4]"))
+    );
+    let output = shell("kill -9 $$", None);
+    assert_eq!(split_status(&output), ("", Some("[killed by a signal]")));
+}
+
+/// A call's timeout is cut to the shell's `max_timeout`, and the tool's
+/// description names that most.
+#[cfg(unix)]
+#[test]
+fn a_timeout_is_cut_to_the_most_the_shell_allows() {
+    let shell = Shell {
+        max_timeout: 1,
+        ..Shell::default()
+    };
+    assert!(shell.description().contains("at most 1)"));
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("sleep 10").timeout_secs(60)));
+    let ran = ran.ok();
+    assert_eq!(
+        ran.as_ref().map(|ran| ran.status),
+        Some(ExitStatus::TimedOut)
+    );
+    assert!(ran.is_some_and(|ran| ran.output.ends_with("[timed out after 1s and killed]")));
+}
+
+/// A call whose output was cut publishes the cut beside it: the end kept,
+/// how many lines of how many, and the file holding them all.
+#[cfg(unix)]
+#[test]
+fn a_cut_output_publishes_the_cut() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-cut-{}", std::process::id()));
+    let shell = Shell {
+        spill: Some(crate::Spill(dir.clone())),
+        cut: Some(OutputLimit {
+            lines: 2,
+            bytes: 1024,
+        }),
+        ..Shell::default()
+    };
+    let mut context = ToolContext::new();
+    let output =
+        futures::executor::block_on(Tool::call(&shell, &mut context, ShellArgs::new("seq 1 5")));
+    let cut = context.result::<OutputCut>().ok().flatten();
+    let spill = cut
+        .as_ref()
+        .and_then(|cut| cut.spill.clone())
+        .unwrap_or_default();
+    assert!(
+        output.is_ok_and(
+            |output| output.starts_with("[3 earlier lines cut;") && output.contains(&spill)
+        )
+    );
+    assert_eq!(
+        cut,
+        Some(OutputCut {
+            kept: KeptEnd::End,
+            kept_lines: 2,
+            total_lines: 5,
+            spill: Some(spill.clone())
+        })
+    );
+    assert_eq!(
+        std::fs::read_to_string(&spill).ok().as_deref(),
+        Some("1\n2\n3\n4\n5\n")
+    );
+    let mut context = ToolContext::new();
+    futures::executor::block_on(Tool::call(&shell, &mut context, ShellArgs::new("seq 1 2"))).ok();
+    assert_eq!(context.result::<OutputCut>().ok().flatten(), None);
+    std::fs::remove_dir_all(dir).ok();
+}

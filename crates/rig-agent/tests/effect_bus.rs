@@ -809,11 +809,9 @@ impl rig_core::vector_store::VectorStoreIndex for AlwaysSlow {
 }
 
 #[tokio::test]
-async fn hook_sequence_with_memory_and_tool_retrieval_when_a_hook_opts_in() {
+async fn hook_sequence_with_tool_retrieval_when_a_hook_opts_in() {
     let sequence = Sequence::default();
     let agent = AgentBuilder::new(MockCompletionModel::text("done"))
-        .memory(rig_core::memory::InMemoryConversationMemory::new())
-        .conversation("c-1")
         .retrieved_tools(1, AlwaysSlow, ToolSet::from_tools(vec![Slow::default()]))
         .add_hook(sequence.clone())
         .build();
@@ -822,8 +820,6 @@ async fn hook_sequence_with_memory_and_tool_retrieval_when_a_hook_opts_in() {
     assert_eq!(
         sequence.take(),
         strings(&[
-            "on_dispatch(memory)",
-            "on_outcome(memory)",
             "on_run_start",
             "on_completion_call",
             "on_model_select",
@@ -832,11 +828,9 @@ async fn hook_sequence_with_memory_and_tool_retrieval_when_a_hook_opts_in() {
             "on_dispatch(completion)",
             "on_outcome(completion)",
             "on_model_turn_finished",
-            "on_dispatch(memory)",
-            "on_outcome(memory)",
             "on_run_settled",
         ]),
-        "the memory load precedes the run, tool retrieval precedes the request, the append precedes settlement"
+        "tool retrieval precedes the request"
     );
 }
 
@@ -851,7 +845,7 @@ impl AgentHook for ReplaceAnswer {
         assert!(ctx.is_streaming(), "this test streams");
         let mut replaced = response.clone();
         replaced.choice = vec![rig_core::message::AssistantContent::text("replaced")];
-        OutcomeAction::replace(Ok(rig_core::effect::Outcome::Completion(replaced)))
+        OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(replaced)))
     }
 }
 
@@ -1037,13 +1031,12 @@ async fn a_hook_binds_a_run_scoped_view_and_dispatches_through_it() {
 }
 
 /// `RunSettled` fires exactly once per run, before the run's error reaches
-/// the consumer, on every surface and for every error ending: a provider
-/// refusal and a memory load that fails before the engine starts, through
-/// `run()`, `run_channel()`, and a stream a consumer drops at its first
-/// `Err` (the idiomatic `let item = item?;` loop, which this crate's own
-/// CLI chatbot uses).
+/// the consumer, on every surface: a provider refusal through `run()`,
+/// `run_channel()`, and a stream a consumer drops at its first `Err` (the
+/// idiomatic `let item = item?;` loop, which this crate's own CLI chatbot
+/// uses).
 #[tokio::test]
-async fn run_settled_fires_once_before_every_error_ending_on_every_surface() {
+async fn run_settled_fires_once_before_the_error_on_every_surface() {
     use std::sync::atomic::AtomicUsize;
 
     #[derive(Clone, Default)]
@@ -1057,57 +1050,39 @@ async fn run_settled_fires_once_before_every_error_ending_on_every_surface() {
         }
     }
 
-    enum Ending {
-        Provider,
-        MemoryLoad,
-    }
-    let agent = |ending: &Ending, hook: Settles| {
+    let agent = |hook: Settles| {
         let model = MockCompletionModel::from_turns([MockTurn::error("boom")]);
-        let builder = AgentBuilder::new(model).add_hook(hook);
-        match ending {
-            Ending::Provider => builder.build(),
-            Ending::MemoryLoad => builder
-                .memory(rig_core::test_utils::FailingMemory::new("load boom"))
-                .conversation("settled-once")
-                .build(),
-        }
+        AgentBuilder::new(model).add_hook(hook).build()
     };
-    let expected = |ending: &Ending| match ending {
-        Ending::Provider => "boom",
-        Ending::MemoryLoad => "load boom",
-    };
+    // Blocking.
+    let hook = Settles::default();
+    let error = within(agent(hook.clone()).prompt("go").run())
+        .await
+        .expect_err("the run fails");
+    assert!(error.to_string().contains("boom"), "{error}");
+    assert_eq!(hook.0.load(Ordering::SeqCst), 1, "run(): settled once");
+    assert!(hook.1.lock().expect("lock")[0].contains("boom"));
 
-    for ending in [Ending::Provider, Ending::MemoryLoad] {
-        // Blocking.
-        let hook = Settles::default();
-        let error = within(agent(&ending, hook.clone()).prompt("go").run())
-            .await
-            .expect_err("the run fails");
-        assert!(error.to_string().contains(expected(&ending)), "{error}");
-        assert_eq!(hook.0.load(Ordering::SeqCst), 1, "run(): settled once");
-        assert!(hook.1.lock().expect("lock")[0].contains(expected(&ending)));
+    // Channelled: the future is the run; the events are dropped.
+    let hook = Settles::default();
+    let (future, events) = agent(hook.clone()).prompt("go").run_channel();
+    drop(events);
+    within(future).await.expect_err("the run fails");
+    assert_eq!(
+        hook.0.load(Ordering::SeqCst),
+        1,
+        "run_channel(): settled once"
+    );
 
-        // Channelled: the future is the run; the events are dropped.
-        let hook = Settles::default();
-        let (future, events) = agent(&ending, hook.clone()).prompt("go").run_channel();
-        drop(events);
-        within(future).await.expect_err("the run fails");
-        assert_eq!(
-            hook.0.load(Ordering::SeqCst),
-            1,
-            "run_channel(): settled once"
-        );
-
-        // Streamed, dropped at the first `Err`.
-        let hook = Settles::default();
-        let mut stream = agent(&ending, hook.clone()).prompt("go").stream();
-        let first = within(stream.next()).await.expect("an item");
-        assert!(first.is_err(), "the first item is the ending");
-        drop(stream);
-        assert_eq!(
-            hook.0.load(Ordering::SeqCst),
-            1,
-            "stream(): settled before the error was yielded"
-        );
-    }
+    // Streamed, dropped at the first `Err`.
+    let hook = Settles::default();
+    let mut stream = agent(hook.clone()).prompt("go").stream();
+    let first = within(stream.next()).await.expect("an item");
+    assert!(first.is_err(), "the first item is the ending");
+    drop(stream);
+    assert_eq!(
+        hook.0.load(Ordering::SeqCst),
+        1,
+        "stream(): settled before the error was yielded"
+    );
 }

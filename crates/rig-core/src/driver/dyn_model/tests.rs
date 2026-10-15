@@ -210,14 +210,20 @@ fn check_lists_every_refusal_and_sends_nothing() {
     );
 }
 
-/// A request that cannot be built for another reason is `Invalid`, whatever
-/// it refuses.
+/// A check reads no message, so a history it could not send changes
+/// nothing; a request that cannot be built for another reason is
+/// `Invalid`, whatever it refuses.
 #[test]
-fn check_reports_a_request_that_cannot_be_built() {
+fn check_reads_no_message_and_reports_a_request_that_cannot_be_built() {
     use crate::completion::CheckError;
-    let (model, _) = connected("openai/gpt-6-sol");
+    let (model, _) = connected("anthropic/claude-fable-5");
     let mut request = CompletionRequest::new("hi").temperature(0.2).top_p(0.9);
     request.chat_history.clear();
+    let Err(CheckError::Unsupported(refused)) = model.check(&request) else {
+        panic!("Claude Fable 5 takes no sampling parameters");
+    };
+    assert_eq!(refused.len(), 2, "{refused:?}");
+    request.additional_params = Some(serde_json::json!({ "tools": 5 }));
     assert!(matches!(model.check(&request), Err(CheckError::Invalid(_))));
 }
 

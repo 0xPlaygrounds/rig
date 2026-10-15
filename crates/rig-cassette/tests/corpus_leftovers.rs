@@ -9,8 +9,7 @@
 //! thousand kept events on one key beside two hundred other records land in
 //! the last slot, in order (L2). And `ErrorKind::Denied` under every
 //! consumer mapping (L7, ruling 10): on a tool the model sees the skipped
-//! result; on a completion the run fails; on a memory `Load` the run fails
-//! at the record (`MemoryError::Policy`); on a custom effect from a hook,
+//! result; on a completion the run fails; on a custom effect from a hook,
 //! the hook sees `Denied`. None of the denials is a record: the layer
 //! decided before any handler served the dispatch. L1 is a loom model and
 //! L2's search order a unit test beside this cell.
@@ -22,7 +21,6 @@
 //! | `mock_leftovers_denied_tool` | `tests/core/golden_leftovers.rs` `denied_tool_…` | `[Completion, Completion]`: the skipped result in the second request |
 //! | `mock_leftovers_denied_tool_streamed` | `denied_tool_streamed_…` | the same, streamed with events |
 //! | `mock_leftovers_denied_completion` | `denied_completion_…` | `[]`: the run fails with `Denied` before any record |
-//! | `mock_leftovers_denied_memory_load` | `denied_memory_load_…` | `[]`: the run fails at the load, `MemoryError::Policy` |
 //! | `mock_leftovers_denied_custom_from_hook` | `denied_custom_from_hook_…` | `[Completion]`: the hook saw `Denied` and went on |
 //! | `mock_leftovers_denied_custom_from_hook_streamed` | `denied_custom_from_hook_streamed_…` | the same, streamed with events |
 //! | `mock_leftovers_unserializable_from_hook` | `unserializable_from_hook_…` | `[Completion]`: the hook saw `Request`, the handler was never entered (L3) |
@@ -90,14 +88,7 @@ const DENIED_COMPLETION: Program = Program {
     layers: &[deny(LayerAt::Model)],
     ..BASIC
 };
-const DENIED_MEMORY_LOAD: Program = Program {
-    fixture: "mock_leftovers_denied_memory_load",
-    max_turns: None,
-    conversation: Some(corpus::CONVERSATION),
-    ending: Ending::MemoryError,
-    layers: &[deny(LayerAt::Memory)],
-    ..BASIC
-};
+
 const DENIED_CUSTOM_FROM_HOOK: Program = Program {
     fixture: "mock_leftovers_denied_custom_from_hook",
     max_turns: None,
@@ -140,7 +131,6 @@ both_interpreters! {
     denied_tool: DENIED_TOOL,
     denied_tool_streamed: DENIED_TOOL_STREAMED,
     denied_completion: DENIED_COMPLETION,
-    denied_memory_load: DENIED_MEMORY_LOAD,
     denied_custom_from_hook: DENIED_CUSTOM_FROM_HOOK,
     denied_custom_from_hook_streamed: DENIED_CUSTOM_FROM_HOOK_STREAMED,
     unserializable_from_hook: UNSERIALIZABLE_FROM_HOOK,
@@ -157,7 +147,6 @@ fn a_denial_is_never_a_record() {
     assert_eq!(corpus::golden(DENIED_TOOL.fixture).len(), 2);
     assert_eq!(corpus::golden(DENIED_TOOL_STREAMED.fixture).len(), 2);
     assert_eq!(corpus::golden(DENIED_COMPLETION.fixture).len(), 0);
-    assert_eq!(corpus::golden(DENIED_MEMORY_LOAD.fixture).len(), 0);
     assert_eq!(corpus::golden(DENIED_CUSTOM_FROM_HOOK.fixture).len(), 1);
     assert_eq!(
         corpus::golden(DENIED_CUSTOM_FROM_HOOK_STREAMED.fixture).len(),
@@ -165,7 +154,6 @@ fn a_denial_is_never_a_record() {
     );
     for (cell, key) in [
         (&DENIED_COMPLETION, "golden/model:default"),
-        (&DENIED_MEMORY_LOAD, "golden/memory"),
         (&DENIED_CUSTOM_FROM_HOOK, corpus::NOTE_KEY),
     ] {
         let log = corpus::golden(cell.fixture);

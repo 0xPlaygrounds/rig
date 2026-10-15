@@ -1,0 +1,25 @@
+[package]
+name = "corpus-sp-theme-files"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (splits fresh held-out): SP-08: 08. Theme files"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# Theme files are TOML; the same version rig-harness reads settings with.
+toml = "1"
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

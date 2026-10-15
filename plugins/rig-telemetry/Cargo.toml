@@ -1,0 +1,43 @@
+[package]
+name = "rig-telemetry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "rig-harness plugins: what model calls cost and /usage, the session's effect log, and the process's warnings and errors as data."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# Each agent's meter in the terminal view's status line. An app without the
+# terminal view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui", "dep:bevy_tasks"]
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+# A resumed session's effect log read off the main thread for the view.
+bevy_tasks = { workspace = true, optional = true }
+# The effect log, as JSON lines.
+rig-cassette = { workspace = true, features = ["jsonl"] }
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness" }
+# The session's cost in its `/resume` line.
+rig-sessions = { path = "../rig-sessions", default-features = false }
+rig-tui = { path = "../rig-tui", optional = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# The app on a session store and the scripted model the tests run on.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }

@@ -1,0 +1,26 @@
+[package]
+name = "corpus-json-stream"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 48. JSON event stream and RPC mode"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Command lines from stdin, a stream the app reads.
+async-channel = { workspace = true }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+# The pool the command stream runs on.
+bevy_tasks = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

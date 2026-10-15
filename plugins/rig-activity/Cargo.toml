@@ -1,0 +1,33 @@
+[package]
+name = "rig-activity"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "A rig-harness plugin: what each agent is doing, kept for views."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# Each agent's status in the terminal view's status line. An app without
+# the terminal view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../rig-tui", optional = true }
+
+[dev-dependencies]
+# The open effect a test spawns.
+serde_json = { workspace = true }

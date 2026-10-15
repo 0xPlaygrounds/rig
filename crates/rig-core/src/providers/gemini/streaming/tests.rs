@@ -530,6 +530,7 @@ fn replayed(model: &str, response: &crate::completion::CompletionResponse) -> se
             name: call.function.name.clone(),
             description: "a tool".to_owned(),
             parameters: json!({"type": "object"}),
+            annotations: Default::default(),
         })
         .collect();
     let request = crate::operation::Completion::prepare(request, &wire.describe())

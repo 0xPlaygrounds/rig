@@ -1,8 +1,5 @@
-//! Context-free tool authoring contracts.
-//!
-//! Portable tools receive owned, deserialized arguments only. Runtime identity,
-//! authorization, mutable context, capability state, and lifecycle metadata
-//! remain outside the typed portable call boundary.
+//! [`PortableTool`]: a tool that sees only its parsed arguments, with no run context, so it
+//! works under any host.
 //!
 //! ```
 //! use rig_core::tool::{PortableTool, tool_definition};
@@ -53,6 +50,19 @@ pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
 
     /// JSON Schema for arguments.
     fn parameters(&self) -> serde_json::Value;
+
+    /// What calling the tool does to the world, for the host's policies;
+    /// nothing stated by default.
+    fn annotations(&self) -> crate::completion::ToolAnnotations {
+        crate::completion::ToolAnnotations::default()
+    }
+
+    /// What a call with `arguments` may read and change; by default, from
+    /// the annotations ([`Tool::footprint`](super::Tool::footprint)).
+    fn footprint(&self, arguments: &Self::Args) -> super::Touches {
+        let _ = arguments;
+        super::Touches::from_annotations(&self.annotations())
+    }
 
     /// Normalize a concrete failure at the runtime effect boundary.
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {

@@ -1,0 +1,22 @@
+[package]
+name = "corpus-fh-turn-timeline"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (fresh held-out): FH-23: 23. Turn timeline"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+schemars = { workspace = true }

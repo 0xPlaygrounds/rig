@@ -37,8 +37,12 @@ use crate::support::{files_under, output};
 pub(crate) const HEADER: &str = "file\tsource\tlines\tbranches\tcovered lines\tcovered branches";
 
 /// Packages left out of the measurement: the nested minimal runner repeats
-/// sources `rig-cassette` already runs, and xtask is not production code.
-const EXCLUDED_PACKAGES: &[&str] = &["rig-cassette-minimal", "xtask"];
+/// sources `rig-cassette` already runs, xtask is not production code, and
+/// the plugin corpus (a cargo glob over its `publish = false` fixtures) is
+/// neither production code nor a library's own tests: a library file is
+/// held to what its own crate's tests cover, never to what a corpus plugin
+/// happens to run.
+const EXCLUDED_PACKAGES: &[&str] = &["rig-cassette-minimal", "xtask", "corpus-*"];
 
 /// Environment the per-test wrapper reads.
 const WRAP_OUT: &str = "RIG_COVERAGE_OUT";
@@ -113,10 +117,11 @@ pub(crate) struct Row {
 /// Whether `path` (relative to the workspace root) is production source.
 pub(crate) fn is_production(path: &str) -> bool {
     let in_src = path.starts_with("src/")
-        || path
-            .strip_prefix("crates/")
-            .and_then(|rest| rest.split_once('/'))
-            .is_some_and(|(_, rest)| rest.starts_with("src/"));
+        || ["crates/", "plugins/"].iter().any(|folder| {
+            path.strip_prefix(folder)
+                .and_then(|rest| rest.split_once('/'))
+                .is_some_and(|(_, rest)| rest.starts_with("src/"))
+        });
     in_src
         && path.ends_with(".rs")
         && !path.split('/').any(|component| {
@@ -421,6 +426,7 @@ pub(crate) fn per_crate(files: &BTreeMap<String, FileCoverage>) -> BTreeMap<Stri
     for (file, coverage) in files {
         let name = file
             .strip_prefix("crates/")
+            .or_else(|| file.strip_prefix("plugins/"))
             .and_then(|rest| rest.split('/').next())
             .unwrap_or("rig");
         let counts = coverage.counts();

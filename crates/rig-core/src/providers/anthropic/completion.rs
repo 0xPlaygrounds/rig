@@ -59,8 +59,11 @@ pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
 /// `claude-haiku-4-5` completion model
 pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 
+/// An `anthropic-version` header value.
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
+/// An `anthropic-version` header value.
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
+/// The `anthropic-version` header value rig sends.
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 
 /// Cache-breakpoint lifetime: five minutes by default, or one hour.
@@ -124,8 +127,8 @@ pub(super) const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-0
 pub(super) const FINE_GRAINED_TOOL_STREAMING_BETA: &str = "fine-grained-tool-streaming-2025-05-14";
 
 /// Whether a request to `model` on `wire`, with `thinking` as the caller
-/// sets it, asks Anthropic to drop thinking bound to another context (pi's
-/// `drop_block`): Anthropic's own API, for a model whose thinking binds, in
+/// sets it, asks Anthropic to drop thinking bound to another context:
+/// Anthropic's own API, for a model whose thinking binds, in
 /// adaptive thinking (the default when the caller names none), the only
 /// mode that takes the binding. Its turns then replay verbatim whatever the
 /// context. In another mode (`disabled`, `between_tools`) a turn made under
@@ -224,16 +227,69 @@ fn base(
     );
     let ids = WireIds::for_target(&history, wire, model);
     let mut messages: Vec<Value> = Vec::new();
+    // How many wire messages the first `n` turns became, at `n`. System
+    // messages are placed apart, so the turns are counted alone.
+    let mut after = vec![0];
+    // Each turn with the index its wire message takes, if it sends one.
+    let mut turns = Vec::new();
     for message in &history {
+        let at = messages.len();
         messages.extend(message_json(message, wire, &ids)?);
+        if !matches!(message, Message::System { .. }) {
+            after.push(messages.len());
+            turns.push((at, message));
+        }
+    }
+    let ending = |turns: usize| {
+        after
+            .get(turns)
+            .map(|wired| wired.checked_sub(1).map_or(Spot::System, Spot::last))
+    };
+    let mut points = Vec::with_capacity(request.cache_points.len());
+    for point in &request.cache_points {
+        let spot = match *point {
+            completion::CachePoint::Tools => Some(Spot::Tools),
+            completion::CachePoint::System => Some(Spot::System),
+            completion::CachePoint::Messages(turns) => ending(turns),
+            completion::CachePoint::Within { message, items } => {
+                let Some(&(at, turn)) = turns.get(message) else {
+                    continue;
+                };
+                let blocks = match turn {
+                    Message::User { content } => {
+                        let mut blocks = 0;
+                        for part in content.iter().take(items) {
+                            blocks += usize::from(user_part(part, &ids)?.is_some());
+                        }
+                        blocks
+                    }
+                    Message::Assistant(turn) => turn
+                        .content
+                        .iter()
+                        .take(items)
+                        .filter_map(|block| assistant_part(block, wire, &ids))
+                        .count(),
+                    Message::System { .. } => 0,
+                };
+                if blocks == 0 {
+                    ending(message)
+                } else {
+                    Some(Spot::Message(at, blocks))
+                }
+            }
+        };
+        points.extend(spot);
     }
     // MiniMax honours a cache through block markers the manual placement
     // writes.
     let placed = input.cache().is_some() && wire.provider.dialect.name == super::wire::MINIMAX.name;
     apply_cache_control(
         wire,
-        placed,
-        top.as_ref(),
+        Markers {
+            placed,
+            top: top.as_ref(),
+            points,
+        },
         &mut system,
         &mut messages,
         &mut tools,
@@ -309,7 +365,7 @@ fn message_json(
 }
 
 /// One user block on the wire. `None` for blank text, which Anthropic
-/// rejects (pi's rule).
+/// rejects.
 fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeError> {
     let image = |image: &message::Image| {
         let source = image_source(image).ok_or_else(unsendable)?;
@@ -365,8 +421,8 @@ fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
 }
 
 /// One assistant block on the wire: the provider's item while it is
-/// current, else the block rebuilt from its canonical fields as pi rebuilds
-/// it, with the identity keys of an edited item. `None` for a block with
+/// current, else the block rebuilt from its canonical fields, with the
+/// identity keys of an edited item. `None` for a block with
 /// nothing Anthropic takes.
 pub(super) fn assistant_part(
     block: &AssistantContent,
@@ -657,17 +713,76 @@ fn top_level_cache_control(marker: Option<&Value>) -> Result<Option<Value>, Enco
     }
 }
 
-/// Place the request's cache breakpoints within Anthropic's budget of four,
+/// What asks for cache markers besides the wire's own settings.
+struct Markers<'a> {
+    /// Whether the option mapping asked for block markers.
+    placed: bool,
+    /// The request's top-level marker, if any.
+    top: Option<&'a Value>,
+    /// Where the request's cache points land.
+    points: Vec<Spot>,
+}
+
+/// Where a cache point lands, in the order the request is sent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Spot {
+    /// The final non-deferred tool.
+    Tools,
+    /// The last system block.
+    System,
+    /// The last markable block among the first blocks, as many as the
+    /// second number, of the wire message at the first.
+    Message(usize, usize),
+}
+
+impl Spot {
+    /// The last markable block of the wire message at `at`.
+    fn last(at: usize) -> Self {
+        Self::Message(at, usize::MAX)
+    }
+}
+
+/// The block a cache point at `spot` marks, if the request has one there.
+fn spot_block<'a>(
+    spot: Spot,
+    system: &'a mut [Value],
+    messages: &'a mut [Value],
+    tools: &'a mut [Value],
+) -> Option<&'a mut Map<String, Value>> {
+    let block = match spot {
+        Spot::Tools => tools
+            .iter_mut()
+            .rfind(|tool| tool.get("defer_loading") != Some(&Value::Bool(true))),
+        Spot::System => system.last_mut(),
+        Spot::Message(at, blocks) => messages
+            .get_mut(at)?
+            .get_mut("content")?
+            .as_array_mut()?
+            .iter_mut()
+            .take(blocks)
+            .rev()
+            .find(|block| takes_marker(block)),
+    };
+    block?.as_object_mut()
+}
+
+/// Place the request's cache markers within Anthropic's budget of four,
 /// one fewer with a top-level marker. Manual prompt caching, or a cache the
 /// mapping `placed`, marks the final non-deferred tool, the system prompt
 /// and the last block of the last user or system message; a static-prefix
-/// TTL alone marks only the first two.
-/// Markers a tool already carries are kept and count toward the budget, and
-/// every one-hour marker must precede the five-minute ones.
+/// TTL alone marks only the first two. The request's cache points then
+/// take the markers left, ahead of manual caching's last-message marker:
+/// when too few are left, the points furthest into the request win, and a
+/// block already marked takes no second one. Markers a tool already
+/// carries are kept and count toward the budget, and every one-hour marker
+/// must precede the five-minute ones.
 fn apply_cache_control(
     wire: &Messages,
-    placed: bool,
-    top: Option<&Value>,
+    Markers {
+        placed,
+        top,
+        mut points,
+    }: Markers<'_>,
     system: &mut [Value],
     messages: &mut [Value],
     tools: &mut [Value],
@@ -727,6 +842,20 @@ fn apply_cache_control(
             remaining -= 1;
         }
     }
+    // Furthest into the request first. Distinct spots are distinct blocks,
+    // so a repeated spot finds its block already marked.
+    points.sort_unstable();
+    for spot in points.into_iter().rev() {
+        if remaining == 0 {
+            break;
+        }
+        if let Some(block) = spot_block(spot, system, messages, tools)
+            && !block.contains_key("cache_control")
+        {
+            block.insert("cache_control".into(), ephemeral(top_ttl.as_ref()));
+            remaining -= 1;
+        }
+    }
     if manual && top.is_none() && remaining > 0 {
         let block = messages
             .last_mut()
@@ -755,6 +884,12 @@ fn apply_cache_control(
         }
     }
     Ok(())
+}
+
+/// Whether a content block can carry a cache marker: any but a thinking
+/// block.
+fn takes_marker(block: &Value) -> bool {
+    !matches!(block.str("type"), Some("thinking" | "redacted_thinking"))
 }
 
 /// Require all object properties, disallow additional properties, and remove

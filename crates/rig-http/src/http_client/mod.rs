@@ -8,7 +8,7 @@
 //! # Ok::<(), rig_http::http_client::Error>(())
 //! ```
 
-use bytes::Bytes;
+pub use bytes::Bytes;
 use http::HeaderName;
 pub use http::{
     HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,
@@ -19,11 +19,14 @@ pub mod middleware;
 pub mod multipart;
 use crate::wasm_compat::*;
 pub use erased::DynHttpClient;
-pub use middleware::HttpMiddleware;
+pub use middleware::{Exchange, HttpMiddleware};
 pub use multipart::MultipartForm;
 
+/// Why an HTTP request failed: a protocol or header error, a non-success reply, or the
+/// transport's own error.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The request could not be built.
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
     /// Failed HTTP response preserving its status, body, and headers.
@@ -38,18 +41,24 @@ pub enum Error {
         /// The failed response's headers, verbatim.
         headers: http::HeaderMap,
     },
+    /// A header value with characters a header cannot carry.
     #[error("Header value outside of legal range: {0}")]
     InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+    /// The request builder failed earlier, so its headers cannot be read.
     #[error("Request in error state, cannot access headers")]
     NoHeaders,
+    /// The response stream ended before it was done.
     #[error("Stream ended")]
     StreamEnded,
+    /// The response's content type was not the one expected.
     #[error("Invalid content type was returned: {0:?}")]
     InvalidContentType(HeaderValue),
+    /// The transport's own error, without a response.
     #[cfg(not(target_family = "wasm"))]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
+    /// The transport's own error, without a response.
     #[cfg(target_family = "wasm")]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + 'static>),
@@ -112,6 +121,7 @@ impl Error {
     }
 }
 
+/// A result with an HTTP [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
@@ -131,14 +141,18 @@ impl Error {
     }
 }
 
+/// Response bytes that are read when awaited.
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
+/// A response body that is read when awaited.
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
 /// The body of a streaming response: the transport's own chunks, boxed.
 pub type BoxedStream = std::pin::Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>>;
 
+/// A response whose body streams.
 pub type StreamingResponse = Response<BoxedStream>;
 
+/// A request with an empty body.
 #[derive(Debug, Clone, Copy)]
 pub struct NoBody;
 
@@ -148,11 +162,13 @@ impl From<NoBody> for Bytes {
     }
 }
 
+/// Reads `response`'s body as text, replacing invalid UTF-8.
 pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     let text = response.into_body().await?;
     Ok(String::from(String::from_utf8_lossy(&text)))
 }
 
+/// An `Authorization: Bearer <key>` header.
 pub fn make_auth_header(key: impl AsRef<str>) -> Result<(HeaderName, HeaderValue)> {
     Ok((
         http::header::AUTHORIZATION,
@@ -160,6 +176,7 @@ pub fn make_auth_header(key: impl AsRef<str>) -> Result<(HeaderName, HeaderValue
     ))
 }
 
+/// Sets `Authorization: Bearer <key>` on `headers`.
 pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Result<()> {
     let (k, v) = make_auth_header(key)?;
 

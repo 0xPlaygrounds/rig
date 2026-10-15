@@ -1,0 +1,25 @@
+[package]
+name = "corpus-oc-auto-continue"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (one-conversation fresh held-out): OC-22: 22. Continue replies cut off by the output limit"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The "continued" marks at the seams.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+serde_json = { workspace = true }

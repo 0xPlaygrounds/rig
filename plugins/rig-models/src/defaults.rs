@@ -1,0 +1,96 @@
+//! The model and reasoning setting a new session starts with: the last ones
+//! chosen for an agent the user talks to, kept in the app's
+//! [`Home::defaults`] ([`RigHome`]). A restored session keeps its own;
+//! subagents never change the defaults.
+
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_log::warn;
+use rig_harness::harness_protocol::Home;
+use rig_harness::services::RigHome;
+use rig_tools::fs::{read_json, write_json};
+use serde::{Deserialize, Serialize};
+
+use rig_ecs::agent::{Agent, SpawnedBy};
+use rig_ecs::model::{ModelChoice, ReasoningSetting};
+use rig_ecs::session_log::SessionRestored;
+
+/// Remembers the last chosen model and reasoning setting and gives them to
+/// an agent that starts without a model.
+#[derive(Default)]
+pub struct DefaultsPlugin;
+
+impl Plugin for DefaultsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PostStartup, apply_defaults)
+            .add_observer(remember.run_if(resource_exists::<SessionRestored>));
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, PartialEq)]
+struct Defaults {
+    model: Option<ModelChoice>,
+    #[serde(default)]
+    effort: ReasoningSetting,
+}
+
+impl Defaults {
+    /// The ones kept in `home`.
+    fn read(home: &Home) -> Self {
+        read_json(&home.defaults()).unwrap_or_default()
+    }
+
+    /// Keeps them in `home` with [`write_json`], so a crash never leaves
+    /// half a file.
+    fn write(&self, home: &Home) {
+        let path = home.defaults();
+        if let Err(failure) = write_json(&path, self) {
+            warn!(
+                "could not remember the model in {}: {failure}",
+                path.display()
+            );
+        }
+    }
+}
+
+/// Gives each agent the user talks to that has no model yet, such as the
+/// first agent of a new session, the remembered model and reasoning.
+fn apply_defaults(
+    agents: Query<Entity, (With<Agent>, Without<ModelChoice>, Without<SpawnedBy>)>,
+    home: Res<RigHome>,
+    mut commands: Commands,
+) {
+    if agents.is_empty() {
+        return;
+    }
+    let defaults = Defaults::read(&home.0);
+    let Some(model) = defaults.model else {
+        return;
+    };
+    for agent in &agents {
+        commands
+            .entity(agent)
+            .insert((defaults.effort, model.clone()));
+    }
+}
+
+/// Remembers the model and reasoning of an agent the user talks to when
+/// either changes, such as by `/model` or `/effort`, once the session is
+/// restored: restoring inserts them, which is not a choice. A failed log
+/// write does not stop it. Subagents are not remembered.
+fn remember(
+    chosen: On<Insert<(ModelChoice, ReasoningSetting)>>,
+    agents: Query<(&ModelChoice, &ReasoningSetting), Without<SpawnedBy>>,
+    home: Res<RigHome>,
+) {
+    let Ok((model, effort)) = agents.get(chosen.entity) else {
+        return;
+    };
+    let defaults = Defaults {
+        model: Some(model.clone()),
+        effort: *effort,
+    };
+    if Defaults::read(&home.0) != defaults {
+        defaults.write(&home.0);
+    }
+}

@@ -1,6 +1,6 @@
 use rig_core::{
     completion::{AssistantContent, CompletionRequest, CompletionResponse, Message, Usage},
-    effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Outcome},
+    effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey},
     error::{ErrorKind, ErrorReport},
 };
 
@@ -23,7 +23,7 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
             request: request(),
             stream: false,
         };
-        record.outcome = Ok(Outcome::Completion(CompletionResponse::new(
+        record.outcome = Ok(Answered::Completion(CompletionResponse::new(
             vec![AssistantContent::text("ok")],
             Usage::default(),
             rig_core::message::Origin::new("test.api", "composing-model", ""),
@@ -68,7 +68,7 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
     ] {
         let mut required = EffectRow::new();
         for key in keys {
-            required.insert_if_absent(HandlerKey::from(key), EffectFamily::Memory);
+            required.insert_if_absent(HandlerKey::from(key), EffectFamily::Retrieve);
             if !log
                 .header
                 .handlers
@@ -77,7 +77,7 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
             {
                 log.header.handlers.push(HandlerDescriptor {
                     key: HandlerKey::from(key),
-                    family: FamilyDescriptor::Memory {},
+                    family: FamilyDescriptor::Retrieve {},
                     layers: vec![],
                 });
             }
@@ -106,7 +106,7 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
             && error.message.contains("descriptor")
     );
     let mut conflicting = EffectRow::new();
-    conflicting.insert_if_absent(HandlerKey::from("shared"), EffectFamily::Retrieve);
+    conflicting.insert_if_absent(HandlerKey::from("shared"), EffectFamily::Tool);
     log.header.programs.insert(
         "conflicting".into(),
         ProgramIdentity {
@@ -122,7 +122,7 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
 fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches() {
     use rig_core::{
         effect::{Delivery, DeliveryKind},
-        serve::{Origin, Recorder},
+        serve::{DispatchContext, Recorder},
     };
     let recorder = EffectLogRecorder::new();
     recorder.begin_delivery_tracking();
@@ -134,7 +134,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
             request: request(),
             stream: true,
         },
-        Origin::default(),
+        DispatchContext::default(),
     );
     recorder.delivery(Delivery {
         batch: 1,
@@ -150,7 +150,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
                 kind: "test".into(),
                 payload: serde_json::Value::Null,
             },
-            Origin::default(),
+            DispatchContext::default(),
         );
         recorder.delivery(Delivery {
             batch: n + 2,
@@ -159,7 +159,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
         });
         recorder.resolve(
             id,
-            Ok(Outcome::Custom {
+            Ok(Answered::Custom {
                 payload: serde_json::json!(n),
             }),
         );
@@ -186,7 +186,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
 fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
     use rig_core::{
         effect::{Delivery, DeliveryKind},
-        serve::{Origin, Recorder},
+        serve::{DispatchContext, Recorder},
     };
     let recorder = EffectLogRecorder::new();
     recorder.begin_delivery_tracking();
@@ -199,7 +199,7 @@ fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
                 kind: "test".into(),
                 payload: serde_json::Value::Null,
             },
-            Origin::default(),
+            DispatchContext::default(),
         );
         let delivery = Delivery {
             batch: n,
@@ -217,7 +217,7 @@ fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
 
 #[test]
 fn stream_error_metadata_is_validated_and_released_with_its_records() {
-    use rig_core::serve::{Origin, Recorder};
+    use rig_core::serve::{DispatchContext, Recorder};
     let recorder = EffectLogRecorder::keeping_stream_events();
     for discarded in [false, true] {
         let id = EffectId::from_raw(u64::from(discarded));
@@ -228,7 +228,7 @@ fn stream_error_metadata_is_validated_and_released_with_its_records() {
                 request: request(),
                 stream: true,
             },
-            Origin::default(),
+            DispatchContext::default(),
         );
         let error = ErrorReport::new(ErrorKind::Response, "error item");
         recorder.stream_error(id, &error);
@@ -267,8 +267,15 @@ fn stream_error_metadata_is_validated_and_released_with_its_records() {
 fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
+            purpose: None,
+            turn: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
+            decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
@@ -277,7 +284,7 @@ fn effect_record_and_log_round_trip() {
                 request: request(),
                 stream: false,
             },
-            outcome: Ok(Outcome::Completion(CompletionResponse::new(
+            outcome: Ok(Answered::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("hi")],
                 Usage::default(),
                 rig_core::message::Origin::new("test.api", "mock", ""),
@@ -286,8 +293,15 @@ fn effect_record_and_log_round_trip() {
             events: None,
         },
         EffectRecord {
+            purpose: None,
+            turn: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
+            decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(2),
@@ -357,22 +371,24 @@ fn the_recorder_finds_the_newest_slot_first() {
         id,
         HandlerKey::from("k"),
         kind(),
-        rig_core::serve::Origin::default(),
+        rig_core::serve::DispatchContext::default(),
     );
     recorder.begin(
         id,
         HandlerKey::from("k"),
         kind(),
-        rig_core::serve::Origin::default(),
+        rig_core::serve::DispatchContext::default(),
     );
     recorder.resolve(
         id,
-        Ok(Outcome::Custom {
+        Ok(Answered::Custom {
             payload: serde_json::json!("newest"),
         }),
     );
+    assert_eq!(recorder.resolved(), 1);
     let log = recorder.take();
     assert_eq!(log.records.len(), 1, "one slot resolved");
+    assert_eq!(recorder.resolved(), 0);
     assert_eq!(
         recorder.in_flight(),
         1,
@@ -430,27 +446,41 @@ fn custom_kind() -> EffectKind {
 fn two_records() -> EffectLog {
     EffectLog::from_records(vec![
         EffectRecord {
+            purpose: None,
+            turn: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
+            decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
             key: HandlerKey::from("model"),
             kind: custom_kind(),
-            outcome: Ok(rig_core::effect::Outcome::Custom {
+            outcome: Ok(rig_core::effect::Answered::Custom {
                 payload: serde_json::json!({"n": 1}),
             }),
             events: None,
         },
         EffectRecord {
+            purpose: None,
+            turn: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
+            decided_by: None,
             stream_origin: None,
-            tool_output: None,
+            published: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(2),
             key: HandlerKey::from("model"),
             kind: custom_kind(),
-            outcome: Ok(rig_core::effect::Outcome::Custom {
+            outcome: Ok(rig_core::effect::Answered::Custom {
                 payload: serde_json::json!({"n": 2}),
             }),
             events: None,
@@ -461,8 +491,8 @@ fn two_records() -> EffectLog {
 #[test]
 fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     let log = two_records();
-    let (checkpoint, tail) = log.checkpoint(1, serde_json::json!({"turn": 1}));
-    assert_eq!(checkpoint.format, super::CHECKPOINT_FORMAT);
+    let (checkpoint, tail) = log.resume_point(1, serde_json::json!({"turn": 1}));
+    assert_eq!(checkpoint.format, super::RESUME_POINT_FORMAT);
     assert_eq!(checkpoint.at, 1);
     assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
     assert_eq!(checkpoint.state, serde_json::json!({"turn": 1}));
@@ -471,41 +501,41 @@ fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     assert_eq!(tail.header, log.header, "the tail keeps the header");
     // Serde round trip, then the continuation.
     let json = serde_json::to_string(&checkpoint).expect("serializes");
-    let restored: super::Checkpoint<serde_json::Value> =
+    let restored: super::ResumePoint<serde_json::Value> =
         serde_json::from_str(&json).expect("restores");
     assert_eq!(restored, checkpoint);
-    let continuation = EffectLog::from_checkpoint(&restored, tail).expect("the tail follows");
+    let continuation = EffectLog::from_resume_point(&restored, tail).expect("the tail follows");
     assert_eq!(continuation.len(), 1);
     // At the end: an empty tail, `next` absent on the wire.
-    let (end, tail) = log.checkpoint(2, serde_json::Value::Null);
+    let (end, tail) = log.resume_point(2, serde_json::Value::Null);
     assert_eq!(end.next, None);
     assert!(tail.is_empty());
     let json: serde_json::Value = serde_json::to_value(&end).expect("serializes");
     assert!(json.get("next").is_none());
-    EffectLog::from_checkpoint(&end, tail).expect("an empty tail follows the end");
+    EffectLog::from_resume_point(&end, tail).expect("an empty tail follows the end");
 }
 
 #[test]
 fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     let log = two_records();
-    let (checkpoint, tail) = log.checkpoint(1, serde_json::Value::Null);
+    let (checkpoint, tail) = log.resume_point(1, serde_json::Value::Null);
     // The full log in the tail's place: its first id is not the next one.
-    let refused = EffectLog::from_checkpoint(&checkpoint, log.clone())
+    let refused = EffectLog::from_resume_point(&checkpoint, log.clone())
         .expect_err("a full log is not the tail");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint at 1 expects record effect:2 next, the tail begins at effect:1"
     );
     // An empty tail where a record was expected.
-    let refused = EffectLog::from_checkpoint(&checkpoint, EffectLog::from_records(vec![]))
+    let refused = EffectLog::from_resume_point(&checkpoint, EffectLog::from_records(vec![]))
         .expect_err("nothing follows");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint at 1 expects record effect:2 next, the tail is empty"
     );
     // A tail after a checkpoint that ended the log.
-    let (end, _) = log.checkpoint(2, serde_json::Value::Null);
-    let refused = EffectLog::from_checkpoint(&end, tail.clone()).expect_err("the log ended");
+    let (end, _) = log.resume_point(2, serde_json::Value::Null);
+    let refused = EffectLog::from_resume_point(&end, tail.clone()).expect_err("the log ended");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint at 2 ends the log, the tail begins at effect:2"
@@ -513,7 +543,7 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     // The checkpoint envelope retains its own version check.
     let mut old = checkpoint.clone();
     old.format = 3;
-    let refused = EffectLog::from_checkpoint(&old, tail.clone()).expect_err("format 3");
+    let refused = EffectLog::from_resume_point(&old, tail.clone()).expect_err("format 3");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint is format 3, this rig reads format 6"
@@ -607,7 +637,7 @@ fn program_identity_is_per_scope_and_absent_by_default() {
 
 #[tokio::test]
 async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earlier() {
-    use rig_core::serve::{Dispatch, Origin, Recorder, Serve};
+    use rig_core::serve::{Dispatch, DispatchContext, Recorder, Serve};
     let recorder = EffectLogRecorder::new();
     let key = HandlerKey::from("ordered");
     let kind = |label: &str| EffectKind::Custom {
@@ -617,10 +647,10 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
     // Dispatch futures reserve A=1, B=2, but the executor serves B first.
     for (id, label) in [(2, "B"), (1, "A")] {
         let id = EffectId::from_raw(id);
-        recorder.begin(id, key.clone(), kind(label), Origin::default());
+        recorder.begin(id, key.clone(), kind(label), DispatchContext::default());
         recorder.resolve(
             id,
-            Ok(Outcome::Custom {
+            Ok(Answered::Custom {
                 payload: serde_json::json!(label),
             }),
         );
@@ -641,7 +671,7 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
             .into_outcome()
             .await;
         assert!(
-            matches!(answer.unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
+            matches!(answer.unwrap(), Answered::Custom { payload } if payload == serde_json::json!(label))
         );
     }
     let by_id = EffectLogReplayer::for_key_by_id(&log, &key).unwrap();
@@ -652,7 +682,7 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
             .into_outcome()
             .await;
         assert!(
-            matches!(answer.unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
+            matches!(answer.unwrap(), Answered::Custom { payload } if payload == serde_json::json!(label))
         );
     }
 }
@@ -664,7 +694,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     use rig_core::{
         message::{CallId, ToolCall, ToolFunction, ToolResultContent, UserContent},
         serve::{Dispatch, Serve},
-        streaming::Transcript,
+        streaming::StreamRecord,
     };
     let generated = ToolCall::new(
         CallId::from_wire(""),
@@ -688,7 +718,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         .map(AssistantContent::ToolCall)
         .collect();
     // Each call as a stream carries it: its start, its arguments, its end.
-    let events = Transcript::parse(serde_json::Value::Array(
+    let events = StreamRecord::parse(serde_json::Value::Array(
         calls
             .iter()
             .enumerate()
@@ -738,7 +768,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         request: request(),
         stream: false,
     };
-    records[0].outcome = Ok(Outcome::Completion(CompletionResponse::new(
+    records[0].outcome = Ok(Answered::Completion(CompletionResponse::new(
         choice,
         Usage::default(),
         rig_core::message::Origin::new("test.api", "test", ""),
@@ -749,7 +779,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         request: next,
         stream: false,
     };
-    records[1].outcome = Ok(Outcome::Completion(CompletionResponse::new(
+    records[1].outcome = Ok(Answered::Completion(CompletionResponse::new(
         vec![AssistantContent::text("done")],
         Usage::default(),
         rig_core::message::Origin::new("test.api", "test", ""),
@@ -826,4 +856,50 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     let mut legacy = json;
     assert_eq!(erase_tags(&mut legacy), 8);
     assert!(serde_json::from_value::<EffectLog>(legacy).is_err());
+}
+
+/// A timed recorder stamps when each dispatch began and resolved, and
+/// records what it was for; an untimed one, as goldens use, keeps no times.
+#[test]
+fn a_timed_recorder_stamps_its_records_and_an_untimed_one_does_not() {
+    use rig_core::serve::{DispatchContext, Recorder};
+    let origin = DispatchContext {
+        purpose: Some("summary".into()),
+        ..DispatchContext::default()
+    };
+    for (recorder, timed) in [
+        (EffectLogRecorder::new().timed(), true),
+        (EffectLogRecorder::new(), false),
+    ] {
+        let id = EffectId::from_raw(1);
+        let kind = EffectKind::ToolCall {
+            name: "t".into(),
+            args: "{}".into(),
+        };
+        recorder.begin(id, "t".into(), kind, origin.clone());
+        recorder.resolve(id, Err(ErrorReport::new(ErrorKind::Internal, "no")));
+        let log = recorder.take();
+        let record = log.records.first().expect("one record");
+        assert_eq!(record.purpose.as_deref(), Some("summary"));
+        let times = (record.started_ms.is_some(), record.finished_ms.is_some());
+        assert_eq!(times, (timed, timed));
+    }
+}
+
+/// The header notes each delivery limitation once, discarding a dispatch
+/// the recorder never saw changes nothing, and the recorder shows its counts.
+#[test]
+fn limitations_are_noted_once_and_an_unknown_discard_is_a_no_op() {
+    use rig_core::serve::Recorder;
+    let recorder = EffectLogRecorder::new();
+    recorder.unsupported_delivery("a detached sink");
+    recorder.unsupported_delivery("a detached sink");
+    recorder.discard(EffectId::from_raw(9));
+    let header = recorder.header();
+    assert_eq!(header.delivery_limitations, ["a detached sink"]);
+    assert!(header.signature.is_empty());
+    assert_eq!(
+        format!("{recorder:?}"),
+        "EffectLogRecorder { records: 0, in_flight: 0 }"
+    );
 }

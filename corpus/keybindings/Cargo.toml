@@ -1,0 +1,21 @@
+[package]
+name = "corpus-keybindings"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 53. Custom key bindings"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Bevy's derives expand to the bevy_ecs this crate names.
+bevy_ecs = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+# `RIG_HOME/keys.toml`; the version rig-harness reads settings.toml with.
+toml = "1"
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

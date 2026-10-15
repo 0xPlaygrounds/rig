@@ -25,7 +25,7 @@ use rig_agent::{
     tool::{Tool, ToolContext, ToolExecutionError},
 };
 use rig_cassette::effect_log::{
-    Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
+    EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck, ResumePoint,
 };
 use rig_core::{
     completion::CompletionRequest,
@@ -512,67 +512,9 @@ async fn a_hooks_decision_is_program_not_record() {
     );
 }
 
-/// A resumed run brought its history with it: it loads nothing from
-/// memory and saves nothing to it — no `Memory` dispatch, no memory record
-/// — so a resumed log is exactly the reference log's tail even when the
-/// program has a memory backend, and a backend that is down cannot fail a
-/// resume. (Before this held, the resume performed the load and threw the
-/// result away: a `Memory{Load}` record led every resumed log.)
-#[tokio::test]
-async fn a_resumed_run_loads_nothing_and_saves_once() {
-    use rig_core::memory::InMemoryConversationMemory;
-    fn builder() -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
-        AgentBuilder::new(script())
-            .owner(OWNER)
-            .tool(Tag::default())
-            .memory(InMemoryConversationMemory::new())
-            .conversation("durable-memory")
-    }
-    // The reference program with memory: a load first, a save last.
-    let recorder = EffectLogRecorder::new();
-    let agent = builder().record_to(recorder.clone()).build();
-    let response = within(agent.prompt("go").max_turns(3).run())
-        .await
-        .expect("the reference run");
-    assert_eq!(response.output(), "done");
-    let log = agent.stamp(recorder.take());
-    let families: Vec<EffectFamily> = log.iter().map(|record| record.kind.family()).collect();
-    assert_eq!(
-        families.first(),
-        Some(&EffectFamily::Memory),
-        "loaded first"
-    );
-    assert_eq!(families.last(), Some(&EffectFamily::Memory), "saved last");
-
-    // Resumed from a fresh state through an agent that has the same
-    // memory configured: the run carries its history, so nothing is
-    // loaded, and the messages it adds are saved once, last (#2244).
-    let recorder = EffectLogRecorder::new();
-    let agent = builder().record_to(recorder.clone()).build();
-    let spec = RunSpec {
-        max_turns: Some(3),
-        ..RunSpec::new()
-    };
-    let state = AgentRun::from_spec(&spec, "go", None);
-    let response = within(agent.resume(state).run())
-        .await
-        .expect("the resumed run");
-    assert_eq!(response.output(), "done");
-    let resumed = agent.stamp(recorder.take());
-    let families: Vec<EffectFamily> = resumed.iter().map(|record| record.kind.family()).collect();
-    assert_eq!(
-        families,
-        log.iter()
-            .map(|record| record.kind.family())
-            .skip(1)
-            .collect::<Vec<_>>(),
-        "the resumed log is the reference log without its load"
-    );
-}
-
 /// The property through a checkpoint (L9): the interruption's state and
-/// position become a `Checkpoint` beside the reference log's tail; a fresh
-/// image loads both, `EffectLog::from_checkpoint` names the continuation,
+/// position become a `ResumePoint` beside the reference log's tail; a fresh
+/// image loads both, `EffectLog::from_resume_point` names the continuation,
 /// the replayers serve it under `check`, and the resumed run performs
 /// exactly the tail. The full log in the tail's place is refused by its
 /// first id before any dispatch.
@@ -583,7 +525,7 @@ async fn resumes_from_a_checkpoint(
 ) {
     let (reference_output, reference_log) = reference_run(scenario).await;
     let (suspended, partial_log) = drive_until_tool(scenario, tools_before_stop).await;
-    let (checkpoint, tail) = reference_log.checkpoint(
+    let (checkpoint, tail) = reference_log.resume_point(
         partial_log.len(),
         serde_json::to_value(&suspended).expect("the run state serializes"),
     );
@@ -595,10 +537,10 @@ async fn resumes_from_a_checkpoint(
 
     // A fresh image: the checkpoint and the tail restored, the continuation
     // named, the state deserialized from the checkpoint.
-    let checkpoint: Checkpoint<serde_json::Value> =
+    let checkpoint: ResumePoint<serde_json::Value> =
         serde_json::from_str(&persisted.0).expect("a checkpoint restores");
     let tail: EffectLog = serde_json::from_str(&persisted.1).expect("the tail restores");
-    let refused = EffectLog::from_checkpoint(&checkpoint, reference_log.clone())
+    let refused = EffectLog::from_resume_point(&checkpoint, reference_log.clone())
         .expect_err("the full log is not the tail");
     assert!(
         refused
@@ -607,7 +549,7 @@ async fn resumes_from_a_checkpoint(
         "{}",
         refused.message
     );
-    let continuation = EffectLog::from_checkpoint(&checkpoint, tail).expect("the tail follows");
+    let continuation = EffectLog::from_resume_point(&checkpoint, tail).expect("the tail follows");
     let restored: AgentRun =
         serde_json::from_value(checkpoint.state.clone()).expect("the run state restores");
     let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::serve::ServingPolicy {

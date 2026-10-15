@@ -1,0 +1,46 @@
+[package]
+name = "corpus-window-gui"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 45. Window GUI"
+
+[lints]
+workspace = true
+
+[features]
+default = ["window"]
+# The Bevy UI window that draws the model; without it only the model runs.
+window = ["dep:bevy", "dep:rig-tui"]
+
+[dependencies]
+# The window: Bevy UI on winit, with the default font and UI picking.
+bevy = { workspace = true, optional = true, features = [
+    "std",
+    "multi_threaded",
+    "async_executor",
+    "bevy_asset",
+    "bevy_window",
+    "bevy_winit",
+    "x11",
+    "wayland",
+    "default_font",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_ui_render",
+    "bevy_picking",
+    "ui_picking",
+] }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+rig-activity = { path = "../../plugins/rig-activity" }
+rig-harness = { path = "../../crates/rig-harness" }
+# The window draws markdown as the terminal view parses it.
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

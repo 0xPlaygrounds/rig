@@ -97,7 +97,7 @@ fn a_kept_fixture_keeps_its_cheapest_owner() {
     );
     assert_eq!(kept(&reads), [0, 2]);
     // A protected fixture keeps an owner with no reader at all.
-    reads.candidates.truncate(0);
+    reads.candidates.clear();
     reads.candidates.push(candidate(&[], 1, &[0], &[]));
     reads.protected.insert(0);
     assert_eq!(kept(&reads), [0]);

@@ -15,8 +15,8 @@ use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{OpenAiCassette, with_openai_corpus_breadth_cassette};
 use crate::goldens::{
-    CANCEL_ADD_DISPATCH, CONVERSATION, CancelAddDispatch, EMBED_KEY, NOTE_KEY, NoteAtOutcome,
-    NoteTaker, STOP_ON_TEXT_DELTA, StopOnTextDelta, event_schema, families,
+    CANCEL_ADD_DISPATCH, CancelAddDispatch, EMBED_KEY, NOTE_KEY, NoteAtOutcome, NoteTaker,
+    STOP_ON_TEXT_DELTA, StopOnTextDelta, event_schema, families,
 };
 use crate::support::{Adder, BASIC_PREAMBLE, TOOLS_PREAMBLE};
 
@@ -264,10 +264,11 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
     .await;
 }
 
-/// Two runs over one conversation on the Responses wire: the second
-/// load holds the first append.
+/// Two runs on the Responses wire, the second continuing the first: its
+/// request carries the first run's messages as history. (Recorded as the
+/// memory matrix's two runs; the requests are the same without memory.)
 #[tokio::test]
-async fn memory_two_runs_effect_log_is_the_golden_fixture() {
+async fn a_second_run_continues_from_the_first_runs_messages() {
     with_openai_corpus_breadth_cassette("corpus_breadth/memory_two_runs", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.openai.completion(MODEL))
@@ -275,31 +276,20 @@ async fn memory_two_runs_effect_log_is_the_golden_fixture() {
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)
             .additional_params(serde_json::json!({"store": false}))
-            .memory(rig::memory::InMemoryConversationMemory::new())
-            .conversation(CONVERSATION)
             .record_to(recorder.clone())
             .build();
-        for prompt in [PROMPT, SECOND_PROMPT] {
-            let output = agent
-                .prompt(prompt)
-                .await
-                .expect("the agent answers")
-                .output();
-            assert!(!output.is_empty());
-        }
-        let log = agent.stamp(recorder.take());
+        let first = agent.prompt(PROMPT).await.expect("the agent answers");
+        assert!(!first.output().is_empty());
+        let second = agent
+            .prompt(SECOND_PROMPT)
+            .history(first.messages.clone())
+            .await
+            .expect("the agent answers");
+        assert!(!second.output().is_empty());
         assert_eq!(
-            families(&log),
-            [
-                EffectFamily::Memory,
-                EffectFamily::Completion,
-                EffectFamily::Memory,
-                EffectFamily::Memory,
-                EffectFamily::Completion,
-                EffectFamily::Memory,
-            ]
+            families(&recorder.take()),
+            [EffectFamily::Completion, EffectFamily::Completion]
         );
-        crate::goldens::golden_effects("openai_breadth_memory_two_runs", &log);
     })
     .await;
 }

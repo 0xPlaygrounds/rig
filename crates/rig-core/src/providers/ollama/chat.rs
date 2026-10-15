@@ -406,6 +406,7 @@ impl ReplayTarget for Chat {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         const NO_FIELD: &str = "Ollama's `/api/chat` has no such field";
         OptionMap {
@@ -442,6 +443,7 @@ impl ReplayTarget for Chat {
             stop: Mapping::of_stop(stop, |stop| {
                 Mapping::Send(json!({"options": {"stop": stop}}))
             }),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 
@@ -462,11 +464,13 @@ impl ReplayTarget for Chat {
     }
 
     /// Images in user messages, and none in assistant turns or tool results,
-    /// which the adapter moves to a user message.
+    /// which the adapter moves to a user message. Another model's reasoning
+    /// goes in `thinking`, as the model's own does.
     fn accepts(&self, _model: &str) -> Accepts {
         Accepts {
             assistant_images: false,
             tool_result_images: false,
+            foreign_reasoning: true,
             ..Accepts::ALL
         }
     }

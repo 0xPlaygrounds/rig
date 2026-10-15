@@ -11,11 +11,10 @@ use std::sync::{
 use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
 
-use crate::bus::MemoryHandle;
 use rig_core::error::ProviderError;
 use rig_core::{
     completion::ModelRef,
-    effect::{EffectKind, Outcome},
+    effect::{Answered, EffectKind},
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message, ToolCall, ToolFunction, ToolName},
     telemetry::SpanCombinator,
@@ -37,8 +36,8 @@ use super::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     run::{
-        response::{CompletionCall, MemoryAppend, PromptResponse, finalize_output_tool_choice},
-        transcript::{assistant_text_from_choice, is_empty_assistant_turn},
+        response::{CompletionCall, PromptResponse, finalize_output_tool_choice},
+        transcript::choice_text,
     },
     runner::AgentRunner,
     telemetry::{build_chat_span, new_execute_tool_span},
@@ -142,7 +141,7 @@ pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     }
 }
 
-/// Drive run steps, hooks, request preparation, and memory append using `source`.
+/// Drive run steps, hooks and request preparation using `source`.
 /// Yields stream items and a terminal response, or settles and yields an error.
 /// Only engine-owned agent spans receive run-level telemetry.
 pub(crate) fn drive_agent<S>(
@@ -151,7 +150,6 @@ pub(crate) fn drive_agent<S>(
     mut run: AgentRun,
     agent_span: tracing::Span,
     created_agent_span: bool,
-    memory_handle: Option<(MemoryHandle, rig_core::id::ConversationId)>,
     hook_ctx: HookContext,
 ) -> impl Stream<Item = Result<DriveItem, PromptError>>
 where
@@ -417,16 +415,6 @@ where
                         "Agent run finished"
                     );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
-                    // Append failure does not discard the answer; expose acknowledgement
-                    // separately without assuming a failed append wrote nothing.
-                    let memory_append = append_run_messages(
-                        &runner,
-                        &hook_ctx,
-                        memory_handle.as_ref(),
-                        &response.messages,
-                    )
-                    .await;
-                    let response = response.with_memory_append(memory_append);
                     if runner.config.hooks.observes(StepEventKind::RunSettled) {
                         runner
                             .config
@@ -472,7 +460,7 @@ where
 ///   already-started ones are drained, and the deterministic lowest call-index
 ///   error is returned. A termination's history is
 ///   [`AgentRun::canonical_history`]: the settled results, every other call
-///   closed by `transcript::close_pending`.
+///   closed by `pairing::close_pending`.
 /// - Only if the whole batch settles successfully does the run commit the
 ///   results to history, in call order, with any results answered before
 ///   (a preresolved invalid-recovery result, or one a host already fed).
@@ -683,7 +671,7 @@ impl StreamingTurnSource {
         record_content: bool,
     ) {
         if self.created_agent_span && self.record_telemetry_content {
-            agent_span.record("gen_ai.completion", assistant_text_from_choice(choice));
+            agent_span.record("gen_ai.completion", choice_text(choice));
         }
         rig_core::telemetry::record_model_output(chat_span, choice, record_content);
     }
@@ -1098,7 +1086,7 @@ impl TurnSource for StreamingTurnSource {
         // surface the run's structured output as the final content.
         let final_choice = finalize_output_tool_choice(&self.last_final_choice, &response.output())
             .unwrap_or_else(|| {
-                if is_empty_assistant_turn(&self.last_final_choice) {
+                if self.last_final_choice.iter().all(AssistantContent::is_blank) {
                     tracing::warn!(
                         agent_name = self.agent_name.as_str(),
                         response_id = ?self.last_response_id,
@@ -1110,8 +1098,7 @@ impl TurnSource for StreamingTurnSource {
         Some(Surfaced::Final(
             PromptResponse::from_content(final_choice, response.usage)
                 .with_completion_calls(response.completion_calls.clone())
-                .with_messages(response.messages.clone())
-                .with_memory_append(response.memory_append.clone()),
+                .with_messages(response.messages.clone()),
         ))
     }
 }
@@ -1168,7 +1155,7 @@ pub(crate) async fn settle_model_turn<M>(
     let mut replaced: Option<Vec<AssistantContent>> = None;
     match action {
         OutcomeAction::Proceed => {}
-        OutcomeAction::Replace(Ok(Outcome::Completion(replacement))) => {
+        OutcomeAction::Replace(Ok(Answered::Completion(replacement))) => {
             run.replace_accepted_turn_choice(replacement.choice.clone())?;
             replaced = Some(replacement.choice);
         }
@@ -1243,60 +1230,17 @@ pub(crate) async fn resolve_completion_call(
     }
 }
 
-/// Append a finished run's messages to conversation memory, logging and
-/// proceeding on failure. Shared `Done`-arm behavior for both drivers. The
-/// append is a `Memory` dispatch at the boundary: observe-only for hooks
-/// unless one opts into `MemoryDispatch`. Returns how the append settled
-/// for the response, `None` when the run has no memory to append to.
-pub(crate) async fn append_run_messages(
-    runner: &AgentRunner,
-    ctx: &HookContext,
-    memory_handle: Option<&(MemoryHandle, rig_core::id::ConversationId)>,
-    messages: &[Message],
-) -> Option<MemoryAppend> {
-    // Clone into an owned vec only when there is a backend to append to, so the
-    // common no-memory path pays nothing.
-    let (memory, id) = memory_handle?;
-    let appended = dispatch_effect(
-        runner,
-        ctx,
-        memory.key(),
-        EffectKind::Memory {
-            op: rig_core::effect::MemoryOp::Append {
-                conversation: id.clone(),
-                messages: messages.to_vec(),
-            },
-        },
-    )
-    .await
-    .and_then(|outcome| match outcome {
-        Outcome::Memory(rig_core::effect::MemoryOutcome::Appended) => Ok(()),
-        other => Err(wrong_outcome("appended memory", &other)),
-    });
-    Some(match appended {
-        Ok(()) => MemoryAppend::Acknowledged,
-        Err(report) => {
-            tracing::warn!(
-                error = %report,
-                conversation_id = %id,
-                "conversation memory append failed; surfacing final response anyway"
-            );
-            MemoryAppend::Failed { report }
-        }
-    })
-}
-
 /// Dispatch any effect through the agent's bus at the dispatch boundary:
 /// `on_dispatch` before (a same-family patch or a denial), the bus, then
-/// `on_outcome` after (a replacement). The engine's memory and retrieval
-/// effects go through here; completions and tool calls have their own
+/// `on_outcome` after (a replacement). The engine's retrieval effects go
+/// through here; completions and tool calls have their own
 /// entry points because their denials have run-level meaning.
 pub(crate) async fn dispatch_effect(
     runner: &AgentRunner,
     ctx: &HookContext,
     key: &rig_core::effect::HandlerKey,
     kind: EffectKind,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Answered, ErrorReport> {
     let scope = DispatchScope::open(runner, ctx, kind, None)
         .await
         .map_err(|(_, report)| report)?;
@@ -1310,7 +1254,7 @@ pub(crate) async fn dispatch_effect(
     }
 }
 
-pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> ErrorReport {
+pub(crate) fn wrong_outcome(expected: &str, outcome: &Answered) -> ErrorReport {
     ErrorReport::new(
         ErrorKind::Internal,
         format!(
@@ -1650,8 +1594,8 @@ pub(crate) async fn dispatch_tool_call(
     };
     let mut published: Option<crate::tool::ToolContext> = None;
     let mut executed = false;
-    let outcome: Result<Outcome, ErrorReport> = match denied {
-        Some(report) => Ok(Outcome::ToolResult {
+    let outcome: Result<Answered, ErrorReport> = match denied {
+        Some(report) => Ok(Answered::ToolResult {
             result: ToolResult::skipped(report.message),
         }),
         None => match tool_snapshot.key(tool_name) {
@@ -1664,11 +1608,11 @@ pub(crate) async fn dispatch_tool_call(
                 let published_at = pending.published_context();
                 let outcome = pending.await;
                 executed =
-                    matches!(&outcome, Ok(Outcome::ToolResult { result }) if !result.is_skipped());
+                    matches!(&outcome, Ok(Answered::ToolResult { result }) if !result.is_skipped());
                 published = published_at.and_then(|published| published.take());
                 outcome
             }
-            None => Ok(Outcome::ToolResult {
+            None => Ok(Answered::ToolResult {
                 result: ToolResult::failed(
                     crate::tool::ToolExecutionError::not_found(format!(
                         "no tool named `{tool_name}` is registered"
@@ -1687,7 +1631,7 @@ pub(crate) async fn dispatch_tool_call(
         OutcomeAction::Replace(replaced) => replaced,
     };
     let result = match outcome {
-        Ok(Outcome::ToolResult { result }) => result,
+        Ok(Answered::ToolResult { result }) => result,
         Ok(other) => ToolResult::failed(crate::tool::ToolExecutionError::other(format!(
             "the tool handler answered with a {} outcome",
             other.family()

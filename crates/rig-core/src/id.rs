@@ -116,57 +116,6 @@ counter_id! {
     RunId
 }
 
-/// Caller-supplied key scoping [`ConversationMemory`] and provider conversation
-/// state across runs. Wraps the string without validation.
-///
-/// [`ConversationMemory`]: crate::memory::ConversationMemory
-#[derive(
-    Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(transparent)]
-pub struct ConversationId(String);
-
-impl ConversationId {
-    /// Wrap a caller-supplied conversation key.
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-
-    /// The id as a string slice.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Unwrap into the underlying string.
-    pub fn into_string(self) -> String {
-        self.0
-    }
-}
-
-impl std::fmt::Display for ConversationId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl From<String> for ConversationId {
-    fn from(id: String) -> Self {
-        Self(id)
-    }
-}
-
-impl From<&str> for ConversationId {
-    fn from(id: &str) -> Self {
-        Self(id.to_owned())
-    }
-}
-
-impl AsRef<str> for ConversationId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
 /// Generate a `len`-character, URL-safe, non-cryptographic identifier.
 pub(crate) fn generate_with_len(len: usize) -> String {
     std::iter::repeat_with(|| {

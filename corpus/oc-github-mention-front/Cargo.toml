@@ -1,0 +1,29 @@
+[package]
+name = "corpus-oc-github-mention-front"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (one-conversation fresh held-out): OC-18: 18. Mention the agent on GitHub"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+# What the run says in the CI log.
+bevy_log = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The pool the GitHub calls and git run from.
+bevy_tasks = { workspace = true }
+# The GitHub REST API, on the harness's tokio runtime.
+rig-reqwest = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+schemars = { workspace = true }

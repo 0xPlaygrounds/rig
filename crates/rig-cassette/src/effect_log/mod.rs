@@ -1,4 +1,5 @@
-//! Durable effect logs, checkpoints, recorders, and replay handlers.
+//! Durable effect logs, checkpoints, recorders, replay handlers, and
+//! [`RecordedAnswers`], a log as answers a host looks up.
 //!
 //! Replayers validate recorded handler identities and publish saved tool outputs
 //! before resolving outcomes. Callers must reapply executable middleware and
@@ -9,18 +10,24 @@
 //! use rig_cassette::effect_log::EffectLog;
 //!
 //! let log = EffectLog::default();
-//! let (checkpoint, tail) = log.checkpoint(0, ());
-//! let resumed = EffectLog::from_checkpoint(&checkpoint, tail)?;
+//! let (checkpoint, tail) = log.resume_point(0, ());
+//! let resumed = EffectLog::from_resume_point(&checkpoint, tail)?;
 //! assert!(resumed.is_empty());
 //! # Ok::<(), rig_core::error::ErrorReport>(())
 //! ```
 
+mod answers;
+mod filter;
+#[cfg(feature = "jsonl")]
+pub mod jsonl;
 mod log;
 mod recorder;
 mod replay;
 
+pub use answers::{Divergence, RecordedAnswers};
+pub use filter::EffectFilter;
 pub use log::{
-    CHECKPOINT_FORMAT, Checkpoint, EffectLog, LogHeader, ProgramIdentity, RecordedStreamError,
+    EffectLog, LogHeader, ProgramIdentity, RESUME_POINT_FORMAT, RecordedStreamError, ResumePoint,
     canonical_local_ids, stable_hash,
 };
 pub use recorder::EffectLogRecorder;

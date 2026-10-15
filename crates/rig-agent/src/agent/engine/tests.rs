@@ -1837,6 +1837,7 @@ async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() 
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: MockAddTool.description(),
             parameters: MockAddTool.parameters(),
+            annotations: Default::default(),
         }],
     );
     let policy = TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy");
@@ -2263,7 +2264,7 @@ async fn a_stop_mid_batch_cancels_with_the_settled_result_and_the_rest_closed() 
         panic!("a hook stop cancels the run, got {err:?}");
     };
     assert_eq!(
-        rig_core::transcript::validate_canonical(&chat_history),
+        rig_core::conversation::pairing::validate(&chat_history),
         Ok(())
     );
     let Some(Message::User { content }) = chat_history.last() else {
@@ -2287,7 +2288,7 @@ async fn a_stop_mid_batch_cancels_with_the_settled_result_and_the_rest_closed() 
         Message::User {
             content: content[1..].to_vec()
         },
-        rig_core::transcript::close_pending([&tc2]),
+        rig_core::conversation::pairing::close_pending([&tc2]),
         "the stopped call is closed as transcript closes it"
     );
 }
@@ -4828,7 +4829,7 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
-    assert_eq!(chat_history.into_vec(), vec![Message::user("add")]);
+    assert_eq!(chat_history, vec![Message::user("add")]);
     assert_eq!(recorder.count(StepEventKind::ToolDispatch), 0);
     assert_eq!(executions.load(SeqCst), 0);
 }
@@ -5107,7 +5108,7 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
                 return OutcomeAction::Proceed;
             }
             self.0.fetch_add(1, SeqCst);
-            OutcomeAction::Replace(Ok(rig_core::effect::Outcome::ToolResult {
+            OutcomeAction::Replace(Ok(rig_core::effect::Answered::ToolResult {
                 result: crate::tool::ToolResult::success(crate::tool::ToolOutput::text("revived")),
             }))
         }
@@ -5802,8 +5803,8 @@ impl rig_core::serve::Serve for WrongOutcomeHandler {
         _: rig_core::effect::EffectKind,
         _: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Memory(
-            rig_core::effect::MemoryOutcome::Appended,
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Documents(
+            rig_core::effect::RetrievedDocuments::Ids(Vec::new()),
         )))
     }
 }
@@ -5838,7 +5839,7 @@ async fn wrong_outcome_closes_its_completion_dispatch_with_internal() -> anyhow:
         anyhow::bail!("no error outcome: {details:?}");
     };
     anyhow::ensure!(
-        kind == rig_core::error::ErrorKind::Internal && message.contains("memory"),
+        kind == rig_core::error::ErrorKind::Internal && message.contains("retrieve"),
         "the Internal wrong-outcome report, got {kind:?}: {message}"
     );
     Ok(())
@@ -5960,6 +5961,7 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: MockAddTool.description(),
             parameters: MockAddTool.parameters(),
+            annotations: Default::default(),
         }],
     );
     let policy = TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy");
@@ -5982,8 +5984,11 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
     };
     let host =
         rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text("from the host"));
-    let host_result =
-        rig_core::transcript::tool_result_output(first.id().clone(), first.name().clone(), &host);
+    let host_result = rig_core::tool::feedback::tool_result_output(
+        first.id().clone(),
+        first.name().clone(),
+        &host,
+    );
     run.answer(first.answer(host))
         .expect("the host answers tc1");
 

@@ -5,7 +5,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use super::{Model, Transport};
+use super::{Model, Sending, Transport};
 use crate::error::ProviderError;
 use crate::observe::AdapterContext;
 use crate::streaming::Streamed;
@@ -22,7 +22,7 @@ pub(crate) trait ErasedModel<Op: Operation>: WasmCompatSend + WasmCompatSync {
         &self,
         request: Op::Request,
         mode: Mode,
-        observation: Option<AdapterContext>,
+        sending: Sending,
     ) -> Result<Streamed<Op>, ProviderError>;
 
     fn dry_run(&self, request: Op::Request) -> Result<(), ProviderError>;
@@ -41,9 +41,9 @@ where
         &self,
         request: <W::Op as Operation>::Request,
         mode: Mode,
-        observation: Option<AdapterContext>,
+        sending: Sending,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        Model::open(self, request, mode, observation)
+        Model::open(self, request, mode, sending)
     }
 
     fn dry_run(&self, request: <W::Op as Operation>::Request) -> Result<(), ProviderError> {
@@ -154,7 +154,7 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: impl Into<Op::Request>,
     ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
-        self.finished(request.into(), None)
+        self.finished(request.into(), Sending::default())
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
@@ -163,27 +163,22 @@ impl<Op: Operation> DynModel<Op> {
         request: impl Into<Op::Request>,
         observation: AdapterContext,
     ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
-        self.finished(request.into(), Some(observation))
+        self.finished(request.into(), Sending::observed(observation))
     }
 
     /// The call opens when first polled, as [`Model::call`] does.
-    fn finished(
+    pub(crate) fn finished(
         &self,
         request: Op::Request,
-        observation: Option<AdapterContext>,
+        sending: Sending,
     ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
         let inner = self.inner.clone();
-        async move {
-            inner
-                .open(request, Mode::Unary, observation)?
-                .finish()
-                .await
-        }
+        async move { inner.open(request, Mode::Unary, sending)?.finish().await }
     }
 
     /// Open a streamed reply; [`Model::stream`] with the model erased.
     pub fn stream(&self, request: impl Into<Op::Request>) -> Result<Streamed<Op>, ProviderError> {
-        self.inner.open(request.into(), Mode::Streaming, None)
+        self.opened(request.into(), Sending::default())
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
@@ -192,8 +187,16 @@ impl<Op: Operation> DynModel<Op> {
         request: impl Into<Op::Request>,
         observation: AdapterContext,
     ) -> Result<Streamed<Op>, ProviderError> {
-        self.inner
-            .open(request.into(), Mode::Streaming, Some(observation))
+        self.opened(request.into(), Sending::observed(observation))
+    }
+
+    /// Open a streamed reply, sent as `sending` says.
+    pub(crate) fn opened(
+        &self,
+        request: Op::Request,
+        sending: Sending,
+    ) -> Result<Streamed<Op>, ProviderError> {
+        self.inner.open(request, Mode::Streaming, sending)
     }
 }
 

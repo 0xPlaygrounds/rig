@@ -44,10 +44,12 @@ workspace = true
 [features]
 default = []
 agent = ["dep:rig-agent"]
+# Effect logs as JSON-lines files (native file I/O), or as a file of a
+# session's store (rig-memory's `Files`).
+jsonl = ["dep:rig-memory"]
 http = [
     "dep:rig-reqwest",
     "dep:axum",
-    "dep:base64",
     "dep:httpdate",
     "dep:httpmock",
     "dep:serde_yaml",
@@ -61,12 +63,13 @@ bedrock = ["http", "dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+rig-memory = { path = "../rig-memory", version = "0.44.0", optional = true }
 rig-agent = { path = "../rig-agent", version = "0.44.0", default-features = false, optional = true }
 rig-reqwest = { path = "../rig-reqwest", version = "0.44.0", default-features = false, features = ["rustls"], optional = true }
 aws-smithy-eventstream = { workspace = true, optional = true }
 aws-smithy-types = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
-base64 = { workspace = true, optional = true }
+base64 = { workspace = true }
 futures = { workspace = true }
 httpdate = { workspace = true, optional = true }
 httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
@@ -111,6 +114,8 @@ proptest = "1"
 reqwest = { workspace = true, features = ["json", "stream"] }
 schemars = { workspace = true }
 serde_path_to_error = { workspace = true }
+# The image fixture's hash.
+sha2 = { workspace = true }
 rmcp = { workspace = true, features = [
   "client",
   "macros",
@@ -121,7 +126,6 @@ rmcp = { workspace = true, features = [
   "transport-streamable-http-server",
   "transport-worker",
 ] }
-sha2 = { workspace = true }
 thiserror = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
 tokio = { workspace = true, features = ["full"] }

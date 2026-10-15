@@ -1,0 +1,23 @@
+[package]
+name = "corpus-cost-budget"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 06. Cost budget"
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }

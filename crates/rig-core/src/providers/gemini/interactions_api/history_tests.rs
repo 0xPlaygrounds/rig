@@ -50,6 +50,7 @@ fn tool(name: &str) -> ToolDefinition {
         name: ToolName::new(name).expect("a tool name"),
         description: format!("The {name} tool."),
         parameters: json!({"type": "object", "properties": {}}),
+        annotations: Default::default(),
     }
 }
 

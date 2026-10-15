@@ -147,6 +147,7 @@ fn answers(fields: OptionFields<'_>) -> OptionMap {
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |_| {
@@ -159,6 +160,7 @@ fn answers(fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(top_p, |p| Mapping::Send(json!({"sampling": {"top_p": p}}))),
         seed: Mapping::of(seed, |n| Mapping::Send(json!({"sampling": {"seed": n}}))),
         stop: Mapping::of_stop(stop, |_| Mapping::unsupported("no stop sequences")),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -367,6 +369,7 @@ fn unconditional(_fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::Send(json!(0.5)),
         seed: Mapping::unsupported("no such field"),
         stop: Mapping::Nothing,
+        cache_key: Mapping::Nothing,
     }
 }
 

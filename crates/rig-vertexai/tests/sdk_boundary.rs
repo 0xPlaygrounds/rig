@@ -91,6 +91,7 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
             "properties": {"city": {"type": "string"}},
             "required": ["city"],
         }),
+        annotations: Default::default(),
     }];
 
     let response = model.call(request).await.expect("completion succeeds");

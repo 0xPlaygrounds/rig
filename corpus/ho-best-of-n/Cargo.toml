@@ -1,0 +1,30 @@
+[package]
+name = "corpus-ho-best-of-n"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H16: Best-of-N attempts in git worktrees"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# The tasks that run git and the verify command off the main thread.
+bevy_tasks = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The candidates are one-job helpers spawned through `SpawnSubagent`.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+# The verify command runs as the `shell` tool runs commands; git runs on a
+# thread of its own.
+rig-tools = { path = "../../crates/rig-tools" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }

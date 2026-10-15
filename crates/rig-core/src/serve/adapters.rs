@@ -1,25 +1,35 @@
-//! Effect handlers adapting model, tool, memory, and retrieval traits.
+//! Effect handlers adapting model, tool, and retrieval traits.
 //! Each adapter translates its effect family into trait calls and returns
 //! outcomes or streaming events.
 //!
 //! ```
-//! use rig_core::{memory::InMemoryConversationMemory, serve::{Serve, adapters::MemoryAdapter}};
+//! use rig_core::serve::{Serve, adapters::ToolFn};
+//! use rig_core::tool::{ToolContext, ToolOutput};
+//! use rig_core::wasm_compat::WasmBoxedFuture;
 //!
-//! let handler = MemoryAdapter::new(InMemoryConversationMemory::new());
-//! assert_eq!(handler.descriptor().key.as_str(), "memory");
+//! let handler = ToolFn::new(
+//!     "echo",
+//!     "Echo the arguments",
+//!     serde_json::json!({ "type": "object" }),
+//!     |_context: &mut ToolContext, args: serde_json::Value| {
+//!         Box::pin(async move { Ok(ToolOutput::text(args.to_string())) })
+//!             as WasmBoxedFuture<'_, _>
+//!     },
+//! );
+//! assert_eq!(handler.descriptor().key, rig_core::effect::tool_key("echo"));
 //! ```
 
 use crate::{
     completion::ModelRef,
-    driver::DynModel,
+    driver::{DynModel, Sending},
     effect::{
-        EffectFamily, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, FamilyDescriptor,
-        HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome, RetrieveQuery,
-        RetrievedDocuments, ToolEmbeddingDescriptor,
+        Answered, EffectFamily, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs,
+        FamilyDescriptor, HandlerDescriptor, HandlerKey, RetrieveQuery, RetrievedDocuments,
+        ToolEmbeddingDescriptor,
     },
     error::{ErrorKind, ErrorReport},
-    memory::ConversationMemory,
     operation::{Completion, Embedding, Rerank},
+    providers::registry::ProviderId,
     tool::{ErasedTool, Tool, ToolEmbedding},
     vector_store::{VectorStoreError, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
@@ -55,6 +65,58 @@ impl<Op: Operation> ModelAdapter<Op> {
             model: model.into(),
         }
     }
+
+    /// How the model sends for `dispatch` under `handler`: its HTTP request
+    /// carries the [`Serving`], observed under `observation`.
+    fn sending(
+        &self,
+        handler: HandlerKey,
+        dispatch: &Dispatch,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Sending {
+        let mut extensions = http::Extensions::new();
+        extensions.insert(Serving {
+            effect: dispatch.id(),
+            handler,
+            provider: self.model.spec().map(|spec| spec.provider),
+        });
+        Sending {
+            observation,
+            extensions,
+        }
+    }
+}
+
+/// What an outgoing HTTP request to a model serves, in its
+/// [extensions](http::Request::extensions): the effect it answers and the
+/// handler it was dispatched to. A model adapter sets it on every request
+/// it sends, so a [transport wrapper](crate::catalog::Connector::wrap_http)
+/// can tell one model call's requests from another's and from those of no
+/// call, such as a model listing. The request's headers and body are the
+/// wrapper's to read; rig records neither.
+///
+/// ```
+/// use rig_core::http_client::Request;
+/// use rig_core::serve::Serving;
+///
+/// fn served(request: &Request<Vec<u8>>) -> Option<u64> {
+///     request
+///         .extensions()
+///         .get::<Serving>()
+///         .map(|serving| serving.effect.as_u64())
+/// }
+/// assert_eq!(served(&Request::new(Vec::new())), None);
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Serving {
+    /// The effect the request answers, such as an ECS effect's id.
+    pub effect: EffectId,
+    /// The handler it was dispatched to, such as `model:openai/gpt-5`.
+    pub handler: HandlerKey,
+    /// The provider the model is reached through, when the model was
+    /// connected from a catalog spec.
+    pub provider: Option<ProviderId>,
 }
 
 /// Unary and streaming completions both route here; the descriptor carries
@@ -73,36 +135,43 @@ impl Serve for ModelAdapter<Completion> {
         }
     }
 
+    /// What the model's wire or the model leaves out of a completion's
+    /// request ([`DynModel::check`]); nothing for a request that cannot be
+    /// built at all, which sending reports, or for another family.
+    fn check(&self, kind: &EffectKind) -> Vec<crate::completion::UnsupportedOption> {
+        let EffectKind::Completion { request, .. } = kind else {
+            return Vec::new();
+        };
+        match self.model.check(request) {
+            Err(crate::completion::CheckError::Unsupported(refused)) => refused,
+            Ok(()) | Err(crate::completion::CheckError::Invalid(_)) => Vec::new(),
+        }
+    }
+
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
-        let context = dispatch.adapter_context();
+        let sending = self.sending(
+            crate::effect::model_key(self.label.as_str()),
+            &dispatch,
+            dispatch.adapter_context(),
+        );
         match kind {
             EffectKind::Completion {
                 request,
                 stream: false,
             } => {
-                let result = match context {
-                    Some(context) => model.call_observed(request, context).await,
-                    None => model.call(request).await,
-                };
-                Reply::Outcome(result.map(Outcome::Completion).map_err(ErrorReport::from))
+                let result = model.finished(request, sending).await;
+                Reply::Outcome(result.map(Answered::Completion).map_err(ErrorReport::from))
             }
             EffectKind::Completion {
                 request,
                 stream: true,
-            } => {
-                let opened = match context {
-                    Some(context) => model.stream_observed(request, context),
-                    None => model.stream(request),
-                };
-                match opened {
-                    Ok(stream) => Reply::Stream(stream.into_relay()),
-                    Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
-                }
-            }
+            } => match model.opened(request, sending) {
+                Ok(stream) => Reply::Stream(stream.into_relay()),
+                Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+            },
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
@@ -130,16 +199,21 @@ impl Serve for ModelAdapter<Embedding> {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
+        let sending = self.sending(
+            crate::effect::embed_key(self.label.as_str()),
+            &dispatch,
+            None,
+        );
         match kind {
             EffectKind::Embed {
                 inputs: EmbedInputs::Texts(texts),
             } => Reply::Outcome(
                 model
-                    .call(texts)
+                    .finished(texts, sending)
                     .await
-                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
+                    .map(|response| Answered::Embeddings(EmbedOutputs::Texts(response)))
                     .map_err(ErrorReport::from),
             ),
             EffectKind::Embed {
@@ -150,7 +224,6 @@ impl Serve for ModelAdapter<Embedding> {
             ))),
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
@@ -175,20 +248,24 @@ impl Serve for ModelAdapter<Rerank> {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
+        let sending = self.sending(
+            crate::effect::rerank_key(self.label.as_str()),
+            &dispatch,
+            None,
+        );
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model
-                    .call(request)
+                    .finished(request, sending)
                     .await
-                    .map(Outcome::Reranked)
+                    .map(Answered::Reranked)
                     .map_err(ErrorReport::from),
             ),
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Custom { .. }) => {
                 Reply::Outcome(Err(wrong_family(EffectFamily::Rerank, &other)))
@@ -274,6 +351,16 @@ where
         }
     }
 
+    fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
+        match kind {
+            EffectKind::ToolCall { name, args } if name == T::NAME => {
+                let args = crate::tool::contextual::parse_tool_args::<T::Args>(args).ok()?;
+                Some(self.tool.footprint(&args))
+            }
+            _ => None,
+        }
+    }
+
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::ToolCall { name, .. } if name != T::NAME => {
@@ -287,11 +374,10 @@ where
                 let mut context = dispatch_context(&dispatch);
                 let result = ErasedTool::execute(&self.tool, args, &mut context).await;
                 publish(&dispatch, context);
-                Reply::Outcome(Ok(Outcome::ToolResult { result }))
+                Reply::Outcome(Ok(Answered::ToolResult { result }))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
@@ -364,16 +450,7 @@ where
     type Family = family::Tool;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: crate::effect::tool_key(&self.name),
-            family: FamilyDescriptor::Tool {
-                name: self.name.clone(),
-                description: self.description.clone(),
-                parameters: self.parameters.clone(),
-                embedding: None,
-            },
-            layers: Vec::new(),
-        }
+        HandlerDescriptor::tool(&self.name, &self.description, self.parameters.clone())
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
@@ -384,100 +461,14 @@ where
                     crate::tool::contextual::execute_callback(&self.callback, args, &mut context)
                         .await;
                 publish(&dispatch, context);
-                Reply::Outcome(Ok(Outcome::ToolResult { result }))
+                Reply::Outcome(Ok(Answered::ToolResult { result }))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other)))
-            }
-        }
-    }
-}
-
-/// A [`ConversationMemory`] as a handler.
-pub struct MemoryAdapter<M> {
-    memory: M,
-    label: Option<String>,
-}
-
-impl<M> MemoryAdapter<M> {
-    /// Wrap `memory` as an agent's own memory, under the bare `memory` key.
-    pub fn new(memory: M) -> Self {
-        Self {
-            memory,
-            label: None,
-        }
-    }
-
-    /// Wrap `memory` under `memory:<label>`, so a host can serve several
-    /// backends (per tenant, per store) on one bus and dispatch to each by
-    /// [`memory_key`](crate::effect::memory_key).
-    pub fn labelled(label: impl Into<String>, memory: M) -> Self {
-        Self {
-            memory,
-            label: Some(label.into()),
-        }
-    }
-
-    /// The wrapped backend.
-    pub fn memory(&self) -> &M {
-        &self.memory
-    }
-}
-
-impl<M> Serve for MemoryAdapter<M>
-where
-    M: ConversationMemory + 'static,
-{
-    type Family = family::Memory;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: self
-                .label
-                .as_deref()
-                .map_or_else(|| HandlerKey::from("memory"), crate::effect::memory_key),
-            family: FamilyDescriptor::Memory {},
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        match kind {
-            EffectKind::Memory { op } => {
-                let outcome = match op {
-                    MemoryOp::Load { conversation } => self
-                        .memory
-                        .load(&conversation)
-                        .await
-                        .map(|messages| Outcome::Memory(MemoryOutcome::Loaded { messages })),
-                    MemoryOp::Append {
-                        conversation,
-                        messages,
-                    } => self
-                        .memory
-                        .append(&conversation, messages)
-                        .await
-                        .map(|()| Outcome::Memory(MemoryOutcome::Appended)),
-                    MemoryOp::Clear { conversation } => self
-                        .memory
-                        .clear(&conversation)
-                        .await
-                        .map(|()| Outcome::Memory(MemoryOutcome::Cleared)),
-                };
-                Reply::Outcome(outcome.map_err(ErrorReport::from))
-            }
-            other @ (EffectKind::Completion { .. }
-            | EffectKind::ToolCall { .. }
-            | EffectKind::Embed { .. }
-            | EffectKind::Retrieve { .. }
-            | EffectKind::Rerank { .. }
-            | EffectKind::Custom { .. }) => {
-                Reply::Outcome(Err(wrong_family(EffectFamily::Memory, &other)))
             }
         }
     }
@@ -542,7 +533,7 @@ where
                                 .top_n::<serde_json::Value>(req)
                                 .await
                                 .map(|results| {
-                                    Outcome::Documents(RetrievedDocuments::Scored(
+                                    Answered::Documents(RetrievedDocuments::Scored(
                                         results
                                             .into_iter()
                                             .map(|result| {
@@ -566,7 +557,7 @@ where
                                 .top_n_ids(req)
                                 .await
                                 .map(|results| {
-                                    Outcome::Documents(RetrievedDocuments::Ids(
+                                    Answered::Documents(RetrievedDocuments::Ids(
                                         results
                                             .into_iter()
                                             .map(|result| (result.score, result.id))
@@ -583,7 +574,6 @@ where
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 Reply::Outcome(Err(wrong_family(EffectFamily::Retrieve, &other)))

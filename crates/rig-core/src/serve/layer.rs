@@ -1,12 +1,12 @@
 //! Handler composition with pre-dispatch decisions and post-answer verdicts.
-//! Recording observes the innermost handler: denied dispatches leave no record,
+//! Recording observes the handler a layer wraps: denied dispatches leave no record,
 //! and replaced answers retain the handler's original outcome for replay.
 //!
 //! ```
-//! use rig_core::serve::Decision;
+//! use rig_core::serve::BeforeServe;
 //!
-//! let decision = Decision::deny("Not authorized");
-//! assert!(matches!(decision, Decision::Deny(_)));
+//! let decision = BeforeServe::deny("Not authorized");
+//! assert!(matches!(decision, BeforeServe::Deny(_)));
 //! ```
 
 use std::sync::{Arc, Mutex};
@@ -15,17 +15,18 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    effect::{EffectId, EffectKind, HandlerDescriptor, Outcome, family},
+    effect::{Answered, EffectId, EffectKind, HandlerDescriptor, family},
     error::{ErrorKind, ErrorReport},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 use super::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
+use crate::streaming::Relayed;
 
 /// What a layer decides about a dispatch before the handler sees it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
-pub enum Decision {
+pub enum BeforeServe {
     /// Serve it as it is.
     Proceed,
     /// Serve this instead. A patch never changes the family or a tool call's
@@ -33,11 +34,11 @@ pub enum Decision {
     /// the next layer or dispatching. Tool argument patches remain supported.
     Patch(EffectKind),
     /// Returns this report without invoking the handler or recording a dispatch.
-    /// The report's kind is preserved; [`Decision::deny`] uses `ErrorKind::Denied`.
+    /// The report's kind is preserved; [`BeforeServe::deny`] uses `ErrorKind::Denied`.
     Deny(ErrorReport),
 }
 
-impl Decision {
+impl BeforeServe {
     /// A denial by policy: `ErrorKind::Denied`, never retryable.
     pub fn deny(reason: impl Into<String>) -> Self {
         Self::Deny(ErrorReport::new(ErrorKind::Denied, reason).with_retryable(false))
@@ -47,15 +48,18 @@ impl Decision {
 /// What a layer decides about an answer on its way out.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "verdict", rename_all = "snake_case")]
-pub enum Verdict {
+pub enum AfterServe {
     /// The consumer receives what the handler answered.
     Keep,
     /// The consumer receives this instead; the record keeps the handler's
     /// answer. Over a streaming dispatch the events were already delivered
-    /// as they came, so only an error can replace the answer there: a
-    /// `Replace(Ok(_))` reaches the consumer as an `Internal` error naming
-    /// the layer.
-    Replace(Result<Outcome, ErrorReport>),
+    /// as they came, so a replacement is the reply's end: a completion
+    /// replaces the response the stream ends with (its
+    /// [`Relayed::Done`](crate::streaming::Relayed::Done)), which is what
+    /// the consumer's fold returns, and an error ends the stream with that
+    /// error. A replacement of another family reaches the consumer as an
+    /// `Internal` error naming the layer.
+    Replace(Result<Answered, ErrorReport>),
 }
 
 /// Host policy before a handler and after its first answer. A suspended
@@ -71,7 +75,7 @@ pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
         &self,
         id: EffectId,
         kind: &EffectKind,
-    ) -> impl Future<Output = Decision> + WasmCompatSend;
+    ) -> impl Future<Output = BeforeServe> + WasmCompatSend;
 
     /// After the handler: the answer as the consumer will receive it. For a
     /// streaming dispatch `outcome` is the fold of the events (the
@@ -80,8 +84,8 @@ pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
         &self,
         id: EffectId,
         kind: &EffectKind,
-        outcome: &Result<Outcome, ErrorReport>,
-    ) -> impl Future<Output = Verdict> + WasmCompatSend;
+        outcome: &Result<Answered, ErrorReport>,
+    ) -> impl Future<Output = AfterServe> + WasmCompatSend;
 }
 
 /// A handler wrapped in a policy: a [`Serve`] like any other, registered
@@ -119,12 +123,20 @@ impl<I: Intercept> Serve for Layer<I> {
         descriptor
     }
 
+    fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
+        self.inner.footprint(kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<crate::completion::UnsupportedOption> {
+        self.inner.check(kind)
+    }
+
     async fn serve(&self, kind: EffectKind, mut dispatch: Dispatch) -> Reply {
         let id = dispatch.id();
         let name = self.intercept.name();
         let kind = match self.intercept.before(id, &kind).await {
-            Decision::Proceed => kind,
-            Decision::Patch(patched) => {
+            BeforeServe::Proceed => kind,
+            BeforeServe::Patch(patched) => {
                 if patched.family() != kind.family() {
                     dispatch.discard(&name);
                     return Reply::Outcome(Err(self.internal(format!(
@@ -149,7 +161,7 @@ impl<I: Intercept> Serve for Layer<I> {
                 dispatch.patched(&patched);
                 patched
             }
-            Decision::Deny(report) => {
+            BeforeServe::Deny(report) => {
                 dispatch.discard(&name);
                 return Reply::Outcome(Err(report));
             }
@@ -165,8 +177,8 @@ impl<I: Intercept> Serve for Layer<I> {
                 .folded_outcome(Some(folded))
                 .await;
             return Reply::Outcome(match self.intercept.after(id, &kind, &outcome).await {
-                Verdict::Keep => outcome,
-                Verdict::Replace(replacement) => {
+                AfterServe::Keep => outcome,
+                AfterServe::Replace(replacement) => {
                     attribution.replaced(&name);
                     replacement
                 }
@@ -200,17 +212,26 @@ impl<I: Intercept> Serve for Layer<I> {
                 let item = if let Some(outcome) = outcome {
                     decided = true;
                     match intercept.after(id, &kind, &outcome).await {
-                        Verdict::Keep => item.unwrap_or_else(|| Err(stream_truncated())),
-                        Verdict::Replace(Err(report)) => {
+                        AfterServe::Keep => item.unwrap_or_else(|| Err(stream_truncated())),
+                        AfterServe::Replace(Err(report)) => {
                             attribution.replaced(&intercept.name());
                             Err(report)
                         }
-                        Verdict::Replace(Ok(_)) => {
+                        AfterServe::Replace(Ok(Answered::Completion(response))) => {
+                            attribution.replaced(&intercept.name());
+                            Ok(Relayed::Done(Box::new(response)))
+                        }
+                        AfterServe::Replace(Ok(other)) => {
                             attribution.replaced(&intercept.name());
                             Err(ErrorReport::new(
                                 ErrorKind::Internal,
-                                format!("layer `{}`: cannot replace a streamed answer already delivered; replace with an error, or decide before", intercept.name()),
-                            ).with_retryable(false))
+                                format!(
+                                    "layer `{}`: replaced a streamed completion with a {} outcome",
+                                    intercept.name(),
+                                    other.family()
+                                ),
+                            )
+                            .with_retryable(false))
                         }
                     }
                 } else {

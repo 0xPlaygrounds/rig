@@ -32,9 +32,11 @@ const ITEM_EVENTS: &str = "output_item.added output_item.done content_part.added
     reasoning_summary_text.done reasoning_text.delta reasoning_text.done";
 
 /// Whether `kind` is a Responses event type this decoder reads. A frame of
-/// any other type passes through as unknown.
+/// any other type passes through as unknown. `keepalive` is ChatGPT's idle
+/// heartbeat, read and skipped.
 fn is_known_responses_event_type(kind: &str) -> bool {
     kind == "error"
+        || kind == "keepalive"
         || is_lifecycle_event(kind)
         || kind
             .strip_prefix("response.")
@@ -261,7 +263,7 @@ fn provider_message(response: &Value, fallback: &str) -> String {
 }
 
 /// How the turn ended, for every status the API documents. A response
-/// without a status ended as pi reads it, with a stop. A status that is
+/// without a status ended with a stop. A status that is
 /// not a documented end, including one still `queued` or `in_progress`, is
 /// a failed turn.
 pub(crate) fn finish_reason_of(response: &Value) -> (FinishReason, Option<String>) {
@@ -720,8 +722,8 @@ impl ResponsesDecoder {
 
     /// The slot the terminal's item at output `index` restates, among those
     /// no earlier terminal item took: the one with its id; else the one the
-    /// stream gave that index when it is of the item's kind, as pi reads an
-    /// index whatever id it states; else the first of its kind the stream
+    /// stream gave that index when it is of the item's kind, whatever id it
+    /// states; else the first of its kind the stream
     /// gave no index and no other id; else the first of its kind with no
     /// other id that the stream put at an index the terminal holds no item
     /// of that kind at, a stream whose indices are shifted against it.
@@ -971,6 +973,7 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
                     self.finish(response, out)
                 }
                 "response.failed" => Err(ProviderError::from_provider_body(raw)),
+                "keepalive" => Ok(Flow::More),
                 kind if is_lifecycle_event(kind) => Ok(Flow::More),
                 kind => {
                     self.item_event(kind, frame, &mut out)?;

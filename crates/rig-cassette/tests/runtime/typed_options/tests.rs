@@ -1103,6 +1103,53 @@ mod option_matrix {
             }
         }
     }
+
+    /// `cache_key` is sent as `prompt_cache_key` where the provider routes
+    /// its prompt cache by a key, and honoured by sending nothing elsewhere:
+    /// it is only a routing hint, so it is never refused.
+    #[test]
+    fn a_cache_key_is_sent_where_the_provider_routes_by_one() {
+        let routed = || Merge(json!({"prompt_cache_key": "agent-1"}));
+        let rows: Vec<(&str, Encode, Cell)> = vec![
+            (
+                "openai",
+                Box::new(|r| encode(&openai_responses(), r)),
+                routed(),
+            ),
+            ("openai chat", chat(&OPENAI, "gpt-5.2"), routed()),
+            ("mistral", chat(&MISTRAL, "mistral-medium-latest"), routed()),
+            (
+                "xai",
+                chat(&rig::providers::xai::DIALECT, "grok-4.7"),
+                routed(),
+            ),
+            (
+                "xai responses",
+                responses(&rig::providers::xai::DIALECT, "grok-4.7"),
+                routed(),
+            ),
+            ("venice", chat(&VENICE, "venice-uncensored"), routed()),
+            ("moonshot", chat(&MOONSHOT, "kimi-k3"), routed()),
+            ("anthropic", Box::new(|r| encode(&anthropic(), r)), Omit),
+            ("openrouter", Box::new(|r| encode(&openrouter(), r)), Omit),
+            ("deepseek", Box::new(|r| encode(&deepseek(), r)), Omit),
+            ("gcp.gemini", Box::new(|r| encode(&gemini(), r)), Omit),
+        ];
+        let options = GenerationOptions::default()
+            .on_unsupported(OnUnsupported::Error)
+            .cache_key("agent-1");
+        for (wire, encode, cell) in rows {
+            let baseline = encode(request(GenerationOptions::default()))
+                .unwrap_or_else(|error| panic!("{wire}: the baseline encodes: {error}"));
+            let expected = match cell {
+                Merge(patch) => merged(baseline, &patch),
+                _ => baseline,
+            };
+            let body = encode(request(options.clone()))
+                .unwrap_or_else(|error| panic!("{wire}: `cache_key` encodes: {error}"));
+            assert_eq!(body, expected, "{wire}");
+        }
+    }
 }
 
 mod option_layers {

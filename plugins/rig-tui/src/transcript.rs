@@ -1,0 +1,1703 @@
+//! The transcript's wrapped rows, kept per message. A frame re-renders and
+//! re-wraps only the messages that changed (a message's look also depends
+//! on the next message's results, its notices and what is expanded),
+//! re-wraps without re-rendering when the width changed, and copies out
+//! only the rows on screen. Each message keeps where its items are (the
+//! message, its calls), so the view can scroll to one, select it and say
+//! which is at the top.
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Range;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+
+use bevy_ecs::prelude::*;
+use ratatui::style::{Color, Style, Stylize};
+use ratatui::text::Line;
+use rig_core::completion::{AssistantContent, Message};
+use rig_core::conversation;
+use rig_core::error::ErrorReport;
+use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
+use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
+use rig_core::tool::ToolResultContext;
+
+use super::render::{Lights, light, lit};
+use super::renderers::{
+    AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
+    MessageView, RESULT_LINES, Renderers, Role, ToolCallView, excerpt, plugin_name, result_style,
+    result_text,
+};
+use super::view::{
+    DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, RowWrap, ShownNotice, TextMark,
+    TranscriptItem,
+};
+use super::wrap::wrap;
+use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
+use rig_ecs::agent::{AgentId, NoticeLevel, Partial};
+use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
+use rig_ecs::stage::{EffectRecorded, Outcome};
+use rig_ecs::tools::ToolRequest;
+use rig_ecs::turn::{ModelRequest, SentTo, StreamDelta};
+use rig_harness::rig_memory::{Place, Rewrite, rewrite_value};
+use rig_tools::attach::attached_file;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+/// The effect log's file in the session's store: the calls the view knows
+/// of are copies of its records.
+const EFFECT_LOG: &str = "effects.jsonl";
+
+/// An item's rows (or lines) within a part.
+pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
+
+/// What the view knows of the effects that settled, in this run and, once
+/// [`PastEffects`] brought them, before it: what each tool call published
+/// and how long it ran, by call id; and which calls each effect started,
+/// through any effect between, for [`ToolCallView::children`]. All of it
+/// comes from the kernel's effect records.
+#[derive(Resource, Default)]
+pub(crate) struct CallFacts {
+    /// This run's effects, noted as they settle.
+    run: Settled,
+    /// The effects before this run, as [`PastEffects`] brought them.
+    past: Arc<Settled>,
+    /// Each agent's name by its id, as last named: a record names its
+    /// agent by id, and a helper may be gone by the time it is drawn.
+    names: HashMap<String, String>,
+    /// How many times what it knows changed, so a look tells a change by
+    /// this alone.
+    changes: u64,
+    /// The calls under each tool call of an agent that started any, by the
+    /// agent's id, as the settled effects say: worked out when first asked
+    /// for after a change, not every frame.
+    children: Mutex<HashMap<String, Arc<CallsUnder>>>,
+}
+
+/// The calls under each tool call that started any, by its call id.
+pub(crate) type CallsUnder = BTreeMap<CallId, Vec<ChildCall>>;
+
+impl CallFacts {
+    /// What `call` published and how long it ran, as far as known.
+    fn of(&self, call: &CallId) -> (Option<&ToolResultContext>, Option<Duration>) {
+        let facts = self.run.facts.get(call);
+        let facts = facts.or_else(|| self.past.facts.get(call));
+        facts.map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
+    }
+
+    /// Notes the effect `record` settled in this run.
+    fn note(&mut self, record: &EffectRecord) {
+        if self.run.note(record) {
+            self.changed();
+        }
+    }
+
+    /// Takes over the effects before this run; a later batch replaces it.
+    fn take_past(&mut self, past: Arc<Settled>) {
+        self.past = past;
+        self.changed();
+    }
+
+    /// Maps what it knows through `with`, the map the session was
+    /// rewritten through: the calls and what they published are copies of
+    /// the effect log's records.
+    pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
+        let mut changed = self.run.rewrite(with);
+        changed |= Arc::make_mut(&mut self.past).rewrite(with);
+        if changed {
+            self.changed();
+        }
+    }
+
+    /// Notes that the agent with the id `agent` is called `name`; whether
+    /// that is new.
+    pub(crate) fn name(&mut self, agent: &str, name: &str) -> bool {
+        if self.names.get(agent).is_some_and(|known| known == name) {
+            return false;
+        }
+        self.names.insert(agent.to_owned(), name.to_owned());
+        self.changed();
+        true
+    }
+
+    /// Notes a change: what was worked out from before it is gone.
+    fn changed(&mut self) {
+        self.changes = self.changes.wrapping_add(1);
+        self.children
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+    }
+
+    /// The calls under each tool call of the agent with the id `agent`
+    /// that started any, as the settled effects and the `live` ones (not
+    /// settled) say: each call after the one that started it, in the order
+    /// they were made, through any effect between that is no call. What
+    /// the settled effects say is worked out once per change; over it, the
+    /// tool calls a live effect is under, which change as it runs.
+    pub(crate) fn children(&self, live: &CallTree, agent: &str) -> ChildCalls {
+        let settled = self.settled_children(agent);
+        let trees = [&self.past.calls, &self.run.calls, live];
+        // Every live effect, and every effect it is under.
+        let mut above = HashSet::new();
+        for &effect in live.parents.keys() {
+            let mut at = Some(effect);
+            while let Some(effect) = at.filter(|&effect| above.insert(effect)) {
+                at = trees
+                    .iter()
+                    .find_map(|tree| tree.parents.get(&effect).copied());
+            }
+        }
+        let mut live = CallsUnder::new();
+        for parent in above {
+            let starts_any = trees.iter().any(|tree| tree.children.contains_key(&parent));
+            match tool_call(&trees, parent) {
+                Some((of, call)) if **of == *agent && starts_any && !live.contains_key(call) => {
+                    live.insert(call.clone(), self.below(&trees, parent));
+                }
+                _ => {}
+            }
+        }
+        ChildCalls { settled, live }
+    }
+
+    /// What [`Self::children`] works out from the settled effects alone.
+    fn settled_children(&self, agent: &str) -> Arc<CallsUnder> {
+        let mut known = self.children.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(found) = known.get(agent) {
+            return Arc::clone(found);
+        }
+        let trees = [&self.past.calls, &self.run.calls];
+        let mut found = CallsUnder::new();
+        for parent in trees.iter().flat_map(|tree| tree.children.keys()) {
+            match tool_call(&trees, *parent) {
+                Some((of, call)) if **of == *agent && !found.contains_key(call) => {
+                    found.insert(call.clone(), self.below(&trees, *parent));
+                }
+                _ => {}
+            }
+        }
+        let found = Arc::new(found);
+        known.insert(agent.to_owned(), Arc::clone(&found));
+        found
+    }
+
+    /// The calls under `parent`, as `trees` say.
+    fn below(&self, trees: &[&CallTree], parent: EffectId) -> Vec<ChildCall> {
+        let mut out = Vec::new();
+        self.add_below(trees, parent, 0, &mut HashSet::from([parent]), &mut out);
+        out
+    }
+
+    /// Adds the calls under `parent`, `depth` below the tool call, to
+    /// `out`, each followed by those under it; an effect that is no call
+    /// adds those under it at its own depth. `seen` guards against an
+    /// effect named as its own ancestor, and an effect two trees hold
+    /// counts once.
+    fn add_below(
+        &self,
+        trees: &[&CallTree],
+        parent: EffectId,
+        depth: usize,
+        seen: &mut HashSet<EffectId>,
+        out: &mut Vec<ChildCall>,
+    ) {
+        let children = trees.iter().filter_map(|tree| tree.children.get(&parent));
+        let mut children: Vec<&Child> = children.flatten().collect();
+        children.sort_by_key(|child| child.id);
+        for child in children {
+            if !seen.insert(child.id) {
+                continue;
+            }
+            let Some(call) = &child.call else {
+                self.add_below(trees, child.id, depth, seen, out);
+                continue;
+            };
+            let name = child
+                .agent
+                .as_deref()
+                .and_then(|agent| self.names.get(agent));
+            out.push(ChildCall {
+                depth,
+                agent: name.cloned().or_else(|| call.agent.clone()),
+                ..call.clone()
+            });
+            self.add_below(trees, child.id, depth + 1, seen, out);
+        }
+    }
+}
+
+/// The agent (by id) and call id of the tool call effect `id` is, as the
+/// first of `trees` that knows says.
+fn tool_call<'a>(trees: &[&'a CallTree], id: EffectId) -> Option<&'a (Arc<str>, CallId)> {
+    trees.iter().find_map(|tree| tree.tool_calls.get(&id))
+}
+
+/// The calls under each tool call of an agent that started any, as
+/// [`CallFacts::children`] works them out: the settled effects' and, over
+/// them, those of the tool calls a live effect is under.
+#[derive(Default)]
+pub(crate) struct ChildCalls {
+    settled: Arc<CallsUnder>,
+    live: CallsUnder,
+}
+
+impl ChildCalls {
+    /// The calls under the tool call `call`, if it started any.
+    pub(crate) fn get(&self, call: &CallId) -> Option<&Vec<ChildCall>> {
+        self.live.get(call).or_else(|| self.settled.get(call))
+    }
+}
+
+/// Effects that settled, as the view keeps them: what each tool call
+/// published and how long it ran, by call id, and which calls each
+/// effect started.
+#[derive(Clone, Default)]
+pub(crate) struct Settled {
+    facts: HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>,
+    calls: CallTree,
+    /// The tool calls of each model call's reply that no tool call's
+    /// record claimed yet, by the model call: how a record, which names a
+    /// call's tool and arguments but not its id, finds which call it is.
+    replies: HashMap<EffectId, Vec<ToolCall>>,
+}
+
+impl Settled {
+    /// Notes the effect `record` settled: under the effect that started
+    /// it, as a call or as an effect calls go through; and, for a tool
+    /// call, what it published and how long it ran. A record read twice
+    /// counts once: whether it is new.
+    fn note(&mut self, record: &EffectRecord) -> bool {
+        if !self.calls.known.insert(record.id) {
+            return false;
+        }
+        let outcome = record.reviewed.as_ref().unwrap_or(&record.outcome);
+        let child = match &record.kind {
+            EffectKind::Completion { .. } => {
+                let reply = match outcome {
+                    Ok(effect::Answered::Completion(reply)) => Some(reply),
+                    _ => None,
+                };
+                let calls = reply.into_iter().flat_map(|reply| &reply.choice);
+                let calls: Vec<ToolCall> = calls
+                    .filter_map(|content| match content {
+                        AssistantContent::ToolCall(call) => Some(call.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if !calls.is_empty() {
+                    self.replies.insert(record.id, calls);
+                }
+                let model = record.key.as_str().strip_prefix("model:");
+                let (failed, line) = answer(Some(outcome), false);
+                Some(ChildCall {
+                    depth: 0,
+                    call: None,
+                    name: model.unwrap_or("model").to_owned(),
+                    agent: None,
+                    state: CallState::Done,
+                    failed,
+                    line,
+                })
+            }
+            EffectKind::ToolCall { name: tool, args } => {
+                let call = self.claim(record, tool, args);
+                if let (Some(call), Some(agent)) = (&call, &record.scope) {
+                    self.calls.tool_call(record.id, agent, call.id.clone());
+                    let took = record.finished_ms.zip(record.started_ms);
+                    let took =
+                        took.map(|(end, start)| Duration::from_millis(end.saturating_sub(start)));
+                    self.facts
+                        .insert(call.id.clone(), (record.published.clone(), took));
+                }
+                let (failed, line) = answer(Some(outcome), true);
+                Some(ChildCall {
+                    depth: 0,
+                    call,
+                    name: tool.clone(),
+                    agent: None,
+                    state: CallState::Done,
+                    failed,
+                    line,
+                })
+            }
+            _ => None,
+        };
+        let agent = record.scope.clone();
+        self.calls.add(record.parent, record.id, child, agent);
+        true
+    }
+
+    /// Maps every call and what each published through `with`, at the
+    /// effect log's place; one the map leaves unreadable is forgotten.
+    /// Whether anything changed.
+    fn rewrite(&mut self, with: &dyn Rewrite) -> bool {
+        let mut changed = false;
+        for (facts, _) in self.facts.values_mut() {
+            changed |= map_or_forget(with, facts);
+        }
+        for calls in self.replies.values_mut() {
+            let before = calls.len();
+            calls.retain_mut(|call| {
+                let mapped = map_copy(with, call);
+                changed |= !matches!(mapped, Ok(false));
+                mapped.is_ok()
+            });
+            changed |= calls.len() != before;
+        }
+        let children = self.calls.children.values_mut().flatten();
+        for call in children.filter_map(|child| child.call.as_mut()) {
+            changed |= map_or_forget(with, &mut call.call);
+            changed |= map_or_forget(with, &mut call.line);
+        }
+        changed
+    }
+
+    /// The call of its parent model call's reply a tool call's `record`
+    /// is: the first unclaimed one of that tool with these arguments, else
+    /// of that tool (a plugin may have changed the arguments); one made
+    /// from the record when its reply is not known, such as a call carried
+    /// over a restart.
+    fn claim(&mut self, record: &EffectRecord, tool: &str, args: &str) -> Option<ToolCall> {
+        let parent = record.parent;
+        let reply = parent.and_then(|parent| self.replies.get_mut(&parent));
+        if let Some(calls) = reply {
+            let named = |call: &ToolCall| call.function.name.as_str() == tool;
+            let same = calls
+                .iter()
+                .position(|call| named(call) && call.function.raw_arguments() == args);
+            let found = same.or_else(|| calls.iter().position(named));
+            let call = found.map(|at| calls.remove(at));
+            if calls.is_empty()
+                && let Some(parent) = parent
+            {
+                self.replies.remove(&parent);
+            }
+            if call.is_some() {
+                return call;
+            }
+        }
+        let name = ToolName::new(tool).ok()?;
+        let args = serde_json::from_str(args).unwrap_or_default();
+        let id = CallId::from_wire(format!("effect-{}", record.id));
+        Some(ToolCall::new(id, ToolFunction::new(name, args)))
+    }
+}
+
+/// `item`, a copy of what the effect log keeps, mapped through `with` at
+/// the log's place: whether it changed, or why it no longer reads.
+fn map_copy<T: Serialize + DeserializeOwned>(
+    with: &dyn Rewrite,
+    item: &mut T,
+) -> Result<bool, serde_json::Error> {
+    let at = Place::File { name: EFFECT_LOG };
+    rewrite_value(with, &at, EFFECT_LOG, item)
+}
+
+/// `item` mapped as [`map_copy`] maps it, or forgotten (`None`) when it no
+/// longer reads: whether it changed.
+fn map_or_forget<T: Serialize + DeserializeOwned>(
+    with: &dyn Rewrite,
+    item: &mut Option<T>,
+) -> bool {
+    match item.as_mut().map(|value| map_copy(with, value)) {
+        None | Some(Ok(false)) => false,
+        Some(Ok(true)) => true,
+        Some(Err(_)) => {
+            *item = None;
+            true
+        }
+    }
+}
+
+/// Effects by the effect that started them (its `parent`), each with its
+/// own effect id and, for a tool or model call, the call; the effect each
+/// one was started by; and each tool call's agent (by id) and call id, by
+/// its effect.
+#[derive(Clone, Default)]
+pub(crate) struct CallTree {
+    children: HashMap<EffectId, Vec<Child>>,
+    parents: HashMap<EffectId, EffectId>,
+    tool_calls: HashMap<EffectId, (Arc<str>, CallId)>,
+    /// Every effect noted, so none is noted twice.
+    known: HashSet<EffectId>,
+}
+
+/// An effect under the one that started it.
+#[derive(Clone)]
+struct Child {
+    id: EffectId,
+    /// The call it is; `None` when calls only go through it.
+    call: Option<ChildCall>,
+    /// The id of the agent it is for, whose name is looked up when it is
+    /// drawn; `None` when the call names its agent itself.
+    agent: Option<Arc<str>>,
+}
+
+impl CallTree {
+    /// Notes the effect `id` as one `parent` started: `call` when it is a
+    /// call, `None` when calls only go through it; for the agent with the
+    /// id `agent`, when the call does not name it.
+    pub(crate) fn add(
+        &mut self,
+        parent: Option<EffectId>,
+        id: EffectId,
+        call: Option<ChildCall>,
+        agent: Option<Arc<str>>,
+    ) {
+        if let Some(parent) = parent {
+            self.parents.insert(id, parent);
+            let child = Child { id, call, agent };
+            self.children.entry(parent).or_default().push(child);
+        }
+    }
+
+    /// Notes that effect `id` is the tool call `call` of the agent with
+    /// the id `agent`.
+    pub(crate) fn tool_call(&mut self, id: EffectId, agent: &str, call: CallId) {
+        self.tool_calls.insert(id, (Arc::from(agent), call));
+    }
+}
+
+/// Whether an answer is a failure, and its first line: a tool's result
+/// (`tool`), else a model's reply, or why it failed; neither before it
+/// has one.
+pub(crate) fn answer(
+    outcome: Option<&Result<effect::Answered, ErrorReport>>,
+    tool: bool,
+) -> (bool, Option<String>) {
+    let (failed, line) = match (outcome, tool) {
+        (None, _) => (false, None),
+        (Some(outcome), true) => {
+            let result = Outcome(outcome.clone()).tool_result();
+            let failed = result.is_error() || result.is_refused();
+            (failed, Some(result.output().render()))
+        }
+        (Some(Err(report)), false) => (true, Some(report.message.clone())),
+        (Some(Ok(effect::Answered::Completion(reply))), false) => (false, Some(reply.text())),
+        (Some(Ok(_)), false) => (false, None),
+    };
+    (
+        failed,
+        line.and_then(|line| line.lines().next().map(str::to_owned)),
+    )
+}
+
+/// A tool or model call not settled yet as one of
+/// [`ToolCallView::children`], standing as `state`, `depth` 0; `None` for
+/// any other effect.
+pub(crate) fn live_call(
+    (request, model, sent): (Option<&ToolRequest>, Option<&ModelRequest>, Option<&SentTo>),
+    (agent, outcome): (Option<&Name>, Option<&Outcome>),
+    state: CallState,
+) -> Option<ChildCall> {
+    let connection = sent.map(|SentTo(connection)| connection);
+    let connection = connection.or(model.and_then(|model| model.connection.as_ref()));
+    let name = match (request, model) {
+        (Some(request), _) => request.call.function.name.to_string(),
+        (None, Some(_)) => connection.map_or("model".to_owned(), |c| c.spec.reference()),
+        (None, None) => return None,
+    };
+    let (failed, line) = answer(outcome.map(|Outcome(outcome)| outcome), request.is_some());
+    Some(ChildCall {
+        depth: 0,
+        call: request.map(|request| request.call.clone()),
+        name,
+        agent: agent.map(|name| name.as_str().to_owned()),
+        state,
+        failed,
+        line,
+    })
+}
+
+/// Effects that settled before this run, such as a resumed session's, for
+/// [`ToolCallView::children`] and each call's facts: read as the kernel's
+/// [`EffectRecorded`] records are. rig-telemetry sends the session's
+/// effect log once it was restored. [`PastEffects::new`] does all the work
+/// per record, so make it where the records are read, off the main thread
+/// for a long log: the view only takes it over. A later one replaces it.
+#[derive(Message, Clone)]
+pub struct PastEffects(Arc<Settled>);
+
+impl PastEffects {
+    /// The effects `records` settled, in the order they settled.
+    #[must_use]
+    pub fn new(records: impl IntoIterator<Item = EffectRecord>) -> Self {
+        let mut settled = Settled::default();
+        for record in records {
+            settled.note(&record);
+        }
+        Self(Arc::new(settled))
+    }
+
+    /// How many effects it holds.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.calls.known.len()
+    }
+
+    /// Whether it holds no effect.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.calls.known.is_empty()
+    }
+}
+
+/// Notes every effect that settled since the last frame, and takes over
+/// those [`PastEffects`] brought.
+pub(crate) fn note_effects(
+    mut recorded: MessageReader<EffectRecorded>,
+    mut past: MessageReader<PastEffects>,
+    mut facts: ResMut<CallFacts>,
+) {
+    if recorded.is_empty() && past.is_empty() {
+        return;
+    }
+    for PastEffects(settled) in past.read() {
+        facts.take_past(Arc::clone(settled));
+    }
+    for EffectRecorded(record) in recorded.read() {
+        facts.note(record);
+    }
+}
+
+/// Notes each agent's name by its id, for the records that name it so.
+pub(crate) fn note_agent_name(
+    named: On<Insert<Name>>,
+    agents: Query<(&AgentId, &Name)>,
+    mut facts: ResMut<CallFacts>,
+) {
+    if let Ok((id, name)) = agents.get(named.entity)
+        && facts
+            .bypass_change_detection()
+            .name(id.0.as_str(), name.as_str())
+    {
+        facts.set_changed();
+    }
+}
+
+/// The tool calls a model call streams while its reply does ([`Partial`]
+/// requires it), in the order they opened: each as far as its arguments
+/// came, with their JSON so far, or finished.
+#[derive(Component, Default)]
+pub(crate) struct StreamingCalls(Vec<(rig_core::streaming::Part, ToolCall, String)>);
+
+impl StreamingCalls {
+    /// The calls, in the order they opened.
+    pub(crate) fn calls(&self) -> impl Iterator<Item = &ToolCall> {
+        self.0.iter().map(|(_, call, _)| call)
+    }
+}
+
+/// Follows the tool calls models stream: a call opens with its tool's
+/// name, its arguments grow, and it ends with the finished call.
+pub(crate) fn follow_streams(
+    mut deltas: MessageReader<StreamDelta>,
+    mut streams: Query<&mut StreamingCalls, With<Partial>>,
+) {
+    for delta in deltas.read() {
+        let Ok(mut calls) = streams.get_mut(delta.effect) else {
+            continue;
+        };
+        match &delta.event {
+            StreamEvent::Start {
+                part,
+                kind: PartKind::ToolCall,
+                name: Some(name),
+            } => {
+                let id = CallId::from_wire(format!("streaming-{}", part.index()));
+                let call = ToolCall::new(id, ToolFunction::new(name.clone(), Default::default()));
+                calls.0.push((*part, call, String::new()));
+            }
+            StreamEvent::Arguments { part, json } => {
+                if let Some((_, call, text)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
+                    text.push_str(json);
+                    call.function.arguments = parse_partial_arguments(text);
+                }
+            }
+            StreamEvent::End {
+                part,
+                content: AssistantContent::ToolCall(done),
+            } => {
+                if let Some((_, call, _)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
+                    *call = done.clone();
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Forgets a model call's streaming calls once its reply is in the
+/// conversation, its [`Partial`] gone.
+pub(crate) fn forget_streams(gone: On<Remove<Partial>>, mut streams: Query<&mut StreamingCalls>) {
+    if let Ok(mut calls) = streams.get_mut(gone.entity) {
+        calls.0.clear();
+    }
+}
+
+/// What the messages' look depends on besides the messages.
+pub(crate) struct Look<'a> {
+    /// The looks plugins added.
+    pub(crate) renderers: &'a Renderers<'a>,
+    /// The state of each call of the running turn.
+    pub(crate) calls: &'a BTreeMap<CallId, CallState>,
+    /// The output so far of each of its running calls that reports it.
+    pub(crate) outputs: &'a BTreeMap<CallId, String>,
+    /// The notices and notes drawn inside a message, by its index, each
+    /// with the content item it goes before.
+    pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
+    /// The items drawn whole.
+    pub(crate) expanded: &'a HashSet<TranscriptItem>,
+    /// Whether every item is drawn whole, as if expanded.
+    pub(crate) whole: bool,
+    /// Whether to note which items are drawn cut, which draws each item
+    /// not expanded whole too.
+    pub(crate) note_cut: bool,
+    /// What settled calls published and how long they ran.
+    pub(crate) facts: &'a CallFacts,
+    /// The calls under each tool call that started any.
+    pub(crate) children: &'a ChildCalls,
+    /// The labels drawn inside replies' text.
+    pub(crate) marks: &'a [TextMark],
+}
+
+/// What is drawn inside a message, before one of its items.
+#[derive(Clone, Copy)]
+pub(crate) enum Inside<'a> {
+    /// A notice written there, and its index in the notices shown.
+    Notice(usize, &'a ShownNotice),
+    /// An aside whose entry was taken out, after the start of what stands
+    /// for it.
+    Aside(&'a ShownAside<'a>),
+}
+
+/// An aside a look draws in the conversation of the shown agent: a
+/// plugin's note, or one of a kind with an aside renderer.
+pub(crate) struct ShownAside<'a> {
+    /// Its id.
+    pub(crate) id: AsideId,
+    /// The aside.
+    pub(crate) aside: &'a Aside,
+}
+
+impl ShownAside<'_> {
+    /// The aside's item.
+    pub(crate) fn item(&self) -> TranscriptItem {
+        TranscriptItem::Aside(self.id)
+    }
+
+    /// The aside as its renderer sees it.
+    pub(crate) fn view(&self, expanded: bool) -> AsideView<'_> {
+        AsideView {
+            id: self.id,
+            aside: self.aside,
+            expanded,
+        }
+    }
+
+    /// Its lines, whole when `expanded`; none for a kind nothing draws.
+    pub(crate) fn lines(&self, renderers: &Renderers<'_>, expanded: bool) -> Vec<Line<'static>> {
+        renderers.aside(&self.view(expanded)).unwrap_or_default()
+    }
+}
+
+impl Look<'_> {
+    /// Whether `item` is drawn whole.
+    pub(crate) fn is_expanded(&self, item: &TranscriptItem) -> bool {
+        self.whole || self.expanded.contains(item)
+    }
+
+    /// The lines `draw` draws, whole when `expanded`, and whether they are
+    /// cut: noted only when asked, by drawing them whole too.
+    pub(crate) fn drawn(
+        &self,
+        expanded: bool,
+        draw: impl Fn(bool) -> Vec<Line<'static>>,
+    ) -> (Vec<Line<'static>>, bool) {
+        let (lines, (), cut) = self.drawn_with(expanded, |expanded| (draw(expanded), ()));
+        (lines, cut)
+    }
+
+    /// As [`drawn`](Self::drawn), with what `draw` says beside the lines
+    /// drawn; only the lines tell whether they are cut.
+    pub(crate) fn drawn_with<T>(
+        &self,
+        expanded: bool,
+        draw: impl Fn(bool) -> (Vec<Line<'static>>, T),
+    ) -> (Vec<Line<'static>>, T, bool) {
+        let (lines, beside) = draw(expanded);
+        let cut = self.note_cut && !expanded && draw(true).0 != lines;
+        (lines, beside, cut)
+    }
+
+    /// The marks in `text`, each with the span it draws.
+    pub(crate) fn marks_in(&self, text: MarkIn) -> Vec<(usize, ratatui::text::Span<'static>)> {
+        let marks = self.marks.iter().filter(|mark| mark.r#in == text);
+        let span = |mark: &TextMark| ratatui::text::Span::styled(mark.label.clone(), mark.style);
+        marks.map(|mark| (mark.at, span(mark))).collect()
+    }
+
+    /// The notices and notes inside message `index`.
+    fn inside(&self, index: usize) -> &[(usize, Inside<'_>)] {
+        self.inside.get(&index).map_or(&[], Vec::as_slice)
+    }
+
+    /// Hashes the notices and notes inside message `index`.
+    fn hash_inside(&self, index: usize, hasher: &mut DefaultHasher) {
+        for (item, inside) in self.inside(index) {
+            item.hash(hasher);
+            match inside {
+                Inside::Notice(at, notice) => {
+                    at.hash(hasher);
+                    level_code(notice.level).hash(hasher);
+                    notice.text.hash(hasher);
+                }
+                Inside::Aside(shown) => {
+                    shown.id.hash(hasher);
+                    (&shown.aside.kind, plugin_name(&shown.aside.author)).hash(hasher);
+                    serde_json::to_vec(&shown.aside.value)
+                        .unwrap_or_default()
+                        .hash(hasher);
+                    self.is_expanded(&shown.item()).hash(hasher);
+                }
+            }
+        }
+    }
+
+    /// Where the call `call` stands: as its effect says while it has one,
+    /// else done once it has `result`.
+    fn state(&self, call: &CallId, result: Option<&ToolResult>) -> CallState {
+        match self.calls.get(call) {
+            Some(state) => state.clone(),
+            None if result.is_some() => CallState::Done,
+            None => CallState::Running(None),
+        }
+    }
+
+    /// A hash of what message `index` (with `id`) looks like besides its
+    /// messages: its notices, whether it is expanded, and its calls' states,
+    /// output so far, expansion and running times.
+    fn hash_message(&self, (index, id): (usize, Option<MessageId>), message: &Message) -> u64 {
+        let hasher = &mut DefaultHasher::new();
+        self.hash_inside(index, hasher);
+        (self.whole, self.note_cut).hash(hasher);
+        id.map(|id| self.is_expanded(&TranscriptItem::Message(id)))
+            .hash(hasher);
+        let marks = self.marks.iter();
+        marks
+            .filter(|mark| matches!(mark.r#in, MarkIn::Message { id: of, .. } if Some(of) == id))
+            .for_each(|mark| mark.hash(hasher));
+        if let Message::Assistant(assistant) = message {
+            for item in assistant.content.iter() {
+                if let AssistantContent::ToolCall(call) = item {
+                    self.calls.get(&call.id).hash(hasher);
+                    self.outputs.get(&call.id).hash(hasher);
+                    self.is_expanded(&TranscriptItem::Call(call.id.clone()))
+                        .hash(hasher);
+                    self.facts.of(&call.id).1.hash(hasher);
+                    hash_children(self.children.get(&call.id), hasher);
+                }
+            }
+        }
+        hasher.finish()
+    }
+
+    /// A hash of all of it but the renderers, whose changes
+    /// [`Transcript::clear`] handles.
+    fn digest(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        let mut indices: Vec<&usize> = self.inside.keys().collect();
+        indices.sort();
+        for index in indices {
+            index.hash(&mut hasher);
+            self.hash_inside(*index, &mut hasher);
+        }
+        self.calls.hash(&mut hasher);
+        self.outputs.hash(&mut hasher);
+        (self.whole, self.note_cut).hash(&mut hasher);
+        self.marks.hash(&mut hasher);
+        // Sets in no order: a sum of each one's hash.
+        let unordered = |item: &dyn Fn(&mut DefaultHasher)| {
+            let mut hasher = DefaultHasher::new();
+            item(&mut hasher);
+            hasher.finish()
+        };
+        let expanded = self
+            .expanded
+            .iter()
+            .map(|item| unordered(&|h| item.hash(h)));
+        expanded.fold(0u64, u64::wrapping_add).hash(&mut hasher);
+        // The settled calls' facts and children change only with it.
+        self.facts.changes.hash(&mut hasher);
+        for (call, children) in &self.children.live {
+            call.hash(&mut hasher);
+            hash_children(Some(children), &mut hasher);
+        }
+        hasher.finish()
+    }
+}
+
+/// Hashes what a call's renderer draws of `children`.
+fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) {
+    for child in children.into_iter().flatten() {
+        (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
+        (child.failed, &child.line).hash(hasher);
+        child.call.as_ref().map(|call| &call.id).hash(hasher);
+    }
+}
+
+/// A number for each notice level.
+fn level_code(level: NoticeLevel) -> u8 {
+    match level {
+        NoticeLevel::Info => 0,
+        NoticeLevel::Warn => 1,
+        NoticeLevel::Error => 2,
+    }
+}
+
+/// One message's look: its lines and where its items are in them, those
+/// lines wrapped to the width, and the items drawn cut, when noted.
+struct Cached {
+    /// The message as it was laid out.
+    message: Message,
+    /// [`Look::hash_message`] of it then.
+    look: u64,
+    lines: Vec<Line<'static>>,
+    line_marks: Marks,
+    wrapped: Wrapped,
+    cut: Vec<TranscriptItem>,
+}
+
+/// Lines wrapped to a width: the rows, whether each continues the row
+/// before it (a line wrapped), and where the items are in the rows.
+#[derive(Default)]
+pub(crate) struct Wrapped {
+    rows: Vec<Line<'static>>,
+    continues: Vec<Option<RowWrap>>,
+    marks: Marks,
+}
+
+/// The wrapped rows of the shown agent's messages.
+#[derive(Default)]
+pub(crate) struct Transcript {
+    agent: Option<Entity>,
+    width: u16,
+    /// The [`Look::digest`] the rows were made with.
+    look: u64,
+    messages: Vec<Cached>,
+}
+
+/// A part of the transcript, in order: a message's cached rows, or rows
+/// made for this frame (notices, a note, the reply streaming in), with
+/// where the items among them are and those drawn cut.
+pub(crate) enum Part {
+    Message(usize),
+    Rows(Wrapped, Vec<TranscriptItem>),
+}
+
+impl Part {
+    /// `lines`, with the items `marks` says are in them, `cut` of them
+    /// drawn cut, wrapped to `width`.
+    pub(crate) fn rows(
+        lines: &[Line<'static>],
+        marks: &[(TranscriptItem, Range<usize>)],
+        cut: Vec<TranscriptItem>,
+        width: usize,
+    ) -> Self {
+        Self::Rows(wrap_marked(lines, marks, width), cut)
+    }
+}
+
+/// The rows of the transcript on screen, and where it is.
+pub(crate) struct Visible {
+    /// The rows shown.
+    pub(crate) rows: Vec<Line<'static>>,
+    /// What is below them.
+    pub(crate) below: Below,
+    /// The first one's row in the whole transcript.
+    pub(crate) first: usize,
+    /// Every item's rows in the whole transcript, top to bottom; a call's
+    /// are within its message's.
+    pub(crate) marks: Marks,
+    /// The item at the top and the row of it there, while the view is
+    /// scrolled up.
+    pub(crate) top: Option<(TranscriptItem, usize)>,
+}
+
+impl Transcript {
+    /// Brings the rows up to date with the conversation of `agent` and
+    /// `look` at `width`.
+    /// `changed` says whether the messages may have changed since the last
+    /// call; when neither they nor the look did, only a new agent or width
+    /// costs anything.
+    pub(crate) fn update(
+        &mut self,
+        agent: Entity,
+        conversation: &conversation::Conversation,
+        changed: bool,
+        look: &Look<'_>,
+        width: u16,
+    ) {
+        if self.agent != Some(agent) {
+            self.agent = Some(agent);
+            self.messages.clear();
+        }
+        let usable = usize::from(width.max(1));
+        if self.width != width {
+            self.width = width;
+            for cached in &mut self.messages {
+                cached.wrapped = wrap_marked(&cached.lines, &cached.line_marks, usable);
+            }
+        }
+        let messages = conversation.messages();
+        let digest = look.digest();
+        let looks_alike = std::mem::replace(&mut self.look, digest) == digest;
+        if !changed && looks_alike && self.messages.len() == messages.len() {
+            return;
+        }
+        // A message's look depends on it and its neighbours, so each is
+        // compared once with the one laid out last time, before any is
+        // replaced; a message past either end matches only another.
+        let same: Vec<bool> = (0..=messages.len())
+            .map(|at| match (self.messages.get(at), messages.get(at)) {
+                (Some(cached), Some(message)) => cached.message == *message,
+                (cached, message) => cached.is_none() && message.is_none(),
+            })
+            .collect();
+        self.messages.truncate(messages.len());
+        for (index, message) in messages.iter().enumerate() {
+            let previous = index.checked_sub(1).and_then(|before| messages.get(before));
+            let next = messages.get(index + 1);
+            let look_hash = look.hash_message((index, conversation.id(index)), message);
+            if self
+                .messages
+                .get(index)
+                .is_some_and(|cached| cached.look == look_hash)
+                && (index.saturating_sub(1)..=index + 1).all(|at| same.get(at) == Some(&true))
+            {
+                continue;
+            }
+            let (lines, line_marks, cut) =
+                message_lines(message, (conversation, index), previous, next, look);
+            let wrapped = wrap_marked(&lines, &line_marks, usable);
+            let cached = Cached {
+                message: message.clone(),
+                look: look_hash,
+                lines,
+                line_marks,
+                wrapped,
+                cut,
+            };
+            match self.messages.get_mut(index) {
+                Some(slot) => *slot = cached,
+                None => self.messages.push(cached),
+            }
+        }
+    }
+
+    /// Drops every cached row, after the renderers changed.
+    pub(crate) fn clear(&mut self) {
+        self.messages.clear();
+    }
+
+    /// A part's wrapped rows; `None` for a message not cached.
+    fn wrapped<'a>(&'a self, part: &'a Part) -> Option<&'a Wrapped> {
+        match part {
+            Part::Message(index) => self.messages.get(*index).map(|cached| &cached.wrapped),
+            Part::Rows(wrapped, _) => Some(wrapped),
+        }
+    }
+
+    /// A part's rows.
+    fn rows<'a>(&'a self, part: &'a Part) -> &'a [Line<'static>] {
+        let wrapped = self.wrapped(part);
+        wrapped
+            .map(|wrapped| wrapped.rows.as_slice())
+            .unwrap_or_default()
+    }
+
+    /// Where a part's items are in its rows.
+    fn marks<'a>(&'a self, part: &'a Part) -> &'a [(TranscriptItem, Range<usize>)] {
+        let wrapped = self.wrapped(part);
+        wrapped
+            .map(|wrapped| wrapped.marks.as_slice())
+            .unwrap_or_default()
+    }
+
+    /// A part's items drawn cut, as far as noted.
+    fn cut<'a>(&'a self, part: &'a Part) -> &'a [TranscriptItem] {
+        match part {
+            Part::Message(index) => self
+                .messages
+                .get(*index)
+                .map(|cached| cached.cut.as_slice())
+                .unwrap_or_default(),
+            Part::Rows(_, cut) => cut.as_slice(),
+        }
+    }
+
+    /// Every item's rows in the whole transcript `parts` make, top to
+    /// bottom; a call's are within its message's.
+    fn marks_of(&self, parts: &[Part]) -> Marks {
+        let mut marks = Marks::new();
+        let mut start = 0;
+        for part in parts {
+            let shifted = self.marks(part).iter();
+            marks.extend(
+                shifted.map(|(item, rows)| (item.clone(), rows.start + start..rows.end + start)),
+            );
+            start += self.rows(part).len();
+        }
+        marks
+    }
+
+    /// The rows of `parts` that fit `height` rows at `width`, where
+    /// `scroll` places them, what is below them, and where the items are.
+    /// A jump to an item's match counts the matches of `highlights`.
+    pub(crate) fn visible(
+        &self,
+        parts: &[Part],
+        (width, height): (u16, usize),
+        scroll: &mut Scroll,
+        highlights: &[Highlight],
+    ) -> Visible {
+        let counts: Vec<usize> = parts.iter().map(|part| self.rows(part).len()).collect();
+        let marks = self.marks_of(parts);
+        let lights = self.lights(parts, &marks, highlights);
+        scroll.find(&marks);
+        let (mut top, mut below) = scroll.place(&counts, height, width);
+        if let Some((item, to)) = scroll.jump.take() {
+            let rows = marks.iter().find(|(marked, _)| *marked == item);
+            let row = rows.map(|(_, rows)| {
+                let lit = match to {
+                    ItemRow::Lit(n) => self.lit_row(parts, rows, &lights, n),
+                    ItemRow::Top(_) | ItemRow::Reveal => None,
+                };
+                lit.unwrap_or(rows.start)
+            });
+            if let Some(row) = row.filter(|row| !(top..top + height).contains(row)) {
+                scroll.at = Some(row);
+                (top, below) = scroll.place(&counts, height, width);
+            }
+        }
+        let mut shown = Vec::with_capacity(height);
+        let mut start = 0;
+        for (part, count) in parts.iter().zip(&counts) {
+            let end = start + count;
+            if end > top && start < top + height {
+                let from = top.saturating_sub(start);
+                let to = (top + height - start).min(*count);
+                shown.extend(self.lit_rows(part, start, from..to, &lights));
+            }
+            start = end;
+            if start >= top + height {
+                break;
+            }
+        }
+        let at_top = scroll.held.is_some().then(|| {
+            // The innermost item there: the one that starts last.
+            let holding = marks.iter().filter(|(_, rows)| rows.contains(&top));
+            let item = holding.max_by_key(|(_, rows)| rows.start);
+            item.map(|(item, rows)| (item.clone(), top - rows.start))
+        });
+        Visible {
+            rows: shown,
+            below,
+            first: top,
+            marks,
+            top: at_top.flatten(),
+        }
+    }
+
+    /// The transcript of `agent` as `parts` lay it out, with the matches of
+    /// `highlights` in each row, counted only when one is set, and
+    /// `on_screen` on screen.
+    pub(crate) fn laid_out(
+        &self,
+        agent: Option<Entity>,
+        parts: &[Part],
+        highlights: &[Highlight],
+        on_screen: Range<usize>,
+    ) -> DrawnTranscript {
+        let items = self.marks_of(parts);
+        let lights = self.lights(parts, &items, highlights);
+        let counts = if lights.any() {
+            lit(self.joined(parts), 0, &lights)
+        } else {
+            Vec::new()
+        };
+        let mut counts = counts.into_iter().map(|row| row.matches);
+        let rows = self.joined(parts).map(|(row, continues)| DrawnRow {
+            text: row.to_string(),
+            continues: continues.cloned(),
+            lit: counts.next().unwrap_or_default(),
+        });
+        let cut = parts.iter().flat_map(|part| self.cut(part)).cloned();
+        DrawnTranscript::new(agent, rows.collect(), items, cut.collect(), on_screen)
+    }
+
+    /// `highlights`, with where in `parts`, whose items `marks` says, their
+    /// spans are.
+    fn lights<'a>(&self, parts: &[Part], marks: &Marks, highlights: &'a [Highlight]) -> Lights<'a> {
+        let mut lights = Lights {
+            highlights,
+            placed: HashMap::new(),
+        };
+        if highlights
+            .iter()
+            .all(|highlight| highlight.spans.is_empty())
+        {
+            return lights;
+        }
+        let starts: Vec<usize> = self
+            .joined(parts)
+            .enumerate()
+            .filter(|(_, (_, joint))| joint.is_none())
+            .map(|(row, _)| row)
+            .collect();
+        let items: HashMap<&TranscriptItem, &Range<usize>> =
+            marks.iter().map(|(item, rows)| (item, rows)).collect();
+        for (index, highlight) in highlights.iter().enumerate() {
+            for span in &highlight.spans {
+                let rows = match &span.item {
+                    Some(item) => items.get(item).map(|rows| (*rows).clone()),
+                    None => Some(0..usize::MAX),
+                };
+                let Some(rows) = rows else { continue };
+                let first = starts.partition_point(|&start| start < rows.start);
+                let line = starts
+                    .get(first.saturating_add(span.line))
+                    .filter(|row| rows.contains(row));
+                if let Some(&row) = line {
+                    let placed = lights.placed.entry((index, row)).or_default();
+                    placed.push(span.bytes.clone());
+                }
+            }
+        }
+        lights
+    }
+
+    /// The row among `rows` of `parts` with match `n` of `lights`.
+    fn lit_row(
+        &self,
+        parts: &[Part],
+        rows: &Range<usize>,
+        lights: &Lights<'_>,
+        n: usize,
+    ) -> Option<usize> {
+        // An item's rows are whole lines, so its matches are all in them.
+        let drawn = self.joined(parts).skip(rows.start).take(rows.len());
+        let mut before = 0;
+        for (at, row) in rows.clone().zip(lit(drawn, rows.start, lights)) {
+            before += row.matches.iter().sum::<usize>();
+            if before > n {
+                return Some(at);
+            }
+        }
+        None
+    }
+
+    /// Every row of `parts`, with how it continues the row before it.
+    fn joined<'a>(
+        &'a self,
+        parts: &'a [Part],
+    ) -> impl Iterator<Item = (&'a Line<'static>, Option<&'a RowWrap>)> + 'a {
+        let wrapped = parts.iter().filter_map(|part| self.wrapped(part));
+        let rows = wrapped.flat_map(|wrapped| wrapped.rows.iter().zip(&wrapped.continues));
+        rows.map(|(row, continues)| (row, continues.as_ref()))
+    }
+
+    /// Rows `range` of `part`, which starts at row `start` of the
+    /// transcript, with the matches of `lights` lit; each is sought in the
+    /// whole line it is in, even where the line goes on past `range`.
+    fn lit_rows(
+        &self,
+        part: &Part,
+        start: usize,
+        range: Range<usize>,
+        lights: &Lights<'_>,
+    ) -> Vec<Line<'static>> {
+        let Some(wrapped) = self.wrapped(part) else {
+            return Vec::new();
+        };
+        if !lights.any() {
+            return wrapped.rows.get(range).unwrap_or_default().to_vec();
+        }
+        let continues = |row: usize| wrapped.continues.get(row).is_some_and(Option::is_some);
+        let mut first = range.start;
+        while first > 0 && continues(first) {
+            first -= 1;
+        }
+        let mut end = range.end;
+        while continues(end) {
+            end += 1;
+        }
+        let rows = wrapped.rows.get(first..end).unwrap_or_default();
+        let joints = wrapped.continues.get(first..end).unwrap_or_default();
+        let lit = light(rows, joints, start + first, lights);
+        let shown = lit.into_iter().skip(range.start - first);
+        shown.take(range.len()).collect()
+    }
+}
+
+/// `lines` wrapped to `width`, and `marks` of lines moved to the rows
+/// they wrap to.
+fn wrap_marked(
+    lines: &[Line<'static>],
+    marks: &[(TranscriptItem, Range<usize>)],
+    width: usize,
+) -> Wrapped {
+    let mut rows = Vec::with_capacity(lines.len());
+    let mut continues = Vec::with_capacity(lines.len());
+    // The first row of each line, and past the last.
+    let mut starts = Vec::with_capacity(lines.len() + 1);
+    for line in lines {
+        starts.push(rows.len());
+        for (row, joint) in wrap(line, width) {
+            rows.push(row);
+            continues.push(joint);
+        }
+    }
+    starts.push(rows.len());
+    let row = |line: usize| starts.get(line).copied().unwrap_or(rows.len());
+    let marks = marks
+        .iter()
+        .map(|(item, lines)| (item.clone(), row(lines.start)..row(lines.end)))
+        .collect();
+    Wrapped {
+        rows,
+        continues,
+        marks,
+    }
+}
+
+/// Where the transcript is scrolled: following its bottom, or held at the
+/// row the user scrolled to, which then stays put as rows arrive below.
+#[derive(Default)]
+pub(crate) struct Scroll {
+    /// The row held at the top of the screen; `None` follows the bottom.
+    held: Option<Held>,
+    /// Rows the keys moved the view since the last frame, up positive.
+    moved: isize,
+    /// An item to go to at the next frame, and which row of it.
+    jump: Option<(TranscriptItem, ItemRow)>,
+    /// The row to put at the top at the next frame, where a jump found it.
+    at: Option<usize>,
+}
+
+/// The top row of a view scrolled up.
+struct Held {
+    /// Its index in the whole transcript.
+    top: usize,
+    /// The part it is in, its row there and that part's rows, to find it
+    /// again after a resize re-wraps everything above it.
+    part: usize,
+    row: usize,
+    rows: usize,
+    /// The transcript's width and rows at the last frame.
+    width: u16,
+    total: usize,
+    /// Whether rows arrived below since the view was held.
+    grew: bool,
+}
+
+/// What is below a view scrolled up.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Below {
+    /// Nothing: the view follows the bottom.
+    #[default]
+    Nothing,
+    /// Rows that were there when the view was scrolled up.
+    More,
+    /// Rows that arrived since.
+    New,
+}
+
+impl Scroll {
+    /// Moves the view `rows` up.
+    pub(crate) fn up(&mut self, rows: usize) {
+        self.moved = self
+            .moved
+            .saturating_add(isize::try_from(rows).unwrap_or(isize::MAX));
+    }
+
+    /// Moves the view `rows` down; reaching the bottom follows it again.
+    pub(crate) fn down(&mut self, rows: usize) {
+        self.moved = self
+            .moved
+            .saturating_sub(isize::try_from(rows).unwrap_or(isize::MAX));
+    }
+
+    /// Follows the bottom again.
+    pub(crate) fn follow(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Shows `row` of `item` at the next frame.
+    pub(crate) fn to(&mut self, item: TranscriptItem, row: ItemRow) {
+        self.jump = Some((item, row));
+    }
+
+    /// Finds the row a jump to put a row of an item at the top goes to
+    /// among `marks`: the item's first row and the row asked for, within
+    /// the item. An item not there leaves the view where it is.
+    fn find(&mut self, marks: &[(TranscriptItem, Range<usize>)]) {
+        if let Some((item, ItemRow::Top(line))) = &self.jump {
+            let found = marks.iter().find(|(marked, _)| marked == item);
+            self.at = found.map(|(_, rows)| {
+                let last = rows.end.saturating_sub(1).max(rows.start);
+                (rows.start + line).min(last)
+            });
+            self.jump = None;
+        }
+    }
+
+    /// The top row of a view `height` rows high over parts of `counts`
+    /// rows at `width`, after the keys' moves or a jump; holds it while it
+    /// is above the bottom.
+    fn place(&mut self, counts: &[usize], height: usize, width: u16) -> (usize, Below) {
+        let total: usize = counts.iter().sum();
+        let bottom = total.saturating_sub(height);
+        let moved = std::mem::take(&mut self.moved);
+        let (top, grew) = match (self.at.take(), &self.held) {
+            (Some(at), _) => (at, false),
+            (None, None) => (bottom, false),
+            (None, Some(held)) if held.width == width => {
+                (held.top, held.grew || total > held.total)
+            }
+            (None, Some(held)) => {
+                let start: usize = counts.iter().take(held.part).sum();
+                let rows = counts.get(held.part).copied().unwrap_or(0);
+                let row = (held.row * rows / held.rows.max(1)).min(rows.saturating_sub(1));
+                (start + row, held.grew)
+            }
+        };
+        let top = top.saturating_add_signed(moved.saturating_neg());
+        if top >= bottom {
+            self.held = None;
+            return (bottom, Below::Nothing);
+        }
+        let (mut part, mut start) = (0, 0);
+        for (index, count) in counts.iter().enumerate() {
+            part = index;
+            if start + count > top {
+                break;
+            }
+            start += count;
+        }
+        self.held = Some(Held {
+            top,
+            part,
+            row: top - start,
+            rows: counts.get(part).copied().unwrap_or(0),
+            width,
+            total,
+            grew,
+        });
+        (top, if grew { Below::New } else { Below::More })
+    }
+}
+
+/// The tool results a message carries.
+fn tool_results(message: Option<&Message>) -> impl Iterator<Item = &ToolResult> {
+    let content = match message {
+        Some(Message::User { content }) => Some(content.iter()),
+        _ => None,
+    };
+    content.into_iter().flatten().filter_map(|item| match item {
+        UserContent::ToolResult(result) => Some(result),
+        _ => None,
+    })
+}
+
+/// Whether `message` is a reply holding the call `result` answers.
+fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
+    match message {
+        Some(Message::Assistant(assistant)) => assistant
+            .content
+            .iter()
+            .any(|item| matches!(item, AssistantContent::ToolCall(call) if call.id == result.call)),
+        _ => false,
+    }
+}
+
+/// Draws `message`, the `at`-th of `conversation`, with the notices and
+/// notes inside it before their items, and says which lines are the
+/// message and which each of its calls and notes. A tool call's result, which comes
+/// in the `next` message, is drawn with the call, so the results of a
+/// reply's calls are not drawn after all of its calls.
+fn message_lines(
+    message: &Message,
+    (conversation, at): (&conversation::Conversation, usize),
+    previous: Option<&Message>,
+    next: Option<&Message>,
+    look: &Look<'_>,
+) -> (Vec<Line<'static>>, Marks, Vec<TranscriptItem>) {
+    let mut lines = Vec::new();
+    let mut marks = Marks::new();
+    let mut cut = Vec::new();
+    // Whether the message's own text is drawn cut.
+    let mut message_cut = false;
+    let id = conversation.id(at);
+    let author = conversation.author(at);
+    let stopped = conversation
+        .entries()
+        .nth(at)
+        .is_some_and(|entry| entry.is_stop_marker());
+    let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
+    let inside = look.inside(at);
+    let inside_before = |item: usize,
+                         lines: &mut Vec<Line<'static>>,
+                         marks: &mut Marks,
+                         cut: &mut Vec<TranscriptItem>| {
+        for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
+            match inside {
+                Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
+                Inside::Aside(shown) => {
+                    let item = shown.item();
+                    let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
+                        shown.lines(look.renderers, expanded)
+                    });
+                    let start = lines.len();
+                    lines.push(Line::default());
+                    lines.extend(drawn);
+                    marks.push((item.clone(), start..lines.len()));
+                    if is_cut {
+                        cut.push(item);
+                    }
+                }
+            }
+        }
+    };
+    match message {
+        Message::System { .. } => {}
+        Message::User { content } => {
+            for (item_at, item) in content.iter().enumerate() {
+                inside_before(item_at, &mut lines, &mut marks, &mut cut);
+                match item {
+                    UserContent::Text(text) => {
+                        if let Some((label, count)) = attached_file(&text.text) {
+                            lines.push(Line::from(format!("  [{label}, {count} lines]")).dim());
+                            continue;
+                        }
+                        if stopped {
+                            lines.push(Line::from("  [stopped before it was answered]").dim());
+                            continue;
+                        }
+                        lines.push(Line::default());
+                        // The user's own text has no author, or the user with no title.
+                        let other = |author: &&Author| {
+                            author.kind != AuthorKind::User || author.title.is_some()
+                        };
+                        match author.filter(other) {
+                            Some(author) => {
+                                let (drawn, is_cut) = look.drawn(expanded, |expanded| {
+                                    delivered_lines(author, &text.text, expanded, look)
+                                });
+                                lines.extend(drawn);
+                                message_cut |= is_cut;
+                            }
+                            None => lines.extend(look.renderers.message(&MessageView {
+                                role: Role::User,
+                                message: id,
+                                block: item_at,
+                                text: &text.text,
+                                marks: &[],
+                            })),
+                        }
+                    }
+                    // Drawn under its call already.
+                    UserContent::ToolResult(result) if answers(previous, result) => {}
+                    UserContent::ToolResult(result) => {
+                        let (text, style) = (result_text(result), result_style(result.is_error));
+                        let (drawn, is_cut) = look.drawn(expanded, |expanded| {
+                            let limit = if expanded { usize::MAX } else { RESULT_LINES };
+                            excerpt(&text, limit, style)
+                        });
+                        lines.extend(drawn);
+                        message_cut |= is_cut;
+                    }
+                    other => {
+                        if let Some(block) = ContentBlock::of_user(other) {
+                            let view = (id, item_at, block, false);
+                            content_lines(view, look, (&mut lines, &mut marks, &mut cut));
+                        }
+                    }
+                }
+            }
+        }
+        Message::Assistant(assistant) => {
+            for (item_at, item) in assistant.content.iter().enumerate() {
+                inside_before(item_at, &mut lines, &mut marks, &mut cut);
+                match item {
+                    AssistantContent::Text(text) => {
+                        lines.push(Line::default());
+                        let marks =
+                            id.map(|id| look.marks_in(MarkIn::Message { id, block: item_at }));
+                        lines.extend(look.renderers.message(&MessageView {
+                            role: Role::Assistant,
+                            message: id,
+                            block: item_at,
+                            text: &text.text,
+                            marks: &marks.unwrap_or_default(),
+                        }));
+                    }
+                    AssistantContent::Reasoning(reasoning) => {
+                        lines.extend(look.renderers.message(&MessageView {
+                            role: Role::Reasoning,
+                            message: id,
+                            block: item_at,
+                            text: &reasoning.text,
+                            marks: &[],
+                        }));
+                    }
+                    AssistantContent::ToolCall(call) => {
+                        let result = tool_results(next).find(|result| result.call == call.id);
+                        let (facts, took) = look.facts.of(&call.id);
+                        let item = TranscriptItem::Call(call.id.clone());
+                        let expanded = look.is_expanded(&item);
+                        let (drawn, decorated, is_cut) = look.drawn_with(expanded, |expanded| {
+                            let view = ToolCallView {
+                                call,
+                                result,
+                                state: look.state(&call.id, result),
+                                expanded,
+                                facts,
+                                took,
+                                output: look.outputs.get(&call.id).map(String::as_str),
+                                children: look.children.get(&call.id).map_or(&[], Vec::as_slice),
+                            };
+                            look.renderers.call_decorated(&view)
+                        });
+                        let start = lines.len();
+                        lines.extend(drawn);
+                        marks.push((item.clone(), start..lines.len()));
+                        for (name, rows) in decorated {
+                            let decoration = TranscriptItem::Decoration(call.id.clone(), name);
+                            marks.push((decoration, start + rows.start..start + rows.end));
+                        }
+                        if is_cut {
+                            cut.push(item);
+                        }
+                    }
+                    // A provider item with no meaning here shows nothing.
+                    other => {
+                        if let Some(block) = ContentBlock::of_assistant(other) {
+                            let view = (id, item_at, block, true);
+                            content_lines(view, look, (&mut lines, &mut marks, &mut cut));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if !matches!(message, Message::System { .. }) {
+        let decorated = DecoratedMessage {
+            message,
+            id,
+            author,
+        };
+        let (drawn, decorations) = look.renderers.message_decorations(&decorated);
+        let start = lines.len();
+        lines.extend(drawn);
+        for (name, rows) in decorations {
+            if let Some(id) = id {
+                let decoration = TranscriptItem::MessageDecoration(id, name);
+                marks.push((decoration, start + rows.start..start + rows.end));
+            }
+        }
+    }
+    if let Some(id) = id {
+        let message = TranscriptItem::Message(id);
+        marks.insert(0, (message.clone(), 0..lines.len()));
+        if message_cut {
+            cut.insert(0, message);
+        }
+    }
+    (lines, marks, cut)
+}
+
+/// Draws the content block `block`, the `index`-th of the message `id`
+/// (by `assistant` or not), by its kind's look, and marks its rows when
+/// the message has an id.
+fn content_lines(
+    (id, index, block, assistant): (Option<MessageId>, usize, ContentBlock<'_>, bool),
+    look: &Look<'_>,
+    (lines, marks, cut): (
+        &mut Vec<Line<'static>>,
+        &mut Marks,
+        &mut Vec<TranscriptItem>,
+    ),
+) {
+    let item = id.map(|id| TranscriptItem::Content(id, index));
+    let expanded = item.as_ref().is_some_and(|item| look.is_expanded(item));
+    let (drawn, is_cut) = look.drawn(expanded, |expanded| {
+        let view = ContentView {
+            message: id,
+            index,
+            block,
+            assistant,
+            expanded,
+        };
+        look.renderers.content(&view)
+    });
+    let start = lines.len();
+    lines.extend(drawn);
+    if let Some(item) = item {
+        marks.push((item.clone(), start..lines.len()));
+        if is_cut {
+            cut.push(item);
+        }
+    }
+}
+
+/// Text an agent or a plugin sent, without the header the model reads:
+/// drawn by the renderer of the plugin that sent it, if it has one, else
+/// as where it came from and its start.
+fn delivered_lines(
+    author: &Author,
+    text: &str,
+    expanded: bool,
+    look: &Look<'_>,
+) -> Vec<Line<'static>> {
+    let body = author
+        .header()
+        .and_then(|header| text.strip_prefix(&header))
+        .map_or(text, |body| body.trim_start_matches('\n'));
+    let label = author.label();
+    let view = EntryView {
+        plugin: plugin_name(author),
+        title: &label,
+        text: body,
+        expanded,
+    };
+    look.renderers.entry(&view)
+}
+
+/// The lines of the notice `at` in the notices shown, coloured by its
+/// level, marked as that item.
+pub(crate) fn notice_lines(
+    (at, notice): (usize, &ShownNotice),
+    lines: &mut Vec<Line<'static>>,
+    marks: &mut Marks,
+) {
+    let style = match notice.level {
+        NoticeLevel::Info => Style::new().fg(Color::Magenta),
+        NoticeLevel::Warn => Style::new().fg(Color::Yellow),
+        NoticeLevel::Error => Style::new().fg(Color::Red),
+    };
+    let start = lines.len();
+    lines.extend(plain_lines(&notice.text, style));
+    marks.push((TranscriptItem::Notice(at), start..lines.len()));
+}
+
+/// `text`'s lines in one style.
+pub(crate) fn plain_lines(text: &str, style: Style) -> Vec<Line<'static>> {
+    text.lines()
+        .map(|line| Line::styled(line.replace('\t', "    "), style))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests;

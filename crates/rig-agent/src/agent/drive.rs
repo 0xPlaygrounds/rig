@@ -62,11 +62,11 @@ impl Drop for AnonymousModel {
 pub(crate) struct AgentBus {
     dispatcher: Dispatcher,
     /// The registration handle for the same bus: what the agent's own
-    /// registrations (models, memory, tools) go through once the driver is
+    /// registrations (models, tools) go through once the driver is
     /// out of hand.
     registrar: Registrar,
     /// The owner segment of every key this agent mints
-    /// (`<owner>/model:<label>`, `<owner>/memory`, ...).
+    /// (`<owner>/model:<label>`, ...).
     owner: Arc<str>,
     /// Owned driver protected by a synchronous mutex for one poll at a time.
     /// Each polling run can serve dispatches from every run sharing the bus.
@@ -176,7 +176,7 @@ impl AgentBus {
     }
 
     /// The wire key this agent mints for `suffix` (`model:<label>`,
-    /// `memory`, `retrieve:context#<n>`).
+    /// `retrieve:context#<n>`).
     pub(crate) fn raw_key(&self, suffix: &str) -> HandlerKey {
         HandlerKey::from(format!("{}/{suffix}", self.owner))
     }
@@ -273,6 +273,21 @@ impl AgentBus {
                 driver: Some(driver),
                 ..self
             }),
+        }
+    }
+
+    /// Poll the owned driver once, so the registrations made at build (the
+    /// tool server's, a route's) are served before a run starts: a run that
+    /// ends before its first dispatch never polls the driver, and its
+    /// recorded handler table would miss them. Over a host bus, nothing.
+    pub(crate) fn settle(&self) {
+        let Some(driver) = &self.driver else {
+            return;
+        };
+        if let Some(mut guard) = try_lock(driver) {
+            let waker = Waker::from(Arc::clone(&self.wakers));
+            let mut cx = Context::from_waker(&waker);
+            let _ = Pin::new(&mut *guard).poll(&mut cx);
         }
     }
 

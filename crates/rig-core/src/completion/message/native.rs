@@ -216,6 +216,79 @@ pub struct Native {
     pub fingerprint: Fingerprint,
 }
 
+/// Where each wire keeps the opaque part of a reasoning item (a signature
+/// or an encrypted copy of the reasoning), as a JSON pointer into the item,
+/// by the [`Api`] that made it: Anthropic's `thinking.signature` and
+/// `redacted_thinking.data`, Bedrock Converse's `reasoningText.signature`
+/// and `redactedContent`, Responses' `reasoning.encrypted_content`, and
+/// Gemini's `thoughtSignature` (on any part, a call's included).
+const REASONING_BLOBS: [(&str, &str); 7] = [
+    ("anthropic.messages", "/signature"),
+    ("anthropic.messages", "/data"),
+    (
+        "bedrock.converse",
+        "/reasoningContent/reasoningText/signature",
+    ),
+    ("bedrock.converse", "/reasoningContent/redactedContent"),
+    ("openai.responses", "/encrypted_content"),
+    ("gemini.generate_content", "/thoughtSignature"),
+    ("vertexai.generate_content", "/thoughtSignature"),
+];
+
+/// The opaque part of a provider's reasoning item, as the wire that made it
+/// spells it ([`Native::reasoning_blob`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Blob<'a> {
+    /// Where it sits in the item, as a JSON pointer such as `/signature`.
+    pub key: &'static str,
+    /// The blob, as the provider sent it.
+    pub value: &'a str,
+}
+
+impl Native {
+    /// The opaque part of this item when `api`, the wire that made it, keeps
+    /// one there: a reasoning signature or encrypted reasoning, which only
+    /// that provider can read and which it may refuse once anything around
+    /// it changed. `None` for an item with none, or a wire rig does not know
+    /// blobs of.
+    ///
+    /// ```
+    /// use rig_core::message::{Api, Fingerprint, Native};
+    ///
+    /// let native = Native {
+    ///     item: serde_json::json!({"type": "thinking", "thinking": "plan", "signature": "c2ln"}),
+    ///     fingerprint: Fingerprint::of(&"plan"),
+    /// };
+    /// let api = Api::from_static("anthropic.messages");
+    /// assert_eq!(native.reasoning_blob(&api).map(|blob| blob.value), Some("c2ln"));
+    /// assert_eq!(
+    ///     native.without_reasoning_blob(&api),
+    ///     Some(serde_json::json!({"type": "thinking", "thinking": "plan"}))
+    /// );
+    /// ```
+    pub fn reasoning_blob(&self, api: &Api) -> Option<Blob<'_>> {
+        REASONING_BLOBS
+            .iter()
+            .filter(|(wire, _)| *wire == api.as_str())
+            .find_map(|(_, key)| {
+                let value = self.item.pointer(key)?.as_str()?;
+                (!value.is_empty()).then_some(Blob { key, value })
+            })
+    }
+
+    /// The item without its [blob](Self::reasoning_blob), for a target that
+    /// must not get it; `None` when it has none.
+    pub fn without_reasoning_blob(&self, api: &Api) -> Option<serde_json::Value> {
+        let key = self.reasoning_blob(api)?.key;
+        let (parent, field) = key.rsplit_once('/')?;
+        let mut item = self.item.clone();
+        item.pointer_mut(parent)?
+            .as_object_mut()?
+            .shift_remove(field)?;
+        Some(item)
+    }
+}
+
 /// A block's stored `native`, or `None` when it cannot be read, such as one
 /// fingerprinted by an earlier projection: the block then loads with its
 /// canonical fields and replays from them.

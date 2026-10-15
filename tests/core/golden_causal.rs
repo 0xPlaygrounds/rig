@@ -168,7 +168,7 @@ async fn over_host(host: Host) -> EffectLog {
 /// The tool's recorded text output.
 fn tool_output(log: &EffectLog, position: usize) -> String {
     match &log.records[position].outcome {
-        Ok(rig::effect::Outcome::ToolResult { result, .. }) => result.output().render(),
+        Ok(rig::effect::Answered::ToolResult { result, .. }) => result.output().render(),
         other => panic!("a tool result at {position}, not {other:?}"),
     }
 }

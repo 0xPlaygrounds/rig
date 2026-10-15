@@ -78,6 +78,7 @@ fn test_nested_objects() {
         name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
+        annotations: Default::default(),
     };
     let response = ResponsesToolDefinition::from(tool_def).with_strict();
 
@@ -94,6 +95,7 @@ fn test_array_items() {
         name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
+        annotations: Default::default(),
     };
     let response = ResponsesToolDefinition::from(tool_def).with_strict();
 
@@ -110,6 +112,7 @@ fn test_enum_schemas() {
         name: rig_core::message::ToolName::new("submit").expect("tool name"),
         description: "Submit".to_string(),
         parameters: serde_json::to_value(schema).unwrap(),
+        annotations: Default::default(),
     };
     let response = ResponsesToolDefinition::from(tool_def).with_strict();
 

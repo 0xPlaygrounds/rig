@@ -43,7 +43,9 @@ pub struct Identity {
     pub originator_env: &'static str,
     /// The environment variable overriding `user-agent`.
     pub user_agent_env: &'static str,
-    /// Whether every request carries a fresh `session_id` header.
+    /// Whether every request carries a `session_id` header: the request's
+    /// cache key when it has one, else a fresh id. The ChatGPT backend
+    /// routes its prompt cache by this header, over `prompt_cache_key`.
     pub session_ids: bool,
 }
 
@@ -139,6 +141,18 @@ impl OpenAIConfig {
 
     /// Apply authentication, configured identity, account, and per-request session headers.
     pub(crate) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
+        self.headers_in_session(builder, None)
+    }
+
+    /// [`Self::headers`], with `session` as the `session_id` header where the
+    /// dialect sends one, such as a completion's cache key, so requests of
+    /// one conversation share the backend's prompt cache. A fresh id
+    /// without one.
+    pub(crate) fn headers_in_session(
+        &self,
+        builder: http::request::Builder,
+        session: Option<&str>,
+    ) -> http::request::Builder {
         let mut builder = self.authenticate(builder);
         if let Some(identity) = &self.identity {
             builder = builder
@@ -151,8 +165,8 @@ impl OpenAIConfig {
             .identity
             .is_some_and(|identity| identity.session_ids)
         {
-            // Session identity must be fresh for each request.
-            builder = builder.header("session_id", crate::providers::chatgpt::session_id());
+            let session = session.map_or_else(crate::providers::chatgpt::session_id, str::to_owned);
+            builder = builder.header("session_id", session);
         }
         if let Some(account_id) = &self.account_id {
             builder = builder.header("ChatGPT-Account-Id", account_id);

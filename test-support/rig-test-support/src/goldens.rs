@@ -312,7 +312,7 @@ impl rig_agent::agent::AgentHook for ReplaceAnswer {
         }
         let mut replacement = response.clone();
         replacement.choice = vec![rig_core::message::AssistantContent::text(REPLACED_ANSWER)];
-        rig_agent::agent::OutcomeAction::replace(Ok(rig_core::effect::Outcome::Completion(
+        rig_agent::agent::OutcomeAction::replace(Ok(rig_core::effect::Answered::Completion(
             replacement,
         )))
     }
@@ -929,7 +929,7 @@ impl rig_core::serve::Serve for NoteTaker {
         let outcome = match kind {
             rig_core::effect::EffectKind::Custom { payload, .. } => {
                 match serde_json::from_value::<Note>(payload) {
-                    Ok(note) => Ok(rig_core::effect::Outcome::Custom {
+                    Ok(note) => Ok(rig_core::effect::Answered::Custom {
                         payload: serde_json::to_value(NoteAck {
                             accepted: true,
                             at: note.at,
@@ -1093,125 +1093,6 @@ impl rig_agent::agent::AgentHook for EmbedPrompt {
             rig_core::effect::EmbedOutputs::Images(_) => panic!("a text embedding"),
         }
         rig_agent::agent::RunStartAction::continue_run()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Matrix J: memory operations.
-
-/// The agent's memory key (`<owner>/memory`, the owner `golden`).
-pub const MEMORY_KEY: &str = "golden/memory";
-/// The conversation every memory cell loads and saves under.
-pub const CONVERSATION: &str = "golden-conversation";
-
-/// Clear the conversation from a hook, through the run's memory handle.
-async fn clear_conversation(ctx: &rig_agent::agent::HookContext) {
-    let memory = ctx
-        .memory(&rig_core::effect::HandlerKey::from(MEMORY_KEY))
-        .expect("the run's bus serves memory");
-    let outcome = memory
-        .dispatch(rig_core::effect::MemoryOp::Clear {
-            conversation: rig_core::id::ConversationId::from(CONVERSATION),
-        })
-        .await
-        .expect("the memory clears");
-    assert!(
-        matches!(outcome, rig_core::effect::MemoryOutcome::Cleared),
-        "{outcome:?}"
-    );
-}
-
-/// `on_run_start` → `Clear`; the hook fires after the run's `Load`, so
-/// the clear lands between the load and the append.
-pub struct ClearAtStart;
-
-impl rig_agent::agent::AgentHook for ClearAtStart {
-    async fn on_run_start(
-        &self,
-        ctx: &rig_agent::agent::HookContext,
-        _event: rig_agent::agent::RunStart<'_>,
-    ) -> rig_agent::agent::RunStartAction {
-        clear_conversation(ctx).await;
-        rig_agent::agent::RunStartAction::continue_run()
-    }
-}
-
-/// `on_run_settled` → `Clear` after the run's `Append`.
-pub struct ClearAtSettled;
-
-impl rig_agent::agent::AgentHook for ClearAtSettled {
-    async fn on_run_settled(
-        &self,
-        ctx: &rig_agent::agent::HookContext,
-        _event: rig_agent::agent::RunSettled<'_>,
-    ) {
-        clear_conversation(ctx).await;
-    }
-}
-
-/// An in-memory conversation store whose `load` or `append` refuses.
-pub struct FailingMemory {
-    inner: rig_core::memory::InMemoryConversationMemory,
-    fail_load: bool,
-    fail_append: bool,
-}
-
-impl FailingMemory {
-    /// Construct memory that fails loads while allowing appends.
-    pub fn load_fails() -> Self {
-        Self {
-            inner: rig_core::memory::InMemoryConversationMemory::new(),
-            fail_load: true,
-            fail_append: false,
-        }
-    }
-
-    /// Construct memory that loads successfully but fails appends.
-    pub fn append_fails() -> Self {
-        Self {
-            inner: rig_core::memory::InMemoryConversationMemory::new(),
-            fail_load: false,
-            fail_append: true,
-        }
-    }
-}
-
-fn refused(op: &str) -> rig_core::memory::MemoryError {
-    rig_core::memory::MemoryError::Backend(format!("the store refused the {op}").into())
-}
-
-impl rig_core::memory::ConversationMemory for FailingMemory {
-    fn load<'a>(
-        &'a self,
-        conversation_id: &'a rig_core::id::ConversationId,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<
-        'a,
-        Result<Vec<rig_core::message::Message>, rig_core::memory::MemoryError>,
-    > {
-        if self.fail_load {
-            Box::pin(async { Err(refused("load")) })
-        } else {
-            self.inner.load(conversation_id)
-        }
-    }
-
-    fn append<'a>(
-        &'a self,
-        conversation_id: &'a rig_core::id::ConversationId,
-        messages: Vec<rig_core::message::Message>,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, Result<(), rig_core::memory::MemoryError>> {
-        if self.fail_append {
-            Box::pin(async { Err(refused("append")) })
-        } else {
-            self.inner.append(conversation_id, messages)
-        }
-    }
-
-    fn clear<'a>(
-        &'a self,
-        conversation_id: &'a rig_core::id::ConversationId,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, Result<(), rig_core::memory::MemoryError>> {
-        self.inner.clear(conversation_id)
     }
 }
 
@@ -1587,8 +1468,8 @@ pub struct Lookup {
     pub model_key: rig_core::effect::HandlerKey,
 }
 
-fn tool_text(text: String) -> rig_core::effect::Outcome {
-    rig_core::effect::Outcome::ToolResult {
+fn tool_text(text: String) -> rig_core::effect::Answered {
+    rig_core::effect::Answered::ToolResult {
         result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text(text)),
     }
 }
@@ -1778,7 +1659,7 @@ impl rig_core::serve::Serve for Relay {
             })
             .await
             .expect("acknowledged");
-        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
             payload: serde_json::to_value(NoteAck {
                 accepted: ack.accepted,
                 at: ack.at,
@@ -1849,27 +1730,19 @@ pub const WORLD_DENY_REASON: &str = "blocked by the world";
 /// Expected cancellation message from a stream-intercepting layer.
 pub const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
 
-/// The history the memory layer answers a `Load` with: two turns naming Ada.
-pub fn replaced_history() -> Vec<Message> {
-    vec![
-        Message::user("My name is Ada."),
-        Message::assistant("Hello, Ada."),
-    ]
-}
-
 fn is_add(kind: &rig_core::effect::EffectKind) -> bool {
     matches!(kind, rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add")
 }
 
-fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::Decision {
+fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::BeforeServe {
     match kind {
         rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add" => {
-            rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::ToolCall {
+            rig_core::serve::BeforeServe::Patch(rig_core::effect::EffectKind::ToolCall {
                 name: name.clone(),
                 args: args.to_owned(),
             })
         }
-        _ => rig_core::serve::Decision::Proceed,
+        _ => rig_core::serve::BeforeServe::Proceed,
     }
 }
 
@@ -1879,9 +1752,9 @@ macro_rules! keep_after {
             &self,
             _id: rig_core::effect::EffectId,
             _kind: &rig_core::effect::EffectKind,
-            _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-        ) -> rig_core::serve::Verdict {
-            rig_core::serve::Verdict::Keep
+            _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+        ) -> rig_core::serve::AfterServe {
+            rig_core::serve::AfterServe::Keep
         }
     };
 }
@@ -1892,8 +1765,8 @@ macro_rules! proceed_before {
             &self,
             _id: rig_core::effect::EffectId,
             _kind: &rig_core::effect::EffectKind,
-        ) -> rig_core::serve::Decision {
-            rig_core::serve::Decision::Proceed
+        ) -> rig_core::serve::BeforeServe {
+            rig_core::serve::BeforeServe::Proceed
         }
     };
 }
@@ -1909,11 +1782,11 @@ impl rig_core::serve::Intercept for DenyAddLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         if is_add(kind) {
-            rig_core::serve::Decision::deny(DENY_REASON)
+            rig_core::serve::BeforeServe::deny(DENY_REASON)
         } else {
-            rig_core::serve::Decision::Proceed
+            rig_core::serve::BeforeServe::Proceed
         }
     }
     keep_after!();
@@ -1930,7 +1803,7 @@ impl rig_core::serve::Intercept for PatchAddArgsLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_ARGS)
     }
     keep_after!();
@@ -1947,7 +1820,7 @@ impl rig_core::serve::Intercept for PatchAgainLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_AGAIN_ARGS)
     }
     keep_after!();
@@ -1965,17 +1838,17 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
+        outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
         match outcome {
-            Ok(rig_core::effect::Outcome::ToolResult { result }) if is_add(kind) => {
-                rig_core::serve::Verdict::Replace(Ok(rig_core::effect::Outcome::ToolResult {
+            Ok(rig_core::effect::Answered::ToolResult { result }) if is_add(kind) => {
+                rig_core::serve::AfterServe::Replace(Ok(rig_core::effect::Answered::ToolResult {
                     result: result
                         .clone()
                         .with_output(rig_core::tool::ToolOutput::text(REPLACED_RESULT)),
                 }))
             }
-            _ => rig_core::serve::Verdict::Keep,
+            _ => rig_core::serve::AfterServe::Keep,
         }
     }
 }
@@ -1983,7 +1856,7 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
 /// The world a suspending layer asks.
 pub type Asks = tokio::sync::mpsc::UnboundedSender<(
     rig_core::effect::EffectId,
-    futures::channel::oneshot::Sender<rig_core::serve::Decision>,
+    futures::channel::oneshot::Sender<rig_core::serve::BeforeServe>,
 )>;
 
 /// An approval gate: `before` sends the dispatch to the world and waits.
@@ -2000,13 +1873,13 @@ impl rig_core::serve::Intercept for ApprovalLayer {
         &self,
         id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         let (decide, decided) = futures::channel::oneshot::channel();
         self.asks.send((id, decide)).expect("the world listens");
         match decided.await {
             Ok(decision) => decision,
             Err(futures::channel::oneshot::Canceled) => {
-                rig_core::serve::Decision::Deny(rig_core::error::ErrorReport::new(
+                rig_core::serve::BeforeServe::Deny(rig_core::error::ErrorReport::new(
                     rig_core::error::ErrorKind::Internal,
                     "layer `ApprovalLayer`: the world closed the answer channel without deciding",
                 ))
@@ -2036,10 +1909,10 @@ pub fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>)
         while let Some((_, decide)) = asked.recv().await {
             match answer {
                 Answer::Approve => {
-                    let _ = decide.send(rig_core::serve::Decision::Proceed);
+                    let _ = decide.send(rig_core::serve::BeforeServe::Proceed);
                 }
                 Answer::Deny => {
-                    let _ = decide.send(rig_core::serve::Decision::deny(WORLD_DENY_REASON));
+                    let _ = decide.send(rig_core::serve::BeforeServe::deny(WORLD_DENY_REASON));
                 }
                 Answer::Never => {
                     reached.notify_one();
@@ -2062,14 +1935,14 @@ impl rig_core::serve::Intercept for WrongFamilyLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
+    ) -> rig_core::serve::BeforeServe {
         if is_add(kind) {
-            rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::Custom {
+            rig_core::serve::BeforeServe::Patch(rig_core::effect::EffectKind::Custom {
                 kind: std::sync::Arc::from("corpus:wrong"),
                 payload: serde_json::Value::Null,
             })
         } else {
-            rig_core::serve::Decision::Proceed
+            rig_core::serve::BeforeServe::Proceed
         }
     }
     keep_after!();
@@ -2087,39 +1960,12 @@ impl rig_core::serve::Intercept for CancelStreamLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Replace(Err(rig_core::error::ErrorReport::new(
+        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Replace(Err(rig_core::error::ErrorReport::new(
             rig_core::error::ErrorKind::Cancelled,
             CANCEL_STREAM_REASON,
         )))
-    }
-}
-
-/// `after` on a memory `Load` → the replacement history in the store's place.
-pub struct ReplaceLoadLayer;
-
-impl rig_core::serve::Intercept for ReplaceLoadLayer {
-    fn name(&self) -> String {
-        "ReplaceLoadLayer".to_owned()
-    }
-    proceed_before!();
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        match outcome {
-            Ok(rig_core::effect::Outcome::Memory(rig_core::effect::MemoryOutcome::Loaded {
-                ..
-            })) => rig_core::serve::Verdict::Replace(Ok(rig_core::effect::Outcome::Memory(
-                rig_core::effect::MemoryOutcome::Loaded {
-                    messages: replaced_history(),
-                },
-            ))),
-            _ => rig_core::serve::Verdict::Keep,
-        }
     }
 }
 
@@ -2134,8 +1980,8 @@ impl rig_core::serve::Intercept for DenyAllLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::Decision {
-        rig_core::serve::Decision::deny(HOST_DENY_REASON)
+    ) -> rig_core::serve::BeforeServe {
+        rig_core::serve::BeforeServe::deny(HOST_DENY_REASON)
     }
     keep_after!();
 }
@@ -2163,21 +2009,6 @@ impl rig_agent::agent::AgentHook for NoteDeniedAtStart {
             "{report:?}"
         );
         assert_eq!(report.message, HOST_DENY_REASON);
-        rig_agent::agent::RunStartAction::continue_run()
-    }
-}
-
-/// `on_run_start` asserts the run starts with the history the memory
-/// layer put in the `Load`'s place.
-pub struct HistoryIsReplaced;
-
-impl rig_agent::agent::AgentHook for HistoryIsReplaced {
-    async fn on_run_start(
-        &self,
-        _ctx: &rig_agent::agent::HookContext,
-        event: rig_agent::agent::RunStart<'_>,
-    ) -> rig_agent::agent::RunStartAction {
-        assert_eq!(event.history, replaced_history());
         rig_agent::agent::RunStartAction::continue_run()
     }
 }
@@ -2300,7 +2131,7 @@ impl rig_core::serve::Serve for NeverAsked {
     ) -> rig_core::serve::Reply {
         self.reached
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Answered::Custom {
             payload: serde_json::to_value(NoteAck {
                 accepted: true,
                 at: "never".to_owned(),

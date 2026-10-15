@@ -171,48 +171,6 @@ async fn capacity_one_effect_log_is_the_golden_fixture() {
     .await;
 }
 
-/// Serial serving over memory and a tool: three keys, each served one
-/// command at a time, in dispatch order.
-#[tokio::test]
-async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
-    with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
-        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-            .name("golden")
-            .configure_bus(rig::serve::ServingPolicy {
-                serial_per_handler: true,
-                ..rig::serve::ServingPolicy::default()
-            })
-            .preamble(TOOLS_PREAMBLE)
-            .temperature(0.0)
-            .tool(Adder)
-            .memory(rig::memory::InMemoryConversationMemory::new())
-            .conversation("golden-conversation")
-            .record_to(recorder.clone())
-            .build();
-        let response = agent
-            .prompt(ADD_PROMPT)
-            .max_turns(3)
-            .await
-            .expect("the agent answers");
-        assert!(response.output().contains("42"), "{}", response.output());
-        let log = agent.stamp(recorder.take());
-        assert_eq!(
-            families(&log),
-            [
-                EffectFamily::Memory,
-                EffectFamily::Completion,
-                EffectFamily::Tool,
-                EffectFamily::Completion,
-                EffectFamily::Memory,
-            ]
-        );
-        assert_eq!(log.header.bus.map(|bus| bus.serial_per_handler), Some(true));
-        crate::goldens::golden_effects("anthropic_serving_serial_memory_tools", &log);
-    })
-    .await;
-}
-
 /// A second model registered as the route `fast` and selected by the hook
 /// on every turn after the first: the tool-call turn goes to the default
 /// model, the answer to the route, and the header's required row names

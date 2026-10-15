@@ -400,6 +400,7 @@ pub fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
             "properties": {},
             "required": [],
         }),
+        annotations: Default::default(),
     }
 }
 
@@ -1785,8 +1786,7 @@ pub struct WireProbe {
 impl rig_core::http_client::HttpMiddleware for WireProbe {
     fn before_request_headers<'a>(
         &'a self,
-        _method: &'a rig_core::http_client::Method,
-        _uri: &'a rig_core::http_client::Uri,
+        _exchange: rig_core::http_client::Exchange<'a>,
         headers: &'a mut rig_core::http_client::HeaderMap,
     ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<()>> {
         Box::pin(async move {
@@ -1802,8 +1802,7 @@ impl rig_core::http_client::HttpMiddleware for WireProbe {
 
     fn before_request_body<'a>(
         &'a self,
-        _method: &'a rig_core::http_client::Method,
-        _uri: &'a rig_core::http_client::Uri,
+        _exchange: rig_core::http_client::Exchange<'a>,
         headers: &'a rig_core::http_client::HeaderMap,
         body: bytes::Bytes,
     ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<bytes::Bytes>>
@@ -1824,8 +1823,7 @@ impl rig_core::http_client::HttpMiddleware for WireProbe {
 
     fn after_response<'a>(
         &'a self,
-        _method: &'a rig_core::http_client::Method,
-        _uri: &'a rig_core::http_client::Uri,
+        _exchange: rig_core::http_client::Exchange<'a>,
         status: rig_core::http_client::StatusCode,
         _headers: &'a rig_core::http_client::HeaderMap,
     ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<()>> {
@@ -1860,16 +1858,17 @@ impl WireProbe {
 
 /// Entry-log probe for the run-lifecycle cassette matrix: appends one
 /// `"phase"` entry per lifecycle event — `"run_start"` at `on_run_start`
-/// (turn 0, before any model call) and `"completion_call"` per model call —
-/// and captures the full replayed log at settle. What it pins on real
-/// provider traffic: append order across lifecycle events, turn stamping
-/// (0 pre-run, then the one-based call index), and that the entry log is
+/// (turn 0, before any model call) and `"completion_call"` per model call,
+/// each with the hook's turn — and captures the full replayed log at
+/// settle. What it pins on real provider traffic: append order across
+/// lifecycle events, the turn hooks see (0 pre-run, then the one-based
+/// call index), and that the entry log is
 /// storage, not context — the replay server matches request bodies
 /// byte-exactly, so replay staying green proves entries never reach the wire.
 #[derive(Clone, Default)]
 pub struct EntryLogProbe {
     /// Run-record entries observed when the run settled.
-    pub settled: std::sync::Arc<std::sync::Mutex<Vec<rig_agent::agent::RunEntry>>>,
+    pub settled: std::sync::Arc<std::sync::Mutex<Vec<rig_core::conversation::Aside>>>,
 }
 
 impl EntryLogProbe {
@@ -1879,12 +1878,7 @@ impl EntryLogProbe {
             .lock()
             .expect("settled")
             .iter()
-            .map(|entry| {
-                (
-                    entry.turn,
-                    entry.value.as_str().unwrap_or_default().to_string(),
-                )
-            })
+            .map(|entry| serde_json::from_value(entry.value.clone()).unwrap_or_default())
             .collect()
     }
 
@@ -1918,7 +1912,7 @@ impl rig_agent::agent::AgentHook for EntryLogProbe {
         ctx: &rig_agent::agent::HookContext,
         _event: rig_agent::agent::RunStart<'_>,
     ) -> rig_agent::agent::RunStartAction {
-        ctx.append_entry("phase", &"run_start")
+        ctx.append_entry("phase", &(ctx.turn(), "run_start"))
             .expect("a str serializes");
         rig_agent::agent::RunStartAction::Continue
     }
@@ -1928,7 +1922,7 @@ impl rig_agent::agent::AgentHook for EntryLogProbe {
         ctx: &rig_agent::agent::HookContext,
         _event: rig_agent::agent::CompletionCallEvent<'_>,
     ) -> rig_agent::agent::CompletionCallAction {
-        ctx.append_entry("phase", &"completion_call")
+        ctx.append_entry("phase", &(ctx.turn(), "completion_call"))
             .expect("a str serializes");
         rig_agent::agent::CompletionCallAction::Continue
     }
@@ -1956,7 +1950,7 @@ pub struct LifecycleHookProbe {
     /// Formatted outcomes observed at run settlement.
     pub settles: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     /// Run-record entries visible at settlement.
-    pub settled_entries: std::sync::Arc<std::sync::Mutex<Vec<rig_agent::agent::RunEntry>>>,
+    pub settled_entries: std::sync::Arc<std::sync::Mutex<Vec<rig_core::conversation::Aside>>>,
 }
 
 impl LifecycleHookProbe {

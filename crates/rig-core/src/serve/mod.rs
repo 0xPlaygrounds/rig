@@ -14,8 +14,11 @@
 //! ```
 
 pub mod adapters;
+pub use adapters::Serving;
 mod handler;
 mod layer;
+mod map;
+mod record_buffer;
 mod recorder;
 mod writer;
 
@@ -23,8 +26,9 @@ pub use handler::{
     Dispatch, ErasedHandler, HandlerFuture, Observe, Reply, Resolver, Serve, SinkClosed, StreamTap,
     cancelled, deferred, serve_inline, serve_inline_with, stream_truncated,
 };
-pub use layer::{Decision, Intercept, Layer, Verdict};
-pub use recorder::{Origin, Recorder};
+pub use layer::{AfterServe, BeforeServe, Intercept, Layer};
+pub use record_buffer::RecordBuffer;
+pub use recorder::{DispatchContext, OpenRecord, Recorder, catch_panics};
 pub use writer::StreamWriter;
 
 /// Driver queue capacities and per-handler ordering policy, retained as data

@@ -12,7 +12,7 @@ use crate::completion::options::FinalBody;
 use crate::driver::Model;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
-use crate::operation::{Completion, Turn};
+use crate::operation::{Completion, ReplyFold};
 use crate::providers::openai::responses_api::streaming::{
     ResponsesDecoder, ResponsesEvent, classify_responses_payload, document, is_lifecycle_event,
 };
@@ -287,7 +287,7 @@ pub struct ResponsesWebSocketSession {
     socket: BoxedWebSocketConnection,
     in_flight: bool,
     /// The fold of the turn in flight, opened when it was sent.
-    turn: Option<Turn>,
+    turn: Option<ReplyFold>,
     event_timeout: Option<Duration>,
     closed: bool,
     failed: bool,

@@ -680,11 +680,11 @@ impl<Op: Operation<Emit = Free>> Out<'_, Op> {
     ///
     /// ```compile_fail,E0599
     /// use rig_core::operation::Completion;
-    /// use rig_core::streaming::Transcript;
+    /// use rig_core::streaming::StreamRecord;
     /// use rig_core::wire::Out;
     ///
     /// fn rebuild(out: &mut Out<'_, Completion>, recorded: serde_json::Value) {
-    ///     let Ok(transcript) = Transcript::parse(recorded) else { return };
+    ///     let Ok(transcript) = StreamRecord::parse(recorded) else { return };
     ///     for event in transcript.events() {
     ///         out.event(event.clone());
     ///     }
@@ -766,6 +766,44 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     }
 }
 
+/// One reply of `wire` to `request`, decoded from frames already in hand as
+/// a live call in `mode` would decode them: through the wire's decoder,
+/// reassembler and fold, with no transport. A reply that arrives some other
+/// way, such as a batch result's body ([`WireFrame::Bytes`], unary) or a
+/// recorded stream, becomes an ordinary response. `raw` is what the wire's
+/// reassembler rebuilds from the frames, and the request is the one sent,
+/// as [`Wire::encode`] took it.
+///
+/// ```
+/// use rig_core::completion::{CompletionRequest, CompletionResponse};
+/// use rig_core::error::ProviderError;
+/// use rig_core::providers::anthropic::wire::Messages;
+/// use rig_core::wire::{Mode, WireFrame, decode_reply};
+///
+/// /// A batch result's body, as the reply to the `request` it answers.
+/// fn batch_reply(
+///     wire: &Messages,
+///     request: &CompletionRequest,
+///     body: Vec<u8>,
+/// ) -> Result<CompletionResponse, ProviderError> {
+///     decode_reply(wire, request, Mode::Unary, [WireFrame::Bytes(body)])
+/// }
+/// ```
+///
+/// # Errors
+///
+/// What the reply fails with when called live: a frame the decoder rejects,
+/// a provider error in the reply, or [`ProviderError::Truncated`] when the
+/// frames end before the provider ended the reply.
+pub fn decode_reply<W: Wire>(
+    wire: &W,
+    request: &Request<W>,
+    mode: Mode,
+    frames: impl IntoIterator<Item = W::Frame>,
+) -> Result<Response<W>, ProviderError> {
+    crate::driver::decode_reply(wire, request, mode, frames, serde_json::Value::Null)
+}
+
 /// The decoder of a reply that is one JSON document: the document is the
 /// operation's end, and is kept as the reply's `raw`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -807,3 +845,6 @@ pub type Request<W> = <<W as Wire>::Op as Operation>::Request;
 pub type Response<W> = <<W as Wire>::Op as Operation>::Response;
 /// A wire's event type.
 pub type Event<W> = <<W as Wire>::Op as Operation>::Event;
+
+#[cfg(test)]
+mod tests;

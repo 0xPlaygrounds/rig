@@ -7,7 +7,7 @@ use futures::StreamExt;
 use rig_core::completion::CompletionResponse;
 use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
-use rig_core::streaming::{CompletionStream, Item, PartKind, StreamEvent, Transcript};
+use rig_core::streaming::{CompletionStream, Item, PartKind, StreamEvent, StreamRecord};
 
 /// One part of the response, as the stream delivered it.
 #[derive(Debug, Clone, PartialEq)]
@@ -53,7 +53,7 @@ pub fn assert_update_contract(updates: &Updates) -> (CompletionResponse, Vec<Del
         .as_ref()
         .unwrap_or_else(|error| panic!("the stream finishes: {error:?}"));
     let transcript =
-        Transcript::parse(serde_json::to_value(&updates.items).expect("stream items serialize"))
+        StreamRecord::parse(serde_json::to_value(&updates.items).expect("stream items serialize"))
             .unwrap_or_else(|error| panic!("the items are in the writer's order: {error}"));
     let mut delivered = Vec::new();
     for (index, expected) in done.choice.iter().enumerate() {

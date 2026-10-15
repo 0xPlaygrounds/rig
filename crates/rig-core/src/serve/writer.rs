@@ -17,7 +17,7 @@ use futures::{SinkExt, StreamExt, channel::mpsc};
 use crate::{
     error::{ErrorReport, ProviderError},
     message::{AssistantContent, CallId, LocalCallId, Origin, ToolCall, ToolFunction, ToolName},
-    operation::{Block, Finish, Turn},
+    operation::{Block, Finish, ReplyFold},
     streaming::{Item, Relayed, StreamEvent},
     wire::{Fold, Reply as WireReply},
 };
@@ -32,7 +32,7 @@ use crate::wasm_compat::WasmCompatSend;
 pub struct StreamWriter {
     events: mpsc::Sender<Result<Relayed, ErrorReport>>,
     origin: Origin,
-    turn: Turn,
+    turn: ReplyFold,
     items: std::collections::VecDeque<Result<Item<StreamEvent>, ProviderError>>,
     raw: serde_json::Value,
     request_id: Option<String>,
@@ -56,7 +56,7 @@ impl Reply {
         let _ = events.try_send(Ok(Relayed::Origin(origin.clone())));
         let writer = StreamWriter {
             events,
-            turn: Turn::new(origin.clone()),
+            turn: ReplyFold::new(origin.clone()),
             origin,
             items: std::collections::VecDeque::new(),
             raw: serde_json::Value::Null,
@@ -154,7 +154,7 @@ impl StreamWriter {
             raw: std::mem::take(&mut self.raw),
             provider_request_id: self.request_id.take(),
         };
-        let turn = std::mem::replace(&mut self.turn, Turn::new(self.origin.clone()));
+        let turn = std::mem::replace(&mut self.turn, ReplyFold::new(self.origin.clone()));
         let item = match turn.finish(finish, reply) {
             Ok(response) => Ok(Relayed::Done(Box::new(response))),
             Err(error) => Err(ErrorReport::from(&error)),

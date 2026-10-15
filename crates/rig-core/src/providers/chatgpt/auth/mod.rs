@@ -18,12 +18,47 @@ pub use crate::providers::internal::auth::{DeviceCodeHandler, DeviceCodePrompt};
 #[cfg(not(target_family = "wasm"))]
 mod native;
 
+/// What a browser sign-in shows the user while it waits.
+#[derive(Debug, Clone)]
+pub struct BrowserSignInPrompt {
+    /// The sign-in page, for the user to open when the browser did not.
+    pub authorize_url: String,
+    /// Whether the desktop's opener started; the page may still not show.
+    pub browser_launched: bool,
+}
+
+/// How a sign-in asks the user to authorize: in the browser, or with a
+/// code entered on another device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignInMethod {
+    /// A page opened in the browser, returning to a local listener.
+    Browser,
+    /// A code the user enters at a URL, on any device.
+    DeviceCode,
+}
+
+/// What [`Authenticator::sign_in`] asks the user to do, besides entering a
+/// device code, which goes to the authenticator's [`DeviceCodeHandler`].
+#[derive(Debug, Clone)]
+pub enum SignInPrompt {
+    /// Sign in on the page the browser was asked to open.
+    Browser(BrowserSignInPrompt),
+    /// The browser sign-in could not listen for its callback, for this
+    /// reason; a device code follows.
+    BrowserUnavailable(String),
+}
+
+/// Where the ChatGPT credential comes from: a given access token, or a stored OAuth sign-in.
 #[derive(Clone)]
 pub enum AuthSource {
+    /// A token the caller already holds.
     AccessToken {
+        /// The token.
         access_token: String,
+        /// The ChatGPT account it belongs to, when known.
         account_id: Option<String>,
     },
+    /// The OAuth sign-in kept in the auth file, refreshed as needed.
     OAuth,
 }
 
@@ -36,6 +71,7 @@ impl fmt::Debug for AuthSource {
     }
 }
 
+/// Signs in to ChatGPT and keeps the stored credential fresh.
 #[derive(Clone, Debug)]
 #[cfg_attr(target_family = "wasm", allow(dead_code))]
 pub struct Authenticator {
@@ -49,14 +85,19 @@ pub struct Authenticator {
 
 pub use crate::providers::internal::auth::AuthError;
 
+/// The credential a request is sent with.
 #[derive(Debug, Clone)]
 pub struct AuthContext {
     /// Resolved credential. Use [`Secret::expose`] only when raw bytes are required.
     pub access_token: Secret,
+    /// The ChatGPT account the token belongs to, when known.
     pub account_id: Option<String>,
 }
 
 impl Authenticator {
+    /// An authenticator over `source`, keeping an OAuth sign-in in
+    /// `auth_file`; `device_code_handler` shows a device code when the
+    /// device flow is allowed.
     pub fn new(
         source: AuthSource,
         auth_file: Option<PathBuf>,

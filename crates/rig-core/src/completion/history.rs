@@ -35,6 +35,7 @@
 //!             top_p,
 //!             seed,
 //!             stop,
+//!             cache_key,
 //!         } = fields;
 //!         let none = |set: bool| match set {
 //!             true => Mapping::unsupported("the example takes no options"),
@@ -49,6 +50,7 @@
 //!             top_p: none(top_p.is_some()),
 //!             seed: none(seed.is_some()),
 //!             stop: none(!stop.is_empty()),
+//!             cache_key: Mapping::unrouted(cache_key),
 //!         }
 //!     }
 //! }
@@ -68,8 +70,6 @@ use crate::message::{
     UserContent,
 };
 use crate::wasm_compat::WasmCompatSync;
-
-pub use crate::transcript::NO_RESULT_PROVIDED;
 
 /// What replaces a user image for a model without image input.
 pub const USER_IMAGE_OMITTED: &str = "(image omitted: model does not support images)";
@@ -113,23 +113,34 @@ pub struct Accepts {
     pub tool_result_images: bool,
     /// Tool calls and their results.
     pub tools: bool,
+    /// Another model's reasoning text as reasoning: the wire has a place for
+    /// reasoning that carries no provider item or signature, such as Chat
+    /// Completions' `reasoning_content` field. Read only for a request that
+    /// asks for it ([`CompletionRequest::foreign_reasoning`]).
+    ///
+    /// [`CompletionRequest::foreign_reasoning`]: field@crate::completion::CompletionRequest::foreign_reasoning
+    pub foreign_reasoning: bool,
 }
 
 impl Accepts {
-    /// A model that reads every kind of content.
+    /// Every kind of content. Another model's reasoning is replayed as plain
+    /// text (`foreign_reasoning` is off).
     pub const ALL: Self = Self {
         user_images: true,
         assistant_images: true,
         tool_result_images: true,
         tools: true,
+        foreign_reasoning: false,
     };
 
-    /// A model that reads text and tools but no images.
+    /// Text and tools, no images. Another model's reasoning is replayed as
+    /// plain text.
     pub const TEXT: Self = Self {
         user_images: false,
         assistant_images: false,
         tool_result_images: false,
         tools: true,
+        foreign_reasoning: false,
     };
 }
 
@@ -252,7 +263,7 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     }
 
     /// Whether every reply on this wire states why it stopped. A reply that
-    /// then names no reason failed (pi's `supportsFinishReason`); a wire
+    /// then names no reason failed; a wire
     /// with no finish vocabulary, such as a local runtime, says `false`.
     fn states_finish_reason(&self) -> bool {
         true
@@ -359,8 +370,7 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 pub enum LaterSystem {
     /// Where the history has them.
     InPlace,
-    /// Joined with the leading ones into one system message, as pi's
-    /// `collapseSystemMessages` does.
+    /// Joined with the leading ones into one system message.
     Leading,
     /// As user text where the history has them, so adding one never moves
     /// the prefix before it.
@@ -448,7 +458,9 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   provider items. Its reasoning and blank text are dropped unless they
 ///   still hold a current provider item.
 /// - Any other turn keeps only canonical fields: provider items are cleared,
-///   reasoning becomes plain text (redacted or empty reasoning is dropped),
+///   reasoning becomes plain text, or stays reasoning when the request asks
+///   for it and the model reads it ([`Accepts::foreign_reasoning`]);
+///   redacted or empty reasoning is dropped;
 ///   [`Opaque`](crate::message::Opaque) items are dropped and call ids go
 ///   through [`ReplayTarget::normalize_tool_call_id`], made distinct when two
 ///   calls would share one.
@@ -458,8 +470,10 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   and without tools calls and results become text.
 /// - Opaque items marked not to replay are always dropped, and so is a turn
 ///   that ended in an error or was aborted, with the results answering it.
-/// - Calls and results pair by [`crate::transcript::pair`]: an unanswered
-///   call gets a [`NO_RESULT_PROVIDED`] result and an orphan result is dropped.
+/// - Calls and results pair by [`crate::conversation::pairing::pair`]: an
+///   unanswered call gets a
+///   [`NO_RESULT_PROVIDED`](crate::conversation::pairing::NO_RESULT_PROVIDED)
+///   result and an orphan result is dropped.
 /// - Adjacent user messages become one. A turn left empty is dropped, and so
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
@@ -479,6 +493,11 @@ pub(crate) struct Request<'a> {
     pub(crate) tools: bool,
     /// The fingerprint of its tools and system prompt ([`context_of`]).
     pub(crate) context: Option<crate::message::Fingerprint>,
+    /// Whether it asks for other models' reasoning as reasoning
+    /// ([`CompletionRequest::foreign_reasoning`]).
+    ///
+    /// [`CompletionRequest::foreign_reasoning`]: field@crate::completion::CompletionRequest::foreign_reasoning
+    pub(crate) foreign_reasoning: bool,
 }
 
 impl Default for Request<'_> {
@@ -488,6 +507,7 @@ impl Default for Request<'_> {
             stored: false,
             tools: true,
             context: None,
+            foreign_reasoning: false,
         }
     }
 }
@@ -561,6 +581,7 @@ pub(crate) fn adapt_for(
     };
     let mut accepts = target.accepts(model);
     accepts.tools &= request.tools;
+    accepts.foreign_reasoning &= request.foreign_reasoning;
     let hosted = hosted_pairs(history, target, &same);
     let last_turn = history
         .iter()
@@ -640,11 +661,11 @@ pub(crate) fn adapt_for(
     // Calls and results pair first, so an orphan result goes whether or not
     // the request declares tools; only then does a request without tools
     // get them as text, with no result made up for an unanswered call.
-    let pairing = crate::transcript::Pairing {
+    let pairing = crate::conversation::pairing::Pairing {
         stored,
         answers: accepts.tools,
     };
-    let shaped = merge_users(crate::transcript::pair(shaped, pairing).messages);
+    let shaped = merge_users(crate::conversation::pairing::pair(shaped, pairing).messages);
     let shaped = if accepts.tools {
         shaped
     } else {
@@ -665,6 +686,110 @@ pub(crate) fn adapt_for(
     } else {
         shaped
     }
+}
+
+/// `points`, which name `written` (a request's history before its
+/// `documents` join it), as they fall in `adapted`, what [`adapt_for`] made
+/// of it with `request`. A message point becomes the longest part of
+/// `adapted` that the adaption of its prefix alone begins with: the point
+/// never covers what follows the prefix, however the adaption dropped,
+/// added or joined messages around it. A point past the end of `written`
+/// goes.
+pub(crate) fn cache_points(
+    points: &[crate::completion::CachePoint],
+    written: &[Message],
+    documents: Option<&Message>,
+    adapted: &[Message],
+    target: &dyn ReplayTarget,
+    request: &Request<'_>,
+) -> Vec<crate::completion::CachePoint> {
+    use crate::completion::CachePoint;
+    let prefix_of = |turns: usize, items: Option<usize>| -> Option<Vec<Message>> {
+        let mut prefix = Vec::new();
+        let mut counted = 0;
+        for message in written {
+            if counted == turns {
+                break;
+            }
+            let mut message = message.clone();
+            if !matches!(message, Message::System { .. }) {
+                counted += 1;
+            }
+            match (&mut message, items.filter(|_| counted == turns)) {
+                (Message::User { content }, Some(items)) => content.truncate(items),
+                (Message::Assistant(turn), Some(items)) => turn.content.truncate(items),
+                _ => {}
+            }
+            prefix.push(message);
+        }
+        (counted == turns).then_some(prefix)
+    };
+    points
+        .iter()
+        .filter_map(|point| {
+            let prefix = match *point {
+                CachePoint::Tools | CachePoint::System | CachePoint::Messages(0) => {
+                    return Some(*point);
+                }
+                CachePoint::Messages(turns) => prefix_of(turns, None),
+                CachePoint::Within { message, items } => message
+                    .checked_add(1)
+                    .and_then(|turns| prefix_of(turns, Some(items))),
+            };
+            let mut prefix = prefix?;
+            if let Some(documents) = documents {
+                crate::completion::request::insert_after_leading_system(
+                    &mut prefix,
+                    documents.clone(),
+                );
+            }
+            Some(shared_prefix(adapted, &adapt_for(&prefix, target, request)))
+        })
+        .collect()
+}
+
+/// Where `prefix` stops being the start of `history`, both adapted, as a
+/// cache point over `history`. System messages are not counted.
+fn shared_prefix(history: &[Message], prefix: &[Message]) -> crate::completion::CachePoint {
+    use crate::completion::CachePoint;
+    fn turns(history: &[Message]) -> impl Iterator<Item = &Message> {
+        history
+            .iter()
+            .filter(|message| !matches!(message, Message::System { .. }))
+    }
+    fn lead<T: PartialEq>(whole: &[T], part: &[T]) -> (usize, usize, usize) {
+        let shared = whole
+            .iter()
+            .zip(part)
+            .take_while(|(whole, part)| whole == part)
+            .count();
+        (shared, whole.len(), part.len())
+    }
+    let mut message = 0;
+    for (whole, part) in turns(history).zip(turns(prefix)) {
+        let (shared, whole, part) = match (whole, part) {
+            (Message::User { content: whole }, Message::User { content: part }) => {
+                lead(whole, part)
+            }
+            (Message::Assistant(whole), Message::Assistant(part)) => {
+                lead(&whole.content, &part.content)
+            }
+            _ => (0, 1, 1),
+        };
+        if shared == whole && shared == part {
+            message += 1;
+            continue;
+        }
+        return if shared == 0 {
+            CachePoint::Messages(message)
+        } else {
+            CachePoint::Within {
+                message,
+                items: shared,
+            }
+        };
+    }
+    CachePoint::Messages(message)
 }
 
 /// `history` with its calls and results as text, for a request that
@@ -955,7 +1080,11 @@ fn assistant(
                         if reasoning.redacted || reasoning.text.trim().is_empty() {
                             return None;
                         }
-                        AssistantContent::Text(Text::new(reasoning.text))
+                        if accepts.foreign_reasoning {
+                            AssistantContent::Reasoning(reasoning)
+                        } else {
+                            AssistantContent::Text(Text::new(reasoning.text))
+                        }
                     }
                     AssistantContent::Opaque(_) => return None,
                     AssistantContent::Image(_) if !accepts.assistant_images => {
@@ -1261,12 +1390,12 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
 }
 
 /// What replaces an empty tool result: models answer a call whose result
-/// says nothing better than one with no content (pi).
+/// says nothing better than one with no content.
 pub const NO_TOOL_OUTPUT: &str = "(no tool output)";
 
 /// `content` of a result that has nothing to say, said plainly, and joined
 /// into one text unless the model reads several `parts`: Gemini 2 rejects a
-/// result of several parts (pi `google-shared.js`).
+/// result of several parts.
 fn result_text_parts(
     content: Vec<ToolResultContent>,
     parts: bool,
@@ -1381,27 +1510,7 @@ fn sniffed(data: &str) -> Option<ImageMediaType> {
         .decode(head.as_bytes())
         .or_else(|_| BASE64_STANDARD_NO_PAD.decode(head.as_bytes()))
         .ok()?;
-    match bytes.as_slice() {
-        [0x89, b'P', b'N', b'G', ..] => Some(ImageMediaType::PNG),
-        [0xFF, 0xD8, 0xFF, ..] => Some(ImageMediaType::JPEG),
-        [b'G', b'I', b'F', b'8', ..] => Some(ImageMediaType::GIF),
-        [
-            b'R',
-            b'I',
-            b'F',
-            b'F',
-            _,
-            _,
-            _,
-            _,
-            b'W',
-            b'E',
-            b'B',
-            b'P',
-            ..,
-        ] => Some(ImageMediaType::WEBP),
-        _ => None,
-    }
+    ImageMediaType::sniff(&bytes)
 }
 
 /// `history` with each run of adjacent user messages made one: a wire that

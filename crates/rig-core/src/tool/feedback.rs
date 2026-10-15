@@ -1,0 +1,151 @@
+//! What the model reads about its tool calls: a tool's result shaped as a
+//! tool result, the error result of a call that never ran, and the feedback
+//! for arguments that do not fit a tool.
+//!
+//! ```
+//! use rig_core::tool::feedback::invalid_arguments_feedback;
+//!
+//! assert!(invalid_arguments_feedback("add", "[1]").contains("not a JSON object"));
+//! ```
+
+use crate::message::{
+    self, AssistantContent, CallId, ToolCall, ToolName, ToolResultContent, UserContent,
+};
+use crate::tool::ToolResult;
+
+/// Shape a tool's result as the tool result the model reads, without
+/// reparsing text. Anything but a success is an error result.
+pub fn tool_result_output(call: CallId, name: ToolName, result: &ToolResult) -> UserContent {
+    UserContent::ToolResult(message::ToolResult {
+        call,
+        name,
+        content: result.output().clone().into_content(),
+        is_error: !result.is_success(),
+    })
+}
+
+/// Constructs the error result of a call that never ran, its text verbatim,
+/// such as recovery feedback or a skip reason. JSON-shaped text is not
+/// reinterpreted as structured or multimodal output.
+pub fn tool_result_message(call: CallId, name: ToolName, message: String) -> UserContent {
+    UserContent::ToolResult(message::ToolResult {
+        call,
+        name,
+        content: vec![ToolResultContent::text(message)],
+        is_error: true,
+    })
+}
+
+/// What the model reads when its call to `tool` sent `raw`, arguments that
+/// are not a JSON object: the tool never ran, and the model calls it again.
+pub fn invalid_arguments_feedback(tool: &str, raw: &str) -> String {
+    format!(
+        "The arguments for tool `{tool}` are not a JSON object: {raw}. \
+         Call the tool again with a JSON object as its arguments."
+    )
+}
+
+/// The result every other call of a turn gets when one call was retried or
+/// skipped: none of the turn's calls ran.
+pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
+    "Tool not executed because another tool call in the same assistant turn was invalid.";
+
+/// The tool results answering a turn with an invalid call, in call order:
+/// `feedback` for the call `invalid`, [`TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER`]
+/// for every other call. Empty when `content` has no tool calls.
+pub fn invalid_call_feedback(
+    content: &[AssistantContent],
+    invalid: &CallId,
+    feedback: &str,
+) -> Vec<UserContent> {
+    content
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::ToolCall(call) if &call.id == invalid => Some(tool_result_message(
+                call.id.clone(),
+                call.function.name.clone(),
+                feedback.to_owned(),
+            )),
+            AssistantContent::ToolCall(call) => Some(not_executed(call)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The result of a call the run did not execute because a call beside it
+/// was invalid.
+pub fn not_executed(call: &ToolCall) -> UserContent {
+    tool_result_message(
+        call.id.clone(),
+        call.function.name.clone(),
+        TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_owned(),
+    )
+}
+
+/// Why `call`'s arguments do not fit a tool whose JSON schema is
+/// `parameters`, for the model to read as the call's error: they are not a
+/// JSON object ([`invalid_arguments_feedback`]), name an argument the
+/// schema does not declare, or do not [`validate`](crate::tool::validate)
+/// against it (up to five of the problems are named). `None` when they fit
+/// as far as the validator checks; the tool checks the rest.
+///
+/// A schema that declares `properties` is read as naming every argument,
+/// stricter than JSON Schema, so a model that guesses an argument name hears
+/// the real ones: unless it allows more (`additionalProperties` other than
+/// `false`, or `patternProperties`), an undeclared argument is refused. A
+/// schema that declares no `properties`, such as `{}` or
+/// `{"type": "object"}`, accepts any argument.
+pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Option<String> {
+    let name = call.function.name.as_str();
+    if let Some(raw) = &call.function.invalid_arguments {
+        return Some(invalid_arguments_feedback(name, raw));
+    }
+    let allows_more = parameters
+        .get("additionalProperties")
+        .is_some_and(|more| more != &serde_json::Value::Bool(false))
+        || parameters.get("patternProperties").is_some();
+    let declared = parameters
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .filter(|_| !allows_more);
+    fn quoted<'a>(names: impl Iterator<Item = &'a String>) -> String {
+        names
+            .map(|arg| format!("`{arg}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+    let unknown = quoted(
+        call.function
+            .arguments
+            .keys()
+            .filter(|arg| declared.is_some_and(|declared| !declared.contains_key(arg.as_str()))),
+    );
+    if let Some(declared) = declared.filter(|_| !unknown.is_empty()) {
+        let mut known = quoted(declared.keys());
+        if known.is_empty() {
+            known = "none".to_owned();
+        }
+        return Some(format!(
+            "`{name}` has no argument {unknown}. Its arguments are: {known}. Call it again with \
+             only those."
+        ));
+    }
+    const SHOWN: usize = 5;
+    let arguments = serde_json::Value::Object(call.function.arguments.clone());
+    let problems = crate::tool::validate::validate(parameters, &arguments).err()?;
+    let mut named: Vec<String> = problems
+        .iter()
+        .take(SHOWN)
+        .map(ToString::to_string)
+        .collect();
+    if let Some(more) = problems.len().checked_sub(SHOWN).filter(|more| *more > 0) {
+        named.push(format!("and {more} more"));
+    }
+    Some(format!(
+        "`{name}`'s arguments do not fit its schema: {}. Call it again with arguments that fit.",
+        named.join("; ")
+    ))
+}
+
+#[cfg(test)]
+mod tests;

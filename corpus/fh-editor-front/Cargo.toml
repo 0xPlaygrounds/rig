@@ -1,0 +1,30 @@
+[package]
+name = "corpus-fh-editor-front"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (fresh held-out): FH-21: 21. Editor front (Neovim / VS Code)"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+futures = { workspace = true }
+rig-core = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tools = { path = "../../crates/rig-tools" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# The line diff a review's hunks are cut from, as the file tools diff.
+similar = { workspace = true }
+
+[dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

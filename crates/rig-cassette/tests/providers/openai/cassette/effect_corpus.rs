@@ -31,7 +31,7 @@ fn tool_calls(log: &rig::cassette::effect_log::EffectLog) -> Vec<rig::message::T
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(rig::effect::Outcome::Completion(response)) => Some(response),
+            Ok(rig::effect::Answered::Completion(response)) => Some(response),
             _ => None,
         })
         .flat_map(|response| response.choice.iter())

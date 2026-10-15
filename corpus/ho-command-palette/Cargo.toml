@@ -1,0 +1,30 @@
+[package]
+name = "corpus-ho-command-palette"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H24: Command palette"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# The palette itself: an overlay in the terminal view, on Ctrl-P.
+tui = ["dep:rig-tui"]
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The recent picks, written whole.
+rig-tools = { path = "../../crates/rig-tools" }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }

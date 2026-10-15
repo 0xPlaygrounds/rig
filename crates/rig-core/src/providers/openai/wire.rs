@@ -322,8 +322,7 @@ pub struct Quirks {
     /// their compatible spellings). Any other reason fails the turn.
     pub finishes: &'static [(&'static str, crate::completion::FinishReason)],
     /// The field rebuilt reasoning goes under, which every assistant message
-    /// then carries, empty when the turn has none (pi's
-    /// `requiresReasoningContentOnAssistantMessages`). `None` sends
+    /// then carries, empty when the turn has none. `None` sends
     /// reasoning only under the field it arrived in.
     pub reasoning_field: Option<&'static str>,
     /// Whether `completion_tokens_details.reasoning_tokens` can be trusted as
@@ -772,7 +771,7 @@ impl OpenAIConfig {
         request: &crate::completion::CompletionRequest,
         builder: http::request::Builder,
     ) -> http::request::Builder {
-        let builder = self.headers(builder);
+        let builder = self.headers_in_session(builder, request.options.cache_key.as_deref());
         match self
             .dialect
             .quirks

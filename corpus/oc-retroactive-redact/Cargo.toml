@@ -1,0 +1,28 @@
+[package]
+name = "corpus-oc-retroactive-redact"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (one-conversation fresh held-out): OC-11: 11. Redact a leaked secret from saved history"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# `/redact --regex`.
+regex = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# Its listing, to find the sessions forked from this one.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The session's effect log, so the test sees it scrubbed too.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

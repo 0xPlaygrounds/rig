@@ -1,9 +1,9 @@
-//! Bevy dependencies use the workspace release floor and crates.io sources.
-//! Compatible lockfile updates do not change the declared requirement.
+//! Bevy dependencies use the workspace's exact Bevy pin and crates.io sources.
+//! A Bevy plugin links only against the one Bevy version of its app.
 
 use serde_json::Value;
 
-const BEVY_REQUIREMENT: &str = "^0.19.1";
+const BEVY_REQUIREMENT: &str = "=0.20.0";
 
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 

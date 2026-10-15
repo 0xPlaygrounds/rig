@@ -11,17 +11,17 @@ use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::run::{AgentRun, AgentRunStep};
 use crate::agent::runner::prompt_tests::PatchChoiceThenSkip;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
-use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
-    CapturedSpan, FailingMemory, MockAddTool, MockCompletionModel, MockContextProbeTool,
-    MockStreamEvent, MockSubtractTool, MockToolError, SessionId, TraceCapture, mock_final,
+    CapturedSpan, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
+    MockSubtractTool, MockToolError, SessionId, TraceCapture, mock_final,
 };
 use crate::tool::{Tool, ToolContext};
 use futures::{StreamExt, TryStreamExt};
 use rig_core::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
+use rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -287,6 +287,7 @@ fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
             },
             "required": ["x", "y"],
         }),
+        annotations: Default::default(),
     }
 }
 
@@ -1025,14 +1026,6 @@ async fn a_streamed_run_reads_back_item_by_item() {
         )),
         ended
     );
-}
-
-fn streaming_text_then_final_model() -> MockCompletionModel {
-    MockCompletionModel::from_stream_turns([[
-        MockStreamEvent::text("hello"),
-        MockStreamEvent::text(" world"),
-        MockStreamEvent::final_response_with_total_tokens(3),
-    ]])
 }
 
 fn streaming_final_only_model() -> MockCompletionModel {
@@ -3252,60 +3245,6 @@ async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     );
 
     Ok(())
-}
-
-/// The streaming twin of the blocking refused-append test: the final item
-/// is still delivered, and it reports the append the backend refused.
-#[tokio::test]
-async fn streaming_reports_a_refused_append_on_the_final_response() {
-    let agent = AgentBuilder::new(streaming_text_then_final_model())
-        .memory(rig_core::test_utils::AppendFailingMemory::default())
-        .build();
-
-    let mut stream = agent
-        .prompt("hi there")
-        .conversation("stream-thread")
-        .stream();
-
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                final_response = Some(res);
-                break;
-            }
-            Ok(_) => {}
-            Err(err) => panic!("unexpected streaming error: {err:?}"),
-        }
-    }
-    let response = final_response.expect("the answer stands when the append is refused");
-    assert_eq!(response.messages().len(), 2);
-    let report = response
-        .memory_append()
-        .and_then(crate::run::MemoryAppend::failure)
-        .expect("the refused append is reported on the final item");
-    assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
-    assert!(report.message.contains("append boom"), "{report:?}");
-}
-
-#[tokio::test]
-async fn streaming_load_error_yields_memory_error() {
-    let agent = AgentBuilder::new(streaming_text_then_final_model())
-        .memory(FailingMemory::default())
-        .build();
-
-    let mut stream = agent.prompt("hi").conversation("t1").stream();
-
-    let first = stream.next().await.expect("at least one item");
-    match first {
-        Err(err) => match err {
-            PromptError::Memory(err) => {
-                assert!(err.to_string().contains("load boom"));
-            }
-            other => panic!("expected PromptError::Memory, got {other:?}"),
-        },
-        other => panic!("expected PromptError::Memory, got {other:?}"),
-    }
 }
 
 /// Dropping the event feed does not abort the run: the future still

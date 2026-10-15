@@ -421,6 +421,55 @@ fn openrouter_gets_a_placeholder_for_a_file_id_document() {
     assert!(openai.contains("\"file_id\":\"file-abc\""), "{openai}");
 }
 
+/// Another model's reasoning reaches a model with a reasoning field under
+/// that field when the request asks for it, and as text otherwise.
+#[test]
+fn foreign_reasoning_goes_under_the_reasoning_field_when_asked() {
+    use crate::message::{AssistantMessage, Message, Origin, Reasoning};
+
+    let deepseek = OpenAIConfig::new("k")
+        .with_dialect(&super::super::DEEPSEEK)
+        .chat("deepseek-chat");
+    let body = |asked: bool| {
+        let mut request = prompt("go on");
+        request.foreign_reasoning = asked;
+        request.chat_history = vec![
+            Message::user("start"),
+            Message::Assistant(AssistantMessage {
+                content: vec![
+                    AssistantContent::Reasoning(Reasoning::new("plan")),
+                    AssistantContent::text("done"),
+                ],
+                origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
+                stop: Some(crate::message::StopReason::Stop),
+            }),
+            Message::user("go on"),
+        ];
+        let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
+            request,
+            &deepseek.describe(),
+        )
+        .expect("the request prepares");
+        let body = json_body(
+            &deepseek
+                .encode(request, Mode::Unary)
+                .expect("encodes")
+                .request,
+        );
+        body.pointer("/messages/1").cloned().unwrap_or_default()
+    };
+    let asked = body(true);
+    assert_eq!(asked["reasoning_content"], "plan", "{asked}");
+    assert_eq!(asked["content"], "done", "{asked}");
+    let plain = body(false);
+    assert!(
+        plain["content"]
+            .as_str()
+            .is_some_and(|text| text.contains("plan")),
+        "{plain}"
+    );
+}
+
 /// A stream's `raw` is the `chat.completion` its chunks add up to, read by
 /// the paths a unary body is read by: the escape hatch for every provider
 /// field this wire does not normalize.

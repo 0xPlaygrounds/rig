@@ -4,7 +4,7 @@
 sans-I/O run state, blocking and streaming drivers, typed hooks, contextual
 tools, extraction, and runtime integrations.
 
-Most applications should use the root `rig` facade, where this runtime remains
+Most applications should use the root `rig` facade, where this runtime is
 enabled by default. Low-level provider and backend contracts live in
 `rig-core`.
 
@@ -93,7 +93,7 @@ is checked but cross-version state compatibility is not guaranteed. Serialized
 state includes conversation content and every recorded provider response body,
 so its sensitivity and size grow with the run. Hosts must apply their persistence
 and redaction policy before storing it. Constructing a run directly does not
-execute an agent's configured hooks, tools, retrieval, or memory.
+execute an agent's configured hooks, tools, or retrieval.
 
 Everything an agent loop *is* sits beside it in `rig_agent::run` — the
 `RunSpec` it is configured by, `prepare_request` (the pure `(RunSpec,
@@ -101,8 +101,8 @@ capabilities, history, tools, patch) → PreparedRequest` step, so every driver
 sends the same bytes), the output policy, the per-turn `RequestPatch`, the
 run's response and error types, the invalid-call decisions, the streamed-turn
 assembler and the loop-side transcript helpers — all sans-IO and serializable.
-rig-core keeps only the message-model invariants (`validate_canonical`, the
-tool-result constructors). A host that drives runs itself (an ECS schedule, a
+rig-core keeps only the message-model invariants (`conversation::pairing`, the
+`tool::feedback` constructors). A host that drives runs itself (an ECS schedule, a
 job system) depends on this crate with default features off: that graph
 carries no async runtime, transport or MCP client (a dependency guard pins it),
 and `tests/fixtures/agent_run_stepper` is that host in miniature.
@@ -193,8 +193,8 @@ answer. Streaming deltas are provisional, and `ModelTurnRetried` tells consumers
 to discard a rejected turn.
 
 Keep hook-private state in the hook, keyed by run ID when shared across runs.
-Use `Scratchpad` for transient cross-hook state and run entries for state that
-must serialize or follow forks. Full snapshots read through `last_entry` avoid
+Use `Scratchpad` for transient cross-hook state and run entries (rig-core
+`conversation::Aside`s) for state that must serialize or follow forks. Full snapshots read through `last_entry` avoid
 custom replay folds; event-shaped state can instead fold `entries`. Entries
 appended during settlement do not enter the finished run. Context-bound handles
 use delegation rather than `Deref` so hooks cannot clone an owned dispatch

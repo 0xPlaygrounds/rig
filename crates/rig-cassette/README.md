@@ -5,7 +5,7 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 
 | part | path | published |
 |---|---|---|
-| effect logs and checkpoints | `src/effect_log/` | yes, always |
+| effect logs and resume points | `src/effect_log/` | yes, always |
 | classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
 | native HTTP engine | `src/http/` | yes, `http` feature |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
@@ -24,7 +24,8 @@ rig-cassette = { version = "0.42.0", default-features = false }
 
 | features | public modules | additional normal dependencies |
 |---|---|---|
-| none | `effect_log` | core contracts, futures and serialization only |
+| none | `effect_log` | core contracts, futures, serialization and base64 only |
+| `jsonl` | `effect_log`, `effect_log::jsonl` (JSON-lines files, native, or a file of a session's store such as `SESSION_EFFECT_LOG`; a recording for replay that no restore reads) | `rig-memory` (its `Files` trait) |
 | `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
 | `http` | `effect_log`, `http` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
 | `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |
@@ -53,7 +54,7 @@ the minimal library and the agent adapter.
 ## Effect logs and runtime integration
 
 `rig_cassette::effect_log` owns `EffectLog`, `EffectLogRecorder`,
-`EffectLogReplayer`, `Checkpoint`, `RequestCheck`, header validation and stable
+`EffectLogReplayer`, `ResumePoint`, `RequestCheck`, header validation and stable
 hashing. The log/checkpoint wire formats and fingerprint inputs are unchanged.
 The recorder implements `rig_core::serve::Recorder`; the replayer implements
 the ordinary core handler interface.
@@ -66,7 +67,7 @@ resolving and must exclude inbound context, secrets, and live capabilities.
 Custom outcomes keep their JSON value in an explicit `payload` field. Nested tool
 identities retain origin tags; bare-string identities are rejected. Logs validate
 their data rather than a global format number; unknown header fields, including
-`format`, are rejected. The checkpoint envelope has its own version and does not convert
+`format`, are rejected. A resume point has its own version and does not convert
 nested payloads.
 
 Replay preserves recorded semantic families, model identities, and capabilities.
@@ -92,13 +93,6 @@ The extension trait also supplies `run_spec_hash` and `check_replayable`.
 For a host-owned bus, attach the recorder with `BusDriver::record_to`; an agent
 over that bus cannot install its own recorder. Replay registration is
 `rig_cassette::agent::replay::register_all` (or `register_all_checking`).
-
-Migration: replace the removed `rig-effect-log` dependency with `rig-cassette`
-and its `effect_log` module. Replace implicit agent recording/log getters with
-an explicit recorder and the agent extension trait. Move runtime replay imports
-to the cassette adapters; native cassette imports now start with
-`rig_cassette::http` and require `http` (or `bedrock`). No old package or API
-aliases remain.
 
 ## The engine
 Enable `http` and import engine APIs from `rig_cassette::http`. This feature is
@@ -189,7 +183,8 @@ responses require only `http`. Enable `bedrock` for Smithy event-stream decoding
 and scrubbing; its Smithy dependencies are absent otherwise.
 
 The engine retains credential scrubbing, strict request matching, and safety
-validation. Provider-issued values (ids, signatures, encrypted reasoning,
+validation; scrubbing also redacts every key shape `rig_core::redact` knows,
+in text, bodies and headers. Provider-issued values (ids, signatures, encrypted reasoning,
 cache keys, cursors, generated images) are recorded verbatim, and request
 matching compares recorded bytes as they are. Repository-specific source
 scans and fixture censuses remain with each caller. Rig's adapter in

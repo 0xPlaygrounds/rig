@@ -16,17 +16,12 @@ use super::{Bus, BusDriver, Dispatcher, ModelHandle, Pending, Registrar, Serving
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     Reply as CoreReply, Serve,
-    adapters::{MemoryAdapter, ModelAdapter, ToolAdapter, ToolFn},
+    adapters::{ModelAdapter, ToolAdapter, ToolFn},
 };
 use rig_core::{
-    completion::{CompletionRequest, Message},
-    effect::{
-        EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
-        MemoryOutcome, Outcome,
-    },
+    completion::CompletionRequest,
+    effect::{Answered, EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
     error::{ErrorKind, ErrorReport},
-    id::ConversationId,
-    memory::InMemoryConversationMemory,
     message::AssistantContent,
     rerank::{RerankResponse, RerankResult},
     streaming::{Item, Relayed, StreamEvent},
@@ -107,7 +102,7 @@ impl Serve for Echo {
             }
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
-                EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
+                EffectKind::Custom { payload, .. } => Ok(Answered::Custom { payload }),
                 other => Err(ErrorReport::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
@@ -159,7 +154,7 @@ async fn unary_dispatch_round_trips_through_a_spawned_driver() {
     let pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"n": 1})));
     let id = pending.id();
     let outcome = within(pending).await.expect("served");
-    assert!(matches!(outcome, Outcome::Custom { ref payload } if *payload == json!({"n": 1})));
+    assert!(matches!(outcome, Answered::Custom { ref payload } if *payload == json!({"n": 1})));
     assert_eq!(served.load(Ordering::SeqCst), 1);
     assert_eq!(
         id.as_u64(),
@@ -276,7 +271,7 @@ async fn concurrent_serving_across_keys_is_the_default() {
     let free_outcome = within(dispatcher.dispatch(&HandlerKey::from("free"), custom(json!(2))))
         .await
         .expect("free key is served while another is gated");
-    assert!(matches!(free_outcome, Outcome::Custom { ref payload } if *payload == json!(2)));
+    assert!(matches!(free_outcome, Answered::Custom { ref payload } if *payload == json!(2)));
     assert_eq!(served.load(Ordering::SeqCst), 1);
     let _ = open.send(());
     within(blocked_pending)
@@ -372,16 +367,10 @@ async fn stream_dispatch_of_a_unary_kind_is_an_invalid_dispatch() {
 }
 
 #[tokio::test]
-async fn tool_memory_and_fn_adapters_serve_their_families() {
+async fn tool_and_fn_adapters_serve_their_families() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver
         .register("add", ToolAdapter::new(Add))
-        .expect("register");
-    driver
-        .register(
-            "memory",
-            MemoryAdapter::new(InMemoryConversationMemory::new()),
-        )
         .expect("register");
     driver
         .register(
@@ -411,7 +400,7 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
     ))
     .await
     .expect("served");
-    let Outcome::ToolResult { result, .. } = outcome else {
+    let Answered::ToolResult { result, .. } = outcome else {
         panic!("expected a tool result");
     };
     assert_eq!(result.output().as_json(), Some(&json!(5)));
@@ -425,46 +414,10 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
     ))
     .await
     .expect("served");
-    let Outcome::ToolResult { result, .. } = outcome else {
+    let Answered::ToolResult { result, .. } = outcome else {
         panic!("expected a tool result");
     };
     assert_eq!(result.output().as_text(), Some("HI"));
-
-    let conversation = ConversationId::from("c1");
-    let memory = HandlerKey::from("memory");
-    within(dispatcher.dispatch(
-        &memory,
-        EffectKind::Memory {
-            op: MemoryOp::Append {
-                conversation: conversation.clone(),
-                messages: vec![Message::user("remember me")],
-            },
-        },
-    ))
-    .await
-    .expect("appended");
-    let loaded = within(dispatcher.dispatch(
-        &memory,
-        EffectKind::Memory {
-            op: MemoryOp::Load {
-                conversation: conversation.clone(),
-            },
-        },
-    ))
-    .await
-    .expect("loaded");
-    assert!(matches!(
-        loaded,
-        Outcome::Memory(MemoryOutcome::Loaded { ref messages }) if messages.len() == 1
-    ));
-    within(dispatcher.dispatch(
-        &memory,
-        EffectKind::Memory {
-            op: MemoryOp::Clear { conversation },
-        },
-    ))
-    .await
-    .expect("cleared");
 
     // A family mismatch at the handler is `HandlerUnavailable`, not a hang.
     let report = within(dispatcher.dispatch(&HandlerKey::from("add"), custom(json!(1))))
@@ -547,7 +500,7 @@ impl Serve for DropCounter {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(Answered::Custom {
             payload: json!(null),
         }))
     }
@@ -637,7 +590,7 @@ impl Serve for AskUserHandler {
                 let ask: AskUser = serde_json::from_value(payload).expect("an AskUser");
                 json!({"text": format!("you asked: {}", ask.prompt)})
             };
-            rig_core::serve::Reply::Outcome(Ok(Outcome::Custom { payload: answer }))
+            rig_core::serve::Reply::Outcome(Ok(Answered::Custom { payload: answer }))
         }
     }
 }
@@ -850,7 +803,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
     let Some(Relayed::Done(response)) = items.pop() else {
         panic!("the stream ends with the response: {items:?}");
     };
-    let transcript = rig_core::streaming::Transcript::parse(
+    let transcript = rig_core::streaming::StreamRecord::parse(
         serde_json::to_value(
             items
                 .into_iter()
@@ -1034,7 +987,7 @@ impl rig_core::serve::Recorder for Counting {
         id: rig_core::effect::EffectId,
         key: HandlerKey,
         kind: EffectKind,
-        origin: rig_core::serve::Origin,
+        origin: rig_core::serve::DispatchContext,
     ) {
         self.begun.fetch_add(1, Ordering::SeqCst);
         if let Some(sink) = &self.observation_sink {
@@ -1064,7 +1017,7 @@ impl rig_core::serve::Recorder for Counting {
         false
     }
     fn event(&self, _id: rig_core::effect::EffectId, _event: &Item<StreamEvent>) {}
-    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Outcome, ErrorReport>) {
+    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Answered, ErrorReport>) {
         self.resolved.fetch_add(1, Ordering::SeqCst);
     }
 }
@@ -1133,7 +1086,7 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
 /// What a ticking host used to get from `Pending::poll_outcome`; the bus
 /// no longer offers it (a world holds no future to probe), and these tests
 /// keep it as a spelling of "poll once, no executor".
-fn probe(pending: &mut Pending) -> Option<Result<Outcome, ErrorReport>> {
+fn probe(pending: &mut Pending) -> Option<Result<Answered, ErrorReport>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     match pending.poll_unpin(&mut cx) {
         Poll::Ready(outcome) => Some(outcome),
@@ -1337,7 +1290,7 @@ impl Serve for Parent {
             };
             let outcome = match outcome {
                 Ok(outcome) => Ok(outcome),
-                Err(report) => Ok(Outcome::Custom {
+                Err(report) => Ok(Answered::Custom {
                     payload: json!({
                         "kind": format!("{:?}", report.kind),
                         "message": report.message,
@@ -1347,14 +1300,14 @@ impl Serve for Parent {
             return rig_core::serve::Reply::Outcome(outcome);
         }
         let outcome = match first {
-            Poll::Ready(Err(report)) => Ok(Outcome::Custom {
+            Poll::Ready(Err(report)) => Ok(Answered::Custom {
                 payload: json!({
                     "kind": format!("{:?}", report.kind),
                     "message": report.message,
                 }),
             }),
             Poll::Ready(Ok(outcome)) => Ok(outcome),
-            Poll::Pending => Ok(Outcome::Custom {
+            Poll::Pending => Ok(Answered::Custom {
                 payload: json!("accepted"),
             }),
         };
@@ -1367,7 +1320,7 @@ impl Serve for Parent {
 fn drive_to_outcome(
     driver: &mut BusDriver,
     pending: &mut super::Pending,
-) -> Option<Result<Outcome, ErrorReport>> {
+) -> Option<Result<Answered, ErrorReport>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     for _ in 0..16 {
         if let Poll::Ready(result) = pending.poll_unpin(&mut cx) {
@@ -1416,7 +1369,7 @@ fn a_dispatch_made_through_dispatch_context_carries_its_parent() {
         .expect("resolved")
         .expect("served");
     assert!(
-        matches!(&outcome, Outcome::Custom { payload } if *payload == json!("nested")),
+        matches!(&outcome, Answered::Custom { payload } if *payload == json!("nested")),
         "{outcome:?}"
     );
     assert_eq!(served.load(Ordering::SeqCst), 1);
@@ -1435,7 +1388,7 @@ fn a_dispatch_made_through_dispatch_context_carries_its_parent() {
 /// An approval gate: `before` sends the dispatch to the "world" and waits
 /// for its decision on a oneshot.
 struct Approval {
-    asks: std::sync::mpsc::Sender<(EffectId, oneshot::Sender<rig_core::serve::Decision>)>,
+    asks: std::sync::mpsc::Sender<(EffectId, oneshot::Sender<rig_core::serve::BeforeServe>)>,
 }
 
 impl rig_core::serve::Intercept for Approval {
@@ -1443,12 +1396,12 @@ impl rig_core::serve::Intercept for Approval {
         "approval".to_owned()
     }
 
-    async fn before(&self, id: EffectId, _kind: &EffectKind) -> rig_core::serve::Decision {
+    async fn before(&self, id: EffectId, _kind: &EffectKind) -> rig_core::serve::BeforeServe {
         let (decide, decided) = oneshot::channel();
         self.asks.send((id, decide)).expect("the world listens");
         match decided.await {
             Ok(decision) => decision,
-            Err(oneshot::Canceled) => rig_core::serve::Decision::Deny(ErrorReport::new(
+            Err(oneshot::Canceled) => rig_core::serve::BeforeServe::Deny(ErrorReport::new(
                 ErrorKind::Internal,
                 "layer `approval`: the world closed the answer channel without deciding",
             )),
@@ -1459,9 +1412,9 @@ impl rig_core::serve::Intercept for Approval {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Outcome, ErrorReport>,
-    ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Keep
+        _outcome: &Result<Answered, ErrorReport>,
+    ) -> rig_core::serve::AfterServe {
+        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1550,7 +1503,7 @@ impl Serve for CaptureLineage {
         if !self.complete {
             futures::future::pending::<()>().await;
         }
-        CoreReply::Outcome(Ok(Outcome::Custom {
+        CoreReply::Outcome(Ok(Answered::Custom {
             payload: json!("complete"),
         }))
     }
@@ -1683,24 +1636,15 @@ fn retained_lineage_cancels_parked_unary_and_stream_sends() {
     assert!(stream.poll_next_unpin(&mut cx).is_ready());
 }
 
-/// Two memories and two indexes on one bus: each labelled adapter mints its
-/// own key (`memory:<label>`, `retrieve:<label>`), so a host serves several
-/// backends beside an agent's own bare `memory`/`retrieve` and dispatches
-/// to each by key.
+/// Two indexes on one bus: each labelled adapter mints its own key
+/// (`retrieve:<label>`), so a host serves several backends beside an
+/// agent's own bare `retrieve` and dispatches to each by key.
 #[tokio::test]
-async fn labelled_memory_and_retrieve_adapters_serve_side_by_side() {
-    use rig_core::effect::{MemoryOp, MemoryOutcome, memory_key, retrieve_key};
-    use rig_core::serve::adapters::{MemoryAdapter, RetrieveAdapter};
-    use rig_core::test_utils::CountingMemory;
+async fn labelled_retrieve_adapters_serve_side_by_side() {
+    use rig_core::effect::{RetrieveQuery, RetrievedDocuments, retrieve_key};
+    use rig_core::serve::adapters::RetrieveAdapter;
+    use rig_core::vector_store::request::{Filter, VectorSearchRequest};
     let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let tenant_a = CountingMemory::default();
-    let tenant_b = CountingMemory::default();
-    driver
-        .register("memory:a", MemoryAdapter::labelled("a", tenant_a.clone()))
-        .expect("first memory");
-    driver
-        .register("memory:b", MemoryAdapter::labelled("b", tenant_b.clone()))
-        .expect("second memory");
     driver
         .register(
             "retrieve:docs",
@@ -1713,38 +1657,26 @@ async fn labelled_memory_and_retrieve_adapters_serve_side_by_side() {
             RetrieveAdapter::labelled("code", crate::test_utils::MockToolIndex::new(["t2"])),
         )
         .expect("second index");
-    assert_eq!(memory_key("a"), HandlerKey::from("memory:a"));
     assert_eq!(retrieve_key("code"), HandlerKey::from("retrieve:code"));
     let _task = spawn(driver);
 
-    let conversation = rig_core::id::ConversationId::from("c1");
-    within(dispatcher.dispatch(
-        &memory_key("a"),
-        EffectKind::Memory {
-            op: MemoryOp::Append {
-                conversation: conversation.clone(),
-                messages: vec![Message::user("only in a")],
-            },
-        },
-    ))
-    .await
-    .expect("appended to a");
-    for (label, expected) in [("a", 1), ("b", 0)] {
-        let loaded = within(dispatcher.dispatch(
-            &memory_key(label),
-            EffectKind::Memory {
-                op: MemoryOp::Load {
-                    conversation: conversation.clone(),
-                },
+    for (label, expected) in [("docs", "t1"), ("code", "t2")] {
+        let req = VectorSearchRequest::builder()
+            .query("q")
+            .samples(1)
+            .build()
+            .map_filter(Filter::interpret);
+        let found = within(dispatcher.dispatch(
+            &retrieve_key(label),
+            EffectKind::Retrieve {
+                query: RetrieveQuery::TopNIds { req },
             },
         ))
         .await
-        .expect("loaded");
+        .expect("retrieved");
         assert!(
-            matches!(loaded, Outcome::Memory(MemoryOutcome::Loaded { ref messages }) if messages.len() == expected),
-            "memory:{label} holds its own conversation: {loaded:?}"
+            matches!(&found, Answered::Documents(RetrievedDocuments::Ids(ids)) if ids.iter().map(|(_, id)| id.as_str()).eq([expected])),
+            "retrieve:{label} answers from its own index: {found:?}"
         );
     }
-    assert_eq!(tenant_a.load_count(), 1);
-    assert_eq!(tenant_b.load_count(), 1);
 }

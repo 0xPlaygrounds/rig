@@ -41,7 +41,7 @@ impl Serve for Echo {
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         self.served.fetch_add(1, Ordering::SeqCst);
         let outcome = match kind {
-            EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
+            EffectKind::Custom { payload, .. } => Ok(Answered::Custom { payload }),
             other => Err(ErrorReport::new(
                 ErrorKind::Internal,
                 format!("echo received {}", other.name()),
@@ -79,8 +79,8 @@ impl Serve for Streamer {
     }
 }
 
-type Before = Box<dyn Fn(&EffectKind) -> Decision + Send + Sync>;
-type After = Box<dyn Fn(&Result<Outcome, ErrorReport>) -> Verdict + Send + Sync>;
+type Before = Box<dyn Fn(&EffectKind) -> BeforeServe + Send + Sync>;
+type After = Box<dyn Fn(&Result<Answered, ErrorReport>) -> AfterServe + Send + Sync>;
 
 /// Records what it saw, in order, and decides as configured.
 struct Policy {
@@ -95,8 +95,8 @@ impl Policy {
         Self {
             name,
             seen: Arc::clone(seen),
-            before: Box::new(|_| Decision::Proceed),
-            after: Box::new(|_| Verdict::Keep),
+            before: Box::new(|_| BeforeServe::Proceed),
+            after: Box::new(|_| AfterServe::Keep),
         }
     }
 }
@@ -106,7 +106,7 @@ impl Intercept for Policy {
         self.name.to_owned()
     }
 
-    async fn before(&self, _id: EffectId, kind: &EffectKind) -> Decision {
+    async fn before(&self, _id: EffectId, kind: &EffectKind) -> BeforeServe {
         self.seen
             .lock()
             .expect("seen")
@@ -118,8 +118,8 @@ impl Intercept for Policy {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        outcome: &Result<Outcome, ErrorReport>,
-    ) -> Verdict {
+        outcome: &Result<Answered, ErrorReport>,
+    ) -> AfterServe {
         self.seen
             .lock()
             .expect("seen")
@@ -132,7 +132,7 @@ impl Intercept for Policy {
 /// would deliver them.
 #[derive(Default)]
 struct Tapped {
-    outcomes: Mutex<Vec<Result<Outcome, ErrorReport>>>,
+    outcomes: Mutex<Vec<Result<Answered, ErrorReport>>>,
     events: Mutex<Vec<Item<StreamEvent>>>,
     discarded: AtomicUsize,
     patched: Mutex<Vec<EffectKind>>,
@@ -140,7 +140,7 @@ struct Tapped {
 
 impl super::super::Observe for Arc<Tapped> {
     fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
         self.outcomes
             .lock()
             .expect("outcomes")
@@ -183,7 +183,7 @@ fn echo() -> (ErasedHandler, Arc<AtomicUsize>) {
 async fn unary(
     handler: &ErasedHandler,
     kind: EffectKind,
-) -> (Result<Outcome, ErrorReport>, Arc<Tapped>) {
+) -> (Result<Answered, ErrorReport>, Arc<Tapped>) {
     let tap = Arc::new(Tapped::default());
     let dispatch = tapped(Dispatch::new(EffectId::from_raw(7), false), &tap);
     let outcome = handler.handle(kind, dispatch).await.into_outcome().await;
@@ -196,10 +196,9 @@ async fn a_patch_of_another_family_is_internal_and_never_a_dispatch() {
     let (handler, served) = echo();
     let mut policy = Policy::observing("wrong", &seen);
     policy.before = Box::new(|_| {
-        Decision::Patch(EffectKind::Memory {
-            op: crate::effect::MemoryOp::Clear {
-                conversation: crate::id::ConversationId::from("c"),
-            },
+        BeforeServe::Patch(EffectKind::ToolCall {
+            name: "read".into(),
+            args: "{}".into(),
         })
     });
     let layered = handler.layered(policy);
@@ -211,7 +210,7 @@ async fn a_patch_of_another_family_is_internal_and_never_a_dispatch() {
         "{}",
         report.message
     );
-    assert!(report.message.contains("custom") && report.message.contains("memory"));
+    assert!(report.message.contains("custom") && report.message.contains("tool_call"));
     assert_eq!(served.load(Ordering::SeqCst), 0, "no dispatch");
     assert!(
         tap.outcomes.lock().expect("outcomes").is_empty(),
@@ -226,11 +225,11 @@ async fn a_patch_of_another_family_is_internal_and_never_a_dispatch() {
 }
 
 #[tokio::test]
-async fn an_error_replacing_a_streamed_answer_follows_its_events() {
+async fn a_replacement_of_a_streamed_answer_ends_it_after_its_events() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mut policy = Policy::observing("cut", &seen);
     policy.after = Box::new(|_| {
-        Verdict::Replace(Err(ErrorReport::new(
+        AfterServe::Replace(Err(ErrorReport::new(
             ErrorKind::Cancelled,
             "the program stops",
         )))
@@ -256,12 +255,42 @@ async fn an_error_replacing_a_streamed_answer_follows_its_events() {
     // The record holds the handler's real answer.
     {
         let outcomes = tap.outcomes.lock().expect("outcomes");
-        assert!(matches!(&outcomes[0], Ok(Outcome::Completion(_))));
+        assert!(matches!(&outcomes[0], Ok(Answered::Completion(_))));
     }
-    // A replacement answer cannot follow events already delivered.
+    // A replacement completion is the reply's end: the consumer's fold
+    // returns it, after the events delivered as they came; the record keeps
+    // the handler's.
+    let mut policy = Policy::observing("rewrite", &seen);
+    policy.after = Box::new(|outcome| match outcome {
+        Ok(Answered::Completion(response)) => {
+            let mut response = response.clone();
+            response.choice = vec![crate::message::AssistantContent::text("rewritten")];
+            AfterServe::Replace(Ok(Answered::Completion(response)))
+        }
+        _ => AfterServe::Keep,
+    });
+    let tap = Arc::new(Tapped::default());
+    let dispatch = tapped(Dispatch::new(EffectId::from_raw(9), true), &tap);
+    let outcome = ErasedHandler::new(Streamer)
+        .layered(policy)
+        .handle(custom(json!(1)), dispatch)
+        .await
+        .into_outcome()
+        .await;
+    assert!(
+        matches!(&outcome, Ok(Answered::Completion(response)) if response.text() == "rewritten"),
+        "{outcome:?}"
+    );
+    {
+        let outcomes = tap.outcomes.lock().expect("outcomes");
+        assert!(
+            matches!(&outcomes[0], Ok(Answered::Completion(response)) if response.text() == "hello")
+        );
+    }
+    // A replacement of another family cannot end a streamed completion.
     let mut policy = Policy::observing("swap", &seen);
     policy.after = Box::new(|_| {
-        Verdict::Replace(Ok(Outcome::Custom {
+        AfterServe::Replace(Ok(Answered::Custom {
             payload: json!("late"),
         }))
     });
@@ -281,13 +310,13 @@ async fn an_error_replacing_a_streamed_answer_follows_its_events() {
 
 #[test]
 fn decisions_and_verdicts_are_data() {
-    let deny = Decision::deny("no");
+    let deny = BeforeServe::deny("no");
     let json = serde_json::to_value(&deny).expect("serializes");
     assert_eq!(json["decision"], "deny");
     assert_eq!(json["kind"], "denied");
-    let back: Decision = serde_json::from_value(json.clone()).expect("restores");
+    let back: BeforeServe = serde_json::from_value(json.clone()).expect("restores");
     assert_eq!(serde_json::to_value(&back).expect("serializes"), json);
-    let keep = serde_json::to_value(Verdict::Keep).expect("serializes");
+    let keep = serde_json::to_value(AfterServe::Keep).expect("serializes");
     assert_eq!(keep, json!({"verdict": "keep"}));
 }
 
@@ -315,12 +344,12 @@ async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mut inner = Policy::observing("inner", &seen);
         inner.before = Box::new(|kind| match kind {
-            EffectKind::ToolCall { name, .. } if name == "allowed" => Decision::Proceed,
-            _ => Decision::Deny(ErrorReport::new(ErrorKind::Denied, "original is forbidden")),
+            EffectKind::ToolCall { name, .. } if name == "allowed" => BeforeServe::Proceed,
+            _ => BeforeServe::Deny(ErrorReport::new(ErrorKind::Denied, "original is forbidden")),
         });
         let mut outer = Policy::observing("outer", &seen);
         outer.before = Box::new(|_| {
-            Decision::Patch(EffectKind::ToolCall {
+            BeforeServe::Patch(EffectKind::ToolCall {
                 name: "allowed".into(),
                 args: "{}".into(),
             })
@@ -382,11 +411,11 @@ async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
         assert!(
             matches!(kind, EffectKind::ToolCall { name, args } if name == "original" && args == r#"{"patched":true}"#)
         );
-        Decision::Proceed
+        BeforeServe::Proceed
     });
     let mut outer = Policy::observing("outer", &seen);
     outer.before = Box::new(|_| {
-        Decision::Patch(EffectKind::ToolCall {
+        BeforeServe::Patch(EffectKind::ToolCall {
             name: "original".into(),
             args: r#"{"patched":true}"#.into(),
         })
@@ -406,4 +435,52 @@ async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
         ["outer.before", "inner.before", "inner.after", "outer.after"]
     );
     assert_eq!(tap.patched.lock().expect("patches").len(), 1);
+}
+
+/// Says every effect is independent of every other.
+struct Independent;
+
+impl Serve for Independent {
+    type Family = family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("independent"),
+            family: FamilyDescriptor::Custom {
+                kind: "test".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::Outcome(Ok(Answered::Custom {
+            payload: json!(null),
+        }))
+    }
+
+    fn footprint(&self, _kind: &EffectKind) -> Option<crate::tool::Touches> {
+        Some(crate::tool::Touches::Independent)
+    }
+}
+
+/// A footprint passes through sharing, erasure, re-erasure and a layer; a
+/// handler that says nothing stays silent through them.
+#[test]
+fn a_footprint_passes_through_every_wrapper() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let wrapped = |inner: ErasedHandler| {
+        ErasedHandler::new(Layer::new(
+            ErasedHandler::new(inner),
+            Policy::observing("p", &seen),
+        ))
+    };
+    let kind = custom(json!(1));
+    let independent = wrapped(ErasedHandler::new(Arc::new(Independent)));
+    assert_eq!(
+        independent.footprint(&kind),
+        Some(crate::tool::Touches::Independent)
+    );
+    let (echo, _) = echo();
+    assert_eq!(wrapped(echo).footprint(&kind), None);
 }

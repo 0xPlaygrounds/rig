@@ -8,8 +8,6 @@ use rig_core::effect::EffectFamily;
 
 use rig_core::effect::EffectFamily::Completion;
 
-use rig_core::effect::EffectFamily::Memory as Mem;
-
 use rig_core::effect::EffectFamily::Tool;
 
 use rig_core::error::ErrorKind;
@@ -17,10 +15,9 @@ use rig_core::error::ErrorKind;
 use super::Wire;
 use super::agent::run_agent;
 use super::cells::{
-    BASIC_PREAMBLE, BASIC_PROMPT, CELL, Cell, Memory, READY_PROMPT, TOOLS_PREAMBLE,
-    TWO_TOOL_STREAM_PREAMBLE, ToolKind,
+    BASIC_PREAMBLE, BASIC_PROMPT, CELL, Cell, TOOLS_PREAMBLE, TWO_TOOL_STREAM_PREAMBLE, ToolKind,
 };
-use super::corpus::{CONVERSATION, Ending, Program};
+use super::corpus::{Ending, Program};
 use rig_core::http_client::DynHttpClient;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::stream_faults::{SseShape, scripted, sse_bytes};
@@ -223,35 +220,6 @@ pub(crate) const BATCH_SECOND_FAILS_CONCURRENT: Cell = Cell {
     ..BATCH_SECOND_FAILS
 };
 
-// -- row 10: a failing store --------------------------------------------------
-
-const MEMORY: Program = Program {
-    preamble: Some(BASIC_PREAMBLE),
-    prompt: READY_PROMPT,
-    temperature: Some(0.0),
-    max_turns: Some(3),
-    conversation: Some(CONVERSATION),
-    ending: Ending::MemoryError,
-    ..Program::DEFAULT
-};
-/// The load fails before any completion: the memory record first and
-/// alone, `Failed(Memory)`.
-pub(crate) const FAILING_LOAD: Cell = Cell {
-    name: "fault_failing_load",
-    program: MEMORY,
-    memory: Memory::FailingLoad,
-    families: &[Mem],
-    ..CELL
-};
-pub(crate) const FAILING_LOAD_STREAMED: Cell = Cell {
-    name: "fault_failing_load_streamed",
-    program: Program {
-        streamed: true,
-        ..MEMORY
-    },
-    ..FAILING_LOAD
-};
-
 /// A wire's scripted rows: the faults served by the sequenced transport
 /// over labelled frames cut or rewritten from the reply bank's replies of
 /// the shapes the wire recorded, each run by the rig-agent runner.
@@ -342,15 +310,6 @@ where
     pub(crate) async fn filtered_empty(&self) {
         let frames = self.shape.filtered(&self.recorded(self.text_stream), false);
         self.stream_row(&FILTERED_EMPTY, frames).await;
-    }
-
-    /// Row 10: no request reaches the wire; the transport answers nothing.
-    pub(crate) async fn failing_load(&self) {
-        self.stream_row(&FAILING_LOAD, Vec::new()).await;
-    }
-
-    pub(crate) async fn failing_load_streamed(&self) {
-        self.stream_row(&FAILING_LOAD_STREAMED, Vec::new()).await;
     }
 
     pub(crate) async fn status_429(&self) {

@@ -5,25 +5,24 @@
 //! record: the output tool's call under gemini's minted `tool-<n>` ids
 //! and openai's dual ids, a delta stop on each wire's stream, a cancelled
 //! tool dispatch, a host's custom note beside each wire's tool-call ids,
-//! a host embed on gemini's embedding model, the prompted schema and two
-//! memory runs on the Responses wire.
+//! a host embed on gemini's embedding model, the prompted schema on the
+//! Responses wire.
 //!
 //! # Dimensions
 //!
 //! | axis | values recorded |
 //! |---|---|
-//! | shape | output tool · prompted schema · text-delta stop · tool dispatch cancelled · custom note at outcome · host embed · memory over two runs |
+//! | shape | output tool · prompted schema · text-delta stop · tool dispatch cancelled · custom note at outcome · host embed |
 //! | wire | gemini (id-less) · openai (dual ids) |
 //! | medium | unary · streamed with events |
 //!
-//! Full cross-product: 7 × 2 × 2 = 28. Recorded: the 12 cells below.
+//! Full cross-product: 6 × 2 × 2 = 24. Recorded: the 11 cells below.
 //! Pruned: the ignored-call empty answer per wire (no model emits an
 //! unadvertised call; the mock's empty turn is the shape); the prompted
-//! schema and memory on gemini and the host embed on openai (the record
-//! is the anthropic or openai record with another model name: Matrices
-//! H, I and J pin them); the streamed twins of the cancelled dispatch,
-//! the note and the memory runs (the medium changes the completion's
-//! events, not the wire's ids).
+//! schema on gemini and the host embed on openai (the record is the
+//! anthropic or openai record with another model name: Matrices H and I
+//! pin them); the streamed twins of the cancelled dispatch and the note
+//! (the medium changes the completion's events, not the wire's ids).
 //!
 //! # Cells
 //!
@@ -40,13 +39,10 @@
 //! | `openai_breadth_text_delta_stop` | `text_delta_stop_…` | `[Completion(cancelled)]` |
 //! | `openai_breadth_tool_dispatch_cancelled` | `tool_dispatch_cancelled_…` | `[Completion]` |
 //! | `openai_breadth_custom_at_outcome` | `custom_at_outcome_…` | `[Completion, Tool, Custom, Completion]` beside dual ids |
-//! | `openai_breadth_memory_two_runs` | `memory_two_runs_…` | `[Load, Completion, Append, Load, Completion, Append]` |
 
 use crate::corpus;
 
-use corpus::{
-    CANCEL_ADD_DISPATCH, CONVERSATION, Ending, Hook, Output, Program, STOP_ON_TEXT_DELTA,
-};
+use corpus::{CANCEL_ADD_DISPATCH, Ending, Hook, Output, Program, STOP_ON_TEXT_DELTA};
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
@@ -56,7 +52,6 @@ const STRUCTURED_OUTPUT_PROMPT: &str =
 const ESSAY_PROMPT: &str =
     "Write four paragraphs about the history of the Rust programming language.";
 const PROMPT: &str = "Reply with the single word: ready.";
-const SECOND_PROMPT: &str = "Now reply with the single word: again.";
 const EVENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"]}"#;
 
 fn event_schema() -> serde_json::Value {
@@ -148,19 +143,6 @@ const OPENAI_CUSTOM_AT_OUTCOME: Program = Program {
     fixture: "openai_breadth_custom_at_outcome",
     ..CUSTOM_AT_OUTCOME
 };
-const OPENAI_MEMORY_TWO_RUNS: Program = Program {
-    fixture: "openai_breadth_memory_two_runs",
-    conversation: Some(CONVERSATION),
-    second_prompt: Some(SECOND_PROMPT),
-    additional_params: Some(stateless),
-    ..BASIC
-};
-
-/// A Responses request that stores nothing.
-fn stateless() -> serde_json::Value {
-    serde_json::json!({ "store": false })
-}
-
 both_interpreters! {
     gemini_output_tool_unary: GEMINI_OUTPUT_TOOL_UNARY,
     gemini_output_tool_streamed: GEMINI_OUTPUT_TOOL_STREAMED,
@@ -173,7 +155,6 @@ both_interpreters! {
     openai_text_delta_stop: OPENAI_TEXT_DELTA_STOP,
     openai_tool_dispatch_cancelled: OPENAI_DISPATCH_CANCELLED,
     openai_custom_at_outcome: OPENAI_CUSTOM_AT_OUTCOME,
-    openai_memory_two_runs: OPENAI_MEMORY_TWO_RUNS,
 }
 
 /// The output tool retains its identity origin: Gemini without a wire ID
@@ -186,7 +167,7 @@ fn the_output_tool_call_carries_the_wires_ids() {
     ] {
         let log = corpus::golden(fixture);
         let call = match &log.records[0].outcome {
-            Ok(rig_core::effect::Outcome::Completion(response)) => response
+            Ok(rig_core::effect::Answered::Completion(response)) => response
                 .choice
                 .iter()
                 .find_map(|content| match content {

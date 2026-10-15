@@ -1,0 +1,297 @@
+//! The saved session a question is about: found by name, id, `last` or
+//! path, read without writing ([`Session::read`]), and laid out as the
+//! numbered messages the agent's tools search and fetch ([`Material`]).
+
+use std::collections::HashMap;
+use std::path::Path;
+
+use rig_harness::harness_protocol::SessionDir;
+use rig_harness::prelude::*;
+use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
+use rig_harness::rig_core::conversation::{Entry, MessageId, TurnRecord};
+use rig_harness::rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig_harness::rig_memory::Session;
+use rig_harness::rig_tools::shorten;
+
+/// What a tool result still running in the asked session reads as.
+const STILL_RUNNING: &str = "Still running when the session was read; no result yet.";
+/// Most characters of a search hit's snippet.
+const SNIPPET: usize = 200;
+/// Most characters of a message of an inactive branch in the prompt.
+const BRANCH_MESSAGE: usize = 400;
+
+/// One message of the asked session, as the tools show it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Item {
+    /// The branch it is on: the active line's title, or an inactive one's.
+    pub branch: String,
+    /// The turn it belongs to, by the session's turn records.
+    pub turn: Option<u64>,
+    /// `user`, `assistant` or `system`.
+    pub role: &'static str,
+    /// Its text: what was typed or answered, each tool call with its
+    /// arguments, each tool result.
+    pub text: String,
+}
+
+/// The asked session, read once.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct Material {
+    /// What the session was named on the command line.
+    pub named: String,
+    /// The active line's entries, which the agent's conversation starts
+    /// with, every tool call answered.
+    pub history: Vec<Entry>,
+    /// Every message the tools reach, numbered by place: the active line,
+    /// then, with `--all-branches`, each inactive branch's own messages.
+    pub items: Vec<Item>,
+    /// The active line's title.
+    pub active: String,
+    /// With `--all-branches`, each inactive branch's own messages, cut,
+    /// for the system prompt.
+    pub branches: Option<String>,
+}
+
+/// The saved session `named` names: its id or name in `home`, `last` for
+/// the newest saved one other than `current`, or the path of its directory
+/// or of a file in it.
+///
+/// # Errors
+///
+/// When none is found, with why.
+pub fn find(
+    named: &str,
+    home: &Home,
+    stores: &StoreOpener,
+    current: &Path,
+) -> Result<SessionDir, String> {
+    if named == "last" {
+        let newest = home
+            .saved_sessions()
+            .into_iter()
+            .filter(|(_, dir)| dir.path() != current)
+            .filter_map(|(_, dir)| SessionEntry::read(&dir, stores))
+            .max_by_key(|entry| entry.updated);
+        return newest
+            .map(|entry| home.session(&entry.id))
+            .ok_or_else(|| "there is no saved session".to_owned());
+    }
+    let found = home.find(named).map(|id| home.session(&id));
+    found.or_else(|why| {
+        Path::new(named)
+            .ancestors()
+            .find(|dir| dir.join("logs").is_dir())
+            .map(SessionDir::at)
+            .ok_or(why)
+    })
+}
+
+impl Material {
+    /// The main agent's conversation of the session in `dir`, opened
+    /// through `stores` and read without writing anything.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot be opened or read, or has no agent.
+    pub fn read(
+        named: &str,
+        dir: &SessionDir,
+        stores: &StoreOpener,
+        all_branches: bool,
+    ) -> Result<Self, String> {
+        let unreadable = |why: String| format!("`{named}` cannot be read: {why}");
+        let store = stores
+            .open(dir)
+            .map_err(|why| unreadable(why.to_string()))?;
+        let session = Session::read(&*store).map_err(|why| unreadable(why.to_string()))?;
+        let agent = session
+            .main_agent()
+            .ok_or_else(|| unreadable("it has no agent".to_owned()))?;
+        Ok(Self::of(named, &agent.conversation, all_branches))
+    }
+
+    /// `conversation` laid out: its active line, and its inactive branches
+    /// with `all_branches`.
+    pub fn of(
+        named: &str,
+        conversation: &rig_harness::rig_core::conversation::Conversation,
+        all_branches: bool,
+    ) -> Self {
+        let kept = conversation.branches();
+        let mut starts: HashMap<MessageId, u64> = conversation
+            .turns()
+            .map(|(_, record)| (record.start, record.index))
+            .collect();
+        let in_branches = kept.iter().flat_map(|kept| &kept.branch.asides);
+        starts.extend(
+            in_branches
+                .filter_map(|(_, aside)| TurnRecord::of(aside))
+                .map(|record| (record.start, record.index)),
+        );
+        let active = conversation.line_title().to_owned();
+        let mut history = conversation.line(None).unwrap_or_default();
+        let messages: Vec<Message> = history.iter().map(|entry| entry.message.clone()).collect();
+        let running = pending_calls(&messages);
+        if !running.is_empty() {
+            history.push(Entry::from(close_pending_with(&running, STILL_RUNNING)));
+        }
+        let mut items = numbered(&history, &active, &starts, None);
+        let mut branches = None;
+        if all_branches {
+            let mut text = String::new();
+            for kept in &kept {
+                let line = conversation.line(Some(kept.id)).unwrap_or_default();
+                let own = line.get(kept.at..).unwrap_or_default();
+                let title = &kept.branch.title;
+                let turn = numbered(&line, title, &starts, None)
+                    .get(kept.at.saturating_sub(1))
+                    .and_then(|item| item.turn);
+                let first = items.len();
+                items.extend(numbered(own, title, &starts, turn));
+                text.push_str(&format!(
+                    "\n## Branch “{title}”, parting after message {} of its line\n",
+                    kept.at
+                ));
+                for (at, item) in items.iter().enumerate().skip(first) {
+                    let cut = shorten(&item.text, BRANCH_MESSAGE);
+                    text.push_str(&format!("#{at} {}: {cut}\n", item.role));
+                }
+            }
+            branches = (!text.is_empty()).then_some(text);
+        }
+        Self {
+            named: named.to_owned(),
+            history,
+            items,
+            active,
+            branches,
+        }
+    }
+
+    /// Each turn and the message it starts at, in the active line.
+    pub fn turns(&self) -> Vec<(u64, usize)> {
+        let mut turns: Vec<(u64, usize)> = Vec::new();
+        for (at, item) in self.items.iter().enumerate() {
+            if item.branch == self.active
+                && let Some(turn) = item.turn
+                && turns.last().is_none_or(|(last, _)| *last != turn)
+            {
+                turns.push((turn, at));
+            }
+        }
+        turns
+    }
+
+    /// The `limit` messages that match most of `query`'s words, best and
+    /// then earliest first, each with its number.
+    pub fn search(&self, query: &str, limit: usize) -> Vec<(usize, &Item)> {
+        let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let mut hits: Vec<(usize, usize, &Item)> = self
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(at, item)| {
+                let text = item.text.to_lowercase();
+                let score = words.iter().filter(|word| text.contains(*word)).count();
+                (score > 0).then_some((score, at, item))
+            })
+            .collect();
+        hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        hits.into_iter()
+            .take(limit)
+            .map(|(_, at, item)| (at, item))
+            .collect()
+    }
+}
+
+/// A hit's line: its number, turn, branch and role, and its text around
+/// the first word of `query` it holds.
+pub fn hit_line(at: usize, item: &Item, query: &str) -> String {
+    let text = item.text.replace('\n', " ");
+    let lower = text.to_lowercase();
+    let found = query
+        .split_whitespace()
+        .filter_map(|word| lower.find(&word.to_lowercase()))
+        .min()
+        .unwrap_or(0);
+    let start = text
+        .char_indices()
+        .map(|(index, _)| index)
+        .take_while(|index| *index + SNIPPET / 2 <= found)
+        .last()
+        .unwrap_or(0);
+    let snippet = shorten(text.get(start..).unwrap_or_default(), SNIPPET);
+    format!("{} {snippet}", header(at, item))
+}
+
+/// `#12 · turn 4 · main · assistant`.
+pub fn header(at: usize, item: &Item) -> String {
+    let turn = item.turn.map_or_else(
+        || "before any turn".to_owned(),
+        |turn| format!("turn {turn}"),
+    );
+    format!("#{at} · {turn} · {} · {}:", item.branch, item.role)
+}
+
+/// `entries` as items on `branch`, each in the turn whose start it is or
+/// follows; `turn` before the first start.
+fn numbered(
+    entries: &[Entry],
+    branch: &str,
+    starts: &HashMap<MessageId, u64>,
+    mut turn: Option<u64>,
+) -> Vec<Item> {
+    entries
+        .iter()
+        .map(|entry| {
+            if let Some(started) = entry.id.and_then(|id| starts.get(&id)) {
+                turn = Some(*started);
+            }
+            let (role, text) = text_of(&entry.message);
+            Item {
+                branch: branch.to_owned(),
+                turn,
+                role,
+                text,
+            }
+        })
+        .collect()
+}
+
+/// A message's role and its text, its tool calls and results included.
+fn text_of(message: &Message) -> (&'static str, String) {
+    match message {
+        Message::System { content } => ("system", content.clone()),
+        Message::User { content } => {
+            let parts = content.iter().map(|part| match part {
+                UserContent::Text(text) => text.text.clone(),
+                UserContent::ToolResult(result) => {
+                    let output: Vec<String> = result
+                        .content
+                        .iter()
+                        .map(|item| match item {
+                            ToolResultContent::Text(text) => text.text.clone(),
+                            ToolResultContent::Json { value } => value.to_string(),
+                            ToolResultContent::Image(_) => "[image]".to_owned(),
+                        })
+                        .collect();
+                    format!("[{} result] {}", result.name.as_str(), output.join("\n"))
+                }
+                _ => "[attachment]".to_owned(),
+            });
+            ("user", parts.collect::<Vec<_>>().join("\n"))
+        }
+        Message::Assistant(reply) => {
+            let parts = reply.content.iter().filter_map(|part| match part {
+                AssistantContent::Text(text) => Some(text.text.clone()),
+                AssistantContent::ToolCall(call) => Some(format!(
+                    "[calls {}] {}",
+                    call.function.name.as_str(),
+                    call.function.raw_arguments()
+                )),
+                _ => None,
+            });
+            ("assistant", parts.collect::<Vec<_>>().join("\n"))
+        }
+    }
+}

@@ -142,7 +142,7 @@ fn an_override_wins_field_by_field() {
     let base = models_dev(SAMPLE).expect("parses");
     let overrides = Catalog::from_overrides(
         r#"{"anthropic": {"models": {
-            "claude-x": {"limit": {"output": 128000}, "cost": {"input": 5}, "rig": {"binds_context": true}},
+            "claude-x": {"limit": {"output": 128000}, "cost": {"input": 5}, "rig": {"binds_context": true, "prefill": true}},
             "claude-y": {"name": "Claude Y", "reasoning": false, "tool_call": true, "modalities": {"input": ["text"]}}
         }}}"#,
         &base,
@@ -156,6 +156,7 @@ fn an_override_wins_field_by_field() {
     let pricing = claude.pricing.expect("priced");
     assert_eq!((pricing.input, pricing.output), (5.0, 15.0));
     assert!(claude.compat.binds_context && claude.compat.adaptive_thinking);
+    assert!(claude.compat.prefill);
     assert_eq!(
         claude.reasoning.default_effort(),
         Some(Effort::High),
@@ -228,6 +229,11 @@ fn references_name_a_vendor_and_a_model() {
         .resolve("openrouter/anthropic/claude-sonnet-4.5")
         .expect("OpenRouter lists it");
     assert_eq!(openrouter.spec.id, "anthropic/claude-sonnet-4.5");
+    let found = catalog.resolve("anthropic/claude-x").expect("listed");
+    let again = catalog
+        .resolve("anthropic/anthropic:claude-x")
+        .expect("listed");
+    assert!(Arc::ptr_eq(&found.shared(), &again.shared()), "not copied");
 }
 
 /// `get` and `resolve` follow one rule: the id as listed, else the longest
@@ -590,11 +596,15 @@ fn a_spec_built_in_code_joins_the_catalog() {
         bare.with_context_window(32_768)
             .with_tools(true)
             .with_pricing(Pricing::new(0.1, 0.4).with_cache_read(0.01))
-            .with_compat(Compat::default().with_reasoning_field("reasoning_content")),
+            .with_compat(
+                Compat::default()
+                    .with_reasoning_field("reasoning_content")
+                    .with_prefill(true),
+            ),
     );
     let qwen = spec(&catalog, "ollama", "qwen3:4b");
     assert_eq!(qwen.context_window, Some(32_768));
-    assert!(qwen.tools);
+    assert!(qwen.tools && qwen.compat.prefill);
     assert_eq!(
         qwen.compat.reasoning_field.as_deref(),
         Some("reasoning_content")
@@ -615,6 +625,7 @@ fn a_spec_built_in_code_joins_the_catalog() {
     let qwen = spec(&overridden, "ollama", "qwen3:4b");
     assert_eq!(qwen.max_output_tokens, Some(8192));
     assert_eq!(qwen.context_window, Some(32_768), "kept");
+    assert!(qwen.compat.prefill, "kept");
     assert_eq!(
         qwen.pricing,
         Some(Pricing::new(0.1, 0.4).with_cache_read(0.01))
@@ -678,6 +689,27 @@ fn a_spec_row_overrides_what_the_spec_knows() {
         "an unknown limit is kept"
     );
     assert!(claude.pricing.is_some(), "unknown prices are kept");
+}
+
+/// Claude models before 4.6 continue a prefilled reply; later ones refuse
+/// it (Anthropic's prompting guide), and a gateway row carries the fact.
+#[test]
+fn the_catalog_says_which_models_continue_a_prefill() {
+    let catalog = Catalog::builtin();
+    for (vendor, model, prefill) in [
+        ("anthropic", "claude-haiku-4-5", true),
+        ("anthropic", "claude-sonnet-4-5", true),
+        ("vertexai", "claude-sonnet-4-5@20250929", true),
+        ("anthropic", "claude-opus-4-6", false),
+        ("anthropic", "claude-opus-5-5", false),
+        ("openai", "gpt-5", false),
+    ] {
+        assert_eq!(
+            spec(catalog, vendor, model).compat.prefill,
+            prefill,
+            "{vendor}/{model}"
+        );
+    }
 }
 
 /// A gateway row of a Claude model carries the Anthropic model's wire facts
@@ -855,6 +887,59 @@ fn refusals_apply_the_sampling_rule_beside_reasoning_and_cache() {
     assert!(
         names(&undecided, &sampled).is_empty(),
         "a model that names no default effort and can turn reasoning off is not reasoning"
+    );
+}
+
+/// Fitting a request to a model takes out only what the model refuses,
+/// reasoning first: once a refused effort is the provider default, a model
+/// that then does not reason takes `temperature` again.
+#[test]
+fn fit_takes_out_only_what_the_model_refuses() {
+    use crate::completion::CompletionRequest;
+    let names = |dropped: Vec<crate::completion::UnsupportedOption>| -> Vec<String> {
+        dropped
+            .into_iter()
+            .map(|refusal| refusal.option.into_owned())
+            .collect()
+    };
+    let openai = ProviderId::catalog("openai").expect("a known vendor");
+    let levels = |can_disable| ReasoningSupport::Listed {
+        levels: vec![Effort::Low, Effort::High],
+        budget: None,
+        can_disable,
+        default: None,
+    };
+    let thinker = ModelSpec::new(openai, "thinker")
+        .with_reasoning(levels(false))
+        .with_caching(CacheSupport {
+            retention: vec![CacheRetention::Short],
+        })
+        .with_sampling(Sampling::ReasoningOff);
+    let options = GenerationOptions::default()
+        .reasoning(Effort::Medium)
+        .cache(CacheRetention::Long)
+        .top_p(0.9)
+        .seed(7);
+    let mut request = CompletionRequest::new("hi")
+        .temperature(0.2)
+        .options(options);
+    assert_eq!(
+        names(thinker.fit(&mut request)),
+        ["reasoning", "cache", "temperature", "top_p"]
+    );
+    assert!(thinker.refusals(&request).is_empty());
+    assert_eq!(request.options.seed, Some(7), "what it takes stays");
+
+    let optional = thinker.with_reasoning(levels(true));
+    let options = GenerationOptions::default().reasoning(Effort::Medium);
+    let mut request = CompletionRequest::new("hi")
+        .temperature(0.2)
+        .options(options);
+    assert_eq!(names(optional.fit(&mut request)), ["reasoning"]);
+    assert_eq!(request.temperature, Some(0.2), "it no longer reasons");
+    assert!(
+        optional.fit(&mut request).is_empty(),
+        "a fitted request stays"
     );
 }
 
@@ -1246,5 +1331,49 @@ fn a_models_dev_refresh_updates_what_rig_does_not_pin() {
         after.pricing.map(|p| p.input),
         Some(99.0),
         "not pinned, so updated"
+    );
+}
+
+#[test]
+fn reasoning_choices_and_default_options_follow_the_spec() {
+    let budgeted = ReasoningSupport::Listed {
+        levels: Vec::new(),
+        budget: Some(1024..=4096),
+        can_disable: true,
+        default: None,
+    };
+    let names: Vec<String> = budgeted
+        .choices()
+        .iter()
+        .map(ReasoningChoice::label)
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "default",
+            "off",
+            "low (2048 tokens)",
+            "medium (4096 tokens)",
+            "high (4096 tokens)"
+        ]
+    );
+    assert_eq!(ReasoningSupport::None.choices().len(), 1);
+    let off = budgeted.named("off").map(|choice| choice.reasoning);
+    assert_eq!(off, Ok(Some(Reasoning::Off)));
+    assert_eq!(
+        budgeted.named("xhigh").map_err(|why| why.to_string()),
+        Err("the reasoning settings are default, off, low, medium, high, not `xhigh`".to_owned())
+    );
+
+    let provider = ProviderId::catalog("anthropic").expect("a known vendor");
+    let cached = ModelSpec::new(provider, "claude-x")
+        .with_caching(CacheSupport::new([CacheRetention::Short]));
+    assert_eq!(cached.reference(), "anthropic/claude-x");
+    let options = cached.default_options(Some(Reasoning::Effort(Effort::High)));
+    assert_eq!(options.cache, Some(CacheRetention::Short));
+    assert_eq!(options.reasoning, Some(Reasoning::Effort(Effort::High)));
+    assert_eq!(
+        ModelSpec::new(provider, "unknown").default_options(None),
+        GenerationOptions::default()
     );
 }

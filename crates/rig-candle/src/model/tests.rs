@@ -1185,6 +1185,7 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
         name: rig_core::message::ToolName::new("tool")?,
         description: "tool".to_string(),
         parameters: serde_json::json!({}),
+        annotations: Default::default(),
     });
     assert!(
         matches!(render_prompt(&tools), Err(CandleError::UnsupportedFeature(feature)) if feature.contains("Qwen3"))
@@ -1511,6 +1512,7 @@ fn another_models_tool_history_renders_for_a_plain_protocol()
         name: rig_core::message::ToolName::new("add")?,
         description: "add".to_owned(),
         parameters: serde_json::json!({"type": "object"}),
+        annotations: Default::default(),
     };
     for protocol in [ConversationProtocol::Llama3, ConversationProtocol::SmolLm2] {
         let wire = local(protocol);

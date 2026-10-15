@@ -244,11 +244,6 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "#1179",
     ),
     (
-        "crates/rig-agent/src/agent/runner/entry_tests.rs",
-        "resume_appends_its_messages_without_loading",
-        "#2244",
-    ),
-    (
         "crates/rig-bedrock/src/streaming/tests.rs",
         "a_stream_rebuilds_the_unary_converse_output",
         "#2311",
@@ -765,6 +760,7 @@ pub fn tools_of(history: &[Message]) -> Vec<rig_core::completion::ToolDefinition
             name,
             description: "a tool the history calls".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
+            annotations: Default::default(),
         })
         .collect()
 }
@@ -1341,7 +1337,7 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
         assert!(
             results.iter().any(|result| result.is_error
                 && result.content.first().and_then(ToolResultContent::as_text)
-                    == Some(rig_core::completion::history::NO_RESULT_PROVIDED)),
+                    == Some(rig_core::conversation::pairing::NO_RESULT_PROVIDED)),
             "the unanswered call gets an error result: {results:?}"
         );
     } else {
@@ -2102,6 +2098,7 @@ pub fn h14_model_identity<F: HistoryFixture>(fixture: &F) {
             name: name("x_rig_new_tool"),
             description: "a tool added since".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
+            annotations: Default::default(),
         }];
         request.chat_history = vec![
             Message::user("q"),

@@ -13,7 +13,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::effect::{EffectFamily, EffectKind, Outcome};
+use rig::effect::{Answered, EffectFamily, EffectKind};
 use rig::message::{AssistantContent, Message, UserContent};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
@@ -80,7 +80,7 @@ pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) ->
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Outcome::ToolResult { result, .. }) => Some(result.output().render()),
+            Ok(Answered::ToolResult { result, .. }) => Some(result.output().render()),
             _ => None,
         })
         .collect()
@@ -96,8 +96,8 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-/// An observe-only hook opted into every family, over memory and a tool:
-/// it sees the memory dispatches and changes nothing. The header names it.
+/// An observe-only hook opted into every family, over a tool: it sees
+/// every dispatch and changes nothing. The header names it.
 #[tokio::test]
 async fn observe_everything_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/observe_everything", |client| async move {
@@ -107,8 +107,6 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
             .tool(Adder)
-            .memory(rig::memory::InMemoryConversationMemory::new())
-            .conversation("golden-conversation")
             .add_hook(ObserveEverything)
             .record_to(recorder.clone())
             .build();
@@ -122,11 +120,9 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
         assert_eq!(
             families(&log),
             [
-                EffectFamily::Memory,
                 EffectFamily::Completion,
                 EffectFamily::Tool,
                 EffectFamily::Completion,
-                EffectFamily::Memory,
             ]
         );
         assert_eq!(log.header.hooks, ["ObserveEverything"]);
@@ -339,7 +335,7 @@ async fn replace_answer_effect_log_is_the_golden_fixture() {
         let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         let recorded = match &log.records[0].outcome {
-            Ok(Outcome::Completion(response)) => response,
+            Ok(Answered::Completion(response)) => response,
             other => panic!("a completion, not {other:?}"),
         };
         assert!(

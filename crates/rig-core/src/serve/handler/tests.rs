@@ -9,7 +9,7 @@ use crate::streaming::{Item, Part, Relayed, StreamEvent, UnknownPayload};
 
 #[derive(Default)]
 struct Seen {
-    outcomes: Vec<Result<Outcome, ErrorReport>>,
+    outcomes: Vec<Result<Answered, ErrorReport>>,
     events: usize,
     discard_events: bool,
 }
@@ -18,7 +18,7 @@ struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
     fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
         self.0.lock().expect("seen").outcomes.push(outcome.clone());
     }
 
@@ -141,7 +141,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
     }
     let shapes: [(&str, Shape); 6] = [
         ("a completed response with an image", || {
-            Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
+            Reply::Outcome(Ok(Answered::Completion(CompletionResponse::new(
                 vec![
                     AssistantContent::text("done"),
                     AssistantContent::Image(Image {
@@ -256,4 +256,96 @@ fn the_tap_yields_only_its_first_outcome() {
     let outcomes: Vec<_> = items.iter().filter_map(|item| tap.observe(item)).collect();
     assert_eq!(outcomes.len(), 1, "{outcomes:?}");
     assert!(matches!(outcomes.first(), Some(Err(report)) if report.message == "reset"));
+}
+
+/// An unavailable handler keeps the descriptor it was given and answers
+/// every effect, unary or streamed, `HandlerUnavailable` with its reason.
+#[test]
+fn an_unavailable_handler_answers_every_effect_with_its_reason() {
+    let descriptor = crate::effect::HandlerDescriptor::tool("lookup", "", serde_json::json!({}));
+    let handler = ErasedHandler::unavailable(descriptor.clone(), "answered from the batch API");
+    assert_eq!(handler.descriptor(), descriptor);
+    let kinds = [
+        EffectKind::Completion {
+            request: crate::completion::CompletionRequest::new("hi"),
+            stream: true,
+        },
+        EffectKind::ToolCall {
+            name: "lookup".to_owned(),
+            args: "{}".to_owned(),
+        },
+    ];
+    for (at, kind) in (1..).zip(kinds) {
+        let streams = kind.streams();
+        let dispatch = Dispatch::new(EffectId::from_raw(at), streams);
+        let answer = block_on(async { handler.handle(kind, dispatch).await.into_outcome().await });
+        assert!(
+            matches!(
+                &answer,
+                Err(report) if report.kind == ErrorKind::HandlerUnavailable
+                    && report.message == "answered from the batch API"
+            ),
+            "{answer:?}"
+        );
+    }
+}
+
+/// A model's handler says which options of a completion its model would
+/// leave out, through every wrapper a host puts around it (layers, stream
+/// maps, sharing, erasing again), and sends nothing to say so; a tool call
+/// has nothing to leave out.
+#[test]
+fn a_model_handler_names_what_its_model_leaves_out() {
+    struct Pass;
+    impl crate::serve::Intercept for Pass {
+        fn name(&self) -> String {
+            "pass".to_owned()
+        }
+        async fn before(&self, _: EffectId, _: &EffectKind) -> crate::serve::BeforeServe {
+            crate::serve::BeforeServe::Proceed
+        }
+        async fn after(
+            &self,
+            _: EffectId,
+            _: &EffectKind,
+            _: &Result<Answered, ErrorReport>,
+        ) -> crate::serve::AfterServe {
+            crate::serve::AfterServe::Keep
+        }
+    }
+    let http = crate::test_utils::RecordingHttpClient::new("{}");
+    let model = crate::catalog::Catalog::builtin()
+        .connect_with(
+            "anthropic/claude-fable-5",
+            crate::providers::registry::ConnectOptions::new()
+                .api_key("sk-test")
+                .http(http.clone()),
+        )
+        .expect("connects");
+    let handler = ErasedHandler::new(crate::serve::adapters::ModelAdapter::new(
+        "anthropic/claude-fable-5",
+        model,
+    ))
+    .layered(Pass)
+    .map_stream("same", |_| |relayed| vec![relayed]);
+    // Shared and erased again, as a host registers one handler twice.
+    let handler = ErasedHandler::new(Arc::new(ErasedHandler::new(handler)));
+    let kind = EffectKind::Completion {
+        request: crate::completion::CompletionRequest::new("hi")
+            .temperature(0.2)
+            .top_p(0.9),
+        stream: true,
+    };
+    let left_out: Vec<String> = handler
+        .check(&kind)
+        .iter()
+        .map(|refusal| refusal.option.to_string())
+        .collect();
+    assert_eq!(left_out, ["top_p", "temperature"]);
+    assert!(http.requests().is_empty(), "a check sends nothing");
+    let call = EffectKind::ToolCall {
+        name: "lookup".to_owned(),
+        args: "{}".to_owned(),
+    };
+    assert!(handler.check(&call).is_empty());
 }

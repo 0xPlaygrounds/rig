@@ -1,0 +1,29 @@
+[package]
+name = "corpus-ho-stale-read-elision"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H06: Elide superseded file reads from requests"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The token estimate compaction uses too.
+rig-memory = { path = "../../crates/rig-memory", default-features = false }
+# The built-in file tools' arguments, and how they resolve a path.
+rig-tools = { path = "../../crates/rig-tools" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Both edit a request's messages: the elision goes after the examples.
+corpus-few-shot-examples = { path = "../few-shot-examples" }
+
+[dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

@@ -85,6 +85,7 @@ pub struct TypeMap {
 }
 
 impl TypeMap {
+    /// Puts `value` under its type and returns the value it replaced.
     pub fn insert<T>(&mut self, value: T) -> Option<T>
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -95,6 +96,7 @@ impl TypeMap {
             .map(|value| *value)
     }
 
+    /// The value of type `T`, if any.
     pub fn get<T>(&self) -> Option<&T>
     where
         T: 'static,
@@ -104,6 +106,7 @@ impl TypeMap {
             .and_then(|value| (**value).as_any().downcast_ref::<T>())
     }
 
+    /// The value of type `T`, mutably, if any.
     pub fn get_mut<T>(&mut self) -> Option<&mut T>
     where
         T: 'static,
@@ -113,6 +116,7 @@ impl TypeMap {
             .and_then(|value| (**value).as_any_mut().downcast_mut::<T>())
     }
 
+    /// Takes out the value of type `T` and returns it, if any.
     pub fn remove<T>(&mut self) -> Option<T>
     where
         T: 'static,
@@ -123,6 +127,7 @@ impl TypeMap {
             .map(|value| *value)
     }
 
+    /// Whether it holds a value of type `T`.
     pub fn contains<T>(&self) -> bool
     where
         T: 'static,
@@ -395,11 +400,12 @@ impl std::fmt::Debug for ToolContext {
     }
 }
 
-/// What a tool published into its dispatch context, handed back beside the
-/// sink rather than on the wire: the driver attaches an empty one to the
-/// sink's scope (`Dispatch::with_scope`), the adapter fills it once the
-/// tool ran, the driver reads it after the outcome. One per dispatch; a
-/// second publish replaces the first.
+/// What one dispatch published beside its answer, passed back beside the
+/// sink rather than on the wire. A tool's adapter fills it with the tool's
+/// whole context (a second publish replaces the first); any other layer,
+/// such as a stream rewrite
+/// ([`ErasedHandler::map_stream`](crate::serve::ErasedHandler::map_stream)),
+/// adds single facts with [`insert`](Self::insert).
 #[derive(Debug, Default)]
 pub struct PublishedContext(std::sync::Mutex<Option<ToolContext>>);
 
@@ -429,6 +435,22 @@ impl PublishedContext {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(context);
+    }
+
+    /// Adds `value` to what is published, beside what is there, as
+    /// [`ToolContext::insert_result`] does, and returns the value it
+    /// replaced. Publish before the dispatch's answer is resolved, as for
+    /// [`publish`](Self::publish).
+    ///
+    /// # Errors
+    ///
+    /// When `value` cannot be encoded; nothing changes then.
+    pub fn insert<T: ContextValue>(&self, value: T) -> Result<Option<T>, ToolContextError> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_or_insert_with(ToolContext::new)
+            .insert_result(value)
     }
 
     /// The driver's read: what was published, if anything, leaving nothing.

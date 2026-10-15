@@ -1,4 +1,4 @@
-//! A family-typed handler key: vocabulary, not runtime. A `Key<F>` is a
+//! A family-typed handler key. A `Key<F>` is a
 //! [`HandlerKey`] plus a proof, at the type level, of the family the
 //! handler under it serves; it holds no reference to a dispatcher.
 //!
@@ -32,7 +32,6 @@ impl<F: Family> Key<F> {
     /// rather than proven: for a host that registered the handler itself
     /// and knows what it serves. A wrong assertion fails at bind time
     /// (`HandlerUnavailable`) or at the first dispatch, not silently.
-    #[track_caller]
     pub const fn new_unchecked(raw: HandlerKey) -> Self {
         Self {
             raw,

@@ -5,12 +5,12 @@ use futures::{StreamExt, channel::oneshot, executor::block_on};
 use rig_core::{
     completion::{CompletionResponse, Usage},
     effect::{
-        EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome, family,
+        Answered, EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, family,
     },
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, DocumentSourceKind, Image},
     operation::Finish,
-    serve::{Decision, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve, Verdict},
+    serve::{AfterServe, BeforeServe, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve},
     streaming::{Item, Relayed, StreamEvent},
 };
 use serde_json::{Value, json};
@@ -33,7 +33,7 @@ struct Seen {
 struct Observer(Arc<Mutex<Seen>>);
 impl Observe for Observer {
     fn origin(&mut self, _origin: &rig_core::message::Origin) {}
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
         self.0
             .lock()
             .unwrap()
@@ -102,14 +102,14 @@ impl Serve for Answer {
             let EffectKind::Custom { payload, .. } = kind else {
                 panic!("custom")
             };
-            Reply::Outcome(Ok(Outcome::Custom { payload }))
+            Reply::Outcome(Ok(Answered::Custom { payload }))
         }
     }
 }
 
 struct Policy {
-    decision: Decision,
-    verdict: Verdict,
+    decision: BeforeServe,
+    verdict: AfterServe,
     gate: Mutex<Option<oneshot::Receiver<()>>>,
     calls: Arc<Mutex<usize>>,
 }
@@ -117,15 +117,15 @@ impl Intercept for Policy {
     fn name(&self) -> String {
         "proof-policy".into()
     }
-    async fn before(&self, _: EffectId, _: &EffectKind) -> Decision {
+    async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
         self.decision.clone()
     }
     async fn after(
         &self,
         _: EffectId,
         _: &EffectKind,
-        _: &Result<Outcome, ErrorReport>,
-    ) -> Verdict {
+        _: &Result<Answered, ErrorReport>,
+    ) -> AfterServe {
         *self.calls.lock().unwrap() += 1;
         let gate = self.gate.lock().unwrap().take();
         if let Some(gate) = gate {
@@ -134,7 +134,7 @@ impl Intercept for Policy {
         self.verdict.clone()
     }
 }
-fn policy(decision: Decision, verdict: Verdict) -> Policy {
+fn policy(decision: BeforeServe, verdict: AfterServe) -> Policy {
     Policy {
         decision,
         verdict,
@@ -150,7 +150,7 @@ impl Serve for ImageAnswer {
         Answer { streaming: false }.descriptor()
     }
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
-        Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
+        Reply::Outcome(Ok(Answered::Completion(CompletionResponse::new(
             vec![AssistantContent::Image(Image {
                 data: DocumentSourceKind::base64("aW1hZ2U="),
                 ..Image::default()
@@ -166,8 +166,8 @@ impl Serve for ImageAnswer {
 fn unary_image_recording_survives_stream_projection_and_replacement() {
     let seen = Arc::default();
     let handler = ErasedHandler::new(ImageAnswer).layered(policy(
-        Decision::Proceed,
-        Verdict::Replace(Err(ErrorReport::new(ErrorKind::Denied, "replacement"))),
+        BeforeServe::Proceed,
+        AfterServe::Replace(Err(ErrorReport::new(ErrorKind::Denied, "replacement"))),
     ));
     let items = block_on(
         block_on(handler.handle(kind(json!(null)), dispatch(true, &seen)))
@@ -214,7 +214,7 @@ fn deferred_answer_reports_drop_and_late_resolution() {
     assert!(resolver.is_closed());
     assert!(
         resolver
-            .resolve(Ok(Outcome::Custom {
+            .resolve(Ok(Answered::Custom {
                 payload: json!(null)
             }))
             .is_err()
@@ -246,16 +246,16 @@ fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
         fn name(&self) -> String {
             "keep".into()
         }
-        async fn before(&self, _: EffectId, _: &EffectKind) -> Decision {
-            Decision::Proceed
+        async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
+            BeforeServe::Proceed
         }
         async fn after(
             &self,
             _: EffectId,
             _: &EffectKind,
-            _: &Result<Outcome, ErrorReport>,
-        ) -> Verdict {
-            Verdict::Keep
+            _: &Result<Answered, ErrorReport>,
+        ) -> AfterServe {
+            AfterServe::Keep
         }
     }
     block_on(async {

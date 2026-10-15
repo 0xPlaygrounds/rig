@@ -31,7 +31,7 @@ mod native;
 pub use citation::{Citation, DocumentRange, Source, SourceLocation, Span};
 
 pub use identity::{CallId, EmptyCallId, EmptyToolName, LocalCallId, ProviderCallId, ToolName};
-pub use native::{Api, Fingerprint, Native, Opaque, Origin, StopReason};
+pub use native::{Api, Blob, Fingerprint, Native, Opaque, Origin, StopReason};
 
 /// One assistant turn.
 ///
@@ -110,6 +110,24 @@ impl AssistantMessage {
             AssistantContent::ToolCall(call) => Some(call),
             _ => None,
         })
+    }
+
+    /// The text parts, concatenated.
+    pub fn text(&self) -> String {
+        self.content
+            .iter()
+            .filter_map(|part| match part {
+                AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether this generated turn is empty: every part is blank
+    /// ([`AssistantContent::is_blank`], the rule replay drops parts by). An
+    /// empty turn must not enter history.
+    pub fn is_empty_turn(&self) -> bool {
+        self.content.iter().all(AssistantContent::is_blank)
     }
 }
 
@@ -220,8 +238,8 @@ impl AssistantContent {
 
     /// Whether the block has nothing to send, so replay drops it: blank text
     /// or reasoning, and redacted reasoning, without a provider item that is
-    /// still current (with one, its identity pairs it with what follows, and
-    /// pi replays it whatever its text), and an opaque item that does not
+    /// still current (with one, its identity pairs it with what follows, so
+    /// it replays whatever its text), and an opaque item that does not
     /// replay.
     pub fn is_blank(&self) -> bool {
         match self {
@@ -470,6 +488,15 @@ impl ToolCall {
             ..self.result(content)
         }
     }
+
+    /// The result answering this call with what its tool did: the output
+    /// the model reads, an error result for anything but a success.
+    pub fn answer(&self, result: &crate::tool::ToolResult) -> ToolResult {
+        ToolResult {
+            is_error: !result.is_success(),
+            ..self.result(result.output().clone().into_content())
+        }
+    }
 }
 
 /// A tool function to call: its name and its arguments, always a JSON
@@ -556,6 +583,14 @@ impl ToolFunction {
     /// The arguments as a JSON value.
     pub fn arguments_value(&self) -> serde_json::Value {
         serde_json::Value::Object(self.arguments.clone())
+    }
+
+    /// The arguments as JSON text: what the model sent when it was not an
+    /// object, else the object.
+    pub fn raw_arguments(&self) -> String {
+        self.invalid_arguments
+            .clone()
+            .unwrap_or_else(|| self.arguments_value().to_string())
     }
 }
 
@@ -836,7 +871,47 @@ pub enum DocumentMediaType {
     Python,
 }
 
+impl ImageMediaType {
+    /// The image type encoded `bytes` start with, by their magic bytes:
+    /// PNG, JPEG, GIF or WebP, the formats every image-taking provider
+    /// reads. `None` for anything else.
+    ///
+    /// ```
+    /// use rig_core::message::ImageMediaType;
+    ///
+    /// assert_eq!(ImageMediaType::sniff(b"GIF89a..."), Some(ImageMediaType::GIF));
+    /// assert_eq!(ImageMediaType::sniff(b"plain text"), None);
+    /// ```
+    pub fn sniff(bytes: &[u8]) -> Option<Self> {
+        if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+            Some(Self::PNG)
+        } else if bytes.starts_with(b"\xff\xd8\xff") {
+            Some(Self::JPEG)
+        } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+            Some(Self::GIF)
+        } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()) {
+            Some(Self::WEBP)
+        } else {
+            None
+        }
+    }
+
+    /// The usual file extension of the type, without the dot.
+    pub fn extension(&self) -> &'static str {
+        match self {
+            Self::JPEG => "jpg",
+            Self::PNG => "png",
+            Self::GIF => "gif",
+            Self::WEBP => "webp",
+            Self::HEIC => "heic",
+            Self::HEIF => "heif",
+            Self::SVG => "svg",
+        }
+    }
+}
+
 impl DocumentMediaType {
+    /// Whether it is source code (JavaScript or Python).
     pub fn is_code(&self) -> bool {
         matches!(self, Self::Javascript | Self::Python)
     }
@@ -881,6 +956,33 @@ pub enum ImageDetail {
 }
 
 impl Message {
+    /// The text of a final answer: the text parts of the model's message,
+    /// joined by blank lines and trimmed. `None` when this is not the
+    /// model's message, still asks for tool calls, or has no text.
+    ///
+    /// ```
+    /// use rig_core::message::Message;
+    ///
+    /// assert_eq!(Message::assistant(" Done. ").final_answer().as_deref(), Some("Done."));
+    /// assert_eq!(Message::user("Done.").final_answer(), None);
+    /// ```
+    pub fn final_answer(&self) -> Option<String> {
+        let Message::Assistant(reply) = self else {
+            return None;
+        };
+        let mut parts = Vec::new();
+        for item in reply.content.iter() {
+            match item {
+                AssistantContent::Text(text) => parts.push(text.text.as_str()),
+                AssistantContent::ToolCall(_) => return None,
+                _ => {}
+            }
+        }
+        let text = parts.join("\n\n");
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_owned())
+    }
+
     /// Clones the first text block of a user message, or returns `None`.
     pub fn rag_text(&self) -> Option<String> {
         match self {
@@ -934,6 +1036,59 @@ impl Message {
         Message::User {
             content: results.into_iter().map(UserContent::ToolResult).collect(),
         }
+    }
+
+    /// The images of this message, in order: a user message's own and
+    /// those of its tool results, or an assistant turn's.
+    pub fn images(&self) -> impl Iterator<Item = &Image> {
+        let (user, turn): (&[UserContent], &[AssistantContent]) = match self {
+            Message::User { content } => (content, &[]),
+            Message::Assistant(turn) => (&[], &turn.content),
+            Message::System { .. } => (&[], &[]),
+        };
+        let user = user.iter().flat_map(|item| {
+            let (image, results): (_, &[ToolResultContent]) = match item {
+                UserContent::Image(image) => (Some(image), &[]),
+                UserContent::ToolResult(result) => (None, &result.content),
+                _ => (None, &[]),
+            };
+            let results = results.iter().filter_map(|part| match part {
+                ToolResultContent::Image(image) => Some(image),
+                _ => None,
+            });
+            image.into_iter().chain(results)
+        });
+        let turn = turn.iter().filter_map(|block| match block {
+            AssistantContent::Image(image) => Some(image),
+            _ => None,
+        });
+        user.chain(turn)
+    }
+
+    /// The images of this message, as [`Self::images`], to change in place.
+    pub fn images_mut(&mut self) -> impl Iterator<Item = &mut Image> {
+        let (user, turn): (&mut [UserContent], &mut [AssistantContent]) = match self {
+            Message::User { content } => (content, Default::default()),
+            Message::Assistant(turn) => (Default::default(), &mut turn.content),
+            Message::System { .. } => Default::default(),
+        };
+        let user = user.iter_mut().flat_map(|item| {
+            let (image, results): (_, &mut [ToolResultContent]) = match item {
+                UserContent::Image(image) => (Some(image), Default::default()),
+                UserContent::ToolResult(result) => (None, &mut result.content),
+                _ => Default::default(),
+            };
+            let results = results.iter_mut().filter_map(|part| match part {
+                ToolResultContent::Image(image) => Some(image),
+                _ => None,
+            });
+            image.into_iter().chain(results)
+        });
+        let turn = turn.iter_mut().filter_map(|block| match block {
+            AssistantContent::Image(image) => Some(image),
+            _ => None,
+        });
+        user.chain(turn)
     }
 }
 
@@ -1296,14 +1451,20 @@ impl From<Vec<UserContent>> for Message {
     }
 }
 
+/// Which tools a model may call: any (`Auto`), none, at least one, or only the named ones.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolChoice {
+    /// The model decides.
     #[default]
     Auto,
+    /// No tool.
     None,
+    /// At least one tool.
     Required,
+    /// Only these tools.
     Specific {
+        /// The tools' names.
         function_names: Vec<ToolName>,
     },
 }

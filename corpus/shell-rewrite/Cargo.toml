@@ -1,0 +1,33 @@
+[package]
+name = "corpus-shell-rewrite"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 03. Safer shell commands by rewriting"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# `RIG_HOME/shell-rewrite.toml`; already in Cargo.lock (1.x), no new package.
+toml = "1"
+# Both edit a call's result: "(ran as: …)" goes after the search filter.
+corpus-protected-paths = { path = "../protected-paths" }
+
+[dev-dependencies]
+# Tool guards meant to be used with this one, for the group check.
+corpus-permission-modes = { path = "../permission-modes" }
+corpus-plan-mode = { path = "../plan-mode" }
+# Spec 01's guard, which must judge the rewritten command.
+corpus-confirm-destructive = { path = "../confirm-destructive" }
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }

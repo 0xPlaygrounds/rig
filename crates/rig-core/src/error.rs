@@ -18,12 +18,13 @@ use serde::{Deserialize, Serialize};
 use crate::{
     completion::UnsupportedOption,
     http_client,
-    memory::MemoryError,
     observe::AdapterErrorBoundary,
     provider_response::ProviderResponseError,
     tool::{ToolErrorKind, ToolExecutionError},
     vector_store::VectorStoreError,
 };
+
+pub mod retry;
 
 /// Normalized classification of an [`ErrorReport`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -50,10 +51,6 @@ pub enum ErrorKind {
     ProviderResponse,
     /// A tool failed; the inner kind is the tool's own classification.
     Tool(ToolErrorKind),
-    /// A conversation-memory backend failed.
-    MemoryBackend,
-    /// A conversation-memory policy or filter rejected the history.
-    MemoryPolicy,
     /// An internal invariant was violated.
     Internal,
     /// The operation was cancelled.
@@ -88,8 +85,6 @@ impl ErrorKind {
             Self::Provider => "provider",
             Self::ProviderResponse => "provider_response",
             Self::Tool(_) => "tool",
-            Self::MemoryBackend => "memory_backend",
-            Self::MemoryPolicy => "memory_policy",
             Self::Internal => "internal",
             Self::Cancelled => "cancelled",
             Self::Timeout => "timeout",
@@ -815,8 +810,6 @@ impl From<ErrorReport> for ToolExecutionError {
             | ErrorKind::Url
             | ErrorKind::Request
             | ErrorKind::Response
-            | ErrorKind::MemoryBackend
-            | ErrorKind::MemoryPolicy
             | ErrorKind::Internal
             | ErrorKind::BusClosed
             | ErrorKind::Divergence
@@ -835,40 +828,6 @@ impl From<ErrorReport> for ToolExecutionError {
             error = error.with_http_status(status);
         }
         error.with_source(report)
-    }
-}
-
-impl MemoryError {
-    /// The wire form of this error.
-    pub fn report(&self) -> ErrorReport {
-        ErrorReport::from(self)
-    }
-}
-
-impl From<&MemoryError> for ErrorReport {
-    fn from(error: &MemoryError) -> Self {
-        let kind = match error {
-            MemoryError::Backend(_) => ErrorKind::MemoryBackend,
-            MemoryError::Policy(_) => ErrorKind::MemoryPolicy,
-            MemoryError::Internal(_) => ErrorKind::Internal,
-        };
-        ErrorReport {
-            kind,
-            retryable: false,
-            message: error.to_string(),
-            code: None,
-            http_status: None,
-            refusal: false,
-            source_chain: source_chain(error),
-            request_id: None,
-            provider_response: None,
-        }
-    }
-}
-
-impl From<MemoryError> for ErrorReport {
-    fn from(error: MemoryError) -> Self {
-        Self::from(&error)
     }
 }
 

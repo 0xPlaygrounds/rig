@@ -1105,6 +1105,7 @@ fn tool_result_images_reach_gemini_2_in_a_following_user_message() {
                 name: message::ToolName::new("shot").expect("a tool name"),
                 description: "Take a screenshot".to_owned(),
                 parameters: json!({ "type": "object", "properties": {} }),
+                annotations: Default::default(),
             }]);
         request.chat_history = history;
         request

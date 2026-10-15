@@ -12,7 +12,7 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::PromptError;
-use rig::effect::{EffectFamily, Outcome};
+use rig::effect::{Answered, EffectFamily};
 use rig::error::ErrorKind;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::Item;
@@ -46,7 +46,7 @@ pub(super) fn tool_outcome(log: &rig::cassette::effect_log::EffectLog) -> &rig::
     log.records
         .iter()
         .find_map(|record| match &record.outcome {
-            Ok(Outcome::ToolResult { result, .. }) => Some(result),
+            Ok(Answered::ToolResult { result, .. }) => Some(result),
             _ => None,
         })
         .expect("a tool record")

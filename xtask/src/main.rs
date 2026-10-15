@@ -15,6 +15,7 @@
 //! ```console
 //! cargo xtask check-packaging     # fail on stowaways, bloat and unused deps
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
+//! cargo xtask check-stage-order   # fail if a corpus crate's stages go unchecked
 //! cargo xtask check-wires         # fail if a provider is not a wire
 //! cargo xtask cassette record …   # re-record fixtures by owning test
 //! cargo xtask catalog sync         # regenerate rig-core's model catalog
@@ -27,6 +28,7 @@ mod cassette;
 mod catalog;
 mod coverage;
 mod packaging;
+mod stage_order;
 mod support;
 mod test_layout;
 mod test_prune;
@@ -58,6 +60,7 @@ fn main() -> ExitCode {
         Some("verify") => verify::run(&workspace_root(), args.collect()).map_err(|e| e.to_string()),
         Some("check-packaging") => packaging::check(&workspace_root()),
         Some("check-test-layout") => test_layout::check(&workspace_root()),
+        Some("check-stage-order") => stage_order::check(&workspace_root()),
         Some("check-wires") => wires::check(&workspace_root()),
         Some("cassette") => cassette::run(&workspace_root(), args.collect()),
         Some("catalog") => catalog::run(&workspace_root(), args.collect()),
@@ -101,8 +104,11 @@ tasks:
                               past the size ceiling, if a manifest names a
                               dependency its sources never use, or if a facade
                               feature is outside the additivity guard
-  check-test-layout           fail if any crates/*/src file has an inline
-                              test-gated `mod x { }` instead of `mod x;`
+  check-test-layout           fail if any crates/*/src, plugins/*/src or
+                              corpus/*/src file has an inline test-gated
+                              `mod x { }` instead of `mod x;`
+  check-stage-order           fail if a corpus/* crate adds agent-loop systems
+                              and no test of it calls assert_stages_ordered
   check-wires                 fail if anything under rig-core's providers/ is
                               not a wire: `.await`, `async`, a transport type
                               parameter, or a consumer-trait impl

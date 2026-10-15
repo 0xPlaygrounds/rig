@@ -18,6 +18,7 @@ fn strict_value_tool(name: &str) -> ToolDefinition {
             "properties": { "value": { "type": "string" } },
             "required": ["value"]
         }),
+        annotations: Default::default(),
     }
 }
 

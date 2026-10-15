@@ -326,6 +326,7 @@ fn clear(options: &mut GenerationOptions, ignored: &[&str]) {
         top_p,
         seed,
         stop,
+        cache_key,
         on_unsupported: _,
     } = options;
     let off = |name: &str| ignored.contains(&name);
@@ -352,6 +353,9 @@ fn clear(options: &mut GenerationOptions, ignored: &[&str]) {
     }
     if off("stop") {
         stop.clear();
+    }
+    if off("cache_key") {
+        *cache_key = None;
     }
 }
 

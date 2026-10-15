@@ -37,6 +37,7 @@ jobs:
       - uses: ./.github/actions/rust-setup
         with:
           protoc: "true"
+          alsa: "true"
       - uses: MarcoIeni/release-plz-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

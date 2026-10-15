@@ -1,0 +1,26 @@
+[package]
+name = "corpus-ct-shell-companion"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (conversation-over-time fresh held-out): CT-18: 18. Shell companion"
+
+[lints]
+workspace = true
+
+[dependencies]
+# What the socket's connections hand the app, read as a `Running::stream`.
+async-channel = { workspace = true }
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# The pool the streams run on.
+bevy_tasks = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

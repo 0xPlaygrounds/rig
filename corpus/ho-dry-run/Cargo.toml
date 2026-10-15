@@ -1,0 +1,30 @@
+[package]
+name = "corpus-ho-dry-run"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H03: Dry-run mode"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The coding tools' arguments, the diff of a change, the atomic write and
+# `read`'s numbered lines.
+rig-tools = { path = "../../crates/rig-tools" }
+# A subagent starts in its parent's dry run.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+# The `DRY RUN` status item.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true }
+
+[dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }

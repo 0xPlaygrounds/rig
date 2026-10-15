@@ -203,6 +203,7 @@ pub struct GenerationOptions {
     pub top_p: Option<f64>,
     pub seed: Option<u64>,
     pub stop: Vec<String>,
+    pub cache_key: Option<String>, // a prompt-cache routing hint
     pub on_unsupported: Option<OnUnsupported>, // None: unset, acts as Error
 }
 #[non_exhaustive] pub enum Reasoning { Off, Effort(Effort), Budget { tokens: u32 } }
@@ -231,6 +232,7 @@ impl GenerationOptions {
     pub fn top_p(self, top_p: f64) -> Self;
     pub fn seed(self, seed: u64) -> Self;
     pub fn stop<S: Into<String>>(self, stop: impl IntoIterator<Item = S>) -> Self;
+    pub fn cache_key(self, key: impl Into<String>) -> Self;
     pub fn on_unsupported(self, policy: OnUnsupported) -> Self; // sets Some(policy)
     /// The policy in effect: the one set, or `Error`.
     pub fn unsupported_policy(&self) -> OnUnsupported;
@@ -321,6 +323,7 @@ pub struct OptionFields<'a> {
     pub top_p: Option<f64>,
     pub seed: Option<u64>,
     pub stop: &'a [String],
+    pub cache_key: Option<&'a str>,
 }
 
 /// What a wire does with one option.
@@ -352,6 +355,10 @@ pub struct OptionMap {
     pub top_p: Mapping,
     pub seed: Mapping,
     pub stop: Mapping,
+    /// `prompt_cache_key` on the OpenAI, ChatGPT, xAI, Mistral, Venice and
+    /// Moonshot dialects; elsewhere `Mapping::unrouted`, an `Omit`, since
+    /// the key is only a routing hint.
+    pub cache_key: Mapping,
 }
 
 /// The base builder's read-only view of the options and the raw params.
@@ -2296,6 +2303,7 @@ until it is listed here and the golden is regenerated.
 | Catalog | Cost: a catalog-priced cost whose cache read or write tokens have no listed rate leaves that part `None`, and `Cost::is_complete()` is false, where the part was priced at the input rate; the `total` sums the known parts | callers reading `cost.cache_read`, `cost.cache_write` or `cost.total` from catalog pricing | "Check `cost.is_complete()` before treating `total` as the whole charge; a cache part is `None` when the catalog has no rate for it." |
 | Catalog | Refresh: `Catalog::with_models_dev` lays a fetched models.dev copy over the built-in catalog without replacing the keys the built-in rows pin under `rig.pinned` (the hand-reviewed facts and the generator's joins); `with_overrides` replaces every key it is given | applications that refresh the catalog from models.dev | "Lay a fetched models.dev copy on with `with_models_dev`, not `with_overrides`, so rig's reviewed facts survive the refresh." |
 | P4 | Bedrock: the guardrail is sent on streams as well as unary requests (`crates/rig-bedrock/src/request.rs:135` filters it to unary today) | streaming callers of `with_guardrail` | "A Bedrock guardrail now also applies to streamed requests." |
+| P3 | ChatGPT (`chatgpt` wire): the catalog now lists the current ChatGPT-plan models (`gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-*`, `gpt-5.5`) with the reasoning controls of their OpenAI rows, so `Reasoning::Off` is refused for the ones that cannot turn reasoning off (`gpt-6.1-sol`, `gpt-6-astra` and their dated ids) instead of being sent as `"reasoning":{"effort":"none"}`, and every `chatgpt` row lists only the backend's 24-hour cache | ChatGPT-plan callers who send `Reasoning::Off` to those models | "`gpt-6.1-sol` and `gpt-6-astra` cannot turn reasoning off; choose an effort level instead of `Reasoning::Off`." |
 
 ### 12.1 P2: options
 

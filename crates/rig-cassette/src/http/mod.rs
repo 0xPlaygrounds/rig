@@ -39,10 +39,12 @@ use httpmock::MockServer;
 use rig_core::http_client::{
     self, HttpClientExt, LazyBody, MultipartForm, Request as HttpRequest, Response as HttpResponse,
 };
+use rig_core::redact;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::any::Any;
-use std::collections::BTreeMap;
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
 use std::fmt;
 use std::fs;
@@ -72,7 +74,7 @@ use shape::BodyMatching;
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const ATTEMPT_DIR_ENV: &str = "RIG_CASSETTE_ATTEMPT_DIR";
-const REDACTED: &str = "[REDACTED]";
+const REDACTED: &str = redact::REDACTED;
 const DUMMY_API_KEY: &str = REDACTED;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -1789,7 +1791,7 @@ fn headers_match(actual: &axum::http::HeaderMap, expected: &[NameValue]) -> bool
                 {
                     value.starts_with("multipart/form-data;")
                 } else {
-                    value == expected.value
+                    redact::text(value) == expected.value
                 }
             })
     })
@@ -2571,39 +2573,22 @@ fn artifact_safety_failures_with_policy(
         }
     }
 
-    let openai_api_key_tokens = openai_api_key_tokens(contents);
-    if !openai_api_key_tokens.is_empty() {
-        failures.push(format!(
-            "{} contains {} OpenAI API key-shaped token(s)",
-            cassette_path.display(),
-            openai_api_key_tokens.len()
-        ));
+    // Distinct key-shaped tokens of each kind, named, never echoed.
+    let mut keys: Vec<(redact::Kind, BTreeSet<&str>)> = Vec::new();
+    for secret in redact::find(contents) {
+        let token = contents.get(secret.range).unwrap_or_default();
+        match keys.iter_mut().find(|(kind, _)| *kind == secret.kind) {
+            Some((_, tokens)) => {
+                tokens.insert(token);
+            }
+            None => keys.push((secret.kind, BTreeSet::from([token]))),
+        }
     }
-
-    let anthropic_api_key_tokens = anthropic_api_key_tokens(contents);
-    if !anthropic_api_key_tokens.is_empty() {
+    for (kind, tokens) in keys {
         failures.push(format!(
-            "{} contains {} Anthropic API key-shaped token(s)",
+            "{} contains {} {kind}-shaped token(s)",
             cassette_path.display(),
-            anthropic_api_key_tokens.len()
-        ));
-    }
-
-    let google_api_key_tokens = google_api_key_tokens(contents);
-    if !google_api_key_tokens.is_empty() {
-        failures.push(format!(
-            "{} contains {} Google API key-shaped token(s)",
-            cassette_path.display(),
-            google_api_key_tokens.len()
-        ));
-    }
-
-    let aws_access_key_tokens = aws_access_key_tokens(contents);
-    if !aws_access_key_tokens.is_empty() {
-        failures.push(format!(
-            "{} contains {} AWS access key-shaped token(s)",
-            cassette_path.display(),
-            aws_access_key_tokens.len()
+            tokens.len()
         ));
     }
 
@@ -3005,8 +2990,9 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 /// Credential material a token exchange can return in a body.
 const OAUTH_TOKEN_KEYS: &[&str] = &["access_token", "id_token", "refresh_token"];
 
-/// Removes credentials, AWS account numbers and home-directory paths from a
-/// recording and normalizes its volatile fields. Everything else the provider
+/// Removes credentials (sensitive headers and query parameters, and every
+/// secret [`rig_core::redact`] finds), AWS account numbers and home-directory
+/// paths from a recording and normalizes its volatile fields. Everything else the provider
 /// sent is kept verbatim, so a fixture can seed a live call and a replay
 /// decodes the provider's own bytes.
 struct CassetteScrubber {
@@ -3216,7 +3202,7 @@ impl CassetteScrubber {
     }
 
     fn scrub_text(&mut self, text: &str) -> String {
-        let mut scrubbed = text.to_string();
+        let mut scrubbed = redact::text(text).into_owned();
         for key in self.policy.sensitive_query_params {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
@@ -3292,7 +3278,7 @@ enum HeaderMode {
 fn scrub_headers(policy: CassettePolicy, headers: &mut Vec<NameValue>, mode: HeaderMode) {
     match mode {
         HeaderMode::Request => {
-            for header in headers {
+            for header in headers.iter_mut() {
                 if policy.is_sensitive_header(&header.name) {
                     header.value = REDACTED.to_string();
                 }
@@ -3300,6 +3286,12 @@ fn scrub_headers(policy: CassettePolicy, headers: &mut Vec<NameValue>, mode: Hea
         }
         HeaderMode::Response => {
             headers.retain(|header| policy.is_allowed_response_header(&header.name));
+        }
+    }
+    // A key-shaped token in any header that stays is a secret too.
+    for header in headers {
+        if let Cow::Owned(value) = redact::text(&header.value) {
+            header.value = value;
         }
     }
 }
@@ -3310,24 +3302,6 @@ fn scrub_query_params(policy: CassettePolicy, query_params: &mut [NameValue]) {
             query_param.value = REDACTED.to_string();
         }
     }
-}
-
-fn token_end(text: &str, start: usize) -> usize {
-    let mut end = start;
-
-    for (offset, ch) in text[start..].char_indices() {
-        if offset == 0 || is_token_char(ch) {
-            end = start + offset + ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-
-    end
-}
-
-fn is_token_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')
 }
 
 fn is_redacted_placeholder(value: &str) -> bool {
@@ -3341,181 +3315,6 @@ fn is_redacted_placeholder(value: &str) -> bool {
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
         && counter.chars().all(|ch| ch.is_ascii_digit())
-}
-
-fn openai_api_key_tokens(contents: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut index = 0;
-
-    while let Some(relative_index) = contents[index..].find("sk-") {
-        let start = index + relative_index;
-        if start > 0
-            && contents[..start]
-                .chars()
-                .next_back()
-                .is_some_and(is_token_char)
-        {
-            index = start + "sk-".len();
-            continue;
-        }
-
-        let end = token_end(contents, start);
-        let token = &contents[start..end];
-        if is_openai_api_key_token(token) {
-            tokens.push(token.to_string());
-        }
-        index = end;
-    }
-
-    tokens.sort();
-    tokens.dedup();
-    tokens
-}
-
-fn is_openai_api_key_token(token: &str) -> bool {
-    if is_redacted_placeholder(token) {
-        return false;
-    }
-
-    if let Some(suffix) = token.strip_prefix("sk-proj-") {
-        return token_suffix_is_plausible_secret(suffix, 16);
-    }
-
-    if let Some(suffix) = token.strip_prefix("sk-svcacct-") {
-        return token_suffix_is_plausible_secret(suffix, 16);
-    }
-
-    let Some(suffix) = token.strip_prefix("sk-") else {
-        return false;
-    };
-    if suffix.starts_with("ant-") {
-        return false;
-    }
-    token_suffix_is_plausible_secret(suffix, 32)
-}
-
-fn anthropic_api_key_tokens(contents: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut index = 0;
-
-    while let Some(relative_index) = contents[index..].find("sk-ant-") {
-        let start = index + relative_index;
-        if start > 0
-            && contents[..start]
-                .chars()
-                .next_back()
-                .is_some_and(is_token_char)
-        {
-            index = start + "sk-ant-".len();
-            continue;
-        }
-
-        let end = token_end(contents, start);
-        let token = &contents[start..end];
-        if is_anthropic_api_key_token(token) {
-            tokens.push(token.to_string());
-        }
-        index = end;
-    }
-
-    tokens.sort();
-    tokens.dedup();
-    tokens
-}
-
-fn is_anthropic_api_key_token(token: &str) -> bool {
-    if is_redacted_placeholder(token) {
-        return false;
-    }
-
-    let Some(suffix) = token.strip_prefix("sk-ant-") else {
-        return false;
-    };
-    token_suffix_is_plausible_secret(suffix, 16)
-}
-
-fn token_suffix_is_plausible_secret(suffix: &str, min_len: usize) -> bool {
-    suffix.len() >= min_len
-        && suffix
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
-        && suffix.chars().any(|ch| ch.is_ascii_alphabetic())
-}
-
-fn aws_access_key_tokens(contents: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-
-    for prefix in ["AKIA", "ASIA"] {
-        let mut remaining = contents;
-        while let Some(index) = remaining.find(prefix) {
-            // A key starts a token; the same letters inside a base64 blob
-            // (a signature, ciphertext, an image) are not a key.
-            if !starts_token(contents, remaining, index) {
-                remaining = &remaining[index + prefix.len()..];
-                continue;
-            }
-            let after_prefix = &remaining[index + prefix.len()..];
-            let suffix_len = after_prefix
-                .chars()
-                .take_while(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit())
-                .map(char::len_utf8)
-                .sum::<usize>();
-            let token = &remaining[index..index + prefix.len() + suffix_len];
-
-            if suffix_len == 16 {
-                tokens.push(token.to_string());
-            }
-
-            remaining = &remaining[index + prefix.len()..];
-        }
-    }
-
-    tokens.sort();
-    tokens.dedup();
-    tokens
-}
-
-fn google_api_key_tokens(contents: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut remaining = contents;
-    const PREFIX: &str = "AIza";
-    const MIN_SUFFIX_LEN: usize = 20;
-
-    while let Some(index) = remaining.find(PREFIX) {
-        if !starts_token(contents, remaining, index) {
-            remaining = &remaining[index + PREFIX.len()..];
-            continue;
-        }
-        let after_prefix = &remaining[index + PREFIX.len()..];
-        let suffix_len = after_prefix
-            .chars()
-            .take_while(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
-            .map(char::len_utf8)
-            .sum::<usize>();
-        let token = &remaining[index..index + PREFIX.len() + suffix_len];
-
-        if suffix_len >= MIN_SUFFIX_LEN {
-            tokens.push(token.to_string());
-        }
-
-        remaining = &remaining[index + PREFIX.len()..];
-    }
-
-    tokens.sort();
-    tokens.dedup();
-    tokens
-}
-
-/// Whether `remaining[index..]`, a suffix of `contents`, begins a token:
-/// the preceding character in `contents` is neither a token character nor
-/// one of the standard base64 alphabet's `+` and `/`, so the same letters
-/// inside a base64 blob are not read as the start of a key.
-fn starts_token(contents: &str, remaining: &str, index: usize) -> bool {
-    let absolute = contents.len() - remaining.len() + index;
-    contents[..absolute]
-        .chars()
-        .next_back()
-        .is_none_or(|ch| !is_token_char(ch) && !matches!(ch, '+' | '/'))
 }
 
 fn scrub_query_param(input: &str, key: &str, replacement: &str) -> String {

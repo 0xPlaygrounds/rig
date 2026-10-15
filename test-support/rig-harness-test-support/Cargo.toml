@@ -1,0 +1,28 @@
+[package]
+name = "rig-harness-test-support"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "What the rig agent's plugin tests share."
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+# Named by the derive of `Ended`; `debug` names the systems of an
+# ambiguity report, and only tests link it.
+bevy_ecs = { workspace = true, features = ["debug"] }
+# The clock `advance` moves on.
+bevy_time = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The questions `AnswerAsks` answers.
+rig-harness = { path = "../../crates/rig-harness" }
+# The store a test keeps its session in.
+rig-memory = { path = "../../crates/rig-memory" }
+# The terminal view a test drives by its keys, with no terminal.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde_json = { workspace = true }

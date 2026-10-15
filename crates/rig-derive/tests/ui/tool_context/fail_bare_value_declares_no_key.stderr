@@ -8,6 +8,20 @@ error[E0277]: `std::string::String` declares no `ToolContext` key
   |
   = help: the trait `ContextValue` is not implemented for `std::string::String`
   = note: derive it (`#[derive(rig::ContextValue)]`, optionally `#[context(key = "…")]`) or write `impl ContextValue for std::string::String { const KEY: &'static str = "…"; }`; a bare `String`, integer or `serde_json::Value` cannot be stored — wrap it in a newtype
+help: the following other types implement trait `ContextValue`
+ --> $WORKSPACE/crates/rig-core/src/tool/facts.rs
+  |
+  | impl ContextValue for FilesRead {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FilesRead`
+...
+  | impl ContextValue for FilesChanged {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FilesChanged`
+...
+  | impl ContextValue for OutputCut {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `OutputCut`
+...
+  | impl ContextValue for ExitStatus {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `rig_core::tool::ExitStatus`
 note: required by a bound in `ToolContext::insert`
  --> $WORKSPACE/crates/rig-core/src/tool/context.rs
   |

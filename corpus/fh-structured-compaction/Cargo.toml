@@ -1,0 +1,37 @@
+[package]
+name = "corpus-fh-structured-compaction"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (fresh held-out): FH-10: 10. Structured compaction"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# The summary drawn as a collapsible "Summary" entry in the terminal view.
+tui = ["dep:rig-tui"]
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+rig-core = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The default compaction this plugin restructures.
+rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
+# The summary policy, its prompts and the summary state.
+rig-memory = { path = "../../crates/rig-memory", default-features = false }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# Which records of the effect log to read.
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The saved session's effect log.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+schemars = { workspace = true }
+serde_json = { workspace = true }

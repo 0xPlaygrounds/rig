@@ -9,7 +9,7 @@ use rig_agent::completion::FinishReason;
 
 use rig_core::effect::EffectKind;
 
-use rig_core::effect::Outcome;
+use rig_core::effect::Answered;
 
 use rig_cassette::effect_log::EffectLog;
 
@@ -59,7 +59,7 @@ pub(crate) fn completions(log: &EffectLog) -> Vec<&CompletionResponse> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
-            Ok(Outcome::Completion(response)) => Some(response),
+            Ok(Answered::Completion(response)) => Some(response),
             _ => None,
         })
         .collect()

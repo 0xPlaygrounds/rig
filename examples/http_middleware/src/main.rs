@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result};
 use rig::http_client::{
-    DynHttpClient, HeaderMap, HeaderValue, HttpMiddleware, Method, ReqwestClient, Uri,
+    DynHttpClient, Exchange, HeaderMap, HeaderValue, HttpMiddleware, ReqwestClient,
 };
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -22,8 +22,7 @@ struct WireLogger;
 impl HttpMiddleware for WireLogger {
     fn before_request_headers<'a>(
         &'a self,
-        _method: &'a Method,
-        _uri: &'a Uri,
+        _exchange: Exchange<'a>,
         headers: &'a mut HeaderMap,
     ) -> WasmBoxedFuture<'a, rig::http_client::Result<()>> {
         Box::pin(async move {
@@ -37,12 +36,12 @@ impl HttpMiddleware for WireLogger {
 
     fn before_request_body<'a>(
         &'a self,
-        method: &'a Method,
-        uri: &'a Uri,
+        exchange: Exchange<'a>,
         _headers: &'a HeaderMap,
         body: bytes::Bytes,
     ) -> WasmBoxedFuture<'a, rig::http_client::Result<bytes::Bytes>> {
         Box::pin(async move {
+            let Exchange { method, uri, .. } = exchange;
             println!("→ {method} {uri} ({} byte payload)", body.len());
             Ok(body)
         })
@@ -50,8 +49,7 @@ impl HttpMiddleware for WireLogger {
 
     fn after_response<'a>(
         &'a self,
-        _method: &'a Method,
-        _uri: &'a Uri,
+        _exchange: Exchange<'a>,
         status: http::StatusCode,
         headers: &'a HeaderMap,
     ) -> WasmBoxedFuture<'a, rig::http_client::Result<()>> {

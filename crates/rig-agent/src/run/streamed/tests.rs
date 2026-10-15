@@ -4,7 +4,7 @@ use super::super::{AgentRun, AgentRunStep, PendingToolCall, ToolAnswer};
 use super::*;
 use rig_core::completion::{CompletionResponse, Usage};
 use rig_core::message::ToolFunction;
-use rig_core::streaming::Transcript;
+use rig_core::streaming::StreamRecord;
 use serde_json::json;
 
 /// Answer an executable call with the success `2`.
@@ -72,7 +72,7 @@ fn call(part: u32, call: &ToolCall) -> Vec<serde_json::Value> {
 
 /// The items of a stream, in order.
 fn items(events: impl IntoIterator<Item = Vec<serde_json::Value>>) -> Vec<Item<StreamEvent>> {
-    Transcript::parse_prefix(serde_json::Value::Array(
+    StreamRecord::parse_prefix(serde_json::Value::Array(
         events.into_iter().flatten().collect(),
     ))
     .expect("a stream in order")

@@ -79,6 +79,12 @@ where
     /// [`GenerationOptions`](crate::completion::GenerationOptions) are
     /// default is not checked against the catalog, as when it is sent.
     ///
+    /// The request's messages are not read: its system prompt and a
+    /// stand-in prompt take their place, so a check costs the same for any
+    /// history. A refusal that depends on what the messages hold, such as
+    /// Bedrock's of a cache checkpoint after a reasoning turn, is reported
+    /// when the request is sent.
+    ///
     /// # Errors
     ///
     /// [`CheckError::Unsupported`](crate::completion::CheckError::Unsupported)
@@ -93,8 +99,8 @@ where
     }
 }
 
-/// The answer of `run`, a dry run of `request`, for [`Model::check`]. The
-/// run goes on past each refusal as under
+/// The answer of `run`, a dry run of `request` without its messages, for
+/// [`Model::check`]. The run goes on past each refusal as under
 /// [`OnUnsupported::Ignore`](crate::completion::OnUnsupported::Ignore), so
 /// it meets every one; a request whose options are default stays default,
 /// so it is not checked against the catalog, as when it is sent.
@@ -103,7 +109,7 @@ pub(crate) fn check_with(
     run: impl FnOnce(crate::completion::CompletionRequest) -> Result<(), ProviderError>,
 ) -> Result<(), crate::completion::CheckError> {
     use crate::completion::{CheckError, OnUnsupported};
-    let mut request = request.clone();
+    let mut request = without_messages(request);
     if !request.options.is_default() {
         request.options.on_unsupported = Some(OnUnsupported::Ignore);
     }
@@ -111,6 +117,55 @@ pub(crate) fn check_with(
         (Err(error), _) => Err(CheckError::Invalid(error)),
         (Ok(()), refusals) if refusals.is_empty() => Ok(()),
         (Ok(()), refusals) => Err(CheckError::Unsupported(refusals)),
+    }
+}
+
+/// `request` with its leading system prompt and a stand-in prompt as its
+/// messages, everything else as it is: what [`check_with`] dry-runs.
+fn without_messages(
+    request: &crate::completion::CompletionRequest,
+) -> crate::completion::CompletionRequest {
+    use crate::completion::{CompletionRequest, Message};
+    let CompletionRequest {
+        model,
+        chat_history,
+        documents,
+        tools,
+        temperature,
+        max_tokens,
+        tool_choice,
+        additional_params,
+        output_schema,
+        record_telemetry_content,
+        accept_unknown_finish_reasons,
+        foreign_reasoning,
+        options,
+        provider_options,
+        cache_points,
+    } = request;
+    let system = chat_history
+        .first()
+        .filter(|message| matches!(message, Message::System { .. }));
+    CompletionRequest {
+        model: model.clone(),
+        chat_history: system
+            .cloned()
+            .into_iter()
+            .chain([Message::user("check")])
+            .collect(),
+        documents: documents.clone(),
+        tools: tools.clone(),
+        temperature: *temperature,
+        max_tokens: *max_tokens,
+        tool_choice: tool_choice.clone(),
+        additional_params: additional_params.clone(),
+        output_schema: output_schema.clone(),
+        record_telemetry_content: *record_telemetry_content,
+        accept_unknown_finish_reasons: *accept_unknown_finish_reasons,
+        foreign_reasoning: *foreign_reasoning,
+        options: options.clone(),
+        provider_options: provider_options.clone(),
+        cache_points: cache_points.clone(),
     }
 }
 
@@ -129,11 +184,33 @@ pub trait Transport<W: Wire>: Clone + WasmCompatSend + WasmCompatSync + 'static 
 }
 
 /// What the driver tells a transport about one send.
+#[derive(Clone)]
 pub struct Exchange {
     /// How the reply is read.
     pub mode: Mode,
     /// The observation an observing transport records the send under.
     pub(crate) observation: Option<AdapterContext>,
+    /// What the HTTP transport puts in the request's extensions, such as
+    /// the [`Serving`](crate::serve::Serving) of a dispatched effect.
+    pub(crate) extensions: http::Extensions,
+}
+
+/// What a caller adds to one send besides the request: the observation to
+/// record it under, and the HTTP request's extensions.
+#[derive(Default)]
+pub(crate) struct Sending {
+    pub(crate) observation: Option<AdapterContext>,
+    pub(crate) extensions: http::Extensions,
+}
+
+impl Sending {
+    /// A send observed under `observation`.
+    pub(crate) fn observed(observation: AdapterContext) -> Self {
+        Self {
+            observation: Some(observation),
+            extensions: http::Extensions::new(),
+        }
+    }
 }
 
 /// One reply, opened when first polled.
@@ -271,7 +348,7 @@ where
         &self,
         request: impl Into<Request<W>>,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
-        self.finished(request.into(), None)
+        self.finished(request.into(), Sending::default())
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
@@ -280,7 +357,7 @@ where
         request: impl Into<Request<W>>,
         observation: AdapterContext,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
-        self.finished(request.into(), Some(observation))
+        self.finished(request.into(), Sending::observed(observation))
     }
 
     /// The call opens when first polled, so its span is created under the
@@ -288,22 +365,17 @@ where
     fn finished(
         &self,
         request: Request<W>,
-        observation: Option<AdapterContext>,
+        sending: Sending,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
         let model = self.clone();
-        async move {
-            model
-                .open(request, Mode::Unary, observation)?
-                .finish()
-                .await
-        }
+        async move { model.open(request, Mode::Unary, sending)?.finish().await }
     }
 
     /// Open a streamed reply. Encoding errors return here; every later
     /// failure arrives in-band, as the stream's last item. Nothing is sent
     /// until the stream is first polled.
     pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(request.into(), Mode::Streaming, None)
+        self.open(request.into(), Mode::Streaming, Sending::default())
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
@@ -312,7 +384,11 @@ where
         request: impl Into<Request<W>>,
         observation: AdapterContext,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(request.into(), Mode::Streaming, Some(observation))
+        self.open(
+            request.into(),
+            Mode::Streaming,
+            Sending::observed(observation),
+        )
     }
 
     /// [`Self::call`], with a failure paired with the request path of the
@@ -321,7 +397,7 @@ where
         &self,
         request: Request<W>,
     ) -> Result<Response<W>, (ProviderError, String)> {
-        self.open(request, Mode::Unary, None)
+        self.open(request, Mode::Unary, Sending::default())
             .map_err(|error| (error, String::new()))?
             .finish_routed()
             .await
@@ -343,7 +419,7 @@ where
         &self,
         request: Request<W>,
         mode: Mode,
-        observation: Option<AdapterContext>,
+        sending: Sending,
     ) -> Result<Streamed<W::Op>, ProviderError> {
         let describe = self.wire.describe();
         let request = <W::Op as Operation>::prepare(request, &describe)?;
@@ -352,7 +428,16 @@ where
         let fold = <W::Op as Operation>::fold(&request, &mut call);
         let span = call.span;
         let payload = self.wire.encode(request, mode)?;
-        let opening = self.transport.send(payload, Exchange { mode, observation });
+        let Sending {
+            observation,
+            extensions,
+        } = sending;
+        let exchange = Exchange {
+            mode,
+            observation,
+            extensions,
+        };
+        let opening = self.transport.send(payload, exchange);
         let shared = Arc::new(Mutex::new(Shared::new(fold)));
         let reading = read(
             self.wire.clone(),
@@ -487,7 +572,6 @@ fn read<W: Wire>(
 
 /// A reply decoded from frames already in hand: its items, then its
 /// response or the error that ended it.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) struct Decoded<Op: Operation> {
     /// Read only by relays and tests; a websocket session needs the outcome.
     #[cfg(any(test, feature = "test-utils"))]
@@ -589,7 +673,6 @@ where
 /// Feed frames already in hand through `reassembler` and `decoder` into
 /// `reply`, as [`read`] does: the reply ends at the provider's end, or the
 /// decoder decides at EOF, and what the reassembler rebuilt is recorded.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) fn feed<'id, Op, F, D, R>(
     decoder: &mut D,
     mut reassembler: Option<R>,
@@ -606,7 +689,6 @@ where
     fed
 }
 
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 fn feed_until_end<'id, Op, F, D, R>(
     decoder: &mut D,
     mut reassembler: Option<&mut R>,
@@ -640,7 +722,6 @@ pub(crate) fn record<Op: Operation>(
 /// Fold a fed reply as a stream does: its items, then its response, or the
 /// error that ended it. `reply.raw` stands unless it is null, when the
 /// decoder's record does.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) fn settle<Op: Operation>(
     shared: Mutex<Shared<Op>>,
     fed: Result<(), ProviderError>,
@@ -679,6 +760,33 @@ pub(crate) fn settle<Op: Operation>(
     }
 }
 
+/// [`decode_reply`](crate::wire::decode_reply), with `raw` the reply's
+/// whole document as a transport reports it (`Null` for none, so the
+/// reassembler's stands), for tests that state what the transport read.
+pub(crate) fn decode_reply<W: Wire>(
+    wire: &W,
+    request: &Request<W>,
+    mode: Mode,
+    frames: impl IntoIterator<Item = W::Frame>,
+    raw: serde_json::Value,
+) -> Result<Response<W>, ProviderError> {
+    let describe = wire.describe();
+    let fold = <W::Op as Operation>::fold(request, &mut Call::new(&describe, mode));
+    let shared = Mutex::new(Shared::new(fold));
+    let fed = feed(
+        &mut wire.decoder(),
+        Some(wire.reassembler()),
+        &shared,
+        frames,
+    );
+    let reply = crate::wire::Reply {
+        provider: describe.name.to_owned(),
+        raw,
+        provider_request_id: None,
+    };
+    settle(shared, fed, reply).outcome
+}
+
 /// A completion reply decoded from frames already in hand, as the bus
 /// relays it: its items, then the response, or the error that ended it.
 #[cfg(any(test, feature = "test-utils"))]
@@ -693,7 +801,7 @@ where
     use crate::streaming::Relayed;
 
     let provider = wire.describe().name.to_owned();
-    let shared = Mutex::new(Shared::new(crate::operation::Turn::relayed(
+    let shared = Mutex::new(Shared::new(crate::operation::ReplyFold::relayed(
         provider.clone(),
     )));
     let fed = feed(
@@ -765,7 +873,7 @@ impl Decoded<crate::operation::Completion> {
 macro_rules! decode_events {
     ($decoder:expr, $provider:expr, $events:expr) => {
         $crate::driver::decode_with(
-            $crate::operation::Turn::relayed($provider),
+            $crate::operation::ReplyFold::relayed($provider),
             $provider,
             |reply| {
                 let mut decoder = $decoder;
@@ -795,7 +903,7 @@ pub(crate) use decode_events;
 macro_rules! feed_frames {
     ($decoder:expr, $provider:expr, $frames:expr) => {
         $crate::driver::decode_with(
-            $crate::operation::Turn::relayed($provider),
+            $crate::operation::ReplyFold::relayed($provider),
             $provider,
             |reply| {
                 let mut decoder = $decoder;
@@ -809,7 +917,7 @@ macro_rules! feed_frames {
     };
     ($decoder:expr, $reassembler:expr, $provider:expr, $frames:expr) => {
         $crate::driver::decode_with(
-            $crate::operation::Turn::relayed($provider),
+            $crate::operation::ReplyFold::relayed($provider),
             $provider,
             |reply| {
                 let mut decoder = $decoder;
