@@ -45,6 +45,10 @@ pub enum ImageBody {
     /// `{inputs, parameters: {width, height}}`, answered with raw image bytes.
     /// The model is addressed through the URL path.
     HuggingFace,
+    /// MiniMax: `{model, prompt, width, height, response_format: "base64"}`,
+    /// answered with `data.image_base64[]` beside a `base_resp` status that
+    /// can report a failure under HTTP 200.
+    MiniMax,
 }
 
 /// Which body a speech endpoint takes.
@@ -61,6 +65,10 @@ pub enum SpeechBody {
     /// It addresses this endpoint by *language*, so the identifier a caller
     /// passes as the model is the language tag (`"EN"`).
     Hyperbolic,
+    /// MiniMax: `{model, text, stream, output_format, voice_setting: {voice_id,
+    /// speed}}`, answered with hex-encoded audio under `data.audio` beside a
+    /// `base_resp` status that can report a failure under HTTP 200.
+    MiniMax,
 }
 
 /// Which body a transcription endpoint takes.
@@ -352,7 +360,7 @@ pub(super) const DOUBLEWORD_EMBEDDING_WIDTHS: &[ModelWidth] = &[ModelWidth {
 }];
 
 /// Encode an authenticated JSON POST with whole-response framing.
-fn json_post(
+pub(crate) fn json_post(
     provider: &OpenAIConfig,
     path: &str,
     deployment: Option<&str>,
@@ -386,7 +394,7 @@ fn get(provider: &OpenAIConfig, path: &str) -> Result<Encoded, EncodeError> {
 /// Authenticate and build a request, then apply its modality envelope hook.
 /// Return construction or hook errors. Use whole-response framing and the
 /// dialect's request-ID header.
-fn encoded(
+pub(crate) fn encoded(
     provider: &OpenAIConfig,
     builder: http::request::Builder,
     body: Body,
@@ -953,6 +961,8 @@ pub enum ImagesEvent {
     Json(ImagesReply),
     /// The image bytes themselves, with no envelope at all.
     Raw(Vec<u8>),
+    /// A MiniMax reply body, decoded once its status envelope is checked.
+    MiniMax(Vec<u8>),
 }
 
 #[cfg(feature = "image")]
@@ -963,6 +973,10 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
         match self.body {
             // Preserve raw image bytes even when framing recognized valid UTF-8.
             ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(match frame {
+                WireFrame::Text(text) => text.into_bytes(),
+                WireFrame::Bytes(bytes) => bytes,
+            })),
+            ImageBody::MiniMax => WireEvent::Known(ImagesEvent::MiniMax(match frame {
                 WireFrame::Text(text) => text.into_bytes(),
                 WireFrame::Bytes(bytes) => bytes,
             })),
@@ -985,6 +999,12 @@ impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
             // document, so `raw` stays null rather than restating the bytes.
             ImagesEvent::Raw(image) => {
                 return Ok(out.end(ImageGenerationResponse::new(image)));
+            }
+            ImagesEvent::MiniMax(body) => {
+                let reply = crate::providers::minimax::decode_reply::<
+                    crate::providers::minimax::image_generation::ImageGenerationReply,
+                >(&body)?;
+                return Ok(out.end(reply.into_response()?));
             }
             ImagesEvent::Json(reply) => reply,
         };
@@ -1047,6 +1067,15 @@ impl Wire for Images {
                 "prompt": request.prompt,
                 "width": request.width,
                 "height": request.height,
+            }),
+            // MiniMax answers with URLs unless asked for base64, which is
+            // the only form this wire decodes.
+            ImageBody::MiniMax => serde_json::json!({
+                "model": self.model,
+                "prompt": request.prompt,
+                "width": request.width,
+                "height": request.height,
+                "response_format": "base64",
             }),
             // The model is addressed through the URL, not the body.
             ImageBody::HuggingFace => serde_json::json!({
@@ -1141,6 +1170,12 @@ impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
         let audio = match self.body {
             // OpenAI and xAI answer with the audio itself.
             SpeechBody::OpenAi | SpeechBody::Xai => event,
+            SpeechBody::MiniMax => {
+                let reply = crate::providers::minimax::decode_reply::<
+                    crate::providers::minimax::audio_generation::SpeechReply,
+                >(&event)?;
+                return Ok(out.end(reply.into_response()?));
+            }
             // Hyperbolic wraps it, base64-encoded, in a JSON envelope.
             SpeechBody::Hyperbolic => {
                 let reply = match serde_json::from_slice::<SpeechReply>(&event) {
@@ -1178,6 +1213,7 @@ impl Wire for Speech {
         request: crate::audio_generation::AudioGenerationRequest,
         _mode: Mode,
     ) -> Result<Encoded, EncodeError> {
+        let mut additional_params = request.additional_params;
         let mut body = match self.provider.dialect.quirks.speech_body {
             SpeechBody::OpenAi => serde_json::json!({
                 "model": self.model,
@@ -1199,9 +1235,33 @@ impl Wire for Speech {
                 "text": request.text,
                 "speed": request.speed,
             }),
+            // Only the non-streaming reply's hex audio is decoded.
+            SpeechBody::MiniMax => serde_json::json!({
+                "model": self.model,
+                "text": request.text,
+                "stream": false,
+                "output_format": "hex",
+                "voice_setting": {
+                    "voice_id": request.voice,
+                    "speed": request.speed,
+                },
+            }),
         };
+        // A caller's `voice_setting` adds to the derived one, so setting the
+        // volume keeps the voice.
+        if let Some(derived) = body
+            .get_mut("voice_setting")
+            .and_then(serde_json::Value::as_object_mut)
+            && let Some(params) = additional_params
+                .as_mut()
+                .and_then(serde_json::Value::as_object_mut)
+            && let Some(serde_json::Value::Object(caller)) = params.get("voice_setting")
+        {
+            derived.extend(caller.clone());
+            params.shift_remove("voice_setting");
+        }
         // Caller parameters take precedence, including response format and instructions.
-        if let Some(additional_params) = request.additional_params {
+        if let Some(additional_params) = additional_params {
             crate::json_utils::merge_inplace(&mut body, additional_params);
         }
 

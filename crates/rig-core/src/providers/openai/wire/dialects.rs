@@ -400,6 +400,13 @@ pub const ZAI_CODING: Dialect = Dialect {
 /// MiniMax's OpenAI-compatible half (global).
 pub const MINIMAX: Dialect = Dialect {
     base_url_env: Some("MINIMAX_API_BASE"),
+    quirks: Quirks {
+        image_generation_path: "/image_generation",
+        audio_generation_path: "/t2a_v2",
+        image_body: ImageBody::MiniMax,
+        speech_body: SpeechBody::MiniMax,
+        ..Quirks::openai()
+    },
     ..Dialect::gateway(
         crate::providers::minimax::PROVIDER_NAME,
         "https://api.minimax.io/v1",
