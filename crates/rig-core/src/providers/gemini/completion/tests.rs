@@ -1191,7 +1191,8 @@ fn a_later_system_message_folds_into_the_instruction() {
 }
 
 /// A tool's schemas go as its declaration's `parametersJsonSchema` and,
-/// when it declares an output, `responseJsonSchema`.
+/// when it declares an output, `responseJsonSchema`, which describes the
+/// output under `result` as a result is sent back.
 #[test]
 fn a_tool_declares_its_output_as_response_json_schema() {
     let parameters = crate::tool::Schema::object();
@@ -1205,9 +1206,17 @@ fn a_tool_declares_its_output_as_response_json_schema() {
         json!({"name": "forecast", "description": "Forecast the weather",
             "parametersJsonSchema": {"type": "object"}})
     );
-    let output = crate::tool::Schema::new(json!({"type": "number"})).expect("valid schema");
+    let output = crate::tool::Schema::new(json!({
+        "$defs": {"celsius": {"type": "number"}},
+        "$ref": "#/$defs/celsius",
+    }))
+    .expect("valid schema");
     assert_eq!(
         declaration(tool.with_output_schema(output))["responseJsonSchema"],
-        json!({"type": "number"})
+        json!({
+            "type": "object",
+            "$defs": {"celsius": {"type": "number"}},
+            "properties": {"result": {"$ref": "#/$defs/celsius"}},
+        })
     );
 }

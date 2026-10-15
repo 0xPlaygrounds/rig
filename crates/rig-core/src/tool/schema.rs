@@ -91,7 +91,7 @@ impl Schema {
     /// The schema of a type `T` as it serializes, such as a tool's output:
     /// inline and without `$schema`, keeping `null` for an `Option`.
     pub fn of<T: JsonSchema>() -> Self {
-        Self(generate::<T>(SchemaSettings::draft2020_12()).to_value())
+        Self(generate::<T>(SchemaSettings::draft2020_12().for_serialize()).to_value())
     }
 
     /// The schema of any JSON object: `{"type": "object"}`.
@@ -291,18 +291,24 @@ fn check(schema: &Value, at: &str, problems: &mut Vec<Problem>) {
         } else if key == "type" {
             type_names(value, &at, problems);
         } else if key == "required" {
-            let names = value
-                .as_array()
-                .filter(|names| names.iter().all(Value::is_string));
-            if names.is_none() {
-                problems.push(expected(&at, "a list of property names", value));
+            names(value, &at, problems);
+        } else if key == "dependentRequired" {
+            match value {
+                Value::Object(map) => {
+                    for (name, required) in map {
+                        names(required, &child(&at, name), problems);
+                    }
+                }
+                other => problems.push(expected(&at, "an object of property name lists", other)),
             }
         } else if key == "enum" || key == "examples" {
             if !value.is_array() {
                 problems.push(expected(&at, "a list", value));
             }
         } else if COUNTS.contains(&key) {
-            if value.as_u64().is_none() {
+            // JSON Schema's integers include numbers such as `1.0`.
+            let count = value.as_f64().is_some_and(|n| n >= 0.0 && n.fract() == 0.0);
+            if !count {
                 problems.push(expected(&at, "a non-negative integer", value));
             }
         } else if key == "multipleOf" {
@@ -326,6 +332,26 @@ fn check(schema: &Value, at: &str, problems: &mut Vec<Problem>) {
             problems.push(expected(&at, "a boolean", value));
         }
     }
+}
+
+/// Adds the problems of a list of distinct property names.
+fn names(value: &Value, at: &str, problems: &mut Vec<Problem>) {
+    match value.as_array() {
+        Some(names) if names.iter().all(Value::is_string) => {
+            if !distinct(names) {
+                problems.push(problem(at, "a property name is listed twice"));
+            }
+        }
+        _ => problems.push(expected(at, "a list of property names", value)),
+    }
+}
+
+/// Whether no two of `values` are equal.
+fn distinct(values: &[Value]) -> bool {
+    values
+        .iter()
+        .enumerate()
+        .all(|(index, each)| !values.iter().skip(index + 1).any(|other| other == each))
 }
 
 /// Adds the problems of a non-empty list of schemas.
@@ -353,11 +379,7 @@ fn type_names(value: &Value, at: &str, problems: &mut Vec<Problem>) {
             for (index, each) in names.iter().enumerate() {
                 name(each, &child(at, &index.to_string()));
             }
-            let distinct = names
-                .iter()
-                .enumerate()
-                .all(|(index, each)| !names.iter().skip(index + 1).any(|other| other == each));
-            if !distinct {
+            if !distinct(names) {
                 problems.push(problem(at, "a type is listed twice"));
             }
         }

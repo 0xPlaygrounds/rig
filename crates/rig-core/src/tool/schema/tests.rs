@@ -18,7 +18,8 @@ fn a_well_formed_schema_is_kept_as_written() {
         "type": "object",
         "properties": {
             "path": {"type": "string", "description": "A file.", "x-provider": 1},
-            "lines": {"type": ["array", "null"], "items": {"type": "integer", "minimum": 1}},
+            "lines": {"type": ["array", "null"], "items": {"type": "integer", "minimum": 1},
+                "maxItems": 10.0},
             "mode": {"enum": ["fast", "careful"]},
             "pair": {"type": "array", "items": [{"type": "string"}, true]},
         },
@@ -44,6 +45,7 @@ fn every_malformed_keyword_is_reported_where_it_is() {
                 "tags": {"type": ["string", "string"], "items": 3},
             },
             "required": "path",
+            "dependentRequired": {"path": ["limit", "limit"]},
             "anyOf": [],
         })),
         [
@@ -53,6 +55,7 @@ fn every_malformed_keyword_is_reported_where_it_is() {
             "/properties/tags/type: a type is listed twice",
             "/properties/tags/items: expected a schema (an object or a boolean), got a number",
             "/required: expected a list of property names, got a string",
+            "/dependentRequired/path: a property name is listed twice",
             "/anyOf: expected a non-empty list of schemas, got a list",
         ]
     );
@@ -79,6 +82,8 @@ struct Weather {
     note: Option<String>,
 }
 
+/// An output schema describes what serializing writes: an `Option` field
+/// is always there, `null` when empty.
 #[test]
 fn an_output_schema_keeps_null_for_an_option() {
     let schema = Schema::of::<Weather>();
@@ -87,7 +92,7 @@ fn an_output_schema_keeps_null_for_an_option() {
         schema["properties"]["note"]["type"],
         json!(["string", "null"])
     );
-    assert_eq!(schema["required"], json!(["celsius"]));
+    assert_eq!(schema["required"], json!(["celsius", "note"]));
 }
 
 #[derive(JsonSchema)]

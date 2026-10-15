@@ -546,9 +546,28 @@ fn declaration(tool: crate::completion::ToolDefinition) -> Value {
         ("parametersJsonSchema", Some(tool.parameters.into_value())),
         (
             "responseJsonSchema",
-            tool.output_schema.map(crate::tool::Schema::into_value),
+            tool.output_schema.map(response_schema),
         ),
     ]))
+}
+
+/// The schema of the `response` a tool's result goes back in
+/// ([`user_part`]): its output under `result`. The output's root `$defs`
+/// move to the new root, so its references still resolve.
+fn response_schema(output: crate::tool::Schema) -> Value {
+    let mut output = output.into_value();
+    let mut response = Map::new();
+    response.insert("type".to_owned(), json!("object"));
+    for key in ["$defs", "definitions"] {
+        if let Some(definitions) = output
+            .as_object_mut()
+            .and_then(|root| root.shift_remove(key))
+        {
+            response.insert(key.to_owned(), definitions);
+        }
+    }
+    response.insert("properties".to_owned(), json!({ "result": output }));
+    Value::Object(response)
 }
 
 /// An object of the entries that are set.
