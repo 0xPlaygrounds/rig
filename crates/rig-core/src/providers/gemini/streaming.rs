@@ -82,11 +82,14 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
     type Event = GenerateContentChunk;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<GenerateContentChunk> {
-        // ID-only metadata must not create an unknown-content truncation tail.
-        if GenerateContentDecoder::is_analysis_only(&frame) {
-            return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
+        match wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS) {
+            chunk @ WireEvent::Known(_) => chunk,
+            // ID-only metadata must not create an unknown-content truncation tail.
+            _ if Self::is_analysis_only(&frame) => {
+                wire::classify_untyped_line(frame.as_str().as_bytes())
+            }
+            event => event,
         }
-        wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
     }
 
     fn decode(
@@ -347,7 +350,7 @@ impl GenerateContentDecoder {
             _id: String,
         }
         matches!(
-            wire::classify_marker_keyed_frame::<ResponseIdOnly>(&frame.as_str(), &["responseId"]),
+            wire::classify_untyped_line::<ResponseIdOnly>(frame.as_str().as_bytes()),
             WireEvent::Known(_)
         )
     }
