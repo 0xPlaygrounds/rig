@@ -105,6 +105,7 @@ impl<Op: Operation<Emit = Free>> Wire for Local<Op> {
     type Op = Op;
     type Payload = Op::Request;
     type Frame = Step<Op>;
+    type Event = Step<Op>;
     type Decoder<'id> = Steps;
     type Reassembler = crate::wire::document::Unreassembled;
 

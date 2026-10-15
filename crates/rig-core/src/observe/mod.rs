@@ -18,8 +18,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    effect::{Answered, EffectFamily, EffectId, HandlerKey},
-    error::ErrorReport,
+    effect::{EffectFamily, EffectId, HandlerKey},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -106,29 +105,18 @@ impl Subject {
     }
 }
 
-/// Where in the pipeline a fact was seen. The bus's four sets, the agent
-/// runtime's sets folded into one, the handler side, and the host.
+/// Where a fact was seen: the handler side (the provider request
+/// boundary), or the host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
-    /// Before dispatch: a policy held, released or denied an intent.
-    Gate,
-    /// The driver took or refused an intent.
-    Dispatch,
-    /// Handler-side layer decision on entry or exit.
+    /// Handler-side: the provider request boundary.
     Handler,
-    /// The driver landed what a handler produced.
-    Collect,
-    /// After the record: a policy replaced an answer.
-    Judge,
-    /// The agent runtime: run endings.
-    Runtime,
     /// The application's own policies and state.
     Host,
 }
 
-/// Stable emitter name and optional version. [`Self::unknown`] explicitly
-/// represents unavailable attribution; it is not inferred from the outcome.
+/// Stable emitter name and optional version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Emitter {
     /// The emitter's stable name (a bus's name, a layer's name, a host
@@ -155,29 +143,13 @@ impl Emitter {
             version: Some(version.into()),
         }
     }
-
-    /// The fact landed; the runtime does not know which policy made it.
-    /// The name `unknown` is reserved for this: a host emitter must name
-    /// itself otherwise.
-    pub fn unknown() -> Self {
-        Self::named("unknown")
-    }
-
-    /// Whether this is the explicit unknown emitter (by its reserved name).
-    pub fn is_unknown(&self) -> bool {
-        self.name == "unknown"
-    }
 }
 
 /// A structured reason: a stable code and an optional free-text detail.
 /// The code is what a comparison keys on; the detail is for a reader.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reason {
-    /// A stable, machine-readable code: an [`crate::error::ErrorKind::code`]
-    /// for a fact carrying a report, or an emitter's own (`intake_bound`,
-    /// `serial_key_busy`, `reentrant`, `ids_exhausted`, `layer_discarded`,
-    /// `despawned_before_dispatch`, `never_served`, `settled`, `max_turns`,
-    /// …).
+    /// A stable, machine-readable code, such as `incomplete_expected`.
     pub code: String,
     /// What a reader wants to know.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -185,14 +157,6 @@ pub struct Reason {
 }
 
 impl Reason {
-    /// A reason with a code and no detail.
-    pub fn code(code: impl Into<String>) -> Self {
-        Self {
-            code: code.into(),
-            detail: None,
-        }
-    }
-
     /// A reason with a code and a detail.
     pub fn with_detail(code: impl Into<String>, detail: impl Into<String>) -> Self {
         Self {
@@ -200,55 +164,10 @@ impl Reason {
             detail: Some(detail.into()),
         }
     }
-
-    /// The reason an error report carries: its kind's stable code
-    /// ([`crate::error::ErrorKind::code`]), its message as the detail.
-    pub fn from_report(report: &ErrorReport) -> Self {
-        Self::with_detail(report.kind.code(), report.message.clone())
-    }
-
-    /// The explicit unknown reason.
-    pub fn unknown() -> Self {
-        Self::code("unknown")
-    }
 }
 
-/// The compact form of an outcome an observation carries: enough to
-/// classify without duplicating the exchange record that holds the value.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum OutcomeSummary {
-    /// The handler answered with an outcome of this family.
-    Ok {
-        /// The answer's family.
-        family: EffectFamily,
-    },
-    /// The handler (or a decision) answered with this report.
-    Err {
-        /// The report's kind and message.
-        reason: Reason,
-        /// Whether the report says a retry may succeed.
-        retryable: bool,
-    },
-}
-
-impl OutcomeSummary {
-    /// The summary of an outcome.
-    pub fn of(outcome: &Result<Answered, ErrorReport>) -> Self {
-        match outcome {
-            Ok(outcome) => Self::Ok {
-                family: outcome.family(),
-            },
-            Err(report) => Self::Err {
-                reason: Reason::from_report(report),
-                retryable: report.retryable,
-            },
-        }
-    }
-}
-
-/// The fact. Every variant carries its own before/after data or reason;
-/// a host adds its own through [`Action::Host`].
+/// The fact: one the provider request boundary saw, or a host's own
+/// ([`Action::Host`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
@@ -256,60 +175,6 @@ pub enum Action {
     Adapter {
         /// Correlation and typed boundary metadata.
         observation: AdapterObservation,
-    },
-    /// A pending intent was held before dispatch.
-    Held {
-        /// Why, when the holder said.
-        reason: Reason,
-    },
-    /// A held intent was released to dispatch.
-    Released,
-    /// An intent was denied before any handler served it.
-    Denied {
-        /// The report the consumer receives.
-        reason: Reason,
-    },
-    /// The driver took an intent: the id it issued.
-    Issued,
-    /// The driver refused an intent before any handler: no record.
-    Refused {
-        /// Why: `handler_unavailable`, `reentrant` or `ids_exhausted`, with
-        /// the report's message as the detail.
-        reason: Reason,
-    },
-    /// An outcome landed and the record closed.
-    Landed {
-        /// The outcome, in brief.
-        outcome: OutcomeSummary,
-    },
-    /// A stream ended before its terminal record.
-    StreamTruncated {
-        /// Items the consumer had received.
-        delivered: usize,
-        /// What the last items seen were ([`StreamEvent::name`], or
-        /// `"Unknown"`), bounded, for after-the-fact classification.
-        ///
-        /// [`StreamEvent::name`]: crate::streaming::StreamEvent::name
-        tail: Vec<String>,
-        /// Error items seen in the stream, if any.
-        errors: Vec<Reason>,
-    },
-    /// An answer was replaced after the record closed.
-    Replaced {
-        /// What the record holds.
-        recorded: OutcomeSummary,
-        /// What the consumer received.
-        consumed: OutcomeSummary,
-    },
-    /// An in-flight dispatch was cancelled.
-    Cancelled {
-        /// Why.
-        reason: Reason,
-    },
-    /// A program ended.
-    Ended {
-        /// How (`settled`, `max_turns`, `provider`, `cancelled`, …).
-        ending: Reason,
     },
     /// A host policy's own fact: named by its kind, carried as its serde
     /// payload. Build one through [`HostAction`].
@@ -319,27 +184,6 @@ pub enum Action {
         /// Its payload.
         payload: serde_json::Value,
     },
-}
-
-/// Maximum serialized truncation-tail size enforced by [`Action::stream_truncated`].
-pub const LARGEST_PAYLOAD_BYTES: usize = 64 * 1024;
-
-impl Action {
-    /// A truncation observation whose `tail` is cut from the front until it
-    /// fits [`LARGEST_PAYLOAD_BYTES`]; `delivered` and `errors` are kept.
-    pub fn stream_truncated(delivered: usize, mut tail: Vec<String>, errors: Vec<Reason>) -> Self {
-        while !tail.is_empty()
-            && serde_json::to_vec(&tail).map_or(usize::MAX, |bytes| bytes.len())
-                > LARGEST_PAYLOAD_BYTES
-        {
-            tail.remove(0);
-        }
-        Self::StreamTruncated {
-            delivered,
-            tail,
-            errors,
-        }
-    }
 }
 
 /// A host-defined action: a named, serde-typed fact a host policy emits

@@ -78,7 +78,7 @@ fn toggle_calls(
     let calls: Vec<TranscriptItem> = conversation
         .messages()
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::Assistant(assistant) => Some(assistant.content.iter()),
             _ => None,
         })

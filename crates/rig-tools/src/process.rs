@@ -312,6 +312,9 @@ impl Process {
     /// until it ends.
     pub fn wait_for(&mut self, timeout: Duration) -> io::Result<Option<ExitStatus>> {
         let deadline = Instant::now().checked_add(timeout);
+        // A process whose output just closed is usually a moment from
+        // ending, so the first naps are short.
+        let mut nap = Duration::from_millis(1);
         loop {
             if let Some(status) = self.try_wait()? {
                 return Ok(Some(status));
@@ -322,7 +325,8 @@ impl Process {
             if left.is_zero() {
                 return Ok(None);
             }
-            thread::sleep(left.min(POLL));
+            thread::sleep(left.min(nap));
+            nap = (nap * 2).min(POLL);
         }
     }
 
@@ -373,7 +377,9 @@ impl Process {
                 Ok(line) => keep(line),
                 Err(RecvTimeoutError::Timeout) => {}
                 // It closed its output but still runs.
-                Err(RecvTimeoutError::Disconnected) => thread::sleep(POLL),
+                Err(RecvTimeoutError::Disconnected) => {
+                    self.wait_for(POLL)?;
+                }
             }
         };
         let grace = Instant::now() + PIPE_GRACE;

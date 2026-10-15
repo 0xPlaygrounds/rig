@@ -305,13 +305,13 @@ struct Request {
 
 impl Request {
     /// The request after `this_turn`, the messages of its turn so far.
-    fn of(this_turn: &[Message], read_only: impl Fn(&str) -> bool) -> Self {
-        let mut replies = this_turn.iter().filter_map(|message| match message {
+    fn of(this_turn: &[std::sync::Arc<Message>], read_only: impl Fn(&str) -> bool) -> Self {
+        let mut replies = this_turn.iter().filter_map(|message| match &**message {
             Message::Assistant(reply) => Some(reply),
             _ => None,
         });
         let Some(reply) = replies.next_back() else {
-            let text = this_turn.iter().flat_map(|message| match message {
+            let text = this_turn.iter().flat_map(|message| match &**message {
                 Message::User { content } => content
                     .iter()
                     .filter_map(|item| match item {

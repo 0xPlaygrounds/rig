@@ -162,7 +162,7 @@ async fn a_golden_whose_recorded_request_differs_fails_at_that_record_and_no_lat
     let mut log = golden(GOLDEN);
     match &mut log.records[0].kind {
         EffectKind::Completion { request, .. } => {
-            request.temperature = Some(0.25);
+            std::sync::Arc::make_mut(request).temperature = Some(0.25);
         }
         other => panic!("record 0 is the completion: {other:?}"),
     }

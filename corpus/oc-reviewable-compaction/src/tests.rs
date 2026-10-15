@@ -60,9 +60,17 @@ fn shape(request: Option<&CompletionRequest>) -> (String, String) {
         return (String::new(), String::new());
     };
     let text = |message: &Message| serde_json::to_string(message).unwrap_or_default();
-    let all = request.chat_history.iter().map(text).collect();
-    let user = |message: &&Message| matches!(message, Message::User { .. });
-    let first = request.chat_history.iter().find(user).map(text);
+    let all = request
+        .chat_history
+        .iter()
+        .map(|message| text(message))
+        .collect();
+    let user = |message: &&std::sync::Arc<Message>| matches!(&***message, Message::User { .. });
+    let first = request
+        .chat_history
+        .iter()
+        .find(user)
+        .map(|message| text(message));
     (all, first.unwrap_or_default())
 }
 
@@ -70,7 +78,7 @@ fn shape(request: Option<&CompletionRequest>) -> (String, String) {
 fn messages(app: &App, agent: Entity) -> Vec<Message> {
     let conversation = app.world().get::<Conversation>(agent);
     conversation
-        .map(|it| it.messages().to_vec())
+        .map(|it| it.messages().iter().map(|m| (**m).clone()).collect())
         .unwrap_or_default()
 }
 
@@ -152,7 +160,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
             ..
         }) => entries
             .iter()
-            .any(|entry| entry.message == Message::user("Q01: question")),
+            .any(|entry| entry.message == Message::user("Q01: question").into()),
         _ => false,
     });
     assert!(kept_first, "the log keeps the original first message");

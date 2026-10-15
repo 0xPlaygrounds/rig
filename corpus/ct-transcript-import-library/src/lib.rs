@@ -335,7 +335,7 @@ pub fn import(markdown: &str, options: &Options) -> Result<Imported, ImportError
             }
         }
     }
-    let ends_with_user = matches!(conversation.messages().last(), Some(Message::User { content })
+    let ends_with_user = matches!(conversation.messages().last().map(|message| &**message), Some(Message::User { content })
         if content.iter().all(|item| matches!(item, UserContent::Text(_))));
     if ends_with_user {
         // Resuming leaves the last request for the user to send on.

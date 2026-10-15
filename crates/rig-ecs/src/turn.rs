@@ -804,7 +804,7 @@ impl ModelStarts<'_, '_> {
         let mut model = model.clone();
         let (connection, mut dropped) = self.start(&mut model, adapters, agent, true)?;
         let kind = EffectKind::Completion {
-            request: model.request,
+            request: model.request.into(),
             stream: true,
         };
         dropped.extend(connection.handler.0.check(&kind));
@@ -867,7 +867,7 @@ impl ModelStarts<'_, '_> {
         }
         if send && let Some(prompt) = model.prompt.take() {
             let text = Message::system(prompt.text());
-            request.chat_history.insert(0, text);
+            request.chat_history.insert(0, text.into());
         }
         Ok((connection, dropped))
     }
@@ -1274,7 +1274,12 @@ fn commit_reply(
         deliver(agent, spec, next, conversation, notices, into);
         return Next::Call;
     }
-    match answered.conversation.messages().last() {
+    match answered
+        .conversation
+        .messages()
+        .last()
+        .map(|message| &**message)
+    {
         Some(answer @ Message::Assistant(_)) => {
             Next::End(TurnOutcome::Answered(answer.clone()), None)
         }
@@ -1294,7 +1299,7 @@ fn drop_unanswered(
     notices: &mut MessageWriter<Notice>,
 ) {
     let unanswered = conversation.messages().last().is_some_and(|message| {
-        matches!(message, Message::User { content }
+        matches!(&**message, Message::User { content }
             if !content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
     });
     if unanswered {

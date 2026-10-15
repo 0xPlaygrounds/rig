@@ -38,7 +38,20 @@ jobs:
         with:
           protoc: "true"
           alsa: "true"
+      # Its own entry, written only by this job after a successful run on a
+      # trusted push. `cache-bin` is off so no cached executable runs next to
+      # the registry token.
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          shared-key: release-plz
+          cache-bin: "false"
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - uses: MarcoIeni/release-plz-action@v0.5
         env:
+          # release-plz works on a temporary copy of the repository, and
+          # cargo-semver-checks builds each crate in its own placeholder
+          # project. One target directory lets them share dependency builds
+          # and puts those builds where the cache above finds them.
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

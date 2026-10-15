@@ -121,7 +121,7 @@ impl Given {
     fn holds(&self, conversation: &Conversation) -> bool {
         let mut called = false;
         for message in conversation.messages() {
-            match message {
+            match &**message {
                 Message::Assistant(reply) => {
                     called |= reply.tool_calls().any(|call| call.id == self.call);
                 }
