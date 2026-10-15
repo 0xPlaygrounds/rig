@@ -15,7 +15,7 @@ use rmcp::{RoleServer, ServerHandler, ServiceExt};
 use serde_json::json;
 use tokio::task::JoinHandle;
 
-use crate::{McpConnection, McpMeta, McpTool};
+use crate::{McpClientHandler, McpConnection, McpMeta, McpTool};
 
 /// A server whose one tool, `fetch`, answers with the server's label and the
 /// tool name it was called by, and whose one resource is a memo.
@@ -214,6 +214,39 @@ async fn call_meta_is_derived_from_the_arguments_sent() {
     assert_eq!(
         signed.lock().expect("signed").as_slice(),
         std::slice::from_ref(arguments)
+    );
+
+    connection.close().await;
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn managed_tools_derive_call_meta_too() {
+    let server = LabelledServer::new("managed");
+    let calls = server.calls.clone();
+    let (c2s, sfc) = tokio::io::duplex(8192);
+    let (s2c, cfs) = tokio::io::duplex(8192);
+    let server_task = tokio::spawn(async move {
+        let running = server.serve((sfc, s2c)).await.expect("server start");
+        running.waiting().await.expect("server error");
+    });
+    let handle = ToolServer::new().run();
+    let connection = McpClientHandler::new(ClientConfig::default(), handle.clone())
+        .with_call_meta(|call| {
+            let mut meta = RequestMetaObject::new();
+            meta.insert("tool".into(), json!(call.tool));
+            Some(meta)
+        })
+        .connect((cfs, c2s))
+        .await
+        .expect("connect");
+
+    let result = handle.execute("fetch", "{}", &mut ToolContext::new()).await;
+    assert!(result.is_success());
+    let calls = calls.lock().expect("calls").clone();
+    assert!(
+        matches!(calls.as_slice(), [(_, meta)] if meta.get("tool") == Some(&json!("fetch"))),
+        "{calls:?}"
     );
 
     connection.close().await;
