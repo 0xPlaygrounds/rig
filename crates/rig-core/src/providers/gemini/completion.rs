@@ -594,7 +594,7 @@ fn contents(
     model: &str,
 ) -> Result<Vec<Value>, EncodeError> {
     let ids = WireIds::for_target(history, target, model);
-    let with_ids = requires_tool_call_id(model);
+    let (with_ids, gemini3) = (requires_tool_call_id(model), gemini_3_or_later(model));
     let mut contents = Vec::with_capacity(history.len());
     let mut push = |role: &str, parts: Vec<Value>| {
         // Gemini rejects a content with no parts, as pi skips one.
@@ -627,7 +627,7 @@ fn contents(
                 let parts = turn
                     .content
                     .iter()
-                    .map(|block| assistant_part(block, target, &ids, model));
+                    .map(|block| assistant_part(block, target, &ids, with_ids, gemini3));
                 push(
                     "model",
                     parts
@@ -751,17 +751,17 @@ fn user_part(part: &UserContent, id: Option<&str>) -> Result<Value, EncodeError>
 
 /// One assistant block as a Gemini part: its provider item while that is
 /// current, else a part rebuilt from its canonical fields, or `None` when
-/// it has nothing to send. Calls carry ids only when `model` takes them. A
-/// rebuilt call on Gemini 3 carries Google's placeholder signature, since
+/// it has nothing to send. Calls carry ids only `with_ids`. A rebuilt call
+/// on Gemini 3 (`gemini3`) carries Google's placeholder signature, since
 /// Gemini 3 rejects a call it did not sign without one ("Function call is
 /// missing a thought_signature in functionCall parts").
 fn assistant_part(
     block: &AssistantContent,
     target: &dyn ReplayTarget,
     ids: &WireIds,
-    model: &str,
+    with_ids: bool,
+    gemini3: bool,
 ) -> Result<Option<Value>, EncodeError> {
-    let with_ids = requires_tool_call_id(model);
     if let Replay::Item(item) = block.replay(target, ids) {
         let mut item = item.into_owned();
         if let Some(part) = item.as_object_mut() {
@@ -794,8 +794,7 @@ fn assistant_part(
             let id = ids.of(&call.id).filter(|_| with_ids).map(Value::from);
             let name = Some(json!(call.function.name));
             let args = Some(json!(call.function.arguments));
-            let signature =
-                gemini_3_or_later(model).then(|| json!("skip_thought_signature_validator"));
+            let signature = gemini3.then(|| json!("skip_thought_signature_validator"));
             let call = Value::Object(object([("name", name), ("args", args), ("id", id)]));
             Value::Object(object([
                 ("functionCall", Some(call)),
