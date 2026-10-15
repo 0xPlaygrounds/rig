@@ -781,14 +781,29 @@ impl ModelStarts<'_, '_> {
     /// model that calls none, options left unset taking that model's
     /// defaults (its caching), options it does not take left out, and the
     /// [`prompt`](ModelRequest::prompt) in front with the rules of the
-    /// tools it carries; and the options it leaves out, as [`DroppedOptions`] will
-    /// say. Refused without a model.
+    /// tools it carries. Refused without a model.
     pub fn sent(
         &self,
         model: &ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-    ) -> Result<(Connection, CompletionRequest, Vec<UnsupportedOption>), ErrorReport> {
+    ) -> Result<(Connection, CompletionRequest), ErrorReport> {
+        let mut model = model.clone();
+        let (connection, _) = self.start(&mut model, adapters, agent, true)?;
+        Ok((connection, model.request))
+    }
+
+    /// The options the request Start sends for `model`, a call for `agent`,
+    /// leaves out, as [`DroppedOptions`] will say: those its model does not
+    /// take and those its handler's check refuses. The check builds the
+    /// provider's request, so a caller that needs only [`sent`](Self::sent)
+    /// does not pay for it. Refused without a model.
+    pub fn dropped(
+        &self,
+        model: &ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> Result<Vec<UnsupportedOption>, ErrorReport> {
         let mut model = model.clone();
         let (connection, mut dropped) = self.start(&mut model, adapters, agent, true)?;
         let kind = EffectKind::Completion {
@@ -796,10 +811,7 @@ impl ModelStarts<'_, '_> {
             stream: true,
         };
         dropped.extend(connection.handler.0.check(&kind));
-        let EffectKind::Completion { request, .. } = kind else {
-            return Err(ErrorReport::new(ErrorKind::Internal, "not a model call"));
-        };
-        Ok((connection, request, dropped))
+        Ok(dropped)
     }
 
     /// The system prompt Start sends in front of `model`, a call for

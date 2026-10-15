@@ -3368,7 +3368,7 @@ fn a_call_knows_the_options_its_model_left_out() {
          mut left: ResMut<LeftOut>| {
             for (mut call, adapters, agent) in &mut calls {
                 call.request.options.top_p = Some(0.9);
-                if let Ok((.., dropped)) = starts.sent(&call, Some(adapters), Some(agent.0)) {
+                if let Ok(dropped) = starts.dropped(&call, Some(adapters), Some(agent.0)) {
                     left.0.push(options(&dropped));
                 }
             }

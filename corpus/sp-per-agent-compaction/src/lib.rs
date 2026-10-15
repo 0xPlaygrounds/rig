@@ -436,7 +436,7 @@ fn fit_by_rule(
             continue;
         };
         let rule = rule_of(&rules, who);
-        let Ok((connection, sent, _)) = starts.sent(&model, Some(adapters), Some(agent)) else {
+        let Ok((connection, sent)) = starts.sent(&model, Some(adapters), Some(agent)) else {
             continue;
         };
         let window = connection.spec.context_window;

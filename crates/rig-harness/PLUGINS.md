@@ -766,9 +766,9 @@ takes that model's default (its caching), one it cannot take is left out.
   `map_stream` (each streamed item rewritten, and recorded so), and says
   what the wrapped model takes on `connection.spec`.
 - **What a call is sent as.** `ModelStarts::sent` gives a call's
-  connection, its request as Start will send it (to measure in
-  `PrepareSystems::Fit`) and the options its model leaves out, `prompt`
-  its system prompt in parts. From Start on, a call has
+  connection and its request as Start will send it (to measure in
+  `PrepareSystems::Fit`), `dropped` the options its model leaves out,
+  `prompt` its system prompt in parts. From Start on, a call has
   `SentTo(connection)`, its request as sent, and `DroppedOptions`, the options
   left out (by the model's spec or a dry run, rig-core's `Serve::check`).
   A fact a `map_stream` closure inserts in the call's `PublishedContext`

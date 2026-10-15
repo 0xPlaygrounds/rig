@@ -25,7 +25,8 @@ What it holds, by module:
   `Adapters` (an `outermost()` one wraps all the others), and Start
   renders the prompt and fits the request to that model, putting on it
   the options left out (`DroppedOptions`); `ModelStarts::sent` gives what Start
-  will send, and `ModelStarts::prompt` its prompt in parts. Its stream is
+  will send, `ModelStarts::dropped` what it leaves out, and
+  `ModelStarts::prompt` its prompt in parts. Its stream is
   written as `StreamDelta`s (rig-core's `StreamEvent`s: a part's start,
   its fragments, its end) and stamped on the call (`StreamTiming`). A failed
   call carries its `RetryVerdict`, which Review may act on by superseding

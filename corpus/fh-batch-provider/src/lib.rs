@@ -325,7 +325,7 @@ fn take_over(
         if decision.is_decided() {
             continue;
         }
-        let Ok((connection, request, _)) = starts.sent(model, adapters, agent) else {
+        let Ok((connection, request)) = starts.sent(model, adapters, agent) else {
             continue;
         };
         if connection.spec.provider.vendor() != VENDOR {

@@ -552,7 +552,7 @@ fn compact_near_the_window(
         if compactions.summaries >= policy.per_turn {
             continue;
         }
-        let Ok((connection, sent, _)) = starts.sent(&model, Some(adapters), Some(agent)) else {
+        let Ok((connection, sent)) = starts.sent(&model, Some(adapters), Some(agent)) else {
             continue;
         };
         let (policy, spec) = (&policy, &*connection.spec);
