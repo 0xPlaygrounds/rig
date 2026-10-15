@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use super::wire::{AnthropicConfig, Messages};
 use crate::completion::batch::{
     BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
-    json_body, path_id,
+    ItemReply, json_body, path_id,
 };
 use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
@@ -177,10 +177,10 @@ pub enum ItemResult {
     Expired,
 }
 
-impl From<ItemResult> for BatchOutcome<Value> {
+impl From<ItemResult> for BatchOutcome<ItemReply> {
     fn from(result: ItemResult) -> Self {
         match result {
-            ItemResult::Succeeded { message } => Self::Succeeded(message),
+            ItemResult::Succeeded { message } => Self::Succeeded(ItemReply::new(message)),
             ItemResult::Errored { error } => {
                 let request_id = error.str("request_id").map(str::to_owned);
                 let reply = ProviderResponseError::from_body(error.to_string())
@@ -337,8 +337,8 @@ impl Batching for Messages {
     fn results<T: Transport<MessageBatches>>(
         batches: &Model<MessageBatches, T>,
         id: &str,
-    ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<Value>)>, ProviderError>> + WasmCompatSend
-    {
+    ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError>>
+    + WasmCompatSend {
         let reply = batches.call(MessageBatchRequest::Results(id.to_owned()));
         async move {
             match reply.await? {

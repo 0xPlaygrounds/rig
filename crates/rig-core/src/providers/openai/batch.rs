@@ -25,7 +25,7 @@ use super::wire::{Chat, OpenAIConfig, OpenAiWire};
 use crate::ProviderResponseError;
 use crate::completion::batch::{
     BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
-    json_body, path_id,
+    ItemReply, json_body, path_id,
 };
 use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
@@ -205,7 +205,7 @@ pub struct LineResponse {
     pub body: Value,
 }
 
-impl From<OutputLine> for BatchOutcome<Value> {
+impl From<OutputLine> for BatchOutcome<ItemReply> {
     fn from(line: OutputLine) -> Self {
         if let Some(error) = line.error {
             return match error.get("code").and_then(Value::as_str) {
@@ -222,7 +222,10 @@ impl From<OutputLine> for BatchOutcome<Value> {
             ));
         };
         match http::StatusCode::from_u16(response.status_code) {
-            Ok(status) if status.is_success() => Self::Succeeded(response.body),
+            Ok(status) if status.is_success() => Self::Succeeded(ItemReply {
+                body: response.body,
+                request_id: response.request_id,
+            }),
             status => {
                 let body = response.body.to_string();
                 let reply = match status {
@@ -424,7 +427,7 @@ async fn status<T: Transport<Batches>>(
 async fn results<T: Transport<Batches>>(
     batches: &Model<Batches, T>,
     id: &str,
-) -> Result<Vec<(String, BatchOutcome<Value>)>, ProviderError> {
+) -> Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError> {
     let (batch, raw) = batches
         .call(BatchRequest::Get(id.to_owned()))
         .await?
@@ -519,7 +522,7 @@ macro_rules! openai_batching {
             fn results<T: Transport<Batches>>(
                 batches: &Model<Batches, T>,
                 id: &str,
-            ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<Value>)>, ProviderError>>
+            ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError>>
             + WasmCompatSend {
                 results(batches, id)
             }

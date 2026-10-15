@@ -174,6 +174,25 @@ impl BatchPrice {
     };
 }
 
+/// A provider's reply to one request of a batch, before it is decoded.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemReply {
+    /// The response document a live unary call would receive.
+    pub body: Value,
+    /// The provider's id for the request, when it reports one.
+    pub request_id: Option<String>,
+}
+
+impl ItemReply {
+    /// `body`, with no request id.
+    pub fn new(body: Value) -> Self {
+        Self {
+            body,
+            request_id: None,
+        }
+    }
+}
+
 /// One item of a batch, encoded as a live unary call would send it: what a
 /// [`Batching`] wire builds its batch from.
 #[derive(Debug)]
@@ -214,13 +233,13 @@ pub trait Batching: Wire<Op = Completion, Payload = Encoded, Frame = WireFrame> 
         id: &str,
     ) -> impl Future<Output = Result<BatchState, ProviderError>> + WasmCompatSend;
 
-    /// Each request's outcome in the finished batch `id`, by item id. A
-    /// reply is the provider's response document, as a live unary call
-    /// receives it.
+    /// Each request's outcome in the finished batch `id`, by item id, its
+    /// reply not yet decoded.
     fn results<T: Transport<Self::Batches>>(
         batches: &Model<Self::Batches, T>,
         id: &str,
-    ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<Value>)>, ProviderError>> + WasmCompatSend;
+    ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError>>
+    + WasmCompatSend;
 
     /// Ask the provider to cancel the batch `id`, and answer its progress.
     fn cancel<T: Transport<Self::Batches>>(
@@ -323,7 +342,7 @@ where
         &self,
         request: Option<&CompletionRequest>,
         id: &str,
-        outcome: BatchOutcome<Value>,
+        outcome: BatchOutcome<ItemReply>,
     ) -> BatchOutcome {
         match outcome {
             BatchOutcome::Succeeded(reply) => {
@@ -332,9 +351,10 @@ where
                         "the batch answered item `{id}`, which it was not sent"
                     )));
                 };
-                let frame = WireFrame::Text(reply.to_string());
+                let frame = WireFrame::Text(reply.body.to_string());
                 match decode_reply(&self.wire, request, Mode::Unary, [frame]) {
                     Ok(mut response) => {
+                        response.provider_request_id = reply.request_id;
                         response.usage.cost = response.usage.cost.map(|cost| cost.at(W::PRICE));
                         BatchOutcome::Succeeded(response)
                     }

@@ -125,6 +125,10 @@ fn a_batch_reports_its_state_and_counts() -> anyhow::Result<()> {
     anyhow::ensure!(state("BATCH_STATE_EXPIRED", true)?.status == BatchStatus::Expired);
     anyhow::ensure!(state("BATCH_STATE_FAILED", true)?.status == BatchStatus::Failed);
     anyhow::ensure!(state("BATCH_STATE_SOMETHING_NEW", false).is_err());
+    let cancelled = r#"{"name":"batches/b1","done":true,"error":{"code":1,"message":"Cancelled"}}"#;
+    let operation: BatchOperation = serde_json::from_str(cancelled)?;
+    let status = operation.state(serde_json::from_str(cancelled)?)?.status;
+    anyhow::ensure!(status == BatchStatus::Cancelled);
     Ok(())
 }
 

@@ -25,7 +25,7 @@ use super::completion::GenerateContent;
 use crate::ProviderResponseError;
 use crate::completion::batch::{
     BatchCounts, BatchOutcome, BatchPrice, BatchState, BatchStatus, Batching, EncodedItem,
-    json_body, path_id,
+    ItemReply, json_body, path_id,
 };
 use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
@@ -113,6 +113,12 @@ impl BatchOperation {
             "FAILED" => BatchStatus::Failed,
             "CANCELLED" => BatchStatus::Cancelled,
             "EXPIRED" => BatchStatus::Expired,
+            // Code 1 is CANCELLED, which a cancelled operation reports.
+            "" | "UNSPECIFIED"
+                if self.error.as_ref().and_then(|error| error.u64("code")) == Some(1) =>
+            {
+                BatchStatus::Cancelled
+            }
             "" | "UNSPECIFIED" if self.error.is_some() => BatchStatus::Failed,
             "" | "UNSPECIFIED" if self.done => BatchStatus::Completed,
             "" | "UNSPECIFIED" => BatchStatus::Pending,
@@ -157,7 +163,7 @@ impl BatchOperation {
 }
 
 /// The outcome of one inline reply: `{metadata: {key}, response | error}`.
-fn outcome(reply: &Value) -> Result<(String, BatchOutcome<Value>), ProviderError> {
+fn outcome(reply: &Value) -> Result<(String, BatchOutcome<ItemReply>), ProviderError> {
     let Some(key) = reply.at("/metadata/key").and_then(Value::as_str) else {
         return Err(ProviderError::Response(
             "a Gemini batch reply names no request key".to_owned(),
@@ -167,7 +173,7 @@ fn outcome(reply: &Value) -> Result<(String, BatchOutcome<Value>), ProviderError
         (_, Some(error)) => BatchOutcome::Failed(ProviderError::ProviderResponse(
             ProviderResponseError::from_body(json!({ "error": error }).to_string()),
         )),
-        (Some(response), None) => BatchOutcome::Succeeded(response.clone()),
+        (Some(response), None) => BatchOutcome::Succeeded(ItemReply::new(response.clone())),
         (None, None) => BatchOutcome::Failed(ProviderError::Response(format!(
             "the Gemini batch reply for `{key}` has neither a response nor an error"
         ))),
@@ -341,8 +347,8 @@ impl Batching for GenerateContent {
     fn results<T: Transport<Batches>>(
         batches: &Model<Batches, T>,
         id: &str,
-    ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<Value>)>, ProviderError>> + WasmCompatSend
-    {
+    ) -> impl Future<Output = Result<Vec<(String, BatchOutcome<ItemReply>)>, ProviderError>>
+    + WasmCompatSend {
         let reply = batches.call(BatchRequest::Get(id.to_owned()));
         let id = id.to_owned();
         async move {

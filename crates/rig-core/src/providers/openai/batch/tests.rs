@@ -143,6 +143,7 @@ async fn results_read_the_output_and_error_files() -> anyhow::Result<()> {
         response.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "Paris"
     ));
+    anyhow::ensure!(response.provider_request_id.as_deref() == Some("req_1"));
     anyhow::ensure!(matches!(results.get("late"), Some(BatchOutcome::Expired)));
     let Some(BatchOutcome::Failed(ProviderError::ProviderResponse(error))) = results.get("broken")
     else {
