@@ -43,16 +43,13 @@ fn documents() -> Vec<Document> {
         Document {
             id: "harbor-1".to_owned(),
             text: "Beacon amber-73 is at Dock Seven.".to_owned(),
+            images: Vec::new(),
             additional_props: HashMap::from([
                 ("source".to_owned(), "registry".to_owned()),
                 ("region".to_owned(), "north".to_owned()),
             ]),
         },
-        Document {
-            id: String::new(),
-            text: "Beacon violet-19 is at Dock Three.".to_owned(),
-            additional_props: HashMap::new(),
-        },
+        Document::new(String::new(), "Beacon violet-19 is at Dock Three."),
     ]
 }
 
@@ -503,7 +500,12 @@ fn the_native_target_states_what_it_carries() {
     assert_eq!(ReplayTarget::model(&wire), MODEL);
     assert!(!wire.accepts(MODEL).user_images);
     assert!(wire.accepts("command-a-vision-07-2025").user_images);
-    assert!(wire.takes_documents());
+    let text = CompletionRequest::new("q").documents(documents());
+    assert!(wire.takes_documents(&text));
+    // Cohere documents are text; one with an image joins the history.
+    let pictured = text
+        .document(Document::new("photo", "").with_image(Image::from_bytes(b"\x89PNG\r\n\x1a\n")));
+    assert!(!wire.takes_documents(&pictured));
     assert_eq!(wire.call_id_slot(), Some("/id"));
     let url = Image {
         data: Source::Url("https://rig.rs/a.png".to_owned()),
@@ -521,12 +523,12 @@ fn the_native_target_states_what_it_carries() {
     assert!(!wire.encodes(MODEL, Media::Image(&untyped, Place::User)));
     assert!(!wire.encodes(MODEL, Media::Image(&raw, Place::User)));
     assert!(!wire.encodes(MODEL, Media::Image(&url, Place::ToolResult)));
-    let text = crate::message::Document {
+    let text = crate::message::DocumentContent {
         data: crate::message::DocumentData::Text("notes".to_owned()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: None,
     };
-    let pdf = crate::message::Document {
+    let pdf = crate::message::DocumentContent {
         data: Source::base64("JVBERi0=").into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,

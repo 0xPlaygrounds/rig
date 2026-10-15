@@ -7,7 +7,7 @@ use crate::{
     Embed,
     embeddings::{
         Embedding, EmbeddingResponse,
-        embed::{EmbedError, TextEmbedder},
+        embed::{EmbedError, Embedder},
     },
 };
 
@@ -82,7 +82,7 @@ impl MockTextDocument {
 }
 
 impl Embed for MockTextDocument {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+    fn embed(&self, embedder: &mut Embedder) -> Result<(), EmbedError> {
         embedder.embed(self.text.clone());
         Ok(())
     }
@@ -108,7 +108,7 @@ impl MockMultiTextDocument {
 }
 
 impl Embed for MockMultiTextDocument {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+    fn embed(&self, embedder: &mut Embedder) -> Result<(), EmbedError> {
         for text in &self.texts {
             embedder.embed(text.clone());
         }

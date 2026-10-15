@@ -231,7 +231,7 @@ impl ReplayTarget for InlineOnly {
 
 #[test]
 fn media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text() {
-    use crate::message::{Audio, Document, DocumentMediaType, Video};
+    use crate::message::{Audio, DocumentContent, DocumentMediaType, Video};
     let url = || Image {
         data: DocumentSourceKind::url("https://example.invalid/a.png"),
         ..Image::default()
@@ -254,22 +254,22 @@ fn media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text() {
                     media_type: None,
                     additional_params: None,
                 }),
-                UserContent::Document(Document {
+                UserContent::Document(DocumentContent {
                     data: DocumentSourceKind::Unknown.into(),
                     media_type: Some(DocumentMediaType::TXT),
                     additional_params: None,
                 }),
-                UserContent::Document(Document {
+                UserContent::Document(DocumentContent {
                     data: DocumentSourceKind::base64("YSxiCjEsMgo=").into(),
                     media_type: Some(DocumentMediaType::CSV),
                     additional_params: None,
                 }),
-                UserContent::Document(Document {
+                UserContent::Document(DocumentContent {
                     data: DocumentSourceKind::base64("JVBERi0=").into(),
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: None,
                 }),
-                UserContent::Document(Document {
+                UserContent::Document(DocumentContent {
                     data: crate::message::DocumentData::Text("notes".to_owned()),
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: None,

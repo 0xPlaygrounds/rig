@@ -1,7 +1,7 @@
 use super::*;
 use rig_core::completion::Place;
 use rig_core::message::{
-    Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind as Source, Image,
+    Audio, AudioMediaType, DocumentContent, DocumentMediaType, DocumentSourceKind as Source, Image,
     ImageMediaType, Video, VideoMediaType,
 };
 use serde_json::json;
@@ -48,7 +48,7 @@ fn converse_encodes_only_what_it_carries() {
         media_type: Some(ImageMediaType::PNG),
         ..Image::default()
     };
-    let document = |data, media_type| Document {
+    let document = |data, media_type| DocumentContent {
         data,
         media_type: Some(media_type),
         additional_params: None,

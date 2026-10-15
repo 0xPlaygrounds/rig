@@ -260,11 +260,7 @@ impl AgentHook for FirstTurnPatch {
 
 /// Convenience: a `Document` for `RequestPatch::context`.
 pub(crate) fn fact_doc(id: &str, text: &str) -> Document {
-    Document {
-        id: id.to_string(),
-        text: text.to_string(),
-        additional_props: Default::default(),
-    }
+    Document::new(id.to_string(), text.to_string())
 }
 
 /// Sets one key of a named tool's arguments, preserving the rest — chains with

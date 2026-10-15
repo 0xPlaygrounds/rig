@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 use serde_json::json;
 
@@ -65,11 +65,10 @@ fn compatibility(options: &CohereOptions) -> Value {
 }
 
 fn documents() -> Vec<Document> {
-    vec![Document {
-        id: "harbor-1".to_owned(),
-        text: "Beacon amber-73 is at Dock Seven.".to_owned(),
-        additional_props: HashMap::new(),
-    }]
+    vec![Document::new(
+        "harbor-1",
+        "Beacon amber-73 is at Dock Seven.",
+    )]
 }
 
 #[test]

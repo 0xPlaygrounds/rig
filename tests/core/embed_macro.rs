@@ -1,6 +1,6 @@
 use rig::{
     Embed,
-    embeddings::{self, TextEmbedder, embed::EmbedError},
+    embeddings::{self, Embedder, embed::EmbedError},
 };
 use serde::Serialize;
 
@@ -24,7 +24,7 @@ fn test_custom_embed() {
     }
 
     fn custom_embedding_function(
-        embedder: &mut TextEmbedder,
+        embedder: &mut Embedder,
         definition: Definition,
     ) -> Result<(), EmbedError> {
         embedder.embed(serde_json::to_string(&definition).map_err(EmbedError::new)?);
@@ -68,7 +68,7 @@ fn test_custom_and_basic_embed() {
     }
 
     fn custom_embedding_function(
-        embedder: &mut TextEmbedder,
+        embedder: &mut Embedder,
         definition: Definition,
     ) -> Result<(), EmbedError> {
         embedder.embed(serde_json::to_string(&definition).map_err(EmbedError::new)?);

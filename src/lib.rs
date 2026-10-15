@@ -159,7 +159,7 @@ pub mod tool {
     };
     pub use rig_core::tool::builtin;
     pub use rig_core::tool::{
-        ContextValue, DynamicTool, ErasedTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
+        ContextValue, DynamicTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
         tool_definition, tool_name,
     };
     pub use rig_core::tool::{

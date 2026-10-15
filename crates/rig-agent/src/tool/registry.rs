@@ -6,8 +6,6 @@
 //! assert!(tools.catalog().is_empty());
 //! ```
 
-use std::collections::HashMap;
-
 use indexmap::IndexMap;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::serve::{ErasedHandler, Serve};
@@ -487,11 +485,7 @@ impl ToolSet {
                             definition.name, definition.description, definition.parameters
                         )
                     });
-                Document {
-                    id: name.clone(),
-                    text: format!("Tool: {name}\nDefinition: \n{serialized}"),
-                    additional_props: HashMap::new(),
-                }
+                Document::new(name.clone(), format!("Tool: {name}\nDefinition: \n{serialized}"))
             })
             .collect()
     }

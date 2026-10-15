@@ -92,11 +92,10 @@ impl AgentHook for ContextHook {
         _ctx: &HookContext,
         _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
-        let doc = Document {
-            id: "style-guide".to_string(),
-            text: "House style: keep jokes short and family-friendly.".to_string(),
-            additional_props: Default::default(),
-        };
+        let doc = Document::new(
+            "style-guide",
+            "House style: keep jokes short and family-friendly.",
+        );
         CompletionCallAction::patch(RequestPatch::new().context(doc))
     }
 }

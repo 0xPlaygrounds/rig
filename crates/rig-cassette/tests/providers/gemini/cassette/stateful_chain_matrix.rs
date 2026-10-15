@@ -17,7 +17,7 @@ use futures::FutureExt;
 use rig::completion::ToolDefinition;
 use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
 use rig::message::{
-    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, UserContent,
+    AssistantContent, DocumentContent, DocumentMediaType, DocumentSourceKind, Message, UserContent,
 };
 use rig::message::{ToolCall, ToolResultContent};
 use rig::providers::gemini;
@@ -455,7 +455,7 @@ async fn file_uri_chain() {
 
             let body = async {
                 let document = Message::User {
-                    content: vec![UserContent::Document(Document {
+                    content: vec![UserContent::Document(DocumentContent {
                             data: DocumentSourceKind::Url(uri.clone()).into(),
                             media_type: Some(DocumentMediaType::TXT),
                             additional_params: None,

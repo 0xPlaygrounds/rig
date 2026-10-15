@@ -747,6 +747,7 @@ fn determinism_probe_request() -> CompletionRequest {
     let document = rig::completion::Document {
         id: "cache-determinism-doc".to_owned(),
         text: "Deterministic ordering probe document body.".to_owned(),
+        images: Vec::new(),
         additional_props: [
             ("author".to_owned(), "probe".to_owned()),
             ("source".to_owned(), "field-notes".to_owned()),

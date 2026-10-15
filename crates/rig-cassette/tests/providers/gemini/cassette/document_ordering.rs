@@ -21,11 +21,10 @@ struct RecordedRequest {
 }
 
 fn ordering_document() -> Document {
-    Document {
-        id: "ordering-note".to_string(),
-        text: format!("The ordering token is {DOCUMENT_ANSWER}."),
-        additional_props: Default::default(),
-    }
+    Document::new(
+        "ordering-note",
+        format!("The ordering token is {DOCUMENT_ANSWER}."),
+    )
 }
 
 fn assistant_text(choice: &[AssistantContent]) -> String {

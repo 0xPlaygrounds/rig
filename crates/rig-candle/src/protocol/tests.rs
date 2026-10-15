@@ -246,7 +246,7 @@ fn every_renderer_takes_any_media_the_adapter_hands_over() {
         UserContent, Video, VideoMediaType,
     };
     let document = |data, media_type| {
-        UserContent::Document(rig_core::message::Document {
+        UserContent::Document(rig_core::message::DocumentContent {
             data,
             media_type: Some(media_type),
             additional_params: None,

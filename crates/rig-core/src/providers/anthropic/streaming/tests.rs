@@ -157,11 +157,7 @@ fn streaming_request_keeps_documents_after_leading_system_messages() {
         RigMessage::user("Prompt"),
     ])
     .max_tokens(64)
-    .documents(vec![RigDocument {
-        id: "doc1".to_string(),
-        text: "Document text.".to_string(),
-        additional_props: Default::default(),
-    }]);
+    .documents(vec![RigDocument::new("doc1", "Document text.")]);
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
         .expect("streaming request body should build");

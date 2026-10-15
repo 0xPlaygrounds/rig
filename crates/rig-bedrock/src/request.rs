@@ -13,7 +13,7 @@ use rig_core::completion::options::{BaseInput, FinalBody, RawAt, request_params}
 use rig_core::completion::{CacheRetention, CompletionRequest, Message, Replay};
 use rig_core::error::EncodeError;
 use rig_core::message::{
-    AssistantContent, Document, DocumentData, DocumentMediaType, DocumentSourceKind, Image,
+    AssistantContent, DocumentContent, DocumentData, DocumentMediaType, DocumentSourceKind, Image,
     MimeType, ToolChoice, ToolResultContent, UserContent, Video,
 };
 use rig_core::providers::internal::wire_ids::WireIds;
@@ -381,7 +381,7 @@ pub(crate) fn video(video: &Video) -> Result<Value, EncodeError> {
 /// not list is plain text. The name is the content's digest, so a request
 /// is byte-stable across turns and runs, which prompt-cache prefixes and
 /// recorded replays rely on.
-pub(crate) fn document(document: &Document) -> Result<Value, EncodeError> {
+pub(crate) fn document(document: &DocumentContent) -> Result<Value, EncodeError> {
     let mime = document
         .media_type
         .as_ref()

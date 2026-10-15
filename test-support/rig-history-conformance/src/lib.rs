@@ -1480,7 +1480,7 @@ pub fn h09_capability_downgrades<F: HistoryFixture>(fixture: &F) {
 /// A history holding every canonical media form in every role.
 fn media_history() -> Vec<Message> {
     use rig_core::message::{
-        Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind as Source,
+        Audio, AudioMediaType, DocumentContent, DocumentMediaType, DocumentSourceKind as Source,
         ImageMediaType, Video, VideoMediaType,
     };
     let image = |data: Source, media_type: Option<ImageMediaType>| Image {
@@ -1488,7 +1488,7 @@ fn media_history() -> Vec<Message> {
         media_type,
         ..Image::default()
     };
-    let document = |data: Source, media_type: Option<DocumentMediaType>| Document {
+    let document = |data: Source, media_type: Option<DocumentMediaType>| DocumentContent {
         data: data.into(),
         media_type,
         additional_params: None,

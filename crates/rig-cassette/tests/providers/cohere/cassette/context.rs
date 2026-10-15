@@ -17,6 +17,7 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
                 .document(Document {
                     id: "harbor-record-1".to_string(),
                     text: "Beacon code amber-73 is assigned to Dock Seven.".to_string(),
+                    images: Vec::new(),
                     additional_props: HashMap::from([
                         ("source".to_string(), "harbor-registry".to_string()),
                         ("region".to_string(), "north-bay".to_string()),
@@ -25,6 +26,7 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
                 .document(Document {
                     id: "harbor-record-2".to_string(),
                     text: "Beacon code violet-19 is assigned to Dock Three.".to_string(),
+                    images: Vec::new(),
                     additional_props: HashMap::from([(
                         "source".to_string(),
                         "harbor-registry".to_string(),

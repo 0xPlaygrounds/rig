@@ -1130,11 +1130,7 @@ pub const SHAPING_CONTEXT: &str =
 pub const LATE_ROUTE: &str = "late";
 
 fn shaping_document() -> rig_agent::completion::Document {
-    rig_agent::completion::Document {
-        id: SHAPING_CONTEXT_ID.to_owned(),
-        text: SHAPING_CONTEXT.to_owned(),
-        additional_props: Default::default(),
-    }
+    rig_agent::completion::Document::new(SHAPING_CONTEXT_ID.to_owned(), SHAPING_CONTEXT.to_owned())
 }
 
 /// A patch applied on one turn only, or on every turn.

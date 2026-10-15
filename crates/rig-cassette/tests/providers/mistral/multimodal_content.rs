@@ -17,7 +17,7 @@
 use anyhow::Result;
 use base64::Engine as _;
 use rig::completion::Message;
-use rig::message::{Document, DocumentMediaType, DocumentSourceKind, UserContent};
+use rig::message::{DocumentContent, DocumentMediaType, DocumentSourceKind, UserContent};
 use rig::providers::mistral;
 
 use crate::support::{AUDIO_FIXTURE_PATH, collect_stream_final_response};
@@ -61,7 +61,7 @@ fn red_png() -> UserContent {
 }
 
 fn pdf_document() -> UserContent {
-    UserContent::Document(Document {
+    UserContent::Document(DocumentContent {
         data: DocumentSourceKind::Base64(PDF_BASE64.to_string()).into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,

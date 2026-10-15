@@ -163,11 +163,7 @@ impl AgentHook for InjectContextAndNarrowTools {
         _ctx: &HookContext,
         _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
-        let doc = Document {
-            id: self.fact_id.to_string(),
-            text: self.fact_text.to_string(),
-            additional_props: Default::default(),
-        };
+        let doc = Document::new(self.fact_id.to_string(), self.fact_text.to_string());
         CompletionCallAction::patch(
             RequestPatch::new()
                 .context(doc)

@@ -9,7 +9,7 @@ use std::panic::{AssertUnwindSafe, resume_unwind};
 use futures::FutureExt;
 use rig::completion::CompletionRequest;
 use rig::message::{
-    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, UserContent,
+    AssistantContent, DocumentContent, DocumentMediaType, DocumentSourceKind, Message, UserContent,
 };
 use rig::providers::xai;
 use serde_json::{Value, json};
@@ -68,7 +68,7 @@ async fn file_id_chain() {
         let body = async {
             let document = Message::User {
                 content: vec![
-                    UserContent::Document(Document {
+                    UserContent::Document(DocumentContent {
                         data: DocumentSourceKind::file_id(&file_id).into(),
                         media_type: Some(DocumentMediaType::PDF),
                         additional_params: None,

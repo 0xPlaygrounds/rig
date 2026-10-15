@@ -138,14 +138,14 @@ impl Operation for Completion {
             )
         });
         let written = written.then(|| {
-            let documents = (!target.takes_documents())
+            let documents = (!target.takes_documents(&request))
                 .then(|| request.normalized_documents())
                 .flatten();
             (request.chat_history.clone(), documents)
         });
         // Documents join the history before it is adapted, so the adapter's
         // rules apply to them, unless the encoder sends them itself.
-        if !target.takes_documents() {
+        if !target.takes_documents(&request) {
             request.chat_history = request.chat_history_with_documents();
             request.documents.clear();
         }

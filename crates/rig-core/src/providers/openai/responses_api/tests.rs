@@ -3,7 +3,6 @@ use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::message;
 use serde_json::json;
-use std::collections::HashMap;
 
 /// A whole Responses body decoded as the OpenAI wire's unary reply.
 fn fold_body(response: Value) -> Result<completion::CompletionResponse, ProviderError> {
@@ -63,11 +62,7 @@ fn input_items(message: completion::Message) -> Result<Vec<Value>, EncodeError> 
 }
 
 fn test_document(id: &str, text: &str) -> crate::completion::Document {
-    crate::completion::Document {
-        id: id.to_string(),
-        text: text.to_string(),
-        additional_props: HashMap::new(),
-    }
+    crate::completion::Document::new(id.to_string(), text.to_string())
 }
 
 fn weather_tool_definition() -> completion::ToolDefinition {
@@ -458,7 +453,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
 #[test]
 fn file_id_document_serializes_as_input_item_content() {
     let message = completion::Message::User {
-        content: vec![message::UserContent::Document(message::Document {
+        content: vec![message::UserContent::Document(message::DocumentContent {
             data: DocumentSourceKind::FileId("file_abc".to_string()).into(),
             media_type: None,
             additional_params: None,
@@ -595,7 +590,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 #[test]
 fn base64_pdf_via_input_item_path_keeps_filename() {
     let input = message::Message::User {
-        content: vec![message::UserContent::Document(message::Document {
+        content: vec![message::UserContent::Document(message::DocumentContent {
             data: DocumentSourceKind::base64("dGVzdA==").into(),
             media_type: Some(message::DocumentMediaType::PDF),
             additional_params: None,
@@ -793,7 +788,7 @@ fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
         let request = completion::CompletionRequest::new(message::Message::User {
             content: vec![
                 message::UserContent::text("Summarize the file."),
-                message::UserContent::Document(message::Document {
+                message::UserContent::Document(message::DocumentContent {
                     data,
                     media_type: Some(message::DocumentMediaType::PDF),
                     additional_params: None,
@@ -833,7 +828,7 @@ fn an_unprepared_part_with_no_responses_form_is_refused() {
         .map(|body| body.to_string())
         .map_err(|error| error.to_string())
     };
-    let document = refused(message::UserContent::Document(message::Document {
+    let document = refused(message::UserContent::Document(message::DocumentContent {
         data: DocumentSourceKind::base64("aGVsbG8=").into(),
         media_type: Some(message::DocumentMediaType::TXT),
         additional_params: None,

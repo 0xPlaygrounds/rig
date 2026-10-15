@@ -31,11 +31,7 @@ impl AgentHook for GoldenPatchHook {
                 .tool_choice(ToolChoice::Required)
                 .active_tools(["add"])
                 .additional_params(json!({"injected": true, "shared": "hook"}))
-                .context(Document {
-                    id: "extra".into(),
-                    text: "extra context".into(),
-                    additional_props: Default::default(),
-                }),
+                .context(Document::new("extra", "extra context")),
         )
     }
 }

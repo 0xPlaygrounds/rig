@@ -30,7 +30,7 @@ use crate::{
     error::{ErrorKind, ErrorReport},
     operation::{Completion, Embedding, Rerank},
     providers::registry::ProviderId,
-    tool::{ErasedTool, Tool, ToolEmbedding},
+    tool::{Tool, ToolEmbedding},
     vector_store::{VectorStoreError, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
     wire::Operation,
@@ -372,7 +372,7 @@ where
             }
             EffectKind::ToolCall { args, .. } => {
                 let mut context = dispatch_context(&dispatch);
-                let result = ErasedTool::execute(&self.tool, args, &mut context).await;
+                let result = crate::tool::contextual::execute(&self.tool, args, &mut context).await;
                 publish(&dispatch, context);
                 Reply::Outcome(Ok(Answered::ToolResult { result }))
             }

@@ -61,7 +61,7 @@ pub(crate) fn expand_derive_embedding(input: &mut syn::DeriveInput) -> syn::Resu
 
     let r#gen = quote! {
         impl #impl_generics #embed_trait for #name #ty_generics #where_clause {
-            fn embed(&self, embedder: &mut #core::embeddings::embed::TextEmbedder) -> Result<(), #core::embeddings::embed::EmbedError> {
+            fn embed(&self, embedder: &mut #core::embeddings::embed::Embedder) -> Result<(), #core::embeddings::embed::EmbedError> {
                 #target_stream;
 
                 Ok(())

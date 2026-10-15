@@ -216,8 +216,8 @@ fn cache_points_follow_what_the_request_sends() {
 /// is its content's digest, unique within the request (#404, #405).
 #[test]
 fn documents_are_named_by_content_and_land_in_the_first_user_message() {
-    use rig_core::message::Document;
-    let document = |data, media_type| Document {
+    use rig_core::message::DocumentContent;
+    let document = |data, media_type| DocumentContent {
         data,
         media_type: Some(media_type),
         additional_params: None,
@@ -229,11 +229,10 @@ fn documents_are_named_by_content_and_land_in_the_first_user_message() {
         )
     };
     let mut request = CompletionRequest::new("q");
-    request.documents = vec![rig_core::completion::Document {
-        id: "d1".to_owned(),
-        text: "the sky is green".to_owned(),
-        additional_props: Default::default(),
-    }];
+    request.documents = vec![rig_core::completion::Document::new(
+        "d1",
+        "the sky is green",
+    )];
     request.chat_history = vec![Message::User {
         content: vec![
             UserContent::Document(document(
@@ -280,10 +279,10 @@ fn unprepared(history: Vec<Message>) -> Result<Value, EncodeError> {
 /// unprepared.
 #[test]
 fn unprepared_content_is_encoded_or_refused() {
-    use rig_core::message::{Audio, Document};
+    use rig_core::message::{Audio, DocumentContent};
     let document = |data| {
         unprepared(vec![Message::User {
-            content: vec![UserContent::Document(Document {
+            content: vec![UserContent::Document(DocumentContent {
                 data,
                 media_type: Some(DocumentMediaType::PDF),
                 additional_params: None,
@@ -324,7 +323,7 @@ fn unprepared_content_is_encoded_or_refused() {
     );
 
     let text = unprepared(vec![Message::User {
-        content: vec![UserContent::Document(Document {
+        content: vec![UserContent::Document(DocumentContent {
             data: rig_core::message::DocumentData::Text("plain".into()),
             media_type: Some(DocumentMediaType::TXT),
             additional_params: None,

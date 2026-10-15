@@ -52,6 +52,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `gemini_nanobanana_image_generation` | See source. |
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
+| `image_rag` | Indexes images with local CLIP embeddings, retrieves one by a text question, and sends it to a vision model. |
 | [`litellm`](litellm/README.md) | Runs an agent through a LiteLLM proxy using its OpenAI-compatible Chat Completions API. Includes local proxy setup. |
 | `manual_tool_calls` | Demonstrates manual tool-call handling with an explicit raw `Model` request. |
 | `multi_agent` | See source. |

@@ -217,57 +217,22 @@ where
     }
 }
 
-/// The object-safe form of [`Tool`]: raw JSON arguments in, a
-/// [`ToolResult`] out. This is the impl-side contract the bus's
-/// `ToolAdapter` calls; nothing stores it behind a vtable.
-pub trait ErasedTool: WasmCompatSend + WasmCompatSync {
-    /// The tool's name.
-    fn name(&self) -> String;
-    /// The tool's description.
-    fn description(&self) -> String;
-    /// The JSON schema of the tool's arguments.
-    fn parameters(&self) -> serde_json::Value;
-    /// Run the tool on raw arguments, shaping the answer into a result.
-    fn execute<'a>(
-        &'a self,
-        args: String,
-        context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult>;
-}
-
-impl<T> ErasedTool for T
-where
-    T: Tool,
-{
-    fn name(&self) -> String {
-        T::NAME.to_string()
-    }
-
-    fn description(&self) -> String {
-        Tool::description(self)
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        Tool::parameters(self)
-    }
-
-    fn execute<'a>(
-        &'a self,
-        args: String,
-        context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult> {
-        Box::pin(async move {
-            let args = match parse_tool_args::<T::Args>(&args) {
-                Ok(args) => args,
-                Err(error) => return ToolResult::failed(error),
-            };
-            tool_result_from(
-                Tool::call(self, context, args)
-                    .await
-                    .map_err(|error| Tool::map_error(self, error)),
-            )
-        })
-    }
+/// Run `tool` on raw JSON `args`, shaping its answer into a result: the
+/// dispatch step the bus's `ToolAdapter` takes for a typed tool.
+pub(crate) async fn execute<T: Tool>(
+    tool: &T,
+    args: String,
+    context: &mut ToolContext,
+) -> ToolResult {
+    let args = match parse_tool_args::<T::Args>(&args) {
+        Ok(args) => args,
+        Err(error) => return ToolResult::failed(error),
+    };
+    tool_result_from(
+        Tool::call(tool, context, args)
+            .await
+            .map_err(|error| Tool::map_error(tool, error)),
+    )
 }
 
 /// Reports whether a tool's owner still serves it. Registries check lazily on

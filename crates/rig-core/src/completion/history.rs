@@ -167,7 +167,7 @@ pub enum Media<'a> {
     /// Video in a user message.
     Video(&'a crate::message::Video),
     /// A document in a user message.
-    Document(&'a crate::message::Document),
+    Document(&'a crate::message::DocumentContent),
 }
 
 /// The model a request is sent to, as replay sees it. Every completion wire
@@ -294,9 +294,10 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         None
     }
 
-    /// Whether the encoder sends a request's documents itself. Otherwise
-    /// they join the history as text before it is adapted.
-    fn takes_documents(&self) -> bool {
+    /// Whether the encoder sends `request`'s documents itself. Otherwise
+    /// they join the history, as text and images, before it is adapted.
+    fn takes_documents(&self, request: &crate::completion::CompletionRequest) -> bool {
+        let _ = request;
         false
     }
 

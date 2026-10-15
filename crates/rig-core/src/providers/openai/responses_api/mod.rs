@@ -17,8 +17,8 @@ use crate::error::EncodeError;
 use crate::json_utils;
 use crate::json_utils::Lenient;
 use crate::message::{
-    AssistantContent, Document, DocumentData, DocumentMediaType, DocumentSourceKind, Message,
-    MimeType, ToolResultContent, UserContent,
+    AssistantContent, DocumentContent, DocumentData, DocumentMediaType, DocumentSourceKind,
+    Message, MimeType, ToolResultContent, UserContent,
 };
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::Mode;
@@ -57,7 +57,7 @@ fn image_part(image: &message::Image) -> Option<Value> {
 /// The content part `document` goes as: an `input_file` for a file id, a URL
 /// or base64 PDF data, and its text for a text document. `None` for any other
 /// form; the adapter sends a text document's text instead.
-fn document_part(document: &Document) -> Option<Value> {
+fn document_part(document: &DocumentContent) -> Option<Value> {
     let source = match &document.data {
         DocumentData::Text(text) => return Some(json!({"type": "input_text", "text": text})),
         DocumentData::File(source) => source,
