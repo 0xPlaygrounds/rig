@@ -1,17 +1,14 @@
-//! rig-ecs: a Bevy agent runtime on rig-core. Agents are entities whose
-//! components hold their conversation, model, reasoning setting, system
-//! prompt and tool access; a running turn is an entity of its agent, and
-//! its model and tool calls are entities of the turn that run on Bevy's
-//! task pools. Every call goes through one effect dispatch path, recorded
-//! as it settles ([`effects`]). Tools are registered by plugins. An agent's
-//! [`Conversation`](agent::Conversation) is rig-core's, changed by calling
-//! its methods, and the kernel saves every change to the session journal
-//! in the [`session_log::SessionStore`] the app inserts. Time is Bevy's: a retried model call waits on a delayed
-//! command, and plugins that animate or poll run on `on_real_timer`,
-//! instead of threads of their own.
+//! rig-ecs, the kernel of the rig coding agent: agents, their turns and
+//! their calls are Bevy entities, and the calls run on Bevy's task pools.
+//! Every call goes through one effect dispatch path, recorded as it settles
+//! ([`effects`]); plugins register the tools. The kernel saves every change
+//! of an agent's [`Conversation`](agent::Conversation) to the
+//! [`session_log::SessionStore`] the app inserts. Time is Bevy's: a retried
+//! model call waits on a delayed command, and plugins that animate or poll
+//! run on `on_real_timer`, not on threads of their own.
 //!
-//! The runtime depends on no view and no file system: the app fills in
-//! what it needs, such as the store (any [`rig_memory::Store`]) and the
+//! The kernel depends on no view and no file system: the app fills in what
+//! it needs, such as the store (any [`rig_memory::Store`]) and the
 //! [`model::Models`].
 //!
 //! ```no_run
@@ -37,13 +34,12 @@ pub mod tasks;
 pub mod tools;
 pub mod turn;
 
-/// What a plugin needs: Bevy's app, ECS, reflection and time preludes
-/// with the time run conditions and `Disabled`, the agent components and
-/// requests, the tool registry, rig-core's message and conversation types
-/// (`message::Message` is the conversation's message; the prelude's own
-/// `Message` is Bevy's message trait; `Conversation` is the agent's
-/// component, which derefs to `rig_core::conversation::Conversation`), and
-/// rig-memory's session store, reading and rewriting.
+/// What a plugin needs: Bevy's app, ECS, reflection and time preludes (with
+/// the time run conditions and `Disabled`), the kernel's components,
+/// requests and stages, the tool registry, rig-core's conversation types and
+/// rig-memory's store. `Message` is Bevy's message trait, a conversation's
+/// message is `message::Message`, and `Conversation` is the agent's
+/// component.
 pub mod prelude {
     pub use bevy_app::prelude::*;
     pub use bevy_ecs::entity_disabling::Disabled;
@@ -121,28 +117,29 @@ use session_log::{SaveConversations, SavedOne, Saving, SessionLog, save_conversa
 use tasks::{PollTasks, Wake, poll_tasks, run_settle_frames};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
-/// them for the restart, unended. It runs before
-/// [`WriteLogs`], both in Bevy's `OnAppExitSystems`.
+/// them for the restart, unended; before [`WriteLogs`], both in Bevy's
+/// `OnAppExitSystems`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StopTurnsOnExit;
 
-/// The systems in `Last` that write the frame's journal records to the
-/// [`session_log::SessionStore`], and those a plugin adds to write its own logs, such as
-/// the effect log: such a system says `.in_set(WriteLogs)` and nothing
-/// else, and runs after the turns stopped on exit, so it writes what they
-/// left too. The conversations changed are saved before it.
+/// The systems in `Last` that write the frame's log records to the
+/// [`session_log::SessionStore`], and those a plugin adds to write its own
+/// logs, such as the effect log: such a system says `.in_set(WriteLogs)` and
+/// nothing else. It runs after the conversations changed were saved and the
+/// turns stopped on exit, so it writes what they left too.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WriteLogs;
 
-/// Agents, their turn loop, effects, and the tool registry.
-/// Spawns one agent at startup when the restored session has none. It
-/// saves every change of an agent's conversation and announces it as a
-/// [`session_log::ConversationChanged`]; its [`SessionLog`] logs to the app's
-/// [`session_log::SessionStore`], if any, once [`session_log::SessionLogPlugin`]
-/// restored the session from it. It adds Bevy's `TimePlugin` unless the app has it, for the
-/// clock a retried model call waits on, and then runs `First`, `PreUpdate`
-/// and `Last` on Bevy's single-threaded executor. It sets no error
-/// handler: that is the application's choice.
+/// The kernel: agents, their turn loop, effects and the tool registry, and
+/// the saving of every conversation change (announced as
+/// [`session_log::ConversationChanged`]).
+///
+/// It spawns one agent at startup when the restored session has none, and
+/// logs to the app's [`session_log::SessionStore`] once
+/// [`session_log::SessionLogPlugin`] restored the session. It adds Bevy's
+/// `TimePlugin` unless the app has one, for the clock a retried call waits
+/// on, and then runs `First`, `PreUpdate` and `Last` single-threaded. It sets
+/// no error handler.
 pub struct AgentPlugin;
 
 impl Plugin for AgentPlugin {
@@ -150,7 +147,7 @@ impl Plugin for AgentPlugin {
         if !app.is_plugin_added::<TimePlugin>() {
             // An app without a clock of its own is a small headless one, not
             // a game: its `First` and `PreUpdate` hold little but the clock's
-            // systems, and its `Last` little but the journal's, too little
+            // systems, and its `Last` little but the session log's, too little
             // for Bevy's multi-threaded executor, which would wake the task
             // pool for them every frame (a frame that saves a conversation
             // paid more in thread handoffs than in saving).

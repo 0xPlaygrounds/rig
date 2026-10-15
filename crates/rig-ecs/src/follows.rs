@@ -3,25 +3,15 @@
 //! every split, switch, move, merge, fork and restore gives the agent the
 //! value its line had at that point, and a sibling line never sees it.
 //!
-//! A value set on a line is kept as an aside of kind [`FOLLOWS`] by rig,
-//! following the line's last entry, at most one per key and entry. While
-//! the line has no entry of its own since it parted from a kept branch (or
-//! has no entry at all), the value is one of the line's own values
-//! (rig-core's `Conversation::set_line_value`), which travel with the line
-//! as its title does, and is anchored after the line's first entry of its
-//! own once it has one. A removed component is kept as a `null` value, so
-//! it stays removed on that line.
+//! A value is kept in the conversation as rig-memory's [`FOLLOWS`] asides
+//! and line values; a removed component is kept as `null`, so it stays
+//! removed on that line.
 //!
-//! Whenever the kernel saves the conversations, right before `Update`,
-//! between the stages of each agent pass and at the end of the frame, it
-//! first mirrors each change of
-//! a followed component into the conversation, and after a change that may
-//! change the line (a splice, a reset, a branch, line value or followed
-//! value put) gives the agent its line's value, read as a saved value is
-//! (upgraded through its plugin's steps); a value it gave is never
-//! mirrored back. So a change is kept at the entry it was made after, give
-//! or take a stage, and a line changed before `Update` (by a key or a
-//! command) or in a stage gives its value to `Update` or the next stage. Pushes and tool calls cost nothing.
+//! The kernel mirrors each change of a followed component into the
+//! conversation whenever it saves (before `Update`, between the stages of a
+//! pass, at the end of the frame), and after a change that may switch the
+//! line gives the agent its line's value, upgraded as a saved value is. A
+//! value it gave is never mirrored back.
 
 use std::collections::HashMap;
 

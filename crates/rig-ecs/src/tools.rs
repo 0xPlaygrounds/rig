@@ -1,22 +1,10 @@
 //! The tool registry and tool calls. A tool is an entity holding its
-//! definition, its [`ToolRules`] and its default [`Footprint`], and, for
-//! an ordinary tool, its effect handler; plugins add tools with
+//! definition, its [`ToolRules`] and its default [`Footprint`], and, for an
+//! ordinary tool, its effect handler; plugins add tools with
 //! [`AppToolsExt::add_tool`]. A tool call is an effect entity with a
-//! [`ToolRequest`]: the kernel completes it with its tool's [`CallHandler`]
-//! when it is admitted, so Prepare may change the call or its handler,
-//! gives it the [`Footprint`] of the call as it stands when Gate opens,
-//! and starts it in [`Stage::Start`](super::stage::Stage::Start). An ordinary
-//! tool's handler answers it; an open tool's call triggers [`ToolCalled`]
-//! and stays open until any system decides it
+//! [`ToolRequest`]. An ordinary tool's handler answers it; an open tool's
+//! call triggers [`ToolCalled`] and stays open until any system decides it
 //! ([`Decision`]).
-//!
-//! ```ignore
-//! // `Wait { signal: String }` derives `Deserialize` and `JsonSchema`.
-//! app.add_open_tool("wait", "Waits for a signal.", ToolOptions::default(),
-//!     |called: On<ToolCalled<Wait>>, mut commands: Commands| {
-//!         // Keep `called.call`; decide its `Decision` once `called.args.signal` comes.
-//!     });
-//! ```
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
@@ -107,19 +95,18 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
     Ok(())
 }
 
-/// A tool call: an effect entity, as the model's reply or a plugin spawns
-/// it, `(ToolRequest { call }, ForAgent(agent))`, often [`CallOf`] a turn.
-/// Admitted, it gets its tool's [`CallHandler`] unless it has its own;
-/// Prepare may change the call or the handler, and Gate sees the
-/// [`Footprint`] of the call as it stands each time Gate opens, so a held
-/// call a Review system edits is gated again; Prepare does not run again
-/// for it.
-/// After the answers from a record and before every gate, the kernel
-/// answers a call of a tool that is not registered or that the agent may
-/// not use, or whose arguments its tool does not declare, with its
-/// refusal, unless the call was decided: no gate sees it, and an answer
-/// after the gates cannot stand in for it. Start runs its handler, or
-/// opens it for an open tool. Its [`Outcome`] is its result.
+/// A tool call: an effect entity, spawned by the model's reply or a plugin as
+/// `(ToolRequest { call }, ForAgent(agent))`, often [`CallOf`] a turn. Its
+/// [`Outcome`] is its result.
+///
+/// When admitted it gets its tool's [`CallHandler`] unless it has one;
+/// Prepare may change the call or the handler, once. Each time Gate opens the
+/// kernel gives it the [`Footprint`] of the call as it stands, so a held call
+/// edited meanwhile is gated again. After the answers from a record and
+/// before every gate, the kernel refuses a call no record decided whose tool
+/// is unregistered or not the agent's to use, or whose arguments its tool
+/// does not declare; no gate sees it and no later answer replaces it. Start
+/// runs the handler, or opens the call for an open tool.
 ///
 /// [`CallOf`]: super::agent::CallOf
 #[derive(Component, Clone, Debug)]
@@ -189,11 +176,7 @@ impl Default for Footprint {
 /// Prepare: the kernel keeps that footprint (made
 /// [`normalized`](Touches::normalized)) instead of asking the call's
 /// handler, so a plugin that knows what a call touches, such as a shell
-/// command that only reads, lets the reply's other calls run beside it:
-///
-/// ```ignore
-/// commands.entity(call).insert((Footprint(Touches::Writes(Scope::Paths(vec![src]))), DeclaredFootprint));
-/// ```
+/// command that only reads, lets the reply's other calls run beside it.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DeclaredFootprint;
 
@@ -215,40 +198,21 @@ pub struct ToolOptions<'a> {
 
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {
-    /// Make `tool` available to every agent whose
-    /// [`ToolAccess`] allows its name. A
-    /// name already registered is refused with a warning: to replace
-    /// another plugin's tool, insert Bevy's `Disabled` on its entity first,
-    /// which frees its name (in `Plugin::finish`, once every plugin's
-    /// `build` ran).
+    /// Makes `tool` available to every agent whose [`ToolAccess`] allows its
+    /// name. A name already registered is refused with a warning; to replace
+    /// another plugin's tool, insert Bevy's `Disabled` on its entity first, in
+    /// `Plugin::finish`.
     ///
-    /// Tool futures run on Bevy's async compute pool, a few threads that
-    /// every agent's tool calls share. A tool that blocks, such as one
-    /// using `std::fs`, `std::process::Command` or a long computation,
-    /// wraps that work in `rig_tools::blocking`, which is in the prelude,
-    /// so it runs on a thread of its own:
-    ///
-    /// ```ignore
-    /// async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
-    ///     blocking(move || {
-    ///         std::fs::read_to_string(&args.path).map_err(ToolExecutionError::from_error)
-    ///     })
-    ///     .await
-    /// }
-    /// ```
+    /// Tool futures run on Bevy's async compute pool, a few threads every
+    /// agent's calls share, so a tool that blocks (`std::fs`,
+    /// `std::process::Command`, a long computation) runs that work on a thread
+    /// of its own, such as with rig-tools' `blocking`.
     fn add_tool<T: Tool + 'static>(&mut self, tool: T) -> &mut Self {
         self.add_tool_with(tool, ToolOptions::default())
     }
 
     /// [`add_tool`](Self::add_tool), with the rules on how to use it and
-    /// what its calls touch:
-    ///
-    /// ```ignore
-    /// app.add_tool_with(Outline, ToolOptions {
-    ///     rules: &["Use `outline` before reading a large file."],
-    ///     footprint: Some(Touches::Reads(Scope::Anything)),
-    /// });
-    /// ```
+    /// what its calls touch.
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
 
     /// Make the open tool `name` available, its parameters derived from

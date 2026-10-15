@@ -7,25 +7,14 @@
 //! released goes as far as it can in that frame.
 //!
 //! A plugin steps in with an ordinary system in a stage that queries stage
-//! data. It orders its Prepare and Review systems by what they do, in a
-//! phase of the stage ([`PrepareSystems`], [`ReviewSystems`]), and against
-//! one other plugin with `.before` and `.after` that plugin's sets; an
-//! answer from a record of an earlier run goes before every gate, and an
-//! answer that stands in for running the effect after them
-//! ([`GateSystems`]). Every
-//! effect is [`Admitted`] first, so every Prepare and Gate system sees it,
-//! in their order, before it starts, wherever it was spawned. A gate
-//! answers in the effect's [`Decision`], where the first decision wins; a
-//! reviewer edits the [`Outcome`] in place, and the record keeps both and
-//! who decided. Bevy
-//! sees both writes, so two unordered systems writing them are reported in
-//! debug builds. Any entity [`HoldOf`] an effect
-//! keeps it where it is, and holds add up. A system that fails in Prepare,
-//! Gate or Review closes its stage for that pass, whatever the app's error
-//! handler: what Prepare admitted is answered with an error, Start starts
-//! nothing, Commit settles nothing. From the second pass of a frame on,
-//! `Time`, `Time<Real>` and `Time<Virtual>` advance by zero, so timers count
-//! each frame once.
+//! data, ordered by its phase ([`PrepareSystems`], [`ReviewSystems`],
+//! [`GateSystems`]) and against other plugins' public sets. Every effect is
+//! [`Admitted`] first, so every Prepare and Gate system sees it before it
+//! starts. A gate decides in the effect's [`Decision`] (the first decision
+//! wins), a reviewer edits the [`Outcome`] in place, and any entity
+//! [`HoldOf`] an effect keeps it where it is. A failing Prepare, Gate or
+//! Review system closes its stage for that pass. From a frame's second pass
+//! on, Bevy's clocks advance by zero, so timers count each frame once.
 //!
 //! ```
 //! use rig_ecs::prelude::*;
@@ -460,12 +449,9 @@ pub struct Holds(Vec<Entity>);
 /// another model, or each losing member of a race: it never starts, its
 /// task is cancelled if it runs, and its outcome is never applied. It
 /// settles at the next Commit, recorded as superseded. Any number of
-/// effects may name one successor:
-///
-/// ```ignore
-/// commands.spawn(retry).add_related::<SupersededBy>(&[call]);   // a retry
-/// commands.entity(loser).insert(SupersededBy(winner));          // a race, once per loser
-/// ```
+/// effects may name one successor: a retry is
+/// `commands.spawn(retry).add_related::<SupersededBy>(&[call])`, and each
+/// loser of a race gets `insert(SupersededBy(winner))`.
 #[derive(Component, Reflect, Debug)]
 #[component(on_add = moved::<SupersededBy>)]
 #[reflect(Component)]

@@ -1,21 +1,17 @@
-//! The session's journal in the app. Each agent's log, in the session's
-//! [`SessionStore`], gets every change made to the agent's
-//! [`Conversation`] and every change of a [`ReflectSaved`] component, such
-//! as the agent's model, reasoning setting, system prompt, tool access and
-//! last usage. The format, its writer and its readers are rig-memory's.
+//! The session log in the app. Each agent's log, in the session's
+//! [`SessionStore`], gets every change of the agent's [`Conversation`] and
+//! of its [`ReflectSaved`] components, such as its model, reasoning
+//! setting, system prompt, tool access and last usage. The format, its
+//! writer and its readers are rig-memory's.
 //!
-//! A conversation is changed by calling its methods; each change waits in
-//! the conversation's outbox until the kernel saves it: between the stages
-//! of every pass, at the end of the frame, before a tool that may change
-//! something starts, and when a turn is interrupted. Saving queues the
-//! changes for the log, announces each as a [`ConversationChanged`], and writes the
-//! queue at the end of the frame, a subagent's log before its parent's.
-//!
-//! Records are appended while the session runs. Nothing is rewritten
-//! except through rig-memory: a [`RewriteSession`] maps every saved record
-//! in place, keeping each record's place and stamp, and the agents'
-//! conversations and saved values become the rewritten ones;
-//! [`restore`](super::restore) folds the logs back at startup.
+//! Each change waits in the conversation's outbox until the kernel saves
+//! it: between the stages of every pass, at the end of the frame, before a
+//! tool that may change something starts, and when a turn is stopped.
+//! Saving announces each as a [`ConversationChanged`] and queues it, and
+//! the queue is written at the end of the frame, a subagent's log before
+//! its parent's. Records are only appended, except through a
+//! [`RewriteSession`]; [`restore`](super::restore) reads the logs back at
+//! startup.
 
 use std::sync::Arc;
 
@@ -43,33 +39,27 @@ use super::restore::{IgnoredSavedKeys, SavedKeys, SavedUpgrades, Shelved};
 use super::restore::{SavedReader, resource_entity, saved_type};
 
 /// Saves an agent component or a resource with the session: derive
-/// `Reflect` and add `Saved` to its `#[reflect(..)]`, as
-/// `#[reflect(Component, Saved)]` or `#[reflect(Resource, Saved)]`. Each
-/// change of it is logged at the end of the frame under its type path, or
-/// the stable key its plugin gives it ([`SavedKeys`]), with its type's
-/// version ([`SavedUpgrades`]; an agent's in its log, a resource in the
-/// session's [`SESSION`] log, written once an agent's log is) and restored
-/// by reflection, read at its type's version through the steps its plugin
-/// registered, inserted on the
-/// agent it was saved with before [`SessionRestored`] exists, so an
-/// `On<Insert<T>>` observer re-arms what it says; a value that serializes
-/// to `null` is saved as absent, and so is an agent component removed. A
-/// resource is restored in place of the one its plugin inserted while the
-/// app was built.
+/// `Reflect` and add `Saved`, as `#[reflect(Component, Saved)]` or
+/// `#[reflect(Resource, Saved)]`.
 ///
-/// A type reflected opaquely with serde, as
-/// `#[reflect(opaque, Component, Saved, Clone, Serialize, Deserialize)]`,
-/// is saved and restored through its serde form: the way to save a
-/// component holding rig-core data that is not `Reflect`, such as a
-/// [`MessageId`](rig_core::conversation::MessageId).
-///
-/// Registration is a runtime fact: a generic type is saved only once
-/// registered (`app.register_type::<T>()`), and a logged type no build
-/// registers any more is reported on restore and kept in the log. A value
-/// no step reads, or that no longer fits its type, is reported, listed in
-/// [`Shelved`] and not inserted; the next change of it first moves the old
-/// value to a side key (rig-memory's `SHELVED`), so nothing is lost. A
-/// value a newer rig saved is reported and never written over in this run.
+/// - Each change is logged at the end of the frame under its type path, or
+///   the key its plugin gives it ([`SavedKeys`]), with its type's version
+///   ([`SavedUpgrades`]): an agent's in its log, a resource in the
+///   [`SESSION`] log. A value that serializes to `null`, or a removed
+///   component, is saved as absent.
+/// - On restore it is read at its version through its plugin's steps and
+///   inserted before [`SessionRestored`] exists, on the agent it was saved
+///   with, so an `On<Insert<T>>` observer re-arms what it says. A resource
+///   replaces the one its plugin inserted while the app was built.
+/// - A type reflected opaquely with serde
+///   (`#[reflect(opaque, Component, Saved, Clone, Serialize, Deserialize)]`)
+///   is saved through serde: the way to save rig-core data such as a
+///   [`MessageId`](rig_core::conversation::MessageId).
+/// - A generic type is saved only once registered. A logged type no build
+///   registers is reported and kept in the log. A value no step reads, or
+///   that no longer fits, is reported, listed in [`Shelved`] and not
+///   inserted; its next change moves the old value to a side key first. A
+///   value a newer rig saved is never written over in this run.
 #[derive(Clone)]
 pub struct ReflectSaved {
     watch: fn(&mut App),
@@ -174,8 +164,9 @@ pub struct SessionRestored {
 #[derive(Resource)]
 pub(crate) struct Opened(pub(crate) Session);
 
-/// Opens `store` for this app: reads the session it holds, refusing an old
-/// or broken one before anything is written, sets each torn last line
+/// Opens `store` for this app: reads the session it holds, refusing one it
+/// cannot read whole (from before `rig-session/2`, from a newer rig, or
+/// broken) before anything is written, sets each torn last line
 /// aside, and keeps what it read for the restore at startup. On success
 /// `store` is the app's [`SessionStore`] and its log writes there once the
 /// session is restored; on failure the app keeps nothing of it. An app that
@@ -184,9 +175,9 @@ pub(crate) struct Opened(pub(crate) Session);
 ///
 /// # Errors
 ///
-/// The [`SessionError`] reading the session gave: a session saved by an older
-/// rig, a log in another format, a record that cannot be read, or the
-/// store failing.
+/// The [`SessionError`] reading the session gave: a session from before
+/// `rig-session/2`, a log in another format, a record that cannot be read,
+/// or the store failing.
 pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), SessionError> {
     let (writer, session) = Writer::open(store.clone())?;
     world.insert_resource(SessionStore(store));

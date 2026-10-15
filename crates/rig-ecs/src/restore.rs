@@ -5,20 +5,12 @@
 //! before anything is written when it cannot be read, a torn last line set
 //! aside; a retired agent and the agents it spawned are not restored.
 //!
-//! The work an agent carries on is spawned as ordinary stage entities
-//! marked [`Restored`]: every call left without a result, as one reply,
-//! and gated like any, as nothing held or approved before the restart is
-//! kept. A call that may change something is marked on its agent's
-//! conversation (an aside of kind `rig.call`) before it starts, and any
-//! call that settles while its reply still runs is marked with its result;
-//! the marks go when the reply's results are in. A restored call with a
-//! mark is [`Interrupted`]: no gate that holds or asks sees it, a plugin
-//! answers it in Gate, holds it to answer later, or lets it run again by
-//! removing `Interrupted` in Prepare, and the kernel answers it after
-//! every gate, once nothing holds it, otherwise. The
-//! restore commits no answer; it only removes the marks of calls that have
-//! a result. A plugin re-arms its own obligations from observers of the
-//! saved components the restore inserts (`On<Insert<MyWait>>`, before
+//! The work an agent carries on is spawned as ordinary stage entities marked
+//! [`Restored`], gated like any: nothing held or approved before the restart
+//! is kept. A tool call that had started or settled when the session stopped
+//! carries [`Interrupted`], which says how the kernel answers it. The restore
+//! commits no answer. A plugin re-arms its own obligations from observers of
+//! the saved components the restore inserts (`On<Insert<MyWait>>`, before
 //! [`SessionRestored`] exists):
 //!
 //! ```

@@ -1,23 +1,18 @@
 //! The turn loop. A user message spawns a turn entity, [`TurnOf`] its
-//! agent; the turn's model calls and tool calls are effect entities
-//! [`CallOf`] the turn that move through the stages. The turn's own model
-//! call is a [`TurnCall`]: the kernel builds its [`ModelRequest`] from the
-//! agent when it is admitted, plugins edit it in Prepare, and Start fits
-//! it to the model it goes to and sends it. Its reply's tool calls are
-//! [`ToolRequest`] effects; a reply's calls run side by side unless an
-//! earlier one writes what a later one touches, as their [`Footprint`]s
-//! say ([`Waiting`]), and once every one settled their results go back in call order and the
-//! next [`TurnCall`] is spawned. rig-core's turn-failure rule decides when
-//! a reply ends the turn instead. A model call that failed gets the
-//! [`RETRY_POLICY`] policy's [`RetryVerdict`] in Arrive, which Review may read,
-//! edit in place or act on by superseding the call; Commit carries out what is
-//! left: a [`Backoff`] then a new call, or the turn's end. A call refused
-//! before it was sent ends the turn and keeps the user's message. Each
-//! turn counts its retries in its [`Recovery`]. Every end the kernel
-//! decides is a [`TurnOutcome`] proposed on the turn, which Review may
-//! edit in place, hold or carry on from; once nothing holds it and every call of
-//! the turn settled, Commit ends the turn and marks it [`Settled`] for
-//! the readers of how it ended. [`StopTurn`] ends it at once.
+//! agent; its model and tool calls are effect entities [`CallOf`] the turn.
+//!
+//! The turn's own model call is a [`TurnCall`]: the kernel builds its
+//! [`ModelRequest`] from the agent when it is admitted, plugins edit it in
+//! Prepare, and Start fits it to its model and sends it. The reply's tool
+//! calls are [`ToolRequest`] effects that run side by side unless their
+//! [`Footprint`]s conflict ([`Waiting`]); once all settled, their results go
+//! back in call order and the next `TurnCall` is spawned.
+//!
+//! A failed call gets the [`RETRY_POLICY`]'s [`RetryVerdict`] in Arrive,
+//! which Review may edit or act on; Commit then backs off ([`Backoff`]) and
+//! retries, or ends the turn. A call refused before it was sent ends the
+//! turn and keeps the user's message. Every end is a [`TurnOutcome`]
+//! proposed on the turn; [`StopTurn`] ends it at once.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -282,12 +277,12 @@ pub struct TurnCall;
 pub struct SideCall(pub Entity);
 
 /// On a model call whose handler failed: what the [`RETRY_POLICY`] policy says,
-/// put by the kernel in Arrive with the turn's [`Recovery`]. Review may
-/// read it, edit it in place (`Query<&mut RetryVerdict>`), or take the failure over by superseding the call;
-/// for a [`TurnCall`], Commit carries out what is left: `Retry` waits a
-/// [`Backoff`] and sends a new call, `GaveUp` ends the turn and keeps the
-/// user's message, `Overflow` and `Final` end it and take the message out.
-/// A call refused before it was sent gets none.
+/// put by the kernel in Arrive with the turn's [`Recovery`]. Review may read
+/// it, edit it in place (`Query<&mut RetryVerdict>`), or take the failure over
+/// by superseding the call; for a [`TurnCall`], Commit carries out what is
+/// left: `Retry` waits a [`Backoff`] and sends a new call, `GaveUp` ends the
+/// turn and keeps the user's message, `Overflow` and `Final` end it and take
+/// the message out. A call refused before it was sent gets none.
 #[derive(Component, Clone, Debug)]
 pub struct RetryVerdict(pub Verdict);
 
@@ -1071,11 +1066,11 @@ pub(crate) fn back_off(
 }
 
 /// Answers every admitted call of a failed or stopped turn that has not
-/// settled, in [`Stage::Commit`] before the kernel settles: one not
-/// answered yet with its [`IfStopped`], else as stopped, which cancels it
-/// if it runs, and whatever holds them is despawned, so they settle in this pass and the turn can end. A
-/// call spawned since the last pass is left for Admit, where a new
-/// [`TurnCall`] carries the turn on.
+/// settled, in [`Stage::Commit`] before the kernel settles: one not answered
+/// yet with its [`IfStopped`], else as stopped, which cancels it if it runs,
+/// and whatever holds them is despawned, so they settle in this pass and the
+/// turn can end. A call spawned since the last pass is left for Admit, where a
+/// new [`TurnCall`] carries the turn on.
 pub(crate) fn stop_calls(
     turns: Query<(&TurnOutcome, &Calls), With<TurnOf>>,
     calls: Query<

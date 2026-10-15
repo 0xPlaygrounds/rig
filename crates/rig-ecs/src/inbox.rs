@@ -260,12 +260,12 @@ pub struct Recalled {
     pub why: Option<String>,
 }
 
-/// On a message ([`Incoming`]) the kernel delivered into a turn: the turn
-/// whose model call it went with, the turn it started or the running turn
-/// it steered or carried on. Inserted when the message goes into the
-/// conversation, with its answer; read-only, so a turn's end does not wait
-/// for its messages. A note to an idle agent, and what a turn that ended
-/// some other way puts in the conversation, go with no turn and have none.
+/// On a message ([`Incoming`]) the kernel delivered into a turn: the turn whose
+/// model call it went with, the turn it started or the running turn it steered
+/// or carried on. Inserted when the message goes into the conversation, with
+/// its answer; read-only, so a turn's end does not wait for its messages. An
+/// `Inform` message to an idle agent, and what a turn that ended some other way
+/// puts in the conversation, go with no turn and have none.
 #[derive(Component, Reflect, Clone, Copy, Debug)]
 #[reflect(Component, Clone, Debug)]
 pub struct DeliveredIn(pub Entity);
@@ -364,11 +364,11 @@ fn handled(how: &'static str) -> Outcome {
     Outcome::custom(how)
 }
 
-/// Accepts each message about to start, in the order they were sent,
-/// unless a Gate system failed this pass, in [`Stage::Start`]: gives an
-/// idle agent the message at once and starts a turn with it, with every message accepted with it, unless it
-/// is a note, which is kept for the next turn; and keeps it, [`Started`],
-/// for a busy agent.
+/// Accepts each message about to start, in the order they were sent, unless a
+/// Gate system failed this pass, in [`Stage::Start`]: gives an idle agent the
+/// message at once and starts a turn with it, with every message accepted with
+/// it, unless it is an `Inform` message, which is kept for the next turn; and
+/// keeps it, [`Started`], for a busy agent.
 pub(crate) fn accept(
     ready: Query<(Entity, &Effect, &Incoming, Option<&ForAgent>), ReadyToStart>,
     mut agents: Query<(&mut Conversation, Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
@@ -400,7 +400,7 @@ pub(crate) fn accept(
             continue;
         }
         let spec = connection.map(|connection| &*connection.spec);
-        // A note to an idle agent waits for the next turn.
+        // An `Inform` message to an idle agent waits for the next turn.
         let turn = match joins {
             None if message.mode == DeliveryMode::Inform => None,
             None => Some(commands.spawn(TurnOf(agent)).id()),
