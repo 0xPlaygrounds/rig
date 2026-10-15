@@ -40,6 +40,11 @@ fn a_renamed_dependency_is_looked_up_by_its_rust_name() {
         rename: None,
     };
     assert_eq!(plain.identifier(), "rig_derive");
+    let library = Dependency {
+        name: "steel-core".to_owned(),
+        rename: None,
+    };
+    assert_eq!(library.identifier(), "steel");
 }
 
 #[test]
