@@ -74,6 +74,9 @@ pub const AZURE: Dialect = Dialect {
     ..Dialect::gateway(crate::providers::azure::PROVIDER_NAME, "", "AZURE_API_KEY")
 };
 
+/// Where DeepSeek serves strict function calling.
+const DEEPSEEK_STRICT_PATH: &str = "/beta/chat/completions";
+
 /// DeepSeek.
 pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
@@ -81,8 +84,10 @@ pub const DEEPSEEK: Dialect = Dialect {
         supports_response_format: false,
         verify_path: "/user/balance",
         // Strict function calling is a beta feature: only the beta base
-        // validates a strict schema, and the main one ignores `strict`.
-        strict_tools_path: Some("/beta/chat/completions"),
+        // validates a strict schema, and the main one ignores `strict`. The
+        // path is the root's, whether the base names `/v1` or `/beta`.
+        strict_tools_path: Some(DEEPSEEK_STRICT_PATH),
+        root_relative_routes: &[DEEPSEEK_STRICT_PATH],
         rewrite: BodyRewrite::DeepSeek,
         // Its thinking models take `reasoning_content` back on every
         // assistant message (pi).

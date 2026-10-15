@@ -346,7 +346,8 @@ pub struct Quirks {
     pub accepts_file_ids: bool,
     /// The rewrite this dialect applies to the serialized chat body.
     pub rewrite: BodyRewrite,
-    /// Paths that strip a trailing `/v1` from the configured base URL.
+    /// Paths served at the root: a trailing `/v1`, or the path's own first
+    /// segment, is dropped from the configured base URL.
     pub root_relative_routes: &'static [&'static str],
     /// Whether the model is the modality endpoint's *path* rather than a
     /// body field. Hugging Face's router addresses transcription and image
@@ -820,13 +821,21 @@ impl OpenAIConfig {
     }
 
     /// The base URL `path` resolves against: the configured one, with the
-    /// version segment dropped for a route the dialect serves at the root.
+    /// version segment, or the route's own first segment, dropped for a
+    /// route the dialect serves at the root.
     fn base(&self, path: &str) -> &str {
         let base = self.base_url.trim_end_matches('/');
-        if self.dialect.quirks.root_relative_routes.contains(&path) {
-            return base.strip_suffix("/v1").unwrap_or(base);
+        if !self.dialect.quirks.root_relative_routes.contains(&path) {
+            return base;
         }
-        base
+        let first = path
+            .get(1..)
+            .and_then(|rest| rest.find('/'))
+            .and_then(|end| path.get(..=end))
+            .unwrap_or(path);
+        base.strip_suffix("/v1")
+            .or_else(|| base.strip_suffix(first))
+            .unwrap_or(base)
     }
 
     /// The sub-provider the Hugging Face router forwards to. `None` on the

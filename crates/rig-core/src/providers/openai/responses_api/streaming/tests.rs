@@ -520,11 +520,19 @@ fn a_call_done_before_its_arguments_takes_the_arguments_that_follow() {
             .ended()
             .into_iter()
             .filter_map(|content| match content {
-                AssistantContent::ToolCall(call) => Some(call.function.arguments_value()),
+                AssistantContent::ToolCall(call) => Some((
+                    call.function.arguments_value(),
+                    call.native.map(|native| native.item["arguments"].clone()),
+                )),
                 _ => None,
             })
             .collect();
-        assert_eq!(calls, [json!({"q": "rig"})], "{:?}", decoded.events());
+        assert_eq!(
+            calls,
+            [(json!({"q": "rig"}), Some(json!("{\"q\":\"rig\"}")))],
+            "{:?}",
+            decoded.events()
+        );
     }
 }
 

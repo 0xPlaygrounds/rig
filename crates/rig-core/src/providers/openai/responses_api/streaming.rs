@@ -634,7 +634,18 @@ impl ResponsesDecoder {
         match done.kind {
             Kind::Call => {
                 nameless = !done.titled && item.str("name").is_none_or(str::is_empty);
-                let arguments = arguments_of(&item).unwrap_or_else(|| streamed_arguments(done));
+                let stated = arguments_of(&item);
+                let arguments = stated.clone().unwrap_or_else(|| streamed_arguments(done));
+                // The item replays verbatim, so it states what streamed.
+                if let (None, false, Some(fields)) =
+                    (&stated, done.arguments.is_empty(), item.as_object_mut())
+                {
+                    let (key, value) = match done.custom {
+                        true => ("input", done.arguments.clone()),
+                        false => ("arguments", arguments.clone()),
+                    };
+                    fields.insert(key.to_owned(), Value::String(value));
+                }
                 let rest = remainder(done, &arguments, out)?;
                 out.fragment(
                     Some(at),

@@ -383,20 +383,35 @@ fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
 }
 
 /// DeepSeek validates a strict schema only on its beta base, so a wire with
-/// strict tools sends there, each function marked strict; one without keeps
-/// the main base.
+/// strict tools sends there, each function marked strict, whichever of its
+/// documented bases is configured; one without keeps the configured base.
 #[test]
 fn deepseek_strict_tools_go_to_its_beta_base() {
-    let chat = OpenAIConfig::with_key(&DEEPSEEK, "key").chat("deepseek-flash");
+    let chat = |base: &str| {
+        OpenAIConfig::with_key(&DEEPSEEK, "key")
+            .with_base_url(base)
+            .chat("deepseek-flash")
+    };
+    let beta = "https://api.deepseek.com/beta/chat/completions";
     for (wire, uri, strict) in [
         (
-            chat.clone(),
+            chat("https://api.deepseek.com"),
             "https://api.deepseek.com/chat/completions",
             None,
         ),
         (
-            chat.with_strict_tools(),
-            "https://api.deepseek.com/beta/chat/completions",
+            chat("https://api.deepseek.com").with_strict_tools(),
+            beta,
+            Some(true),
+        ),
+        (
+            chat("https://api.deepseek.com/v1").with_strict_tools(),
+            beta,
+            Some(true),
+        ),
+        (
+            chat("https://api.deepseek.com/beta/").with_strict_tools(),
+            beta,
             Some(true),
         ),
     ] {

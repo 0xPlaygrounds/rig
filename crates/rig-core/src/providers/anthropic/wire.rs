@@ -64,6 +64,9 @@ pub struct Quirks {
     pub tool_input_streaming: ToolInputStreaming,
     /// How a request carries the credential.
     pub auth: Auth,
+    /// Whether `GET /v1/models` checks the credential. A gateway whose
+    /// listing is public has no check that consumes no tokens.
+    pub listing_checks_credential: bool,
     /// The header that names a completion's conversation, for a gateway
     /// that routes and caches by it: the request's
     /// [`cache_key`](crate::completion::GenerationOptions::cache_key), else a
@@ -108,6 +111,7 @@ impl Quirks {
             unsigned_thinking: false,
             tool_input_streaming: ToolInputStreaming::Eager,
             auth: Auth::ApiKey,
+            listing_checks_credential: true,
             session_header: None,
         }
     }
@@ -122,6 +126,7 @@ impl Quirks {
             unsigned_thinking: false,
             tool_input_streaming: ToolInputStreaming::Eager,
             auth: Auth::ApiKey,
+            listing_checks_credential: true,
             session_header: None,
         }
     }
@@ -255,20 +260,26 @@ pub const XIAOMIMIMO: Dialect = compatible(
 );
 
 /// OpenCode Zen's Messages-format endpoint, which serves its Claude and
-/// some Qwen models.
-pub const OPENCODE: Dialect = compatible(
-    crate::providers::opencode::PROVIDER_NAME,
-    "https://opencode.ai/inference",
-    crate::providers::opencode::API_KEY_ENV,
-    None,
-);
+/// some Qwen models. Its model listing is public.
+pub const OPENCODE: Dialect = Dialect {
+    quirks: Quirks {
+        listing_checks_credential: false,
+        ..Quirks::gateway()
+    },
+    ..compatible(
+        crate::providers::opencode::PROVIDER_NAME,
+        "https://opencode.ai/inference",
+        crate::providers::opencode::API_KEY_ENV,
+        None,
+    )
+};
 
 /// OpenCode Go's Messages-format endpoint, which serves its Claude, Qwen
 /// and MiniMax models. Go refuses a request that names no session.
 pub const OPENCODE_GO: Dialect = Dialect {
     quirks: Quirks {
         session_header: Some(crate::providers::opencode::SESSION_HEADER),
-        ..Quirks::gateway()
+        ..OPENCODE.quirks
     },
     ..compatible(
         crate::providers::opencode::GO_PROVIDER_NAME,

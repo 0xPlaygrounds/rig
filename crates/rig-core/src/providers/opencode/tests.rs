@@ -105,3 +105,18 @@ fn go_names_the_conversation_and_zen_does_not() {
         None
     );
 }
+
+/// The gateways' listings are public: the Messages client reads one, whose
+/// entries name no display name, and refuses to call it a credential check.
+#[tokio::test]
+async fn a_public_listing_lists_models_and_checks_no_credential() {
+    let listing = r#"{"object":"list","data":[{"id":"claude-haiku-5-5","object":"model","created":1792057308,"owned_by":"opencode"}]}"#;
+    for dialect in [&anthropic::wire::OPENCODE, &anthropic::wire::OPENCODE_GO] {
+        let client = AnthropicConfig::with_key(dialect, "key")
+            .connect(crate::test_utils::RecordingHttpClient::new(listing));
+        let models = client.list_models().await.expect("the listing decodes");
+        let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(ids, ["claude-haiku-5-5"]);
+        assert!(client.verify().await.is_err());
+    }
+}
