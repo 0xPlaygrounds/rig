@@ -1441,6 +1441,9 @@ llamacpp	POST /v1/responses	reply	a6b00ad5b2113274	1	llamacpp/unmapped_surface/r
 mistral	GET /v1/models	request	$ empty	2	mistral/models/list_models_rejected_key_reports_api_error_with_context.yaml#0
 mistral	GET /v1/models	reply	5fc1919bd3c8120e	1	mistral/models/list_models_rejected_key_reports_api_error_with_context.yaml#0
 mistral	GET /v1/models	reply	a75805d39fea65db	1	mistral/models/list_models_smoke.yaml#0
+mistral	POST /v1/audio/transcriptions	request	$ empty	2	mistral/transcription/voxtral_mini_transcribes_the_audio_fixture.yaml#0
+mistral	POST /v1/audio/transcriptions	reply	e65646a9921ffca5	1	mistral/transcription/voxtral_mini_transcribes_the_audio_fixture.yaml#0
+mistral	POST /v1/audio/transcriptions	reply	fc17dc6e29263fc6	1	mistral/transcription/voxtral_small_is_not_a_transcription_model.yaml#0
 mistral	POST /v1/chat/completions	request	$ {logprobs:bool,max_tokens:num,messages:[{}],model:str,stream:bool,top_logprobs:num}	1	mistral/logprobs_rejection_matrix/streaming_ministral_3b.yaml#0
 mistral	POST /v1/chat/completions	request	$ {logprobs:bool,max_tokens:num,messages:[{}],model:str,top_logprobs:num}	1	mistral/logprobs_rejection_matrix/blocking_ministral_3b.yaml#0
 mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,n:num,stream:bool,temperature:num}	1	mistral/capability_edges/streaming_with_two_candidates_answers_from_the_first.yaml#0
@@ -1460,6 +1463,8 @@ mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:
 mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,tool_choice:str,tools:[{}]}	1	mistral/terminal_metadata_matrix/blocking_ministral_3b_tiny_tool.yaml#0
 mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,tools:[{}]}	7	mistral/history_survival_matrix/unary.yaml#0
 mistral	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str}	1	mistral/terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_one.yaml#0
+mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,stream:bool}	2	mistral/reasoning_roundtrip/streaming.yaml#0
+mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str}	2	mistral/reasoning_roundtrip/nonstreaming.yaml#0
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,response_format:{}}	1	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,stream:bool,temperature:num}	1	mistral/multimodal_content/streaming_agent_sends_audio.yaml#0
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,stream:bool,tool_choice:str,tools:[{}]}	1	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
@@ -1468,17 +1473,20 @@ mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,temperature
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,tool_choice:str,tools:[{}]}	3	mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none.yaml#0
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str,tool_choice:{},tools:[{}]}	1	mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none.yaml#2
 mistral	POST /v1/chat/completions	request	$ {messages:[{}],model:str}	1	mistral/response_identity_edge/blocking_unauthorized_carries_the_correlation_id.yaml#0
-mistral	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"system"}	27	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"assistant"}	2	mistral/reasoning_roundtrip/nonstreaming.yaml#1
+mistral	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"system"}	31	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"user"}	3	mistral/multimodal_content/blocking_document_and_image_in_one_message.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[] {content:str,role:"assistant"}	8	mistral/history_survival_matrix/streaming.yaml#4
 mistral	POST /v1/chat/completions	request	$.messages[] {content:str,role:"tool",tool_call_id:str}	13	mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
-mistral	POST /v1/chat/completions	request	$.messages[] {content:str,role:"user"}	42	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[] {content:str,role:"user"}	46	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[] {role:"assistant",tool_calls:[{}]}	13	mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[].content[] {document_name:str,document_url:str,type:"document_url"}	1	mistral/multimodal_content/blocking_document_and_image_in_one_message.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[].content[] {image_url:{},type:"image_url"}	1	mistral/multimodal_content/blocking_document_and_image_in_one_message.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[].content[] {input_audio:str,type:"input_audio"}	2	mistral/multimodal_content/blocking_raw_model_sends_audio.yaml#0
-mistral	POST /v1/chat/completions	request	$.messages[].content[] {text:str,type:"text"}	29	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[].content[] {text:str,type:"text"}	33	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[].content[] {thinking:[{}],type:"thinking"}	2	mistral/reasoning_roundtrip/nonstreaming.yaml#1
 mistral	POST /v1/chat/completions	request	$.messages[].content[].image_url {detail:str,url:str}	1	mistral/multimodal_content/blocking_document_and_image_in_one_message.yaml#0
+mistral	POST /v1/chat/completions	request	$.messages[].content[].thinking[] {text:str,type:"text"}	2	mistral/reasoning_roundtrip/nonstreaming.yaml#1
 mistral	POST /v1/chat/completions	request	$.messages[].tool_calls[] {function:{},id:str,type:"function"}	13	mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
 mistral	POST /v1/chat/completions	request	$.messages[].tool_calls[].function {arguments:str,name:str}	13	mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
 mistral	POST /v1/chat/completions	request	$.response_format {json_schema:{},type:"json_schema"}	2	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
@@ -1510,14 +1518,17 @@ mistral	POST /v1/chat/completions	request	$.tools[].function.parameters.properti
 mistral	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.*.items.properties.* {type:"string"}	1	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 mistral	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.*.properties.* {type:"boolean"}	2	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 mistral	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.*.properties.* {type:"integer"}	1	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+mistral	POST /v1/chat/completions	reply	0b13d60709719185	1	mistral/reasoning_roundtrip/streaming.yaml#1
 mistral	POST /v1/chat/completions	reply	1129b06aeaf85b47	1	mistral/terminal_metadata_matrix/streaming_mistral_small_tiny_plain_two.yaml#0
 mistral	POST /v1/chat/completions	reply	1da6e59c3fb3ece4	2	mistral/logprobs_rejection_matrix/blocking_ministral_3b.yaml#0
 mistral	POST /v1/chat/completions	reply	487ce6c58e19093e	6	mistral/history_survival_matrix/streaming.yaml#3
 mistral	POST /v1/chat/completions	reply	5b5738492f604cf8	1	mistral/terminal_metadata_matrix/blocking_ministral_3b_tiny_tool.yaml#0
 mistral	POST /v1/chat/completions	reply	5fc1919bd3c8120e	1	mistral/response_identity_edge/blocking_unauthorized_carries_the_correlation_id.yaml#0
 mistral	POST /v1/chat/completions	reply	6c85b0d686bb0dae	1	mistral/tool_truncation_matrix/streaming_ministral_3b_low_model.yaml#0
+mistral	POST /v1/chat/completions	reply	7e4c3779fa8f3d06	2	mistral/reasoning_roundtrip/nonstreaming.yaml#0
 mistral	POST /v1/chat/completions	reply	8314867d055ae798	1	mistral/multimodal_content/blocking_raw_model_sends_audio.yaml#0
 mistral	POST /v1/chat/completions	reply	a058d541203620c2	8	mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none.yaml#0
+mistral	POST /v1/chat/completions	reply	a6ebab26b7401ad1	1	mistral/reasoning_roundtrip/streaming.yaml#0
 mistral	POST /v1/chat/completions	reply	ab32ad417d439cd4	12	mistral/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0
 mistral	POST /v1/chat/completions	reply	b4e24c1c2bc3845a	6	mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
 mistral	POST /v1/chat/completions	reply	c28734ec7bb3e6c3	1	mistral/request_shape_matrix/streaming_mistral_small_json_any.yaml#0

@@ -11,3 +11,4 @@ mod mistral;
 
 use rig_test_support::history_survival;
 use rig_test_support::matrix;
+use rig_test_support::reasoning;
