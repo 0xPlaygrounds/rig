@@ -50,8 +50,8 @@ impl A2aServer {
 impl<S: TaskStore> A2aServer<S> {
     /// Change the agent card, for example its skills, version or provider.
     ///
-    /// The router serves the card as edited and accepts only parts whose
-    /// media types are in its `default_input_modes`. The routes stay at
+    /// The router serves the card as edited and refuses a part that declares
+    /// a media type outside its `default_input_modes`. The routes stay at
     /// [`JSONRPC_PATH`] and [`REST_PATH`] whatever the card's interfaces say.
     #[must_use]
     pub fn edit_card(mut self, edit: impl FnOnce(&mut AgentCard)) -> Self {
