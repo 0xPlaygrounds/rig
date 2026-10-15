@@ -229,6 +229,11 @@ fn raw_parameters_reach_proto_fields_and_unknown_ones_are_refused() {
     request.additional_params = Some(json!({"no_such_field": true}));
     let error = encode(request).expect_err("an undeclared field is refused");
     assert!(error.to_string().contains("no_such_field"), "{error}");
+
+    let mut request = CompletionRequest::new("hi");
+    request.additional_params = Some(json!({"n": 2}));
+    let error = encode(request).expect_err("one candidate only");
+    assert!(error.to_string().contains("`n`"), "{error}");
 }
 
 /// The gRPC request has no prompt cache key, typed or as xAI's option.
@@ -269,6 +274,14 @@ fn a_unary_reply_decodes_its_message_usage_and_raw_document() {
                     call("search_1", ToolCallType::WebSearchTool, "{}"),
                     call("call_1", ToolCallType::ClientSideTool, r#"{"x":2,"y":3}"#),
                 ],
+                citations: vec![proto::InlineCitation {
+                    citation: Some(proto::inline_citation::Citation::WebCitation(
+                        proto::WebCitation {
+                            url: "https://example.com/sums".to_owned(),
+                        },
+                    )),
+                    ..proto::InlineCitation::default()
+                }],
                 ..proto::CompletionMessage::default()
             }),
             ..CompletionOutput::default()
@@ -291,6 +304,8 @@ fn a_unary_reply_decodes_its_message_usage_and_raw_document() {
         })
         .collect();
     assert_eq!(calls, [json!({"x": 2, "y": 3})]);
+    let cited = format!("{content:?}");
+    assert!(cited.contains("https://example.com/sums"), "{cited}");
     assert_eq!(reply.usage.input_tokens, Some(10));
     assert_eq!(reply.usage.cached_input_tokens, Some(6));
     assert_eq!(

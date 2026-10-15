@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use crate::json::from_json;
 use crate::proto::{
     self, CompletionMessage, Delta, GetChatCompletionChunk, GetChatCompletionResponse,
-    GetCompletionsRequest, MessageRole, SamplingUsage, ToolCall, ToolCallType,
+    GetCompletionsRequest, InlineCitation, MessageRole, SamplingUsage, ToolCall, ToolCallType,
 };
 
 fn unsendable(what: impl std::fmt::Display) -> EncodeError {
@@ -58,6 +58,10 @@ pub(crate) fn request(body: ChatBody) -> Result<GetCompletionsRequest, EncodeErr
     } = body;
     if prompt_cache_key.is_some() {
         return Err(unsendable("`prompt_cache_key`"));
+    }
+    // Rig reads one candidate; xAI's outputs are read as the turns of one.
+    if rest.get("n").and_then(Value::as_u64).is_some_and(|n| n > 1) {
+        return Err(unsendable("more than one candidate (`n`)"));
     }
     if let Some(tokens) = max_completion_tokens {
         rest.entry("max_tokens").or_insert(tokens);
@@ -334,7 +338,27 @@ struct Output<'a> {
     content: &'a str,
     reasoning: &'a str,
     calls: &'a [ToolCall],
+    citations: &'a [InlineCitation],
     finish: i32,
+}
+
+/// A web or X inline citation as a Chat `url_citation` annotation. A
+/// collections citation names no URL and stays in `raw`.
+fn annotation(citation: &InlineCitation) -> Option<Value> {
+    use proto::inline_citation::Citation;
+    let url = match citation.citation.as_ref()? {
+        Citation::WebCitation(web) => &web.url,
+        Citation::XCitation(x) => &x.url,
+        Citation::CollectionsCitation(_) => return None,
+    };
+    Some(json!({
+        "type": "url_citation",
+        "url_citation": {
+            "url": url,
+            "start_index": citation.start_index,
+            "end_index": citation.end_index,
+        },
+    }))
 }
 
 /// The model's outputs folded into one Chat choice under `key`
@@ -348,8 +372,8 @@ fn folded<'a>(
     calls: &mut Calls,
 ) -> Option<Value> {
     let mut any = false;
-    let (mut content, mut reasoning, mut deltas, mut finish) =
-        (String::new(), String::new(), Vec::new(), None);
+    let (mut content, mut reasoning, mut deltas, mut annotations, mut finish) =
+        (String::new(), String::new(), Vec::new(), Vec::new(), None);
     for output in outputs {
         let model = output.role == MessageRole::RoleAssistant as i32
             || output.role == MessageRole::InvalidRole as i32;
@@ -365,6 +389,7 @@ fn folded<'a>(
                 .iter()
                 .filter_map(|call| calls.delta(output.index, call)),
         );
+        annotations.extend(output.citations.iter().filter_map(annotation));
         if let Some(reason) = calls.finish(output.index, output.finish) {
             finish = Some(reason);
         }
@@ -381,6 +406,9 @@ fn folded<'a>(
     }
     if !deltas.is_empty() {
         message.insert("tool_calls".to_owned(), Value::Array(deltas));
+    }
+    if !annotations.is_empty() {
+        message.insert("annotations".to_owned(), Value::Array(annotations));
     }
     Some(json!({ "index": 0, key: message, "finish_reason": finish }))
 }
@@ -457,6 +485,7 @@ pub(crate) fn whole(response: &GetChatCompletionResponse) -> Value {
             content: &message.content,
             reasoning: &message.reasoning_content,
             calls: &message.tool_calls,
+            citations: &message.citations,
             finish: output.finish_reason,
         }
     });
@@ -484,6 +513,7 @@ pub(crate) fn chunk(chunk: &GetChatCompletionChunk, calls: &mut Calls) -> Value 
             content: &delta.content,
             reasoning: &delta.reasoning_content,
             calls: &delta.tool_calls,
+            citations: &delta.citations,
             finish: output.finish_reason,
         }
     });
