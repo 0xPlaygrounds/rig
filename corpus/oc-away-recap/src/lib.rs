@@ -18,7 +18,7 @@
 
 use bevy_log::warn;
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::window::{TokenBudget, view};
+use rig_harness::rig_memory::recent::{TokenBudget, view};
 use rig_harness::rig_memory::{Summarizer, SummaryLimits, SummaryPrompts};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;

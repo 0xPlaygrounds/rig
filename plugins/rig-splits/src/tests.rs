@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 
 use bevy_reflect::Reflect;
 use bevy_reflect::prelude::ReflectDefault;
-use rig_compaction::Compaction;
+use rig_compaction::CompactionKnobs;
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::RunCommand;
@@ -28,7 +28,7 @@ fn mode(app: &App, agent: Entity) -> Option<String> {
 
 /// How many recent messages `agent`'s own compaction knobs keep.
 fn keeps(app: &App, agent: Entity) -> Option<usize> {
-    let own = app.world().get::<Compaction>(agent);
+    let own = app.world().get::<CompactionKnobs>(agent);
     own.and_then(|own| own.0.keep_recent)
 }
 
@@ -156,7 +156,7 @@ fn splits_split_again_move_switch_and_merge_back() {
         keep_recent: Some(3),
         ..CompactionOverrides::default()
     };
-    set(&mut app, agent, Compaction(own));
+    set(&mut app, agent, CompactionKnobs(own));
     for message in [Message::user("Blue?"), Message::assistant("Blue.")] {
         assert_eq!(commit_message(app.world_mut(), agent, message), Ok(()));
     }
@@ -230,7 +230,7 @@ fn splits_split_again_move_switch_and_merge_back() {
         keep_recent: Some(5),
         ..CompactionOverrides::default()
     };
-    set(&mut app, agent, Compaction(own));
+    set(&mut app, agent, CompactionKnobs(own));
     split(&mut app, agent, "switch blue");
     assert_eq!(title(&app).as_deref(), Some("blue"));
     assert_eq!(mode(&app, agent).as_deref(), Some("blue"));

@@ -13,8 +13,8 @@
 //! model's window. Messages added after the summary stay after them.
 
 use rig_compaction::{
-    AppCompactionExt, Compaction, CompactionCuts, CompactionDefault, Summarizing, Uncompact, plan,
-    policy_of, summary_author, summary_in,
+    AppCompactionExt, CompactionCuts, CompactionDefault, CompactionKnobs, Summarizing, Uncompact,
+    plan, policy_of, summary_author, summary_in,
 };
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Message, tokens_label};
@@ -130,7 +130,7 @@ fn keep_newest_turns(
         (Entity, &mut ModelRequest, &mut Summarizing, &ForAgent),
         (Added<Admitted>, ModelCalls),
     >,
-    agents: Query<(&Conversation, Option<&Compaction>, Option<&Connection>)>,
+    agents: Query<(&Conversation, Option<&CompactionKnobs>, Option<&Connection>)>,
     (default, cuts): (Res<CompactionDefault>, Res<CompactionCuts>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -159,7 +159,7 @@ fn keep_newest_turns(
         }
         let messages = conversation.messages();
         let end = summarizing
-            .upto
+            .keep_from
             .and_then(|upto| conversation.index_of(upto))
             .unwrap_or(messages.len());
         let older = messages.get(..end).unwrap_or_default();

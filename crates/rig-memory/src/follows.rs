@@ -18,7 +18,7 @@ use crate::Versioned;
 pub const FOLLOWS: &str = "rig.follows";
 
 /// The value of `key` the active line of `conversation` has: its line
-/// value, else the newest aside of `key` (the one drawn last); `None` when
+/// value, else the newest aside of `key` (the latest in the line); `None` when
 /// it has none, or one that says it was removed.
 pub fn followed(conversation: &Conversation, key: &str) -> Option<Versioned> {
     versioned(&current(conversation, key)?)
@@ -92,7 +92,7 @@ fn asides_of(conversation: &Conversation, key: &str) -> Vec<(AsideId, usize, Val
 }
 
 /// The value of `key` the active line of `conversation` has: its line value,
-/// else the newest of its asides (the one drawn last); `None` when it has
+/// else the newest of its asides (the latest in the line); `None` when it has
 /// none.
 fn current(conversation: &Conversation, key: &str) -> Option<Value> {
     if let Some(value) = conversation
@@ -176,13 +176,14 @@ pub fn anchor_line_values(conversation: &mut Conversation, keys: &[String]) -> b
     changed
 }
 
-/// After a splice took out `removed` and put in `with`: each of `keys`
+/// Moves the followed values a splice orphaned onto the entry before them.
+/// After a splice took out `removed` and put in `with`, each of `keys`
 /// whose asides followed a removed entry gets one, the value of the one
-/// that followed the latest removed entry, after the entry drawn before
-/// them now (the line value when that entry is the line's shared end).
-/// One already there that follows an entry the splice put in is newer and
-/// kept. Whether it changed anything.
-pub fn collapse(
+/// that followed the latest removed entry, after the entry now before them
+/// (the line value when that entry is the line's shared end). One already
+/// there that follows an entry the splice put in is newer and kept.
+/// Whether it changed anything.
+pub fn refollow_after_splice(
     conversation: &mut Conversation,
     keys: &[String],
     removed: &[MessageId],

@@ -24,7 +24,9 @@ use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath, TypeRegistry};
 use rig_core::conversation::{BRANCH, Change, LINE_VALUES, MessageId};
-use rig_memory::{FOLLOWS, SHELVED, Versioned, anchor_line_values, collapse, follow, followed};
+use rig_memory::{
+    FOLLOWS, SHELVED, Versioned, anchor_line_values, follow, followed, refollow_after_splice,
+};
 
 use super::agent::{Agent, AgentId, Conversation};
 use super::restore::{SavedKeys, SavedReader, SavedUpgrades};
@@ -243,7 +245,7 @@ pub(crate) fn sync(world: &mut World, mut cursor: Local<MessageCursor<Conversati
         let conversation = conversation.bypass_change_detection();
         let mut edited = false;
         for (removed, with) in &work.splices {
-            edited |= collapse(conversation, &keys, removed, with);
+            edited |= refollow_after_splice(conversation, &keys, removed, with);
         }
         if work.any {
             edited |= anchor_line_values(conversation, &keys);

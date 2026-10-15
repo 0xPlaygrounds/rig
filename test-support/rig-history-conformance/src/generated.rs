@@ -396,7 +396,7 @@ pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
 /// which drops results that lost their calls, or as a policy that cuts
 /// anywhere does, between a call and its result too.
 fn window(rng: &mut Rng, history: Vec<Message>) -> Vec<Message> {
-    use rig_memory::window::{LastMessages, view};
+    use rig_memory::recent::{LastMessages, view};
     let keep = rng.range(1, history.len());
     if rng.chance(50) {
         let window = view(&history, &LastMessages(keep));

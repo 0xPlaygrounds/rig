@@ -498,7 +498,7 @@ pub struct SummaryPlan {
     /// The first message the compaction keeps; `None` when it summarizes
     /// every message. By id, so a splice made while the summary is written
     /// does not move it.
-    pub upto: Option<MessageId>,
+    pub keep_from: Option<MessageId>,
     /// The state the summary goes into.
     pub state: SummaryState,
     /// The request for the summary.
@@ -526,11 +526,10 @@ impl CompactionPolicy {
             return Ok(None);
         };
         let (state, request) = self.plan(state, messages, from, upto, spec, reason)?;
-        let upto = conversation.id(upto);
         let unknown_cut = self.rule(rules).err().map(str::to_owned);
         Ok(Some(SummaryPlan {
             unknown_cut,
-            upto,
+            keep_from: conversation.id(upto),
             state,
             request,
         }))
@@ -538,20 +537,20 @@ impl CompactionPolicy {
 }
 
 /// Puts the summary of `state` in place of the messages of
-/// `conversation` before `upto` (every message with `None`), earlier
+/// `conversation` before `keep_from` (every message with `None`), earlier
 /// summaries included: one user entry by [`summary_author`], a splice it
 /// makes, followed by an aside of kind [`COMPACTED`] that says what it
 /// replaced ([`Compacted`]), so [`undo_summary`] can put that back.
-/// `None`, changing nothing, when `upto` was taken out meanwhile or
+/// `None`, changing nothing, when `keep_from` was taken out meanwhile or
 /// `state` has no summary.
 pub fn apply_summary(
     conversation: &mut Conversation,
-    upto: Option<MessageId>,
+    keep_from: Option<MessageId>,
     state: &SummaryState,
 ) -> Option<Spliced> {
-    let end = match upto {
+    let end = match keep_from {
         None => conversation.messages().len(),
-        Some(upto) => conversation.index_of(upto)?,
+        Some(kept) => conversation.index_of(kept)?,
     };
     let summary = Entry::new(Message::user(state.message()?)).by(summary_author());
     let spliced = conversation.splice(..end, [summary], summary_author());

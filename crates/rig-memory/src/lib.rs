@@ -10,7 +10,7 @@
     )
 )]
 //! Conversations over time, over rig-core's [`Conversation`]:
-//! - [`window`]: which newest messages a request sends.
+//! - [`recent`]: which newest messages a request sends.
 //! - [`CompactionPolicy`], [`apply_summary`], [`undo_summary`]: compacting a long conversation.
 //! - [`load`], [`save`], [`Session`], [`Writer`]: saving and resuming, in the format [`FORMAT`].
 //!   Formats from [`OLDEST`] on read through [`upgrade`], and a saved value carries its own
@@ -27,7 +27,7 @@
 //!
 //! ```
 //! use rig_core::message::Message;
-//! use rig_memory::window::{LastMessages, view};
+//! use rig_memory::recent::{LastMessages, view};
 //! use rig_memory::{MemoryStore, load, save};
 //!
 //! let store = MemoryStore::default();
@@ -52,6 +52,7 @@ mod fork;
 mod format;
 mod listing;
 mod meta;
+pub mod recent;
 mod rewrite;
 mod saved;
 mod session;
@@ -59,7 +60,6 @@ mod split;
 mod store;
 mod tokens;
 mod upgrade;
-pub mod window;
 mod writer;
 
 pub use blobs::{load_images, store_images};
@@ -71,7 +71,7 @@ pub use compaction::{
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
-pub use follows::{FOLLOWS, anchor_line_values, collapse, follow, followed};
+pub use follows::{FOLLOWS, anchor_line_values, follow, followed, refollow_after_splice};
 pub use fork::{Forked, copy_plugin_files, fork};
 pub use format::{FORMAT, LogRewrite, OLDEST, Repair, SESSION, SessionError, Stamp, VERSION};
 pub use listing::{Listing, family_root, read_line};
