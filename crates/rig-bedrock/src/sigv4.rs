@@ -18,9 +18,10 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use aws_config::SdkConfig;
+use aws_credential_types::Credentials;
 use aws_credential_types::provider::error::CredentialsError;
 use aws_credential_types::provider::{ProvideCredentials, SharedCredentialsProvider};
 use aws_sigv4::http_request::{SignableBody, SignableRequest, SigningSettings, sign};
@@ -31,6 +32,7 @@ use rig_core::http_client::{
     Response, StreamingResponse, Uri,
 };
 use rig_core::wasm_compat::WasmCompatSend;
+use tokio::sync::Mutex;
 
 /// Why an AWS-authenticated client could not be built or a request could
 /// not be signed.
@@ -57,6 +59,9 @@ pub enum AwsError {
     /// The request URI has no host, which the signature covers.
     #[error("request URI `{0}` has no host to sign")]
     NoHost(Uri),
+    /// The request URI could not be put in the form it is sent in.
+    #[error("request URI `{0}` cannot be signed")]
+    InvalidUri(Uri),
     /// A request or signature header value is not visible ASCII.
     #[error("header `{0}` cannot be signed")]
     InvalidHeader(String),
@@ -72,11 +77,14 @@ const UNSIGNED_HEADERS: &[&str] = &["connection"];
 /// Credential headers a provider wire sets that the signature replaces.
 const CREDENTIAL_HEADERS: &[&str] = &["authorization", "x-api-key"];
 
+/// How long before they expire cached credentials are refreshed.
+const REFRESH_MARGIN: Duration = Duration::from_secs(300);
+
 /// A transport that SigV4-signs every request for one AWS region and
 /// service, then sends it through the transport it wraps. Credentials are
-/// resolved per request through the provider, which caches and refreshes
-/// them. Any `authorization` or `x-api-key` header the wire set is dropped,
-/// since the signature is the credential. Clones share the signer.
+/// cached and fetched again from the provider shortly before they expire.
+/// Any `authorization` or `x-api-key` header the wire set is dropped, since
+/// the signature is the credential. Clones share the signer and its cache.
 #[derive(Clone)]
 pub struct SigV4Http {
     inner: DynHttpClient,
@@ -85,6 +93,7 @@ pub struct SigV4Http {
 
 struct Signer {
     credentials: SharedCredentialsProvider,
+    cached: Mutex<Option<Credentials>>,
     region: String,
     service: String,
 }
@@ -112,6 +121,7 @@ impl SigV4Http {
             inner: DynHttpClient::new(http),
             signer: Arc::new(Signer {
                 credentials,
+                cached: Mutex::new(None),
                 region: region.into(),
                 service: service.into(),
             }),
@@ -144,25 +154,58 @@ impl SigV4Http {
 }
 
 impl Signer {
-    /// `request` with its credential headers replaced by a signature taken
-    /// at `time`.
-    async fn sign(
-        &self,
-        mut request: Request<Bytes>,
-        time: SystemTime,
-    ) -> Result<Request<Bytes>, AwsError> {
-        if request.uri().host().is_none() {
-            return Err(AwsError::NoHost(request.uri().clone()));
-        }
-        for name in CREDENTIAL_HEADERS {
-            request.headers_mut().remove(*name);
+    /// The cached credentials, fetched again when they expire within
+    /// [`REFRESH_MARGIN`] of `time`. Credentials without an expiry are kept.
+    async fn credentials(&self, time: SystemTime) -> Result<Credentials, AwsError> {
+        let mut cached = self.cached.lock().await;
+        let fresh = |credentials: &&Credentials| {
+            credentials
+                .expiry()
+                .is_none_or(|expiry| expiry > time + REFRESH_MARGIN)
+        };
+        if let Some(credentials) = cached.as_ref().filter(fresh) {
+            return Ok(credentials.clone());
         }
         let credentials = self
             .credentials
             .provide_credentials()
             .await
             .map_err(AwsError::Credentials)?;
-        let identity = credentials.into();
+        *cached = Some(credentials.clone());
+        Ok(credentials)
+    }
+
+    /// `request` with its credential headers replaced by a signature taken
+    /// at `time`. The host is lowercased first, as HTTP clients send it, so
+    /// the signed host is the one on the wire.
+    async fn sign(
+        &self,
+        mut request: Request<Bytes>,
+        time: SystemTime,
+    ) -> Result<Request<Bytes>, AwsError> {
+        let Some(authority) = request.uri().authority() else {
+            return Err(AwsError::NoHost(request.uri().clone()));
+        };
+        if authority
+            .as_str()
+            .bytes()
+            .any(|byte| byte.is_ascii_uppercase())
+        {
+            let uri = request.uri().clone();
+            let mut parts = uri.clone().into_parts();
+            parts.authority = Some(
+                authority
+                    .as_str()
+                    .to_ascii_lowercase()
+                    .parse()
+                    .map_err(|_| AwsError::InvalidUri(uri.clone()))?,
+            );
+            *request.uri_mut() = Uri::from_parts(parts).map_err(|_| AwsError::InvalidUri(uri))?;
+        }
+        for name in CREDENTIAL_HEADERS {
+            request.headers_mut().remove(*name);
+        }
+        let identity = self.credentials(time).await?.into();
         let mut settings = SigningSettings::default();
         settings
             .excluded_headers
