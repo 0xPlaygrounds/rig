@@ -52,11 +52,12 @@ use rig_core::serve::serve_inline;
 use rig_core::tool::{FileChange, ToolErrorKind};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    AgentPass, ForAgent, GateSystems, HoldOf, Running, Stage, Started, ToolCalls, ToolRequest, Wake,
+    AgentPass, ForAgent, GateSystems, HoldOf, Running, Stage, Started, ToolCalls, ToolDef,
+    ToolRequest, Wake,
 };
 use rig_tools::overlay::Overlay;
 
-use crate::per_call::{CallPlace, PerCall, base};
+use crate::per_call::{CallPlace, PerCall, base, per_call};
 use crate::services::{ProjectRoot, WorkDir};
 use crate::workspace::ProjectWorkspace;
 
@@ -124,7 +125,7 @@ fn preview(
         (ToolCalls, Added<Preview>, Without<Started>),
     >,
     dirs: Query<&WorkDir>,
-    tools: Option<Res<PerCall>>,
+    tools: Query<(&ToolDef, &PerCall)>,
     (workspace, root): (Res<ProjectWorkspace>, Res<ProjectRoot>),
     wake: Res<Wake>,
     mut commands: Commands,
@@ -140,8 +141,7 @@ fn preview(
             spill: None,
         };
         let name = request.call.function.name.as_str();
-        let Some(Handler(handler)) = tools.as_ref().and_then(|tools| tools.build(name, place))
-        else {
+        let Some(Handler(handler)) = per_call(&tools, name).map(|made| made.build(place)) else {
             let report = ErrorReport::new(
                 ErrorKind::Tool(ToolErrorKind::Other),
                 format!("`{name}` cannot be previewed: it is not registered per call"),
