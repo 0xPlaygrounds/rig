@@ -19,7 +19,7 @@ use futures::{StreamExt, channel::oneshot};
 
 use crate::{
     completion::UnsupportedOption,
-    effect::{Answered, EffectId, EffectKind, HandlerDescriptor},
+    effect::{Answered, EffectId, EffectKind, HandlerDescriptor, HandlerKey},
     error::{ErrorKind, ErrorReport},
     streaming::{Item, Relayed, StreamEvent, StreamEvents},
     tool::Touches,
@@ -200,7 +200,12 @@ impl Drop for Level {
 /// Shared, type-erased handler. Clones retain the same handler allocation.
 /// Implements `Send + Sync` on native targets, but not on WASM.
 #[derive(Clone)]
-pub struct ErasedHandler(ErasedInner);
+pub struct ErasedHandler {
+    inner: ErasedInner,
+    /// The descriptor's key, read once: a descriptor can be costly to
+    /// build, such as a tool's argument schema.
+    key: HandlerKey,
+}
 
 #[cfg(not(target_family = "wasm"))]
 type ErasedInner = Arc<dyn Handler + Send + Sync>;
@@ -210,7 +215,10 @@ type ErasedInner = Arc<dyn Handler>;
 impl ErasedHandler {
     /// Erase `handler`.
     pub fn new(handler: impl Serve + 'static) -> Self {
-        Self(Arc::new(handler))
+        Self {
+            key: handler.descriptor().key,
+            inner: Arc::new(handler),
+        }
     }
 
     /// A handler that serves nothing: it is `descriptor`, and every effect
@@ -233,7 +241,7 @@ impl ErasedHandler {
     ///     layers: Vec::new(),
     /// };
     /// let handler = ErasedHandler::unavailable(descriptor, "answered from the batch API");
-    /// assert_eq!(handler.descriptor().key, model_key("batch/claude"));
+    /// assert_eq!(handler.key(), &model_key("batch/claude"));
     /// ```
     pub fn unavailable(descriptor: HandlerDescriptor, why: impl Into<String>) -> Self {
         Self::new(Unavailable {
@@ -276,35 +284,40 @@ impl ErasedHandler {
 
     /// What the erased handler is.
     pub fn descriptor(&self) -> HandlerDescriptor {
-        self.0.descriptor()
+        self.inner.descriptor()
+    }
+
+    /// The key of its [descriptor](Self::descriptor), without building one.
+    pub fn key(&self) -> &HandlerKey {
+        &self.key
     }
 
     /// Serve one effect: the driver's call, straight to the boxed handler.
     pub fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_> {
-        self.0.handle(kind, dispatch)
+        self.inner.handle(kind, dispatch)
     }
 
     /// What dispatching `kind` to this handler may read and change
     /// ([`Serve::footprint`]).
     pub fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
-        self.0.footprint(kind)
+        self.inner.footprint(kind)
     }
 
     /// The options of `kind` this handler would leave out ([`Serve::check`]).
     pub fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
-        self.0.check(kind)
+        self.inner.check(kind)
     }
 
     /// Whether two erased handlers are the same allocation.
     pub fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        Arc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
 impl std::fmt::Debug for ErasedHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ErasedHandler")
-            .field("key", &self.0.descriptor().key)
+            .field("key", &self.key)
             .finish_non_exhaustive()
     }
 }
@@ -336,7 +349,7 @@ impl Serve for ErasedHandler {
     type Family = crate::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        self.0.descriptor()
+        self.inner.descriptor()
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
@@ -344,11 +357,11 @@ impl Serve for ErasedHandler {
     }
 
     fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
-        self.0.footprint(kind)
+        self.inner.footprint(kind)
     }
 
     fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
-        self.0.check(kind)
+        self.inner.check(kind)
     }
 }
 

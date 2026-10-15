@@ -76,7 +76,7 @@ impl Effects {
         F: ConditionalSendFuture<Output = Result<Answered, ErrorReport>> + 'static,
     {
         let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(self.buffer.clone());
-        recorder.begin(id, handler.descriptor().key, kind.clone(), origin);
+        recorder.begin(id, handler.key().clone(), kind.clone(), origin);
         let published = PublishedContext::new();
         let dispatch = Dispatch::new(id, kind.streams())
             .with_scope(published.clone())
