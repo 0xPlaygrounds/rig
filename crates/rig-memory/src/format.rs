@@ -474,3 +474,6 @@ impl LogLines {
         self.bytes.get(..len).unwrap_or_default()
     }
 }
+
+#[cfg(test)]
+mod tests;
