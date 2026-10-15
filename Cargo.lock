@@ -21151,6 +21151,7 @@ name = "transcription"
 version = "0.44.0"
 dependencies = [
  "rig",
+ "serde_json",
  "tokio",
 ]
 
