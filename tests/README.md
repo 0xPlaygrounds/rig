@@ -758,8 +758,8 @@ with caching off as the baseline.
   tokens.
 
 To add a provider, give `CacheWire` a variant with its reader (the call path, the usage fields,
-the first user message), add a `with_<provider>_long_run_cassette` wrapper and register it
-with the cassette-safety scan, and record one 100-turn fixture and its baseline.
+the first user message), add a `with_<provider>_long_run_cassette` wrapper (the cassette-safety
+scan finds it by name), and record one 100-turn fixture and its baseline.
 Rates come from the provider's price page, quoted with the date. Thresholds are placeholders
 until a first recording confirms them; never loosen one to make a recording pass. Record with:
 

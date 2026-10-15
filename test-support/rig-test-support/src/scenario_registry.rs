@@ -45,9 +45,31 @@ pub fn cassette_scenario_sites(
     source: &str,
     wrapper_names: &[&'static str],
 ) -> Result<Vec<ScenarioSite>, ScenarioError> {
+    scenario_sites(source, &|name| wrapper_names.contains(&name))
+}
+
+/// Whether `name` is a cassette wrapper by convention: it starts with `with_`
+/// and contains `cassette`, and its first argument is the scenario.
+pub fn is_cassette_wrapper_name(name: &str) -> bool {
+    name.starts_with("with_") && name.contains("cassette")
+}
+
+/// Like [`cassette_scenario_sites`], with every call to a function named by
+/// [`is_cassette_wrapper_name`] as a wrapper call. The body of such a function
+/// forwards its scenario to another wrapper, so it is not a call site.
+pub fn conventional_cassette_scenario_sites(
+    source: &str,
+) -> Result<Vec<ScenarioSite>, ScenarioError> {
+    scenario_sites(source, &is_cassette_wrapper_name)
+}
+
+fn scenario_sites(
+    source: &str,
+    is_wrapper: &dyn Fn(&str) -> bool,
+) -> Result<Vec<ScenarioSite>, ScenarioError> {
     let syntax = syn::parse_file(source)?;
     let mut visitor = CassetteScenarioVisitor {
-        wrapper_names,
+        is_wrapper,
         scenarios: Vec::new(),
         failures: Vec::new(),
     };
@@ -173,7 +195,7 @@ fn spec_declarations(expr: &Expr) -> Vec<String> {
 }
 
 struct CassetteScenarioVisitor<'a> {
-    wrapper_names: &'a [&'static str],
+    is_wrapper: &'a dyn Fn(&str) -> bool,
     scenarios: Vec<ScenarioSite>,
     failures: Vec<String>,
 }
@@ -184,7 +206,7 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
             Ok(matrix) => {
                 if let Some((wrapper, scenarios)) =
                     matrix.and_then(matrix_registry::Matrix::recorded)
-                    && self.wrapper_names.contains(&wrapper.as_str())
+                    && (self.is_wrapper)(&wrapper)
                 {
                     self.scenarios
                         .extend(scenarios.into_iter().map(|scenario| ScenarioSite {
@@ -206,13 +228,17 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
         if node.attrs.iter().any(|attr| attr.path().is_ident("ignore")) {
             return;
         }
+        // A wrapper's own body forwards its scenario; it is not a call site.
+        if (self.is_wrapper)(&node.sig.ident.to_string()) {
+            return;
+        }
 
         visit::visit_item_fn(self, node);
     }
 
     fn visit_expr_call(&mut self, node: &'ast ExprCall) {
         if let Some(wrapper_name) = cassette_wrapper_name(node)
-            && self.wrapper_names.contains(&wrapper_name.as_str())
+            && (self.is_wrapper)(&wrapper_name)
         {
             match node.args.first() {
                 Some(expr) => match cassette_scenario_value(expr) {

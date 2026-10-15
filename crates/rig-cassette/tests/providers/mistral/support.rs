@@ -82,19 +82,10 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let (cassette, client) = mistral_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
+    with_mistral_cassette_result(spec, test_body).await
 }
 
-/// Bogus-key variant for recording real 401s. Inlined rather than delegating
-/// to another registered wrapper: `cassette_safety`'s source scan covers this
-/// whole directory, and a wrapper call whose scenario is a variable fails it.
+/// Bogus-key variant for recording real 401s.
 pub(super) async fn with_mistral_cassette_bogus_key_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -134,14 +125,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let (cassette, client) = mistral_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
+    with_mistral_cassette_result(spec, test_body).await
 }
 
 /// Live-recorded terminal metadata and primary-choice matrix.
@@ -153,17 +137,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    // Kept inlined for the same reason as the bogus-key wrapper above: this
-    // directory is source-scanned for cassette registrations, so delegating
-    // through another registered wrapper would look like a variable scenario.
-    let (cassette, client) = mistral_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
+    with_mistral_cassette_result(spec, test_body).await
 }
 
 /// Live-recorded tool-call truncation boundary matrix.
@@ -175,15 +149,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    // Inlined because cassette_safety source-scans this whole directory.
-    let (cassette, client) = mistral_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
+    with_mistral_cassette_result(spec, test_body).await
 }
 
 /// Live-recorded Mistral tool-call lifecycle matrix.
@@ -195,14 +161,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let (cassette, client) = mistral_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
+    with_mistral_cassette_result(spec, test_body).await
 }
 
 /// Live-recorded caller-history roundtrip matrix.
@@ -214,15 +173,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    // Inlined because cassette_safety source-scans this whole directory.
-    let (cassette, client) = mistral_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
+    with_mistral_cassette_result(spec, test_body).await
 }
 
 /// Live-recorded Mistral tool-policy and response-format finalization matrix.
@@ -234,15 +185,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    // Inlined because cassette_safety source-scans this whole directory.
-    let (cassette, client) = mistral_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
+    with_mistral_cassette_result(spec, test_body).await
 }
 
 /// Live-recorded evidence for Mistral's model-level logprobs rejection.
@@ -254,26 +197,11 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    // Inlined because cassette_safety source-scans this whole directory.
-    let (cassette, client) = mistral_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        client,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
+    with_mistral_cassette_result(spec, test_body).await
 }
 
 /// Cassette wrapper for the mistral prompt-caching matrix
 /// (`crates/rig-cassette/fixtures/cassettes/mistral/prompt_caching/`).
-///
-/// Builds the cassette directly rather than delegating to [`with_mistral_cassette_result`]: this
-/// provider's cassette-safety `source_dir` covers `support.rs` itself, and the
-/// scan requires every call to a *registered* wrapper to pass a string-literal
-/// scenario. A delegating wrapper passes its `spec` variable through, which the
-/// scan reports as an unregistered scenario. The duplication is three lines and
-/// the alternative is an unscannable suite.
 pub(super) async fn with_mistral_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

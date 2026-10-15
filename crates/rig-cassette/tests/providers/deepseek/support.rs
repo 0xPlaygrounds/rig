@@ -40,13 +40,7 @@ where
     cassette.finish_after_test(result).await;
 }
 
-/// The body every result-returning wrapper shares.
-///
-/// Deliberately *not* one of the registered wrapper names: the safety scan
-/// reads each cassette scenario out of the AST at the wrapper's call site, so a
-/// wrapper that forwarded to another registered wrapper would hand it a
-/// variable instead of a string literal and register nothing.
-async fn run_deepseek_cassette_result<F, Fut, E>(
+pub(super) async fn with_deepseek_cassette_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) -> Result<(), E>
@@ -62,17 +56,6 @@ where
     .catch_unwind()
     .await;
     cassette.finish_after_test_result(result).await
-}
-
-pub(super) async fn with_deepseek_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    run_deepseek_cassette_result(spec, test_body).await
 }
 
 /// Bogus-key variant for recording real 401s: the shared model-listing fetch
@@ -117,7 +100,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    run_deepseek_cassette_result(spec, test_body).await
+    with_deepseek_cassette_result(spec, test_body).await
 }
 
 /// Reasoning-block-order matrix variant.
@@ -129,7 +112,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    run_deepseek_cassette_result(spec, test_body).await
+    with_deepseek_cassette_result(spec, test_body).await
 }
 
 /// Request-wire-shape matrix variant (content parts, forced tool choice,
@@ -142,7 +125,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    run_deepseek_cassette_result(spec, test_body).await
+    with_deepseek_cassette_result(spec, test_body).await
 }
 
 /// Follow-up hunt census: request/response fields that the first sweep did
@@ -158,7 +141,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    run_deepseek_cassette_result(spec, test_body).await
+    with_deepseek_cassette_result(spec, test_body).await
 }
 
 /// Per-bug matrix for streamed Chat Completions log-probability loss.
@@ -170,7 +153,7 @@ where
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    run_deepseek_cassette_result(spec, test_body).await
+    with_deepseek_cassette_result(spec, test_body).await
 }
 
 /// Every interaction recorded under `scenario`, as `(request, response)` body
@@ -348,13 +331,6 @@ pub(super) async fn collect_raw_stream_outcome(
 
 /// Cassette wrapper for the deepseek prompt-caching matrix
 /// (`crates/rig-cassette/fixtures/cassettes/deepseek/prompt_caching/`).
-///
-/// Builds the cassette directly rather than delegating to [`with_deepseek_cassette`]: this
-/// provider's cassette-safety `source_dir` covers `support.rs` itself, and the
-/// scan requires every call to a *registered* wrapper to pass a string-literal
-/// scenario. A delegating wrapper passes its `spec` variable through, which the
-/// scan reports as an unregistered scenario. The duplication is three lines and
-/// the alternative is an unscannable suite.
 pub(super) async fn with_deepseek_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -362,12 +338,5 @@ pub(super) async fn with_deepseek_prompt_caching_cassette<F, Fut>(
     F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, bound) = deepseek_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        bound,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test(result).await;
+    with_deepseek_cassette(spec, test_body).await;
 }

@@ -130,6 +130,9 @@ Provider regressions should usually include cassette-backed tests. Follow
 [tests/README.md](tests/README.md#cassette-provider-tests) for replay/record
 commands and fixture safety review; never record or rewrite fixtures merely
 to make verification pass.
+Cassette wrappers are found by name, with no registry: a function named
+`with_*cassette*` takes the scenario first and is called only from its own
+`crates/rig-cassette/tests/providers/<provider>/` directory.
 
 ## Verification
 

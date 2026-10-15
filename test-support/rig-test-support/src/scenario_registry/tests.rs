@@ -199,3 +199,28 @@ fn same_named_helpers_in_different_files_are_not_merged() {
         Err(vec![cells.as_path(), cells.as_path()])
     );
 }
+
+#[test]
+fn convention_finds_wrapper_calls_and_skips_wrapper_bodies() {
+    let source = r#"
+        async fn with_x_lifecycle_cassette(spec: CassetteSpec) {
+            with_x_cassette(spec, |c| async {}).await;
+        }
+        async fn cells() {
+            with_x_lifecycle_cassette("lifecycle/cell", |c| async {}).await;
+            with_other("not/a/wrapper", |c| async {}).await;
+        }
+    "#;
+    let scenarios: Vec<_> = conventional_cassette_scenario_sites(source)
+        .expect("sites parse")
+        .into_iter()
+        .map(|site| (site.scenario, site.wrapper))
+        .collect();
+    assert_eq!(
+        scenarios,
+        [(
+            "lifecycle/cell".to_owned(),
+            "with_x_lifecycle_cassette".to_owned()
+        )]
+    );
+}
