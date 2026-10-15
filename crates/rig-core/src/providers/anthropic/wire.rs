@@ -426,13 +426,13 @@ impl AnthropicConfig {
         builder: http::request::Builder,
         extra: &[&str],
     ) -> http::request::Builder {
+        let key = self.api_key.expose();
         let builder = match self.dialect.quirks.auth {
-            Auth::ApiKey => builder.header("x-api-key", self.api_key.expose()),
-            Auth::OptionalBearer if self.api_key.is_empty() => builder,
-            Auth::OptionalBearer => builder.header(
-                http::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
-            ),
+            Auth::ApiKey => builder.header("x-api-key", key),
+            Auth::OptionalBearer if key.is_empty() => builder,
+            Auth::OptionalBearer => {
+                builder.header(http::header::AUTHORIZATION, format!("Bearer {key}"))
+            }
         }
         .header("anthropic-version", &self.version);
         let mut betas: Vec<&str> = self.betas.iter().map(String::as_str).collect();

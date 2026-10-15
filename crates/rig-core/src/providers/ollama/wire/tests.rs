@@ -83,7 +83,9 @@ fn the_messages_route_sends_a_key_as_a_bearer_token() {
         ),
     ] {
         let encoded = config
+            .connect(crate::test_utils::RecordingHttpClient::new("{}"))
             .anthropic_completion("qwen3:4b")
+            .wire
             .encode(CompletionRequest::new("hi"), Mode::Unary)
             .expect("the request encodes");
         let request = &encoded.request;
@@ -127,4 +129,14 @@ fn the_messages_route_takes_only_inline_media() {
     assert!(!wire.encodes("qwen3:4b", Media::Image(&url, Place::User)));
     assert!(wire.encodes("qwen3:4b", Media::Document(&text)));
     assert!(!wire.encodes("qwen3:4b", Media::Document(&pdf)));
+}
+
+/// The Messages route reads its key from the environment when one is set,
+/// and a missing one is no error: a local daemon takes none.
+#[test]
+fn the_messages_route_reads_an_optional_key_from_the_environment() {
+    let config = crate::providers::anthropic::AnthropicConfig::from_env_with(
+        &crate::providers::anthropic::wire::OLLAMA,
+    );
+    assert!(config.is_ok(), "{config:?}");
 }

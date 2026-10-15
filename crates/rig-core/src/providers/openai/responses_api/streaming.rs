@@ -636,15 +636,15 @@ impl ResponsesDecoder {
                 nameless = !done.titled && item.str("name").is_none_or(str::is_empty);
                 let stated = arguments_of(&item);
                 let arguments = stated.clone().unwrap_or_else(|| streamed_arguments(done));
-                // The item replays verbatim, so it states what streamed.
-                if let (None, false, Some(fields)) =
-                    (&stated, done.arguments.is_empty(), item.as_object_mut())
-                {
-                    let (key, value) = match done.custom {
-                        true => ("input", done.arguments.clone()),
-                        false => ("arguments", arguments.clone()),
-                    };
-                    fields.insert(key.to_owned(), Value::String(value));
+                // The item replays verbatim, so a function call's states
+                // the arguments that streamed.
+                if let (None, false, false, Some(fields)) = (
+                    &stated,
+                    done.custom,
+                    done.arguments.is_empty(),
+                    item.as_object_mut(),
+                ) {
+                    fields.insert("arguments".to_owned(), Value::String(arguments.clone()));
                 }
                 let rest = remainder(done, &arguments, out)?;
                 out.fragment(
