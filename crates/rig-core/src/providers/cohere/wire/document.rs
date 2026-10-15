@@ -2,14 +2,14 @@
 
 use serde_json::Value;
 
-use super::{NativeChat, Shape, shape};
+use super::{CohereEvent, NativeChat};
 use crate::providers::openai::wire::Chat;
+use crate::wire::Wire;
 use crate::wire::document::Reassemble;
-use crate::wire::{Wire, WireFrame};
 
-/// Hands each frame to the reassembler of the API whose shape it has, as
-/// the decoder routes it. The reply's document is the native API's once a
-/// native frame arrived, else the Compatibility API's.
+/// Hands each event to the reassembler of the API the decoder routed it
+/// to. The reply's document is the native API's once a native event
+/// arrived, else the Compatibility API's.
 #[derive(Default)]
 pub struct Routed {
     native_api: <NativeChat as Wire>::Reassembler,
@@ -33,15 +33,15 @@ impl Routed {
 
 impl crate::wire::document::Serves<crate::operation::Completion> for Routed {}
 
-impl Reassemble<WireFrame> for Routed {
-    fn absorb(&mut self, frame: &WireFrame) {
-        match shape(&frame.as_str()) {
-            Shape::Native => {
+impl Reassemble<CohereEvent> for Routed {
+    fn absorb(&mut self, event: &CohereEvent) {
+        match event {
+            CohereEvent::Native(event) => {
                 self.native_seen = true;
-                self.native_api.absorb(frame);
+                self.native_api.absorb(event);
             }
-            Shape::Compatibility => self.compatibility_api.absorb(frame),
-            Shape::Error => {}
+            CohereEvent::Compatibility(event) => self.compatibility_api.absorb(event),
+            CohereEvent::Failure(_) => {}
         }
     }
 

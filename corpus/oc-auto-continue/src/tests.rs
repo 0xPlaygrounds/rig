@@ -65,9 +65,12 @@ fn run_turn(model: &MockCompletionModel, root: PathBuf, ask: &str) -> (App, Enti
 
 /// The assistant messages of `agent`'s conversation.
 fn answers(world: &World, agent: Entity) -> Vec<AssistantMessage> {
-    let messages = world
-        .get::<Conversation>(agent)
-        .map(|it| it.messages().to_vec());
+    let messages = world.get::<Conversation>(agent).map(|it| {
+        it.messages()
+            .iter()
+            .map(|m| (**m).clone())
+            .collect::<Vec<_>>()
+    });
     let messages = messages.unwrap_or_default().into_iter();
     messages
         .filter_map(|message| match message {

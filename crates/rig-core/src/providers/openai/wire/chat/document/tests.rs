@@ -8,7 +8,6 @@ use super::super::Chat;
 use crate::providers::openai::wire::{
     DEEPSEEK, Dialect, MIRA, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY,
 };
-use crate::wire::document::Reassemble;
 use crate::wire::{Wire, WireFrame};
 
 fn chat(dialect: &'static Dialect) -> Chat {
@@ -17,15 +16,13 @@ fn chat(dialect: &'static Dialect) -> Chat {
 
 /// The document `frames`, each one event's data, rebuild on `wire`.
 fn rebuilt(wire: &Chat, frames: &[Value]) -> Value {
-    let mut document = wire.reassembler();
-    for frame in frames {
-        let data = match frame {
+    let frames = frames.iter().map(|frame| {
+        WireFrame::Text(match frame {
             Value::String(text) => text.clone(),
             other => other.to_string(),
-        };
-        document.absorb(&WireFrame::Text(data));
-    }
-    document.finish()
+        })
+    });
+    crate::wire::document::rebuild(&wire.decoder(), wire.reassembler(), frames)
 }
 
 /// A chunk of reply `chatcmpl-1` whose one choice carries `delta`, with

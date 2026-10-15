@@ -37,3 +37,12 @@ unicode-width = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
+
+[dev-dependencies]
+divan = { workspace = true }
+
+# The tools' hot paths on generated files (`cargo bench -p rig-tools --bench
+# tools`). CI only compiles it.
+[[bench]]
+name = "tools"
+harness = false

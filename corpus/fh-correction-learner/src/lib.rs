@@ -359,7 +359,7 @@ fn previous_reply(conversation: &Conversation) -> Option<String> {
     let start = (0..current).rev().find(typed_at).map_or(0, |at| at + 1);
     let mut lines = Vec::new();
     for message in messages.get(start..current).unwrap_or_default() {
-        let Message::Assistant(reply) = message else {
+        let Message::Assistant(reply) = &**message else {
             continue;
         };
         for item in reply.content.iter() {

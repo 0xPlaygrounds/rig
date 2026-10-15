@@ -386,7 +386,7 @@ impl StreamedTurnAssembler {
                 if !self.policy.allows(tool_call.function.name.as_str()) {
                     return Ok(self.surface_invalid_call(
                         tool_call.clone(),
-                        Some(tool_call.function.arguments_value().to_string()),
+                        Some(tool_call.function.arguments_json()),
                     ));
                 }
                 self.pending_tool_calls.push(tool_call.clone());

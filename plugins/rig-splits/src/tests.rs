@@ -257,7 +257,7 @@ fn splits_split_again_move_switch_and_merge_back() {
         .and_then(|conversation| conversation.messages().last().cloned());
     assert_eq!(
         last,
-        Some(Message::user("And then?")),
+        Some(Message::user("And then?").into()),
         "what the split added follows"
     );
     let merged = pointers(&app, agent);
@@ -372,7 +372,13 @@ fn splits_lists_the_lines_and_compare_shows_each_from_where_they_part() {
     let shown: Vec<(Option<String>, Vec<Message>)> = panes
         .iter(app.world())
         .filter_map(|pane| match &pane.source {
-            TranscriptSource::Value(line) => Some((pane.title.clone(), line.messages().to_vec())),
+            TranscriptSource::Value(line) => Some((
+                pane.title.clone(),
+                line.messages()
+                    .iter()
+                    .map(|message| (**message).clone())
+                    .collect(),
+            )),
             _ => None,
         })
         .collect();

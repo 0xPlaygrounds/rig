@@ -54,12 +54,15 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
+use std::hash::{DefaultHasher, Hasher};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
+use rig_core::completion::{CompletionRequest, Message};
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
 use rig_memory::Files;
 use serde::{Deserialize, Serialize};
@@ -222,52 +225,99 @@ impl Writer {
 
     /// Writes `record` to `out` and notes it in `known`: a completion as a
     /// continuation of the recent request it shares the most with, when it
-    /// shares any, any other record as it is.
+    /// shares any, any other record as it is. A message its chain's latest
+    /// request held too takes that request's text, so only new messages are
+    /// serialized.
     fn encode(known: &mut Known, record: &EffectRecord, out: &mut Vec<u8>) -> io::Result<()> {
-        match record.kind {
-            EffectKind::Completion { .. } => {}
+        let (request, stream) = match &record.kind {
+            EffectKind::Completion { request, stream } => (request, *stream),
             EffectKind::ToolCall { .. } => {
                 let value = serde_json::to_value(record)?;
-                known.note(&value, None)?;
+                known.note(&value, None, None)?;
                 return Ok(serde_json::to_writer(out, &value)?);
             }
             _ => return Ok(serde_json::to_writer(out, record)?),
-        }
-        let mut value = serde_json::to_value(record)?;
+        };
+        // The record without its history, which the plan places.
+        let mut without = CompletionRequest::clone(request);
+        without.chat_history.clear();
+        let shallow = EffectRecord {
+            kind: EffectKind::Completion {
+                request: Arc::new(without),
+                stream,
+            },
+            ..record.clone()
+        };
+        let mut value = serde_json::to_value(&shallow)?;
         for (parent, key) in RAW_ECHOES {
             if let Some(parent) = value.pointer_mut(parent).and_then(Value::as_object_mut) {
                 parent.shift_remove(key);
             }
         }
-        let request = value
-            .pointer("/kind/request")
-            .and_then(Value::as_object)
-            .ok_or_else(|| io::Error::other("a completion record without a request object"))?;
-        let history = request
-            .get("chat_history")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or_default();
-        let texts: Vec<String> = history.iter().map(Value::to_string).collect();
-        let tools = request.get("tools").map(Value::to_string);
         let chain = chain_of(&value);
-        let plan = known
-            .bases(&chain)
-            .filter_map(|base| Plan::of(base, history, &texts, tools.as_deref(), known))
-            .min_by_key(|plan| plan.cost);
-        let Some(plan) = plan else {
-            known.note(&value, None)?;
-            return Ok(serde_json::to_writer(out, &value)?);
+        let latest = known
+            .chains
+            .get(&chain)
+            .and_then(|heads| heads.iter().rev().find(|head| head.sent.is_some()));
+        let history = request
+            .chat_history
+            .iter()
+            .enumerate()
+            .map(
+                |(at, message)| match latest.and_then(|head| head.text_of(message, at)) {
+                    Some(text) => Ok(Sent {
+                        message: message.as_ref(),
+                        text: text.clone(),
+                        value: None,
+                    }),
+                    None => {
+                        let value = serde_json::to_value(&**message)?;
+                        let text = Text::of(&value);
+                        Ok(Sent {
+                            message: message.as_ref(),
+                            text,
+                            value: Some(value),
+                        })
+                    }
+                },
+            )
+            .collect::<serde_json::Result<Vec<_>>>()?;
+        let tools = match latest.and_then(|head| head.sent.as_ref().zip(head.tools.as_ref())) {
+            Some((sent, tools)) if sent.tools == request.tools => tools.clone(),
+            _ => Text::of(&serde_json::to_value(&request.tools)?),
         };
-        if let Some(request) = value
+        let mut plan: Option<Plan> = None;
+        for base in known.bases(&chain) {
+            let keep = shared(base, &history);
+            let under = plan.as_ref().map(|plan| plan.cost);
+            if let Some(cheaper) = Plan::of(base, keep, &history, &tools, known, under)? {
+                plan = Some(cheaper);
+            }
+        }
+        for sent in history.iter().filter(|sent| sent.value.is_some()) {
+            known.seen.entry(sent.text.hash).or_insert(known.noted);
+        }
+        let written = match &mut plan {
+            Some(plan) => std::mem::take(&mut plan.written),
+            None => history
+                .iter()
+                .map(|sent| sent.value().map(Cow::into_owned))
+                .collect::<serde_json::Result<_>>()?,
+        };
+        if let Some(fields) = value
             .pointer_mut("/kind/request")
             .and_then(Value::as_object_mut)
         {
-            request.insert("chat_history".to_owned(), Value::Array(plan.written));
-            if plan.same_tools {
-                request.shift_remove("tools");
+            fields.insert("chat_history".to_owned(), Value::Array(written));
+            if plan.as_ref().is_some_and(|plan| plan.same_tools) {
+                fields.shift_remove("tools");
             }
         }
+        let texts = history.into_iter().map(|sent| sent.text).collect();
+        known.note(&value, Some((texts, Some(tools))), Some(request))?;
+        let Some(plan) = plan else {
+            return Ok(serde_json::to_writer(out, &value)?);
+        };
         if let Some(fields) = value.as_object_mut() {
             fields.shift_remove("id");
         }
@@ -279,11 +329,7 @@ impl Writer {
             same_tools: plan.same_tools,
             record: value,
         };
-        serde_json::to_writer(out, &line)?;
-        // Noted as a reader notes the line, which restores it while the
-        // requests it refers to are still known.
-        let (record, texts) = known.restore(line, false)?;
-        known.note(&record, Some(texts))
+        Ok(serde_json::to_writer(out, &line)?)
     }
 }
 
@@ -305,17 +351,49 @@ struct Known {
     chains: BTreeMap<String, VecDeque<Head>>,
     /// Tool-call records' successful results as JSON text, latest last.
     results: VecDeque<(EffectId, String)>,
+    /// The hash of every text a request's history held, ever, with the
+    /// first request that held it, counted in the order noted: a request
+    /// noted before it holds no such text.
+    seen: HashMap<u64, usize>,
+    /// How many completion requests were noted.
+    noted: usize,
     highest: Option<EffectId>,
     /// Whether there is a line that is not blank.
     has_lines: bool,
 }
 
 /// A completion request's history and tools as JSON text.
-type Texts = (Vec<Arc<str>>, Option<Arc<str>>);
+type Texts = (Vec<Text>, Option<Text>);
 
-/// `value` as JSON text.
-fn text(value: &Value) -> Arc<str> {
-    Arc::from(value.to_string())
+/// A message's (or the tools') JSON text and a hash of it, to compare and
+/// index by.
+#[derive(Clone, Debug)]
+struct Text {
+    text: Arc<str>,
+    hash: u64,
+}
+
+impl Text {
+    /// `value` as JSON text.
+    fn of(value: &Value) -> Self {
+        let text = value.to_string();
+        let mut hasher = DefaultHasher::new();
+        hasher.write(text.as_bytes());
+        Self {
+            hash: hasher.finish(),
+            text: text.into(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.text.len()
+    }
+}
+
+impl PartialEq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash && (Arc::ptr_eq(&self.text, &other.text) || self.text == other.text)
+    }
 }
 
 /// A completion request as written or read: each message and the tools as
@@ -323,9 +401,58 @@ fn text(value: &Value) -> Arc<str> {
 #[derive(Debug)]
 struct Head {
     id: EffectId,
-    history: Vec<Arc<str>>,
-    tools: Option<Arc<str>>,
+    history: Vec<Text>,
+    tools: Option<Text>,
     reply: Option<Reply>,
+    /// The request as this writer wrote it, index-aligned with `history`;
+    /// `None` for one read from the file. It keeps its messages alive, so
+    /// their addresses stay theirs.
+    sent: Option<Arc<CompletionRequest>>,
+    /// Each text's hash and place in `history`, in order.
+    starts: OnceLock<Vec<(u64, usize)>>,
+    /// How many requests were noted before it.
+    noted: usize,
+}
+
+impl Head {
+    /// The text this request gave `message`, when it held that very
+    /// message at `at`.
+    fn text_of(&self, message: &Arc<Message>, at: usize) -> Option<&Text> {
+        let sent = self.sent.as_ref()?;
+        sent.chat_history
+            .get(at)
+            .filter(|held| Arc::ptr_eq(held, message))?;
+        self.history.get(at)
+    }
+
+    /// The places in `history` of the texts with `hash`, in order.
+    fn starts(&self, hash: u64) -> impl Iterator<Item = usize> {
+        let starts = self.starts.get_or_init(|| {
+            let mut starts: Vec<_> = self.history.iter().map(|text| text.hash).zip(0..).collect();
+            starts.sort_unstable();
+            starts
+        });
+        let first = starts.partition_point(|&(other, _)| other < hash);
+        let starts = starts.get(first..).unwrap_or_default().iter();
+        starts.map_while(move |&(other, at)| (other == hash).then_some(at))
+    }
+}
+
+/// A message of the request being written: its text, and its JSON value
+/// when the text was made from it.
+struct Sent<'a> {
+    message: &'a Message,
+    text: Text,
+    value: Option<Value>,
+}
+
+impl Sent<'_> {
+    fn value(&self) -> serde_json::Result<Cow<'_, Value>> {
+        match &self.value {
+            Some(value) => Ok(Cow::Borrowed(value)),
+            None => serde_json::to_value(self.message).map(Cow::Owned),
+        }
+    }
 }
 
 /// A completion's reply as JSON text: its choice and its origin, which the
@@ -406,19 +533,25 @@ impl Known {
             return Ok(None);
         }
         if value.get("after").is_none() {
-            self.note(&value, None)?;
+            self.note(&value, None, None)?;
             return Ok(Some(value));
         }
         let (record, texts) = self.restore(serde_json::from_value(value)?, whole)?;
-        self.note(&record, Some(texts))?;
+        self.note(&record, Some(texts), None)?;
         Ok(Some(record))
     }
 
     /// Notes a record: its id may be the highest; a completion becomes its
     /// chain's latest request, with `texts`, its history and tools as
-    /// [`Self::restore`] gives them, or else as the record holds them; a
-    /// tool call's result becomes the latest.
-    fn note(&mut self, record: &Value, texts: Option<Texts>) -> io::Result<()> {
+    /// [`Self::restore`] gives them, or else as the record holds them, and
+    /// `sent`, the request this writer wrote; a tool call's result becomes
+    /// the latest.
+    fn note(
+        &mut self,
+        record: &Value,
+        texts: Option<Texts>,
+        sent: Option<&Arc<CompletionRequest>>,
+    ) -> io::Result<()> {
         let id: EffectId = serde_json::from_value(record.get("id").cloned().unwrap_or_default())?;
         self.highest = self.highest.max(Some(id));
         match record.pointer("/kind/effect").and_then(Value::as_str) {
@@ -438,11 +571,18 @@ impl Known {
             let request = record.pointer("/kind/request");
             let field = |name: &str| request.and_then(|request| request.get(name));
             let history = match field("chat_history") {
-                Some(Value::Array(messages)) => messages.iter().map(text).collect(),
+                Some(Value::Array(messages)) => messages.iter().map(Text::of).collect(),
                 _ => Vec::new(),
             };
-            (history, field("tools").map(text))
+            (history, field("tools").map(Text::of))
         });
+        // A request this writer wrote noted its new texts itself.
+        if sent.is_none() {
+            for text in &history {
+                self.seen.entry(text.hash).or_insert(self.noted);
+            }
+        }
+        let sent = sent.filter(|sent| sent.chat_history.len() == history.len());
         let reply = match (
             record.pointer("/outcome/Ok/choice"),
             record.pointer("/outcome/Ok/origin"),
@@ -459,7 +599,11 @@ impl Known {
             history,
             tools,
             reply,
+            sent: sent.cloned(),
+            starts: OnceLock::new(),
+            noted: self.noted,
         });
+        self.noted += 1;
         while chain.len() > RECENT {
             chain.pop_front();
         }
@@ -630,14 +774,14 @@ impl Known {
         .into_iter();
         let mut history = messages(0, keep)?.to_vec();
         if then.is_empty() {
-            history.extend(held.by_ref().map(|message| text(&message)));
+            history.extend(held.by_ref().map(|message| Text::of(&message)));
         }
         for piece in then {
             match piece {
                 Piece::Base(from, to) => history.extend_from_slice(messages(from, to)?),
                 Piece::New(count) => {
                     for _ in 0..count {
-                        history.push(text(&held.next().ok_or_else(short)?));
+                        history.push(Text::of(&held.next().ok_or_else(short)?));
                     }
                 }
                 Piece::Reply(of) => {
@@ -649,11 +793,11 @@ impl Known {
                                 "record {id} repeats the reply of completion {of}, which is not a recent request with a reply"
                             ))
                         })?;
-                    history.push(text(&reply.restore(held.next().ok_or_else(short)?)?));
+                    history.push(Text::of(&reply.restore(held.next().ok_or_else(short)?)?));
                 }
                 Piece::Results(ids) => {
                     let message = held.next().ok_or_else(short)?;
-                    history.push(text(&self.restore_results(message, ids)?));
+                    history.push(Text::of(&self.restore_results(message, ids)?));
                 }
             }
         }
@@ -668,16 +812,18 @@ impl Known {
                     "record {id} reuses the tools of completion {after}, which has none"
                 ))
             })?;
-            Some(Arc::clone(tools))
+            Some(tools.clone())
         } else {
-            request.get("tools").map(text)
+            request.get("tools").map(Text::of)
         };
         if whole {
-            let messages = history.iter().map(|message| serde_json::from_str(message));
+            let messages = history
+                .iter()
+                .map(|message| serde_json::from_str(&message.text));
             let messages = messages.collect::<Result<_, _>>()?;
             request.insert("chat_history".to_owned(), Value::Array(messages));
             if same_tools && let Some(tools) = &tools {
-                request.insert("tools".to_owned(), serde_json::from_str(tools)?);
+                request.insert("tools".to_owned(), serde_json::from_str(&tools.text)?);
             }
         }
         if let Some(fields) = record.as_object_mut() {
@@ -702,46 +848,41 @@ struct Plan {
 }
 
 impl Plan {
-    /// How `history` (as `texts`) and `tools` are written against `base`,
-    /// or `None` when they share nothing with it.
+    /// How `history` and `tools` are written against `base`, or `None`
+    /// when they share nothing with it or it costs `under` or more.
     fn of(
         base: &Head,
-        history: &[Value],
-        texts: &[String],
-        tools: Option<&str>,
+        keep: usize,
+        history: &[Sent<'_>],
+        tools: &Text,
         known: &Known,
-    ) -> Option<Self> {
-        let keep = base
-            .history
-            .iter()
-            .zip(texts)
-            .take_while(|(kept, sent)| ***kept == ***sent)
-            .count();
-        let mut starts: HashMap<&str, Vec<usize>> = HashMap::new();
-        for (at, text) in base.history.iter().enumerate() {
-            starts.entry(&**text).or_default().push(at);
-        }
+        under: Option<usize>,
+    ) -> io::Result<Option<Self>> {
         let mut reused = keep > 0;
         let mut then = Vec::new();
         let mut written = Vec::new();
         let mut cost = 0;
         let mut at = keep;
-        while let (Some(text), Some(message)) = (texts.get(at), history.get(at)) {
-            let run = starts.get(text.as_str()).and_then(|starts| {
-                starts
-                    .iter()
-                    .map(|&from| {
-                        let kept = base.history.get(from..).unwrap_or_default();
-                        let sent = texts.get(at..).unwrap_or_default();
-                        let len = kept
-                            .iter()
-                            .zip(sent)
-                            .take_while(|(kept, sent)| ***kept == ***sent)
-                            .count();
-                        (from, len)
-                    })
-                    .max_by_key(|&(_, len)| len)
-            });
+        while let Some(sent) = history.get(at) {
+            if under.is_some_and(|under| cost >= under) {
+                return Ok(None);
+            }
+            let held = known.seen.get(&sent.text.hash);
+            let run = (held.is_some_and(|first| *first <= base.noted))
+                .then(|| base.starts(sent.text.hash))
+                .into_iter()
+                .flatten()
+                .map(|from| {
+                    let kept = base.history.get(from..).unwrap_or_default();
+                    let sent = history.get(at..).unwrap_or_default();
+                    let len = kept
+                        .iter()
+                        .zip(sent)
+                        .take_while(|(kept, sent)| **kept == sent.text)
+                        .count();
+                    (from, len)
+                })
+                .max_by_key(|&(_, len)| len);
             if let Some((from, len)) = run.filter(|&(_, len)| len > 0) {
                 match then.last_mut() {
                     Some(Piece::Base(_, to)) if *to == from => *to += len,
@@ -751,12 +892,13 @@ impl Plan {
                 at += len;
                 continue;
             }
+            let message = sent.value()?;
             let repeated = known
-                .reply_in(message)
+                .reply_in(&message)
                 .map(|(id, rest)| (Piece::Reply(id), rest))
                 .or_else(|| {
                     known
-                        .results_in(message)
+                        .results_in(&message)
                         .map(|(ids, rest)| (Piece::Results(ids), rest))
                 });
             match repeated {
@@ -767,37 +909,47 @@ impl Plan {
                     reused = true;
                 }
                 None => {
-                    cost += text.len();
+                    cost += sent.text.len();
                     match then.last_mut() {
                         Some(Piece::New(count)) => *count += 1,
                         _ => then.push(Piece::New(1)),
                     }
-                    written.push(message.clone());
+                    written.push(message.into_owned());
                 }
             }
             at += 1;
         }
         if !reused {
-            return None;
+            return Ok(None);
         }
-        let same_tools = tools.is_some() && base.tools.as_deref() == tools;
+        let same_tools = base.tools.as_ref() == Some(tools);
         if !same_tools {
-            cost += tools.map_or(0, str::len);
+            cost += tools.len();
         }
         if then.iter().all(|piece| matches!(piece, Piece::New(_))) {
             then.clear();
         }
         // About the bytes of a piece.
         cost += then.len() * 16;
-        Some(Self {
+        if under.is_some_and(|under| cost >= under) {
+            return Ok(None);
+        }
+        Ok(Some(Self {
             after: base.id,
             keep,
             then,
             written,
             same_tools,
             cost,
-        })
+        }))
     }
+}
+
+/// How many of `base`'s first messages `history` starts with.
+fn shared(base: &Head, history: &[Sent<'_>]) -> usize {
+    (base.history.iter().zip(history))
+        .take_while(|(kept, sent)| **kept == sent.text)
+        .count()
 }
 
 /// The parts of a completion record's raw provider document a log leaves

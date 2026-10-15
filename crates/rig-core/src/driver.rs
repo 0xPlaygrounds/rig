@@ -32,8 +32,8 @@ use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::document::Reassemble;
 use crate::wire::{
-    Call, Capabilities, Decoder, Flow, Mode, Operation, Out, Request, Response, Shared, Wire,
-    WireEvent,
+    Call, Capabilities, Decoder, Descriptor, Flow, Mode, Operation, Out, Request, Response, Shared,
+    Wire, WireEvent,
 };
 
 mod dyn_model;
@@ -55,12 +55,18 @@ pub struct Model<W, T = crate::http_client::DynHttpClient> {
     pub wire: W,
     /// How the payload travels.
     pub transport: T,
+    /// What preparing the last request leaves for the next.
+    prepared: crate::wire::Prepared,
 }
 
 impl<W, T> Model<W, T> {
     /// Pair `wire` with the `transport` that sends it.
     pub fn new(wire: W, transport: T) -> Self {
-        Self { wire, transport }
+        Self {
+            wire,
+            transport,
+            prepared: crate::wire::Prepared::default(),
+        }
     }
 }
 
@@ -122,7 +128,7 @@ pub(crate) fn check_with(
 
 /// `request` with its leading system prompt and a stand-in prompt as its
 /// messages, everything else as it is: what [`check_with`] dry-runs.
-fn without_messages(
+pub(crate) fn without_messages(
     request: &crate::completion::CompletionRequest,
 ) -> crate::completion::CompletionRequest {
     use crate::completion::{CompletionRequest, Message};
@@ -145,13 +151,13 @@ fn without_messages(
     } = request;
     let system = chat_history
         .first()
-        .filter(|message| matches!(message, Message::System { .. }));
+        .filter(|message| matches!(&***message, Message::System { .. }));
     CompletionRequest {
         model: model.clone(),
         chat_history: system
             .cloned()
             .into_iter()
-            .chain([Message::user("check")])
+            .chain([std::sync::Arc::new(Message::user("check"))])
             .collect(),
         documents: documents.clone(),
         tools: tools.clone(),
@@ -406,7 +412,10 @@ where
     /// `request` prepared and encoded as [`Self::call`] would, with nothing
     /// sent.
     pub(crate) fn dry_run(&self, request: Request<W>) -> Result<(), ProviderError> {
-        let describe = self.wire.describe();
+        let describe = Descriptor {
+            prepared: Some(&self.prepared),
+            ..self.wire.describe()
+        };
         let request = <W::Op as Operation>::prepare(request, &describe)?;
         self.wire.encode(request, Mode::Unary)?;
         Ok(())
@@ -421,7 +430,10 @@ where
         mode: Mode,
         sending: Sending,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        let describe = self.wire.describe();
+        let describe = Descriptor {
+            prepared: Some(&self.prepared),
+            ..self.wire.describe()
+        };
         let request = <W::Op as Operation>::prepare(request, &describe)?;
         let provider = describe.name.to_owned();
         let mut call = Call::new(&describe, mode);
@@ -453,8 +465,9 @@ where
 /// Read one reply: open it, classify each frame, decode it into the reply's
 /// writer, and stop at the provider's end. The stream yields once per frame
 /// read, so its items reach the consumer frame by frame. When the transport
-/// reported no whole document, the wire's reassembler sees every frame
-/// first, and what it rebuilds is the reply's `raw` however the reply ends.
+/// reported no whole document, the wire's reassembler sees every known
+/// event before the decoder decodes it, and what it rebuilds is the reply's
+/// `raw` however the reply ends.
 ///
 /// The reply's `'id` brand is the borrow of its shared state inside this
 /// stream: the decoder and every part handle it holds are tied to it, and
@@ -603,8 +616,9 @@ pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<Item<E>, ProviderError> {
     }
 }
 
-/// Hand one frame to `reassembler`, then classify it and decode it into
-/// `reply`, counting it in `tally` when the reply is observed.
+/// Classify one frame and decode it into `reply`, handing a known event to
+/// `reassembler` first, and count the frame in `tally` when the reply is
+/// observed.
 pub(crate) fn step<'id, Op, F, D, R>(
     decoder: &mut D,
     reassembler: Option<&mut R>,
@@ -615,11 +629,8 @@ pub(crate) fn step<'id, Op, F, D, R>(
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
-    R: Reassemble<F>,
+    R: Reassemble<D::Event>,
 {
-    if let Some(reassembler) = reassembler {
-        reassembler.absorb(&frame);
-    }
     let exempt = tally
         .as_ref()
         .and_then(|tally| tally.analysis_only)
@@ -636,7 +647,12 @@ where
         }
     }
     match triage(classified)? {
-        Item::Event(event) => decoder.decode(event, Out::new(reply)),
+        Item::Event(event) => {
+            if let Some(reassembler) = reassembler {
+                reassembler.absorb(&event);
+            }
+            decoder.decode(event, Out::new(reply))
+        }
         Item::Unknown(value) => {
             Out::new(reply).unknown(value);
             Ok(Flow::More)
@@ -682,7 +698,7 @@ pub(crate) fn feed<'id, Op, F, D, R>(
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
-    R: Reassemble<F>,
+    R: Reassemble<D::Event>,
 {
     let fed = feed_until_end(decoder, reassembler.as_mut(), reply, frames);
     record(reply, reassembler.map(|document| document.finish()));
@@ -698,7 +714,7 @@ fn feed_until_end<'id, Op, F, D, R>(
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
-    R: Reassemble<F>,
+    R: Reassemble<D::Event>,
 {
     for frame in frames {
         if let Flow::Ended(_) = step(decoder, reassembler.as_deref_mut(), reply, frame, None)? {
@@ -897,8 +913,8 @@ pub(crate) use decode_events;
 
 /// Decode `frames` through `decoder`, classifier included, as one
 /// completion reply from `provider`: what the driver does with frames it
-/// read. A reassembler, when given, sees each frame first and its document
-/// is the reply's `raw`.
+/// read. A reassembler, when given, sees each known event first and its
+/// document is the reply's `raw`.
 #[cfg(test)]
 macro_rules! feed_frames {
     ($decoder:expr, $provider:expr, $frames:expr) => {
@@ -941,7 +957,7 @@ impl<'id, Op: Operation> Replying<'id, Op> {
     }
 
     /// Feed frames through `reassembler` and `decoder`, as the driver does.
-    pub(crate) fn feed<F, D: Decoder<'id, Op, F>, R: Reassemble<F>>(
+    pub(crate) fn feed<F, D: Decoder<'id, Op, F>, R: Reassemble<D::Event>>(
         &self,
         decoder: &mut D,
         reassembler: Option<R>,

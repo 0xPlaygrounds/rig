@@ -131,7 +131,11 @@ fn a_session_picker_fills_previews_filters_on_listed_values_and_names_the_pick()
         }) => conversation.messages(),
         _ => &[],
     };
-    assert_eq!(line, [Message::user("hello 20")], "{preview:?}");
+    assert_eq!(
+        line,
+        [Message::user("hello 20")].map(std::sync::Arc::new),
+        "{preview:?}"
+    );
 
     if let Some(mut session) = app.world_mut().get_mut::<SessionPicker>(picker) {
         session.filter.text = "SHIP the".to_owned();

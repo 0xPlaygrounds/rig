@@ -33,12 +33,12 @@ struct Seen {
 struct Observer(Arc<Mutex<Seen>>);
 impl Observe for Observer {
     fn origin(&mut self, _origin: &rig_core::message::Origin) {}
-    fn outcome(&mut self, outcome: &Result<Answered, ErrorReport>) {
+    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
         self.0
             .lock()
             .unwrap()
             .outcomes
-            .push(serde_json::to_value(outcome).unwrap());
+            .push(serde_json::to_value(&outcome).unwrap());
     }
     fn keep_events(&self) -> bool {
         true

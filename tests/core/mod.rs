@@ -48,7 +48,7 @@ fn tool_result_texts(log: &rig_cassette::effect_log::EffectLog, at: usize) -> Ve
         rig::effect::EffectKind::Completion { request, .. } => request
             .chat_history
             .iter()
-            .filter_map(|message| match message {
+            .filter_map(|message| match &**message {
                 rig::message::Message::User { content } => Some(content.iter()),
                 _ => None,
             })

@@ -83,11 +83,15 @@ fn send(app: &mut App, wakes: &Receiver<()>, agent: Entity, model: &str) {
 }
 
 /// The content of the last user message of `messages`.
-fn last_user(messages: &[ChatMessage]) -> Vec<UserContent> {
-    let user = messages.iter().rev().find_map(|message| match message {
-        ChatMessage::User { content } => Some(content.clone()),
-        _ => None,
-    });
+fn last_user(messages: &[impl std::borrow::Borrow<ChatMessage>]) -> Vec<UserContent> {
+    let user = messages
+        .iter()
+        .map(std::borrow::Borrow::<ChatMessage>::borrow)
+        .rev()
+        .find_map(|message| match message {
+            ChatMessage::User { content } => Some(content.clone()),
+            _ => None,
+        });
     user.unwrap_or_default()
 }
 

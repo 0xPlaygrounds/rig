@@ -11,7 +11,7 @@
 //! conversation.push(Message::assistant("Hi"));
 //! // A plugin rewrites the greeting; the entry keeps its id.
 //! let mut greeting = conversation.entry(0).ok_or("no entry")?;
-//! greeting.message = Message::user("Hello there");
+//! greeting.message = Message::user("Hello there").into();
 //! conversation.splice(0..1, [greeting], Author::plugin("polite"));
 //! assert_eq!(conversation.index_of(hello), Some(0));
 //!
@@ -29,6 +29,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::ops::{Bound, Range, RangeBounds};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -73,8 +74,9 @@ use pairing::{Normalized, PairingError};
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(try_from = "State")]
 pub struct Conversation {
-    /// What a request sends, so [`messages`](Self::messages) is a slice.
-    messages: Vec<Message>,
+    /// What a request sends, so [`messages`](Self::messages) is a slice;
+    /// shared with the requests and records made from it.
+    messages: Vec<Arc<Message>>,
     /// Parallel to `messages`.
     meta: Vec<Meta>,
     /// In the order put.
@@ -118,7 +120,7 @@ struct Meta {
 #[derive(Deserialize)]
 struct State {
     #[serde(default)]
-    messages: Vec<Message>,
+    messages: Vec<Arc<Message>>,
     #[serde(default)]
     meta: Vec<Meta>,
     #[serde(default)]
@@ -261,8 +263,8 @@ pub struct MessageKey {
 /// always carries every id.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
-    /// The message.
-    pub message: Message,
+    /// The message, shared with the conversation it goes into.
+    pub message: Arc<Message>,
     /// Who wrote it; `None` for the user's own text, the model's reply and
     /// tool results.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -279,9 +281,9 @@ pub struct Entry {
 
 impl Entry {
     /// A new entry without an author.
-    pub fn new(message: Message) -> Self {
+    pub fn new(message: impl Into<Arc<Message>>) -> Self {
         Self {
-            message,
+            message: message.into(),
             author: None,
             id: None,
             made: None,
@@ -300,6 +302,12 @@ impl Entry {
 
 impl From<Message> for Entry {
     fn from(message: Message) -> Self {
+        Self::new(message)
+    }
+}
+
+impl From<Arc<Message>> for Entry {
+    fn from(message: Arc<Message>) -> Self {
         Self::new(message)
     }
 }
@@ -487,7 +495,7 @@ impl Conversation {
 
     /// A conversation of `messages`, each its own entry, recorded so that
     /// saving it writes them (an import, a library user's history).
-    pub fn from_messages(messages: impl IntoIterator<Item = Message>) -> Self {
+    pub fn from_messages(messages: impl IntoIterator<Item = impl Into<Arc<Message>>>) -> Self {
         let mut conversation = Self::new();
         conversation.extend(messages);
         conversation
@@ -496,13 +504,13 @@ impl Conversation {
     // Reading.
 
     /// The messages, oldest first: what a request sends.
-    pub fn messages(&self) -> &[Message] {
+    pub fn messages(&self) -> &[Arc<Message>] {
         &self.messages
     }
 
     /// The messages, oldest first, taken out of the conversation: what a
     /// request sends, without a copy.
-    pub fn into_messages(self) -> Vec<Message> {
+    pub fn into_messages(self) -> Vec<Arc<Message>> {
         self.messages
     }
 
@@ -579,7 +587,7 @@ impl Conversation {
     pub fn turn_start(&self) -> MessageId {
         let trailing = self.messages.iter().rev();
         let trailing = trailing
-            .take_while(|message| matches!(message, Message::User { .. }))
+            .take_while(|message| matches!(&***message, Message::User { .. }))
             .count();
         let first = self.messages.len().saturating_sub(trailing);
         let answered = (trailing > 0).then(|| self.id(first)).flatten();
@@ -614,7 +622,7 @@ impl Conversation {
     /// is never read ([`StopReason::is_failure`]), so the answer is still
     /// owed.
     pub fn awaits_model(&self) -> bool {
-        let read = self.messages.iter().rev().find(|message| {
+        let read = self.messages.iter().rev().map(Arc::as_ref).find(|message| {
             !matches!(message, Message::Assistant(turn)
                 if turn.stop.as_ref().is_some_and(StopReason::is_failure))
         });
@@ -677,7 +685,7 @@ impl Conversation {
 
     /// Pushes each of `messages` as its own entry without an author, in one
     /// change, as [`push`](Self::push) does.
-    pub fn extend(&mut self, messages: impl IntoIterator<Item = Message>) {
+    pub fn extend(&mut self, messages: impl IntoIterator<Item = impl Into<Arc<Message>>>) {
         let entries = messages.into_iter().map(Entry::new).collect();
         self.push_entries(entries, None);
     }
@@ -900,7 +908,7 @@ impl Conversation {
     ///     (entry.index == 1).then(|| Message::user("TWO"))
     /// });
     /// assert_eq!(changed, before.into_iter().collect::<Vec<_>>());
-    /// assert_eq!(conversation.messages().get(1), Some(&Message::user("TWO")));
+    /// assert_eq!(conversation.messages().get(1).map(|message| &**message), Some(&Message::user("TWO")));
     /// assert_eq!(conversation.id(1), before);
     /// ```
     pub fn edit_each(
@@ -923,7 +931,7 @@ impl Conversation {
         let entries: Vec<Entry> = (first..=last)
             .filter_map(|at| match rewritten.next_if(|(next, ..)| *next == at) {
                 Some((_, id, message)) => Some(Entry {
-                    message,
+                    message: Arc::new(message),
                     author: self.author(at).cloned(),
                     id: Some(id),
                     made: None,

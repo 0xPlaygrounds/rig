@@ -340,6 +340,7 @@ impl Wire for Scripted {
     type Op = Completion;
     type Payload = ();
     type Frame = Finish;
+    type Event = Finish;
     type Decoder<'id> = Ends;
     type Reassembler = ScriptedDocument;
 

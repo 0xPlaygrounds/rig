@@ -332,26 +332,25 @@ where
         let this = self.clone();
         Opening::new(async move {
             let path = payload.request.uri().path().to_owned();
-            let bytes = match payload.request.body() {
-                Body::Bytes(bytes) => Some(bytes.clone()),
+            let parsed = match payload.request.body() {
+                Body::Bytes(bytes) => parse(bytes),
                 Body::Multipart(_) => None,
             };
-            let parsed = bytes.as_deref().and_then(parse);
-            let (Some(bytes), Some(model), Some(parsed)) = (bytes, model_of(&path), parsed) else {
+            let (Some(model), Some(parsed)) = (model_of(&path), parsed) else {
                 return this.inner.send(payload, exchange).await;
             };
             if parsed.has_cached_content {
                 return this.inner.send(payload, exchange).await;
             }
 
-            let d = digests(&model, &parsed);
+            let digested = digests(&model, &parsed);
             let roll_allowed = match this.thought_replay {
                 ThoughtReplay::All => true,
                 ThoughtReplay::CurrentTurn => {
                     parsed.contents.last().is_some_and(|c| is_user_text(c))
                 }
             };
-            let plan = this.book.plan(&model, &d, &parsed, roll_allowed);
+            let plan = this.book.plan(&model, &digested, roll_allowed);
             for idle in &plan.retire {
                 this.delete(idle).await;
             }
@@ -378,15 +377,14 @@ where
                 this.extend(lease, *ttl_secs).await;
             }
 
-            let sent = match &read {
-                Some(lease) => match stripped(&parsed, lease) {
-                    Some(body) => with_body(&payload, body)?,
-                    None => {
-                        read = None;
-                        with_body(&payload, bytes.clone())?
-                    }
-                },
-                None => with_body(&payload, bytes.clone())?,
+            // A request that reads a cache keeps the encoded one to resend
+            // inline; any other goes out as encoded.
+            let (sent, inline) = match read.as_ref().and_then(|lease| stripped(&parsed, lease)) {
+                Some(body) => (with_body(&payload, body)?, Some(payload)),
+                None => {
+                    read = None;
+                    (payload, None)
+                }
             };
             let mut opened: Opened<WireFrame> = this.inner.send(sent, exchange.clone()).await?;
             if let Some(lease) = read.clone() {
@@ -395,14 +393,11 @@ where
                     &first,
                     Some(Err(error)) if error.provider_response_status() == Some(http::StatusCode::FORBIDDEN)
                 );
-                if forbidden {
+                if let (true, Some(inline)) = (forbidden, inline) {
                     // Deleted elsewhere or expired early: forget it and send inline, once.
                     this.book.lost(&lease);
                     read = None;
-                    opened = this
-                        .inner
-                        .send(with_body(&payload, bytes)?, exchange)
-                        .await?;
+                    opened = this.inner.send(inline, exchange).await?;
                 } else {
                     this.book.touched(&lease);
                     let rest =

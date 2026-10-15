@@ -7,7 +7,7 @@ use crate::{
     completion::{CompletionRequest, Message},
     effect::{FamilyDescriptor, family, tool_key},
     operation::Finish,
-    serve::{Dispatch, ErasedHandler, OpenRecord, Reply, Serve, cancelled, catch_panics},
+    serve::{Dispatch, ErasedHandler, Reply, Serve, catch_panics},
     tool::ToolResult,
 };
 
@@ -107,6 +107,25 @@ fn records_keep_dispatch_order_and_origin_whatever_order_they_resolve_in() {
     assert_eq!(buffer.resolved() + buffer.in_flight(), 0);
 }
 
+/// A filtered take moves out only the resolved records it accepts, in
+/// dispatch order, and leaves the rest resolved or in flight.
+#[test]
+fn a_filtered_take_leaves_the_records_it_refuses() {
+    let buffer = RecordBuffer::new();
+    for raw in 1..=4 {
+        let id = EffectId::from_raw(raw);
+        buffer.begin(id, tool_key("t"), tool("t"), DispatchContext::default());
+    }
+    for raw in [4, 2, 1] {
+        buffer.resolve(EffectId::from_raw(raw), answer("done"));
+    }
+
+    let taken = buffer.take_resolved_where(|id| id != EffectId::from_raw(2));
+    assert_eq!(ids(&taken), [1, 4], "accepted ones, in dispatch order");
+    assert_eq!((buffer.resolved(), buffer.in_flight()), (1, 1));
+    assert_eq!(ids(&buffer.take_resolved()), [2], "the refused one stays");
+}
+
 /// A layer's discard drops the record, and its patch replaces the request
 /// recorded; tool output counts only before the outcome.
 #[test]
@@ -154,7 +173,7 @@ fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
     assert!(buffer.keep_events());
     let id = EffectId::from_raw(4);
     let kind = EffectKind::Completion {
-        request: CompletionRequest::new(Message::user("hi")),
+        request: CompletionRequest::new(Message::user("hi")).into(),
         stream: true,
     };
     let handler = ErasedHandler::new(Streamer);
@@ -195,43 +214,6 @@ fn a_unary_dispatch_keeps_no_items() {
     buffer.resolve(id, answer("done"));
     let record = buffer.take(id).expect("resolved");
     assert!(record.events.is_none() && record.stream_origin.is_none());
-}
-
-/// An open record settles once into the buffer, the first outcome standing,
-/// and one dropped unsettled is recorded as cancelled; without a recorder it
-/// only carries its id.
-#[test]
-fn an_open_record_settles_once_and_a_dropped_one_is_cancelled() {
-    let buffer = RecordBuffer::new();
-    let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(buffer.clone());
-    let begin = |raw| {
-        let id = EffectId::from_raw(raw);
-        let origin = DispatchContext::default();
-        OpenRecord::begin(Some(recorder.clone()), id, tool_key("t"), tool("t"), origin)
-    };
-    let mut settled = begin(1);
-    settled.settle(answer("first"));
-    settled.settle(answer("second"));
-    drop(settled);
-    drop(begin(2));
-    let unrecorded = OpenRecord::begin(
-        None,
-        EffectId::from_raw(3),
-        tool_key("t"),
-        tool("t"),
-        DispatchContext::default(),
-    );
-    assert_eq!(unrecorded.id(), EffectId::from_raw(3));
-    drop(unrecorded);
-
-    let records = buffer.take_resolved();
-    assert_eq!(ids(&records), [1, 2]);
-    let outcomes: Vec<_> = records.iter().map(|record| json(&record.outcome)).collect();
-    assert_eq!(outcomes.first(), Some(&json(&answer("first"))));
-    assert_eq!(
-        outcomes.get(1),
-        Some(&json(&Err::<Answered, _>(cancelled())))
-    );
 }
 
 /// Work that panics before it answers.

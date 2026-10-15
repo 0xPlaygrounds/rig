@@ -1,7 +1,8 @@
-//! The reply document a reply's frames rebuild. Every [`Wire`](super::Wire)
-//! names one [`Reassemble`] type. The driver hands it each frame of a reply
-//! whose transport reported no whole document, before the decoder reads the
-//! frame, and records what it finishes with as the reply's `raw`. A
+//! The reply document a reply's events rebuild. Every [`Wire`](super::Wire)
+//! names one [`Reassemble`] type. The driver hands it each event its decoder
+//! classifies as known, of a reply whose transport reported no whole
+//! document, before the decoder decodes the event, and records what it
+//! finishes with as the reply's `raw`. A
 //! completion decoder cannot write `raw` itself, so a streamed reply's
 //! `raw` has one owner per wire. A wire names a reassembler only for an
 //! operation it [`Serves`], and [`Unreassembled`], which records nothing,
@@ -11,24 +12,24 @@
 //! use rig_core::wire::document::{Reassemble, Unreassembled};
 //!
 //! let mut document = Unreassembled;
-//! Reassemble::<String>::absorb(&mut document, &"frame".to_owned());
+//! Reassemble::<String>::absorb(&mut document, &"event".to_owned());
 //! assert!(Reassemble::<String>::finish(document).is_null());
 //! ```
 
 use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{Free, Operation};
 
-/// Rebuilds one reply's provider document from the frames it arrived in.
+/// Rebuilds one reply's provider document from its decoder's events.
 ///
-/// A fresh value per reply. `absorb` sees every frame the driver reads, in
-/// arrival order, including frames the decoder classifies as unknown or
-/// corrupt. `finish` runs once, when the reply ends, fails or is cut
-/// short; a reply that did not end yields the document so far.
-pub trait Reassemble<Frame>: Default + WasmCompatSend + 'static {
-    /// Absorb one frame of the reply.
-    fn absorb(&mut self, frame: &Frame);
+/// A fresh value per reply. `absorb` sees every known event of the reply,
+/// in arrival order, before the decoder decodes it; unknown and corrupt
+/// frames never reach it. `finish` runs once, when the reply ends, fails or
+/// is cut short; a reply that did not end yields the document so far.
+pub trait Reassemble<Event>: Default + WasmCompatSend + 'static {
+    /// Absorb one known event of the reply.
+    fn absorb(&mut self, event: &Event);
 
-    /// The document the absorbed frames add up to. `Null` records none.
+    /// The document the absorbed events add up to. `Null` records none.
     fn finish(self) -> serde_json::Value;
 }
 
@@ -38,8 +39,8 @@ pub trait Reassemble<Frame>: Default + WasmCompatSend + 'static {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Unreassembled;
 
-impl<Frame> Reassemble<Frame> for Unreassembled {
-    fn absorb(&mut self, _frame: &Frame) {}
+impl<Event> Reassemble<Event> for Unreassembled {
+    fn absorb(&mut self, _event: &Event) {}
 
     fn finish(self) -> serde_json::Value {
         serde_json::Value::Null
@@ -63,3 +64,24 @@ impl<Frame> Reassemble<Frame> for Unreassembled {
 pub trait Serves<Op: Operation> {}
 
 impl<Op: Operation<Emit = Free>> Serves<Op> for Unreassembled {}
+
+/// The document `frames` rebuild: each frame `decoder` classifies as known
+/// is handed to `reassembler`, as the driver hands it.
+#[cfg(test)]
+pub(crate) fn rebuild<'id, Op, F, D, R>(
+    decoder: &D,
+    mut reassembler: R,
+    frames: impl IntoIterator<Item = F>,
+) -> serde_json::Value
+where
+    Op: Operation,
+    D: super::Decoder<'id, Op, F>,
+    R: Reassemble<D::Event>,
+{
+    for frame in frames {
+        if let super::WireEvent::Known(event) = decoder.classify(frame) {
+            reassembler.absorb(&event);
+        }
+    }
+    reassembler.finish()
+}
