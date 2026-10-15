@@ -1,5 +1,6 @@
-//! Anthropic's Message Batches API, through which a [`Messages`] model
-//! submits [batch completions](crate::completion::batch): `POST
+//! Anthropic's Message Batches API, through which a
+//! [`Messages`](super::Messages) model submits
+//! [batch completions](crate::completion::batch): `POST
 //! /v1/messages/batches`, read back by id, its results a JSON Lines file.
 //!
 //! ```no_run

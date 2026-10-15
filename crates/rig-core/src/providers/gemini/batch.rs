@@ -1,4 +1,5 @@
-//! Gemini's Batch API, through which a [`GenerateContent`] model submits
+//! Gemini's Batch API, through which a
+//! [`GenerateContent`](super::completion::GenerateContent) model submits
 //! [batch completions](crate::completion::batch): `batchGenerateContent`
 //! with the requests inline, read back as a long-running operation whose
 //! response holds each request's reply in order.
