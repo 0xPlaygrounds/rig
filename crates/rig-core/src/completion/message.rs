@@ -219,11 +219,15 @@ impl AssistantContent {
     /// This block without its provider item: what a different provider can
     /// use, and what its fingerprint covers.
     pub fn canonical(&self) -> Self {
-        let mut block = self.clone();
-        if let Some(native) = block.native_slot() {
+        self.clone().into_canonical()
+    }
+
+    /// [`Self::canonical`], taking the block.
+    pub fn into_canonical(mut self) -> Self {
+        if let Some(native) = self.native_slot() {
             *native = None;
         }
-        block
+        self
     }
 
     /// Whether the block answers the user: text that is not blank, a call
@@ -312,9 +316,9 @@ impl AssistantContent {
         self
     }
 
-    /// The provider item of an edited block: no longer current, but its
-    /// identity keys still name the item it was.
-    pub(crate) fn stale_item(&self) -> Option<&serde_json::Value> {
+    /// The provider item the block holds, and whether it is still current
+    /// (the block is what it was decoded from), for one fingerprint.
+    pub(crate) fn native(&self) -> Option<(&serde_json::Value, bool)> {
         let native = match self {
             Self::Text(text) => text.native.as_ref(),
             Self::ToolCall(call) => call.native.as_ref(),
@@ -322,20 +326,21 @@ impl AssistantContent {
             Self::Image(image) => image.native.as_ref(),
             Self::Opaque(_) => None,
         }?;
-        (native.fingerprint != self.fingerprint()).then_some(&native.item)
+        Some((&native.item, native.fingerprint == self.fingerprint()))
+    }
+
+    /// The provider item of an edited block: no longer current, but its
+    /// identity keys still name the item it was.
+    pub(crate) fn stale_item(&self) -> Option<&serde_json::Value> {
+        self.native()
+            .and_then(|(item, current)| (!current).then_some(item))
     }
 
     /// The provider item, while the block is still what it was decoded
     /// from. An edited block has none: encoders rebuild it.
     pub fn native_item(&self) -> Option<&serde_json::Value> {
-        let native = match self {
-            Self::Text(text) => text.native.as_ref(),
-            Self::ToolCall(call) => call.native.as_ref(),
-            Self::Reasoning(reasoning) => reasoning.native.as_ref(),
-            Self::Image(image) => image.native.as_ref(),
-            Self::Opaque(_) => None,
-        }?;
-        (native.fingerprint == self.fingerprint()).then_some(&native.item)
+        self.native()
+            .and_then(|(item, current)| current.then_some(item))
     }
 }
 

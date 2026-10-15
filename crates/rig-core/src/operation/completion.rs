@@ -1200,7 +1200,7 @@ pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
             replay: false,
             ..opaque
         }),
-        block => block.canonical(),
+        block => block.into_canonical(),
     }
 }
 

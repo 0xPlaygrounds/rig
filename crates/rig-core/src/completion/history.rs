@@ -1059,28 +1059,32 @@ fn assistant(
         .iter()
         .map(|block| {
             let block = if same {
-                match block.clone() {
-                    AssistantContent::ToolCall(mut call) => {
-                        let wanted = call.id.wire().into_owned();
-                        let item = AssistantContent::ToolCall(call.clone())
-                            .native_item()
-                            .cloned()
-                            .filter(|_| target.call_id_slot().is_some());
-                        call.id = ids.claim(&call.id, wanted);
-                        let block = AssistantContent::ToolCall(call);
-                        // A rename is rig's, not an edit: replay spells the
-                        // new id into the item's slot, so the item stays.
-                        match item {
-                            Some(item) if block.native_item().is_none() => {
-                                block.canonical().with_native(item)
+                match block {
+                    AssistantContent::ToolCall(call) => {
+                        let id = ids.claim(&call.id, call.id.wire().into_owned());
+                        if id == call.id {
+                            block.clone()
+                        } else {
+                            // A rename is rig's, not an edit: replay spells
+                            // the new id into the item's slot, so the item
+                            // stays.
+                            let item = block
+                                .native_item()
+                                .filter(|_| target.call_id_slot().is_some());
+                            let renamed = crate::message::ToolCall { id, ..call.clone() };
+                            let renamed = AssistantContent::ToolCall(renamed);
+                            match item {
+                                Some(item) if renamed.native_item().is_none() => {
+                                    renamed.into_canonical().with_native(item.clone())
+                                }
+                                _ => renamed,
                             }
-                            _ => block,
                         }
                     }
                     // The capability holds for the model's own turns too: an
                     // image it made but does not read back is left out.
                     AssistantContent::Image(_) if !accepts.assistant_images => return None,
-                    block => block,
+                    block => block.clone(),
                 }
             } else {
                 match block.canonical() {
@@ -1224,39 +1228,38 @@ fn paired(
             *slot = None;
         }
     }
+    // The item each block goes back as, read once: its item while current,
+    // or a rebuild that keeps the item's identity (an edited block rebuilt
+    // under it needs its partner as much as the item itself); whether it
+    // goes back as one, and whether that item needs the block after it.
+    let (kept, needs): (Vec<bool>, Vec<bool>) = content
+        .iter()
+        .map(|block| {
+            let item = block.as_ref().and_then(|block| match block {
+                AssistantContent::Opaque(opaque) => opaque.replay.then_some(&opaque.item),
+                block => block
+                    .native()
+                    .filter(|(item, current)| *current || !target.identity(item).is_empty())
+                    .map(|(item, _)| item),
+            });
+            (
+                item.is_some(),
+                item.is_some_and(|item| target.needs_next(item)),
+            )
+        })
+        .unzip();
     for at in (0..content.len()).rev() {
-        let needs = content
-            .get(at)
-            .and_then(Option::as_ref)
-            .and_then(|block| match block {
-                AssistantContent::Opaque(opaque) if opaque.replay => Some(&opaque.item),
-                // An edited block rebuilt under its item's identity needs its
-                // partner as much as the item itself.
-                block => block.native_item().or_else(|| {
-                    block
-                        .stale_item()
-                        .filter(|item| !target.identity(item).is_empty())
-                }),
-            })
-            .is_some_and(|item| target.needs_next(item));
         // The partner must go back as the item the provider issued: its item,
         // or a rebuild that keeps its identity, never a block with neither.
-        let next_gone =
-            content
-                .get(at + 1)
-                .and_then(Option::as_ref)
-                .is_none_or(|next| match next {
-                    AssistantContent::Opaque(opaque) => !opaque.replay,
-                    // A request without tools gets the call as text.
-                    AssistantContent::ToolCall(_) if !tools => true,
-                    next => {
-                        next.native_item().is_none()
-                            && next
-                                .stale_item()
-                                .is_none_or(|item| target.identity(item).is_empty())
-                    }
-                });
-        if needs
+        // A request without tools gets a call as text.
+        let next_gone = content
+            .get(at + 1)
+            .and_then(Option::as_ref)
+            .is_none_or(|next| {
+                !kept.get(at + 1).copied().unwrap_or_default()
+                    || (!tools && matches!(next, AssistantContent::ToolCall(_)))
+            });
+        if needs.get(at).copied().unwrap_or_default()
             && next_gone
             && let Some(slot) = content.get_mut(at)
         {
