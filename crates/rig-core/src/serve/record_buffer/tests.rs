@@ -83,10 +83,8 @@ fn records_keep_dispatch_order_and_origin_whatever_order_they_resolve_in() {
         "still in flight"
     );
 
-    let three = buffer.take_resolved_where(|id| id != EffectId::from_raw(1));
-    assert_eq!(ids(&three), [3], "only the resolved ones it accepts");
     let taken = buffer.take_resolved();
-    assert_eq!(ids(&taken), [1]);
+    assert_eq!(ids(&taken), [1, 3]);
     assert_eq!(
         format!("{buffer:?}"),
         "RecordBuffer { resolved: 0, in_flight: 1 }"
@@ -107,6 +105,25 @@ fn records_keep_dispatch_order_and_origin_whatever_order_they_resolve_in() {
     let second = buffer.take(EffectId::from_raw(2)).expect("resolved");
     assert_eq!(json(&second.outcome), json(&answer("two")));
     assert_eq!(buffer.resolved() + buffer.in_flight(), 0);
+}
+
+/// A filtered take moves out only the resolved records it accepts, in
+/// dispatch order, and leaves the rest resolved or in flight.
+#[test]
+fn a_filtered_take_leaves_the_records_it_refuses() {
+    let buffer = RecordBuffer::new();
+    for raw in 1..=4 {
+        let id = EffectId::from_raw(raw);
+        buffer.begin(id, tool_key("t"), tool("t"), DispatchContext::default());
+    }
+    for raw in [4, 2, 1] {
+        buffer.resolve(EffectId::from_raw(raw), answer("done"));
+    }
+
+    let taken = buffer.take_resolved_where(|id| id != EffectId::from_raw(2));
+    assert_eq!(ids(&taken), [1, 4], "accepted ones, in dispatch order");
+    assert_eq!((buffer.resolved(), buffer.in_flight()), (1, 1));
+    assert_eq!(ids(&buffer.take_resolved()), [2], "the refused one stays");
 }
 
 /// A layer's discard drops the record, and its patch replaces the request
