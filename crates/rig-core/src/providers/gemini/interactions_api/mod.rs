@@ -628,7 +628,7 @@ fn media<M: MimeType>(
         ))
     };
     let mime_type = media_type.ok_or_else(unsendable)?.to_mime_type().to_owned();
-    let key = match super::completion::carried(source)? {
+    let key = match super::completion::carried(&source)? {
         (true, uri) => ("uri", uri),
         (false, data) => ("data", data),
     };

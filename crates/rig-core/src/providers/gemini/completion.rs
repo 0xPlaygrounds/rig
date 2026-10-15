@@ -482,8 +482,8 @@ fn base(
     for message in &request.chat_history {
         match &**message {
             Message::System { content } if content.is_empty() => {}
-            Message::System { content } => system.push(text_part(content.clone())),
-            message => history.push(Message::clone(message)),
+            Message::System { content } => system.push(text_part(content)),
+            message => history.push(message),
         }
     }
     // Gemini rejects a field set twice, and merges a tool choice set twice,
@@ -505,17 +505,16 @@ fn base(
             )));
         }
     }
-    let declared = request
-        .tools
-        .iter()
-        .cloned()
-        .map(declaration)
-        .collect::<Vec<_>>();
-    let declared = (!declared.is_empty())
-        .then(|| json!({ "functionDeclarations": declared, "codeExecution": null }));
+    let declared: Vec<Value> = request.tools.iter().map(declaration).collect();
+    let declared = (!declared.is_empty()).then(|| {
+        Value::Object(object([
+            ("functionDeclarations", Some(Value::Array(declared))),
+            ("codeExecution", Some(Value::Null)),
+        ]))
+    });
     let tools: Vec<Value> = declared.into_iter().chain(extra_tools).collect();
-    let contents = Value::Array(contents(history, target, model)?);
-    let system = (!system.is_empty()).then(|| json!({ "parts": system, "role": "model" }));
+    let contents = Value::Array(contents(&history, target, model)?);
+    let system = (!system.is_empty()).then(|| content(system, "model"));
     let tool_config = request
         .tool_choice
         .clone()
@@ -540,11 +539,11 @@ fn base(
 /// A tool as its function declaration: its JSON Schema goes as
 /// `parametersJsonSchema`, which reads full JSON Schema, as pi sends it. A
 /// tool with no schema declares none.
-fn declaration(tool: crate::completion::ToolDefinition) -> Value {
-    let parameters = (!tool.parameters.is_null()).then_some(tool.parameters);
+fn declaration(tool: &crate::completion::ToolDefinition) -> Value {
+    let parameters = (!tool.parameters.is_null()).then(|| tool.parameters.clone());
     Value::Object(object([
-        ("name", Some(json!(tool.name))),
-        ("description", Some(json!(tool.description))),
+        ("name", Some(Value::from(tool.name.as_str()))),
+        ("description", Some(Value::from(tool.description.as_str()))),
         ("parametersJsonSchema", parameters),
     ]))
 }
@@ -590,17 +589,17 @@ fn calling_config(choice: ToolChoice) -> Value {
 /// poorly. Calls and their responses carry the ids [`WireIds`] spells when
 /// `model` takes ids.
 fn contents(
-    history: Vec<Message>,
+    history: &[&Message],
     target: &dyn ReplayTarget,
     model: &str,
 ) -> Result<Vec<Value>, EncodeError> {
-    let ids = WireIds::for_target(&history, target, model);
+    let ids = WireIds::for_target(history, target, model);
     let with_ids = requires_tool_call_id(model);
     let mut contents = Vec::with_capacity(history.len());
     let mut push = |role: &str, parts: Vec<Value>| {
         // Gemini rejects a content with no parts, as pi skips one.
         if !parts.is_empty() {
-            contents.push(json!({ "parts": parts, "role": role }));
+            contents.push(content(parts, role));
         }
     };
     for message in history {
@@ -610,7 +609,7 @@ fn contents(
                 let mut run = Vec::new();
                 let mut responses = false;
                 for part in content {
-                    let id = match &part {
+                    let id = match part {
                         UserContent::ToolResult(result) => {
                             Some(ids.of(&result.call).filter(|_| with_ids))
                         }
@@ -643,7 +642,15 @@ fn contents(
     Ok(contents)
 }
 
-fn text_part(text: String) -> Value {
+/// A content of `parts` in `role`.
+fn content(parts: Vec<Value>, role: &str) -> Value {
+    Value::Object(object([
+        ("parts", Some(Value::Array(parts))),
+        ("role", Some(Value::from(role))),
+    ]))
+}
+
+fn text_part(text: &str) -> Value {
     json!({ "text": text, "thought": false })
 }
 
@@ -654,7 +661,7 @@ fn mime<M: MimeType>(media_type: Option<M>) -> Option<String> {
 /// Where `source` puts media on every Gemini wire, REST and Interactions
 /// alike: a URL by reference (`true`) and base64 data inline. Each wire's
 /// `encodes` refuses every other form, so the adapter passes none.
-pub(super) fn carried(source: Source) -> Result<(bool, String), EncodeError> {
+pub(super) fn carried(source: &Source) -> Result<(bool, &str), EncodeError> {
     match source {
         Source::Url(uri) => Ok((true, uri)),
         Source::Base64(data) => Ok((false, data)),
@@ -667,7 +674,7 @@ pub(super) fn carried(source: Source) -> Result<(bool, String), EncodeError> {
 /// `source` of `mime_type` as GenerateContent part data, file data by URI
 /// or inline data, which needs a media type; a whole `part` is marked as no
 /// thought.
-fn media(mime_type: Option<String>, source: Source, part: bool) -> Result<Value, EncodeError> {
+fn media(mime_type: Option<String>, source: &Source, part: bool) -> Result<Value, EncodeError> {
     let (uri, data) = carried(source)?;
     let data = match (uri, mime_type) {
         (true, mime) => ("fileData", json!({ "mimeType": mime, "fileUri": data })),
@@ -689,17 +696,17 @@ fn media(mime_type: Option<String>, source: Source, part: bool) -> Result<Value,
 /// the tool failed, as the Gemini SDKs spell a function's failure. Images
 /// the adapter leaves in a result (a model that reads them) go in its
 /// `parts`, in order.
-fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> {
+fn user_part(part: &UserContent, id: Option<&str>) -> Result<Value, EncodeError> {
     Ok(match part {
-        UserContent::Text(text) => text_part(text.text),
+        UserContent::Text(text) => text_part(&text.text),
         UserContent::ToolResult(result) => {
             let (mut values, mut parts) = (Vec::new(), Vec::new());
-            for item in result.content {
+            for item in &result.content {
                 match item {
-                    ToolResultContent::Text(text) => values.push(Value::String(text.text)),
-                    ToolResultContent::Json { value } => values.push(value),
+                    ToolResultContent::Text(text) => values.push(Value::from(text.text.as_str())),
+                    ToolResultContent::Json { value } => values.push(value.clone()),
                     ToolResultContent::Image(image) => {
-                        parts.push(media(mime(image.media_type), image.data, false)?);
+                        parts.push(media(mime(image.media_type.clone()), &image.data, false)?);
                     }
                 }
             }
@@ -712,24 +719,30 @@ fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> 
             let response = object([
                 ("name", Some(json!(result.name))),
                 ("id", id.map(Value::from)),
-                ("response", value.map(|value| json!({ key: value }))),
+                (
+                    "response",
+                    value.map(|value| Value::Object(Map::from_iter([(key.into(), value)]))),
+                ),
                 ("parts", (!parts.is_empty()).then_some(Value::Array(parts))),
             ]);
-            json!({ "functionResponse": response, "thought": false })
+            Value::Object(object([
+                ("functionResponse", Some(Value::Object(response))),
+                ("thought", Some(Value::Bool(false))),
+            ]))
         }
-        UserContent::Image(image) => media(mime(image.media_type), image.data, true)?,
+        UserContent::Image(image) => media(mime(image.media_type.clone()), &image.data, true)?,
         // A text document goes as text, so that RAG context reads as prose.
-        UserContent::Document(document) => match document.data {
+        UserContent::Document(document) => match &document.data {
             DocumentData::Text(text) => text_part(text),
-            DocumentData::File(data) => media(mime(document.media_type), data, true)?,
+            DocumentData::File(data) => media(mime(document.media_type.clone()), data, true)?,
         },
-        UserContent::Audio(audio) => media(mime(audio.media_type), audio.data, true)?,
+        UserContent::Audio(audio) => media(mime(audio.media_type.clone()), &audio.data, true)?,
         UserContent::Video(video) => {
-            let mut part = media(mime(video.media_type), video.data, true)?;
+            let mut part = media(mime(video.media_type.clone()), &video.data, true)?;
             if let (Some(Value::Object(extra)), Some(part)) =
-                (video.additional_params, part.as_object_mut())
+                (&video.additional_params, part.as_object_mut())
             {
-                part.extend(extra);
+                part.extend(extra.clone());
             }
             part
         }
@@ -789,9 +802,7 @@ fn assistant_part(
                 ("thoughtSignature", signature),
             ]))
         }
-        AssistantContent::Image(image) => {
-            media(mime(image.media_type.clone()), image.data.clone(), true)?
-        }
+        AssistantContent::Image(image) => media(mime(image.media_type.clone()), &image.data, true)?,
         AssistantContent::Opaque(opaque) => opaque.item.clone(),
     }))
 }
