@@ -121,6 +121,8 @@ errors, and use the WASM-compatible bounds.
   or `tests.rs` beside `mod.rs`/`lib.rs`. `cargo xtask check-test-layout`
   enforces this in CI.
 - Avoid unrelated refactors.
+- Insert entries into lists marked `sorted: start` / `sorted: end` in place;
+  `cargo xtask check-sorted-blocks` enforces case-insensitive order in CI.
 - Prefer the cleanest implementation.
 - Break things if the result is better.
 

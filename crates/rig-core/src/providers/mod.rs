@@ -10,6 +10,7 @@
 //! let model = OpenAI::from_env()?.chat(openai::GPT_5_2);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
+// sorted: start
 pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;
@@ -38,3 +39,4 @@ pub mod voyageai;
 pub mod xai;
 pub mod xiaomimimo;
 pub mod zai;
+// sorted: end

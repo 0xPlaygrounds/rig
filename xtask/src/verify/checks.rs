@@ -107,6 +107,7 @@ pub(super) fn all() -> Vec<Check> {
             "tooling",
             vec![
                 Step::new("@layout", &[]),
+                Step::new("@sorted-blocks", &[]),
                 Step::new("@packaging", &[]),
                 Step::new("@wires", &[]),
                 Step::new("@bevy-sources", &[]),
