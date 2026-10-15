@@ -2,11 +2,8 @@
 //! completions, and each agent's model and reasoning setting in its status
 //! line.
 
-use std::collections::HashMap;
-
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
-use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_tui::{
     CompletionSource, Editor, MainEditor, Side, StatusItem, StatusItems, StatusSystems, Tone,
 };
@@ -31,46 +28,23 @@ struct Listed {
 }
 
 /// Every catalog model: first those that can be reached, as rig-core
-/// orders them, then the others with why not. Whether a provider's models
-/// connect is asked once per provider, as rig-core's `reachable` does.
+/// orders them, then the others with why not.
 fn catalog(models: &Connector) -> Vec<Listed> {
-    let reachable = models.reachable();
-    let mut statuses: HashMap<ProviderId, ModelStatus> = HashMap::new();
-    // `reachable` borrows from the catalog: the same entry is the same
-    // address.
-    let others = models.catalog().iter().filter(|spec| {
-        !reachable
-            .iter()
-            .any(|reached| std::ptr::eq(*reached, *spec))
-    });
-    let mut listed: Vec<Listed> = reachable
-        .iter()
-        .map(|spec| {
-            let note = match models.plan(spec) {
+    let statuses = models.statuses().into_iter();
+    let listed = statuses.map(|(spec, status)| {
+        let note = match status {
+            ModelStatus::Usable => match models.plan(spec) {
                 Some(plan) => format!("  ({plan} plan)"),
                 None if spec.provider.requires_credential() => String::new(),
                 None => "  (no key needed)".to_owned(),
-            };
-            listing(spec, &note)
-        })
-        .collect();
-    for spec in others {
-        let status = match spec.tools {
-            false => ModelStatus::NoTools,
-            true => statuses
-                .entry(spec.provider)
-                .or_insert_with(|| models.status(spec))
-                .clone(),
-        };
-        let note = match status {
-            ModelStatus::Usable => String::new(),
+            },
             ModelStatus::NoKey(tried) => format!("  (no key: set {})", tried.join(" or ")),
             ModelStatus::NoTools => "  (calls no tools)".to_owned(),
             ModelStatus::Unavailable(why) => format!("  (unavailable: {why})"),
         };
-        listed.push(listing(spec, &note));
-    }
-    listed
+        listing(spec, &note)
+    });
+    listed.collect()
 }
 
 /// `spec` listed with `note`.

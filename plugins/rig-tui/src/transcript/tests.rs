@@ -20,9 +20,9 @@ use rig_ecs::stage::{
 };
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, StreamDelta};
-use rig_harness::note::Note;
 use rig_harness::prelude::ToolProgress;
 use rig_harness::prelude::{App, Last, Update};
+use rig_harness::rig_core::conversation::Note;
 use serde_json::json;
 
 use super::{

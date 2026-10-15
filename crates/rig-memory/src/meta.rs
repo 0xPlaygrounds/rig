@@ -13,7 +13,8 @@ use std::io;
 use rig_core::conversation::MessageId;
 use serde::{Deserialize, Serialize};
 
-use crate::{Files, Session, Versioned, main_order, now_ms};
+use crate::{Files, Session, Versioned, main_order};
+use rig_core::now_ms;
 
 /// The file of a session's store that holds its [`SessionMeta`].
 pub const META: &str = "meta.json";

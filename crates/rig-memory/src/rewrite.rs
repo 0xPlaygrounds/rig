@@ -20,7 +20,8 @@ use crate::format::{Body, Header, LogLines, LogRewrite, Meta, parse, write_chang
 use crate::session::{Fold, Folded, fold_lines, log_lines, read_header};
 use crate::upgrade::each_record;
 use crate::writer::set_aside_tail;
-use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned, now_ms, upgrade};
+use crate::{Files, MemoryStore, SessionError, Stamp, Store, Versioned, upgrade};
+use rig_core::now_ms;
 
 /// Where a value being rewritten is kept.
 #[derive(Clone, Copy, Debug)]

@@ -10,7 +10,7 @@
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`], also while their arguments
 //! stream, its transcript notes
-//! ([`Note`](rig_harness::note::Note)) and
+//! ([`Note`](rig_harness::rig_core::conversation::Note)) and
 //! delivered texts with [`AppToolRenderersExt::add_entry_renderer`], a
 //! kind of content block (images, audio, video, documents) with
 //! [`AppToolRenderersExt::add_content_renderer`], a kind of aside (a kept

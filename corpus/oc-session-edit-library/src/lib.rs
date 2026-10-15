@@ -29,9 +29,10 @@ use std::path::{Path, PathBuf};
 use rig::harness_protocol::{Home, SessionDir};
 use rig_core::conversation::{Author, Conversation, Entry, pairing};
 use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
+use rig_core::now_ms;
 use rig_memory::{
     DirStore, ForkedFrom, Messages, NoRewrite, Repair, Rewrite, SavedAgent, Session, SessionError,
-    SessionMeta, fork, now_ms, rewrite,
+    SessionMeta, fork, rewrite,
 };
 use serde_json::Value;
 

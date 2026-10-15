@@ -33,7 +33,6 @@ use std::io;
 use rig_core::conversation::{Author, Change, ChangeRecord, Lineage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use web_time::{SystemTime, UNIX_EPOCH};
 
 /// The saved format a log's header names.
 pub const FORMAT: &str = "rig-session/3";
@@ -181,14 +180,6 @@ impl fmt::Display for Repair {
             Self::LostImage { log, why } => write!(f, "an image of the log `{log}` is lost: {why}"),
         }
     }
-}
-
-/// Milliseconds since the Unix epoch, also on the web.
-pub fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or_default()
 }
 
 /// The first record of a log.

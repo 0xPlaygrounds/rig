@@ -67,7 +67,6 @@ pub mod headless;
 pub mod host;
 mod load;
 pub mod main_agent;
-pub mod note;
 pub mod per_call;
 pub mod pick;
 pub mod plugin_data;
@@ -157,7 +156,6 @@ pub mod prelude {
         StoreOpener, edit_stopped, first_typed, rewrite_stopped, typed,
     };
     pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
-    pub use crate::note::Note;
     pub use crate::per_call::{AppPerCallExt, CallPlace};
     pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
     pub use crate::plugin_data::PluginData;
@@ -177,6 +175,7 @@ pub mod prelude {
         AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,
         Provides, RigHarnessPlugins, SavedAs,
     };
+    pub use rig_core::conversation::Note;
     pub use rig_memory::{ForkedFrom, Listing, SplitPointer};
     pub use rig_tools::{Spill, blocking};
 }

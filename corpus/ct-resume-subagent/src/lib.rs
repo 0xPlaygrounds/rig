@@ -24,7 +24,7 @@
 use bevy_reflect::Reflect;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
-use rig_harness::rig_memory::now_ms;
+use rig_harness::rig_core::now_ms;
 use rig_subagents::{Lifecycle, OpenRequests, Subtask};
 use rig_telemetry::AgentUsage;
 use schemars::JsonSchema;

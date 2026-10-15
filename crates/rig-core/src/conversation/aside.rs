@@ -12,9 +12,9 @@ use super::{Author, MessageId, ParseIdError, parse_id};
 /// in flight, a hook's own data. Readers take the kinds they know.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Aside {
-    /// What it is, chosen by its author: `"note"` (the harness's transcript
-    /// note), `"rig.call"` (the kernel's call-in-flight record), a hook's
-    /// own kind.
+    /// What it is, chosen by its author: `"note"` (a transcript
+    /// [`Note`](super::Note)), `"rig.call"` (the kernel's call-in-flight
+    /// record), a hook's own kind.
     pub kind: String,
     /// The entry it follows; `None` before the first. While an edit took
     /// that entry out it follows [`start_of`](super::Conversation::start_of)

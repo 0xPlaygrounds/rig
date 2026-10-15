@@ -49,6 +49,7 @@ mod aside;
 mod author;
 mod branch;
 mod lineage;
+mod note;
 pub mod pairing;
 mod turn;
 
@@ -59,6 +60,7 @@ pub use branch::{
     shared_prefix,
 };
 pub use lineage::Lineage;
+pub use note::Note;
 pub use turn::{TURN, TurnEnd, TurnRecord};
 
 use pairing::{Normalized, PairingError};
@@ -480,13 +482,6 @@ pub enum ApplyError {
 
 fn mismatch(why: String) -> ApplyError {
     ApplyError::Mismatch(why)
-}
-
-/// Milliseconds since the Unix epoch, also on the web.
-fn now_ms() -> u64 {
-    let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH);
-    now.map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or_default()
 }
 
 /// The first characters of the agent id `id`, enough to tell agents apart.
@@ -1169,7 +1164,7 @@ impl Conversation {
     /// The time an edit is made at: the [`dated`](Self::dated) clock, else
     /// now.
     fn now(&self) -> u64 {
-        self.clock.unwrap_or_else(now_ms)
+        self.clock.unwrap_or_else(crate::now_ms)
     }
 
     /// The changes made that nobody has saved yet, oldest first.

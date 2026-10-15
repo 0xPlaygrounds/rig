@@ -31,8 +31,9 @@ use bevy_log::warn;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
-use rig_harness::rig_memory::{Session, now_ms};
+use rig_harness::rig_memory::Session;
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::{

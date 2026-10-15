@@ -100,6 +100,18 @@ pub use rig_derive::rig_tool;
 
 pub mod telemetry;
 
+/// Milliseconds since the Unix epoch at `at`, also on the web; 0 before it.
+pub fn millis(at: web_time::SystemTime) -> u64 {
+    at.duration_since(web_time::UNIX_EPOCH)
+        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or_default()
+}
+
+/// Milliseconds since the Unix epoch, also on the web.
+pub fn now_ms() -> u64 {
+    millis(web_time::SystemTime::now())
+}
+
 // Native runtime values must retain their thread-safety bounds.
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {

@@ -71,14 +71,14 @@ use rig_core::effect::{
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{DispatchContext, Recorder, Reply, cancelled};
 use rig_core::tool::{ToolExecutionError, ToolResult, ToolResultContext};
-use rig_memory::now_ms;
+use rig_core::{millis, now_ms};
 use web_time::SystemTime;
 
 use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
 use super::restore::{Interrupted, answer_interrupted, mark_started};
-use super::session_log::{Drain, SessionLog, millis, save_now};
+use super::session_log::{Drain, SessionLog, save_now};
 use super::tasks::{Running, Wake, arrive};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,

@@ -49,10 +49,10 @@ use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, UserContent};
+use rig_core::now_ms;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
-use rig_memory::now_ms;
 use web_time::Instant;
 
 use super::agent::{

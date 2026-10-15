@@ -10,7 +10,8 @@ use rig_core::conversation::{AsideId, Conversation, Entry, MessageId};
 use serde::{Deserialize, Serialize};
 
 use crate::fork::copy_plugin_files;
-use crate::{NoRewrite, SavedAgent, Session, SessionError, SessionMeta, Store, now_ms};
+use crate::{NoRewrite, SavedAgent, Session, SessionError, SessionMeta, Store};
+use rig_core::now_ms;
 
 /// The kind of the aside a line keeps after the last entry a split of it
 /// copied: a [`SplitPointer`].

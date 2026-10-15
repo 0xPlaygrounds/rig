@@ -24,7 +24,8 @@ use serde_json::{Map, Value};
 use crate::format::{Header, LogLines, Meta, write_meta};
 use crate::session::{Fold, fold_lines, log_lines, read_header};
 use crate::writer::set_aside_tail;
-use crate::{FORMAT, LogRewrite, Repair, SessionError, Store, VERSION, now_ms};
+use crate::{FORMAT, LogRewrite, Repair, SessionError, Store, VERSION};
+use rig_core::now_ms;
 
 /// One step of the saved format: reads a log of format `from` as format
 /// `from + 1`. Pure; a step keeps every record's stamp.

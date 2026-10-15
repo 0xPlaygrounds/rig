@@ -9,8 +9,8 @@ use rig_core::streaming::{Item, Relayed};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness::harness_protocol::{Home, SessionId};
-use rig_harness::note::Note;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::conversation::Note;
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness_test_support::{

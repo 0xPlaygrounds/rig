@@ -30,9 +30,9 @@
 
 use std::collections::HashMap;
 
-use rig_harness::note::Note;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Entry;
+use rig_harness::rig_core::conversation::Note;
 use rig_harness::rig_core::message::Message as Chat;
 use rig_tui::MainInput;
 use serde::{Deserialize, Serialize};

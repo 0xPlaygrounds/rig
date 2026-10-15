@@ -11,9 +11,10 @@ use crate::blobs::store_change;
 use crate::format::{Header, Meta, SESSION, write_change, write_meta};
 use crate::session::{Folded, fold_all, repairs, retired, session_of};
 use crate::{
-    Repair, Rewrite, Rewritten, SHELVED, Session, SessionError, Stamp, Store, Versioned, now_ms,
-    rewrite, upgrade,
+    Repair, Rewrite, Rewritten, SHELVED, Session, SessionError, Stamp, Store, Versioned, rewrite,
+    upgrade,
 };
+use rig_core::now_ms;
 
 /// One log as the writer keeps it.
 #[derive(Default)]

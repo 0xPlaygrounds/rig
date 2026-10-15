@@ -1,11 +1,11 @@
+//! A note is saved and restored with its conversation, an unsaved one not.
+
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_core::conversation::{Aside, Author};
+use rig_core::conversation::{Aside, Author, Note};
 use rig_ecs::agent::{Agent, Conversation};
 use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
 use rig_memory::MemoryStore;
-
-use super::Note;
 
 /// An app on `store`, after its first frame restored the session.
 fn app(store: &MemoryStore) -> App {

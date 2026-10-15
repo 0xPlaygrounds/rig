@@ -9,7 +9,7 @@
 //!
 //! The same goes for a plugin's look with
 //! [`AppToolRenderersExt::add_entry_renderer`] (`entry:<plugin>`): it draws
-//! the [`Note`](rig_harness::note::Note)s that plugin wrote, and the
+//! the [`Note`](rig_harness::rig_core::conversation::Note)s that plugin wrote, and the
 //! entries of the conversation it wrote, such as a compaction's summary. One without draws as
 //! [`EntryView::default_lines`]. And for a kind of content block in a
 //! message, an image, audio, a video or a document, with
@@ -56,7 +56,7 @@ use rig_core::conversation::Branch;
 use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
 use rig_core::tool::{KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
-use rig_harness::note::Note;
+use rig_harness::rig_core::conversation::Note;
 use rig_harness::rig_memory::SplitPointer;
 use rig_tools::shorten;
 
@@ -294,7 +294,7 @@ impl<'a> ToolCallView<'a> {
 }
 
 /// A note or a delivered text, as an entry renderer sees it: a plugin's
-/// [`Note`](rig_harness::note::Note), or a text of an entry of the
+/// [`Note`](rig_harness::rig_core::conversation::Note), or a text of an entry of the
 /// conversation another author wrote, such as a compaction summary.
 pub struct EntryView<'a> {
     /// The plugin whose look draws it: the name of the plugin that wrote

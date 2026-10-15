@@ -104,9 +104,7 @@ pub use compaction::{
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
 pub use fork::{Forked, fork};
-pub use format::{
-    FORMAT, LogRewrite, OLDEST, Repair, SESSION, SessionError, Stamp, VERSION, now_ms,
-};
+pub use format::{FORMAT, LogRewrite, OLDEST, Repair, SESSION, SessionError, Stamp, VERSION};
 pub use listing::{Listing, read_line};
 pub use meta::{ForkedFrom, META, PARENT, SessionMeta, title_of};
 pub use rewrite::{

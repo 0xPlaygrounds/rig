@@ -35,7 +35,6 @@ use rig_core::conversation::{Author, ChangeRecord};
 use rig_memory::{
     Place, Repair, Rewrite, Rewritten, SESSION, Session, SessionError, Store, Versioned, Writer,
 };
-use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::WriteLogs;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
@@ -130,13 +129,6 @@ fn log_changed<T: Component + Reflect + TypePath>(
                 .save_value(&id.0, name, None, !spawned.contains(entity));
         }
     }
-}
-
-/// Milliseconds since the Unix epoch at `at`; 0 before it.
-pub(crate) fn millis(at: SystemTime) -> u64 {
-    at.duration_since(UNIX_EPOCH)
-        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or_default()
 }
 
 /// Where the session is kept, such as a rig-memory `MemoryStore` or

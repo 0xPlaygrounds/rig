@@ -653,7 +653,7 @@ fn mark(
                     .sum()
             }),
             model: main.and_then(|main| main.model()),
-            saved_ms: rig_memory::now_ms(),
+            saved_ms: rig_harness::rig_core::now_ms(),
         };
         let value = serde_json::to_value(&it).map_err(|e| e.to_string())?;
         session

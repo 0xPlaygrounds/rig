@@ -97,13 +97,14 @@ pub mod prelude {
     pub use rig_core::effect::Decider;
     pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
+    pub use rig_core::now_ms;
     pub use rig_core::streaming::{Part, PartKind, StreamEvent};
     pub use rig_core::tool::{
         PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
     };
     pub use rig_memory::{
         Files, NoRewrite, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings,
-        Upgrade, Upgrades, Versioned, as_of, fork, history, now_ms,
+        Upgrade, Upgrades, Versioned, as_of, fork, history,
     };
 }
 

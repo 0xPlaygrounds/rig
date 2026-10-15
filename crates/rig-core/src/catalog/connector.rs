@@ -363,22 +363,38 @@ impl Connector {
     /// picker can mark "no key needed". The check builds the handler
     /// exactly as a request would, once per provider.
     pub fn reachable(&self) -> Vec<&ModelSpec> {
-        let mut usable: HashMap<ProviderId, bool> = HashMap::new();
-        let mut models: Vec<&ModelSpec> = self
+        let statuses = self.statuses().into_iter();
+        let usable = statuses.filter(|(_, status)| *status == ModelStatus::Usable);
+        usable.map(|(spec, _)| spec).collect()
+    }
+
+    /// Every catalog model with its [`ModelStatus`]: first the
+    /// [`reachable`](Self::reachable) ones in that order, then the others in
+    /// catalog order. Each provider is checked once.
+    pub fn statuses(&self) -> Vec<(&ModelSpec, ModelStatus)> {
+        let mut checked: HashMap<ProviderId, ModelStatus> = HashMap::new();
+        let mut statuses: Vec<(&ModelSpec, ModelStatus)> = self
             .catalog
             .iter()
-            .filter(|spec| spec.tools)
-            .filter(|spec| {
-                *usable
-                    .entry(spec.provider)
-                    .or_insert_with(|| self.handler(spec).is_ok())
+            .map(|spec| {
+                let status = match spec.tools {
+                    false => ModelStatus::NoTools,
+                    true => checked
+                        .entry(spec.provider)
+                        .or_insert_with(|| self.status(spec))
+                        .clone(),
+                };
+                (spec, status)
             })
             .collect();
         // Stable: catalog order within each group.
-        models.sort_by_key(|spec| {
-            !self.is_provided(spec.provider) && !spec.provider.requires_credential()
+        statuses.sort_by_key(|(spec, status)| match status {
+            ModelStatus::Usable => {
+                u8::from(!self.is_provided(spec.provider) && !spec.provider.requires_credential())
+            }
+            _ => 2,
         });
-        models
+        statuses
     }
 }
 
