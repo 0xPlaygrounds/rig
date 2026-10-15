@@ -167,13 +167,13 @@ dependency guarantees and migration paths.
 ## The rig coding agent
 
 `cargo install rig` also installs `rig`, a terminal coding agent. The agent is
-a Bevy app: the [`rig-harness`](crates/rig-harness) crate is its core, and
-every other part of it is a plugin crate in [`plugins/`](plugins). `rig` is its
+a Bevy app built on the [`rig-harness`](crates/rig-harness) crate, and every
+other part of it is a plugin crate in [`plugins/`](plugins). `rig` is its
 launcher: it generates a small Cargo project for the agent, builds it, and
 runs it. Its coding tools (`read`, `write`, `edit`, `search`, `shell`) are the
-[`rig-tools`](crates/rig-tools) crate, usable by any rig agent, and its agent
-runtime (agents, turns and tool calls as Bevy entities, one recorded effect
-path, session journals) is the [`rig-ecs`](crates/rig-ecs) crate, for building
+[`rig-tools`](crates/rig-tools) crate, usable by any rig agent, and its
+kernel (agents, turns and tool calls as Bevy entities, one recorded effect
+path, session logs) is the [`rig-ecs`](crates/rig-ecs) crate, for building
 your own harness. These crates are not published yet, so the agent builds only
 from a rig checkout: install the launcher from one, or point `RIG_SOURCE` at
 one (see the end of this section).
@@ -227,8 +227,8 @@ The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings, usage and
 compactions, appended to as it runs and rewritten only through rig-memory (a
 plugin's redaction, say, keeps each record's place and time); images are stored once in `blobs/`, and `files/meta.json`
-caches what `/resume` lists. A session saved by an older rig, in another
-format, is refused when resumed, and nothing of it is changed. A tool call that may change something starts
+caches what `/resume` lists. An older session format is upgraded when
+resumed; one from before `rig-session/2` is refused, unchanged. A tool call that may change something starts
 only once the reply that asked for it, and a mark that it started, are on
 disk. After a crash, a closed terminal or a `/quit` mid-turn, resuming the
 session reads the logs back and settles what was left half done: a tool
@@ -355,7 +355,7 @@ RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 
 Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
 rebuilds the agent with them and restarts in the same session. Everything but
-the core (the session and the launcher protocol) is an entry in the same
+the harness (the session and the launcher protocol) is an entry in the same
 list: the project context, models, sign-in, sessions, compaction, usage,
 activity, the effect log, each tool, `@path` attachments, `/reload`, the
 commands, the subagents, diagnostics, `--print` and the terminal view, each
@@ -389,61 +389,23 @@ staging it. A plugin crate depends on
 `rig-tui` for a terminal panel), and registers tools, slash commands, tool
 renderers, terminal panels or a window the way the built-in ones do, never by
 editing rig's crates. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
-is a cookbook with a copy-ready example of each kind, its names from
+is the plugin guide, with a copy-ready example of each kind, its names from
 `rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig plugin new` writes is a
 working, commented slash command. An agent started by the launcher knows
 its plugins, commands and tools and how to write and add its own plugins
 from its system prompt.
 
 The optional [`rig-inspect`](plugins/rig-inspect) plugin adds the `inspect`
-tool, with which the agent reads its own Bevy world (in process, read-only):
-the plugins loaded and what each added, the agents, the state saved with the
-session, the warnings logged and every reflected type. It is commented out in
-the default `plugins.toml`, since Bevy Remote makes the build heavier and on
-Linux needs the ALSA development headers (`libasound2-dev` on Debian and
-Ubuntu, `alsa-lib-devel` on Fedora, `alsa-lib` on Arch); uncomment its entry,
-or run `rig plugin add rig_inspect::InspectPlugin --crate rig-inspect`.
+tool, with which the agent reads its own Bevy world, read-only.
 
-Code mode is an optional plugin crate, [`rig-steel`](plugins/rig-steel), not in the default list.
-Its `SteelPlugin` adds the `run_steel` tool: the model writes one
-[Steel](https://github.com/mattwparas/steel) (Scheme) program that spawns
-agents, sends them requests, waits for their replies and calls the model's own
-tools, and the value of its last expression is the tool's output. The program
-reaches the host only through four functions, each one call of rig-steel's
-`Harness` handle: `(spawn-agent name [options])`, `(send agent text)`,
-`(reply request)` and `(call-tool name [args])`. It runs on a thread of its
-own, which each host function blocks until the harness answers; agents it has
-sent to work at the same time, so sending to several before waiting fans out.
-It runs in Steel's sandboxed engine with the host modules (process, git,
-network, foreign functions, threads) emptied, and programs that name module
-loading, `eval`, procedural macros or the engine's private functions are
-refused. Its execution time (not counting waits), host calls and output are
-limited, and Esc cancels it. Enable it with:
+Code mode is the optional [`rig-steel`](plugins/rig-steel) plugin: a `run_steel`
+tool whose [Steel](https://github.com/mattwparas/steel) (Scheme) program spawns
+agents, messages them and calls tools, in a sandbox. Enable it with:
 
 ```toml
 [[plugin]]
 crate = "rig-steel"
 plugin = "rig_steel::SteelPlugin"
-```
-
-Two agents writing a poem together, relayed four times, then summarised:
-
-```scheme
-(define a (spawn-agent "poet-a"))
-(define b (spawn-agent "poet-b"))
-(define (ask agent text) (reply (send agent text)))
-(define poem
-  (let loop ([turn 0] [stanzas (list (ask a "Write the first stanza of a poem about the sea."))])
-    (if (= turn 4)
-        stanzas
-        (loop (+ turn 1)
-              (append stanzas
-                      (list (ask (if (even? turn) b a)
-                                 (string-append "Continue this poem with one stanza:\n\n"
-                                                (string-join stanzas "\n\n")))))))))
-(hash 'poem poem
-      'summary (ask a (string-append "Summarise this poem in one sentence:\n\n"
-                                     (string-join poem "\n\n"))))
 ```
 
 A fan-out that asks three agents at once and keeps the shortest answer:
