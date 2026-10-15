@@ -92,6 +92,12 @@ pub(crate) async fn build_prepared_completion_request(
     let mut tool_snapshot = tool_server_handle.snapshot_with_dynamic(&dynamic_tool_ids);
 
     let mut spec = runner.config.run_spec();
+    // Hosted tools travel in the raw parameters, where request preparation
+    // counts them when it chooses how structured output is conveyed.
+    spec.additional_params = rig_core::completion::ProviderToolDefinition::append_to_params(
+        tool_snapshot.provider_tools().to_vec(),
+        spec.additional_params.take(),
+    );
     spec.output_tool_description
         .clone_from(&runner.output_tool_description);
     spec.augment_output_preamble = runner.augment_output_preamble;
@@ -123,7 +129,6 @@ pub(crate) async fn build_prepared_completion_request(
     // carries the telemetry flag off: one span, no double recording.
     let request = prepared
         .apply(CompletionRequest::new(prompt))
-        .provider_tools(tool_snapshot.provider_tools().to_vec())
         .accept_unknown_finish_reasons(runner.config.accept_unknown_finish_reasons);
     let telemetry_messages = if record_telemetry_content {
         request.messages_for_telemetry()

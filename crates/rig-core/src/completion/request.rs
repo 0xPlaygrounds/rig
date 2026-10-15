@@ -234,6 +234,45 @@ impl ProviderToolDefinition {
         self.config.insert(key.into(), value);
         self
     }
+
+    /// `additional_params` with `tools` appended to its `tools` array, where a
+    /// request carries provider-hosted tools. Parameters that are not an
+    /// object are replaced, except a boolean, kept as `stream`.
+    pub fn append_to_params(
+        tools: Vec<Self>,
+        additional_params: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        if tools.is_empty() {
+            return additional_params;
+        }
+
+        let mut provider_tools_json = tools
+            .into_iter()
+            .map(|ProviderToolDefinition { kind, mut config }| {
+                // Force the provider tool type from the strongly-typed field.
+                config.insert("type".to_string(), serde_json::Value::String(kind));
+                serde_json::Value::Object(config)
+            })
+            .collect::<Vec<_>>();
+
+        let mut params_map = match additional_params {
+            Some(serde_json::Value::Object(map)) => map,
+            Some(serde_json::Value::Bool(stream)) => {
+                let mut map = serde_json::Map::new();
+                map.insert("stream".to_string(), serde_json::Value::Bool(stream));
+                map
+            }
+            _ => serde_json::Map::new(),
+        };
+
+        let mut merged_tools = match params_map.shift_remove("tools") {
+            Some(serde_json::Value::Array(existing)) => existing,
+            _ => Vec::new(),
+        };
+        merged_tools.append(&mut provider_tools_json);
+        params_map.insert("tools".to_string(), serde_json::Value::Array(merged_tools));
+        Some(serde_json::Value::Object(params_map))
+    }
 }
 
 /// Normalized generation ending. Unmapped provider values remain in [`Self::Other`].
@@ -1413,42 +1452,6 @@ pub(crate) fn insert_after_leading_system(chat_history: &mut Vec<Message>, messa
     }
 }
 
-fn merge_provider_tools_into_additional_params(
-    additional_params: Option<serde_json::Value>,
-    provider_tools: Vec<ProviderToolDefinition>,
-) -> Option<serde_json::Value> {
-    if provider_tools.is_empty() {
-        return additional_params;
-    }
-
-    let mut provider_tools_json = provider_tools
-        .into_iter()
-        .map(|ProviderToolDefinition { kind, mut config }| {
-            // Force the provider tool type from the strongly-typed field.
-            config.insert("type".to_string(), serde_json::Value::String(kind));
-            serde_json::Value::Object(config)
-        })
-        .collect::<Vec<_>>();
-
-    let mut params_map = match additional_params {
-        Some(serde_json::Value::Object(map)) => map,
-        Some(serde_json::Value::Bool(stream)) => {
-            let mut map = serde_json::Map::new();
-            map.insert("stream".to_string(), serde_json::Value::Bool(stream));
-            map
-        }
-        _ => serde_json::Map::new(),
-    };
-
-    let mut merged_tools = match params_map.shift_remove("tools") {
-        Some(serde_json::Value::Array(existing)) => existing,
-        _ => Vec::new(),
-    };
-    merged_tools.append(&mut provider_tools_json);
-    params_map.insert("tools".to_string(), serde_json::Value::Array(merged_tools));
-    Some(serde_json::Value::Object(params_map))
-}
-
 impl CompletionRequest {
     /// A request whose conversation is the one user message `prompt`, with
     /// no preamble, documents or tools. The setters below add to it and
@@ -1561,7 +1564,7 @@ impl CompletionRequest {
     /// `additional_params.tools`.
     pub fn provider_tools(mut self, tools: Vec<ProviderToolDefinition>) -> Self {
         self.additional_params =
-            merge_provider_tools_into_additional_params(self.additional_params.take(), tools);
+            ProviderToolDefinition::append_to_params(tools, self.additional_params.take());
         self
     }
 
