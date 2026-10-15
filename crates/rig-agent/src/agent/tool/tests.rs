@@ -54,3 +54,19 @@ fn an_agent_with_an_empty_name_is_not_a_tool() {
     let tool = unnamed.into_tool().expect("default tool name");
     assert_eq!(tool.name(), "agent_tool");
 }
+
+/// Arguments that are not a `prompt` are refused before the sub-agent runs.
+#[tokio::test]
+async fn invalid_arguments_are_refused_before_the_sub_agent_runs() {
+    let model = MockCompletionModel::from_turns([MockTurn::text("unused")]);
+    let tool = AgentBuilder::new(model)
+        .name("researcher")
+        .build()
+        .into_tool()
+        .expect("tool name");
+    let error = tool
+        .execute(json!({"question": "why?"}))
+        .await
+        .expect_err("arguments without a prompt");
+    assert_eq!(error.kind(), rig_core::tool::ToolErrorKind::InvalidArgs);
+}

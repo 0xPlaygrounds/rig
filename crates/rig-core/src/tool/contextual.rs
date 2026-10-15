@@ -243,8 +243,6 @@ pub trait ErasedTool: WasmCompatSend + WasmCompatSync {
     fn description(&self) -> String;
     /// The schema of the tool's arguments.
     fn parameters(&self) -> Schema;
-    /// The schema of the tool's output, if it declares one.
-    fn output_schema(&self) -> Option<Schema>;
     /// Run the tool on raw arguments, shaping the answer into a result.
     fn execute<'a>(
         &'a self,
@@ -267,10 +265,6 @@ where
 
     fn parameters(&self) -> Schema {
         Tool::parameters(self)
-    }
-
-    fn output_schema(&self) -> Option<Schema> {
-        Tool::output_schema(self)
     }
 
     fn execute<'a>(
