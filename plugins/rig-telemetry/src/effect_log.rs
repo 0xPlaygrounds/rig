@@ -1,19 +1,14 @@
-//! The effect log: every effect the agents' work settles, model calls,
-//! tool calls, delivered messages and plugins' own effects, recorded with
-//! rig-core's effect types into the session's [`SESSION_EFFECT_LOG`], a
-//! file of its store ([`Files`]): each effect's [`EffectRecorded`] record, in id order, as it settles. Its
-//! header describes the tools and the models the agents connect to, and
-//! names each key the records use. Ids continue after the highest one the
-//! log already holds, so a resumed session keeps adding to the same log.
-//! A plugin reads it back with the [`EffectLog`] resource, narrowed by an
-//! [`EffectFilter`]. With the default `tui` feature, in a run of the
-//! terminal view, a restored session's log is read back once, off the main
-//! thread, and sent to the view as `rig_tui::PastEffects`, so a resumed
-//! session's tool calls show the calls they started and what they
-//! published. When the session is rewritten ([`SessionRewritten`]), the
-//! file was rewritten with the rest of the store: the writer forgets what
-//! it knew of the old lines, and the records not written yet go through
-//! the same map.
+//! The effect log: every settled effect (model calls, tool calls,
+//! delivered messages, plugins' own) as an [`EffectRecorded`] record in the
+//! session's [`SESSION_EFFECT_LOG`] ([`Files`]), in id order. Its header
+//! describes the tools and models and names each key the records use.
+//!
+//! A resumed session appends after the highest id. After a rewrite
+//! ([`SessionRewritten`]), the records not yet written go through the
+//! same map. Plugins read it with [`EffectLog`] and an [`EffectFilter`].
+//! With the `tui` feature, a restored session's log is read once, off the
+//! main thread, and sent to the view as `rig_tui::PastEffects`, so its
+//! tool calls show what they started.
 
 use std::borrow::Cow;
 use std::io;
