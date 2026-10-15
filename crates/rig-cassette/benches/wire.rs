@@ -4,7 +4,8 @@
 //! ones, and takes request bodies without sending them.
 //!
 //! - `stream_decode`: a recorded text reply with its deltas repeated to
-//!   2,000, one SSE event per transport chunk and in 16 KB chunks;
+//!   2,000, one SSE event per transport chunk, in 16 KB chunks and in 1 MB
+//!   chunks (the whole reply at once);
 //! - `stream_serve`: the same reply in 16 KB chunks served by a model
 //!   handler to a recorded dispatch, as an agent's model call is;
 //! - `stream_decode_tool_args_30k`: a Responses function call and a custom
@@ -460,8 +461,8 @@ fn history(turns: usize, native: &Native, images: bool) -> Vec<Message> {
 // Decoding.
 
 /// A recorded text reply with 2,000 deltas, streamed and folded, per family,
-/// one event per chunk (`CHUNK` 0) or in 16 KB chunks.
-#[divan::bench(args = FAMILIES, consts = [0, 16_384], sample_count = 30)]
+/// one event per chunk (`CHUNK` 0), in 16 KB chunks or in 1 MB chunks.
+#[divan::bench(args = FAMILIES, consts = [0, 16_384, 1_048_576], sample_count = 30)]
 fn stream_decode<const CHUNK: usize>(bencher: divan::Bencher, family: &str) {
     let model = replaying(family, chunked(&long_reply(family, 2_000), CHUNK));
     let request = CompletionRequest::new("Tell me about Rust.");
