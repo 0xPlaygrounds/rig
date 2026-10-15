@@ -18,8 +18,8 @@ use crate::{
 };
 
 /// The image body asks for base64 at the width and height the caller set,
-/// leaves the size out for an `aspect_ratio`, and refuses a size MiniMax
-/// rejects, such as the builder's 256 by 256 default. The reply's first
+/// leaves the size out for an `aspect_ratio` or a model that reads none, and
+/// refuses a size MiniMax rejects, such as the builder's 256 by 256 default. The reply's first
 /// base64 image is the response, its trace id the response id.
 #[cfg(feature = "image")]
 #[tokio::test]
@@ -76,6 +76,24 @@ async fn an_image_request_asks_for_base64_and_decodes_the_first_image() {
         )
         .expect_err("256 by 256 is below MiniMax's minimum");
     assert!(refusal.to_string().contains("256x256"), "{refusal}");
+    // A size in the parameters overrides the builder's, so it is the one checked.
+    wire()
+        .encode(
+            ImageGenerationRequestBuilder::new("a lighthouse")
+                .additional_params(json!({"width": 1024, "height": 1024}))
+                .build(),
+            Mode::Unary,
+        )
+        .expect("the parameters' size is in range");
+    // `image-01-live` reads no size, so none is sent or checked.
+    let live = OpenAIConfig::with_key(&MINIMAX, "key")
+        .image_generation(crate::providers::minimax::IMAGE_01_LIVE)
+        .encode(
+            ImageGenerationRequestBuilder::new("a lighthouse").build(),
+            Mode::Unary,
+        )
+        .expect("a live request needs no size");
+    assert!(json_body(&live.request).get("width").is_none());
 
     let reply = json!({
         "id": "03ff3cd0820949eb8a410056b5f21d38",

@@ -45,8 +45,8 @@ pub enum ImageBody {
     /// `{inputs, parameters: {width, height}}`, answered with raw image bytes.
     /// The model is addressed through the URL path.
     HuggingFace,
-    /// MiniMax: `{model, prompt, response_format: "base64"}` and the size as
-    /// `width` and `height` unless an `aspect_ratio` replaces it, answered
+    /// MiniMax: `{model, prompt, response_format: "base64"}`, with `image-01`'s
+    /// size as `width` and `height` unless an `aspect_ratio` replaces it, answered
     /// with `data.image_base64[]` beside a `base_resp` status that can report
     /// a failure under HTTP 200.
     MiniMax,
