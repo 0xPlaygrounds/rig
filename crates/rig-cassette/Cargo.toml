@@ -94,6 +94,7 @@ rig = { path = "../..", default-features = false, features = [
   "reqwest",
   "rustls",
   "test-utils",
+  "typesafeai",
   "websocket",
 ] }
 rig-test-support = { path = "../../test-support/rig-test-support" }
