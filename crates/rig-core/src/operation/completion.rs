@@ -144,6 +144,9 @@ impl Operation for Completion {
             (request.chat_history.clone(), documents)
         });
         let stored = target.continues_stored(&request);
+        let model = request.model.as_deref().unwrap_or(target.model());
+        // Only a target that binds items to the context reads it.
+        let binds = target.binds_context(model) && !target.drops_unbound_items(&request);
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),
             stored,
@@ -151,13 +154,7 @@ impl Operation for Completion {
             // A conversation the provider stores holds its own tools, so a
             // continuation that declares none still calls them.
             tools: stored || target.declares_tools(&request),
-            context: (!target.drops_unbound_items(&request)).then(|| {
-                crate::completion::history::context_of(
-                    &request,
-                    target,
-                    request.model.as_deref().unwrap_or(target.model()),
-                )
-            }),
+            context: binds.then(|| crate::completion::history::context_of(&request, target, model)),
         };
         // The history moves into the adapter. Documents join it first, so
         // the adapter's rules apply to them, unless the encoder sends them
