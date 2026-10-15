@@ -470,22 +470,20 @@ fn collect_expected_cassette_paths() -> (BTreeSet<PathBuf>, Vec<String>) {
     (expected, failures)
 }
 
-/// The provider a wrapper name names, when it is not `provider` itself:
-/// `with_openrouter_openai_cassette` names openrouter, while
-/// `with_local_reasoning_content_cassette` names none.
+/// The provider a wrapper name names, when it is not `provider` itself. A
+/// wrapper names a provider by its first word: `with_openrouter_openai_cassette`
+/// names openrouter, `with_llamacpp_mistral_family_cassette` names llamacpp,
+/// and `with_local_reasoning_content_cassette` names none.
 fn foreign_provider<'p>(
     wrapper: &str,
     provider: &str,
     providers: &'p BTreeSet<String>,
 ) -> Option<&'p str> {
-    let segments: Vec<&str> = wrapper.split('_').collect();
-    if segments.contains(&provider) {
-        return None;
-    }
+    let first = wrapper.strip_prefix("with_")?.split('_').next()?;
     providers
         .iter()
         .map(String::as_str)
-        .find(|candidate| segments.contains(candidate))
+        .find(|candidate| *candidate == first && *candidate != provider)
 }
 
 fn collect_rust_files(dir: &Path) -> Vec<PathBuf> {
