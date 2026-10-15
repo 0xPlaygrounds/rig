@@ -260,8 +260,10 @@ async-channel = "2.3"
 async-stream = "0.3"
 axum = "0.8"
 aws-config = { version = "1", default-features = false }
+aws-credential-types = "1"
 # 1.124: `OutputConfig`/`ServiceTier`/citations types rig-bedrock maps.
 aws-sdk-bedrockruntime = { version = "1.124", default-features = false }
+aws-sigv4 = { version = "1", default-features = false, features = ["sign-http"] }
 aws-smithy-eventstream = "0.61"
 aws-smithy-http-client = { version = "1", default-features = false }
 aws-smithy-runtime-api = "1"

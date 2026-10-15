@@ -13,7 +13,8 @@
 //! This crate exposes Bedrock completion, streaming, embedding, and image
 //! generation models through Rig's provider traits. It requires AWS credentials
 //! configured for the AWS SDK and a region with access to the selected Bedrock
-//! model.
+//! model. [`endpoint`] reaches Bedrock's Anthropic Messages and
+//! OpenAI-compatible APIs over Rig's own wires, signed by [`sigv4`].
 //!
 //! ```no_run
 //! use rig_bedrock::{client::BedrockRuntime, completion::{AMAZON_NOVA_LITE, Converse}};
@@ -27,9 +28,11 @@ mod capture;
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod endpoint;
 pub mod extension;
 pub mod image;
 mod options;
 mod request;
+pub mod sigv4;
 pub mod streaming;
 pub mod types;
