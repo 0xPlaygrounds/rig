@@ -261,9 +261,9 @@ impl VoiceClones {
 
 impl Wire for VoiceClones {
     type Op = VoiceCloning;
+    type Event = Vec<u8>;
     type Payload = Encoded;
     type Frame = WireFrame;
-    type Event = Vec<u8>;
     type Decoder<'id> = VoiceClonesDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 
