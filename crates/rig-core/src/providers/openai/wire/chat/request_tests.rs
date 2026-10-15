@@ -287,8 +287,9 @@ fn the_response_format_waits_for_a_tool_result() {
     );
 }
 
-/// A dialect without `response_format` leaves the schema off the request
-/// and says so in its capabilities, so an agent run checks the answer.
+/// A dialect without `response_format` leaves the schema off the request,
+/// and one with it defers the schema while tools are advertised; both say
+/// so in their capabilities, so an agent run checks the answer.
 #[test]
 fn a_dialect_without_response_format_declares_the_schema_dropped() {
     let schema: schemars::Schema =
@@ -310,12 +311,11 @@ fn a_dialect_without_response_format_declares_the_schema_dropped() {
 
     let sent = body(CompletionRequest::new("hi").output_schema(schema));
     assert!(sent.get("response_format").is_some(), "{sent}");
+    let capabilities = wire().describe().capabilities.completion;
+    assert!(!capabilities.drops_output_schema);
     assert!(
-        !wire()
-            .describe()
-            .capabilities
-            .completion
-            .drops_output_schema
+        capabilities.defers_output_schema_with_tools,
+        "the format waits for a tool result"
     );
 }
 

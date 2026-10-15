@@ -793,14 +793,18 @@ impl Wire for Chat {
     /// Format deferral permits tool composition; dialects without schema
     /// support drop the schema and require the agent's own enforcement.
     fn describe(&self) -> Descriptor<'_> {
-        let carries_schema = self.provider.dialect.quirks.supports_response_format;
+        let quirks = &self.provider.dialect.quirks;
+        let carries_schema = quirks.supports_response_format;
         Descriptor::new(self.provider.dialect.name)
             .model(self.model.as_str())
             .facts(&self.facts)
             .capabilities(Capabilities::completion(
                 ProviderCapabilities::default()
                     .with_native_output_tool_composition(carries_schema)
-                    .with_output_schema_dropped(!carries_schema),
+                    .with_output_schema_dropped(!carries_schema)
+                    .with_output_schema_deferred_with_tools(
+                        carries_schema && !quirks.response_format_with_tools,
+                    ),
             ))
             .replay(self)
     }

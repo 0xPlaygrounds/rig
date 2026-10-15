@@ -23,8 +23,9 @@ pub enum OutputMode {
     Tool,
     /// Send a native structured-output constraint on every turn.
     /// Enforcement and compatibility with tool calls depend on provider capabilities.
-    /// A provider that drops the schema has its text answer checked against it,
-    /// with one reprompt while the output budget lasts.
+    /// A provider that drops the schema, or defers it while tools are
+    /// advertised, has its text answer checked against it, with one reprompt
+    /// while the output budget lasts.
     Native,
     /// Put the schema in the system prompt and return final text verbatim.
     /// Callers must extract and validate JSON; prose and markdown may be present.

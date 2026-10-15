@@ -91,4 +91,27 @@ fn a_native_schema_the_provider_drops_marks_the_turn_unenforced() {
             .policy
             .unenforced_schema()
     );
+
+    // A wire that defers the schema while tools are advertised leaves a turn
+    // with tools unenforced, and one without tools enforced.
+    let deferring = ProviderCapabilities::default()
+        .with_native_output_tool_composition(true)
+        .with_output_schema_deferred_with_tools(true);
+    assert!(!prepare(deferring).policy.unenforced_schema());
+    let with_tool = prepare_request(
+        &spec,
+        &deferring,
+        &[Message::user("hi")],
+        vec![ToolDefinition {
+            name: rig_core::message::ToolName::new("add").expect("tool name"),
+            description: "adds".to_string(),
+            parameters: serde_json::json!({"type": "object"}),
+            annotations: Default::default(),
+        }],
+        None,
+        None,
+    )
+    .expect("prepare");
+    assert_eq!(with_tool.output_mode, OutputMode::Native);
+    assert!(with_tool.policy.unenforced_schema());
 }

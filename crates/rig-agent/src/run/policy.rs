@@ -213,16 +213,17 @@ impl TurnPolicy {
         })
     }
 
-    /// Declare whether the turn asked for native structured output from a
-    /// provider that drops the schema, so nothing enforced it and the run
-    /// must check a text answer against the schema itself.
+    /// Declare whether the turn asked for native structured output that the
+    /// provider may not have received (it drops the schema, or defers it
+    /// while tools are advertised), so the run checks a text answer against
+    /// the schema itself.
     pub fn with_unenforced_schema(mut self, unenforced: bool) -> Self {
         self.unenforced_schema = unenforced;
         self
     }
 
-    /// Whether the turn's native output schema was left off the request
-    /// (see [`Self::with_unenforced_schema`]).
+    /// Whether the turn's native output schema may have been left off the
+    /// request (see [`Self::with_unenforced_schema`]).
     pub fn unenforced_schema(&self) -> bool {
         self.unenforced_schema
     }

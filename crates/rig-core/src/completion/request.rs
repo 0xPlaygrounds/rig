@@ -1172,6 +1172,12 @@ pub struct ProviderCapabilities {
     /// `false`.
     #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
     pub drops_output_schema: bool,
+    /// Whether the wire leaves the output schema off a request that
+    /// advertises tools until its history holds a tool result, so the model
+    /// can still call a tool. Agent runs check an answer to such a request
+    /// against the schema themselves. Defaults to `false`.
+    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    pub defers_output_schema_with_tools: bool,
 }
 
 impl ProviderCapabilities {
@@ -1181,6 +1187,7 @@ impl ProviderCapabilities {
             composes_native_output_with_tools: false,
             rejects_forced_tool_choice: false,
             drops_output_schema: false,
+            defers_output_schema_with_tools: false,
         }
     }
 
@@ -1199,6 +1206,13 @@ impl ProviderCapabilities {
     /// Declare whether the wire leaves the output schema off the request.
     pub const fn with_output_schema_dropped(mut self, dropped: bool) -> Self {
         self.drops_output_schema = dropped;
+        self
+    }
+
+    /// Declare whether the wire defers the output schema while tools are
+    /// advertised and no tool result is in the history.
+    pub const fn with_output_schema_deferred_with_tools(mut self, deferred: bool) -> Self {
+        self.defers_output_schema_with_tools = deferred;
         self
     }
 }
