@@ -885,8 +885,8 @@ Arrive in order, after the call's adapters rewrote it, and kept two
 frames, so a reader in `PostUpdate` gets a reply's last events even when
 it settled that frame. A turn's call also adds its text and reasoning up
 in its `Partial` (a successor continuing a reply may start it with the
-text so far), and from its first item has a `Streamed { first, last, items
-}` beside its `Started { at }`. A delta moves no stage: a reader spawning
+text so far), and from its first item has a `StreamTiming { first, last,
+items }` beside its `Started { at }`. A delta moves no stage: a reader spawning
 effects runs `.before(AgentLoop)` or calls `Wake::wake`.
 
 ```rust,no_run
@@ -1434,7 +1434,7 @@ whole. A stopped session is `rewrite_stopped(&stores, &paths, &dir, by,
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::rig_memory::{self, CallPlace};
+use rig_harness::rig_memory::{self, Place};
 
 fn build(app: &mut App) {
     app.add_command("redact", "Take a text out of everything saved: /redact <text>", redact)
@@ -1455,7 +1455,7 @@ fn redact(In(args): In<CommandArgs>, mut commands: Commands) {
 /// Says how it went, and maps what it keeps (`told`) with the same `with`.
 fn redacted(mut done: MessageReader<SessionRewritten>, mut told: Local<Vec<String>>, mut notices: MessageWriter<Notice>) {
     for SessionRewritten { result, with, .. } in done.read() {
-        let at = CallPlace::File { name: "told" };
+        let at = Place::File { name: "told" };
         told.retain_mut(|text| rig_memory::rewrite_value(&**with, &at, "told", text).is_ok());
         let text = result.as_ref().map_or_else(String::clone, |it| format!("{} logs rewritten", it.logs.len()));
         notices.write(Notice::info(None, text));
@@ -1731,8 +1731,8 @@ going on in the split, or with `new` into a new session it then runs;
 and `merge` go to one, show it beside the active line, and bring it back
 (`<where>` is `--from <session> --agent <id> --line <line> --at
 <message>`). A plugin runs them with `RunCommand`, or does what they do:
-`ForkSession` with `ForkCut::Line { agent, line, through, take, title }`
-(a move with `take: Some(first)`), or `move_out` and `branch_off` on a
+`ForkSession` with `ForkCut::Line { agent, line, through, move_from, title }`
+(a move with `move_from: Some(first)`), or `move_out` and `branch_off` on a
 live conversation. What must follow each line is
 [`Follows`](#saved-state-counting-every-tool-call).
 
@@ -1762,7 +1762,7 @@ fn fork_at(In(args): In<CommandArgs>, mut commands: Commands) {
 fn fork(picked: On<Picked>, chosen: Query<&SessionPicked>, mut commands: Commands) {
     let Ok(SessionPicked { agent: Some(agent), entry: Some(through), .. }) = chosen.get(picked.entity) else { return };
     let (agent, title) = (AgentId(agent.clone()), "fork".to_owned());
-    let cut = ForkCut::Line { agent, line: None, through: *through, take: None, title };
+    let cut = ForkCut::Line { agent, line: None, through: *through, move_from: None, title };
     commands.write_message(ForkSession { from: None, cut, asker: None });
 }
 ```
