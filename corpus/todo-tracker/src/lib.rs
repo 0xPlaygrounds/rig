@@ -12,7 +12,7 @@ use rig_print::PrintSection;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    AppKeyBindingsExt, Focused, KeyBinding, KeyPress, PanelCanvas, Placement, RequestRedraw, Side,
+    AppKeyBindingsExt, KeyBinding, KeyPress, PanelCanvas, Placement, RequestRedraw, Side,
     StatusItem, StatusItems, StatusSystems, Tone, TuiPanel, TuiSystems, run_command,
 };
 use schemars::JsonSchema;
@@ -321,11 +321,12 @@ fn spawn_panel(mut commands: Commands) {
 /// Shows the panel while it is on and the agent shown has a list.
 fn place_panel(
     shown: Res<PanelShown>,
-    focused: Query<&Todos, With<Focused>>,
+    (focused, todos): (Option<Res<ShownAgent>>, Query<&Todos>),
     panels: Query<(Entity, Has<TuiPanel>), With<TodoPanel>>,
     mut commands: Commands,
 ) {
-    let wanted = shown.0 && focused.iter().any(|todos| !todos.0.is_empty());
+    let focused = focused.and_then(|focused| todos.get(focused.0?).ok());
+    let wanted = shown.0 && focused.is_some_and(|todos| !todos.0.is_empty());
     for (panel, placed) in &panels {
         match (wanted, placed) {
             (true, false) => {
@@ -349,9 +350,9 @@ fn redraw(changed: Query<(), Changed<Todos>>, mut redraw: MessageWriter<RequestR
 
 fn draw_panel(
     mut panels: Query<&mut PanelCanvas, With<TodoPanel>>,
-    focused: Query<&Todos, With<Focused>>,
+    (focused, todos): (Option<Res<ShownAgent>>, Query<&Todos>),
 ) {
-    let Some(todos) = focused.iter().next() else {
+    let Some(todos) = focused.and_then(|focused| todos.get(focused.0?).ok()) else {
         return;
     };
     let title = format!("todo {}", todos.tally());

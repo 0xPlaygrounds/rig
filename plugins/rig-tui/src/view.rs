@@ -22,7 +22,6 @@ use super::editor::{Editor, MainEditor};
 use super::jsonl::{self, Kept};
 use super::keys::KeyPress;
 use super::pane::{PaneState, TranscriptPane, TranscriptSource};
-use super::panel::Focused;
 use super::pick::PickerInput;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
@@ -812,27 +811,6 @@ pub(crate) fn load_draft(
     if let Ok(text) = data.session.read_file(DRAFT_FILE) {
         data.session.remove_file(DRAFT_FILE).ok();
         input.set(String::from_utf8_lossy(&text).into_owned());
-    }
-}
-
-/// Keeps [`Focused`] on the agent shown, and on no other.
-pub(crate) fn mark_focused(
-    shown: Res<ShownAgent>,
-    marked: Query<Entity, With<Focused>>,
-    mut commands: Commands,
-) {
-    if !shown.is_changed() {
-        return;
-    }
-    for agent in &marked {
-        if Some(agent) != shown.0 {
-            commands.entity(agent).try_remove::<Focused>();
-        }
-    }
-    if let Some(agent) = shown.0
-        && !marked.contains(agent)
-    {
-        commands.entity(agent).try_insert(Focused);
     }
 }
 

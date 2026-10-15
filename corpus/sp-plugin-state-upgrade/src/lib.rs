@@ -16,7 +16,7 @@
 use rig_harness::prelude::*;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
-use rig_tui::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiSystems};
+use rig_tui::{PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiSystems};
 
 pub mod v1;
 pub mod v2;
@@ -114,18 +114,10 @@ fn redraw<T: Shows>(
 /// Draws the shown agent's checklist (the focused one, else the main one).
 fn draw<T: Shows>(
     mut panels: Query<&mut PanelCanvas, With<WorklistPanel>>,
-    agents: Query<
-        (
-            Option<&T>,
-            Has<Newer>,
-            Has<Unreadable>,
-            Has<Focused>,
-            Has<SpawnedBy>,
-        ),
-        With<Agent>,
-    >,
+    agents: Query<(Option<&T>, Has<Newer>, Has<Unreadable>, Has<SpawnedBy>), With<Agent>>,
+    focused: Option<Res<ShownAgent>>,
 ) {
-    let shown = agents.iter().find(|(.., focused, _)| *focused);
+    let shown = focused.and_then(|shown| agents.get(shown.0?).ok());
     let shown = shown.or_else(|| agents.iter().find(|(.., spawned)| !spawned));
     let Some((list, newer, unreadable, ..)) = shown else {
         return;

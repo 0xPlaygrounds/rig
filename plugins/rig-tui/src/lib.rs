@@ -45,8 +45,8 @@
 //! A plugin adds to the view without touching it: a [`TuiPanel`] beside
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
-//! the agent shown, [`Focused`] (the harness's
-//! [`ShownAgent`]), and showing another, [`ShowAgent`]; the
+//! the agent shown, the harness's [`ShownAgent`], and showing another,
+//! [`ShowAgent`]; the
 //! status line's items ([`StatusItems`], [`AppStatus`]); and the
 //! [`TerminalSize`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well, each doing an
@@ -112,7 +112,7 @@ pub use keys::{
 };
 pub use pane::{MainPane, MainTranscript, PaneKeys, TranscriptPane, TranscriptSource};
 pub use panel::{
-    Focused, PanelCanvas, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel, TuiSystems,
+    PanelCanvas, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel, TuiSystems,
 };
 pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerInput};
 pub use ratatui;
@@ -281,7 +281,6 @@ pub fn add_view(app: &mut App) {
         .add_systems(
             Update,
             (
-                view::mark_focused,
                 // A command typed this frame runs in the agent loop, so
                 // its picker, its notices and a refusal come back in this
                 // frame, and so does a question asked there.

@@ -85,12 +85,6 @@ pub struct RedrawArea(pub Rect);
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TerminalSize(pub Rect);
 
-/// Marks the agent the terminal view shows and sends what is typed to.
-#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[component(storage = "SparseSet")]
-#[reflect(Component, Clone, Debug, Default)]
-pub struct Focused;
-
 /// A panel in the terminal view: the default screen's transcript, input
 /// and status line are panels too, spawned first. Panels are laid out one
 /// after another, in the order spawned, each taking its side of what is left,

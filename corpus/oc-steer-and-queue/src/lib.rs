@@ -40,8 +40,8 @@ use rig_tui::ratatui::style::{Modifier, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
-    Focused, InputAction, InputContext, InputSystems, KeyInput, MainInput, PanelCanvas,
-    PendingInput, Placement, RequestRedraw, TuiKeys, TuiPanel, TuiPlugin, TuiSystems,
+    InputAction, InputContext, InputSystems, KeyInput, MainInput, PanelCanvas, PendingInput,
+    Placement, RequestRedraw, TuiKeys, TuiPanel, TuiPlugin, TuiSystems,
 };
 
 /// Who decides the messages the plugin takes over.
@@ -416,7 +416,7 @@ fn strip_keys(
     mut input: MainInput,
     state: Res<InputContext>,
     mut strip: ResMut<Strip>,
-    shown: Query<(Entity, Has<ActiveTurn>), With<Focused>>,
+    (shown, turns): (Res<ShownAgent>, Query<Has<ActiveTurn>>),
     pending: PendingMessages,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
@@ -428,7 +428,7 @@ fn strip_keys(
         return;
     }
     let (code, modifiers) = (key.code, key.modifiers);
-    let Some((agent, busy)) = shown.iter().next() else {
+    let Some((agent, Ok(busy))) = shown.0.map(|agent| (agent, turns.get(agent))) else {
         return;
     };
     let list = pending.of(agent);
@@ -519,13 +519,10 @@ fn strip_keys(
 /// The strip takes a row per pending message of the agent shown.
 fn size_strip(
     mut panels: Query<&mut TuiPanel, With<StripPanel>>,
-    shown: Query<Entity, With<Focused>>,
+    shown: Res<ShownAgent>,
     pending: PendingMessages,
 ) {
-    let rows = shown
-        .iter()
-        .next()
-        .map_or(0, |agent| pending.of(agent).len());
+    let rows = shown.0.map_or(0, |agent| pending.of(agent).len());
     let placement = Placement::Bottom(Constraint::Length(u16::try_from(rows).unwrap_or(u16::MAX)));
     for mut panel in &mut panels {
         if panel.placement != placement {
@@ -538,11 +535,11 @@ fn size_strip(
 /// one highlighted, the one being edited marked.
 fn draw_strip(
     mut panels: Query<&mut PanelCanvas, With<StripPanel>>,
-    shown: Query<Entity, With<Focused>>,
+    shown: Res<ShownAgent>,
     pending: PendingMessages,
     strip: Res<Strip>,
 ) {
-    let Some(agent) = shown.iter().next() else {
+    let Some(agent) = shown.0 else {
         return;
     };
     let lines: Vec<Line> = pending

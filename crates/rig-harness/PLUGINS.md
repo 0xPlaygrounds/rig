@@ -2225,7 +2225,7 @@ A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 (`BelowInput`), or a box over the screen (`Over`). The plugin draws it
 into its `PanelCanvas` in `TuiSystems::Draw`, run only for a frame that is
 drawn, and writes a `RequestRedraw` when its own state changed;
-`TerminalSize` is the terminal's size, `Focused` marks the agent shown;
+`TerminalSize` is the terminal's size, `ShownAgent` names the agent shown;
 `Within { panel, part, of }` is a column of another panel.
 
 ```rust,no_run
