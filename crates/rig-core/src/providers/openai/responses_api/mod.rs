@@ -20,6 +20,7 @@ use crate::message::{
     AssistantContent, Document, DocumentData, DocumentMediaType, DocumentSourceKind, Message,
     MimeType, ToolResultContent, UserContent,
 };
+use crate::providers::internal::object;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::Mode;
 use crate::{completion, message};
@@ -68,11 +69,11 @@ fn document_part(document: &Document) -> Option<Value> {
         // `input_file` reads the type of a file it fetches itself.
         DocumentSourceKind::Url(url) => json!({"type": "input_file", "file_url": url}),
         DocumentSourceKind::Base64(data) if document.media_type == Some(DocumentMediaType::PDF) => {
-            json!({
+            object! {
                 "type": "input_file",
                 "file_data": format!("data:application/pdf;base64,{data}"),
                 "filename": "document.pdf",
-            })
+            }
         }
         _ => return None,
     })
@@ -166,9 +167,9 @@ fn input(
                                 if custom.calls.get(&call_id).copied().unwrap_or_else(|| {
                                     custom.tools.contains(result.name.as_str())
                                 }) {
-                                    json!({"type": "custom_tool_call_output", "call_id": call_id, "output": output})
+                                    object! {"type": "custom_tool_call_output", "call_id": call_id, "output": output}
                                 } else {
-                                    json!({"type": "function_call_output", "call_id": call_id, "output": output, "status": "completed"})
+                                    object! {"type": "function_call_output", "call_id": call_id, "output": output, "status": "completed"}
                                 },
                             );
                             continue;
@@ -182,7 +183,7 @@ fn input(
                         UserContent::Audio(_) => return Err(unsendable("audio")),
                         UserContent::Video(_) => return Err(unsendable("video")),
                     };
-                    items.push(json!({"type": "message", "role": "user", "content": [part]}));
+                    items.push(object! {"type": "message", "role": "user", "content": vec![part]});
                 }
             }
             Message::Assistant(turn) => {
@@ -260,18 +261,20 @@ fn input(
                             let call_id = ids.spell(&call.id);
                             let name = call.function.name.as_str();
                             let kind = identity.get("type").and_then(Value::as_str);
-                            let arguments = call.function.arguments_value().to_string();
+                            let arguments = || {
+                                serde_json::to_string(&call.function.arguments).unwrap_or_default()
+                            };
                             let (kind, key, payload, prefix) = if kind == Some("custom_tool_call")
                                 || (kind.is_none() && custom.tools.contains(name))
                             {
                                 custom.calls.insert(call_id.clone(), true);
                                 let input =
                                     call.function.arguments.get("input").and_then(Value::as_str);
-                                let input = input.map_or(arguments, str::to_owned);
+                                let input = input.map_or_else(arguments, str::to_owned);
                                 ("custom_tool_call", "input", input, "ctc_")
                             } else {
                                 custom.calls.insert(call_id.clone(), false);
-                                ("function_call", "arguments", arguments, "fc_")
+                                ("function_call", "arguments", arguments(), "fc_")
                             };
                             let mut item = json!({"type": kind, "call_id": call_id, "name": name});
                             set(&mut item, key, Value::String(payload));
@@ -291,7 +294,7 @@ fn input(
                                 .into_iter()
                                 .collect();
                             let mut item =
-                                json!({"type": "reasoning", "id": rs, "summary": summary});
+                                object! {"type": "reasoning", "id": rs, "summary": summary};
                             if let Some(ciphertext) = identity.get("encrypted_content") {
                                 set(&mut item, "encrypted_content", ciphertext.clone());
                             }
