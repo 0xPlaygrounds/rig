@@ -70,7 +70,7 @@ impl AgentId {
 }
 
 /// The agent that spawned this one, such as the agent whose tool call
-/// started it. Despawning that agent despawns this one. The core gives it
+/// started it. Despawning that agent despawns this one. The kernel gives it
 /// no other meaning: a restore links the agents again by their logs'
 /// headers, and views list agents by it.
 #[derive(Component, Reflect, Debug)]

@@ -90,7 +90,7 @@ pub fn crate_dir(checkout: &Path, name: &str) -> Option<PathBuf> {
 /// The rig crates the agent built for `config` uses: [`CORE_CRATES`], the
 /// rig crates `config` lists, the rig crates a plugin crate listed by path
 /// depends on, and what each of those that is a plugin crate depends on in
-/// turn. Without a checkout, the core and the rig crates listed.
+/// turn. Without a checkout, [`CORE_CRATES`] and the rig crates listed.
 pub fn rig_crates(config: &Config, source: &RigSource) -> BTreeSet<String> {
     let mut used: BTreeSet<String> = CORE_CRATES.map(str::to_owned).into();
     let packages = config.plugins.iter().map(|plugin| &plugin.package);
@@ -310,7 +310,7 @@ fn rig_origin(source: &RigSource, name: &str) -> String {
     }
 }
 
-/// The agent: the core, then each plugin in the list's order, through
+/// The agent: the harness, then each plugin in the list's order, through
 /// `rig_harness::load`, which skips a plugin an earlier one added and
 /// records where each comes from; `rig_harness::run` runs it, or describes
 /// what its plugins add when the launcher asks.

@@ -268,7 +268,7 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
          \n\
          [dependencies]\n\
          # Everything a plugin uses: Bevy's app and ECS (`rig_harness::prelude`) and the\n\
-         # agent runtime (`rig_harness::rig_ecs`). Another plugin's types come from its\n\
+         # kernel (`rig_harness::rig_ecs`). Another plugin's types come from its\n\
          # crate, at the same version: the terminal view's panels from rig-tui (with\n\
          # `rig_tui::ratatui`), what agents do from rig-activity. The agent builds every\n\
          # plugin with its own rig crates. A Bevy crate, such as `bevy` for a window,\n\
