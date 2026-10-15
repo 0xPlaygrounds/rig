@@ -81,7 +81,7 @@ pub enum TranscriptItem {
     /// [`Note`](rig_harness::rig_core::conversation::Note) or a kept branch, by its id
     /// ([`add_aside_renderer`](crate::AppToolRenderersExt::add_aside_renderer)).
     Aside(AsideId),
-    /// A notice, by its index in the [`Notices`].
+    /// A notice, by its number in the [`Notices`].
     Notice(usize),
     /// A content block of a message, an image, audio, a video or a
     /// document, by the message's id and the block's place in it
@@ -144,9 +144,13 @@ pub struct TranscriptView {
 /// The notices the view shows, oldest first, those an earlier build of
 /// the session showed included: each drawn in the transcript of the agent
 /// it is about ([`ShownNotice::slot`]), and one about every agent where it
-/// was written. [`TranscriptItem::Notice`] names one by its index here.
+/// was written. [`TranscriptItem::Notice`] names one by its number: its
+/// index here plus the older ones dropped.
 #[derive(Resource, Default)]
-pub struct Notices(Vec<ShownNotice>);
+pub struct Notices {
+    shown: Vec<ShownNotice>,
+    dropped: usize,
+}
 
 /// Whose text a [`TextMark`] is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -728,23 +732,30 @@ impl TranscriptView {
 impl Notices {
     /// The notices, oldest first.
     pub fn all(&self) -> &[ShownNotice] {
-        &self.0
+        &self.shown
+    }
+
+    /// The notices, oldest first, each with its number.
+    pub(crate) fn numbered(&self) -> impl Iterator<Item = (usize, &ShownNotice)> {
+        let numbers = self.dropped..;
+        numbers.zip(&self.shown)
     }
 
     /// Maps the notices shown through `with`, the map the session was
     /// rewritten through; one the map leaves unreadable is dropped.
     pub(crate) fn rewrite(&mut self, with: &dyn Rewrite) {
         let at = Place::File { name: NOTICES_FILE };
-        self.0
+        self.shown
             .retain_mut(|notice| rewrite_value(with, &at, NOTICES_FILE, notice).is_ok());
     }
 
     /// Keeps `notice` for display, dropping the oldest past
     /// [`KEPT_NOTICES`].
     fn keep(&mut self, notice: ShownNotice) {
-        self.0.push(notice);
-        let excess = self.0.len().saturating_sub(KEPT_NOTICES);
-        self.0.drain(..excess);
+        self.shown.push(notice);
+        let excess = self.shown.len().saturating_sub(KEPT_NOTICES);
+        self.shown.drain(..excess);
+        self.dropped += excess;
     }
 }
 
@@ -755,7 +766,7 @@ pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut notices: ResMut<No
     let Some(data) = data else {
         return;
     };
-    notices.0 = jsonl::tail(&Kept(data.session.clone(), NOTICES_FILE), KEPT_NOTICES);
+    notices.shown = jsonl::tail(&Kept(data.session.clone(), NOTICES_FILE), KEPT_NOTICES);
     data.session.remove_file(NOTICES_FILE).ok();
 }
 
@@ -768,10 +779,10 @@ pub(crate) fn keep_notices(
     let (Some(reason), Some(data)) = (reason, data) else {
         return;
     };
-    if *reason != ExitReason::Reload || notices.0.is_empty() {
+    if *reason != ExitReason::Reload || notices.shown.is_empty() {
         return;
     }
-    if let Err(failure) = jsonl::write(&Kept(data.session.clone(), NOTICES_FILE), &notices.0) {
+    if let Err(failure) = jsonl::write(&Kept(data.session.clone(), NOTICES_FILE), &notices.shown) {
         warn!("could not keep the notices for the next build: {failure}");
     }
 }

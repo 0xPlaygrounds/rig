@@ -440,7 +440,7 @@ pub(crate) struct Sources<'a> {
     /// The pane's view as plugins steer it: what is expanded and marked.
     pub(crate) view: &'a TranscriptView,
     /// The notices shown.
-    pub(crate) notices: &'a [ShownNotice],
+    pub(crate) notices: &'a Notices,
     /// The looks plugins added.
     pub(crate) renderers: &'a Renderers<'a>,
     /// What settled calls published and how long they ran.
@@ -560,10 +560,10 @@ impl TranscriptLayout<'_, '_> {
     ) -> DrawnTranscript {
         let shown = ShownConversation::value(conversation, Entity::PLACEHOLDER);
         let renderers = self.looks.by_kind(None);
-        let facts = CallFacts::default();
+        let (facts, notices) = (CallFacts::default(), Notices::default());
         let sources = Sources {
             view,
-            notices: &[],
+            notices: &notices,
             renderers: &renderers,
             facts: &facts,
             whole: expanded == Expanded::All,
@@ -646,8 +646,8 @@ impl TranscriptLayout<'_, '_> {
     }
 
     /// The notices shown.
-    pub(crate) fn notices(&self) -> &[ShownNotice] {
-        self.notices.all()
+    pub(crate) fn notices(&self) -> &Notices {
+        &self.notices
     }
 }
 
@@ -668,7 +668,7 @@ pub(crate) fn lay_out_transcript(
     let view = sources.view;
     let Some(shown) = shown else {
         let (mut extra, mut marks) = (Vec::new(), Marks::new());
-        let notices = sources.notices.iter().enumerate();
+        let notices = sources.notices.numbered();
         for notice in notices.filter(|(_, notice)| notice.is_for_every_agent()) {
             notice_lines(notice, &mut extra, &mut marks);
         }
@@ -693,10 +693,9 @@ pub(crate) fn lay_out_transcript(
         marks: &view.marks,
     };
     let notices = shown.id.map(|id| (id, sources.notices));
-    let notices = notices.into_iter().flat_map(|(id, notices)| {
-        let notices = notices.iter().enumerate();
-        notices.map(move |(at, notice)| (id, at, notice))
-    });
+    let notices = notices
+        .into_iter()
+        .flat_map(|(id, notices)| notices.numbered().map(move |(at, notice)| (id, at, notice)));
     for (id, at, notice) in notices {
         let before = match notice.slot(id, conversation) {
             None => continue,

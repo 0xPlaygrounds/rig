@@ -202,6 +202,39 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
     assert_eq!(top, Some((item, 0)));
 }
 
+#[test]
+fn a_notice_keeps_its_name_once_older_ones_are_dropped() {
+    let (mut app, agent) = view_app();
+    let pane = crate::tests::main_pane(app.world());
+    say(
+        &mut app,
+        agent,
+        rig_core::completion::Message::user("question"),
+    );
+    let notice = |app: &mut App, index: usize| {
+        let text = format!("notice {index}");
+        app.world_mut().write_message(Notice::info(agent, text));
+        app.update();
+    };
+    let scroll_to = |app: &mut App, item: TranscriptItem| {
+        let row = ItemRow::Top(0);
+        app.world_mut().trigger(ScrollTo {
+            pane,
+            item: Some(item),
+            row,
+        });
+        crate::tests::on_screen(app, agent, 5).first().cloned()
+    };
+    (0..KEPT_NOTICES).for_each(|index| notice(&mut app, index));
+    let shown = scroll_to(&mut app, TranscriptItem::Notice(KEPT_NOTICES / 2));
+    assert_eq!(shown.as_deref(), Some("notice 100"));
+    let top = crate::tests::main_view(&app).top().cloned();
+    // The oldest goes; the item named at the top still names that notice.
+    notice(&mut app, KEPT_NOTICES);
+    let item = top.map(|(item, _)| item);
+    assert_eq!(item.and_then(|item| scroll_to(&mut app, item)), shown);
+}
+
 /// A transcript of notes of `said`, laid out at 12 columns.
 fn laid_out_narrow(said: &[&str]) -> Option<DrawnTranscript> {
     let (mut app, agent) = view_app();
