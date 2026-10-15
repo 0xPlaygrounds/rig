@@ -147,12 +147,10 @@ fn input(
     let mut items = Vec::new();
     let mut layout = Layout::default();
     for (position, message) in history.iter().enumerate() {
-        if !matches!(message, Message::System { .. }) {
-            if layout.after.is_empty() {
-                layout.after.push(items.len());
-            }
-            layout.parts.push(Vec::new());
+        if layout.after.is_empty() && !matches!(message, Message::System { .. }) {
+            layout.after.push(items.len());
         }
+        let mut parts = Vec::new();
         match message {
             Message::System { content } => items.push(json!({
                 "type": "message",
@@ -161,7 +159,7 @@ fn input(
             })),
             Message::User { content } => {
                 for part in content {
-                    layout.part(items.len());
+                    parts.push(items.len());
                     let part = match part {
                         // Blank text says nothing, and some backends reject it.
                         UserContent::Text(text) if text.text.trim().is_empty() => continue,
@@ -198,7 +196,7 @@ fn input(
                 let mut texts = 0usize;
                 let mut unpaired = false;
                 for block in &turn.content {
-                    layout.part(items.len());
+                    parts.push(items.len());
                     let mut replay = block.replay(target, &ids);
                     if unpaired && !matches!(block, AssistantContent::Reasoning(_)) {
                         unpaired = false;
@@ -317,6 +315,7 @@ fn input(
         }
         if !matches!(message, Message::System { .. }) {
             layout.after.push(items.len());
+            layout.parts.push(parts);
         }
     }
     if layout.after.is_empty() {
@@ -337,13 +336,6 @@ struct Layout {
 }
 
 impl Layout {
-    /// Record the item count before the current message's next content item.
-    fn part(&mut self, count: usize) {
-        if let Some(parts) = self.parts.last_mut() {
-            parts.push(count);
-        }
-    }
-
     /// The item count the prefix `point` ends after, if the request has one.
     fn boundary(&self, point: completion::CachePoint) -> Option<usize> {
         use completion::CachePoint;
@@ -626,9 +618,7 @@ impl wire::Responses {
     /// Whether this wire places [`completion::CompletionRequest::cache_points`]
     /// for `model`: OpenAI's own API, from GPT-5.6 on.
     fn marks_cache_points(&self, model: &str) -> bool {
-        let dialect = &self.provider.dialect;
-        dialect.name == super::wire::OPENAI.name
-            && dialect.quirks.responses.contract == wire::ResponsesContract::OpenAi
+        self.provider.dialect.name == super::wire::OPENAI.name
             && super::options::caches_by_options(&self.facts, model)
     }
 }
@@ -668,8 +658,9 @@ fn mark_cache_points(
     marked.sort_unstable();
     marked.dedup();
     let skip = marked.len().saturating_sub(slots.saturating_sub(taken));
-    for at in marked.into_iter().skip(skip) {
-        if let Some(item) = items.get_mut(at) {
+    let kept = marked.get(skip..).unwrap_or_default();
+    for (at, item) in items.iter_mut().enumerate() {
+        if kept.contains(&at) {
             mark(item);
         }
     }
@@ -721,13 +712,12 @@ fn mark(item: &mut Value) {
             json!([{"type": "input_text", "text": text}]),
         );
     }
-    let last = parts_field(item)
+    parts_field(item)
         .and_then(|field| item.get_mut(field))
         .and_then(Value::as_array_mut)
-        .and_then(|parts| parts.iter_mut().rev().find(|part| takes_breakpoint(part)));
-    if let Some(part) = last {
-        set(part, "prompt_cache_breakpoint", json!({"mode": "explicit"}));
-    }
+        .into_iter()
+        .filter_map(|parts| parts.iter_mut().rev().find(|part| takes_breakpoint(part)))
+        .for_each(|part| set(part, "prompt_cache_breakpoint", json!({"mode": "explicit"})));
 }
 
 /// A function or hosted tool available to a Responses request.

@@ -295,7 +295,7 @@ impl crate::completion::ReplayTarget for Responses {
             .iter()
             .any(|key| {
                 crate::completion::options::param(self, request, key)
-                    .is_some_and(|value| !value.is_null() && value != Value::Array(Vec::new()))
+                    .is_some_and(|value| !value.is_null())
             })
     }
 

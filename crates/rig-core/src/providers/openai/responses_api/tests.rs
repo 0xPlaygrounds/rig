@@ -899,9 +899,10 @@ fn cached_conversation() -> completion::CompletionRequest {
             completion::Message::Assistant(message::AssistantMessage::new(vec![
                 AssistantContent::ToolCall(call.clone()),
             ])),
-            completion::Message::from(UserContent::ToolResult(
-                call.result(vec![ToolResultContent::text("found")]),
-            )),
+            completion::Message::from(UserContent::ToolResult(call.result(vec![
+                ToolResultContent::text("found"),
+                ToolResultContent::text("twice"),
+            ]))),
             completion::Message::assistant("It is found."),
         ]);
     request.cache_points = vec![
@@ -917,8 +918,7 @@ fn cached_conversation() -> completion::CompletionRequest {
 
 /// Cache points from GPT-5.6 on mark the last input part at or before each
 /// prefix end. A point after an assistant turn moves back to the input
-/// before it, and a result's text becomes a part to carry it; the tools and
-/// the lifted system prompt hold no part.
+/// before it; the tools and the lifted system prompt hold no part.
 #[test]
 fn cache_points_mark_input_parts_from_gpt_5_6_on() {
     let body = prepared("gpt-5.6-luna", cached_conversation());
@@ -940,11 +940,10 @@ fn cache_points_mark_input_parts_from_gpt_5_6_on() {
     assert_eq!(breakpoints(&body), [0, 2]);
     assert_eq!(
         input.get(2).map(|item| &item["output"]),
-        Some(&json!([{
-            "type": "input_text",
-            "text": "found",
-            "prompt_cache_breakpoint": {"mode": "explicit"},
-        }]))
+        Some(&json!([
+            {"type": "input_text", "text": "found"},
+            {"type": "input_text", "text": "twice", "prompt_cache_breakpoint": {"mode": "explicit"}},
+        ]))
     );
 }
 
@@ -1047,11 +1046,21 @@ fn caller_input_goes_ahead_of_the_messages_as_given() {
     );
     // Two held breakpoints leave one slot, for the furthest point.
     assert_eq!(breakpoints(&body), [0, 2, 7]);
-    // A custom tool's output carries one as a function's does.
+    // A custom tool's output carries one as a function's does, its one text
+    // becoming that text's part.
     let body = request(&[Messages(1)]);
     assert_eq!(breakpoints(&body), [0, 2, 6]);
     assert_eq!(
         body["input"][6]["output"],
         json!([{"type": "input_text", "text": "found", "prompt_cache_breakpoint": {"mode": "explicit"}}])
     );
+}
+
+/// A request whose messages encode no item, such as blank text, is refused
+/// before it is sent.
+#[test]
+fn a_request_with_no_input_item_is_refused() {
+    let error = convert("gpt-5.4", completion::CompletionRequest::new(" "))
+        .expect_err("blank text encodes no item");
+    assert!(error.to_string().contains("at least one item"), "{error}");
 }
