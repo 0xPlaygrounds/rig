@@ -298,7 +298,7 @@ fn list(
         .map(|line| {
             let messages = line.conversation.messages();
             let own = messages.get(line.own..).unwrap_or_default();
-            let prompt = own.iter().find_map(user_text);
+            let prompt = own.iter().find_map(|message| user_text(message));
             let prompt = prompt.map(|text| format!(", \"{}\"", first_line(&text)));
             let files: Vec<String> = changes_after(line, line.own).into_keys().collect();
             let files = match files.is_empty() {
@@ -821,10 +821,10 @@ fn first_line(text: &str) -> &str {
 }
 
 /// `said` as the summarizer reads it.
-fn render(said: &[Message]) -> String {
+fn render(said: &[std::sync::Arc<Message>]) -> String {
     let mut out = Vec::new();
     for message in said {
-        match message {
+        match &**message {
             Message::System { content } => out.push(format!("[system] {content}")),
             Message::User { content } => {
                 for item in content {

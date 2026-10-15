@@ -488,7 +488,7 @@ fn docs(session: &Session) -> Vec<Doc> {
         let mut secret_reads = HashSet::new();
         for (at, message) in agent.conversation.messages().iter().enumerate() {
             let mut parts = Vec::new();
-            match message {
+            match &**message {
                 Message::User { content } => {
                     for item in content {
                         match item {

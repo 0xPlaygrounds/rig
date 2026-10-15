@@ -22,6 +22,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # `src/` and stay published. `coverage/` is the repository's coverage-gate
 # baseline (`cargo xtask coverage`), read by no published code.
 exclude = [
+    "benches/**",
     "coverage/**",
     "fixtures/**",
     "tests/**",
@@ -109,6 +110,7 @@ aws-smithy-http-client = { workspace = true, features = ["default-client"] }
 aws-smithy-runtime-api = { workspace = true }
 aws-smithy-types = { workspace = true }
 bytes = { workspace = true }
+divan = { workspace = true }
 http = { workspace = true }
 proptest = "1"
 reqwest = { workspace = true, features = ["json", "stream"] }
@@ -131,6 +133,14 @@ syn = { workspace = true, features = ["full", "visit"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
 tracing = { workspace = true }
+
+# Decoding, encoding and logging a provider exchange, from the recorded
+# cassettes and synthetic histories (`cargo bench -p rig-cassette --bench
+# wire --features http,jsonl`). CI only compiles it.
+[[bench]]
+name = "wire"
+harness = false
+required-features = ["http", "jsonl"]
 
 [[test]]
 name = "verify"

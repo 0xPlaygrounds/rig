@@ -121,7 +121,7 @@ fn first_request(main: &MockCompletionModel) -> (String, usize) {
     let count = first.map_or(0, |request| {
         let history = request.chat_history.iter();
         history
-            .filter(|message| !matches!(message, Message::System { .. }))
+            .filter(|message| !matches!(&***message, Message::System { .. }))
             .count()
     });
     (text.unwrap_or_default(), count)

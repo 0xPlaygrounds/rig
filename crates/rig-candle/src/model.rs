@@ -366,6 +366,7 @@ impl rig_core::wire::Wire for Generation {
     type Op = rig_core::operation::Completion;
     type Payload = CandleRequest;
     type Frame = CandleFrame;
+    type Event = CandleFrame;
     type Decoder<'id> = CandleAdapter<'id>;
     type Reassembler = CandleDocument;
 

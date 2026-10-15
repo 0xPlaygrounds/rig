@@ -121,7 +121,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     let copy = home.session(&to);
     let copied = dir_store(&copy).and_then(|copy| load(&copy, "agent-1").ok());
     let messages = copied.map(|copied| copied.messages().to_vec());
-    assert_eq!(messages, Some(vec![Message::user("hi")]));
+    assert_eq!(messages, Some(vec![Message::user("hi").into()]));
     assert_eq!(copy.working_directory(), Some(root.clone()));
     // The copy names the session it came from, and is saved, so it can be
     // resumed.

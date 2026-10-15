@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::io;
+use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -117,7 +118,7 @@ pub(crate) fn messages_mut(
     match change {
         Change::Push { entries } | Change::Splice { with: entries, .. } => entries
             .iter_mut()
-            .try_for_each(|entry| f(&mut entry.message)),
+            .try_for_each(|entry| f(Arc::make_mut(&mut entry.message))),
         Change::Aside {
             aside: Some(aside), ..
         } => branch_messages(aside, f),
@@ -133,7 +134,7 @@ fn branch_messages(
         return Ok(());
     };
     for entry in &mut branch.entries {
-        f(&mut entry.message)?;
+        f(Arc::make_mut(&mut entry.message))?;
     }
     for (_, inner) in &mut branch.asides {
         branch_messages(inner, f)?;

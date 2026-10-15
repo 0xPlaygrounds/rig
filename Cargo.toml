@@ -293,6 +293,9 @@ chrono = "0.4"
 convert_case = "0.11"
 crossbeam-channel = "0.5.15"
 crossterm = "0.29"
+# Benchmarks (`benches/`, compiled in CI, never run there). 0.1.15: timings
+# net of the allocation counter (`AllocProfiler`).
+divan = "0.1.15"
 ctrlc = "3.4.4"
 dotenvy = "0.15"
 epub = "2"
@@ -326,6 +329,7 @@ lancedb = { version = "0.30", default-features = false }
 libc = "0.2.186"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
+memchr = "2"
 mime = "0.3"
 mime_guess = "2"
 # 3.2: 3.0/3.1 no longer build against their own `^3` macro crate.

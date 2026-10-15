@@ -988,10 +988,10 @@ fn late_citations_land_on_the_closed_text() {
     let whole = |url: &str| WireCitation::new(None, vec![url_source(url)]);
     turn.cite_item(&mut items, 0, vec![whole("https://a.example")], false);
     turn.cite_item(&mut items, 0, vec![whole("https://b.example")], false);
-    let response = turn.response(Finish::default(), reply());
+    let response = turn.partial(Some(&Finish::default()), &reply(), None);
     assert_eq!(cited(&response).len(), 2);
     turn.cite_item(&mut items, 0, vec![whole("https://c.example")], true);
-    let response = turn.response(Finish::default(), reply());
+    let response = turn.partial(Some(&Finish::default()), &reply(), None);
     assert_eq!(
         cited(&response),
         [(
@@ -1211,4 +1211,17 @@ fn subscription_and_local_providers_have_no_catalog_cost() {
             "{origin:?}"
         );
     }
+}
+
+/// A completion wire must name the target its history is adapted for.
+#[test]
+fn a_wire_that_names_no_replay_target_cannot_prepare_a_request() {
+    use crate::wire::Operation;
+    let wire = crate::wire::Descriptor::new("bare");
+    let error = Completion::prepare(crate::completion::CompletionRequest::new("hi"), &wire)
+        .expect_err("nothing to adapt the history for");
+    assert!(
+        error.to_string().contains("`bare` names no replay target"),
+        "{error}"
+    );
 }

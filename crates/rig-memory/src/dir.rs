@@ -235,17 +235,15 @@ impl Store for DirStore {
     }
 
     fn append_log(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let path = self.log(name)?;
         let mut open = self.open_logs();
-        let file = match open.remove(name) {
-            Some(file) => file,
-            None => {
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                OpenOptions::new().create(true).append(true).open(path)?
-            }
-        };
+        if let Some(file) = open.get_mut(name) {
+            return file.write_all(bytes);
+        }
+        let path = self.log(name)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
         open.entry(name.to_owned()).or_insert(file).write_all(bytes)
     }
 

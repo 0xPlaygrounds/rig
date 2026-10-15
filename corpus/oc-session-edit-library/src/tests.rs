@@ -94,7 +94,9 @@ fn reopen(home: &Home, named: &str) -> Option<Vec<Message>> {
             .main_agent()?
             .conversation
             .messages()
-            .to_vec(),
+            .iter()
+            .map(|message| (**message).clone())
+            .collect(),
     )
 }
 

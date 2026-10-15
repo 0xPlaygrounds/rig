@@ -13,6 +13,8 @@
 //! ```
 
 use serde_json::{Map, Value, json};
+use std::borrow::Cow;
+use std::sync::Arc;
 
 use crate::completion::options::{BaseInput, FinalBody, RawAt, request_params};
 use crate::completion::{
@@ -154,7 +156,7 @@ impl Chat {
             .filter(|_| tools.is_empty() || answered)
             .map(|schema| schema.to_value());
 
-        let fields = [
+        Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
             ("messages", Some(Value::Array(messages))),
             ("tools", (!tools.is_empty()).then_some(Value::Array(tools))),
@@ -164,20 +166,16 @@ impl Chat {
                 (!options.is_empty()).then_some(Value::Object(options)),
             ),
             ("stream", Some(Value::Bool(mode == Mode::Streaming))),
-        ];
-        Ok(fields
-            .into_iter()
-            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect())
+        ]))
     }
 
     /// The history as `/api/chat` messages, each call and result spelled by
     /// one [`WireIds`].
-    fn messages(&self, history: &[Message], model: &str) -> Result<Vec<Value>, EncodeError> {
+    fn messages(&self, history: &[Arc<Message>], model: &str) -> Result<Vec<Value>, EncodeError> {
         let ids = WireIds::for_target(history, self, model);
         let mut messages = Vec::new();
         for message in history {
-            match message {
+            match &**message {
                 Message::System { content } => {
                     messages.push(json!({"role": "system", "content": content}));
                 }
@@ -244,23 +242,23 @@ impl Chat {
 
 /// The text and images of one user message as they gather.
 #[derive(Default)]
-struct UserParts {
-    texts: Vec<String>,
+struct UserParts<'a> {
+    texts: Vec<&'a str>,
     images: Vec<String>,
 }
 
-impl UserParts {
+impl<'a> UserParts<'a> {
     /// Add a part: text, or an image as base64 data. The adapter has
     /// replaced every other part ([`ReplayTarget::encodes`]).
-    fn add(&mut self, part: &UserContent) -> Result<(), EncodeError> {
+    fn add(&mut self, part: &'a UserContent) -> Result<(), EncodeError> {
         match part {
-            UserContent::Text(text) => self.texts.push(text.text.clone()),
+            UserContent::Text(text) => self.texts.push(&text.text),
             UserContent::Image(image) => match &image.data {
                 Source::Base64(data) => self.images.push(data.clone()),
                 _ => return Err(unsendable("an image that is not base64 data")),
             },
             UserContent::Document(document) => match &document.data {
-                DocumentData::Text(text) => self.texts.push(text.clone()),
+                DocumentData::Text(text) => self.texts.push(text),
                 DocumentData::File(_) => return Err(unsendable("a document")),
             },
             UserContent::Audio(_) => return Err(unsendable("audio")),
@@ -303,17 +301,20 @@ fn tool_message(result: &ToolResult, ids: &WireIds) -> Result<Value, EncodeError
         .content
         .iter()
         .map(|part| match part {
-            ToolResultContent::Text(text) => Ok(text.text.clone()),
-            ToolResultContent::Json { value } => Ok(value.to_string()),
+            ToolResultContent::Text(text) => Ok(Cow::Borrowed(text.text.as_str())),
+            ToolResultContent::Json { value } => Ok(Cow::Owned(value.to_string())),
             ToolResultContent::Image(_) => Err(unsendable("an image in a tool result")),
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(json!({
-        "role": "tool",
-        "content": texts.join("\n"),
-        "tool_name": result.name,
-        "tool_call_id": ids.spell(&result.call),
-    }))
+    Ok(Value::Object(Map::from_iter([
+        ("role".to_owned(), Value::from("tool")),
+        ("content".to_owned(), Value::String(texts.join("\n"))),
+        ("tool_name".to_owned(), Value::from(result.name.as_str())),
+        (
+            "tool_call_id".to_owned(),
+            Value::String(ids.spell(&result.call)),
+        ),
+    ])))
 }
 
 /// `call` as a `tool_calls` entry: its item as the daemon sent it when it is
@@ -348,6 +349,7 @@ impl Wire for Chat {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = super::streaming::ChatRecord;
     type Decoder<'id> = ChatDecoder;
     type Reassembler = super::streaming::document::ChatResponse;
 
@@ -395,22 +397,11 @@ impl ReplayTarget for Chat {
         _request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        use crate::completion::options::{Mapping, OptionFields, OptionMap};
+        use crate::completion::options::{Mapping, OptionMap};
         use crate::completion::{CacheRetention, Effort, Reasoning};
-        let OptionFields {
-            reasoning,
-            cache,
-            service_tier,
-            verbosity,
-            parallel_tool_calls,
-            top_p,
-            seed,
-            stop,
-            cache_key,
-        } = fields;
         const NO_FIELD: &str = "Ollama's `/api/chat` has no such field";
         OptionMap {
-            reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+            reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
                 Reasoning::Off => Mapping::Send(json!({"think": false})),
                 Reasoning::Effort(
                     effort @ (Effort::Low | Effort::Medium | Effort::High | Effort::Max),
@@ -423,27 +414,27 @@ impl ReplayTarget for Chat {
                     Mapping::unsupported("Ollama takes a thinking level, not a budget")
                 }
             }),
-            cache: Mapping::of(cache, |cache| match cache {
+            cache: Mapping::of(fields.cache, |cache| match cache {
                 CacheRetention::None => Mapping::Omit("Ollama keeps no prompt cache to stop"),
                 CacheRetention::Short | CacheRetention::Long => Mapping::unsupported(
                     "Ollama has no prompt cache retention; `keep_alive` keeps the model loaded",
                 ),
             }),
-            service_tier: Mapping::of(service_tier, |_| Mapping::unsupported(NO_FIELD)),
-            verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(NO_FIELD)),
-            parallel_tool_calls: Mapping::of(parallel_tool_calls, |_| {
+            service_tier: Mapping::of(fields.service_tier, |_| Mapping::unsupported(NO_FIELD)),
+            verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(NO_FIELD)),
+            parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |_| {
                 Mapping::unsupported(NO_FIELD)
             }),
-            top_p: Mapping::of(top_p, |top_p| {
+            top_p: Mapping::of(fields.top_p, |top_p| {
                 Mapping::Send(json!({"options": {"top_p": top_p}}))
             }),
-            seed: Mapping::of(seed, |seed| {
+            seed: Mapping::of(fields.seed, |seed| {
                 Mapping::Send(json!({"options": {"seed": seed}}))
             }),
-            stop: Mapping::of_stop(stop, |stop| {
+            stop: Mapping::of_stop(fields.stop, |stop| {
                 Mapping::Send(json!({"options": {"stop": stop}}))
             }),
-            cache_key: Mapping::unrouted(cache_key),
+            cache_key: Mapping::unrouted(fields.cache_key),
         }
     }
 

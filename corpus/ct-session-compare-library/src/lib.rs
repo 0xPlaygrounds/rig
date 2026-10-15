@@ -219,8 +219,8 @@ pub fn compare(a: &Side, b: &Side) -> Comparison {
         .count();
     let divergence = (ours.len() != theirs.len() || shared < ours.len()).then(|| Divergence {
         index: shared,
-        a: ours.get(shared).map(excerpt),
-        b: theirs.get(shared).map(excerpt),
+        a: ours.get(shared).map(|message| excerpt(message)),
+        b: theirs.get(shared).map(|message| excerpt(message)),
     });
     let (files_a, files_b) = (changed_files(&a.line), changed_files(&b.line));
     Comparison {
@@ -253,7 +253,7 @@ fn stats(side: &Side) -> Stats {
         ..Stats::default()
     };
     for message in side.line.messages() {
-        match message {
+        match &**message {
             Message::Assistant(reply) => {
                 stats.model_replies += 1;
                 for call in reply.tool_calls() {
@@ -282,7 +282,7 @@ fn changed_files(line: &Conversation) -> BTreeSet<String> {
     let failed: BTreeSet<_> = line
         .messages()
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::User { content } => Some(content),
             _ => None,
         })
@@ -292,10 +292,13 @@ fn changed_files(line: &Conversation) -> BTreeSet<String> {
             _ => None,
         })
         .collect();
-    let calls = line.messages().iter().filter_map(|message| match message {
-        Message::Assistant(reply) => Some(reply.tool_calls()),
-        _ => None,
-    });
+    let calls = line
+        .messages()
+        .iter()
+        .filter_map(|message| match &**message {
+            Message::Assistant(reply) => Some(reply.tool_calls()),
+            _ => None,
+        });
     calls
         .flatten()
         .filter(|call| !failed.contains(&call.id))

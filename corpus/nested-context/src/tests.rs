@@ -27,7 +27,7 @@ fn results(conversation: &Conversation) -> Vec<String> {
     conversation
         .messages()
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             message::Message::User { content } => Some(content.iter()),
             _ => None,
         })

@@ -5,6 +5,7 @@
 //! The spelling is deterministic, so the same history always encodes to the
 //! same bytes. Encoders spell calls and results with [`WireIds::of`].
 
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
 use crate::message::{AssistantContent, CallId, Message, UserContent};
@@ -24,14 +25,14 @@ impl WireIds {
     ///
     /// [`ReplayTarget::hosted_pair`]: crate::completion::ReplayTarget::hosted_pair
     pub fn for_target(
-        history: &[Message],
+        history: &[impl Borrow<Message>],
         target: &dyn crate::completion::ReplayTarget,
         model: &str,
     ) -> Self {
         let mut ids: Vec<&CallId> = Vec::new();
         let mut used: HashSet<String> = HashSet::new();
         for message in history {
-            match message {
+            match message.borrow() {
                 Message::Assistant(turn) => {
                     for block in &turn.content {
                         match block {

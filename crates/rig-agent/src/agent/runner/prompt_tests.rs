@@ -465,7 +465,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
     );
 
     assert!(matches!(
-        history.first(),
+        history.first().map(|message| &**message),
         Some(Message::User { content })
             if matches!(
                 content.first(),
@@ -476,7 +476,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
     // The provider's correlator was overridden to "call_1"; the call carries
     // that one id and the result answers it.
     assert!(matches!(
-        history.get(1),
+        history.get(1).map(|message| &**message),
         Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if matches!(
                 content.first(),
@@ -486,7 +486,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
     ));
 
     assert!(matches!(
-        history.get(2),
+        history.get(2).map(|message| &**message),
         Some(Message::User { content })
             if matches!(
                 content.first(),
@@ -869,7 +869,7 @@ fn unknown_finish(turn: MockTurn) -> MockTurn {
 fn replays_assistant_text(request: &CompletionRequest, text: &str) -> bool {
     request.chat_history.iter().any(|message| {
         matches!(
-            message,
+            &**message,
             Message::Assistant(turn) if turn.content.iter().any(|block| matches!(
                 block,
                 AssistantContent::Text(t) if t.text == text
