@@ -27,7 +27,7 @@ More information about this crate can be found in the [crate documentation](http
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
-- Full WASM compatibility (core library only)
+- WASM support in the browser and on WASI 0.2 (core library only)
 
 ## Installation
 ```bash
@@ -43,7 +43,13 @@ with `OpenAIConfig::from_env()?.connect(http)`.
 `rig-core` supports the browser-oriented `wasm32-unknown-unknown` target. When
 the `pdf` feature is enabled, the host must provide the Web Crypto API's
 `Crypto.getRandomValues` implementation, as modern browsers, Web Workers, and
-Node.js 19 or later do. WASI targets are not supported.
+Node.js 19 or later do.
+
+It also supports WASI 0.2 (`wasm32-wasip2`) without the `reqwest` feature,
+which needs sockets and threads WASI does not have. Send through the
+`wasi:http` transport in `rig-wstd` instead:
+`OpenAIConfig::from_env()?.connect(rig_wstd::WstdClient::default())`, awaited
+inside the `wstd` runtime.
 
 ## Simple example
 ```rust

@@ -13,7 +13,8 @@
 //! [`HttpClientExt`](http_client::HttpClientExt) (and, for websocket sessions,
 //! [`WebSocketClientExt`](ws_client::WebSocketClientExt)), and every Rig
 //! provider sends through it. This crate holds no transport of its own:
-//! `rig-reqwest` and `rig-tungstenite` are the bundled ones. `rig-core`
+//! `rig-reqwest`, `rig-tungstenite` and, on WASI, `rig-wstd` are the bundled
+//! ones. `rig-core`
 //! re-exports these modules at `rig_core::http_client`, `rig_core::ws_client`
 //! and `rig_core::wasm_compat`.
 //!

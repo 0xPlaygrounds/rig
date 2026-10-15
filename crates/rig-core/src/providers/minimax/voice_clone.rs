@@ -261,6 +261,7 @@ impl VoiceClones {
 
 impl Wire for VoiceClones {
     type Op = VoiceCloning;
+    type Event = Vec<u8>;
     type Payload = Encoded;
     type Frame = WireFrame;
     type Decoder<'id> = VoiceClonesDecoder;

@@ -63,7 +63,8 @@ Rig supports WebAssembly targets. Use Rig's WASM-compatible `WasmSend`/`WasmSync
 alias bounds instead of raw `Send` and `Sync`, and its WASM-compatible boxed
 future alias for boxed futures. When an error type stores boxed errors, gate
 the `Send + Sync` bound on `target_family = "wasm"` the way existing error
-types do.
+types do. Gate thread bounds on `target_family = "wasm"`, JS-host code on
+`target_os = "unknown"`, and WASI-only code on `target_os = "wasi"`.
 
 ## Error Handling
 

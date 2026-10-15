@@ -18,19 +18,23 @@ workspace = true
 [dependencies]
 bytes = { workspace = true }
 futures = { workspace = true }
-futures-timer = { workspace = true }
 http = { workspace = true }
 mime = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 
-# futures-timer's default backend uses a background timer thread, which cannot
-# drive timers on wasm. Its wasm-bindgen (setTimeout) backend is selected
-# whenever the target is browser wasm, so `wasm_compat::timeout` fires instead
-# of hanging. Scoped to `target_os = "unknown"` because that backend needs a JS
-# host and would be wrong on WASI.
+# `wasm_compat`'s timers. futures-timer's default backend uses a background
+# timer thread, which cannot drive timers on wasm; its wasm-bindgen
+# (setTimeout) backend is selected on browser wasm. WASI has neither threads
+# nor a JS host, so there the timers are wstd's `wasi:clocks` pollables.
+[target.'cfg(not(target_os = "wasi"))'.dependencies]
+futures-timer = { workspace = true }
+
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+
+[target.'cfg(target_os = "wasi")'.dependencies]
+wstd = { workspace = true }
 
 [dev-dependencies]
 serde = { workspace = true, features = ["derive"] }

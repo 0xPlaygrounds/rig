@@ -36,6 +36,13 @@ pub use rig_reqwest;
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
 
+/// The WASI HTTP transport (`rig-wstd`): a provider client in a WASI 0.2
+/// component sends through `WstdClient` with
+/// `OpenAIConfig::from_env()?.connect(WstdClient::default())`.
+#[cfg(all(feature = "wstd", target_os = "wasi"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "wstd")))]
+pub use rig_wstd;
+
 pub mod harness_protocol;
 
 /// Provider clients, their configurations, and the models they build.
@@ -43,12 +50,15 @@ pub mod providers {
     pub use rig_core::providers::*;
 }
 
-/// Transport-agnostic HTTP contracts, plus the bundled reqwest transport type.
+/// Transport-agnostic HTTP contracts, plus the bundled transport types.
 pub mod http_client {
     pub use rig_core::http_client::*;
     #[cfg(feature = "reqwest")]
     #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
     pub use rig_reqwest::ReqwestClient;
+    #[cfg(all(feature = "wstd", target_os = "wasi"))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "wstd")))]
+    pub use rig_wstd::WstdClient;
 }
 
 #[cfg(feature = "agent")]

@@ -234,20 +234,20 @@ than through an agent bus.
 | --- | --- | --- |
 | 1 | native (linux / macOS / windows, `x86_64` and `aarch64`) | Full support, all features; MCP tools via the companion `rig-rmcp` crate |
 | 2 | `wasm32-unknown-unknown` (browser) | Supported, with no feature flags to set; `rig-rmcp` (MCP tools) is **not** available |
-| — | `wasm32-wasip1` / `wasm32-wasip2` (WASI) | **Not supported** |
+| 2 | `wasm32-wasip2` (WASI 0.2) | Supported without the `reqwest` transport, sending through `rig-wstd`'s `wasi:http` client inside the `wstd` runtime; `rig-rmcp` is **not** available |
+| — | `wasm32-wasip1` (WASI 0.1, no HTTP) | Not supported |
 | — | `wasm32-unknown-emscripten` | Not supported |
 
-**Building for `wasm32-unknown-unknown` is the entire opt-in** — there are no
-wasm feature flags anywhere in the workspace. `rig-core` relaxes its
-`WasmCompat*` bounds from the target alone.
+**Building for a wasm target is the entire opt-in.** There are no wasm feature
+flags anywhere in the workspace. `rig-core` relaxes its `WasmCompat*` bounds
+from the target alone.
 
-Wasm gates name a `target_os` (`all(target_arch = "wasm32", target_os =
-"unknown")`) rather than a bare `target_arch = "wasm32"`, because the latter
-also matches WASI, which has no JS host. WASI itself does not build: `rig-core`
-depends unconditionally on `reqwest`, which pulls `hyper`/`socket2` and a tokio
-feature set WASI rejects. Supporting it would mean making `reqwest` optional and
-adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
-`cfg` fix.
+Thread bounds key on `target_family = "wasm"`: browser wasm and WASI both run
+on one thread. Code that needs a JS host keys on `all(target_arch = "wasm32",
+target_os = "unknown")`, and WASI-only code on `target_os = "wasi"`. On WASI,
+`wasm_compat`'s timers and `rig-wstd` need wstd's reactor, so run the program
+under `#[wstd::main]` or `wstd::runtime::block_on`, and grant the component
+outgoing HTTP (`wasmtime run -S http`).
 
 **MCP (`rig-rmcp`) is native-only.** rmcp's `ClientHandler` is declared
 `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes

@@ -71,9 +71,11 @@ More information about this crate can be found in the [official](https://rig.rs/
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
-- Browser-WASM (`wasm32-unknown-unknown`) support for the portable core and
-  classic runtime — see [target support](crates/rig-agent/README.md#target-support)
-  for the full matrix (WASI is not supported; `rig-rmcp`/MCP is native-only)
+- WebAssembly support for the portable core and classic runtime, in the browser
+  (`wasm32-unknown-unknown`) and on WASI 0.2 runtimes such as wasmtime
+  (`wasm32-wasip2`, over `wasi:http`); see
+  [target support](crates/rig-agent/README.md#target-support) for the full
+  matrix (`rig-rmcp`/MCP is native-only)
 
 ## Runtime choices
 

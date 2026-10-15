@@ -1,0 +1,17 @@
+[package]
+name = "wasi_completion"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# A WASI build leaves out the facade's default `reqwest` transport, which
+# needs sockets and threads WASI does not have, and sends through `wstd`.
+[dependencies]
+rig = { path = "../..", default-features = false, features = ["agent", "wstd"] }
+
+[target.'cfg(target_os = "wasi")'.dependencies]
+wstd = { workspace = true }
+futures = { workspace = true }

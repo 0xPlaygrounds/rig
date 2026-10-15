@@ -139,7 +139,8 @@ compiling anything; a missing tool is a failed run.
   release-document freeze, the default-feature type check, the default/bedrock
   sweep, the cross-crate guards (core-all, bus verification, macro hygiene,
   out-of-facade conformance), rig-derive, loom, doctests, docs, clippy, the
-  wasm checks with the two native-only diagnostics, and the wasm test suites.
+  wasm checks with the two native-only diagnostics, the WASI (`wasm32-wasip2`)
+  checks with the `rig-wstd` tests under wasmtime, and the wasm test suites.
   Apart from the release-document freeze (a shell script) every job is
   checkout, `.github/actions/rust-setup`, a job-level rust-cache where a warm
   entry exists, and one or more `cargo xtask verify --check` steps.
