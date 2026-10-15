@@ -111,20 +111,23 @@ impl Intercept for WriteAsText {
         let EffectKind::Completion { request, stream } = kind else {
             return BeforeServe::Proceed;
         };
-        let mut request = request.clone();
+        let mut request = (**request).clone();
         let tools = std::mem::take(&mut request.tools);
         request.tool_choice = None;
         for message in &mut request.chat_history {
-            write_calls_as_text(message);
+            write_calls_as_text(std::sync::Arc::make_mut(message));
         }
         if !tools.is_empty()
-            && let Some(Message::System { content }) = request.chat_history.first_mut()
+            && let Some(Message::System { content }) = request
+                .chat_history
+                .first_mut()
+                .map(std::sync::Arc::make_mut)
         {
             content.push_str("\n\n");
             content.push_str(&guide(&tools));
         }
         BeforeServe::Patch(EffectKind::Completion {
-            request,
+            request: request.into(),
             stream: *stream,
         })
     }

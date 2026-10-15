@@ -1,4 +1,5 @@
 use rig::providers::openai::wire::{OPENROUTER, OpenAIConfig, Route};
+use rig::typesafeai::{Jev, JevConfig};
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -93,6 +94,31 @@ where
     )))
     .catch_unwind()
     .await;
+    cassette.finish_after_test_result(result).await
+}
+
+/// A TypeSafe Jev client on OpenRouter's `/systemone`, replaying or
+/// recording `spec`.
+pub(super) async fn with_openrouter_jev_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(Jev) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openrouter",
+        spec,
+        OPENROUTER_BASE_URL,
+    )
+    .await;
+    let jev = JevConfig::new(cassette.api_key("OPENROUTER_API_KEY"))
+        .model("typesafe/jev-1.13")
+        .with_endpoint(format!("{}/systemone", cassette.base_url()))
+        .connect(rig_test_support::cassettes::local_http());
+    let result = AssertUnwindSafe(test_body(jev)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
 

@@ -180,7 +180,7 @@ fn walk<'s>(
         .collect();
     let conversation = &agent.saved.conversation;
     for (at, message) in conversation.messages().iter().enumerate() {
-        match message {
+        match &**message {
             message::Message::User { content } => {
                 let author = conversation.author(at);
                 for content in content {
@@ -296,7 +296,7 @@ fn models(session: &Export) -> Vec<String> {
             .messages()
             .iter()
             .filter_map(|message| {
-                let message::Message::Assistant(assistant) = message else {
+                let message::Message::Assistant(assistant) = &**message else {
                     return None;
                 };
                 let origin = assistant.origin.as_ref()?;

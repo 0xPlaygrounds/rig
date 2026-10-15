@@ -2182,9 +2182,7 @@ pub fn golden_answer(log: &EffectLog) -> String {
                     AssistantContent::ToolCall(call)
                         if call.function.name.starts_with("final_result") =>
                     {
-                        Some(rig_core::json_utils::serialize_json_value(
-                            &call.function.arguments_value(),
-                        ))
+                        Some(call.function.arguments_value().to_string())
                     }
                     _ => None,
                 });

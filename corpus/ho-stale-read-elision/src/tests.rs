@@ -13,8 +13,8 @@ use serde_json::json;
 use super::*;
 
 /// Each tool result of `messages` as text, by its call's wire id.
-fn results(messages: &[Message]) -> HashMap<String, String> {
-    let content = messages.iter().filter_map(|message| match message {
+fn results(messages: &[std::sync::Arc<Message>]) -> HashMap<String, String> {
+    let content = messages.iter().filter_map(|message| match &**message {
         Message::User { content } => Some(content),
         _ => None,
     });
@@ -31,8 +31,8 @@ fn results(messages: &[Message]) -> HashMap<String, String> {
 }
 
 /// Each tool call's wire id in `messages`.
-fn call_ids(messages: &[Message]) -> Vec<String> {
-    let replies = messages.iter().filter_map(|message| match message {
+fn call_ids(messages: &[std::sync::Arc<Message>]) -> Vec<String> {
+    let replies = messages.iter().filter_map(|message| match &**message {
         Message::Assistant(reply) => Some(&reply.content),
         _ => None,
     });

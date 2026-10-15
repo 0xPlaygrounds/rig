@@ -135,61 +135,10 @@ impl From<reqwest::Client> for ReqwestClient {
     }
 }
 
-/// A configured middleware client implementing [`HttpClientExt`].
-///
-/// Build the inner client with `reqwest_middleware::ClientBuilder`, then wrap
-/// it with `From<ClientWithMiddleware>`.
-#[cfg(any(
-    feature = "reqwest-middleware-rustls",
-    feature = "reqwest-middleware-native-tls"
-))]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(any(
-        feature = "reqwest-middleware-rustls",
-        feature = "reqwest-middleware-native-tls"
-    )))
-)]
-#[derive(Clone, Debug)]
-pub struct ReqwestMiddlewareClient(reqwest_middleware::ClientWithMiddleware);
-
-#[cfg(any(
-    feature = "reqwest-middleware-rustls",
-    feature = "reqwest-middleware-native-tls"
-))]
-impl ReqwestMiddlewareClient {
-    /// Take the inner client back.
-    #[must_use]
-    pub fn into_inner(self) -> reqwest_middleware::ClientWithMiddleware {
-        self.0
-    }
-}
-
-#[cfg(any(
-    feature = "reqwest-middleware-rustls",
-    feature = "reqwest-middleware-native-tls"
-))]
-impl From<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient {
-    fn from(client: reqwest_middleware::ClientWithMiddleware) -> Self {
-        Self(client)
-    }
-}
-
-#[cfg(any(
-    feature = "reqwest-middleware-rustls",
-    feature = "reqwest-middleware-native-tls"
-))]
-impl AsRef<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient {
-    fn as_ref(&self) -> &reqwest_middleware::ClientWithMiddleware {
-        &self.0
-    }
-}
-
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
 
 use bytes::Bytes;
-use futures::future::Either;
 use rig_http::http_client::{
     DynHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
     StreamingResponse, multipart::PartContent,
@@ -349,143 +298,69 @@ pub fn multipart_form(value: MultipartForm) -> Result<reqwest::multipart::Form> 
     Ok(form)
 }
 
-/// Creates request builders for plain and middleware reqwest clients.
-trait ReqwestLike: Clone + WasmCompatSend + WasmCompatSync + 'static {
-    type Builder: RequestBuilderLike;
-    fn request_builder(&self, method: http::Method, url: String) -> Self::Builder;
+/// What a request carries: bytes, or a multipart form.
+enum Payload {
+    Bytes(Bytes),
+    Form(reqwest::multipart::Form),
 }
 
-trait RequestBuilderLike: Sized + WasmCompatSend + 'static {
-    fn with_headers(self, headers: http::HeaderMap) -> Self;
-    fn with_body(self, body: reqwest::Body) -> Self;
-    fn with_multipart(self, form: reqwest::multipart::Form) -> Self;
-    fn send_request(self) -> impl Future<Output = Result<reqwest::Response>> + WasmCompatSend;
+/// A reqwest client, plain or with middleware.
+trait Execute: WasmCompatSend + WasmCompatSync {
+    /// The send of `parts` with `payload`, or why it cannot be sent.
+    fn execute(
+        &self,
+        parts: http::request::Parts,
+        payload: Result<Payload>,
+    ) -> Result<impl Future<Output = Result<reqwest::Response>> + WasmCompatSend + 'static>;
 }
 
-impl ReqwestLike for Arc<reqwest::Client> {
-    type Builder = reqwest::RequestBuilder;
-    fn request_builder(&self, method: http::Method, url: String) -> Self::Builder {
-        self.request(method, url)
-    }
-}
-
-impl RequestBuilderLike for reqwest::RequestBuilder {
-    fn with_headers(self, headers: http::HeaderMap) -> Self {
-        self.headers(headers)
-    }
-    fn with_body(self, body: reqwest::Body) -> Self {
-        self.body(body)
-    }
-    fn with_multipart(self, form: reqwest::multipart::Form) -> Self {
-        self.multipart(form)
-    }
-    async fn send_request(self) -> Result<reqwest::Response> {
-        self.send().await.map_err(Error::instance)
-    }
-}
-
-#[cfg(any(
-    feature = "reqwest-middleware-rustls",
-    feature = "reqwest-middleware-native-tls"
-))]
-impl ReqwestLike for ReqwestMiddlewareClient {
-    type Builder = reqwest_middleware::RequestBuilder;
-    fn request_builder(&self, method: http::Method, url: String) -> Self::Builder {
-        self.0.request(method, url)
+impl Execute for ReqwestClient {
+    fn execute(
+        &self,
+        parts: http::request::Parts,
+        payload: Result<Payload>,
+    ) -> Result<impl Future<Output = Result<reqwest::Response>> + WasmCompatSend + 'static> {
+        let client = match &self.0 {
+            Built::Client(client) => client,
+            Built::Failed(error) => return Err(unbuilt(error)),
+        };
+        let request = client
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers);
+        let request = match payload? {
+            Payload::Bytes(bytes) => request.body(bytes),
+            Payload::Form(form) => request.multipart(form),
+        };
+        Ok(async move { request.send().await.map_err(Error::instance) })
     }
 }
 
-#[cfg(any(
-    feature = "reqwest-middleware-rustls",
-    feature = "reqwest-middleware-native-tls"
-))]
-impl RequestBuilderLike for reqwest_middleware::RequestBuilder {
-    fn with_headers(self, headers: http::HeaderMap) -> Self {
-        self.headers(headers)
-    }
-    fn with_body(self, body: reqwest::Body) -> Self {
-        self.body(body)
-    }
-    fn with_multipart(self, form: reqwest::multipart::Form) -> Self {
-        self.multipart(form)
-    }
-    async fn send_request(self) -> Result<reqwest::Response> {
-        self.send().await.map_err(Error::instance)
-    }
-}
-
-/// Select a reactor on first poll and retain it through response conversion.
-async fn drive<B, T, Convert, F>(request: B, convert: Convert) -> Result<T>
+/// Sends `parts` with `payload` through `client` and reads the reply with
+/// `convert`. The reactor is selected on first poll and kept through the
+/// conversion.
+fn send_with<C, T, F>(
+    client: &C,
+    parts: http::request::Parts,
+    payload: Result<Payload>,
+    convert: impl FnOnce(reqwest::Response) -> F + WasmCompatSend + 'static,
+) -> impl Future<Output = Result<T>> + WasmCompatSend + 'static
 where
-    B: RequestBuilderLike,
-    Convert: FnOnce(reqwest::Response) -> F + WasmCompatSend,
+    C: Execute,
     F: Future<Output = Result<T>> + WasmCompatSend,
 {
-    let operation = async move { convert(request.send_request().await?).await };
-    #[cfg(not(target_family = "wasm"))]
-    let operation = runtime::bind(operation)?;
-    operation.await
+    let sent = client.execute(parts, payload);
+    async move {
+        let sent = sent?;
+        let operation = async move { convert(sent.await?).await };
+        #[cfg(not(target_family = "wasm"))]
+        let operation = runtime::bind(operation)?;
+        operation.await
+    }
 }
 
-fn send_via<C, T, U>(
-    client: &C,
-    req: Request<T>,
-) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-where
-    C: ReqwestLike,
-    T: Into<Bytes>,
-    U: From<Bytes> + WasmCompatSend + 'static,
-{
-    let (parts, body) = req.into_parts();
-    let req = client
-        .request_builder(parts.method, parts.uri.to_string())
-        .with_headers(parts.headers)
-        .with_body(body.into().into());
-
-    drive(req, into_response::<U>)
-}
-
-fn send_multipart_via<C, U>(
-    client: &C,
-    req: Request<MultipartForm>,
-) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-where
-    C: ReqwestLike,
-    U: From<Bytes> + WasmCompatSend + 'static,
-{
-    let (parts, body) = req.into_parts();
-    // Reject invalid MIME types locally rather than sending incomplete metadata.
-    let form = multipart_form(body);
-    let req = form.map(|form| {
-        client
-            .request_builder(parts.method, parts.uri.to_string())
-            .with_headers(parts.headers)
-            .with_multipart(form)
-    });
-
-    async move { drive(req?, into_response::<U>).await }
-}
-
-fn send_streaming_via<C, T>(
-    client: &C,
-    req: Request<T>,
-) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-where
-    C: ReqwestLike,
-    T: Into<Bytes> + WasmCompatSend,
-{
-    let (parts, body) = req.into_parts();
-    let req = client
-        .request_builder(parts.method, parts.uri.to_string())
-        .with_headers(parts.headers)
-        .with_body(body.into().into());
-
-    drive(req, into_streaming_response)
-}
-
-macro_rules! impl_http_client_ext_via {
-    ($(#[$attribute:meta])* $client:ty) => {
-        $(#[$attribute])*
+/// [`HttpClientExt`] for a client that implements [`Execute`].
+macro_rules! http_client_ext {
+    ($client:ty) => {
         impl HttpClientExt for $client {
             fn send<T, U>(
                 &self,
@@ -495,7 +370,9 @@ macro_rules! impl_http_client_ext_via {
                 T: Into<Bytes>,
                 U: From<Bytes> + WasmCompatSend + 'static,
             {
-                send_via(self, req)
+                let (parts, body) = req.into_parts();
+                let payload = Ok(Payload::Bytes(body.into()));
+                send_with(self, parts, payload, into_response::<U>)
             }
 
             fn send_multipart<U>(
@@ -505,7 +382,10 @@ macro_rules! impl_http_client_ext_via {
             where
                 U: From<Bytes> + WasmCompatSend + 'static,
             {
-                send_multipart_via(self, req)
+                let (parts, form) = req.into_parts();
+                // Reject invalid MIME types locally rather than sending incomplete metadata.
+                let payload = multipart_form(form).map(Payload::Form);
+                send_with(self, parts, payload, into_response::<U>)
             }
 
             fn send_streaming<T>(
@@ -515,68 +395,25 @@ macro_rules! impl_http_client_ext_via {
             where
                 T: Into<Bytes> + WasmCompatSend,
             {
-                send_streaming_via(self, req)
+                let (parts, body) = req.into_parts();
+                let payload = Ok(Payload::Bytes(body.into()));
+                send_with(self, parts, payload, into_streaming_response)
             }
         }
     };
 }
+http_client_ext!(ReqwestClient);
 
-impl HttpClientExt for ReqwestClient {
-    fn send<T, U>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        match &self.0 {
-            Built::Client(client) => Either::Left(send_via(client, req)),
-            Built::Failed(error) => Either::Right(std::future::ready(Err(unbuilt(error)))),
-        }
-    }
-
-    fn send_multipart<U>(
-        &self,
-        req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        match &self.0 {
-            Built::Client(client) => Either::Left(send_multipart_via(client, req)),
-            Built::Failed(error) => Either::Right(std::future::ready(Err(unbuilt(error)))),
-        }
-    }
-
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        match &self.0 {
-            Built::Client(client) => Either::Left(send_streaming_via(client, req)),
-            Built::Failed(error) => Either::Right(std::future::ready(Err(unbuilt(error)))),
-        }
-    }
-}
-
-impl_http_client_ext_via!(
-    #[cfg(any(
-        feature = "reqwest-middleware-rustls",
-        feature = "reqwest-middleware-native-tls"
-    ))]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(any(
-            feature = "reqwest-middleware-rustls",
-            feature = "reqwest-middleware-native-tls"
-        )))
-    )]
-    ReqwestMiddlewareClient
-);
+#[cfg(any(
+    feature = "reqwest-middleware-rustls",
+    feature = "reqwest-middleware-native-tls"
+))]
+mod middleware;
+#[cfg(any(
+    feature = "reqwest-middleware-rustls",
+    feature = "reqwest-middleware-native-tls"
+))]
+pub use middleware::ReqwestMiddlewareClient;
 
 // Compile-time thread-safety contract: the transport handle is shared across
 // threads by every host runtime.

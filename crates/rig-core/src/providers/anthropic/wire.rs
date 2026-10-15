@@ -492,6 +492,7 @@ impl Wire for Messages {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = super::streaming::MessagesEvent;
     type Decoder<'id> = MessagesDecoder;
     type Reassembler = super::streaming::document::Message;
 

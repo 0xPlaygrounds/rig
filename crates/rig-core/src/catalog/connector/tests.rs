@@ -32,7 +32,7 @@ async fn answer(handler: &ErasedHandler) -> Option<String> {
     let outcome = serve_inline(
         handler,
         EffectKind::Completion {
-            request: CompletionRequest::new("hi"),
+            request: CompletionRequest::new("hi").into(),
             stream: false,
         },
     )
@@ -245,7 +245,7 @@ async fn a_request_says_which_effect_it_serves() {
     let reference = model_of(&connector, "ollama");
     let (spec, handler) = connector.connect(&reference).expect("connected");
     let kind = EffectKind::Completion {
-        request: CompletionRequest::new("hi"),
+        request: CompletionRequest::new("hi").into(),
         stream: false,
     };
     let id = crate::effect::EffectId::from_raw(7);

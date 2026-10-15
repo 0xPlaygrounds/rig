@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::format::{Header, LogLines, Meta, write_meta};
-use crate::session::{Fold, fold_lines, log_lines, read_header};
+use crate::session::{Fold, fold_lines, read_header, read_logs};
 use crate::writer::set_aside_tail;
 use crate::{FORMAT, LogRewrite, Repair, SessionError, Store, VERSION};
 use rig_core::now_ms;
@@ -313,37 +313,40 @@ fn no_images(_: &str) -> io::Result<Vec<u8>> {
 ///
 /// As [`Session::read`](crate::Session::read), or when a write fails.
 pub fn upgrade(store: &dyn Store) -> Result<Upgraded, SessionError> {
-    let mut names = store.logs()?;
-    names.sort();
-    if all_current(store, &names)? {
-        // What a crash after the last log was replaced left.
-        remove_kept_copies(store)?;
-        return Ok(Upgraded::default());
-    }
-    let mut logs = Vec::new();
-    for name in names {
-        let Some(lines) = log_lines(store, &name)? else {
-            continue;
-        };
+    upgrade_logs(store).map(|(upgraded, _)| upgraded)
+}
+
+/// As [`upgrade`], and every log of `store` as it leaves them, in the
+/// store's order.
+pub(crate) fn upgrade_logs(
+    store: &dyn Store,
+) -> Result<(Upgraded, Vec<(String, LogLines)>), SessionError> {
+    let mut logs = read_logs(store)?;
+    let mut headers = Vec::new();
+    for (at, (name, lines)) in logs.iter().enumerate() {
         // A log holding no complete line is set aside by its writer.
         let Some((_, _, first)) = lines.iter().next() else {
             continue;
         };
-        let (stamp, header, version) = read_header(&name, first)?;
-        logs.push((name, lines, stamp, header, version));
+        let (stamp, header, version) = read_header(name, first)?;
+        headers.push((name.as_str(), at, stamp, header, version));
     }
-    if logs.iter().all(|(.., version)| *version == VERSION) {
+    if headers.iter().all(|(.., version)| *version == VERSION) {
         // What a crash after the last log was replaced left.
         remove_kept_copies(store)?;
-        return Ok(Upgraded::default());
+        return Ok((Upgraded::default(), logs));
     }
+    headers.sort_by_key(|(name, ..)| *name);
 
     // Every log read strictly, and each old one written in this format and
     // read back, before anything is written.
     let t = now_ms();
     let mut replaced = Vec::new();
-    for (name, lines, stamp, header, version) in logs {
-        let Some(old) = fold_lines(&name, &lines, Fold::default(), &no_images)? else {
+    for (name, at, stamp, header, version) in headers {
+        let Some((_, lines)) = logs.get(at) else {
+            continue;
+        };
+        let Some(old) = fold_lines(name, lines, Fold::default(), &no_images)? else {
             continue;
         };
         if version == VERSION {
@@ -357,12 +360,12 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, SessionError> {
         let mut bytes = Vec::with_capacity(lines.prefix(u64::MAX).len() + 64);
         write_meta(&mut bytes, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
         let refuse = |line, why| SessionError::Record {
-            log: name.clone(),
+            log: name.to_owned(),
             line,
             why,
         };
         each_record(
-            &lines,
+            lines,
             version,
             |_, record| {
                 bytes.extend_from_slice(record);
@@ -374,7 +377,7 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, SessionError> {
         let new = LogLines::parse(bytes);
         // No step changes a record: the copy holds the same records.
         let same = steps(version).all(|step| step.record.is_none()) || {
-            let back = fold_lines(&name, &new, Fold::default(), &no_images)?;
+            let back = fold_lines(name, &new, Fold::default(), &no_images)?;
             back.as_ref().is_some_and(|back| {
                 back.conversation == old.conversation
                     && back.state == old.state
@@ -384,17 +387,17 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, SessionError> {
         if !same {
             let why = format!("in {FORMAT} it would not read back the same");
             return Err(SessionError::Record {
-                log: name,
+                log: name.to_owned(),
                 line: 1,
                 why,
             });
         }
-        replaced.push((name, version, new, old.torn));
+        replaced.push((name.to_owned(), at, version, new, old.torn));
     }
 
     // Nothing was written so far.
     let mut upgraded = Upgraded::default();
-    for (name, _, _, torn) in &replaced {
+    for (name, _, _, _, torn) in &replaced {
         if let Some((kept, cut)) = *torn {
             let file = set_aside_tail(store, name, kept)?;
             upgraded.repairs.push(Repair::TornTail {
@@ -405,37 +408,18 @@ pub fn upgrade(store: &dyn Store) -> Result<Upgraded, SessionError> {
             });
         }
     }
-    for (name, version, ..) in &replaced {
+    for (name, _, version, ..) in &replaced {
         store.write_file(&kept_copy(name, *version), &store.read_log(name)?)?;
     }
-    for (name, version, new, _) in &replaced {
-        store.replace_log(name, new.prefix(u64::MAX))?;
-        upgraded.logs.push((name.clone(), *version));
-    }
-    remove_kept_copies(store)?;
-    Ok(upgraded)
-}
-
-/// Whether every log of `names` is in this format, by its header alone.
-fn all_current(store: &dyn Store, names: &[String]) -> Result<bool, SessionError> {
-    for name in names {
-        let bytes = match store.read_log(name) {
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => continue,
-            bytes => bytes?,
-        };
-        let first = bytes
-            .split_inclusive(|byte| *byte == b'\n')
-            .filter_map(|line| line.strip_suffix(b"\n"))
-            .find(|line| !line.is_empty());
-        let Some(first) = first else {
-            continue;
-        };
-        match read_header(name, first) {
-            Ok((.., version)) if version == VERSION => {}
-            _ => return Ok(false),
+    for (name, at, version, new, _) in replaced {
+        store.replace_log(&name, new.prefix(u64::MAX))?;
+        upgraded.logs.push((name, version));
+        if let Some((_, lines)) = logs.get_mut(at) {
+            *lines = new;
         }
     }
-    Ok(true)
+    remove_kept_copies(store)?;
+    Ok((upgraded, logs))
 }
 
 /// Removes the old logs [`upgrade`] kept.

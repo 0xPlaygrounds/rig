@@ -50,3 +50,19 @@ fn direct_ordered_content_is_not_serialized_as_json() {
 
     assert_eq!(output.as_content(), &content);
 }
+
+/// Several blocks are neither one text nor one JSON value, so they render
+/// as their list.
+#[test]
+fn several_blocks_render_as_their_list() {
+    let content = vec![
+        ToolResultContent::text("a"),
+        ToolResultContent::json(serde_json::json!({"b": 1})),
+    ];
+    let output = ToolOutput::content(content.clone()).expect("blocks");
+    assert_eq!((output.as_text(), output.as_json()), (None, None));
+    assert_eq!(
+        output.render(),
+        serde_json::to_string(&content).expect("blocks serialize")
+    );
+}

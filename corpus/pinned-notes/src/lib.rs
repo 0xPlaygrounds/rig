@@ -342,12 +342,20 @@ fn tell_summaries(
                 .push(Section::new("pinned_notes_kept", note));
             continue;
         }
-        match call.request.chat_history.first_mut() {
+        match call
+            .request
+            .chat_history
+            .first_mut()
+            .map(std::sync::Arc::make_mut)
+        {
             Some(Message::System { content }) => {
                 content.push_str("\n\n");
                 content.push_str(&note);
             }
-            _ => call.request.chat_history.insert(0, Message::system(note)),
+            _ => call
+                .request
+                .chat_history
+                .insert(0, Message::system(note).into()),
         }
     }
 }

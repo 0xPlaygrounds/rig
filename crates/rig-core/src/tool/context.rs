@@ -234,7 +234,7 @@ fn encode<T: ContextValue>(value: &T) -> Result<serde_json::Value, ToolContextEr
 }
 
 fn decode<T: ContextValue>(value: &serde_json::Value) -> Result<T, ToolContextError> {
-    serde_json::from_value(value.clone()).map_err(|error| ToolContextError::Decode {
+    T::deserialize(value).map_err(|error| ToolContextError::Decode {
         key: T::KEY,
         source: error,
     })
@@ -377,6 +377,11 @@ impl ToolContext {
     /// Snapshot only the values explicitly published with `insert_result`.
     pub fn result_context(&self) -> ToolResultContext {
         ToolResultContext(self.result.clone())
+    }
+
+    /// The values explicitly published with `insert_result`, taken.
+    pub fn into_result_context(self) -> ToolResultContext {
+        ToolResultContext(self.result)
     }
 
     /// Restore durable output while preserving this dispatch's inbound values.

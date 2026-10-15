@@ -90,8 +90,10 @@ impl ChatEvent {
     /// The object at `pointer` under the event's `delta.message`.
     fn message(&self, key: &str) -> Option<&Map<String, Value>> {
         self.fields
-            .at(&format!("/delta/message/{key}"))
-            .and_then(Value::as_object)
+            .get("delta")?
+            .get("message")?
+            .get(key)?
+            .as_object()
     }
 }
 
@@ -123,11 +125,11 @@ impl ChatDecoder {
     fn content(
         &mut self,
         index: usize,
-        part: &Map<String, Value>,
+        part: Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         let index = checked(index)?;
-        let part = Value::Object(part.clone());
+        let part = Value::Object(part);
         let (kind, block, key) = match part.str("type") {
             Some("text") | None => (Kind::Text, Block::Text, "text"),
             Some("thinking") => (
@@ -195,7 +197,7 @@ impl ChatDecoder {
     fn call(
         &mut self,
         index: usize,
-        call: &Map<String, Value>,
+        call: Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         // The plan is whole once the calls it plans begin.
@@ -203,7 +205,7 @@ impl ChatDecoder {
             self.stop(PLAN_INDEX, out)?;
         }
         let index = CALLS + checked(index)?;
-        let item = Value::Object(call.clone());
+        let item = Value::Object(call);
         let id = item.str("id").unwrap_or_default().to_owned();
         let arguments = item
             .at("/function/arguments")
@@ -392,13 +394,13 @@ impl ChatDecoder {
         // A part or call that is not an object states nothing to keep.
         for (index, part) in message.arr("content").iter().enumerate() {
             if let Some(part) = part.as_object() {
-                self.content(index, part, &mut out)?;
+                self.content(index, part.clone(), &mut out)?;
                 self.stop(index, &mut out)?;
             }
         }
         for (index, call) in message.arr("tool_calls").iter().enumerate() {
             if let Some(call) = call.as_object() {
-                self.call(index, call, &mut out)?;
+                self.call(index, call.clone(), &mut out)?;
                 self.stop(CALLS + index, &mut out)?;
             }
         }
@@ -517,11 +519,12 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
             "message-start" => self.message_id = event.fields.str("id").map(str::to_owned),
             "content-start" => {
                 let part = event.message("content").cloned().unwrap_or_default();
-                self.content(event.index()?, &part, &mut out)?;
+                self.content(event.index()?, part, &mut out)?;
             }
             "content-delta" => {
-                let delta = event.message("content").cloned().unwrap_or_default();
-                self.grow(event.index()?, &delta, &mut out)?;
+                let empty = Map::new();
+                let delta = event.message("content").unwrap_or(&empty);
+                self.grow(event.index()?, delta, &mut out)?;
             }
             "content-end" => self.stop(event.index()?, &mut out)?,
             "tool-plan-delta" => {
@@ -535,7 +538,7 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
             }
             "tool-call-start" => {
                 let call = event.message("tool_calls").cloned().unwrap_or_default();
-                self.call(event.index()?, &call, &mut out)?;
+                self.call(event.index()?, call, &mut out)?;
             }
             "tool-call-delta" => {
                 let fragment = event

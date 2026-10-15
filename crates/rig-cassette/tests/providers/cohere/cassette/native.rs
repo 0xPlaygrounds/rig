@@ -211,10 +211,13 @@ async fn a_streamed_tool_plan_and_call_replay_natively() {
             let answer = call.result(vec![ToolResultContent::text("-3")]);
             let mut next = first;
             next.chat_history
-                .push(turn.message().expect("an assistant turn"));
-            next.chat_history.push(Message::User {
-                content: vec![UserContent::ToolResult(answer)],
-            });
+                .push(turn.message().expect("an assistant turn").into());
+            next.chat_history.push(
+                Message::User {
+                    content: vec![UserContent::ToolResult(answer)],
+                }
+                .into(),
+            );
             let reply = model.call(next).await.expect("the next turn succeeds");
             let text: String = reply
                 .choice
@@ -262,7 +265,9 @@ async fn a_conversation_switching_routes_replays() {
             model.wire = model.wire.with_route(ChatRoute::Auto);
             let ask = |history: &[Message], prompt: &str, grounded: bool| {
                 let mut request = CompletionRequest::new(prompt).max_tokens(64);
-                request.chat_history.splice(0..0, history.iter().cloned());
+                request
+                    .chat_history
+                    .splice(0..0, history.iter().cloned().map(Into::into));
                 if grounded {
                     request.documents = documents();
                 }

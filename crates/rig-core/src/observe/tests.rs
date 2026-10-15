@@ -1,5 +1,4 @@
 use super::*;
-use crate::error::ErrorKind;
 
 fn denied(order: u64) -> Observation {
     Observation::new(
@@ -10,10 +9,11 @@ fn denied(order: u64) -> Observation {
             family: Some(EffectFamily::Tool),
             ..Subject::default()
         },
-        Stage::Gate,
+        Stage::Host,
         Emitter::versioned("app/steer", "1"),
-        Action::Denied {
-            reason: Reason::with_detail("denied", "refusing to delete /"),
+        Action::Host {
+            kind: "app/denied".into(),
+            payload: serde_json::json!({"why": "refusing to delete /"}),
         },
     )
 }
@@ -28,15 +28,11 @@ fn a_trace_round_trips_through_json() {
             parent: Some(EffectId::from_raw(1)),
             ..Subject::default()
         },
-        Stage::Collect,
+        Stage::Handler,
         Emitter::named("host/bus"),
-        Action::StreamTruncated {
-            delivered: 2,
-            tail: Vec::new(),
-            errors: vec![Reason::from_report(&ErrorReport::new(
-                ErrorKind::Response,
-                "the stream ended before its terminal record",
-            ))],
+        Action::Host {
+            kind: "app/other".into(),
+            payload: serde_json::json!([]),
         },
     ));
     let trace = log.trace();
@@ -44,8 +40,8 @@ fn a_trace_round_trips_through_json() {
     let back: ObservationTrace = serde_json::from_str(&json).unwrap();
     assert_eq!(back, trace);
     assert_eq!(back.session.as_deref(), Some("trial-7"));
-    assert!(json.contains("\"stage\":\"gate\""));
-    assert!(json.contains("\"action\":\"stream_truncated\""));
+    assert!(json.contains("\"stage\":\"host\""));
+    assert!(json.contains("\"action\":\"host\""));
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

@@ -9,10 +9,11 @@ use serde_json::{Value, json};
 use super::Message;
 use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::providers::anthropic::extension::AnthropicExt;
+use crate::providers::anthropic::streaming::MessagesDecoder;
 use crate::providers::anthropic::wire::{
     ANTHROPIC, AnthropicConfig, Dialect, MINIMAX, MOONSHOT, Messages, XIAOMIMIMO, ZAI,
 };
-use crate::wire::document::Reassemble;
+use crate::wire::document::rebuild;
 use crate::wire::{Mode, WireFrame};
 
 fn frame(event: &Value) -> WireFrame {
@@ -21,11 +22,11 @@ fn frame(event: &Value) -> WireFrame {
 
 /// The document `events` rebuild.
 fn rebuilt(events: &[Value]) -> Value {
-    let mut message = Message::default();
-    for event in events {
-        message.absorb(&frame(event));
-    }
-    message.finish()
+    rebuild(
+        &MessagesDecoder::default(),
+        Message::default(),
+        events.iter().map(frame),
+    )
 }
 
 fn start(index: usize, block: Value) -> Value {

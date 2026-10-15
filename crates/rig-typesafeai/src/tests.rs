@@ -577,3 +577,22 @@ fn an_empty_credential_or_blank_model_is_refused() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// OpenRouter reports the charge as a bare number of USD beside Jev's
+/// counters (recorded from a live call); a cost of another shape is dropped
+/// without failing the reply.
+#[test]
+fn reads_openrouter_usage_cost() -> anyhow::Result<()> {
+    let reply = |cost: Value| {
+        serde_json::from_value::<types::Response>(json!({
+            "model": "typesafe/jev-1.13-20260917",
+            "answers": {},
+            "usage": {"input_tokens": 283, "output_tokens": 20, "cost": cost},
+        }))
+    };
+    let usage = reply(json!(0.000011886))?.usage;
+    let tokens = types::Usage::new().input_tokens(283).output_tokens(20);
+    ensure!(usage == Some(tokens.cost(rig_core::completion::Cost::from_total(0.000011886))));
+    ensure!(reply(json!({"credits": 1}))?.usage == Some(tokens));
+    Ok(())
+}

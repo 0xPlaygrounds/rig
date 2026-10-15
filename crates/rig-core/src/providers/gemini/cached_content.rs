@@ -457,6 +457,7 @@ impl Wire for CachedContents {
     type Op = ContextCache;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
+    type Event = CachedContentReply;
     type Decoder<'id> = CachedContentsDecoder;
     type Reassembler = crate::wire::document::Unreassembled;
 

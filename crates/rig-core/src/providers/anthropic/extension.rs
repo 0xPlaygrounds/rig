@@ -575,8 +575,9 @@ struct Reply {
     usage: Option<ReplyUsage>,
     #[serde(default)]
     container: Option<Container>,
-    #[serde(default)]
-    content: Vec<Value>,
+    /// Read for its shape only; the first block is read from the reply.
+    #[serde(default, rename = "content")]
+    _content: Vec<serde::de::IgnoredAny>,
 }
 
 #[derive(Default, Deserialize)]
@@ -606,11 +607,11 @@ impl ReplyExtras for AnthropicExtras {
             stop_details,
             usage,
             container,
-            content,
+            _content,
         } = Reply::deserialize(raw)?;
         let usage = usage.unwrap_or_default();
-        let fallback_model = content
-            .first()
+        let fallback_model = raw
+            .pointer("/content/0")
             .filter(|block| block.get("type").and_then(Value::as_str) == Some("fallback"))
             .and_then(|block| block.pointer("/to/model"))
             .and_then(Value::as_str)

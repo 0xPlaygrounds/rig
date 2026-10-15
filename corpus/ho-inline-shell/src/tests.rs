@@ -11,7 +11,12 @@ use super::*;
 /// the user's.
 fn last_user_text(model: &MockCompletionModel) -> Option<String> {
     let requests = model.requests();
-    let Some(Message::User { content }) = requests.last()?.chat_history.last().cloned() else {
+    let Some(Message::User { content }) = requests
+        .last()?
+        .chat_history
+        .last()
+        .map(|message| (**message).clone())
+    else {
         return None;
     };
     let texts: Vec<String> = content
@@ -71,10 +76,12 @@ fn typed_commands_are_expanded_in_parallel_with_a_timeout() {
     let kept = app
         .world()
         .get::<Conversation>(agent)
-        .and_then(|conversation| match conversation.messages().first() {
-            Some(Message::User { content }) => Some(format!("{content:?}")),
-            _ => None,
-        })
+        .and_then(
+            |conversation| match conversation.messages().first().map(|message| &**message) {
+                Some(Message::User { content }) => Some(format!("{content:?}")),
+                _ => None,
+            },
+        )
         .unwrap_or_default();
     assert!(kept.contains("(timed out)"), "{kept}");
 

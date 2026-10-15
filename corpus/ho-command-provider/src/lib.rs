@@ -417,7 +417,7 @@ fn request_line(id: u64, model: &str, request: &CompletionRequest) -> String {
     let mut system = Vec::new();
     let mut messages = Vec::new();
     for message in &request.chat_history {
-        match message {
+        match &**message {
             ChatMessage::System { content } => system.push(content.as_str()),
             ChatMessage::User { content } => {
                 let content: Vec<Value> = content.iter().map(user_content).collect();

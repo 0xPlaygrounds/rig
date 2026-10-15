@@ -97,7 +97,7 @@ fn results(request: Option<&CompletionRequest>) -> Vec<String> {
     messages
         .into_iter()
         .flatten()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Chat::User { content } => Some(content.iter()),
             _ => None,
         })
@@ -204,7 +204,7 @@ fn calls_are_stepped_one_at_a_time_skipped_and_edited() {
     let saved = Session::read(&store).ok().unwrap_or_default();
     let calls: Vec<ToolCall> = (saved.agents.iter())
         .flat_map(|agent| agent.conversation.messages().to_vec())
-        .filter_map(|message| match message {
+        .filter_map(|message| match &*message {
             Chat::Assistant(reply) => Some(reply.tool_calls().cloned().collect::<Vec<_>>()),
             _ => None,
         })
