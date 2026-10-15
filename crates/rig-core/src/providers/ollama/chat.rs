@@ -13,6 +13,7 @@
 //! ```
 
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 
 use crate::completion::options::{BaseInput, FinalBody, RawAt, request_params};
 use crate::completion::{
@@ -173,11 +174,11 @@ impl Chat {
 
     /// The history as `/api/chat` messages, each call and result spelled by
     /// one [`WireIds`].
-    fn messages(&self, history: &[Message], model: &str) -> Result<Vec<Value>, EncodeError> {
+    fn messages(&self, history: &[Arc<Message>], model: &str) -> Result<Vec<Value>, EncodeError> {
         let ids = WireIds::for_target(history, self, model);
         let mut messages = Vec::new();
         for message in history {
-            match message {
+            match &**message {
                 Message::System { content } => {
                     messages.push(json!({"role": "system", "content": content}));
                 }

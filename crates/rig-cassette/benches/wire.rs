@@ -311,6 +311,7 @@ fn request(history: &[Message]) -> CompletionRequest {
     })
     .chain(history.iter().cloned())
     .chain([question])
+    .map(Arc::new)
     .collect();
     request.tools = tools();
     request

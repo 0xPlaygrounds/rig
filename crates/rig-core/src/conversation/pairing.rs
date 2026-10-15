@@ -10,7 +10,9 @@
 //! # Ok::<(), pairing::PairingError>(())
 //! ```
 
+use std::borrow::Borrow;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use super::{Author, Entry, MessageId};
 use crate::message::{AssistantContent, AssistantMessage, CallId, Message, ToolCall, UserContent};
@@ -55,12 +57,17 @@ pub enum PairingError {
 /// error or was aborted owes no results. A turn's results may be split over
 /// adjacent user messages or around system messages, which reset the
 /// consecutive-assistant check but keep calls waiting.
-pub fn validate(messages: &[Message]) -> Result<(), PairingError> {
-    repair(messages.to_vec())
-        .repairs
-        .into_iter()
-        .next()
-        .map_or(Ok(()), Err)
+pub fn validate(messages: &[impl Borrow<Message>]) -> Result<(), PairingError> {
+    repair(
+        messages
+            .iter()
+            .map(|message| message.borrow().clone())
+            .collect(),
+    )
+    .repairs
+    .into_iter()
+    .next()
+    .map_or(Ok(()), Err)
 }
 
 /// The text of the result rig sends for a tool call nothing answered.
@@ -142,7 +149,10 @@ pub struct Normalized {
 pub fn normalize(entries: Vec<Entry>) -> Normalized {
     let (messages, metas): (Vec<Message>, Vec<Meta>) = entries
         .into_iter()
-        .map(|entry| (entry.message, (entry.author, entry.id, entry.made)))
+        .map(|entry| {
+            let message = Arc::unwrap_or_clone(entry.message);
+            (message, (entry.author, entry.id, entry.made))
+        })
         .unzip();
     let shaped = shape(messages, false);
     let mut used = HashSet::new();
@@ -159,7 +169,7 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
         }
         let entry = match kept {
             Some((author, id, made)) => Entry {
-                message,
+                message: Arc::new(message),
                 author: author.clone(),
                 id: *id,
                 made: *made,
@@ -169,7 +179,7 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
             None => {
                 let first = sources.first().and_then(|source| metas.get(*source));
                 Entry {
-                    message,
+                    message: Arc::new(message),
                     author: first
                         .map_or_else(|| Some(Author::rig()), |(author, ..)| author.clone()),
                     id: None,
@@ -624,9 +634,10 @@ fn sourced(content: Vec<(Option<usize>, UserContent)>) -> (Vec<usize>, Vec<UserC
 /// The tool calls of the last assistant message in `messages` that no
 /// later tool result answers, in call order: what a conversation cut short
 /// still owes the model.
-pub fn pending_calls(messages: &[Message]) -> Vec<ToolCall> {
+pub fn pending_calls(messages: &[impl Borrow<Message>]) -> Vec<ToolCall> {
     let Some((at, Message::Assistant(reply))) = messages
         .iter()
+        .map(Borrow::borrow)
         .enumerate()
         .rfind(|(_, message)| matches!(message, Message::Assistant(_)))
     else {
@@ -635,7 +646,7 @@ pub fn pending_calls(messages: &[Message]) -> Vec<ToolCall> {
     let answered: Vec<&CallId> = messages
         .iter()
         .skip(at + 1)
-        .flat_map(|message| match message {
+        .flat_map(|message| match message.borrow() {
             Message::User { content } => content.as_slice(),
             _ => &[],
         })
@@ -658,10 +669,10 @@ pub fn pending_calls(messages: &[Message]) -> Vec<ToolCall> {
 /// past every tool result before the first assistant turn from `at`, since
 /// its call is cut off, with any text or system message among them. Paired
 /// results later on are left alone. `at` past the end is the end.
-pub fn safe_start(messages: &[Message], at: usize) -> usize {
+pub fn safe_start(messages: &[impl Borrow<Message>], at: usize) -> usize {
     let mut start = at.min(messages.len());
     for (index, message) in messages.iter().enumerate().skip(at) {
-        match message {
+        match message.borrow() {
             Message::Assistant(_) => break,
             Message::User { content }
                 if content

@@ -1419,6 +1419,14 @@ impl From<&Message> for Message {
     }
 }
 
+/// A shared message, such as a conversation's, taken out of its `Arc`:
+/// moved when nothing else holds it, else copied.
+impl From<std::sync::Arc<Message>> for Message {
+    fn from(msg: std::sync::Arc<Message>) -> Self {
+        std::sync::Arc::unwrap_or_clone(msg)
+    }
+}
+
 impl From<AssistantContent> for Message {
     fn from(content: AssistantContent) -> Self {
         Message::Assistant(AssistantMessage::new(vec![content]))

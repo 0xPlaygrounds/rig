@@ -747,22 +747,24 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     ))
     .expect("a transcript");
     let mut next = request();
-    next.chat_history.push(Message::Assistant(
-        rig_core::message::AssistantMessage::new(choice.clone()),
-    ));
-    next.chat_history.push(Message::User {
-        content: calls
-            .iter()
-            .rev()
-            .map(|call| {
-                UserContent::tool_result(
-                    call.id.clone(),
-                    rig_core::message::ToolName::new("add").expect("tool name"),
-                    vec![ToolResultContent::text("ok")],
-                )
-            })
-            .collect::<Vec<_>>(),
-    });
+    next.chat_history
+        .push(Message::Assistant(rig_core::message::AssistantMessage::new(choice.clone())).into());
+    next.chat_history.push(
+        Message::User {
+            content: calls
+                .iter()
+                .rev()
+                .map(|call| {
+                    UserContent::tool_result(
+                        call.id.clone(),
+                        rig_core::message::ToolName::new("add").expect("tool name"),
+                        vec![ToolResultContent::text("ok")],
+                    )
+                })
+                .collect::<Vec<_>>(),
+        }
+        .into(),
+    );
     let mut records = two_records().records;
     records[0].kind = EffectKind::Completion {
         request: request().into(),
@@ -815,8 +817,10 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         let EffectKind::Completion { request, .. } = &mut changed else {
             unreachable!()
         };
-        let Some(Message::User { content }) =
-            std::sync::Arc::make_mut(request).chat_history.last_mut()
+        let Some(Message::User { content }) = std::sync::Arc::make_mut(request)
+            .chat_history
+            .last_mut()
+            .map(std::sync::Arc::make_mut)
         else {
             unreachable!()
         };

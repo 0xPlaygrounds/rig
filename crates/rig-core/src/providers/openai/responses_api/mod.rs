@@ -25,6 +25,7 @@ use crate::wire::Mode;
 use crate::{completion, message};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 
 pub mod streaming;
 #[cfg(feature = "websocket")]
@@ -135,7 +136,7 @@ struct Custom {
 /// ciphertext is left out and the block after it is rebuilt with no item
 /// id, as another model's turn is.
 fn input(
-    history: &[Message],
+    history: &[Arc<Message>],
     target: &wire::Responses,
     model: &str,
     custom: &mut Custom,
@@ -144,7 +145,7 @@ fn input(
     let ids = WireIds::for_target(history, target, model);
     let mut items = Vec::new();
     for (position, message) in history.iter().enumerate() {
-        match message {
+        match &**message {
             Message::System { content } => items.push(json!({
                 "type": "message",
                 "role": "system",

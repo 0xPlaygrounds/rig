@@ -780,7 +780,7 @@ pub(crate) fn dispatched_result(record: &EffectRecord) -> &rig_core::tool::ToolR
     }
 }
 
-pub(crate) fn request_history(record: &EffectRecord) -> &[Message] {
+pub(crate) fn request_history(record: &EffectRecord) -> &[std::sync::Arc<Message>] {
     match &record.kind {
         EffectKind::Completion { request, .. } => &request.chat_history,
         other => panic!("a completion record, not {other:?}"),
@@ -951,7 +951,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
     // per tool turn, and every request carries the whole prior history
     // behind the preamble (every wire folds it in as `chat_history[0]`, a
     // `Message::System`) and the prompt.
-    let mut previous: Option<&[Message]> = None;
+    let mut previous: Option<&[std::sync::Arc<Message>]> = None;
     let mut tool_turns_before = 0;
     let mut last_tool_turn: Option<&Turn<'_>> = None;
     for (n, turn) in turns.iter().enumerate() {
@@ -963,12 +963,12 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
             cell.name
         );
         assert!(
-            matches!(&history[0], Message::System { content } if content == PREAMBLE),
+            matches!(&*history[0], Message::System { content } if content == PREAMBLE),
             "{}: request {n}'s first message is the preamble",
             cell.name
         );
         assert!(
-            matches!(&history[1], Message::User { content } if content.iter().any(|part| matches!(part, UserContent::Text(text) if text.text == cell.program.prompt))),
+            matches!(&*history[1], Message::User { content } if content.iter().any(|part| matches!(part, UserContent::Text(text) if text.text == cell.program.prompt))),
             "{}: request {n}'s second message is the prompt",
             cell.name
         );
@@ -984,12 +984,12 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                 let assistant = &history[previous.len()];
                 let results = &history[previous.len() + 1];
                 assert!(
-                    matches!(assistant, Message::Assistant(rig_core::message::AssistantMessage { content, .. }) if content.iter().any(|part| matches!(part, AssistantContent::ToolCall(_)))),
+                    matches!(&**assistant, Message::Assistant(rig_core::message::AssistantMessage { content, .. }) if content.iter().any(|part| matches!(part, AssistantContent::ToolCall(_)))),
                     "{}: the turn's assistant utterance carries its calls",
                     cell.name
                 );
                 assert!(
-                    matches!(results, Message::User { content } if content.iter().all(|part| matches!(part, UserContent::ToolResult(_))) && !content.is_empty()),
+                    matches!(&**results, Message::User { content } if content.iter().all(|part| matches!(part, UserContent::ToolResult(_))) && !content.is_empty()),
                     "{}: the turn's tool-result utterance carries only results",
                     cell.name
                 );
@@ -1002,7 +1002,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                 let source = last_tool_turn.expect("the history grew after a completed tool turn");
                 let ids = requested_call_ids(source.completion);
                 // A call answered without running has no tool record.
-                let parts: Vec<&rig_core::message::ToolResult> = match results {
+                let parts: Vec<&rig_core::message::ToolResult> = match &**results {
                     Message::User { content } => content
                         .iter()
                         .filter_map(|part| match part {

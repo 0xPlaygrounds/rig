@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 
 use crate::catalog::ModelFacts;
 use crate::completion::options::{BaseInput, RawAt, Rewrite, request_params};
@@ -399,14 +400,14 @@ impl Chat {
     /// [`WireIds`].
     fn messages(
         &self,
-        history: &[Message],
+        history: &[Arc<Message>],
         model: &str,
         custom: &[String],
     ) -> Result<Vec<Value>, EncodeError> {
         let ids = WireIds::for_target(history, self, model);
         let mut messages = Vec::new();
         for message in history {
-            match message {
+            match &**message {
                 Message::System { content } => messages.push(json!({"role": "system",
                     "content": [{"type": "text", "text": content}]})),
                 Message::User { content } => {

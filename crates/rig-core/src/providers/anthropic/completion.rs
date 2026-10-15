@@ -12,6 +12,7 @@
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 
 #[doc(hidden)]
 use super::wire::Messages;
@@ -572,21 +573,21 @@ fn tools(
 /// the prompt prefix, which misses the cache from the first token and, on
 /// models that bind thinking blocks to their conversation, turns every earlier
 /// thinking block into a 400. It is hoisted only when no such slot exists.
-pub(super) fn split_system(history: &[Message], mid: bool) -> (Vec<Value>, Vec<Message>) {
+pub(super) fn split_system(history: &[Arc<Message>], mid: bool) -> (Vec<Value>, Vec<Message>) {
     let mut system = Vec::new();
     let mut remaining = Vec::new();
     let mut deferred: Vec<&str> = Vec::new();
     let lead = history
         .iter()
-        .take_while(|message| matches!(message, Message::System { .. }))
+        .take_while(|message| matches!(&***message, Message::System { .. }))
         .count();
     for (index, message) in history.iter().enumerate() {
-        match message {
+        match &**message {
             Message::System { content } if content.is_empty() => {}
             // The system messages that lead the history are the prompt.
             Message::System { content } if index < lead => system.push(text(content)),
             Message::System { .. } if mid && valid_system_message(history, index) => {
-                remaining.push(message.clone());
+                remaining.push(Message::clone(message));
             }
             Message::System { content }
                 if mid
@@ -614,26 +615,30 @@ pub(super) fn split_system(history: &[Message], mid: bool) -> (Vec<Value>, Vec<M
 /// user turn, and the next turn that is not a system message is an
 /// assistant turn or there is none, since Anthropic takes several system
 /// messages in a row there.
-fn system_slot(history: &[Message], index: usize) -> bool {
-    matches!(history.get(index), Some(Message::User { .. }))
-        && history
-            .get(index + 1..)
-            .into_iter()
-            .flatten()
-            .find(|message| !matches!(message, Message::System { .. }))
-            .is_none_or(|message| matches!(message, Message::Assistant(_)))
+fn system_slot(history: &[Arc<Message>], index: usize) -> bool {
+    matches!(
+        history.get(index).map(Arc::as_ref),
+        Some(Message::User { .. })
+    ) && history
+        .get(index + 1..)
+        .into_iter()
+        .flatten()
+        .map(Arc::as_ref)
+        .find(|message| !matches!(message, Message::System { .. }))
+        .is_none_or(|message| matches!(message, Message::Assistant(_)))
 }
 
 /// Whether the system message at `index` sits where Anthropic takes one:
 /// after a user turn, or an assistant turn ending in a server tool's result,
 /// and before an assistant turn or the end.
-fn valid_system_message(history: &[Message], index: usize) -> bool {
+fn valid_system_message(history: &[Arc<Message>], index: usize) -> bool {
     // A run of system messages shares one slot.
     let not_system = |message: &&Message| !matches!(message, Message::System { .. });
     let after = history
         .get(..index)
         .into_iter()
         .flatten()
+        .map(Arc::as_ref)
         .rev()
         .find(not_system);
     let follows = match after {
@@ -654,6 +659,7 @@ fn valid_system_message(history: &[Message], index: usize) -> bool {
             .get(index + 1..)
             .into_iter()
             .flatten()
+            .map(Arc::as_ref)
             .find(not_system)
             .is_none_or(|message| matches!(message, Message::Assistant(_)))
 }

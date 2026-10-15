@@ -306,7 +306,7 @@ pub fn without_blobs(message: &ChatMessage) -> Option<ChatMessage> {
 }
 
 /// The fingerprint of `messages[..=i]`, for each `i`.
-fn prefixes(messages: &[ChatMessage]) -> Vec<Fingerprint> {
+fn prefixes(messages: &[std::sync::Arc<ChatMessage>]) -> Vec<Fingerprint> {
     messages
         .iter()
         .scan(Fingerprint::of(&()), |prefix, message| {
@@ -502,11 +502,12 @@ fn hide_blobs(mut records: MessageMutator<EffectRecorded>) {
     for EffectRecorded(record) in records.read() {
         if let EffectKind::Completion { request, .. } = &mut record.kind {
             for message in &mut std::sync::Arc::make_mut(request).chat_history {
-                if let ChatMessage::Assistant(turn) = message
+                if let ChatMessage::Assistant(turn) = std::sync::Arc::make_mut(message)
                     && let Some(api) = turn.origin.as_ref().map(|origin| origin.api.clone())
                 {
                     hide_in(&mut turn.content, &api);
                 }
+                .into()
             }
         }
         if let Ok(EffectOutcome::Completion(response)) = &mut record.outcome {

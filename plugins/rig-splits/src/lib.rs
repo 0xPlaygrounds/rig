@@ -644,7 +644,7 @@ fn compare(world: &mut World, target: &Target, name: &str) -> Result<String, Str
 /// `line` from the last of its `shared` first entries on, moved back past
 /// tool results so none is shown without its call.
 fn own(line: &conversation::Conversation, shared: usize) -> conversation::Conversation {
-    let results = |at: usize| match line.messages().get(at) {
+    let results = |at: usize| match line.messages().get(at).map(|message| &**message) {
         Some(ChatMessage::User { content }) => content
             .iter()
             .any(|part| matches!(part, UserContent::ToolResult(_))),

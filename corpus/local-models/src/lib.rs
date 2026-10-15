@@ -513,6 +513,7 @@ impl Intercept for Local {
         let Some(Message::System { content }) = std::sync::Arc::make_mut(&mut request)
             .chat_history
             .first_mut()
+            .map(std::sync::Arc::make_mut)
         else {
             return BeforeServe::Proceed;
         };

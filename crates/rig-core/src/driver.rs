@@ -145,13 +145,13 @@ fn without_messages(
     } = request;
     let system = chat_history
         .first()
-        .filter(|message| matches!(message, Message::System { .. }));
+        .filter(|message| matches!(&***message, Message::System { .. }));
     CompletionRequest {
         model: model.clone(),
         chat_history: system
             .cloned()
             .into_iter()
-            .chain([Message::user("check")])
+            .chain([std::sync::Arc::new(Message::user("check"))])
             .collect(),
         documents: documents.clone(),
         tools: tools.clone(),

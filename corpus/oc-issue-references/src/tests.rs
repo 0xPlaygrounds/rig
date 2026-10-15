@@ -137,11 +137,15 @@ fn route(method: &str, path: &str) -> (&'static str, Value) {
 }
 
 /// The texts of the last user message of `messages`.
-fn last_user_texts(messages: &[ChatMessage]) -> Vec<String> {
-    let content = messages.iter().rev().find_map(|message| match message {
-        ChatMessage::User { content } => Some(content.clone()),
-        _ => None,
-    });
+fn last_user_texts(messages: &[impl std::borrow::Borrow<ChatMessage>]) -> Vec<String> {
+    let content = messages
+        .iter()
+        .map(std::borrow::Borrow::<ChatMessage>::borrow)
+        .rev()
+        .find_map(|message| match message {
+            ChatMessage::User { content } => Some(content.clone()),
+            _ => None,
+        });
     content
         .unwrap_or_default()
         .iter()
@@ -251,7 +255,7 @@ fn references_go_with_the_message_once_and_through_the_tool() {
             conversation
                 .messages()
                 .iter()
-                .find_map(|message| match message {
+                .find_map(|message| match &**message {
                     ChatMessage::User { content } => match content.first() {
                         Some(UserContent::Text(text)) => Some(text.text().to_owned()),
                         _ => None,

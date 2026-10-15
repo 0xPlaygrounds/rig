@@ -6,6 +6,17 @@ use crate::message::{
     StopReason, Text, ToolCall, ToolFunction, ToolName, ToolResult, ToolResultContent, UserContent,
 };
 
+/// [`super::adapt_for`] over the plain messages the tests write.
+fn adapt_for(
+    history: &[Message],
+    target: &dyn ReplayTarget,
+    request: &Request<'_>,
+) -> Vec<Message> {
+    let history = history.iter().cloned().map(Arc::new).collect();
+    let adapted = super::adapt_for(history, target, request);
+    adapted.into_iter().map(Arc::unwrap_or_clone).collect()
+}
+
 #[derive(Debug)]
 struct Target {
     accepts_images: bool,
@@ -872,7 +883,7 @@ fn the_context_is_the_same_before_and_after_adapt() {
         Message::user("next"),
     ];
     let request = |history: Vec<Message>| crate::completion::CompletionRequest {
-        chat_history: history,
+        chat_history: history.into_iter().map(Into::into).collect(),
         ..crate::completion::CompletionRequest::new("q")
     };
     let targets: [&dyn ReplayTarget; 2] = [&TARGET, &LeadingSystemOnly];
@@ -1014,12 +1025,13 @@ fn cache_points_follow_the_history_through_adapting() {
     let moved = |written: &[Message],
                  documents: Option<&Message>,
                  points: &[crate::completion::CachePoint]| {
-        let mut sent = written.to_vec();
+        let written: Vec<Arc<Message>> = written.iter().cloned().map(Arc::new).collect();
+        let mut sent = written.clone();
         if let Some(documents) = documents {
             crate::completion::request::insert_after_leading_system(&mut sent, documents.clone());
         }
-        let adapted = adapt_for(&sent, &TARGET, &request);
-        cache_points(points, written, documents, &adapted, &TARGET, &request)
+        let adapted = super::adapt_for(sent, &TARGET, &request);
+        cache_points(points, &written, documents, &adapted, &TARGET, &request)
     };
     let written = vec![
         Message::user("a"),

@@ -69,7 +69,7 @@ fn results(request: Option<&CompletionRequest>) -> Vec<String> {
     messages
         .into_iter()
         .flatten()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::User { content } => Some(content.iter()),
             _ => None,
         })

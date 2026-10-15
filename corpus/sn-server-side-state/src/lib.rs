@@ -451,13 +451,23 @@ fn fingerprint(value: &impl Serialize) -> String {
 /// The request's system prompt.
 fn system(request: &CompletionRequest) -> Vec<&Message> {
     let system = |message: &&Message| matches!(message, Message::System { .. });
-    request.chat_history.iter().filter(system).collect()
+    request
+        .chat_history
+        .iter()
+        .map(|message| &**message)
+        .filter(system)
+        .collect()
 }
 
 /// The request's messages but its system prompt.
 fn body(request: &CompletionRequest) -> Vec<&Message> {
     let other = |message: &&Message| !matches!(message, Message::System { .. });
-    request.chat_history.iter().filter(other).collect()
+    request
+        .chat_history
+        .iter()
+        .map(|message| &**message)
+        .filter(other)
+        .collect()
 }
 
 /// The previous response id and the first message to upload, or why the
@@ -514,7 +524,7 @@ fn upload(request: &CompletionRequest, previous: &str, from: usize) -> Completio
     let mut upload = request.clone();
     let mut at = 0;
     upload.chat_history.retain(|message| {
-        if matches!(message, Message::System { .. }) {
+        if matches!(&**message, Message::System { .. }) {
             return true;
         }
         at += 1;

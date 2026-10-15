@@ -393,13 +393,16 @@ fn openrouter_gets_a_placeholder_for_a_file_id_document() {
 
     let body = |chat: Chat| {
         let mut request = prompt("read this");
-        request.chat_history = vec![Message::User {
-            content: vec![UserContent::Document(Document {
-                data: DocumentSourceKind::FileId("file-abc".to_owned()).into(),
-                media_type: None,
-                additional_params: None,
-            })],
-        }];
+        request.chat_history = vec![
+            Message::User {
+                content: vec![UserContent::Document(Document {
+                    data: DocumentSourceKind::FileId("file-abc".to_owned()).into(),
+                    media_type: None,
+                    additional_params: None,
+                })],
+            }
+            .into(),
+        ];
         let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
             request,
             &chat.describe(),
@@ -434,7 +437,7 @@ fn foreign_reasoning_goes_under_the_reasoning_field_when_asked() {
         let mut request = prompt("go on");
         request.foreign_reasoning = asked;
         request.chat_history = vec![
-            Message::user("start"),
+            Message::user("start").into(),
             Message::Assistant(AssistantMessage {
                 content: vec![
                     AssistantContent::Reasoning(Reasoning::new("plan")),
@@ -442,8 +445,9 @@ fn foreign_reasoning_goes_under_the_reasoning_field_when_asked() {
                 ],
                 origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
                 stop: Some(crate::message::StopReason::Stop),
-            }),
-            Message::user("go on"),
+            })
+            .into(),
+            Message::user("go on").into(),
         ];
         let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
             request,
@@ -683,7 +687,10 @@ fn an_invented_call_field_replays_and_an_invented_message_field_does_not() {
                 ),
             ],
             &wire,
-        );
+        )
+        .into_iter()
+        .map(Into::into)
+        .collect();
         let body = json_body(&wire.encode(request, Mode::Unary).expect("encodes").request);
         let replayed = &body["messages"][1];
         assert!(

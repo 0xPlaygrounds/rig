@@ -1146,11 +1146,14 @@ fn progress_update_blocks_survive_decoding_and_replay_under_every_display() {
                 RigMessage::user("The login test fails after an hour of uptime."),
                 turn,
             ]);
-            request.chat_history.push(RigMessage::tool_result(
-                crate::message::CallId::from_wire("toolu_01D7FLrfh4GYq7yT1ULFeyMV"),
-                crate::message::ToolName::new("edit_file").expect("a tool name"),
-                "saved",
-            ));
+            request.chat_history.push(
+                RigMessage::tool_result(
+                    crate::message::CallId::from_wire("toolu_01D7FLrfh4GYq7yT1ULFeyMV"),
+                    crate::message::ToolName::new("edit_file").expect("a tool name"),
+                    "saved",
+                )
+                .into(),
+            );
             request.tools = vec![crate::completion::ToolDefinition {
                 name: crate::message::ToolName::new("edit_file").expect("a tool name"),
                 description: "Edit a file.".to_owned(),

@@ -486,9 +486,9 @@ fn create_base(
     tools.extend(input.raw_tools()?);
     let (mut system, mut history) = (Vec::new(), Vec::new());
     for message in &request.chat_history {
-        match message {
+        match &**message {
             Message::System { content } => system.push(content.clone()),
-            message => history.push(message.clone()),
+            message => history.push(Message::clone(message)),
         }
     }
     let mut body = Map::new();

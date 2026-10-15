@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
 use std::ops::ControlFlow;
+use std::sync::Arc;
 
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, Author, Branch, Change, Conversation, Lineage};
@@ -599,7 +600,7 @@ pub(crate) fn map_change(
     Ok(match change {
         Change::Push { entries } | Change::Splice { with: entries, .. } => {
             entries.iter_mut().fold(false, |changed, entry| {
-                with.message(at, &mut entry.message) | changed
+                with.message(at, Arc::make_mut(&mut entry.message)) | changed
             })
         }
         Change::Aside {
@@ -621,7 +622,7 @@ pub(crate) fn map_aside(with: &dyn Rewrite, at: &Place<'_>, aside: &mut Aside) -
     };
     let mut changed = false;
     for entry in &mut branch.entries {
-        changed |= with.message(at, &mut entry.message);
+        changed |= with.message(at, Arc::make_mut(&mut entry.message));
     }
     for (_, inner) in &mut branch.asides {
         changed |= map_aside(with, at, inner);

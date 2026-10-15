@@ -187,9 +187,15 @@ fn assert_image(image: &rig_core::message::Image, source: ImageSource, what: &st
 /// cell's: the first user message is exactly the content sent (order,
 /// text markers, every image), no later message carries an image, and
 /// the cell's second prompt is the text it was.
-fn assert_messages(cell: &Cell, image: ImageCell, messages: &[Message], what: &str) {
+fn assert_messages(
+    cell: &Cell,
+    image: ImageCell,
+    messages: &[impl std::borrow::Borrow<Message>],
+    what: &str,
+) {
     let first = messages
         .iter()
+        .map(std::borrow::Borrow::<Message>::borrow)
         .find(|message| matches!(message, Message::User { .. }))
         .unwrap_or_else(|| panic!("{what}: a user message"));
     let expected = prompt_message(image, cell.program.prompt);
@@ -208,6 +214,7 @@ fn assert_messages(cell: &Cell, image: ImageCell, messages: &[Message], what: &s
     }
     let mut users = messages
         .iter()
+        .map(std::borrow::Borrow::<Message>::borrow)
         .filter(|message| matches!(message, Message::User { .. }));
     users.next();
     for (n, later) in users.enumerate() {
@@ -219,6 +226,7 @@ fn assert_messages(cell: &Cell, image: ImageCell, messages: &[Message], what: &s
     }
     for message in messages
         .iter()
+        .map(std::borrow::Borrow::<Message>::borrow)
         .filter(|message| matches!(message, Message::Assistant(_)))
     {
         assert!(
@@ -284,7 +292,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
             let second = &requests[1].chat_history;
             let call_id = second
                 .iter()
-                .find_map(|message| match message {
+                .find_map(|message| match &**message {
                     Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                         content.iter().find_map(|part| match part {
                             AssistantContent::ToolCall(call) => Some(call.id.clone()),
@@ -295,7 +303,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
                 })
                 .unwrap_or_else(|| panic!("{}: the second request carries the call", cell.name));
             let answered = second.iter().any(|message| {
-                match message {
+                match &**message {
                 Message::User { content } => content.iter().any(|part| {
                     matches!(part, UserContent::ToolResult(result) if result.call == call_id)
                 }),
@@ -315,18 +323,18 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
             let last_user = second
                 .iter()
                 .rev()
-                .find(|message| matches!(message, Message::User { .. }))
+                .find(|message| matches!(&***message, Message::User { .. }))
                 .expect("the second prompt");
             assert_eq!(
                 *last_user,
-                Message::user(cell.followup.expect("the follow-up")),
+                Message::user(cell.followup.expect("the follow-up")).into(),
                 "{}: the second prompt is text only",
                 cell.name
             );
             assert!(
                 second
                     .iter()
-                    .filter(|message| matches!(message, Message::User { .. }))
+                    .filter(|message| matches!(&***message, Message::User { .. }))
                     .count()
                     == 2,
                 "{}: the second request holds both prompts",

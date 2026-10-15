@@ -57,7 +57,8 @@ fn a_cut_never_separates_a_call_from_its_result() {
         call("1", "read", "a.rs"),
         result("1", "x"),
         Message::assistant("done"),
-    ];
+    ]
+    .map(Arc::new);
     let counter = HeuristicTokenCounter::default();
     assert_eq!(cut_at(&messages, 0, 0, false, &counter), Some(3));
     assert_eq!(cut_at(&messages, 0, usize::MAX, false, &counter), None);
@@ -70,14 +71,14 @@ fn spec(window: u32) -> Option<ModelSpec> {
 }
 
 /// Where `reason` cuts `messages` for a model with `window` tokens.
-fn cut(messages: &[Message], window: u32, reason: &CompactReason) -> Option<usize> {
+fn cut(messages: &[Arc<Message>], window: u32, reason: &CompactReason) -> Option<usize> {
     let spec = spec(window);
     assert!(spec.is_some());
     CompactionPolicy::default().cut(messages, 0, reason, spec.as_ref(), &CutRules::default())
 }
 
 /// A conversation of turns, each a question and a long answer.
-fn turns(count: usize) -> Vec<Message> {
+fn turns(count: usize) -> Vec<Arc<Message>> {
     let answer = "word ".repeat(2_000);
     (0..count)
         .flat_map(|turn| {
@@ -86,6 +87,7 @@ fn turns(count: usize) -> Vec<Message> {
                 Message::assistant(answer.clone()),
             ]
         })
+        .map(Arc::new)
         .collect()
 }
 
@@ -112,18 +114,19 @@ fn a_compaction_keeps_the_recent_work_unless_asked() {
 #[test]
 fn clearing_keeps_the_newest_outputs_and_the_last_message() {
     let big = "x".repeat(4_000);
-    let mut messages = vec![
+    let mut messages = [
         call("1", "read", "a.rs"),
         result("1", &big),
         call("2", "read", "b.rs"),
         result("2", &big),
         result("3", &big),
-    ];
+    ]
+    .map(Arc::new);
     let policy = ClearToolOutputs::new(1_500);
     let cleared = policy.clear(&mut messages);
     assert_eq!(cleared.results, 1);
     assert_eq!(cleared.tokens, 1_000);
-    assert!(is_cleared(match &messages[1] {
+    assert!(is_cleared(match &*messages[1] {
         Message::User { content } => match &content[0] {
             UserContent::ToolResult(result) => &result.content,
             other => panic!("{other:?}"),
@@ -147,7 +150,7 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
             content: vec![ToolResultContent::text(big.as_str())],
         })
     };
-    let mut messages = vec![
+    let mut messages = [
         call("1", "read", "a.rs"),
         Message::User {
             content: vec![
@@ -160,7 +163,8 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
             content: vec![output("3", true)],
         },
         Message::assistant("done"),
-    ];
+    ]
+    .map(Arc::new);
     let policy = ClearToolOutputs::new(1_500);
     assert_eq!(policy.clear(&mut messages).results, 1);
     let cleared = |message: &Message| -> Vec<bool> {
@@ -172,7 +176,7 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
             .map(|item| matches!(item, UserContent::ToolResult(result) if is_cleared(&result.content)))
             .collect()
     };
-    let parts: Vec<Vec<bool>> = messages.iter().map(cleared).collect();
+    let parts: Vec<Vec<bool>> = messages.iter().map(|message| cleared(message)).collect();
     assert_eq!(
         parts,
         [vec![], vec![false, true, false], vec![false], vec![]]
@@ -184,10 +188,10 @@ fn clearing_skips_errors_and_leaves_the_other_parts_alone() {
 fn a_named_cut_rule_chooses_the_first_kept_message() {
     // Keep from the newest question on, whatever the budget says.
     let mut rules = CutRules::default();
-    rules.add("newest-question", |messages: &[Message], _, _, _| {
+    rules.add("newest-question", |messages: &[Arc<Message>], _, _, _| {
         messages
             .iter()
-            .rposition(|message| matches!(message, Message::User { .. }))
+            .rposition(|message| matches!(**message, Message::User { .. }))
     });
     let policy = CompactionPolicy {
         cut: Cut::Named("newest-question".to_owned()),

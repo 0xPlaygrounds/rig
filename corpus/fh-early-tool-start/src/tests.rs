@@ -276,7 +276,7 @@ fn results(paced: &Paced) -> Vec<Vec<String>> {
         .map(|request| {
             let mut texts = Vec::new();
             for message in &request.chat_history {
-                if let ChatMessage::User { content } = message {
+                if let ChatMessage::User { content } = &**message {
                     for item in content {
                         if let UserContent::ToolResult(result) = item {
                             texts.extend(result.content.iter().map(|part| match part {
@@ -402,7 +402,7 @@ fn a_failed_stream_leaves_no_trace_of_its_early_calls() {
     );
     let retried = paced.requests.lock().map(|r| r.clone()).unwrap_or_default();
     let calls = |request: &CompletionRequest| {
-        request.chat_history.iter().any(|message| match message {
+        request.chat_history.iter().any(|message| match &**message {
             ChatMessage::Assistant(answer) => answer.tool_calls().next().is_some(),
             _ => false,
         })
@@ -411,13 +411,16 @@ fn a_failed_stream_leaves_no_trace_of_its_early_calls() {
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let conversation = app.world().get::<Conversation>(agent);
     let traced = conversation.is_some_and(|conversation| {
-        conversation.messages().iter().any(|message| match message {
-            ChatMessage::User { content } => content
-                .iter()
-                .any(|item| matches!(item, UserContent::ToolResult(_))),
-            ChatMessage::Assistant(answer) => answer.tool_calls().next().is_some(),
-            _ => false,
-        })
+        conversation
+            .messages()
+            .iter()
+            .any(|message| match &**message {
+                ChatMessage::User { content } => content
+                    .iter()
+                    .any(|item| matches!(item, UserContent::ToolResult(_))),
+                ChatMessage::Assistant(answer) => answer.tool_calls().next().is_some(),
+                _ => false,
+            })
     });
     assert!(!traced, "the conversation has no early call");
 }

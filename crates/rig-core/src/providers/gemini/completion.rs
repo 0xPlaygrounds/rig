@@ -479,10 +479,10 @@ fn base(
         .collect();
     let (mut system, mut history) = (Vec::new(), Vec::new());
     for message in &request.chat_history {
-        match message {
+        match &**message {
             Message::System { content } if content.is_empty() => {}
             Message::System { content } => system.push(text_part(content.clone())),
-            message => history.push(message.clone()),
+            message => history.push(Message::clone(message)),
         }
     }
     // Gemini rejects a field set twice, and merges a tool choice set twice,

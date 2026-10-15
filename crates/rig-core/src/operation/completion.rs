@@ -143,12 +143,6 @@ impl Operation for Completion {
                 .flatten();
             (request.chat_history.clone(), documents)
         });
-        // Documents join the history before it is adapted, so the adapter's
-        // rules apply to them, unless the encoder sends them itself.
-        if !target.takes_documents() {
-            request.chat_history = request.chat_history_with_documents();
-            request.documents.clear();
-        }
         let stored = target.continues_stored(&request);
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),
@@ -165,7 +159,17 @@ impl Operation for Completion {
                 )
             }),
         };
-        let adapted = crate::completion::history::adapt_for(&request.chat_history, target, &shape);
+        // The history moves into the adapter. Documents join it first, so
+        // the adapter's rules apply to them, unless the encoder sends them
+        // itself.
+        let mut history = std::mem::take(&mut request.chat_history);
+        if !target.takes_documents() {
+            if let Some(documents) = request.normalized_documents() {
+                crate::completion::request::insert_after_leading_system(&mut history, documents);
+            }
+            request.documents.clear();
+        }
+        let adapted = crate::completion::history::adapt_for(history, target, &shape);
         if let Some((written, documents)) = written {
             request.cache_points = crate::completion::history::cache_points(
                 &request.cache_points,

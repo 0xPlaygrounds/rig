@@ -121,7 +121,13 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     let world = app.world_mut();
     let messages: Vec<Message> = world
         .get::<Conversation>(agent)
-        .map(|conversation| conversation.messages().to_vec())
+        .map(|conversation| {
+            conversation
+                .messages()
+                .iter()
+                .map(|message| (**message).clone())
+                .collect()
+        })
         .unwrap_or_default();
     let results: Vec<&ToolResult> = messages
         .iter()

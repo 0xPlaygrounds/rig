@@ -149,7 +149,7 @@ pub trait AppCompactionExt {
         &mut self,
         name: &str,
         rule: impl Fn(
-            &[rig_core::completion::Message],
+            &[std::sync::Arc<rig_core::completion::Message>],
             usize,
             &CompactReason,
             Option<&ModelSpec>,
@@ -165,7 +165,7 @@ impl AppCompactionExt for App {
         &mut self,
         name: &str,
         rule: impl Fn(
-            &[rig_core::completion::Message],
+            &[std::sync::Arc<rig_core::completion::Message>],
             usize,
             &CompactReason,
             Option<&ModelSpec>,

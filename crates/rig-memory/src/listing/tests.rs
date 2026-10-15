@@ -61,15 +61,21 @@ fn a_saved_session_lists_and_any_line_of_it_reads_without_writing() {
     let (id, active) = read_line(&store, None, None).unwrap();
     assert_eq!(id, "b-main");
     assert_eq!(active.line_title(), "blue");
-    assert_eq!(active.messages().last(), Some(&Message::assistant("Blue.")));
+    assert_eq!(
+        active.messages().last(),
+        Some(&Message::assistant("Blue.").into())
+    );
     let (_, red_line) = read_line(&store, None, Some(kept)).unwrap();
     assert_eq!(
         red_line.messages().last(),
-        Some(&Message::assistant("Red."))
+        Some(&Message::assistant("Red.").into())
     );
     assert_eq!(red_line.id(1), red, "ids are kept");
     let (_, sub) = read_line(&store, Some("0-sub"), None).unwrap();
-    assert_eq!(sub.messages(), [Message::user("Look it up.")]);
+    assert_eq!(
+        sub.messages(),
+        [Message::user("Look it up.")].map(std::sync::Arc::new)
+    );
     assert!(read_line(&store, Some("nobody"), None).is_err());
     assert!(read_line(&MemoryStore::default(), None, None).is_err());
     assert_eq!(logs(&store), before, "reading wrote nothing");

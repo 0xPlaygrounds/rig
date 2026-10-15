@@ -1107,7 +1107,7 @@ fn tool_result_images_reach_gemini_2_in_a_following_user_message() {
                 parameters: json!({ "type": "object", "properties": {} }),
                 annotations: Default::default(),
             }]);
-        request.chat_history = history;
+        request.chat_history = history.into_iter().map(Into::into).collect();
         request
     };
 

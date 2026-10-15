@@ -60,6 +60,7 @@
 //! ```
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use base64::Engine as _;
 use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD};
@@ -478,7 +479,9 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
 pub fn adapt(history: &[Message], target: &dyn ReplayTarget) -> Vec<Message> {
-    adapt_for(history, target, &Request::default())
+    let history = history.iter().cloned().map(Arc::new).collect();
+    let adapted = adapt_for(history, target, &Request::default());
+    adapted.into_iter().map(Arc::unwrap_or_clone).collect()
 }
 
 /// What `adapt` reads of the request a history is sent with.
@@ -529,7 +532,7 @@ pub(crate) fn context_of(
     let mut system: Vec<&str> = request
         .chat_history
         .iter()
-        .map_while(|message| match message {
+        .map_while(|message| match &**message {
             Message::System { content } => Some(Some(content.as_str())),
             Message::User { .. } | Message::Assistant(_) => folds.then_some(None),
         })
@@ -567,10 +570,10 @@ pub(crate) fn raw_tools(request: &crate::completion::CompletionRequest) -> &[ser
 
 /// [`adapt`] for `request`.
 pub(crate) fn adapt_for(
-    history: &[Message],
+    history: Vec<Arc<Message>>,
     target: &dyn ReplayTarget,
     request: &Request<'_>,
-) -> Vec<Message> {
+) -> Vec<Arc<Message>> {
     let model = request.model.unwrap_or(target.model());
     let stored = request.stored;
     let same = Same {
@@ -582,17 +585,17 @@ pub(crate) fn adapt_for(
     let mut accepts = target.accepts(model);
     accepts.tools &= request.tools;
     accepts.foreign_reasoning &= request.foreign_reasoning;
-    let hosted = hosted_pairs(history, target, &same);
+    let hosted = hosted_pairs(&history, target, &same);
     let last_turn = history
         .iter()
-        .rposition(|message| matches!(message, Message::Assistant(_)));
+        .rposition(|message| matches!(&**message, Message::Assistant(_)));
     let mut ids = Renamed::default();
     let mut shaped = Vec::with_capacity(history.len());
     for (at, message) in history.iter().enumerate() {
-        match message {
+        match &**message {
             Message::System { content } => {
                 if !content.trim().is_empty() {
-                    shaped.push(Some(message.clone()));
+                    shaped.push(Some(Message::clone(message)));
                 }
             }
             Message::User { content } => {
@@ -621,7 +624,7 @@ pub(crate) fn adapt_for(
                             .get(at + 1..)
                             .into_iter()
                             .flatten()
-                            .all(|message| matches!(message, Message::System { .. })));
+                            .all(|message| matches!(&**message, Message::System { .. })));
                 let here: HashSet<usize> = hosted
                     .iter()
                     .filter(|(message, _)| *message == at)
@@ -681,11 +684,12 @@ pub(crate) fn adapt_for(
     } else {
         shaped
     };
-    if target.alternates_roles() {
+    let shaped = if target.alternates_roles() {
         alternated(shaped)
     } else {
         shaped
-    }
+    };
+    shaped.into_iter().map(Arc::new).collect()
 }
 
 /// `points`, which name `written` (a request's history before its
@@ -697,21 +701,21 @@ pub(crate) fn adapt_for(
 /// goes.
 pub(crate) fn cache_points(
     points: &[crate::completion::CachePoint],
-    written: &[Message],
+    written: &[Arc<Message>],
     documents: Option<&Message>,
-    adapted: &[Message],
+    adapted: &[Arc<Message>],
     target: &dyn ReplayTarget,
     request: &Request<'_>,
 ) -> Vec<crate::completion::CachePoint> {
     use crate::completion::CachePoint;
-    let prefix_of = |turns: usize, items: Option<usize>| -> Option<Vec<Message>> {
+    let prefix_of = |turns: usize, items: Option<usize>| -> Option<Vec<Arc<Message>>> {
         let mut prefix = Vec::new();
         let mut counted = 0;
         for message in written {
             if counted == turns {
                 break;
             }
-            let mut message = message.clone();
+            let mut message = Message::clone(message);
             if !matches!(message, Message::System { .. }) {
                 counted += 1;
             }
@@ -720,7 +724,7 @@ pub(crate) fn cache_points(
                 (Message::Assistant(turn), Some(items)) => turn.content.truncate(items),
                 _ => {}
             }
-            prefix.push(message);
+            prefix.push(Arc::new(message));
         }
         (counted == turns).then_some(prefix)
     };
@@ -743,18 +747,22 @@ pub(crate) fn cache_points(
                     documents.clone(),
                 );
             }
-            Some(shared_prefix(adapted, &adapt_for(&prefix, target, request)))
+            Some(shared_prefix(adapted, &adapt_for(prefix, target, request)))
         })
         .collect()
 }
 
 /// Where `prefix` stops being the start of `history`, both adapted, as a
 /// cache point over `history`. System messages are not counted.
-fn shared_prefix(history: &[Message], prefix: &[Message]) -> crate::completion::CachePoint {
+fn shared_prefix(
+    history: &[Arc<Message>],
+    prefix: &[Arc<Message>],
+) -> crate::completion::CachePoint {
     use crate::completion::CachePoint;
-    fn turns(history: &[Message]) -> impl Iterator<Item = &Message> {
+    fn turns(history: &[Arc<Message>]) -> impl Iterator<Item = &Message> {
         history
             .iter()
+            .map(Arc::as_ref)
             .filter(|message| !matches!(message, Message::System { .. }))
     }
     fn lead<T: PartialEq>(whole: &[T], part: &[T]) -> (usize, usize, usize) {
@@ -1135,14 +1143,14 @@ fn assistant(
 /// returns its result in the turn after the client call it made. A second use
 /// of an id before its result leaves the first unpaired.
 fn hosted_pairs(
-    history: &[Message],
+    history: &[Arc<Message>],
     target: &dyn ReplayTarget,
     same: &Same<'_>,
 ) -> HashSet<(usize, usize)> {
     let mut open: HashMap<String, (usize, usize)> = HashMap::new();
     let mut paired = HashSet::new();
     for (at, message) in history.iter().enumerate() {
-        let Message::Assistant(turn) = message else {
+        let Message::Assistant(turn) = &**message else {
             continue;
         };
         if turn.stop.as_ref().is_some_and(|stop| stop.is_failure())
