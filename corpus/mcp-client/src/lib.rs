@@ -26,9 +26,9 @@ use rig_core::message::ToolName;
 use rig_core::serve::{self, BeforeServe, ErasedHandler, Intercept};
 use rig_core::tool::DynamicTool;
 use rig_harness::prelude::*;
-use rig_rmcp::McpTool;
-use rmcp::model::{ClientInfo, Tool as McpDefinition};
-use rmcp::service::{NotificationContext, RoleClient, RunningService, ServerSink};
+use rig_rmcp::{McpConnection, McpTool};
+use rmcp::model::{ClientConfig, Tool as McpDefinition};
+use rmcp::service::{NotificationContext, RoleClient};
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::{ClientHandler, ServiceExt};
@@ -161,9 +161,15 @@ pub struct McpTools(Vec<Entity>);
 enum ServerEvent {
     Connecting,
     Started(u32),
-    Listed(ServerSink, Vec<McpDefinition>),
+    Connected(McpConnection, Vec<McpDefinition>),
+    Listed(Vec<McpDefinition>),
     Lost(String),
 }
+
+/// A connected server's connection, open while its entity holds it and
+/// its tools.
+#[derive(Component)]
+struct McpLink(McpConnection);
 
 /// A server task's way to its entity, where each event arrives as a
 /// `Done<ServerEvent>` (a [`Running::stream`] of the channel).
@@ -312,7 +318,7 @@ impl Start {
                     .serve((stdout, stdin))
                     .await
                     .map_err(|error| error.to_string())?;
-                serve(service, outbox).await
+                serve(McpConnection::new(service), outbox).await
                 // `child` is killed as it is dropped here.
             }
             ServerSpec::Http { url, headers } => {
@@ -331,24 +337,21 @@ impl Start {
                     .serve(transport)
                     .await
                     .map_err(|error| error.to_string())?;
-                serve(service, outbox).await
+                serve(McpConnection::new(service), outbox).await
             }
         }
     }
 }
 
 /// Lists a connected server's tools, then waits for it to close.
-async fn serve(
-    service: RunningService<RoleClient, Listener>,
-    outbox: &Outbox,
-) -> Result<(), String> {
-    let tools = service
+async fn serve(connection: McpConnection, outbox: &Outbox) -> Result<(), String> {
+    let tools = connection
         .peer()
         .list_all_tools()
         .await
         .map_err(|error| error.to_string())?;
-    outbox.send(ServerEvent::Listed(service.peer().clone(), tools));
-    service.waiting().await.ok();
+    outbox.send(ServerEvent::Connected(connection.clone(), tools));
+    connection.closed().await;
     Ok(())
 }
 
@@ -357,16 +360,13 @@ async fn serve(
 struct Listener(Outbox);
 
 impl ClientHandler for Listener {
-    fn get_info(&self) -> ClientInfo {
-        ClientInfo::default()
+    fn get_info(&self) -> ClientConfig {
+        ClientConfig::default()
     }
 
     async fn on_tool_list_changed(&self, context: NotificationContext<RoleClient>) {
         match context.peer.list_all_tools().await {
-            Ok(tools) => {
-                self.0
-                    .send(ServerEvent::Listed(context.peer.clone(), tools));
-            }
+            Ok(tools) => self.0.send(ServerEvent::Listed(tools)),
             Err(error) => warn!("MCP tools could not be listed again: {error}"),
         }
     }
@@ -375,29 +375,49 @@ impl ClientHandler for Listener {
 /// Applies what a server's task sent.
 fn apply_event(
     event: On<Insert<Done<ServerEvent>>>,
-    mut servers: Query<(&McpServer, &mut McpStatus, &Done<ServerEvent>)>,
+    mut servers: Query<(
+        &McpServer,
+        &mut McpStatus,
+        &Done<ServerEvent>,
+        Option<&McpLink>,
+    )>,
     mut commands: Commands,
 ) {
     let server = event.entity;
-    let Ok((spec, mut status, Done(event))) = servers.get_mut(server) else {
+    let Ok((spec, mut status, Done(event), link)) = servers.get_mut(server) else {
         return;
     };
     match event {
         ServerEvent::Connecting => status.state = McpState::Connecting,
         ServerEvent::Started(pid) => status.pid = Some(*pid),
+        ServerEvent::Connected(connection, tools) => {
+            commands.entity(server).insert(McpLink(connection.clone()));
+            status.state = McpState::Connected;
+            let (name, connection, tools) = (spec.name.clone(), connection.clone(), tools.clone());
+            commands.queue(move |world: &mut World| {
+                register(world, server, &name, &connection, tools);
+            });
+        }
         ServerEvent::Lost(why) => {
             *status = McpStatus {
                 state: McpState::Retrying,
                 last_error: Some(why.clone()),
                 ..McpStatus::default()
             };
-            commands.entity(server).despawn_related::<McpTools>();
+            commands
+                .entity(server)
+                .remove::<McpLink>()
+                .despawn_related::<McpTools>();
         }
-        ServerEvent::Listed(sink, tools) => {
-            status.state = McpState::Connected;
-            let (name, sink, tools) = (spec.name.clone(), sink.clone(), tools.clone());
+        ServerEvent::Listed(tools) => {
+            // A connection's list after its first; one that outlived its
+            // connection finds no link.
+            let Some(McpLink(connection)) = link else {
+                return;
+            };
+            let (name, connection, tools) = (spec.name.clone(), connection.clone(), tools.clone());
             commands.queue(move |world: &mut World| {
-                register(world, server, &name, &sink, tools);
+                register(world, server, &name, &connection, tools);
             });
         }
     }
@@ -408,7 +428,7 @@ fn register(
     world: &mut World,
     server: Entity,
     name: &str,
-    sink: &ServerSink,
+    connection: &McpConnection,
     tools: Vec<McpDefinition>,
 ) {
     let Ok(mut entity) = world.get_entity_mut(server) else {
@@ -417,7 +437,7 @@ fn register(
     entity.despawn_related::<McpTools>();
     let mut count = 0;
     for definition in tools {
-        let Some((definition, handler)) = tool(name, definition, sink) else {
+        let Some((definition, handler)) = tool(name, definition, connection) else {
             continue;
         };
         // Its footprint follows its annotations: a read-only tool's calls
@@ -439,14 +459,14 @@ fn register(
 fn tool(
     server: &str,
     definition: McpDefinition,
-    sink: &ServerSink,
+    connection: &McpConnection,
 ) -> Option<(ToolDefinition, ErasedHandler)> {
-    let mcp = McpTool::from_mcp_server(definition, sink.clone());
-    let (mut definition, handler, _) = DynamicTool::try_from(mcp).ok()?.into_parts();
-    definition.name = ToolName::new(format!("{server}__{}", definition.name)).ok()?;
+    let name = ToolName::new(format!("{server}__{}", definition.name)).ok()?;
+    let mcp = McpTool::new(definition, connection).with_name(name);
+    let (definition, handler, _) = DynamicTool::try_from(mcp).ok()?.into_parts();
     let disconnected = Disconnected {
         server: server.to_owned(),
-        sink: sink.clone(),
+        connection: connection.clone(),
     };
     Some((definition, handler.layered(disconnected)))
 }
@@ -455,7 +475,7 @@ fn tool(
 /// disconnected".
 struct Disconnected {
     server: String,
-    sink: ServerSink,
+    connection: McpConnection,
 }
 
 impl Intercept for Disconnected {
@@ -478,7 +498,7 @@ impl Intercept for Disconnected {
             Ok(_) => false,
             Err(_) => true,
         };
-        if !failed || !self.sink.is_transport_closed() {
+        if !failed || !self.connection.is_closed() {
             return serve::AfterServe::Keep;
         }
         let why = format!("server `{}` disconnected", self.server);

@@ -20,12 +20,12 @@
 //! # }
 //! ```
 
-/// Device login, session-token exchange, refresh, and shared credential caching.
+/// Device login, session-token exchange, refresh, and the token store that keeps them.
 ///
 /// ```no_run
-/// use rig_core::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler};
+/// use rig_core::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore};
 ///
-/// let auth = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
+/// let auth = Authenticator::new(AuthSource::OAuth, MemoryTokenStore::default(), DeviceCodeHandler::default(), true);
 /// ```
 pub mod auth;
 pub mod extension;

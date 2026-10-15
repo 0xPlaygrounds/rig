@@ -55,10 +55,10 @@ impl Copilot {
     /// the exchange names, unless this client's was set explicitly.
     ///
     /// ```no_run
-    /// use rig_core::providers::copilot::{CopilotConfig, auth::{AuthSource, Authenticator, DeviceCodeHandler}};
+    /// use rig_core::providers::copilot::{CopilotConfig, auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore}};
     ///
     /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-    /// let authenticator = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
+    /// let authenticator = Authenticator::new(AuthSource::OAuth, FileTokenStore::new("/path/to/credentials"), DeviceCodeHandler::default(), true);
     /// let copilot = CopilotConfig::new("").connect(http).authenticate(&authenticator).await?;
     /// # let _ = copilot;
     /// # Ok(())

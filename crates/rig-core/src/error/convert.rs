@@ -154,7 +154,9 @@ impl From<AuthError> for RigError {
         match error {
             AuthError::Http(error) => error.into(),
             AuthError::Json(_) => Self::from_error(ErrorKind::Json, &error),
-            AuthError::Message(_) | AuthError::Io(_) => Self::from_error(ErrorKind::Other, &error),
+            AuthError::Message(_) | AuthError::Io(_) | AuthError::Store(_) => {
+                Self::from_error(ErrorKind::Other, &error)
+            }
         }
     }
 }

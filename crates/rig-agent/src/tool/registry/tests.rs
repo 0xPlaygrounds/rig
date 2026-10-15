@@ -307,3 +307,37 @@ async fn dynamic_failures_and_refusals_preserve_rich_model_output() {
         assert_rich_error_output(&result, "dynamic feedback");
     }
 }
+
+/// Dispatch names the tool in its debug event but never copies the
+/// arguments, which may carry secrets, into the logs.
+#[tokio::test]
+async fn dispatch_logs_the_tool_name_but_not_its_arguments() {
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let capture = crate::test_utils::TraceCapture::default();
+    let _default = tracing::subscriber::set_default(capture.subscriber());
+    let mut set = ToolSet::default();
+    set.add_tool(Echo);
+    let args = r#"{"token":"canary-secret-123"}"#;
+
+    set.execute("echo", args, &mut ToolContext::new()).await;
+    tracing::callsite::rebuild_interest_cache();
+    capture.clear();
+    let result = set.execute("echo", args, &mut ToolContext::new()).await;
+
+    assert!(result.is_success());
+    let events = capture.events();
+    assert!(
+        events
+            .iter()
+            .any(|event| event.fields.get("tool_name") == Some(&serde_json::json!("echo"))),
+        "the dispatch event is captured: {events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .all(|event| !serde_json::Value::Object(event.fields.clone())
+                .to_string()
+                .contains("canary-secret-123")),
+        "arguments leaked into the logs: {events:?}"
+    );
+}
