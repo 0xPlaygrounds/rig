@@ -1,73 +1,38 @@
-//! The terminal view. It reads agent components, keeps its own view state
-//! in a resource, and sends the same requests any other view would. It
-//! never owns the app's loop: a thread reads the terminal and wakes the
-//! loop, `PreUpdate` handles what it read, a key at a time ([`TuiKeys`]),
-//! and drawing is a system in
-//! `PostUpdate` that runs when something drawn changed.
+//! The terminal view: the front ([`FRONT`]) of a run where someone sits at
+//! the terminal ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)).
+//! It reads agent components, keeps its own state in resources and
+//! components, and sends the same requests any other view would. It never
+//! owns the app's loop: a thread reads the terminal and wakes the loop,
+//! `PreUpdate` handles input one key at a time ([`TuiKeys`]), and
+//! `PostUpdate` lays out and draws a frame only when something drawn
+//! changed ([`TuiSystems`]).
 //!
-//! The input is a multiline editor with the prompt history
-//! ([`PromptHistory`]) and completion (`/`, `@` and plugins' markers). Answers are drawn as markdown and
-//! edits as diffs; a plugin draws its own tools' calls with
-//! [`AppToolRenderersExt::add_tool_renderer`], also while their arguments
-//! stream, its transcript notes
-//! ([`Note`](rig_harness::rig_core::conversation::Note)) and
-//! delivered texts with [`AppToolRenderersExt::add_entry_renderer`], a
-//! kind of content block (images, audio, video, documents) with
-//! [`AppToolRenderersExt::add_content_renderer`], a kind of aside (a kept
-//! branch, a split) with [`AppToolRenderersExt::add_aside_renderer`], the
-//! user's, the model's and its reasoning's text with
-//! [`AppToolRenderersExt::add_message_renderer`], and rows under every
-//! call or message with [`AppToolRenderersExt::add_call_decorator`] and
-//! [`AppToolRenderersExt::add_message_decorator`]. The line producers the
-//! transcript draws with are public ([`markdown`], [`wrap`], [`diff`],
-//! [`excerpt`]), so a plugin's own text looks the same. A transcript is a
-//! [`TranscriptPane`] ([`pane`]) over the agent shown, another agent or a
-//! conversation value, which a plugin places in a panel of its own; each
-//! pane's [`TranscriptView`] says, and lets a plugin set, what is expanded
-//! and selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text
-//! lit; [`ScrollTo`] scrolls a pane to an item or to a row of it a
-//! highlight lights, and [`TranscriptView::top`] reads where it is.
-//! [`ShownNotice::slot`] says where a notice is drawn in an agent's
-//! transcript ([`TranscriptSlot`]), and [`DrawnTranscript`], which a
-//! plugin adds to a pane, holds the rows it laid out, by item, with those
-//! drawn cut and the matches it lit. [`TranscriptLayout`] lays out any
-//! agent's transcript the same way without drawing it, cut as drawn or
-//! whole ([`Expanded`]), for an export, a copy or a search.
-//! [`TuiFrame`] says where the last frame drew the transcript, the input,
-//! the status line and what covers them, and a test draws the view to a
-//! [`TuiTestScreen`] in memory.
+//! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`]. Where a
+//! plugin hooks in:
 //!
-//! It is the front ([`FRONT`]) of a run where someone sits at the
-//! terminal ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
-//! no `--print` and stdin a terminal, unless another front's option
-//! chose that one.
+//! - **Panels:** [`TuiPanel`], drawn in [`TuiSystems::Draw`] ([`panel`]);
+//!   [`RequestRedraw`] for a frame, [`TerminalSize`] for the screen.
+//! - **Transcripts:** [`TranscriptPane`] over the [`ShownAgent`], another
+//!   agent or a conversation, with its [`TranscriptView`], [`ScrollTo`],
+//!   [`DrawnTranscript`] and [`TranscriptLayout`] ([`pane`]); [`ShowAgent`]
+//!   shows another agent.
+//! - **Looks:** [`AppToolRenderersExt`] for tool calls, notes, content
+//!   blocks, asides, message text and decorators.
+//! - **Status line:** [`StatusItems`], [`AppStatus`] ([`status`]).
+//! - **Keys:** [`KeyBinding`], [`KeyFocus`] ([`keys`]); [`PendingInput`]
+//!   in [`InputSystems::Filter`] for keys before any binding, with the
+//!   [`InputContext`].
+//! - **Input:** [`Editor`], [`MainInput`], [`PromptHistory`],
+//!   [`CompletionSource`].
+//! - **The terminal:** [`RunInTerminal`], [`TerminalWrite`],
+//!   [`CopyToClipboard`], [`TuiFrame`], [`TerminalFocus`]; a test draws to a
+//!   [`TuiTestScreen`].
+//! - **Same-looking text:** [`markdown`], [`wrap`], [`diff`], [`excerpt`].
 //!
-//! A plugin adds to the view without touching it: a [`TuiPanel`] beside
-//! the transcript or over the screen, drawn by the plugin's own system in
-//! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
-//! the agent shown, the harness's [`ShownAgent`], and showing another,
-//! [`ShowAgent`]; the
-//! status line's items ([`StatusItems`], [`AppStatus`]); and the
-//! [`TerminalSize`]'s size. It takes part in the input too: a key binding
-//! ([`keys`]: the view's own keys are bindings as well, each doing an
-//! [`InputAction`], which a plugin may also put among the keys), the keys for a
-//! panel ([`KeyFocus`]), the draft in the input ([`MainInput`], an
-//! [`Editor`] a panel may hold too), the
-//! candidates completion lists ([`CompletionSource`]), the frame's
-//! keys before any binding sees them ([`PendingInput`], filtered one at
-//! a time in [`InputSystems::Filter`] of [`TuiKeys`], with
-//! [`InputContext`] saying what the input does with them), the terminal's focus ([`TerminalFocus`]), its own escape
-//! codes ([`TerminalWrite`], [`CopyToClipboard`], which also goes to this
-//! machine's clipboard), a program run with the terminal
-//! ([`RunInTerminal`]), and a choice for the user, a
-//! [`Picker`](rig_harness::pick::Picker). The view shows every plugin's
-//! pickers and answers every agent's questions ([`Ask`](rig_harness::ask::Ask)),
-//! one at a time: in front of the transcript, in the input for one with
-//! initial text or a multi-line answer, or in a strip above the input for
-//! one shown beside the work. These are there in every run, also
-//! one with another front such as `--print`, which never draws a frame.
-//! [`ratatui`] and [`crossterm`] are re-exported so a plugin uses the same
-//! versions.
+//! The view shows every plugin's pickers and every agent's questions, one
+//! at a time ([`PickerInput`]). All of this exists in every run, also under
+//! another front such as `--print`, which never draws a frame. [`ratatui`]
+//! and [`crossterm`] are re-exported so a plugin uses the same versions.
 
 mod clipboard;
 mod complete;
@@ -138,9 +103,9 @@ pub use view::{
 /// The terminal view's name as a front.
 pub const FRONT: &str = "tui";
 
-/// Owns the terminal and draws the focused agent, when it is the run's
-/// front: on an interactive terminal, unless another front's option was
-/// given. It is the [`TuiViewPlugin`] with the [`DefaultScreenPlugin`].
+/// The terminal view with its default screen ([`TuiViewPlugin`] plus
+/// [`DefaultScreenPlugin`]). It owns the terminal when it is the run's
+/// front: on an interactive terminal, unless another front's option was given.
 #[derive(Default)]
 pub struct TuiPlugin;
 
@@ -240,10 +205,12 @@ impl Plugin for TuiViewPlugin {
     }
 }
 
-/// Everything of the view but the terminal itself, which
-/// [`terminal::open_terminal`] opens: tests run it on the keys they put
-/// in, as `rig_harness_test_support::tui_view` does.
-#[doc(hidden)]
+/// Adds the view without a terminal: its input, keys, pickers, questions
+/// and the transcript it lays out, driven by the keys put in
+/// [`PendingInput`] and drawn only to a [`TuiTestScreen`]. The
+/// [`TuiViewPlugin`] adds it in `finish` when the run's front is the
+/// terminal view, then opens the terminal; a test adds it once, after the
+/// plugin, as `rig_harness_test_support::tui_view` does.
 pub fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
