@@ -36,9 +36,7 @@ use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
-use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author, BranchError, Conversation, MessageId};
-use rig_core::message::UserContent;
 use rig_ecs::WriteLogs;
 use rig_ecs::agent::{self, ActiveTurn, AgentId, Notice, NoticeLevel};
 use rig_ecs::restore::SavedKeys;
@@ -48,7 +46,7 @@ use rig_memory::{
     SessionMeta, SplitOf, SplitPointer, Store, fork, load, rewrite, split,
 };
 use rig_tools::Spill;
-use rig_tools::attach::attached_file;
+use rig_tools::attach::typed;
 
 use super::cli::{self, Cli};
 use super::exit::ExitReason;
@@ -1121,37 +1119,6 @@ impl Point<'_> {
 /// `pointer` as an aside's value.
 fn pointer_value(pointer: &SplitPointer) -> Result<serde_json::Value, String> {
     serde_json::to_value(pointer).map_err(|failure| failure.to_string())
-}
-
-/// What the user typed in message `at` of `conversation`: the text items
-/// of a message of the user's own ([`EntryRef::is_users_own`](rig_core::conversation::EntryRef::is_users_own)), never of
-/// one an agent or a plugin delivered, such as a note, nor a file
-/// attached, each trimmed, joined by a blank line; `None` when it has
-/// none.
-pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
-    let entry = conversation.entries().nth(at)?;
-    let Message::User { content } = entry.message else {
-        return None;
-    };
-    if !entry.is_users_own() {
-        return None;
-    }
-    let typed: Vec<&str> = content
-        .iter()
-        .filter_map(|content| match content {
-            UserContent::Text(text) if attached_file(&text.text).is_none() => {
-                Some(text.text.trim())
-            }
-            _ => None,
-        })
-        .filter(|text| !text.is_empty())
-        .collect();
-    (!typed.is_empty()).then(|| typed.join("\n\n"))
-}
-
-/// What the user typed first in `conversation` ([`typed`]).
-pub fn first_typed(conversation: &Conversation) -> Option<String> {
-    (0..conversation.messages().len()).find_map(|at| typed(conversation, at))
 }
 
 fn delete_session(

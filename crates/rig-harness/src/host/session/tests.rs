@@ -9,7 +9,7 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
 use rig_core::conversation::MessageId;
-use rig_core::conversation::{self, Author, Entry};
+use rig_core::conversation::{self, Author};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
 use rig_ecs::session_log::{RewriteSession, SessionLogPlugin, SessionStore};
 use rig_ecs::{AgentPlugin, WriteLogs};
@@ -22,7 +22,7 @@ use rig_memory::{
 use super::{
     AppStart, DeleteSession, ForkCut, ForkSession, ForkSessions, ForkedFrom, Scratch,
     SessionDeleteFailed, SessionDeleted, SessionForkFailed, SessionForked, SessionPaths,
-    SessionPlugin, StoreOpener, first_typed, log_layer, rewrite_stopped, typed,
+    SessionPlugin, StoreOpener, log_layer, rewrite_stopped,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitReason;
@@ -1082,22 +1082,6 @@ fn a_text_log_from_earlier_runs_stays_where_it_was() {
     let moved = std::fs::read_to_string(elsewhere.join("agent.log")).ok();
     assert_eq!(moved.as_deref(), Some("this run\n"));
     std::fs::remove_dir_all(home.root()).ok();
-}
-
-#[test]
-fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
-    let attached = "<file path=\"a.txt\">\nfile text\n</file>";
-    let mut conversation = conversation::Conversation::new();
-    conversation.push(Entry::new(Message::user("build failed")).by(Author::plugin("build")));
-    conversation.push(Message::assistant("ok"));
-    conversation.push(Message::user(attached));
-    conversation.push(Message::user("  fix it  "));
-    conversation.push(Message::user("and test"));
-    assert_eq!(typed(&conversation, 0), None);
-    assert_eq!(typed(&conversation, 1), None);
-    assert_eq!(typed(&conversation, 2), None);
-    assert_eq!(typed(&conversation, 4).as_deref(), Some("and test"));
-    assert_eq!(first_typed(&conversation).as_deref(), Some("fix it"));
 }
 
 /// The frame a plugin's system last wrote the session's store in.
