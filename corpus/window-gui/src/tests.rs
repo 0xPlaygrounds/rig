@@ -14,7 +14,7 @@ fn user_texts(world: &World, agent: Entity) -> Vec<String> {
     conversation
         .messages()
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::User { content } => Some(content.iter()),
             _ => None,
         })

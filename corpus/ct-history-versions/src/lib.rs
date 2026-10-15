@@ -243,8 +243,8 @@ fn fold(shadow: &mut Chat, versions: &mut ConvVersions, change: &ChangeRecord) {
         redaction: false,
         counts: (before.len(), shadow.messages().len()),
         tokens: (
-            tokens(before.iter().map(|entry| &entry.message)),
-            tokens(shadow.messages()),
+            tokens(before.iter().map(|entry| &*entry.message)),
+            tokens(shadow.messages().iter().map(|message| &**message)),
         ),
         before,
         replaced,
@@ -277,7 +277,10 @@ fn rewrite_version(shadow: &Chat, now: &Chat, by: Author, versions: &ConvVersion
         by,
         redaction: true,
         counts: (shadow.messages().len(), now.messages().len()),
-        tokens: (tokens(shadow.messages()), tokens(now.messages())),
+        tokens: (
+            tokens(shadow.messages().iter().map(|message| &**message)),
+            tokens(now.messages().iter().map(|message| &**message)),
+        ),
         before: Vec::new(),
         replaced: (0, 0),
         with: Vec::new(),
@@ -290,7 +293,7 @@ fn rewrite_version(shadow: &Chat, now: &Chat, by: Author, versions: &ConvVersion
 fn redact(version: &mut Version, with: &dyn Rewrite, log: &str) {
     let at = Place::Unsaved { log };
     for entry in version.before.iter_mut().chain(&mut version.with) {
-        with.message(&at, &mut entry.message);
+        with.message(&at, std::sync::Arc::make_mut(&mut entry.message));
     }
 }
 

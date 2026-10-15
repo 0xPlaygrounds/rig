@@ -667,12 +667,12 @@ fn build(original: &[Entry], sections: &[Section], edited: &[Section]) -> Result
         if left.is_empty() {
             messages.push(None);
         } else if left.len() == all && left.iter().all(|(it, edited)| it.items == edited.items) {
-            messages.push(Some(entry.message.clone()));
+            messages.push(Some((*entry.message).clone()));
         } else {
             messages.push(Some(rebuild(&entry.message, n, &left)?));
         }
     }
-    let (calls, results) = calls_and_results(original.iter().map(|entry| &entry.message));
+    let (calls, results) = calls_and_results(original.iter().map(|entry| &*entry.message));
     let (calls_now, results_now) = calls_and_results(messages.iter().flatten());
     let orphans = calls
         .intersection(&results)
@@ -710,7 +710,7 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
         };
         if !empty {
             entries.push(Entry {
-                message,
+                message: message.into(),
                 ..entry.clone()
             });
         }
@@ -720,7 +720,10 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
         .repairs
         .iter()
         .find(|repair| !matches!(repair, PairingError::ConsecutiveAssistant { .. }));
-    let before: Vec<Message> = original.iter().map(|entry| entry.message.clone()).collect();
+    let before: Vec<Message> = original
+        .iter()
+        .map(|entry| (*entry.message).clone())
+        .collect();
     if let (Some(why), Ok(())) = (worse, pairing::validate(&before)) {
         return Err(format!(
             "the edited conversation does not pair its tool calls: {why}"
@@ -907,7 +910,10 @@ fn edit_history(
         }
     }
     let original = entries_of(&conversation);
-    let messages: Vec<Message> = original.iter().map(|entry| entry.message.clone()).collect();
+    let messages: Vec<Message> = original
+        .iter()
+        .map(|entry| (*entry.message).clone())
+        .collect();
     let (text, parts_of) = render(&messages);
     let sections = match parse(&text) {
         Ok(sections) if sections.len() == parts_of.len() => sections

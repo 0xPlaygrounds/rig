@@ -21,6 +21,8 @@ pub mod env;
 pub(crate) mod gemini;
 pub(crate) mod gemini_caching;
 pub(crate) mod macros;
+#[cfg(feature = "audio")]
+mod minimax_voice_clone;
 pub(crate) mod ollama;
 pub(crate) mod openai;
 pub(crate) mod voyageai;

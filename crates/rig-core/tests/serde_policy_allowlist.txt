@@ -21,7 +21,7 @@
 # the five are `classify`'s own work; the fifth reads a sub-payload of a
 # frame the classifier already returned as `Known`. The sixth is the wire's
 # observation projection, argued with its two siblings in the section below.
-providers/openai/wire/chat.rs | serde_json::from_str::<serde_json::Value>(&data) | `classify` peeks for the bare JSON string reply the dialects with `accepts_bare_string_reply` are measured to send: a non-object frame is not the shared classifier's shape, so this pre-empts it exactly as `[DONE]` and the in-band error envelope above it do, and the verdict it reaches is `Known` rather than a skip.
+providers/openai/wire/chat.rs | serde_json::from_str::<Value>(&data) | `classify` reads a frame the shared classifier called `Corrupt` (a duplicate `object` or `choices` key) once more, only to find the in-band error envelope, which outranks every other reading of a frame; anything else stays `Corrupt`.
 # A chat chunk's `delta.reasoning_details` is deliberately typed
 # `Vec<serde_json::Value>`: the entries are a gateway extension, so an entry
 # shape this build does not model must not fail the chunk that carries it.

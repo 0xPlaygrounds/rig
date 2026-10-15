@@ -9,7 +9,9 @@
 //! assert!(matches!(event, WireEvent::Known(_)));
 //! ```
 
+use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, Visitor};
 use serde_json::Value;
+use serde_json::value::RawValue;
 
 use crate::wire::WireEvent;
 
@@ -28,22 +30,22 @@ where
     match scan(data, &[tag], true) {
         Err(error) => WireEvent::Corrupt(error),
         // Non-object keep-alives must not become fatal typed-decode failures.
-        Ok((value, None)) => unknown(value, String::new()),
-        Ok((value, Some(found))) => match found.first().and_then(|tag| tag.as_ref()?.as_str()) {
-            Some(event_type) if !is_known_event_type(event_type) => {
-                let event_type = event_type.to_owned();
-                unknown(value, event_type)
-            }
+        Ok(None) => unknown(data, String::new()),
+        Ok(Some(found)) => match text(found.first().copied().flatten()) {
+            Some(event_type) if !is_known_event_type(&event_type) => unknown(data, event_type),
             _ => decode_known(data),
         },
     }
 }
 
 /// A frame classified as unknown, its payload kept for raw passthrough.
-fn unknown<T>(value: Value, event_type: String) -> WireEvent<T> {
-    WireEvent::Unknown {
-        event_type,
-        value: value.into(),
+fn unknown<T>(data: &str, event_type: String) -> WireEvent<T> {
+    match serde_json::from_str::<Value>(data) {
+        Ok(value) => WireEvent::Unknown {
+            event_type,
+            value: value.into(),
+        },
+        Err(error) => WireEvent::Corrupt(error),
     }
 }
 
@@ -59,21 +61,18 @@ pub fn classify_chat_completions_frame<T>(data: &str) -> WireEvent<T>
 where
     T: serde::de::DeserializeOwned,
 {
-    let (value, found) = match scan(data, &["object", "choices"], true) {
-        Ok((value, Some(found))) => (value, found),
+    let found = match scan(data, &["object", "choices"], true) {
+        Ok(Some(found)) => found,
         // Non-object JSON is unrecognized rather than corrupt.
-        Ok((value, None)) => return unknown(value, String::new()),
+        Ok(None) => return unknown(data, String::new()),
         Err(error) => return WireEvent::Corrupt(error),
     };
-    let object = found
-        .first()
-        .and_then(|object| object.as_ref()?.as_str())
-        .map(str::to_owned);
+    let object = text(found.first().copied().flatten());
     let has_choices = found.get(1).is_some_and(Option::is_some);
     if object.as_deref() == Some("chat.completion.chunk") || has_choices {
         decode_known(data)
     } else {
-        unknown(value, object.unwrap_or_default())
+        unknown(data, object.unwrap_or_default())
     }
 }
 
@@ -88,14 +87,17 @@ where
 {
     match scan(data, marker_keys, false) {
         Err(error) => WireEvent::Corrupt(error),
-        Ok((_, Some(found))) if found.iter().any(Option::is_some) => decode_known(data),
-        Ok((value, _)) => {
-            let event_type = value
-                .as_object()
-                .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
-                .unwrap_or_default();
-            unknown(value, event_type)
-        }
+        Ok(Some(found)) if found.iter().any(Option::is_some) => decode_known(data),
+        Ok(_) => match serde_json::from_str::<Value>(data) {
+            Ok(value) => WireEvent::Unknown {
+                event_type: value
+                    .as_object()
+                    .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
+                    .unwrap_or_default(),
+                value: value.into(),
+            },
+            Err(error) => WireEvent::Corrupt(error),
+        },
     }
 }
 
@@ -188,69 +190,106 @@ pub fn classify_or_untagged<T>(
     then: impl Fn(&str) -> WireEvent<T>,
 ) -> WireEvent<T> {
     classify_or(data, first, |data| match scan(data, &[tag], false) {
-        // `classify_or` keeps the typed decode's error for this.
-        Ok((value, Some(found))) if found.iter().any(Option::is_some) => {
-            unknown(value, tag.to_owned())
-        }
+        // `classify_or` keeps the typed decode's error for this, so the
+        // payload is never read.
+        Ok(Some(found)) if found.iter().any(Option::is_some) => WireEvent::Unknown {
+            event_type: tag.to_owned(),
+            value: Value::Null.into(),
+        },
         _ => then(data),
     })
 }
 
-/// A JSON object's entries in their order, duplicates kept.
-struct Entries(Vec<(String, Value)>);
+/// The first value of each scanned key, in key order, as the frame's text;
+/// `None` when the object lacks the key.
+type Found<'a> = Vec<Option<&'a RawValue>>;
 
-impl<'de> serde::Deserialize<'de> for Entries {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
-            type Value = Entries;
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("a JSON object")
-            }
-            fn visit_map<A: serde::de::MapAccess<'de>>(
-                self,
-                mut map: A,
-            ) -> Result<Entries, A::Error> {
-                let mut entries = Vec::new();
-                while let Some(entry) = map.next_entry()? {
-                    entries.push(entry);
-                }
-                Ok(Entries(entries))
-            }
-        }
-        deserializer.deserialize_map(Visitor)
+/// `value` when it is a JSON string.
+fn text(value: Option<&RawValue>) -> Option<String> {
+    serde_json::from_str(value?.get()).ok()
+}
+
+/// When `data` is a JSON object, what it holds of each of `keys`, in one
+/// pass that reads every other value without keeping it; `None` for any
+/// other JSON. A second occurrence of one of `keys` is an error when
+/// `unique`.
+fn scan<'a>(
+    data: &'a str,
+    keys: &[&str],
+    unique: bool,
+) -> Result<Option<Found<'a>>, serde_json::Error> {
+    let mut json = serde_json::Deserializer::from_str(data);
+    let scanned = if data
+        .trim_start_matches([' ', '\t', '\n', '\r'])
+        .starts_with('{')
+    {
+        Some(serde::Deserializer::deserialize_map(&mut json, Scan(keys))?)
+    } else {
+        <IgnoredAny as serde::Deserialize>::deserialize(&mut json)?;
+        None
+    };
+    json.end()?;
+    match scanned {
+        Some((_, Some(key))) if unique => Err(serde::de::Error::custom(format!(
+            "duplicate `{key}` discriminator key in stream frame"
+        ))),
+        scanned => Ok(scanned.map(|(found, _)| found)),
     }
 }
 
-/// The frame `data` as JSON and, when it is an object, the first value of
-/// each of `keys`. A second occurrence of one is an error when `unique`.
-fn scan(
-    data: &str,
-    keys: &[&str],
-    unique: bool,
-) -> Result<(Value, Option<Vec<Option<Value>>>), serde_json::Error> {
-    let value: Value = serde_json::from_str(data)?;
-    if !value.is_object() {
-        return Ok((value, None));
+/// Reads an object's `keys`, and the first of them that occurs twice.
+struct Scan<'k>(&'k [&'k str]);
+
+impl<'de, 'k> Visitor<'de> for Scan<'k> {
+    type Value = (Found<'de>, Option<&'k str>);
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a JSON object")
     }
-    let Entries(entries) = serde_json::from_str(data)?;
-    let mut found = vec![None; keys.len()];
-    for (key, field) in entries {
-        match keys
-            .iter()
-            .position(|candidate| *candidate == key)
-            .and_then(|index| found.get_mut(index))
-        {
-            Some(slot @ None) => *slot = Some(field),
-            Some(Some(_)) if unique => {
-                return Err(serde::de::Error::custom(format!(
-                    "duplicate `{key}` discriminator key in stream frame"
-                )));
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut found = vec![None; self.0.len()];
+        let mut duplicate = None;
+        while let Some(index) = map.next_key_seed(Key(self.0))? {
+            match index.and_then(|index| found.get_mut(index).zip(self.0.get(index))) {
+                Some((slot @ None, _)) => *slot = Some(map.next_value()?),
+                Some((Some(_), key)) => {
+                    duplicate = duplicate.or(Some(*key));
+                    map.next_value::<IgnoredAny>()?;
+                }
+                None => {
+                    map.next_value::<IgnoredAny>()?;
+                }
             }
-            Some(Some(_)) | None => {}
         }
+        Ok((found, duplicate))
     }
-    Ok((value, Some(found)))
+}
+
+/// An object key's position in a key list, read without allocating.
+struct Key<'k>(&'k [&'k str]);
+
+impl<'de> DeserializeSeed<'de> for Key<'_> {
+    type Value = Option<usize>;
+
+    fn deserialize<D: serde::Deserializer<'de>>(
+        self,
+        deserializer: D,
+    ) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_str(self)
+    }
+}
+
+impl<'de> Visitor<'de> for Key<'_> {
+    type Value = Option<usize>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("an object key")
+    }
+
+    fn visit_str<E>(self, key: &str) -> Result<Self::Value, E> {
+        Ok(self.0.iter().position(|candidate| *candidate == key))
+    }
 }
 
 fn decode_known<T>(data: &str) -> WireEvent<T>

@@ -187,11 +187,10 @@ async fn a_stream_dropped_mid_flight_is_observed_by_the_handler() {
         },
         wasm_bindgen_futures::spawn_local,
     );
-    let request = rig_core::completion::CompletionRequest::new("hi");
     let mut stream = dispatcher.dispatch_stream(
         &HandlerKey::from("echo"),
         EffectKind::Completion {
-            request,
+            request: rig_core::completion::CompletionRequest::new("hi").into(),
             stream: true,
         },
     );

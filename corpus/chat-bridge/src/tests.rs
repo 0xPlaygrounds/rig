@@ -121,7 +121,7 @@ fn said(world: &World, agent: Entity, text: &str) -> bool {
                 .iter()
                 .enumerate()
                 .any(|(at, message)| {
-                    let message::Message::User { content } = message else {
+                    let message::Message::User { content } = &**message else {
                         return false;
                     };
                     content.iter().any(

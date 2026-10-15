@@ -399,11 +399,12 @@ async fn a_cited_turn_replays_unchanged() {
         let body = |content: Vec<AssistantContent>| {
             let mut request = CompletionRequest::new("next");
             request.chat_history = vec![
-                Message::user("q"),
+                Message::user("q").into(),
                 Message::Assistant(AssistantMessage {
                     content,
                     ..response.head()
-                }),
+                })
+                .into(),
             ];
             encoded_body(&wire, request, Mode::Unary)
                 .unwrap_or_else(|error| panic!("the request encodes: {error}"))

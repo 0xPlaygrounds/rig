@@ -26,6 +26,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
+use std::sync::Arc;
 
 /// A document sent with a request as context, rendered before the chat history.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -1218,7 +1219,7 @@ impl ProviderCapabilities {
 
 /// A completion request to any provider's model.
 #[non_exhaustive]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
@@ -1229,7 +1230,10 @@ pub struct CompletionRequest {
     /// message must carry content. The field is public, so this is a rule
     /// rather than a type guarantee: [`Self::validate_message_content`]
     /// checks it at the request boundary.
-    pub chat_history: Vec<Message>,
+    ///
+    /// Each message is shared, with the conversation it came from and the
+    /// records of the request, so copying a request copies pointers.
+    pub chat_history: Vec<Arc<Message>>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
     /// The tools to be sent to the completion model provider
@@ -1319,7 +1323,7 @@ impl CompletionRequest {
     /// [`Message::System`] in `chat_history`, which is where
     /// [`Self::preamble`] places it.
     pub fn system_instructions(&self) -> Option<&str> {
-        match self.chat_history.first() {
+        match self.chat_history.first().map(Arc::as_ref) {
             Some(Message::System { content }) => Some(content.as_str()),
             _ => None,
         }
@@ -1359,7 +1363,7 @@ impl CompletionRequest {
         };
 
         for (index, message) in self.chat_history.iter().enumerate() {
-            match message {
+            match &**message {
                 Message::System { .. } => {}
                 Message::Assistant(AssistantMessage { content, .. }) => {
                     if content.is_empty() {
@@ -1409,14 +1413,6 @@ impl CompletionRequest {
 
         Some(Message::User { content })
     }
-
-    pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
-        let mut chat_history = self.chat_history.clone();
-        if let Some(documents) = self.normalized_documents() {
-            insert_after_leading_system(&mut chat_history, documents);
-        }
-        chat_history
-    }
 }
 
 /// Place the documents message `message` at the first non-system position,
@@ -1424,18 +1420,24 @@ impl CompletionRequest {
 /// message already there takes the documents at its front instead, so the
 /// history keeps alternating roles. Telemetry and the sent request must
 /// agree on this placement.
-pub(crate) fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
+pub(crate) fn insert_after_leading_system(chat_history: &mut Vec<Arc<Message>>, message: Message) {
     let insert_at = chat_history
         .iter()
-        .position(|message| !matches!(message, Message::System { .. }))
+        .position(|message| !matches!(&**message, Message::System { .. }))
         .unwrap_or(chat_history.len());
-    match (chat_history.get_mut(insert_at), message) {
-        (Some(Message::User { content }), Message::User { content: documents })
-            if !content.is_empty() =>
-        {
+    let joins =
+        |at: &&mut Arc<Message>| matches!(&***at, Message::User { content } if !content.is_empty());
+    match (
+        chat_history
+            .get_mut(insert_at)
+            .filter(joins)
+            .map(Arc::make_mut),
+        message,
+    ) {
+        (Some(Message::User { content }), Message::User { content: documents }) => {
             content.splice(0..0, documents);
         }
-        (_, message) => chat_history.insert(insert_at, message),
+        (_, message) => chat_history.insert(insert_at, Arc::new(message)),
     }
 }
 
@@ -1497,11 +1499,11 @@ impl CompletionRequest {
     /// assert_eq!(request.temperature, Some(0.5));
     /// ```
     pub fn new(prompt: impl Into<Message>) -> Self {
-        Self::conversation(vec![prompt.into()])
+        Self::conversation(vec![Arc::new(prompt.into())])
     }
 
     /// A request for `chat_history` as given, with nothing else set.
-    fn conversation(chat_history: Vec<Message>) -> Self {
+    fn conversation(chat_history: Vec<Arc<Message>>) -> Self {
         Self {
             model: None,
             chat_history,
@@ -1525,7 +1527,7 @@ impl CompletionRequest {
     /// ahead of any system message already there.
     pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
         self.chat_history
-            .insert(0, Message::system(preamble.into()));
+            .insert(0, Arc::new(Message::system(preamble.into())));
         self
     }
 
@@ -1538,15 +1540,16 @@ impl CompletionRequest {
 
     /// Add `message` to the conversation, before the prompt (its last
     /// message).
-    pub fn message(self, message: Message) -> Self {
+    pub fn message(self, message: impl Into<Arc<Message>>) -> Self {
         self.messages([message])
     }
 
     /// Add `messages` to the conversation in order, before the prompt (its
     /// last message).
-    pub fn messages(mut self, messages: impl IntoIterator<Item = Message>) -> Self {
+    pub fn messages(mut self, messages: impl IntoIterator<Item = impl Into<Arc<Message>>>) -> Self {
         let prompt = self.chat_history.pop();
-        self.chat_history.extend(messages);
+        self.chat_history
+            .extend(messages.into_iter().map(Into::into));
         self.chat_history.extend(prompt);
         self
     }
@@ -1805,8 +1808,12 @@ impl CompletionRequest {
 
     /// The input messages telemetry records: the conversation with the
     /// documents inserted after any leading system messages.
-    pub fn messages_for_telemetry(&self) -> Vec<Message> {
-        self.chat_history_with_documents()
+    pub fn messages_for_telemetry(&self) -> Vec<Arc<Message>> {
+        let mut messages = self.chat_history.clone();
+        if let Some(documents) = self.normalized_documents() {
+            insert_after_leading_system(&mut messages, documents);
+        }
+        messages
     }
 
     /// Log a typed field `key` that `additional_params` already overrides.
@@ -1853,7 +1860,7 @@ impl From<Message> for CompletionRequest {
 /// [`CompletionRequest::validate_message_content`].
 impl From<Vec<Message>> for CompletionRequest {
     fn from(chat_history: Vec<Message>) -> Self {
-        Self::conversation(chat_history)
+        Self::conversation(chat_history.into_iter().map(Arc::new).collect())
     }
 }
 

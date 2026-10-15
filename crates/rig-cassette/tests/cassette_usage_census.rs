@@ -81,6 +81,10 @@ const NOT_COMPLETIONS: &[(&str, &str)] = &[
         "batch resources: a batch's replies arrive in its results, which only the batch API reads",
     ),
     (
+        "/systemone",
+        "TypeSafe Jev evaluation: answers, not a completion; its usage is checked by its own cassette",
+    ),
+    (
         "/cachedContents",
         "Gemini cache resources: creation reports the tokens stored, not a completion",
     ),

@@ -22,6 +22,7 @@
 
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
+use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
@@ -177,12 +178,12 @@ impl Intercept for ProviderSide {
         let EffectKind::Completion { request, stream } = kind else {
             return ready(serve::BeforeServe::Proceed);
         };
-        let mut request = request.clone();
+        let mut request = (**request).clone();
         let rewritten = as_text_for(&mut request.chat_history, self.vendor);
         let tooled = add_tools(&mut request, &self.tools);
         ready(match rewritten || tooled {
             true => serve::BeforeServe::Patch(EffectKind::Completion {
-                request,
+                request: request.into(),
                 stream: *stream,
             }),
             false => serve::BeforeServe::Proceed,
@@ -229,10 +230,10 @@ fn add_tools(request: &mut CompletionRequest, tools: &[Value]) -> bool {
 /// Rewrites, in each reply another provider than `vendor` made, every
 /// provider-run call with its result as one text block where the call
 /// was; whether any was.
-fn as_text_for(history: &mut [ChatMessage], vendor: &str) -> bool {
+fn as_text_for(history: &mut [Arc<ChatMessage>], vendor: &str) -> bool {
     let mut rewritten = false;
     for message in history {
-        let ChatMessage::Assistant(reply) = message else {
+        let ChatMessage::Assistant(reply) = &**message else {
             continue;
         };
         let foreign = reply
@@ -243,7 +244,7 @@ fn as_text_for(history: &mut [ChatMessage], vendor: &str) -> bool {
             continue;
         }
         let runs = provider_runs(&reply.content);
-        reply.content = reply
+        let content = reply
             .content
             .iter()
             .filter_map(|block| match block {
@@ -255,6 +256,9 @@ fn as_text_for(history: &mut [ChatMessage], vendor: &str) -> bool {
                 other => Some(other.clone()),
             })
             .collect();
+        if let ChatMessage::Assistant(reply) = Arc::make_mut(message) {
+            reply.content = content;
+        }
         rewritten = true;
     }
     rewritten
@@ -434,7 +438,7 @@ fn note_provider_runs(
             .rev()
             .find(|at| {
                 matches!(
-                    conversation.messages().get(*at),
+                    conversation.messages().get(*at).map(|message| &**message),
                     Some(ChatMessage::Assistant(_))
                 )
             })

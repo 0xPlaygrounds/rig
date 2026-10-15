@@ -411,7 +411,7 @@ pub(super) fn stop_restored(
 /// tool's result.
 fn last_words(conversation: &Conversation) -> Option<String> {
     for message in conversation.messages().iter().rev() {
-        match message {
+        match &**message {
             Message::Assistant(reply) => {
                 let parts = reply.content.iter().filter_map(|part| match part {
                     AssistantContent::Text(text) => Some(text.text.trim()),

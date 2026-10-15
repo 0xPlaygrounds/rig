@@ -95,7 +95,7 @@ fn broken_arguments_run_repaired_and_are_kept_repaired() {
         .map(|conversation| conversation.messages())
         .unwrap_or_default()
         .iter()
-        .filter_map(|message| match message {
+        .filter_map(|message| match &**message {
             Message::Assistant(reply) => Some(reply.tool_calls().cloned().collect::<Vec<_>>()),
             _ => None,
         })

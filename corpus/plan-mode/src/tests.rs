@@ -34,7 +34,10 @@ fn tool_names(request: Option<&CompletionRequest>) -> Vec<String> {
 
 /// The text items of a request's last message.
 fn prompt(request: Option<&CompletionRequest>) -> String {
-    match request.and_then(|request| request.chat_history.last()) {
+    match request
+        .and_then(|request| request.chat_history.last())
+        .map(|message| &**message)
+    {
         Some(Message::User { content }) => format!("{content:?}"),
         _ => String::new(),
     }

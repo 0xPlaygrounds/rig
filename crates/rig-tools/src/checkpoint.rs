@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Write as _};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -342,7 +342,7 @@ fn scan_changes(
                 _ => None,
             };
             if let (Some(was_bytes), Some(now_bytes)) = (kept(was), kept(now)) {
-                return Some(change(&shown, was_bytes.as_deref(), now_bytes.as_deref()));
+                return Some(change(&shown, was_bytes, now_bytes.as_deref()));
             }
             let mut change = match (was, now) {
                 (None, Some(now)) => FileChange::created(shown, now.lines),
@@ -471,6 +471,10 @@ impl Git {
     /// Adds the root's files, and every file under each of `also` that is
     /// there, to the private index and writes its tree.
     fn write_tree(&self, also: &[PathBuf]) -> io::Result<String> {
+        // Calls checkpointed at once share the private index, whose lock
+        // `git add` takes and fails on when another holds it.
+        static INDEX: Mutex<()> = Mutex::new(());
+        let _index = INDEX.lock().unwrap_or_else(PoisonError::into_inner);
         std::fs::create_dir_all(self.keep.join("objects"))?;
         let below = match self.below.as_os_str().is_empty() {
             true => OsStr::new("."),
@@ -492,9 +496,40 @@ impl Git {
         Ok(String::from_utf8_lossy(&tree).trim().to_owned())
     }
 
-    /// The bytes of the object `id`.
-    fn blob(&self, id: &str) -> io::Result<Vec<u8>> {
-        self.run(&["cat-file", "blob", id].map(OsStr::new))
+    /// The bytes of each object in `ids` (an id, or `tree:path`), in order,
+    /// read by one `git cat-file --batch`.
+    fn blobs(&self, ids: &[&str]) -> io::Result<Vec<Vec<u8>>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut child = self
+            .command(&["cat-file", "--batch=%(objectsize)"].map(OsStr::new))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let input: String = ids.iter().map(|id| format!("{id}\n")).collect();
+        let stdin = child.stdin.take();
+        // Written beside the read, so neither pipe fills while the other waits.
+        let output = std::thread::scope(|scope| {
+            scope.spawn(|| stdin.map(|mut stdin| stdin.write_all(input.as_bytes())));
+            child.wait_with_output()
+        })?;
+        let mut rest = output.stdout.as_slice();
+        let mut blobs = Vec::with_capacity(ids.len());
+        for id in ids {
+            // `<size>\n<bytes>\n`, or `<id> missing\n`.
+            let missing = || io::Error::new(ErrorKind::NotFound, format!("git has no {id}"));
+            let end = rest.iter().position(|byte| *byte == b'\n');
+            let header = rest.get(..end.ok_or_else(missing)?).unwrap_or_default();
+            let size: usize = String::from_utf8_lossy(header)
+                .parse()
+                .map_err(|_| missing())?;
+            let body = rest.get(header.len() + 1..).unwrap_or_default();
+            blobs.push(body.get(..size).ok_or_else(missing)?.to_vec());
+            rest = body.get(size + 1..).unwrap_or_default();
+        }
+        Ok(blobs)
     }
 
     /// The bytes `path`, under the root as given or the work tree's top,
@@ -509,7 +544,8 @@ impl Git {
                 })?
                 .to_path_buf(),
         };
-        self.blob(&format!("{tree}:{}", below.to_string_lossy()))
+        let spec = format!("{tree}:{}", below.to_string_lossy());
+        self.run(&["cat-file", "blob", &spec].map(OsStr::new))
     }
 
     /// The file git names `path` (below `top`), spelled under the root as
@@ -539,35 +575,42 @@ impl Git {
         )?;
         let text = String::from_utf8_lossy(&raw);
         let mut fields = text.split('\0');
-        let mut changes = Vec::new();
+        let mut changed = Vec::new();
         while let (Some(header), Some(path)) = (fields.next(), fields.next()) {
             // `:old-mode new-mode old-id new-id status`
             let mut parts = header.split(' ').skip(2);
-            let (Some(old), Some(new)) = (parts.next(), parts.next()) else {
-                continue;
-            };
-            if old == new {
-                continue;
+            if let (Some(old), Some(new)) = (parts.next(), parts.next())
+                && old != new
+            {
+                changed.push((path, old, new));
             }
-            let missing = |id: &str| id.bytes().all(|byte| byte == b'0');
-            let was = (!missing(old)).then(|| self.blob(old)).transpose()?;
-            let now = (!missing(new)).then(|| self.blob(new)).transpose()?;
-            changes.push(change(&self.shown(path), was.as_deref(), now.as_deref()));
         }
-        Ok(changes)
+        // An id of zeros is no file on that side.
+        let present = |id: &&str| id.bytes().any(|byte| byte != b'0');
+        let sides = changed.iter().flat_map(|(_, old, new)| [*old, *new]);
+        let mut blobs = self
+            .blobs(&sides.filter(present).collect::<Vec<_>>())?
+            .into_iter();
+        let mut side = |id: &str| present(&id).then(|| blobs.next()).flatten();
+        let changes = changed.into_iter().map(|(path, old, new)| {
+            let (was, now) = (side(old), side(new));
+            change(&self.shown(path), was, now.as_deref())
+        });
+        Ok(changes.collect())
     }
 }
 
 /// The change from `before` to `after` (`None`: no file) of the file
 /// `path`, with its hunks and text before when both are small enough to
 /// diff.
-fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange {
+fn change(path: &str, before: Option<Vec<u8>>, after: Option<&[u8]>) -> FileChange {
     let small =
         |bytes: Option<&[u8]>| bytes.is_none_or(|bytes| bytes.len() as u64 <= MAX_FILE_BYTES);
-    if small(before) && small(after) {
-        return Previous::change(before.map(Previous::of).as_ref(), path, after);
+    if small(before.as_deref()) && small(after) {
+        return Previous::change(before.map(Previous::of), path, after);
     }
-    let (was, now) = (before.map(FileState::of), after.map(FileState::of));
+    let was = before.as_deref().map(FileState::of);
+    let now = after.map(FileState::of);
     let lines = |state: &Option<FileState>| state.as_ref().and_then(|it| it.lines).unwrap_or(0);
     let mut change = match (&was, &now) {
         (_, None) => FileChange::deleted(path, lines(&was)),

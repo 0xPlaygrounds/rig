@@ -1,5 +1,6 @@
 use super::*;
 use crate::providers::gemini::{GeminiConfig, PROVIDER_NAME};
+use crate::wire::WireFrame;
 
 #[test]
 fn test_embedding_values_deserializes_without_empty_values_field() {

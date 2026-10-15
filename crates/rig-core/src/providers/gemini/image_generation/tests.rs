@@ -1,4 +1,5 @@
 use super::*;
+use crate::wire::WireFrame;
 
 fn image_generation_request(prompt: &str) -> ImageGenerationRequest {
     ImageGenerationRequest {
@@ -148,4 +149,25 @@ fn the_wire_decodes_a_recorded_image_reply() {
     assert_eq!(response.usage.input_tokens, Some(15));
     assert_eq!(response.usage.output_tokens, Some(1290));
     assert_eq!(response.usage.total_tokens, Some(1305));
+}
+
+/// Gemini names an aspect ratio width first: a landscape 1024x768 is 4:3.
+/// Sizes in no ratio Gemini names, or with no area, name none.
+#[test]
+fn the_aspect_ratio_names_the_width_first() {
+    for ((width, height), ratio) in [
+        ((1024, 1024), Some("1:1")),
+        ((1024, 768), Some("4:3")),
+        ((768, 1024), Some("3:4")),
+        ((1920, 1080), Some("16:9")),
+        ((1080, 1920), Some("9:16")),
+        ((1000, 10), None),
+        ((0, 512), None),
+    ] {
+        assert_eq!(
+            aspect_ratio(width, height).as_deref(),
+            ratio,
+            "{width}x{height}"
+        );
+    }
 }

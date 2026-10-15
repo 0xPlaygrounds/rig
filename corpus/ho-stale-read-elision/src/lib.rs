@@ -160,14 +160,14 @@ fn stub(earlier: &FileResult, later: &[FileResult]) -> Option<String> {
 /// `eligible` that a later result supersedes, the file tools working in
 /// `dir`.
 fn stubs(
-    messages: &[Message],
+    messages: &[std::sync::Arc<Message>],
     eligible: &HashSet<CallId>,
     dir: Option<&Path>,
 ) -> HashMap<CallId, String> {
     let mut arguments = HashMap::new();
     let mut results = Vec::new();
     for message in messages {
-        match message {
+        match &**message {
             Message::Assistant(reply) => {
                 for block in &reply.content {
                     if let AssistantContent::ToolCall(call) = block {
@@ -197,8 +197,8 @@ fn stubs(
 }
 
 /// The ids of the calls whose results `messages` hold.
-fn answered(messages: &[Message]) -> HashSet<CallId> {
-    let content = messages.iter().filter_map(|message| match message {
+fn answered(messages: &[std::sync::Arc<Message>]) -> HashSet<CallId> {
+    let content = messages.iter().filter_map(|message| match &**message {
         Message::User { content } => Some(content),
         _ => None,
     });
@@ -246,7 +246,7 @@ fn elide(
             let Some(mut entry) = history.entry(at) else {
                 continue;
             };
-            let Message::User { content } = &mut entry.message else {
+            let Message::User { content } = std::sync::Arc::make_mut(&mut entry.message) else {
                 continue;
             };
             let mut changed = false;

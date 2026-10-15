@@ -118,9 +118,10 @@ fn rewrites_are_logged_restored_and_undone_but_redactions_stay() {
 
     // A command drops turn 2, then a compaction condenses turns 1 and 3.
     run(&mut app, agent, "drop-turn 2");
-    app.add_compaction_cut("keep-two-turns", |messages: &[Message], _, _, _| {
-        messages.len().checked_sub(4)
-    });
+    app.add_compaction_cut(
+        "keep-two-turns",
+        |messages: &[std::sync::Arc<Message>], _, _, _| messages.len().checked_sub(4),
+    );
     app.world_mut()
         .entity_mut(agent)
         .insert(CompactionKnobs(CompactionOverrides {
