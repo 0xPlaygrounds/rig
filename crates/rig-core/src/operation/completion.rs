@@ -419,9 +419,12 @@ impl Arguments {
         Some(fragment)
     }
 
-    /// Whether the text is a complete JSON object.
+    /// Whether the text is a complete JSON object. Only a text that ends
+    /// in `}` (or says nothing) can be one, so no other is parsed.
     fn complete(&self) -> bool {
+        let end = self.text.trim_end();
         !self.overflowed
+            && (end.is_empty() || end.ends_with('}'))
             && matches!(
                 crate::json_utils::parse_tool_arguments(&self.text),
                 Ok(serde_json::Value::Object(_))
