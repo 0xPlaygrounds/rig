@@ -56,7 +56,6 @@ pub use policy::{
 };
 pub use response::{CompletionCall, PromptError, PromptResponse};
 use rig_core::completion::message::turn_failure;
-use rig_core::json_utils;
 use rig_core::structured_output;
 use transcript::{
     assistant_message, assistant_turn, build_full_history, build_history_for_request, choice_text,
@@ -906,7 +905,7 @@ impl AgentRun {
                         .count();
                     let args = tool_call.function.arguments_value();
                     let tool_call_id = tool_call.id.clone();
-                    let output = json_utils::serialize_json_value(&args);
+                    let output = args.to_string();
 
                     // Arguments that are not a JSON object are no answer:
                     // the model is told why while the budget lasts.

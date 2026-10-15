@@ -45,7 +45,6 @@ use rig_core::{
 
 use crate::{
     completion::{ResponseIdentity, Usage},
-    json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},
 };
 
@@ -711,7 +710,7 @@ impl DispatchAction {
         match kind {
             EffectKind::ToolCall { name, .. } => Self::Patch(EffectKind::ToolCall {
                 name: name.clone(),
-                args: json_utils::serialize_json_value(&args.into()),
+                args: Into::<serde_json::Value>::into(args).to_string(),
             }),
             _ => Self::Proceed,
         }
