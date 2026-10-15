@@ -256,6 +256,8 @@ pub fn add_view(app: &mut App) {
         .init_resource::<clipboard::Clipboard>()
         .register_required_components::<rig_ecs::agent::Partial, transcript::StreamingCalls>()
         .add_observer(transcript::forget_streams)
+        .add_observer(render::redraw_on_remove)
+        .add_observer(render::forget_looks)
         .add_systems(Startup, (view::load_notices, view::load_draft))
         .add_systems(
             PreUpdate,

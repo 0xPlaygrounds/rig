@@ -129,33 +129,11 @@ pub(crate) fn needs_redraw(
     >,
     (app_status, test): (Option<Res<AppStatus>>, Option<Res<TuiTestScreen>>),
     (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<RedrawArea>),
-    mut removed: (
-        RemovedComponents<TuiPanel>,
-        RemovedComponents<StatusItems>,
-        RemovedComponents<Holds>,
-        RemovedComponents<ToolProgress>,
-        (
-            RemovedComponents<TranscriptPane>,
-            RemovedComponents<Editor>,
-            RemovedComponents<PickerInput>,
-        ),
-        RemovedLooks,
-    ),
     mut paced: Local<Paced>,
 ) -> bool {
-    // Every reader is drained, so none redraws again for the same change.
+    // Both readers are drained, so neither redraws again for the same change.
     let requested = requests.read().count() + repaints.read().count() > 0;
-    let removed = removed.0.read().count()
-        + removed.1.read().count()
-        + removed.2.read().count()
-        + removed.3.read().count()
-        + removed.4.0.read().count()
-        + removed.4.1.read().count()
-        + removed.4.2.read().count()
-        > 0
-        || removed.5.any();
     let changed = requested
-        || removed
         || view.is_changed()
         || notices.is_changed()
         || facts.is_changed()
@@ -179,33 +157,44 @@ pub(crate) fn needs_redraw(
     false
 }
 
-/// The looks taken out since the last frame: [`lay_out_panes`] draws
-/// what they drew again.
-///
-/// [`lay_out_panes`]: crate::pane::lay_out_panes
-#[derive(SystemParam)]
-pub(crate) struct RemovedLooks<'w, 's> {
-    tools: RemovedComponents<'w, 's, ToolRenderer>,
-    entries: RemovedComponents<'w, 's, EntryRenderer>,
-    contents: RemovedComponents<'w, 's, ContentRenderer>,
-    asides: RemovedComponents<'w, 's, AsideRenderer>,
-    messages: RemovedComponents<'w, 's, MessageRenderer>,
-    decorators: RemovedComponents<'w, 's, CallDecorator>,
-    message_decorators: RemovedComponents<'w, 's, MessageDecorator>,
+/// Redraws once something drawn went away.
+pub(crate) fn redraw_on_remove(
+    _: On<
+        Remove<(
+            TuiPanel,
+            StatusItems,
+            Holds,
+            ToolProgress,
+            TranscriptPane,
+            Editor,
+            PickerInput,
+        )>,
+    >,
+    mut redraw: MessageWriter<RequestRedraw>,
+) {
+    redraw.write(RequestRedraw);
 }
 
-impl RemovedLooks<'_, '_> {
-    /// Whether any was, each reader drained.
-    pub(crate) fn any(&mut self) -> bool {
-        self.tools.read().count()
-            + self.entries.read().count()
-            + self.contents.read().count()
-            + self.asides.read().count()
-            + self.messages.read().count()
-            + self.decorators.read().count()
-            + self.message_decorators.read().count()
-            > 0
+/// Lays every pane's transcript out again once a look went away.
+pub(crate) fn forget_looks(
+    _: On<
+        Remove<(
+            ToolRenderer,
+            EntryRenderer,
+            ContentRenderer,
+            AsideRenderer,
+            MessageRenderer,
+            CallDecorator,
+            MessageDecorator,
+        )>,
+    >,
+    mut panes: Query<&mut PaneState>,
+    mut redraw: MessageWriter<RequestRedraw>,
+) {
+    for mut pane in &mut panes {
+        pane.bypass_change_detection().transcript.clear();
     }
+    redraw.write(RequestRedraw);
 }
 
 /// Whether [`layout`] laid out a frame that [`render`] did not draw yet.

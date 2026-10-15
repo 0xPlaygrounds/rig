@@ -37,8 +37,7 @@ use rig_harness::main_agent::ShownAgent;
 use super::keys::{InputAction, KeyBinding, KeyPress, KeyScope};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 use super::render::{
-    RemovedLooks, ShownConversation, Sources, TranscriptLayout, decorate, lay_out_transcript,
-    selectable,
+    ShownConversation, Sources, TranscriptLayout, decorate, lay_out_transcript, selectable,
 };
 use super::transcript::{Below, Scroll, Transcript};
 use super::view::{DrawnTranscript, TranscriptItem, TranscriptView};
@@ -213,9 +212,8 @@ pub(crate) fn lay_out_panes(
         &PanelCanvas,
         Option<&mut DrawnTranscript>,
     )>,
-    mut removed_looks: RemovedLooks,
 ) {
-    let looks_changed = removed_looks.any() || from.looks.changed();
+    let looks_changed = from.looks.changed();
     for (entity, pane, view, mut state, canvas, drawn) in &mut panes {
         let area = inner(&pane, canvas.area());
         if area.is_empty() {
